@@ -130,7 +130,9 @@ object FloatingNavDefaults {
 private val DockShape: Shape = RoundedCornerShape(32.dp)
 private val PillShape: Shape = CircleShape
 
-private fun <T> navSpring() = ExpressiveMotion.spatialSpring<T>()
+// One shared smooth spring keeps tab selection, label expansion, and pager controls
+// visually coherent and silky smooth without jittery oscillations.
+private fun <T> navSpring() = ExpressiveMotion.smoothSpring<T>()
 
 @Composable
 fun MainShell(
@@ -158,13 +160,22 @@ fun MainShell(
         val feedIndex = tabs.indexOf(MainTab.FEED)
         HorizontalPager(
             state = pagerState,
-            beyondViewportPageCount = 0,
+            // Pre-warm neighboring tabs in GPU memory so horizontal sliding is
+            // a hardware-accelerated translation with zero first-frame composition hitch.
+            beyondViewportPageCount = 1,
             modifier = Modifier.fillMaxSize().liquidGlassSource(navigationBackdrop),
         ) { page ->
             val isCurrent = page == pagerState.currentPage
             PredictiveBackScreen(
                 enabled = isCurrent && tabs[page] != MainTab.FEED,
-                onBack = { scope.launch { pagerState.animateScrollToPage(feedIndex) } },
+                onBack = {
+                    scope.launch {
+                        pagerState.animateScrollToPage(
+                            page = feedIndex,
+                            animationSpec = ExpressiveMotion.smoothSpring(),
+                        )
+                    }
+                },
             ) {
                 when (tabs[page]) {
                     MainTab.FEED -> FeedScreen(
@@ -212,8 +223,15 @@ fun MainShell(
         FloatingNavBar(
             backdrop = navigationBackdrop,
             tabs = tabs,
-            selectedIndex = pagerState.currentPage,
-            onSelect = { index -> scope.launch { pagerState.animateScrollToPage(index) } },
+            selectedIndex = pagerState.targetPage,
+            onSelect = { index ->
+                scope.launch {
+                    pagerState.animateScrollToPage(
+                        page = index,
+                        animationSpec = ExpressiveMotion.smoothSpring(),
+                    )
+                }
+            },
             onOpenGenerator = onOpenGenerator,
             modifier = Modifier.align(Alignment.BottomCenter),
         )

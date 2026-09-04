@@ -169,6 +169,7 @@ class MusicPlayer @Inject constructor(
     private val settingsPreferences: SettingsPreferences,
     private val equalizerPreferences: EqualizerPreferences,
     private val discoverRepository: DiscoverRepository,
+    private val generateRepository: com.lastwave.app.data.generate.GenerateRepository,
     private val nativeAudioEngine: dagger.Lazy<NativeAudioEngine>,
     private val audioEffectsEngine: AudioEffectsEngine,
     private val applicationScope: CoroutineScope,
@@ -270,6 +271,13 @@ class MusicPlayer @Inject constructor(
     private var radioQueueLoadJob: Job? = null
     private var radioQueueActive = false
     private val radioUsedSeeds = ConcurrentHashMap.newKeySet<String>()
+    private var autoplayLoadJob: Job? = null
+    @Volatile
+    private var autoplayEnabled = true
+    /** Seeds already used for an autoplay refill, so a stalled queue does not
+     *  ask Last.fm for the same similar-tracks list over and over. Touched from
+     *  the refill coroutine and from playback callbacks, so it is concurrent. */
+    private val autoplaySeedsUsed = ConcurrentHashMap.newKeySet<String>()
     private var unavailableSkipJob: Job? = null
     private val unavailableMediaIds = mutableSetOf<String>()
     private var sleepTimerDeadlineMs: Long? = null
@@ -345,6 +353,19 @@ class MusicPlayer @Inject constructor(
         override fun onEvents(player: Player, events: Player.Events) {
             if (player === this@MusicPlayer.player) refresh(player)
         }
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            // Last resort for endless playback: the queue actually ran dry
+            // before a proactive refill landed. Seed from what just played and
+            // resume as soon as tracks arrive.
+            if (playbackState == Player.STATE_ENDED) {
+                val last = _state.value.current ?: return
+                extendAutoplayQueueIfNeeded(
+                    currentIndex = player.currentMediaItemIndex,
+                    seed = last,
+                    resumeWhenLoaded = true,
+                )
+            }
+        }
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             outgoingPlayer?.playWhenReady = isPlaying
             if (isPlaying) {
@@ -404,6 +425,7 @@ class MusicPlayer @Inject constructor(
                 enrichUpcomingQueue(currentIndex)
                 extendDiscoverQueueIfNeeded(currentIndex)
                 extendRadioQueueIfNeeded(currentIndex)
+                extendAutoplayQueueIfNeeded(currentIndex, currentTrack)
                 val nextIndex = if (player.shuffleModeEnabled) {
                     player.nextMediaItemIndex
                 } else {
@@ -783,6 +805,7 @@ class MusicPlayer @Inject constructor(
 
         applicationScope.launch {
             settingsPreferences.settings.collect { settings ->
+                autoplayEnabled = settings.autoplayEnabled
                 crossfadeEnabled = settings.crossfadeEnabled
                 crossfadeDurationMs = settings.crossfadeSeconds.coerceIn(1, 12) * 1000L
                 bitPerfectEnabled = settings.isBitPerfectEnabled
@@ -1830,6 +1853,74 @@ class MusicPlayer @Inject constructor(
         radioUsedSeeds.clear()
     }
 
+    /**
+     * YouTube-Music-style endless playback for ordinary (non-Discover) queues:
+     * as a playlist or album nears its end, quietly extend it with tracks
+     * similar to what is playing so music never just stops.
+     *
+     * Discover queues are skipped — [extendDiscoverQueueIfNeeded] already owns
+     * those — and so are looping queues, which never run out by definition.
+     */
+    private fun extendAutoplayQueueIfNeeded(
+        currentIndex: Int,
+        seed: PlayableTrack?,
+        resumeWhenLoaded: Boolean = false,
+    ) {
+        if (!autoplayEnabled || discoverQueueActive || autoplayLoadJob?.isActive == true) return
+        if (seed == null || seed.title.isBlank() || seed.artist.isBlank()) return
+
+        autoplayLoadJob = applicationScope.launch {
+            try {
+                val shouldLoad = withContext(Dispatchers.Main.immediate) {
+                    if (player.repeatMode != Player.REPEAT_MODE_OFF) return@withContext false
+                    if (player.mediaItemCount == 0) return@withContext false
+                    val remaining = player.mediaItemCount - currentIndex - 1
+                    resumeWhenLoaded || (currentIndex >= 0 && remaining <= AUTOPLAY_REFILL_THRESHOLD)
+                }
+                if (!shouldLoad) return@launch
+
+                val seedKey = seed.queueKey()
+                if (!resumeWhenLoaded && !autoplaySeedsUsed.add(seedKey)) return@launch
+                if (autoplaySeedsUsed.size > AUTOPLAY_SEED_MEMORY) autoplaySeedsUsed.clear()
+
+                // Last.fm similar-tracks is the closest match to the seed; the
+                // taste-based Discover engine covers songs it has never heard of.
+                val similar = runCatching {
+                    generateRepository
+                        .fetchSimilarTracks(seed.title, seed.artist, AUTOPLAY_BATCH_SIZE)
+                        .map(GeneratedTrack::toPlayableTrack)
+                }.onFailure { error ->
+                    android.util.Log.d("MusicPlayer", "Autoplay similar-tracks miss", error)
+                }.getOrDefault(emptyList())
+
+                val batch = similar.ifEmpty {
+                    runCatching {
+                        discoverRepository.nextBatch(AUTOPLAY_BATCH_SIZE).map(GeneratedTrack::toPlayableTrack)
+                    }.onFailure { error ->
+                        android.util.Log.d("MusicPlayer", "Autoplay discover fallback failed", error)
+                    }.getOrDefault(emptyList())
+                }
+                if (batch.isEmpty()) return@launch
+
+                appendMissingDiscoverTracks(batch)
+
+                if (resumeWhenLoaded) {
+                    onMain {
+                        if (player.playbackState == Player.STATE_ENDED &&
+                            player.hasNextMediaItem()
+                        ) {
+                            player.seekToNextMediaItem()
+                            player.prepare()
+                            player.play()
+                        }
+                    }
+                }
+            } finally {
+                autoplayLoadJob = null
+            }
+        }
+    }
+
     private fun isDisallowedRadioTitle(titleLower: String): Boolean {
         val keywords = listOf(
             "mashup", "mash up", "mash-up",
@@ -2850,6 +2941,13 @@ class MusicPlayer @Inject constructor(
         const val DISCOVER_QUEUE_REFILL_THRESHOLD = 8
         const val RADIO_QUEUE_BATCH_SIZE = 25
         const val RADIO_QUEUE_REFILL_THRESHOLD = 6
+        /** How many similar tracks one autoplay refill adds. */
+        const val AUTOPLAY_BATCH_SIZE = 12
+        /** Start refilling once this few tracks remain after the current one. */
+        const val AUTOPLAY_REFILL_THRESHOLD = 2
+        /** Seed keys remembered before the "already used" set is recycled. */
+        const val AUTOPLAY_SEED_MEMORY = 200
+        const val UNAVAILABLE_SKIP_DELAY_MS = 1_000L
         const val POSITION_PERSIST_INTERVAL_MS = 5_000L
         const val MAX_PERSISTED_QUEUE_SIZE = 200
         const val RESTORED_PREVIOUS_TRACKS = 50
