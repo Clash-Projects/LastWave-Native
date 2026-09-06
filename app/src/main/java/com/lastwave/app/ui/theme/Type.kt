@@ -60,12 +60,17 @@ val NothingDigitsFontFamily = FontFamily(
     Font(R.font.dseg7_classic_bold, weight = FontWeight.Bold),
 )
 
+val NothingDotFontFamily = FontFamily(
+    Font(R.font.silkscreen_regular, weight = FontWeight.Normal),
+    Font(R.font.silkscreen_bold, weight = FontWeight.Bold),
+)
+
 val LastWaveTypography = Typography(
     displayLarge = TextStyle(fontFamily = gsFlex(weight = 700f, opticalSize = 57f), fontWeight = FontWeight.Bold, fontSize = 57.sp, lineHeight = 64.sp),
     displayMedium = TextStyle(fontFamily = gsFlex(weight = 700f, opticalSize = 45f), fontWeight = FontWeight.Bold, fontSize = 45.sp, lineHeight = 52.sp),
     displaySmall = TextStyle(fontFamily = gsFlex(weight = 700f, opticalSize = 36f), fontWeight = FontWeight.Bold, fontSize = 36.sp, lineHeight = 44.sp),
-    headlineLarge = TextStyle(fontFamily = gsFlex(weight = 700f, opticalSize = 32f), fontWeight = FontWeight.Bold, fontSize = 32.sp, lineHeight = 40.sp),
-    headlineMedium = TextStyle(fontFamily = gsFlex(weight = 700f, opticalSize = 28f), fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 36.sp),
+    headlineLarge = TextStyle(fontFamily = NothingDotFontFamily, fontWeight = FontWeight.Bold, fontSize = 30.sp, lineHeight = 38.sp, letterSpacing = 0.4.sp),
+    headlineMedium = TextStyle(fontFamily = NothingDotFontFamily, fontWeight = FontWeight.Bold, fontSize = 26.sp, lineHeight = 34.sp, letterSpacing = 0.4.sp),
     headlineSmall = TextStyle(fontFamily = gsFlex(weight = 600f, opticalSize = 24f), fontWeight = FontWeight.SemiBold, fontSize = 24.sp, lineHeight = 32.sp),
     titleLarge = TextStyle(fontFamily = gsFlex(weight = 600f, opticalSize = 22f), fontWeight = FontWeight.SemiBold, fontSize = 22.sp, lineHeight = 28.sp),
     titleMedium = TextStyle(fontFamily = gsFlex(weight = 500f, opticalSize = 16f), fontWeight = FontWeight.Medium, fontSize = 16.sp, lineHeight = 24.sp),
@@ -76,9 +81,9 @@ val LastWaveTypography = Typography(
     // Section headers / category labels read as stenciled hardware labels:
     // uppercase content (apply .uppercase() at the call site — TextStyle
     // can't transform case on its own) with wide tracking.
-    labelLarge = TextStyle(fontFamily = gsFlex(weight = 600f, opticalSize = 14f), fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 1.2.sp),
-    labelMedium = TextStyle(fontFamily = gsFlex(weight = 600f, opticalSize = 12f), fontWeight = FontWeight.SemiBold, fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 1.4.sp),
-    labelSmall = TextStyle(fontFamily = gsFlex(weight = 600f, opticalSize = 11f), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, lineHeight = 16.sp, letterSpacing = 1.6.sp),
+    labelLarge = TextStyle(fontFamily = NothingDotFontFamily, fontWeight = FontWeight.Bold, fontSize = 13.sp, lineHeight = 20.sp, letterSpacing = 1.2.sp),
+    labelMedium = TextStyle(fontFamily = NothingDotFontFamily, fontWeight = FontWeight.Bold, fontSize = 11.sp, lineHeight = 16.sp, letterSpacing = 1.4.sp),
+    labelSmall = TextStyle(fontFamily = NothingDotFontFamily, fontWeight = FontWeight.Normal, fontSize = 10.sp, lineHeight = 16.sp, letterSpacing = 1.6.sp),
 )
 
 /**
