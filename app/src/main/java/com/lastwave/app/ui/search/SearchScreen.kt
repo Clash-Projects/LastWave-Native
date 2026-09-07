@@ -94,9 +94,8 @@ import com.lastwave.app.ui.common.safeHorizontalContentPadding
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
@@ -104,6 +103,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import com.lastwave.app.ui.theme.LocalLiquidGlass
+import com.lastwave.app.ui.theme.liquidGlassContainerColor
 import com.lastwave.app.ui.theme.liquidGlassChrome
 
 private val SearchHeaderShape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)
@@ -146,7 +146,7 @@ fun SearchScreen(
         ) {
         Surface(
             shape = SearchHeaderShape,
-            color = MaterialTheme.colorScheme.surfaceContainer,
+            color = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainer),
             tonalElevation = 2.dp,
             modifier = Modifier
                 .fillMaxWidth()
@@ -174,21 +174,7 @@ fun SearchScreen(
                     } else {
                         MaterialTheme.colorScheme.surfaceContainerHighest
                     }
-                    val pillBorder = if (liquidGlass) {
-                        Brush.linearGradient(
-                            listOf(
-                                Color.White.copy(alpha = 0.28f),
-                                Color.White.copy(alpha = 0.08f),
-                            ),
-                        )
-                    } else {
-                        Brush.linearGradient(
-                            listOf(
-                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
-                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f),
-                            ),
-                        )
-                    }
+
 
                     BasicTextField(
                         value = state.query,
@@ -214,8 +200,7 @@ fun SearchScreen(
                                     .fillMaxSize()
                                     .clip(CircleShape)
                                     .liquidGlassChrome(CircleShape, liquidGlass)
-                                    .background(pillBg)
-                                    .border(BorderStroke(1.dp, pillBorder), CircleShape)
+                                    .background(liquidGlassContainerColor(pillBg))
                                     .padding(horizontal = 14.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -568,7 +553,7 @@ private fun TopResultCard(
     Card(
         shape = shape,
         colors = CardDefaults.cardColors(
-            containerColor = containerColor,
+            containerColor = liquidGlassContainerColor(containerColor),
             contentColor = cardContentColor,
         ),
         modifier = Modifier
@@ -604,7 +589,7 @@ private fun TopResultCard(
                 )
                 if (isPlaying) {
                     com.lastwave.app.ui.player.PlayingWaveBars(
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(3.dp),
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(3.dp).size(24.dp, 18.dp),
                     )
                 }
             }
@@ -850,7 +835,7 @@ private fun SearchResultRow(
             )
             if (isPlaying) {
                 com.lastwave.app.ui.player.PlayingWaveBars(
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp),
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp).size(24.dp, 18.dp),
                 )
             }
         }
@@ -925,36 +910,9 @@ private fun SearchFilterPills(
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             }
 
-            val stroke = when {
-                selected && liquidGlass -> BorderStroke(
-                    1.dp,
-                    Brush.linearGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.65f),
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
-                        ),
-                    ),
-                )
-                liquidGlass -> BorderStroke(
-                    1.dp,
-                    Brush.linearGradient(
-                        listOf(
-                            Color.White.copy(alpha = 0.20f),
-                            Color.White.copy(alpha = 0.05f),
-                        ),
-                    ),
-                )
-                !selected -> BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f),
-                )
-                else -> null
-            }
-
             Surface(
                 shape = CircleShape,
-                color = pillBg,
-                border = stroke,
+                color = liquidGlassContainerColor(pillBg),
                 modifier = Modifier
                     .clip(CircleShape)
                     .liquidGlassChrome(CircleShape, liquidGlass)

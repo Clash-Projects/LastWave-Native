@@ -27,7 +27,9 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
     @Inject lateinit var okHttpClient: dagger.Lazy<okhttp3.OkHttpClient>
     @Inject lateinit var streamExtractor: dagger.Lazy<com.lastwave.app.data.music.YouTubeStreamExtractor>
     @Inject lateinit var ytMusicSyncManager: dagger.Lazy<com.lastwave.app.data.ytmusic.YtMusicSyncManager>
+    @Inject lateinit var ytMusicHistorySyncManager: dagger.Lazy<com.lastwave.app.data.ytmusic.YtMusicHistorySyncManager>
     @Inject lateinit var likedSongsManager: dagger.Lazy<com.lastwave.app.data.playlist.LikedSongsManager>
+    @Inject lateinit var trackDownloadManager: dagger.Lazy<com.lastwave.app.data.download.TrackDownloadManager>
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
@@ -69,6 +71,21 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
             delay(OPTIONAL_STARTUP_DELAY_MS)
             runCatching { ytMusicSyncManager.get().start() }
                 .onFailure { android.util.Log.e("LastWaveStartup", "YT sync startup disabled", it) }
+        }
+        // YouTube Music playback-history sync (no-ops until an account is
+        // connected AND history sync is enabled in Settings — on by default).
+        // Observes playback state only; it can never affect audio delivery.
+        applicationScope.launch {
+            delay(OPTIONAL_STARTUP_DELAY_MS)
+            runCatching { ytMusicHistorySyncManager.get().start() }
+                .onFailure { android.util.Log.e("LastWaveStartup", "YT history sync startup disabled", it) }
+        }
+        // Reconcile public download directory & MediaStore with local database
+        // asynchronously on startup so offline playback works immediately.
+        applicationScope.launch(Dispatchers.IO) {
+            delay(OPTIONAL_STARTUP_DELAY_MS)
+            runCatching { trackDownloadManager.get().syncDownloadsFromStorage() }
+                .onFailure { android.util.Log.e("LastWaveStartup", "Download sync startup failed", it) }
         }
         // A widget is a separate RemoteViews surface, so it needs an explicit
         // refresh whenever LastWave's live theme changes. The widget's palette

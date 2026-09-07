@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -101,7 +102,7 @@ fun GenerateScreen(
     LaunchedEffect(Unit) {
         viewModel.navEvents.collect { event ->
             when (event) {
-                is GenerateNavEvent.NavigateToPlaylistLoading -> onNavigateToPlaylist(event.playlistId)
+                is GenerateNavEvent.NavigateToPlaylistLoading -> runCatching { onNavigateToPlaylist(event.playlistId) }
             }
         }
     }
@@ -280,7 +281,7 @@ private fun badgeColorsFor(mode: ImageVector): Pair<Color, Color> {
         MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer,
         MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer,
     )
-    val index = (mode.name.hashCode().let { if (it < 0) -it else it }) % palette.size
+    val index = Math.floorMod(mode.name.hashCode(), palette.size)
     return palette[index]
 }
 
@@ -356,7 +357,7 @@ private fun SimilarTrackSeedOptions(state: GenerateUiState, viewModel: GenerateV
     if (state.seedTrackResults.isNotEmpty()) {
         Column(Modifier.height(160.dp)) {
             LazyColumn {
-                items(state.seedTrackResults, key = { it.key }) { t ->
+                itemsIndexed(state.seedTrackResults, key = { index, t -> "${t.key}_$index" }) { _, t ->
                     TextButton(
                         onClick = { viewModel.pickSeedTrack(t) },
                         modifier = Modifier.fillMaxWidth().animateItem(),
@@ -390,7 +391,7 @@ private fun SimilarArtistSeedOptions(state: GenerateUiState, viewModel: Generate
     if (state.seedArtistResults.isNotEmpty()) {
         Column(Modifier.height(160.dp)) {
             LazyColumn {
-                items(state.seedArtistResults, key = { it }) { name ->
+                itemsIndexed(state.seedArtistResults, key = { index, name -> "${name}_$index" }) { _, name ->
                     TextButton(
                         onClick = { viewModel.pickSeedArtist(name) },
                         modifier = Modifier.fillMaxWidth().animateItem(),

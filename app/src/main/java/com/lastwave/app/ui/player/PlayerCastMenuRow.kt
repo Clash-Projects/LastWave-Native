@@ -39,7 +39,7 @@ internal fun PlayerCastMenuRow(player: MusicPlayer) {
         Modifier.fillMaxWidth().clickable {
             if (available) routeButton?.performClick()
             else Toast.makeText(context, "Chromecast requires Google Play services", Toast.LENGTH_SHORT).show()
-        }.padding(horizontal = 20.dp, vertical = 12.dp),
+        }.padding(horizontal = 12.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val badge = Modifier.size(40.dp).clip(RoundedCornerShape(13.dp))

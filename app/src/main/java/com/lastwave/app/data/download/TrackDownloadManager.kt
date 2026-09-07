@@ -678,7 +678,12 @@ class TrackDownloadManager @Inject constructor(
                         )
                     }
 
-                    val finalPath = file?.absolutePath ?: uri?.toString() ?: safeFilename
+                    val publicMusicDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), PUBLIC_DIR_NAME)
+                    val expectedPublicFile = File(publicMusicDir, safeFilename)
+                    val finalPath = file?.absolutePath
+                        ?: expectedPublicFile.takeIf { it.exists() && it.length() > 0 }?.absolutePath
+                        ?: uri?.toString()
+                        ?: expectedPublicFile.absolutePath
 
 
                 // 7. Also write the sidecar .lrc companion file for players that read them

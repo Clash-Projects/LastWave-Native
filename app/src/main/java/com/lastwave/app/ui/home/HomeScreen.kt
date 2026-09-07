@@ -7,9 +7,7 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -101,6 +99,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
+import com.lastwave.app.ui.theme.LocalLiquidGlass
+import com.lastwave.app.ui.theme.liquidGlassChrome
+import com.lastwave.app.ui.theme.liquidGlassContainerColor
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
@@ -581,9 +582,9 @@ private fun rememberAnimatedCount(target: Long): Long {
 @Composable
 private fun StatPill(label: String, value: Long, modifier: Modifier = Modifier) {
     Surface(
-        modifier = modifier,
+        modifier = modifier.liquidGlassChrome(StatPillShape, LocalLiquidGlass.current),
         shape = StatPillShape,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+        color = liquidGlassContainerColor(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f)),
     ) {
         Column(Modifier.padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
@@ -800,18 +801,6 @@ private fun TrackRow(
                     ),
                 ),
             )
-            .border(
-                BorderStroke(
-                    1.dp,
-                    Brush.horizontalGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                        ),
-                    ),
-                ),
-                shape = NowPlayingCardShape,
-            )
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     } else {
         Modifier
@@ -840,7 +829,7 @@ private fun TrackRow(
             ) {
                 ArtworkImage(
                     name = track.name,
-                    artist = track.artist,
+                    artist = com.lastwave.app.util.ArtistHelper.primaryArtist(track.artist),
                     embeddedUrl = track.artworkUrl,
                     fallbackIcon = if (isNowPlaying) Icons.Filled.GraphicEq else Icons.Filled.MusicNote,
                     modifier = Modifier.fillMaxSize(),
@@ -862,7 +851,7 @@ private fun TrackRow(
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    track.artist,
+                    com.lastwave.app.util.ArtistHelper.primaryArtist(track.artist),
                     style = MaterialTheme.typography.bodyMedium,
                     color = secondaryTextColor,
                     maxLines = 1,

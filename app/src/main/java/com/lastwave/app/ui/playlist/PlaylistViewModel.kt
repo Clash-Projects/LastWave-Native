@@ -177,10 +177,22 @@ class PlaylistViewModel @Inject constructor(
             }
             if (justGeneratedId != null) {
                 all.firstOrNull { it.id == justGeneratedId }?.let { pl ->
-                    artworkRepository.enrichBatch(pl.tracks.take(6).map { it.name to it.artist })
+                    try {
+                        artworkRepository.enrichBatch(pl.tracks.take(6).map { it.name to it.artist })
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (e: Exception) {
+                        android.util.Log.e("PlaylistViewModel", "Error pre-warming artwork", e)
+                    }
                 }
             }
-            ytMusicLibraryManager.refresh()
+            try {
+                ytMusicLibraryManager.refresh()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (e: Exception) {
+                android.util.Log.e("PlaylistViewModel", "Error refreshing YT library", e)
+            }
             runCatching { ytMusicSyncManager.syncNow("playlist_open") }
         }
     }
@@ -202,7 +214,13 @@ class PlaylistViewModel @Inject constructor(
                     }
                     if (updated.tracks.isNotEmpty()) {
                         viewModelScope.launch {
-                            artworkRepository.enrichBatch(updated.tracks.take(10).map { t -> t.name to t.artist })
+                            try {
+                                artworkRepository.enrichBatch(updated.tracks.take(10).map { t -> t.name to t.artist })
+                            } catch (cancellation: CancellationException) {
+                                throw cancellation
+                            } catch (e: Exception) {
+                                android.util.Log.e("PlaylistViewModel", "Error pre-warming artwork", e)
+                            }
                         }
                     }
                 }
@@ -221,7 +239,13 @@ class PlaylistViewModel @Inject constructor(
                 )
             }
             if (pl != null && pl.tracks.isNotEmpty()) {
-                artworkRepository.enrichBatch(pl.tracks.take(10).map { t -> t.name to t.artist })
+                try {
+                    artworkRepository.enrichBatch(pl.tracks.take(10).map { t -> t.name to t.artist })
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (e: Exception) {
+                    android.util.Log.e("PlaylistViewModel", "Error pre-warming artwork", e)
+                }
             }
         }
     }

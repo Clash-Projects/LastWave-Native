@@ -92,11 +92,30 @@ class ArtistViewModel @Inject constructor(
 
     fun startArtistMix() {
         val state = _uiState.value as? ArtistUiState.Success ?: return
-        val firstTrack = state.data.topSongs.firstOrNull()
-        if (firstTrack != null) {
-            mixLauncher.startMix(firstTrack.title, state.data.name)
-        } else {
-            mixLauncher.startMix(state.data.name, state.data.name)
+        val artistName = state.data.name
+        val topSongs = state.data.topSongs
+        val firstTrack = topSongs.firstOrNull()
+
+        viewModelScope.launch {
+            val radioTracks = try {
+                repository.getArtistRadio(artistName, firstTrack)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                emptyList()
+            }
+
+            val finalQueue = if (radioTracks.isNotEmpty()) {
+                radioTracks
+            } else if (topSongs.isNotEmpty()) {
+                topSongs.shuffled()
+            } else {
+                emptyList()
+            }
+
+            if (finalQueue.isNotEmpty()) {
+                musicPlayer.playQueue(finalQueue, startIndex = 0, sourceLabel = "$artistName Radio")
+            }
         }
     }
 }

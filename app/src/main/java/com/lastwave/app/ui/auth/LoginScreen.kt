@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material3.Button
@@ -70,6 +71,7 @@ fun LoginScreen(
     onSignOut: () -> Unit,
     onRestoreBackupAndSignIn: (String) -> Unit,
     onDismissError: () -> Unit,
+    onOpenDownloads: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var restoreReadError by remember { mutableStateOf<String?>(null) }
@@ -205,6 +207,17 @@ fun LoginScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                             )
+                            if (onOpenDownloads != null) {
+                                Spacer(Modifier.height(16.dp))
+                                TextButton(onClick = onOpenDownloads) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Download,
+                                        contentDescription = null,
+                                        modifier = Modifier.padding(end = 6.dp),
+                                    )
+                                    Text("Open Offline Downloads")
+                                }
+                            }
                         }
                     }
 

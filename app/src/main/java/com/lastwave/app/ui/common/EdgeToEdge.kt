@@ -15,6 +15,7 @@ import android.content.ContextWrapper
 import android.os.Build
 import android.view.ViewParent
 import android.view.Window
+import android.view.WindowManager
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogWindowProvider
@@ -32,7 +33,8 @@ fun safeDrawingBottomPadding(): Dp =
 
 /**
  * Ensures a Dialog or ModalBottomSheet window properly renders edge-to-edge
- * with transparent navigation and status bars and disabled contrast scrims.
+ * with transparent navigation and status bars, disabled contrast scrims,
+ * and hardware blur-behind on supported Android versions (API 31+).
  */
 @Composable
 fun EdgeToEdgeDialogWindow() {
@@ -40,9 +42,11 @@ fun EdgeToEdgeDialogWindow() {
     DisposableEffect(view) {
         var current: ViewParent? = view.parent
         var window: Window? = null
+        var isDialog = false
         while (current != null) {
             if (current is DialogWindowProvider) {
                 window = current.window
+                isDialog = true
                 break
             }
             current = current.parent
@@ -64,6 +68,16 @@ fun EdgeToEdgeDialogWindow() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 w.isNavigationBarContrastEnforced = false
                 w.isStatusBarContrastEnforced = false
+            }
+            if (isDialog) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    w.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                    val lp = w.attributes
+                    lp.setBlurBehindRadius(60)
+                    w.attributes = lp
+                    runCatching { w.setBackgroundBlurRadius(60) }
+                }
+                w.setDimAmount(0.18f)
             }
         }
         onDispose {}

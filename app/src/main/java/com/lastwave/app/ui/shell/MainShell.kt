@@ -10,9 +10,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -25,6 +28,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
@@ -34,54 +38,53 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Leaderboard
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
-import com.lastwave.app.ui.common.PredictiveBackScreen
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lastwave.app.ui.common.ExpressiveMotion
+import com.lastwave.app.ui.common.PredictiveBackScreen
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.feed.FeedScreen
-import com.lastwave.app.ui.generate.MixLauncher
 import com.lastwave.app.ui.home.HomeScreen
-import com.lastwave.app.ui.playlist.PlaylistScreen
 import com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance
+import com.lastwave.app.ui.playlist.PlaylistScreen
+import com.lastwave.app.ui.theme.LiquidGlassPreset
 import com.lastwave.app.ui.theme.LocalLiquidGlass
+import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported
 import com.lastwave.app.ui.theme.liquidGlassChrome
+import com.lastwave.app.ui.theme.liquidGlassContainerColor
+import com.lastwave.app.ui.theme.liquidGlassSource
 import dagger.hilt.android.lifecycle.HiltViewModel
-import javax.inject.Inject
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material3.IconButton
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.zIndex
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-
-/** Thin bridge exposing Update alerts to MainShell */
+/** Thin bridge exposing AppUpdateManager's live update state to MainShell */
 @HiltViewModel
 class MainShellViewModel @Inject constructor(
     val appUpdateManager: com.lastwave.app.data.update.AppUpdateManager,
@@ -97,7 +100,11 @@ class MainShellViewModel @Inject constructor(
     }
 }
 
-private enum class MainTab(val label: String) { FEED("Feed"), STATS("Stats"), PLAYLISTS("Playlists") }
+private enum class MainTab(val label: String) {
+    FEED("Feed"),
+    STATS("Stats"),
+    PLAYLISTS("Playlists"),
+}
 
 /** Shared with any screen hosted inside [MainShell] so their scrolling
  *  lists know how much bottom content padding to reserve — the nav
@@ -120,14 +127,9 @@ object FloatingNavDefaults {
             WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding()
 }
 
-// Hoisted to plain top-level vals instead of being constructed inside a
-// @Composable body: RoundedCornerShape is immutable and never changes here,
-// so there's no reason to let it be reconstructed on every recomposition.
 private val DockShape: Shape = RoundedCornerShape(32.dp)
 private val PillShape: Shape = CircleShape
 
-// One shared spring keeps tab selection, label expansion, and pager controls
-// visually coherent while preserving each call site's inferred value type.
 private fun <T> navSpring() = ExpressiveMotion.spatialSpring<T>()
 
 @Composable
@@ -141,6 +143,7 @@ fun MainShell(
     onOpenFeedPlaylist: (String) -> Unit,
     onOpenPlaylist: (Long) -> Unit = {},
     onOpenGenerator: () -> Unit = {},
+    onOpenNewReleases: () -> Unit = {},
     mainShellViewModel: MainShellViewModel = hiltViewModel(),
 ) {
     val tabs = MainTab.entries
@@ -149,16 +152,14 @@ fun MainShell(
     val context = LocalContext.current
     val updateInfo by mainShellViewModel.updateInfo.collectAsStateWithLifecycle()
     val showUpdateBanner = updateInfo.isUpdateAvailable && !updateInfo.isDismissed
+    val navigationBackdrop = if (isLiquidGlassBackdropSupported()) rememberLayerBackdrop() else null
 
-    // A plain Box, not Scaffold(bottomBar = ...): the nav floats ON TOP of
-    // content via Box alignment, never reserving/subtracting its own
-    // height from the content area.
     Box(Modifier.fillMaxSize()) {
         val feedIndex = tabs.indexOf(MainTab.FEED)
         HorizontalPager(
             state = pagerState,
             beyondViewportPageCount = 0,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().liquidGlassSource(navigationBackdrop),
         ) { page ->
             val isCurrent = page == pagerState.currentPage
             PredictiveBackScreen(
@@ -175,6 +176,7 @@ fun MainShell(
                         onOpenGenerator = onOpenGenerator,
                         onOpenFriends = onOpenFriends,
                         onOpenFriendProfile = onOpenFriendProfile,
+                        onOpenNewReleases = onOpenNewReleases,
                     )
                     MainTab.STATS -> HomeScreen(
                         onOpenSettings = onOpenSettings,
@@ -208,6 +210,7 @@ fun MainShell(
         }
 
         FloatingNavBar(
+            backdrop = navigationBackdrop,
             tabs = tabs,
             selectedIndex = pagerState.currentPage,
             onSelect = { index -> scope.launch { pagerState.animateScrollToPage(index) } },
@@ -284,12 +287,9 @@ private fun UpdatePromptCard(
     }
 }
 
-/**
- * Modern floating dock containing the 3 tabs plus an animated companion
- * Generator button that pops into view exclusively on the Playlists tab.
- */
 @Composable
 private fun FloatingNavBar(
+    backdrop: LayerBackdrop?,
     tabs: List<MainTab>,
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
@@ -312,10 +312,10 @@ private fun FloatingNavBar(
         ) {
             Surface(
                 shape = DockShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                tonalElevation = 6.dp,
-                shadowElevation = 12.dp,
-                modifier = Modifier.liquidGlassChrome(DockShape, liquidGlass),
+                color = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHigh, backdrop = backdrop),
+                tonalElevation = if (liquidGlass) 0.dp else 6.dp,
+                shadowElevation = if (liquidGlass) 0.dp else 12.dp,
+                modifier = Modifier.liquidGlassChrome(DockShape, liquidGlass, LiquidGlassPreset.BottomNavigation, backdrop),
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
@@ -348,12 +348,12 @@ private fun FloatingNavBar(
                     Spacer(Modifier.width(10.dp))
                     Surface(
                         shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        shadowElevation = 10.dp,
-                        tonalElevation = 4.dp,
+                        color = liquidGlassContainerColor(MaterialTheme.colorScheme.primaryContainer, backdrop = backdrop),
+                        shadowElevation = if (liquidGlass) 0.dp else 10.dp,
+                        tonalElevation = if (liquidGlass) 0.dp else 4.dp,
                         modifier = Modifier
                             .size(56.dp)
-                            .liquidGlassChrome(CircleShape, liquidGlass)
+                            .liquidGlassChrome(CircleShape, liquidGlass, LiquidGlassPreset.FloatingControls, backdrop)
                             .clickable(onClick = onOpenGenerator),
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
@@ -379,7 +379,9 @@ private fun FloatingNavItem(
     onClick: () -> Unit,
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(
+            alpha = if (LocalLiquidGlass.current) 0.28f else 1f,
+        ) else Color.Transparent,
         animationSpec = navSpring(),
         label = "navItemBackground",
     )

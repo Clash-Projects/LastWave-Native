@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
@@ -169,7 +170,7 @@ private fun PlaylistContent(
                     name = playlist.title,
                     artist = playlist.author.orEmpty(),
                     embeddedUrl = playlist.artworkUrl ?: playlist.tracks.firstOrNull()?.artworkUrl,
-                    fallbackIcon = Icons.Filled.MusicNote,
+                    fallbackIcon = if (playlist.id == "yt_liked") Icons.Filled.Favorite else Icons.Filled.MusicNote,
                     modifier = Modifier
                         .size(196.dp)
                         .clip(RoundedCornerShape(26.dp)),

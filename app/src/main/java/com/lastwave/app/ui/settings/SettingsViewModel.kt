@@ -106,6 +106,10 @@ class SettingsViewModel @Inject constructor(
     val ytSyncEnabled: StateFlow<Boolean> = ytMusicPreferences.syncEnabled
         .withSettingsFallback("YouTube sync preference", false)
         .stateIn(viewModelScope, SettingsSharing, false)
+    /** History sync defaults ON (see YtMusicPreferences.historySyncEnabled). */
+    val ytHistorySyncEnabled: StateFlow<Boolean> = ytMusicPreferences.historySyncEnabled
+        .withSettingsFallback("YouTube history sync preference", true)
+        .stateIn(viewModelScope, SettingsSharing, true)
     val ytLastSyncAt: StateFlow<Long> = ytMusicPreferences.lastSyncAt
         .withSettingsFallback("YouTube sync timestamp", 0L)
         .stateIn(viewModelScope, SettingsSharing, 0L)
@@ -521,6 +525,17 @@ class SettingsViewModel @Inject constructor(
         launchSettingsAction("update YouTube sync") {
             ytMusicPreferences.setSyncEnabled(enabled)
             if (enabled) runCatching { ytMusicSyncManager.syncNow("enabled") }
+        }
+    }
+
+    /** History sync only turns on with a connected account. Turning it off
+     *  stops new submissions and cancels pending sync work (handled by
+     *  YtMusicHistorySyncManager); the explicit choice itself is preserved
+     *  across disconnects by YtMusicPreferences. */
+    fun setYtHistorySyncEnabled(enabled: Boolean) {
+        if (enabled && !ytConnection.value.isConnected) return
+        launchSettingsAction("update YouTube history sync") {
+            ytMusicPreferences.setHistorySyncEnabled(enabled)
         }
     }
 

@@ -61,6 +61,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
+import com.lastwave.app.ui.theme.LiquidGlassSurface
+import com.lastwave.app.ui.theme.liquidGlassChrome
+import com.lastwave.app.ui.theme.liquidGlassContainerColor
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -879,11 +882,12 @@ private fun LyricsPlaybackControls(
                     animationSpec = ExpressiveMotion.spatialSpring(),
                     label = "playerTabScale",
                 )
-                Surface(
+                LiquidGlassSurface(
+                    glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current),
                     onClick = onOpenPlayer,
                     interactionSource = playerInteraction,
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.40f),
+                    color = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.40f)),
                     contentColor = MaterialTheme.colorScheme.primary,
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp,
@@ -953,8 +957,9 @@ private fun LyricsPlaybackControls(
                     onClick = player::previous,
                     modifier = Modifier
                         .size(42.dp)
+                        .liquidGlassChrome(CircleShape, LocalLiquidGlass.current)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.40f)),
+                        .background(liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.40f))),
                 ) {
                     Icon(
                         Icons.Filled.SkipPrevious,
@@ -964,10 +969,11 @@ private fun LyricsPlaybackControls(
                     )
                 }
 
-                Surface(
+                LiquidGlassSurface(
+                    glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current),
                     onClick = player::togglePlayPause,
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                    color = liquidGlassContainerColor(MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)),
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp,
@@ -990,8 +996,9 @@ private fun LyricsPlaybackControls(
                     onClick = player::next,
                     modifier = Modifier
                         .size(42.dp)
+                        .liquidGlassChrome(CircleShape, LocalLiquidGlass.current)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.40f)),
+                        .background(liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.40f))),
                 ) {
                     Icon(
                         Icons.Filled.SkipNext,

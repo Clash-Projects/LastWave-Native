@@ -255,7 +255,7 @@ fun PlaylistScreen(
                             }
                         }
 
-                        itemsIndexed(state.playlists, key = { _, playlist -> playlist.id }) { index, playlist ->
+                        itemsIndexed(state.playlists, key = { index, playlist -> "${playlist.id}_$index" }) { index, playlist ->
                             val isNewest = playlist.id == state.newestId
                             Box(Modifier.animateItem()) {
                                 PlaylistCard(
@@ -522,6 +522,16 @@ private fun PlaylistCard(
 
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    // Hoisted above the tracks-empty branch: remember calls must run
+    // unconditionally so slot-table positions stay stable when YTM sync
+    // flips tracks between empty and non-empty.
+    val playInteractionSource = remember { MutableInteractionSource() }
+    val isPlayPressed by playInteractionSource.collectIsPressedAsState()
+    val playScale by animateFloatAsState(
+        targetValue = if (isPlayPressed) 0.88f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "playScale",
+    )
     val cardScale by animateFloatAsState(
         targetValue = if (isPressed) 0.975f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
@@ -566,7 +576,7 @@ private fun PlaylistCard(
                 PlaylistCover(playlist = playlist, modifier = Modifier.fillMaxSize(), cornerRadius = 14.dp)
                 if (isThisPlaylistPlaying) {
                     com.lastwave.app.ui.player.PlayingWaveBars(
-                        Modifier.align(Alignment.BottomEnd).padding(4.dp),
+                        Modifier.align(Alignment.BottomEnd).padding(4.dp).size(24.dp, 18.dp),
                     )
                 }
                 if (isRegenerating) {
@@ -621,14 +631,6 @@ private fun PlaylistCard(
 
             // Quick play button
             if (playlist.tracks.isNotEmpty()) {
-                val playInteractionSource = remember { MutableInteractionSource() }
-                val isPlayPressed by playInteractionSource.collectIsPressedAsState()
-                val playScale by animateFloatAsState(
-                    targetValue = if (isPlayPressed) 0.88f else 1f,
-                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-                    label = "playScale",
-                )
-
                 Surface(
                     onClick = onPlay,
                     shape = CircleShape,

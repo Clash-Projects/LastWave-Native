@@ -78,7 +78,7 @@ fun HomeUiState.visibleRows(): List<HomeRow> {
             val rows = mutableListOf<HomeRow>()
             nowPlaying?.let { rows += HomeRow.Track(it, badge = null) }
 
-            val dayGroups = dated.groupBy { dateKeyOf(it.timestampMillis!!) }
+            val dayGroups = dated.groupBy { dateKeyOf(it.timestampMillis ?: 0L) }
             dayGroups.forEach { (_, tracksInDay) ->
                 val firstTrackInDay = tracksInDay.firstOrNull()
                 if (firstTrackInDay != null && firstTrackInDay.timestampMillis != null) {
@@ -357,14 +357,21 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isRefreshing = true) }
             try {
-                val recent = homeRepository.fetchRecentTracks(username = target)
+                val recent = homeRepository.fetchRecentTracks(username = target, forceRefresh = true)
+                val statsResult = homeRepository.fetchStats(username = target, forceRefresh = true)
                 recent.fold(
                     onSuccess = { page ->
                         val (nowPlaying, merged) = mergeRecentWithTop(page.nowPlaying, page.tracks, cachedTopTracks)
                         notifyNowPlayingArtwork(nowPlaying)
-                        _uiState.update {
-                            it.copy(
+                        val freshStats = statsResult.getOrNull()
+                        _uiState.update { state ->
+                            val baseStats = freshStats ?: state.stats
+                            val resolvedStats = if (baseStats != null && baseStats.scrobbles <= 0L && page.totalScrobbles > 0L) {
+                                baseStats.copy(scrobbles = page.totalScrobbles)
+                            } else baseStats
+                            state.copy(
                                 isRefreshing = false,
+                                stats = resolvedStats,
                                 nowPlaying = nowPlaying,
                                 allTracks = merged,
                                 page = page.page,
@@ -515,12 +522,19 @@ class HomeViewModel @Inject constructor(
         if (target.isBlank() || target.equals("Guest User", ignoreCase = true)) return
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
+                var recentTotalScrobbles = 0L
                 val recent = homeRepository.fetchRecentTracks(username = target, forceRefresh = true)
                 recent.onSuccess { page ->
+                    recentTotalScrobbles = page.totalScrobbles
                     val (nowPlaying, merged) = mergeRecentWithTop(page.nowPlaying, page.tracks, cachedTopTracks)
                     notifyNowPlayingArtwork(nowPlaying)
                     _uiState.update { state ->
+                        val baseStats = state.stats
+                        val resolvedStats = if (baseStats != null && baseStats.scrobbles <= 0L && page.totalScrobbles > 0L) {
+                            baseStats.copy(scrobbles = page.totalScrobbles)
+                        } else baseStats
                         state.copy(
+                            stats = resolvedStats,
                             nowPlaying = nowPlaying,
                             allTracks = merged,
                             page = page.page,
@@ -529,7 +543,18 @@ class HomeViewModel @Inject constructor(
                     }
                 }
                 homeRepository.fetchStats(username = target, forceRefresh = true).onSuccess { freshStats ->
-                    _uiState.update { it.copy(stats = freshStats) }
+                    _uiState.update { state ->
+                        val finalScrobbles = when {
+                            freshStats.scrobbles > 0L -> freshStats.scrobbles
+                            recentTotalScrobbles > 0L -> recentTotalScrobbles
+                            (state.stats?.scrobbles ?: 0L) > 0L -> state.stats!!.scrobbles
+                            else -> 0L
+                        }
+                        val resolved = if (freshStats.scrobbles <= 0L && finalScrobbles > 0L) {
+                            freshStats.copy(scrobbles = finalScrobbles)
+                        } else freshStats
+                        state.copy(stats = resolved)
+                    }
                 }
             }
         }
@@ -587,7 +612,11 @@ class HomeViewModel @Inject constructor(
                             val combined = (newOnes + state.allTracks)
                                 .distinctBy { it.key to it.timestampMillis }
                                 .take(HOME_TRACK_HISTORY_CAP)
-                            state.copy(nowPlaying = nowPlaying, allTracks = combined, totalPages = page.totalPages)
+                            val baseStats = state.stats
+                            val resolvedStats = if (baseStats != null && baseStats.scrobbles <= 0L && page.totalScrobbles > 0L) {
+                                baseStats.copy(scrobbles = page.totalScrobbles)
+                            } else baseStats
+                            state.copy(stats = resolvedStats, nowPlaying = nowPlaying, allTracks = combined, totalPages = page.totalPages)
                         }
                     }?.onFailure {
                         // On error or rate limit, back off for 20 seconds before retrying

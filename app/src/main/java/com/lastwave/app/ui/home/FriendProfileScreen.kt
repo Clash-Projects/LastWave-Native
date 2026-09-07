@@ -9,10 +9,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -61,6 +59,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import com.lastwave.app.ui.theme.LocalLiquidGlass
+import com.lastwave.app.ui.theme.liquidGlassChrome
+import com.lastwave.app.ui.theme.liquidGlassContainerColor
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -444,7 +445,6 @@ private fun FriendHeroCard(
                         Surface(
                             shape = BadgePillShape,
                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -494,18 +494,6 @@ private fun FriendNowPlayingBanner(
                         MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.90f),
                     ),
                 ),
-            )
-            .border(
-                BorderStroke(
-                    1.dp,
-                    Brush.horizontalGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
-                        ),
-                    ),
-                ),
-                shape = NowPlayingCardShape,
             ),
     ) {
         Column(Modifier.padding(14.dp)) {
@@ -659,8 +647,8 @@ private fun FriendStatsCard(
                     if (timerBaseSeconds > 0) {
                         Surface(
                             shape = BadgePillShape,
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.45f),
-                            modifier = Modifier.align(Alignment.TopEnd),
+                            color = liquidGlassContainerColor(MaterialTheme.colorScheme.surface.copy(alpha = 0.45f)),
+                            modifier = Modifier.align(Alignment.TopEnd).liquidGlassChrome(BadgePillShape, LocalLiquidGlass.current),
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -699,9 +687,9 @@ private fun FriendStatsCard(
 @Composable
 private fun FriendStatPill(label: String, value: Long, modifier: Modifier = Modifier) {
     Surface(
-        modifier = modifier,
+        modifier = modifier.liquidGlassChrome(StatPillShape, LocalLiquidGlass.current),
         shape = StatPillShape,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+        color = liquidGlassContainerColor(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f)),
     ) {
         Column(
             Modifier.padding(vertical = 10.dp),
@@ -739,7 +727,6 @@ private fun FriendTabSelector(
                 onClick = { onTabSelect(tab) },
                 shape = BadgePillShape,
                 color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
-                border = if (isSelected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)) else null,
                 modifier = Modifier
                     .weight(1f)
                     .height(38.dp),

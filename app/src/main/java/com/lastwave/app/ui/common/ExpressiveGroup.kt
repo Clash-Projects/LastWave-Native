@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lastwave.app.ui.theme.LocalLiquidGlass
+import com.lastwave.app.ui.theme.liquidGlassContainerColor
 import com.lastwave.app.ui.theme.liquidGlassChrome
 
 /**
@@ -173,7 +174,7 @@ fun ExpressiveGroupRow(
     Card(
         onClick = onClick,
         shape = shape,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        colors = CardDefaults.cardColors(containerColor = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHigh)),
         // 0dp deliberately: Material3's Card blends a primary-tinted alpha
         // layer on top of containerColor above 0dp tonalElevation, which
         // read as a second, unintended layer behind these rows' own tonal
@@ -253,7 +254,7 @@ fun ExpressiveGroupTrackRow(
     Card(
         shape = shape,
         colors = CardDefaults.cardColors(
-            containerColor = if (isPlaying) playingContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+            containerColor = liquidGlassContainerColor(if (isPlaying) playingContainer else MaterialTheme.colorScheme.surfaceContainerHigh),
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = modifier
@@ -381,7 +382,7 @@ fun ExpressiveGroupSelectRow(
     Card(
         onClick = onClick,
         shape = shape,
-        colors = CardDefaults.cardColors(containerColor = containerColor),
+        colors = CardDefaults.cardColors(containerColor = liquidGlassContainerColor(containerColor)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         interactionSource = interactionSource,
         modifier = modifier

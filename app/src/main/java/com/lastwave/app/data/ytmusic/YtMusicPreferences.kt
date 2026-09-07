@@ -108,6 +108,21 @@ class YtMusicPreferences @Inject constructor(
                 ?: !prefs.readSafely(COOKIES_KEY).isNullOrBlank()
         }
 
+    /**
+     * "Sync playback to YouTube Music history": records songs actually
+     * listened to in LastWave — including Qobuz/FLAC and downloaded-file
+     * playback — in the connected account's YouTube Music history.
+     *
+     * Default ON: a missing key reads as `true`, so existing and new users
+     * who never touched the switch start syncing automatically once an
+     * account is connected. An explicit OFF (`false`) is stored durably and
+     * is never overwritten by connects, disconnects, or updates — neither
+     * [saveConnection] nor [clearConnection] touches this key.
+     */
+    val historySyncEnabled: Flow<Boolean> = dataStore.data
+        .recoverPreferences("YtMusicPreferences")
+        .map { prefs -> prefs.readSafely(HISTORY_SYNC_ENABLED_KEY) ?: true }
+
     val lastSyncAt: Flow<Long> = dataStore.data
         .recoverPreferences("YtMusicPreferences")
         .map { it.safeLong(LAST_SYNC_KEY) }
@@ -249,6 +264,10 @@ class YtMusicPreferences @Inject constructor(
         dataStore.edit { it[SYNC_ENABLED_KEY] = enabled }
     }
 
+    suspend fun setHistorySyncEnabled(enabled: Boolean) {
+        dataStore.edit { it[HISTORY_SYNC_ENABLED_KEY] = enabled }
+    }
+
     suspend fun lastSyncAtMillis(): Long =
         dataStore.data.recoverPreferences("YtMusicPreferences").first().safeLong(LAST_SYNC_KEY)
 
@@ -288,6 +307,7 @@ class YtMusicPreferences @Inject constructor(
         val PHOTO_URL_KEY = stringPreferencesKey("ytm_photo_url")
         val CONNECTED_AT_KEY = longPreferencesKey("ytm_connected_at")
         val SYNC_ENABLED_KEY = booleanPreferencesKey("ytm_sync_enabled")
+        val HISTORY_SYNC_ENABLED_KEY = booleanPreferencesKey("ytm_history_sync_enabled")
         val SYNCED_PLAYLIST_IDS_KEY = stringPreferencesKey("ytm_synced_playlist_ids")
         val MAPPINGS_KEY = stringPreferencesKey("ytm_playlist_mappings")
         val LIBRARY_CACHE_KEY = stringPreferencesKey("ytm_library_playlist_cache")

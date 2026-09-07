@@ -288,7 +288,7 @@ private fun DiscoverCard(
                 )
                 if (isPlaying) {
                     com.lastwave.app.ui.player.PlayingWaveBars(
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(3.dp),
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(3.dp).size(24.dp, 18.dp),
                     )
                 }
             }

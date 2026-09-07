@@ -55,6 +55,7 @@ data class RecentTracksPage(
     val tracks: List<RecentTrack>,
     val page: Int,
     val totalPages: Int,
+    val totalScrobbles: Long = 0L,
 )
 
 /** Everything needed to build home.js's _homeAllTracks in one shot:
@@ -186,6 +187,7 @@ class HomeRepository @Inject constructor(
                     tracks = history,
                     page = parsed.recenttracks.attr.page.toIntOrNull() ?: page,
                     totalPages = parsed.recenttracks.attr.totalPages.toIntOrNull() ?: 1,
+                    totalScrobbles = parsed.recenttracks.attr.total.toLongOrNull() ?: 0L,
                 )
             )
         }
@@ -251,17 +253,59 @@ class HomeRepository @Inject constructor(
                 val artists = runCatching { json.decodeFromString<TopArtistsEnvelope>(artistsBody) }.getOrNull()
                 val albums = runCatching { json.decodeFromString<TopAlbumsEnvelope>(albumsBody) }.getOrNull()
 
+                var parsedPlaycount: Long? = null
+                var parsedTrackCount: Long? = null
+                var parsedArtistCount: Long? = null
+                var parsedAlbumCount: Long? = null
+                var parsedAvatarUrl: String? = null
+
+                if (infoBody.isNotBlank()) {
+                    runCatching {
+                        val root = json.parseToJsonElement(infoBody) as? JsonObject
+                        val user = root?.get("user") as? JsonObject
+                        if (user != null) {
+                            parsedPlaycount = user["playcount"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+                            parsedTrackCount = user["track_count"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+                            parsedArtistCount = user["artist_count"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+                            parsedAlbumCount = user["album_count"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+
+                            val images = user["image"] as? JsonArray
+                            if (images != null) {
+                                val imageDtos = images.mapNotNull { img ->
+                                    val obj = img as? JsonObject ?: return@mapNotNull null
+                                    val url = obj["#text"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                                    val size = obj["size"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                                    size to url
+                                }
+                                parsedAvatarUrl = imageDtos.firstOrNull { it.first == "large" }?.second
+                                    ?: imageDtos.firstOrNull { it.first == "extralarge" }?.second
+                                    ?: imageDtos.firstOrNull { it.first == "medium" }?.second
+                                    ?: imageDtos.firstOrNull { it.second.isNotBlank() }?.second
+                            }
+                        }
+                    }
+                }
+
                 Result.success(
                     HomeStats(
-                        scrobbles = info?.user?.playcount?.toLongOrNull() ?: 0L,
-                        trackCount = tracks?.toptracks?.attr?.total?.toLongOrNull() ?: 0L,
-                        artistCount = artists?.topartists?.attr?.total?.toLongOrNull() ?: 0L,
-                        albumCount = albums?.topalbums?.attr?.total?.toLongOrNull() ?: 0L,
-                        avatarUrl = info?.user?.image?.let { images ->
-                            images.firstOrNull { it.size == "large" }?.url
-                                ?: images.firstOrNull { it.size == "medium" }?.url
-                                ?: images.firstOrNull()?.url
-                        }?.takeIf { it.isNotBlank() },
+                        scrobbles = parsedPlaycount
+                            ?: info?.user?.playcount?.toLongOrNull()
+                            ?: 0L,
+                        trackCount = parsedTrackCount
+                            ?: tracks?.toptracks?.attr?.total?.toLongOrNull()
+                            ?: 0L,
+                        artistCount = parsedArtistCount
+                            ?: artists?.topartists?.attr?.total?.toLongOrNull()
+                            ?: 0L,
+                        albumCount = parsedAlbumCount
+                            ?: albums?.topalbums?.attr?.total?.toLongOrNull()
+                            ?: 0L,
+                        avatarUrl = parsedAvatarUrl?.takeIf { it.isNotBlank() }
+                            ?: info?.user?.image?.let { images ->
+                                images.firstOrNull { it.size == "large" }?.url
+                                    ?: images.firstOrNull { it.size == "medium" }?.url
+                                    ?: images.firstOrNull()?.url
+                            }?.takeIf { it.isNotBlank() },
                     )
                 )
             }
@@ -426,6 +470,9 @@ class HomeRepository @Inject constructor(
             val stats = statsResult.getOrElse {
                 HomeStats(scrobbles = 0L, trackCount = 0L, artistCount = 0L, albumCount = 0L, avatarUrl = null)
             }
+            val resolvedStats = if (stats.scrobbles <= 0L && recent.totalScrobbles > 0L) {
+                stats.copy(scrobbles = recent.totalScrobbles)
+            } else stats
             val topTracks = topTracksResult.getOrElse { emptyList<HomeTrack>() }
 
             // Everything failed = genuinely offline → surface a retryable
@@ -437,7 +484,7 @@ class HomeRepository @Inject constructor(
                         ?: IllegalStateException("Home data unavailable"),
                 )
             } else {
-                Result.success(HomeInitialData(stats, recent, topTracks))
+                Result.success(HomeInitialData(resolvedStats, recent, topTracks))
             }
         }
     } catch (e: Exception) {

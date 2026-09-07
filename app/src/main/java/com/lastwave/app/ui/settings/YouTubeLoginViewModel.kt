@@ -50,7 +50,7 @@ class YouTubeLoginViewModel @Inject constructor(
         _uiState.update { it.copy(verifying = true, errorMessage = null) }
         viewModelScope.launch {
             try {
-                ytAuthManager.connect(rawCookieHeader!!, "", null, null)
+                ytAuthManager.connect(rawCookieHeader ?: return@launch, "", null, null)
                 val info = runCatching { innerTube.fetchAccountInfo() }.getOrNull()
                 val displayName = info?.accountName ?: "Google account"
                 if (info != null) {

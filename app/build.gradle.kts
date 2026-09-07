@@ -5,6 +5,7 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
@@ -12,7 +13,7 @@ plugins {
 
 android {
     namespace = "com.lastwave.app"
-    compileSdk = 35
+    compileSdk = 37
 
     val localProps = Properties().apply {
         val localPropsFile = rootProject.file("local.properties")
@@ -164,13 +165,6 @@ android {
         // Required by org.jellyfin.media3:media3-ffmpeg-decoder AAR metadata.
         isCoreLibraryDesugaringEnabled = true
     }
-    kotlinOptions {
-        jvmTarget = "17"
-        freeCompilerArgs += listOf(
-            "-Xskip-metadata-version-check",
-            "-Xskip-prerelease-check",
-        )
-    }
 
     buildFeatures {
         compose = true
@@ -182,9 +176,6 @@ android {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
         }
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14"
     }
 
     packaging {
@@ -229,6 +220,7 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
+    implementation(libs.kyant.backdrop)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
@@ -300,22 +292,17 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        optIn.add("androidx.compose.foundation.ExperimentalFoundationApi")
+    }
+}
+
 configurations.all {
     resolutionStrategy.eachDependency {
         if (requested.group == "org.jetbrains.kotlin") {
-            if (requested.name.startsWith("kotlin-stdlib")) {
-                useVersion("2.1.21")
-            } else {
-                useVersion("1.9.24")
-            }
-        }
-        if (requested.group == "org.jetbrains.kotlinx" && requested.name.startsWith("kotlinx-coroutines")) {
-            useVersion("1.8.1")
-        }
-        if (requested.group == "org.jetbrains.kotlinx" && (requested.name.startsWith("kotlinx-serialization-core") || requested.name.startsWith("kotlinx-serialization-json"))) {
-            if (!requested.name.contains("json-io") && !requested.name.contains("json-okio")) {
-                useVersion("1.6.3")
-            }
+            useVersion(libs.versions.kotlin.get())
         }
         if (requested.group == "io.github.dokar3" && requested.name.startsWith("quickjs-kt")) {
             useVersion("1.0.12")
@@ -327,6 +314,3 @@ tasks.withType<Test> {
     maxHeapSize = "2048m"
 }
 
-tasks.matching { it.name.contains("AarMetadata", ignoreCase = true) }.configureEach {
-    enabled = false
-}

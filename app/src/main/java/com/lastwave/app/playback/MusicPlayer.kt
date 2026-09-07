@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.MediaStore
 import androidx.annotation.MainThread
@@ -42,6 +44,7 @@ import com.lastwave.app.data.generate.youtubeVideoIdOrNull
 import com.lastwave.app.data.local.MiscSettings
 import com.lastwave.app.data.local.EqualizerPreferences
 import com.lastwave.app.data.local.SettingsPreferences
+import com.lastwave.app.data.local.db.DownloadedTrackEntity
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.ConfirmedUnplayableMediaException
 import com.lastwave.app.data.music.YouTubeAudioStream
@@ -174,6 +177,12 @@ class MusicPlayer @Inject constructor(
     private val downloadedTrackDao: dagger.Lazy<com.lastwave.app.data.local.db.DownloadedTrackDao>,
 ) {
     private val appContext = context.applicationContext
+    private val streamResolutionWakeLock by lazy {
+        (appContext.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "LastWave:StreamResolutionWakeLock",
+        )?.apply { setReferenceCounted(false) }
+    }
     private var castPlayback: com.lastwave.app.playback.cast.CastPlayback? = null
     private val isCasting: Boolean get() = castPlayback?.active == true
 
@@ -530,7 +539,7 @@ class MusicPlayer @Inject constructor(
                             failedMediaId = failedMediaId,
                             expectedGeneration = generation,
                             failure = retryResolutionFailure ?: error,
-                            allowAutoSkip = retryResolutionFailure != null,
+                            allowAutoSkip = true,
                         )
                     }
                 }
@@ -978,11 +987,17 @@ class MusicPlayer @Inject constructor(
                                 startShuffled = startShuffled,
                             )
                         } else {
+                            val isOffline = isNetworkException(error)
+                            val userMessage = if (isOffline) {
+                                "Track not available offline"
+                            } else {
+                                error.message ?: "Unable to resolve audio"
+                            }
                             _state.update {
                                 it.copy(
                                     isPlaying = false,
                                     isBuffering = false,
-                                    error = error.message ?: "Unable to resolve audio",
+                                    error = userMessage,
                                 )
                             }
                         }
@@ -1070,8 +1085,9 @@ class MusicPlayer @Inject constructor(
         }
         ensureForegroundService()
         if (retryInterruptedPlayback()) return@onMain
-        if (player.mediaItemCount == 0 && _state.value.current != null) {
-            val q = _state.value.queue.ifEmpty { listOf(_state.value.current!!) }
+        val pendingCurrent = _state.value.current
+        if (player.mediaItemCount == 0 && pendingCurrent != null) {
+            val q = _state.value.queue.ifEmpty { listOf(pendingCurrent) }
             val idx = _state.value.currentIndex.coerceIn(q.indices)
             startResolvedQueuePlayback(
                 tracks = q,
@@ -1123,8 +1139,9 @@ class MusicPlayer @Inject constructor(
         } else {
             ensureForegroundService()
             if (retryInterruptedPlayback()) return@onMain
-            if (player.mediaItemCount == 0 && _state.value.current != null) {
-                val q = _state.value.queue.ifEmpty { listOf(_state.value.current!!) }
+            val pendingCurrent = _state.value.current
+            if (player.mediaItemCount == 0 && pendingCurrent != null) {
+                val q = _state.value.queue.ifEmpty { listOf(pendingCurrent) }
                 val idx = _state.value.currentIndex.coerceIn(q.indices)
                 startResolvedQueuePlayback(
                     tracks = q,
@@ -1649,7 +1666,7 @@ class MusicPlayer @Inject constructor(
                 val original = withContext(Dispatchers.Main.immediate) {
                     if (index >= player.mediaItemCount) null else player.getMediaItemAt(index).toPlayableTrack()
                 } ?: return@mapNotNull null
-                if (!original.videoId.isNullOrBlank() && !original.artworkUrl.isNullOrBlank()) return@mapNotNull null
+                if (original.playbackUrl != null || (!original.videoId.isNullOrBlank() && !original.artworkUrl.isNullOrBlank())) return@mapNotNull null
                 PendingEnrich(
                     index = index,
                     original = original,
@@ -1706,6 +1723,7 @@ class MusicPlayer @Inject constructor(
 
     private fun preloadNextTrack(nextIndex: Int, nextTrack: PlayableTrack?) {
         if (nextTrack == null) return
+        if (nextTrack.playbackUrl != null) return
         warmArtwork(nextTrack)
         val expectedQueueKey = nextTrack.queueKey()
         preloadJob?.cancel()
@@ -2075,10 +2093,29 @@ class MusicPlayer @Inject constructor(
         val youtubeCandidate: YouTubeAudioStream? = null,
     )
 
-    private suspend fun resolveLocalDownloadedAudioStream(track: PlayableTrack): ResolvedStream? {
-        val title = track.title.trim()
-        val artist = track.artist.trim()
-        if (title.isBlank() || artist.isBlank()) return null
+    private fun isNetworkException(error: Throwable): Boolean {
+        var cause: Throwable? = error
+        while (cause != null) {
+            if (cause is java.net.UnknownHostException ||
+                cause is java.net.ConnectException ||
+                cause is java.net.SocketTimeoutException ||
+                cause is java.net.NoRouteToHostException ||
+                (cause is java.io.IOException && cause.message?.contains("Unable to resolve host", ignoreCase = true) == true)
+            ) {
+                return true
+            }
+            cause = cause.cause
+        }
+        return false
+    }
+
+    private fun cleanTrackTitle(raw: String): String =
+        raw.replace(Regex("""(?i)\s*[\(\[](feat\.|ft\.|official\s*(music)?\s*video|audio|lyrics|remastered?|hd|4k|visualizer)[^\)\]]*[\)\]]"""), "")
+            .replace(Regex("""(?i)\s*-\s*(official\s*(music)?\s*video|audio|lyrics|remastered?).*"""), "")
+            .trim()
+
+    private fun cleanTrackArtist(raw: String): String =
+        raw.split(Regex("""(?i)\s*(,|&|feat\.|ft\.|/|with)\s*""")).firstOrNull()?.trim() ?: raw.trim()
 
         val trackKey = OfflinePlaybackResolver.makeDownloadKey(title, artist)
         val downloaded = runCatching {
@@ -2256,6 +2293,7 @@ class MusicPlayer @Inject constructor(
             else -> "audio/flac"
         }
 
+        var bitrateKbps: Int? = knownBitrate
         var bitDepth: Int? = null
         var samplingRateKHz: Double? = null
         var resolvedBitrateKbps: Int? = bitrateKbps
@@ -2263,25 +2301,38 @@ class MusicPlayer @Inject constructor(
         runCatching {
             val retriever = android.media.MediaMetadataRetriever()
             try {
-                if (playbackUri.startsWith("content://")) {
-                    retriever.setDataSource(appContext, Uri.parse(playbackUri))
+                if (targetUrl.startsWith("content://")) {
+                    retriever.setDataSource(appContext, uri)
                 } else {
-                    retriever.setDataSource(playbackUri.removePrefix("file://"))
+                    retriever.setDataSource(uri.path ?: targetUrl.removePrefix("file://"))
                 }
                 if (resolvedBitrateKbps == null || resolvedBitrateKbps == 0) {
                     resolvedBitrateKbps = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toIntOrNull()?.let { it / 1000 }
                 }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    samplingRateKHz = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)?.toDoubleOrNull()?.let { it / 1000.0 }
-                    bitDepth = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_BITS_PER_SAMPLE)?.toIntOrNull()
+                    samplingRateKHz = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)
+                        ?.toDoubleOrNull()?.let { it / 1000.0 }
+                    bitDepth = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_BITS_PER_SAMPLE)
+                        ?.toIntOrNull()
                 }
             } finally {
                 retriever.release()
             }
         }
 
+        val resolvedBadge = badge ?: when {
+            mime.contains("flac") -> if ((bitDepth ?: 0) > 16 || (samplingRateKHz ?: 0.0) > 48.0) "HI-RES FLAC" else "FLAC"
+            mime.contains("mp4") || mime.contains("m4a") || mime.contains("aac") -> "M4A AAC"
+            mime.contains("opus") || mime.contains("ogg") -> "OPUS"
+            mime.contains("mp3") || mime.contains("mpeg") -> "320k MP3"
+            else -> "AUDIO"
+        }
+
+        val isLossless = isLosslessTrack ?: mime.contains("flac")
+        val trackKey = "${displayArtist.lowercase()}_${displayTitle.lowercase()}"
+
         return ResolvedStream(
-            url = playbackUri,
+            url = uri.toString(),
             mimeType = mime,
             bitrateKbps = resolvedBitrateKbps,
             audioCodec = formatBadge ?: filePath.substringAfterLast('.', "").uppercase(),
@@ -2290,6 +2341,128 @@ class MusicPlayer @Inject constructor(
             bitDepth = bitDepth,
             samplingRateKHz = samplingRateKHz,
         )
+    }
+
+    private suspend fun resolveLocalDownloadedAudioStream(track: PlayableTrack): ResolvedStream? {
+        val title = track.title.trim()
+        val artist = track.artist.trim()
+
+        // 1. If track already carries a playbackUrl (e.g. from Downloads screen), check it first
+        track.playbackUrl?.takeIf(String::isNotBlank)?.let { preUrl ->
+            val resolved = checkAndBuildLocalStream(
+                targetUrl = preUrl,
+                displayTitle = title,
+                displayArtist = artist,
+                fallbackMime = track.playbackMimeType,
+            )
+            if (resolved != null) return resolved
+        }
+
+        if (title.isBlank()) return null
+
+        val cleanTitle = cleanTrackTitle(title)
+        val cleanArtist = cleanTrackArtist(artist)
+        val publicMusicDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "LastWave")
+        val appMusicDir = appContext.getExternalFilesDir(Environment.DIRECTORY_MUSIC)
+
+        // 2. Query Room database with multiple fallbacks
+        val dao = runCatching { downloadedTrackDao.get() }.getOrNull()
+        var downloaded: DownloadedTrackEntity? = null
+        if (dao != null) {
+            val key = "${artist.lowercase()}_${title.lowercase()}"
+            val cleanKey = "${cleanArtist.lowercase()}_${cleanTitle.lowercase()}"
+            downloaded = runCatching {
+                dao.findByTrackKey(key)
+                    ?: dao.findByTitleAndArtist(title, artist)
+                    ?: (if (cleanKey != key) dao.findByTrackKey(cleanKey) else null)
+                    ?: (if (cleanTitle != title || cleanArtist != artist) dao.findByTitleAndArtist(cleanTitle, cleanArtist) else null)
+                    ?: dao.getAllList().firstOrNull { entity ->
+                        val eTitle = entity.title.trim()
+                        val eArtist = entity.artist.trim()
+                        eTitle.equals(title, ignoreCase = true) && eArtist.equals(artist, ignoreCase = true) ||
+                            cleanTrackTitle(eTitle).equals(cleanTitle, ignoreCase = true) &&
+                            (cleanTrackArtist(eArtist).equals(cleanArtist, ignoreCase = true) ||
+                             eArtist.contains(cleanArtist, ignoreCase = true) ||
+                             cleanArtist.contains(eArtist, ignoreCase = true))
+                    }
+            }.getOrNull()
+        }
+
+        // 3. If entity found in DB, check its mediaStoreUri and filePath
+        if (downloaded != null) {
+            val candidates = mutableListOf<String>()
+            downloaded.filePath.takeIf(String::isNotBlank)?.let { candidates.add(it) }
+            downloaded.mediaStoreUri?.takeIf(String::isNotBlank)?.let { if (!candidates.contains(it)) candidates.add(it) }
+            val fileName = File(downloaded.filePath).name
+            if (fileName.isNotBlank()) {
+                val fullPath = File(publicMusicDir, fileName).absolutePath
+                if (!candidates.contains(fullPath)) candidates.add(fullPath)
+            }
+
+            for (candidate in candidates) {
+                val resolved = checkAndBuildLocalStream(
+                    targetUrl = candidate,
+                    displayTitle = downloaded.title,
+                    displayArtist = downloaded.artist,
+                    badge = downloaded.formatBadge,
+                    isLosslessTrack = downloaded.isLossless,
+                    knownBitrate = downloaded.bitrateKbps,
+                )
+                if (resolved != null) {
+                    if (candidate != downloaded.filePath && candidate.startsWith("/")) {
+                        runCatching { dao?.insert(downloaded.copy(filePath = candidate)) }
+                    }
+                    return resolved
+                }
+            }
+        }
+
+        // 4. Fallback: Search physical download directory (Music/LastWave) directly on storage
+        val candidateExtensions = listOf("flac", "m4a", "mp3", "opus", "ogg", "webm", "wav")
+        val candidateBases = listOf(
+            "$artist - $title",
+            "$cleanArtist - $cleanTitle",
+            "$artist - $cleanTitle",
+            title,
+            cleanTitle,
+        ).map { sanitizeFilename(it) }.distinct()
+
+        val searchDirs = listOfNotNull(publicMusicDir.takeIf { it.exists() }, appMusicDir?.takeIf { it.exists() })
+        for (dir in searchDirs) {
+            for (base in candidateBases) {
+                for (ext in candidateExtensions) {
+                    val candidateFile = File(dir, "$base.$ext")
+                    if (candidateFile.exists() && candidateFile.length() > 0) {
+                        val resolved = checkAndBuildLocalStream(
+                            targetUrl = candidateFile.absolutePath,
+                            displayTitle = title,
+                            displayArtist = artist,
+                        )
+                        if (resolved != null) {
+                            runCatching {
+                                dao?.insert(
+                                    DownloadedTrackEntity(
+                                        trackKey = "${cleanArtist.lowercase()}_${cleanTitle.lowercase()}",
+                                        title = title,
+                                        artist = artist,
+                                        album = track.album.orEmpty(),
+                                        artworkUrl = track.artworkUrl,
+                                        filePath = candidateFile.absolutePath,
+                                        fileSizeBytes = candidateFile.length(),
+                                        formatBadge = ext.uppercase(),
+                                        isLossless = ext.equals("flac", ignoreCase = true),
+                                        downloadedAtMillis = candidateFile.lastModified(),
+                                    )
+                                )
+                            }
+                            return resolved
+                        }
+                    }
+                }
+            }
+        }
+
+        return null
     }
 
     private suspend fun resolveTrackAudioStream(
@@ -2433,22 +2606,29 @@ class MusicPlayer @Inject constructor(
         videoId: String?,
         allowLossless: Boolean,
     ): ResolvedStream {
-        var lastFailure: Throwable? = null
-        repeat(2) { attempt ->
-            try {
-                return resolveTrackAudioStream(track, videoId, allowLossless)
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (error: Throwable) {
-                lastFailure = error
-                if (attempt == 0 && error is java.io.IOException) {
-                    delay(PLAYBACK_RETRY_BASE_DELAY_MS + Random.nextLong(PLAYBACK_RETRY_JITTER_MS + 1L))
-                } else {
-                    throw error
+        runCatching { streamResolutionWakeLock?.acquire(60_000L) }
+        try {
+            var lastFailure: Throwable? = null
+            repeat(2) { attempt ->
+                try {
+                    return resolveTrackAudioStream(track, videoId, allowLossless)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (error: Throwable) {
+                    lastFailure = error
+                    if (attempt == 0 && error is java.io.IOException) {
+                        delay(PLAYBACK_RETRY_BASE_DELAY_MS + Random.nextLong(PLAYBACK_RETRY_JITTER_MS + 1L))
+                    } else {
+                        throw error
+                    }
                 }
             }
+            throw lastFailure ?: java.io.IOException("Unable to resolve audio")
+        } finally {
+            runCatching {
+                if (streamResolutionWakeLock?.isHeld == true) streamResolutionWakeLock?.release()
+            }
         }
-        throw lastFailure ?: java.io.IOException("Unable to resolve audio")
     }
 
     private fun registerPreparedStream(stream: ResolvedStream) {
@@ -2643,7 +2823,12 @@ class MusicPlayer @Inject constructor(
         }
         val restoredQueue = session.queue
             .filter { it.title.isNotBlank() && it.artist.isNotBlank() }
-            .map { it.copy(playbackUrl = null, playbackMimeType = null) }
+            .map {
+                val isLocal = it.playbackUrl?.let { url ->
+                    url.startsWith("/") || url.startsWith("content://") || url.startsWith("file://")
+                } == true
+                if (isLocal) it else it.copy(playbackUrl = null, playbackMimeType = null)
+            }
         if (restoredQueue.isEmpty()) {
             clearPersistedPlaybackSession()
             return false
@@ -2693,7 +2878,10 @@ class MusicPlayer @Inject constructor(
         val startIndex = (sourceIndex - RESTORED_PREVIOUS_TRACKS).coerceAtLeast(0)
         val endIndex = minOf(sourceQueue.size, startIndex + MAX_PERSISTED_QUEUE_SIZE)
         val persistedQueue = sourceQueue.subList(startIndex, endIndex).map {
-            it.copy(playbackUrl = null, playbackMimeType = null)
+            val isLocal = it.playbackUrl?.let { url ->
+                url.startsWith("/") || url.startsWith("content://") || url.startsWith("file://")
+            } == true
+            if (isLocal) it else it.copy(playbackUrl = null, playbackMimeType = null)
         }
         val persistedIndex = sourceIndex - startIndex
         val signature = buildString {
@@ -2877,14 +3065,18 @@ private fun PlayableTrack.mediaIdKey(): String = when {
 
 private fun MediaItem.toPlayableTrack(): PlayableTrack {
     val uriStr = localConfiguration?.uri?.toString()
-    val isLocal = uriStr?.startsWith("content://") == true || uriStr?.startsWith("file://") == true || mediaId.startsWith("local:")
+    val localUri = when {
+        uriStr?.startsWith("content://") == true || uriStr?.startsWith("file://") == true || uriStr?.startsWith("/") == true -> uriStr
+        mediaId.startsWith("local:") -> mediaId.removePrefix("local:")
+        else -> null
+    }
     return PlayableTrack(
         title = mediaMetadata.title?.toString().orEmpty().ifBlank { "Unknown track" },
         artist = mediaMetadata.artist?.toString().orEmpty().ifBlank { "Unknown artist" },
         album = mediaMetadata.albumTitle?.toString(),
         artworkUrl = mediaMetadata.artworkUri?.toString(),
         videoId = mediaId.takeUnless { it.startsWith("query:") || it.startsWith("local:") },
-        playbackUrl = if (isLocal) uriStr else null,
+        playbackUrl = localUri,
         playbackMimeType = localConfiguration?.mimeType,
     )
 }

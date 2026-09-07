@@ -6,8 +6,6 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.border
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -50,8 +48,6 @@ import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -63,11 +59,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -80,6 +76,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.lastwave.app.ui.theme.LocalLiquidGlass
+import com.lastwave.app.ui.theme.LocalLiquidGlassOverlayBackdrop
+import com.lastwave.app.ui.theme.LiquidGlassPreset
+import com.lastwave.app.ui.theme.liquidGlassChrome
+import com.lastwave.app.ui.theme.liquidGlassContainerColor
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -262,12 +263,14 @@ fun TrackContextMenuSheet(
     var showTimerDialog by remember { mutableStateOf(false) }
     var resolvedGenre by remember(target) { mutableStateOf<String?>(null) }
     var resolvingGenre by remember(target) { mutableStateOf(false) }
-    val activeDownloads by downloadViewModel.activeDownloads.collectAsState()
+    val activeDownloads by downloadViewModel.activeDownloads.collectAsStateWithLifecycle()
     var isDownloaded by remember(target) { mutableStateOf(false) }
 
     LaunchedEffect(target, activeDownloads) {
         if (target is TrackMenuTarget.Track) {
-            isDownloaded = downloadViewModel.checkStatus(target.name, target.artist) == TrackDownloadStatus.DOWNLOADED
+            isDownloaded = runCatching {
+                downloadViewModel.checkStatus(target.name, target.artist)
+            }.getOrDefault(TrackDownloadStatus.NOT_DOWNLOADED) == TrackDownloadStatus.DOWNLOADED
         }
     }
 
@@ -354,7 +357,16 @@ fun TrackContextMenuSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.liquidGlassChrome(
+            RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            LocalLiquidGlass.current,
+            LiquidGlassPreset.ContextMenu,
+            LocalLiquidGlassOverlayBackdrop.current,
+        ),
+        containerColor = liquidGlassContainerColor(
+            MaterialTheme.colorScheme.surfaceContainerLow,
+            backdrop = LocalLiquidGlassOverlayBackdrop.current,
+        ),
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
         dragHandle = {
             Surface(
@@ -372,8 +384,10 @@ fun TrackContextMenuSheet(
                 .fillMaxWidth()
                 .adaptiveContentWidth(maxWidth = 600.dp)
                 .align(Alignment.CenterHorizontally)
+                .padding(horizontal = 14.dp)
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 24.dp + safeDrawingBottomPadding()),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (target is TrackMenuTarget.Track) {
                 StartMixCard {
@@ -381,70 +395,59 @@ fun TrackContextMenuSheet(
                     else startMixViewModel.startMix(target.name, target.artist, playableTrack?.videoId)
                     onDismiss()
                 }
-                val playable = playableTrack ?: PlayableTrack(title = target.name, artist = target.artist)
-                Surface(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        QuickMenuAction(Icons.Filled.PlayCircle, "Play", Modifier.weight(1f)) {
-                            onPlayInLastWave?.invoke() ?: musicPlayer.play(playable, sourceLabel = playbackSourceLabel)
-                            onDismiss()
-                        }
-                        VerticalDivider(Modifier.height(36.dp))
-                        QuickMenuAction(Icons.Filled.QueuePlayNext, "Play next", Modifier.weight(1f)) {
-                            musicPlayer.playNext(playable)
-                            onDismiss()
-                        }
-                        VerticalDivider(Modifier.height(36.dp))
-                        QuickMenuAction(Icons.Filled.Timer, "Timer", Modifier.weight(1f)) {
-                            showTimerDialog = true
-                        }
-                    }
-                }
 
-                val rows = buildList<@Composable () -> Unit> {
+                val playable = playableTrack ?: PlayableTrack(title = target.name, artist = target.artist)
+                QuickActionsRow(
+                    onPlay = {
+                        onPlayInLastWave?.invoke() ?: musicPlayer.play(playable, sourceLabel = playbackSourceLabel)
+                        onDismiss()
+                    },
+                    onPlayNext = { musicPlayer.playNext(playable); onDismiss() },
+                    onTimer = { showTimerDialog = true },
+                )
+                val rows = buildList<@Composable (GroupPosition) -> Unit> {
                     val t = target
-                    add { PlayerCastMenuRow(musicPlayer) }
                     if (resolvingGenre || !resolvedGenre.isNullOrBlank()) {
-                        add {
+                        add { pos ->
+                            val genre = resolvedGenre
                             MenuInfoRow(
                                 icon = Icons.Filled.Sell,
-                                text = if (resolvingGenre) "Resolving genre\u2026" else "Genre: ${resolvedGenre?.takeIf { it.isNotBlank() } ?: "Unknown"}",
+                                text = if (resolvingGenre) "Resolving genre\u2026" else "Genre: ${genre?.takeIf { it.isNotBlank() } ?: "Unknown"}",
                                 loading = resolvingGenre,
-                                onClick = if (!resolvingGenre && !resolvedGenre.isNullOrBlank()) {
-                                    { exploreGenre(resolvedGenre!!); onDismiss() }
+                                position = pos,
+                                onClick = if (!resolvingGenre && !genre.isNullOrBlank()) {
+                                    { exploreGenre(genre); onDismiss() }
                                 } else null,
                             )
                         }
                     }
-                    add { MenuActionRow(Icons.Filled.PlaylistAdd, "Add to playlist") { addToPlaylist(playable); onDismiss() } }
+                    add { pos -> MenuActionRow(Icons.Filled.PlaylistAdd, "Add to playlist", position = pos) { addToPlaylist(playable); onDismiss() } }
                     val splitArtists = com.lastwave.app.util.ArtistHelper.splitArtists(t.artist)
                     for (art in splitArtists) {
-                        add {
-                            MenuActionRow(Icons.Filled.Person, "Go to Artist ($art)") {
+                        add { pos ->
+                            MenuActionRow(Icons.Filled.Person, "Go to Artist ($art)", position = pos) {
                                 artistAlbumViewModel.openArtist(art)
                                 onDismiss()
                             }
                         }
                     }
                     if (!playable.album.isNullOrBlank()) {
-                        add {
+                        add { pos ->
                             val primaryArt = splitArtists.firstOrNull() ?: t.artist
-                            MenuActionRow(Icons.Filled.Album, "Go to Album (${playable.album})") {
-                                artistAlbumViewModel.openAlbum(playable.album!!, primaryArt)
+                            val album = playable.album
+                            if (album.isNullOrBlank()) return@add
+                            MenuActionRow(Icons.Filled.Album, "Go to Album ($album)", position = pos) {
+                                artistAlbumViewModel.openAlbum(album, primaryArt)
                                 onDismiss()
                             }
                         }
                     }
                     val downloadKey = com.lastwave.app.data.download.TrackDownloadManager.makeDownloadKey(t.name, t.artist)
                     val isDownloading = activeDownloads[downloadKey]?.let { !it.isFinished } == true
-                    add {
+                    add { pos ->
                         when {
                             isDownloaded -> {
-                                MenuActionRow(Icons.Filled.CheckCircle, "Downloaded") {
+                                MenuActionRow(Icons.Filled.CheckCircle, "Downloaded", position = pos) {
                                     android.widget.Toast.makeText(
                                         context,
                                         "Track is already downloaded",
@@ -454,7 +457,7 @@ fun TrackContextMenuSheet(
                                 }
                             }
                             isDownloading -> {
-                                MenuActionRow(Icons.Filled.Download, "Downloading\u2026") {
+                                MenuActionRow(Icons.Filled.Download, "Downloading\u2026", position = pos) {
                                     android.widget.Toast.makeText(
                                         context,
                                         "Download is in progress",
@@ -464,75 +467,92 @@ fun TrackContextMenuSheet(
                                 }
                             }
                             else -> {
-                                MenuActionRow(Icons.Filled.Download, "Download (Max Quality)") {
+                                MenuActionRow(Icons.Filled.Download, "Download (Max Quality)", position = pos) {
                                     downloadViewModel.download(t.name, t.artist, playable.album, playable.artworkUrl)
                                     onDismiss()
                                 }
                             }
                         }
                     }
-                    add { MenuActionRow(Icons.Filled.QueueMusic, "Add to queue") { musicPlayer.addToQueue(playable); onDismiss() } }
-                    add { MenuActionRow(Icons.Filled.Language, "Open in Last.fm") { openUrl(context, buildLastFmUrl(target)); onDismiss() } }
+                    add { pos -> MenuActionRow(Icons.Filled.QueueMusic, "Add to queue", position = pos) { musicPlayer.addToQueue(playable); onDismiss() } }
+                    add { pos ->
+                        Card(
+                            shape = groupShape(pos),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            PlayerCastMenuRow(musicPlayer)
+                        }
+                    }
+                    add { pos -> MenuActionRow(Icons.Filled.Language, "Open in Last.fm", position = pos) { openUrl(context, buildLastFmUrl(target)); onDismiss() } }
                     if (onRefreshArtwork != null) {
-                        add { MenuActionRow(Icons.Filled.Refresh, "Refresh Cover Art") { onRefreshArtwork(); onDismiss() } }
+                        add { pos -> MenuActionRow(Icons.Filled.Refresh, "Refresh Cover Art", position = pos) { onRefreshArtwork(); onDismiss() } }
                     }
                     if (capabilities.showCopyActions) {
-                        add { MenuActionRow(Icons.Filled.ContentCopy, "Copy Song") { clipboard.setText(AnnotatedString("${t.name} \u2014 ${t.artist}")); onDismiss() } }
+                        add { pos -> MenuActionRow(Icons.Filled.ContentCopy, "Copy Song", position = pos) { clipboard.setText(AnnotatedString("${t.name} \u2014 ${t.artist}")); onDismiss() } }
                     }
-                    add {
-                        MenuActionRow(Icons.Filled.Info, "Details & Audio Specs") {
+                    add { pos ->
+                        MenuActionRow(Icons.Filled.Info, "Details & Audio Specs", position = pos) {
                             showDetailsSheet = true
                         }
                     }
-                    add {
-                        MenuActionRow(Icons.Filled.ThumbDown, "Don't recommend again", danger = true) {
+                    add { pos ->
+                        MenuActionRow(Icons.Filled.ThumbDown, "Don't recommend again", danger = true, position = pos) {
                             exclusionViewModel.exclude(t.name, t.artist)
                             onDismiss()
                         }
                     }
                     if (onRemoveFromPlaylist != null) {
-                        add {
-                            MenuActionRow(Icons.Filled.Delete, "Remove from Playlist", danger = true) {
+                        add { pos ->
+                            MenuActionRow(Icons.Filled.Delete, "Remove from Playlist", danger = true, position = pos) {
                                 onRemoveFromPlaylist()
                                 onDismiss()
                             }
                         }
                     }
                 }
-                Column(
-                    Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(20.dp)),
-                ) {
-                    rows.forEachIndexed { index, row ->
-                        if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        row()
-                    }
-                }
+                ExpressiveGroup(rowCount = rows.size) { index, position -> rows[index](position) }
             } else if (target is TrackMenuTarget.Artist) {
-                MenuActionRow(Icons.Filled.Person, "View Artist Page") {
-                    artistAlbumViewModel.openArtist(target.name)
-                    onDismiss()
-                }
-                MenuActionRow(Icons.Filled.Language, "Open in Last.fm") {
-                    openUrl(context, buildLastFmUrl(target))
-                    onDismiss()
-                }
-            } else if (target is TrackMenuTarget.Album) {
-                MenuActionRow(Icons.Filled.Album, "View Album Page") {
-                    artistAlbumViewModel.openAlbum(target.name, target.artist)
-                    onDismiss()
-                }
-                if (target.artist.isNotBlank()) {
-                    MenuActionRow(Icons.Filled.Person, "View Artist (${target.artist})") {
-                        artistAlbumViewModel.openArtist(target.artist)
-                        onDismiss()
+                val rows = buildList<@Composable (GroupPosition) -> Unit> {
+                    add { pos ->
+                        MenuActionRow(Icons.Filled.Person, "View Artist Page", position = pos) {
+                            artistAlbumViewModel.openArtist(target.name)
+                            onDismiss()
+                        }
+                    }
+                    add { pos ->
+                        MenuActionRow(Icons.Filled.Language, "Open in Last.fm", position = pos) {
+                            openUrl(context, buildLastFmUrl(target))
+                            onDismiss()
+                        }
                     }
                 }
-                MenuActionRow(Icons.Filled.Language, "Open in Last.fm") {
-                    openUrl(context, buildLastFmUrl(target))
-                    onDismiss()
+                ExpressiveGroup(rowCount = rows.size) { index, position -> rows[index](position) }
+            } else if (target is TrackMenuTarget.Album) {
+                val rows = buildList<@Composable (GroupPosition) -> Unit> {
+                    add { pos ->
+                        MenuActionRow(Icons.Filled.Album, "View Album Page", position = pos) {
+                            artistAlbumViewModel.openAlbum(target.name, target.artist)
+                            onDismiss()
+                        }
+                    }
+                    if (target.artist.isNotBlank()) {
+                        add { pos ->
+                            MenuActionRow(Icons.Filled.Person, "View Artist (${target.artist})", position = pos) {
+                                artistAlbumViewModel.openArtist(target.artist)
+                                onDismiss()
+                            }
+                        }
+                    }
+                    add { pos ->
+                        MenuActionRow(Icons.Filled.Language, "Open in Last.fm", position = pos) {
+                            openUrl(context, buildLastFmUrl(target))
+                            onDismiss()
+                        }
+                    }
                 }
+                ExpressiveGroup(rowCount = rows.size) { index, position -> rows[index](position) }
             }
         }
     }
@@ -555,7 +575,7 @@ private fun StartMixCard(onClick: () -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.98f else 1f,
+        targetValue = if (pressed) 0.97f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
         label = "startMixScale",
     )
@@ -567,11 +587,11 @@ private fun StartMixCard(onClick: () -> Unit) {
         // nonzero tonalElevation would blend a second tinted layer on top
         // of containerColor here.
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(22.dp),
         interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .padding(vertical = 4.dp)
             .scale(scale),
     ) {
         Row(
@@ -600,49 +620,102 @@ private fun StartMixCard(onClick: () -> Unit) {
     }
 }
 
+/** Three quick actions directly below Start Mix — no outline, no dividers.
+ *  Each action is its own card in a spaced Row, so separation matches the
+ *  sheet's current grouped language instead of the old outlined container. */
 @Composable
-private fun QuickMenuAction(icon: ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
-    Column(
-        modifier.clickable(onClick = onClick).padding(horizontal = 4.dp, vertical = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+private fun QuickActionsRow(
+    onPlay: () -> Unit,
+    onPlayNext: () -> Unit,
+    onTimer: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
-        Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        QuickActionCard(Icons.Filled.PlayCircle, "Play", Modifier.weight(1f), onPlay)
+        QuickActionCard(Icons.Filled.QueuePlayNext, "Play next", Modifier.weight(1f), onPlayNext)
+        QuickActionCard(Icons.Filled.Timer, "Timer", Modifier.weight(1f), onTimer)
     }
 }
 
-/** Full-width action row with tinted icon badge and ripple indication. */
 @Composable
-private fun MenuActionRow(icon: ImageVector, label: String, danger: Boolean = false, onClick: () -> Unit) {
+private fun QuickActionCard(
+    icon: ImageVector,
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val scale = rememberGroupPressScale(interactionSource)
+    Card(
+        onClick = onClick,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        shape = RoundedCornerShape(22.dp),
+        interactionSource = interactionSource,
+        modifier = modifier.scale(scale),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
+            Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** A rounded, elevated-feeling row (real Card, not a flat clickable Row) —
+ *  each menu action is one row in the shared ExpressiveGroup surface (see
+ *  the call site), so the whole set of actions reads as one continuous
+ *  premium container instead of separate floating rows — same language as
+ *  Settings/Generator's grouped lists. */
+@Composable
+private fun MenuActionRow(
+    icon: ImageVector,
+    label: String,
+    danger: Boolean = false,
+    position: GroupPosition = GroupPosition.SINGLE,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val scale = rememberGroupPressScale(interactionSource)
     val contentColor = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
     val badgeColor = if (danger) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
     val badgeContentColor = if (danger) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Card(
+        onClick = onClick,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        shape = groupShape(position),
+        interactionSource = interactionSource,
+        modifier = Modifier.fillMaxWidth().scale(scale),
     ) {
-        Box(
-            Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(13.dp))
-                .background(badgeColor),
-            contentAlignment = Alignment.Center,
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(icon, contentDescription = null, tint = badgeContentColor, modifier = Modifier.size(20.dp))
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(13.dp))
+                    .background(badgeColor),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, contentDescription = null, tint = badgeContentColor, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(16.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = contentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
-        Spacer(Modifier.width(16.dp))
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = contentColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 
@@ -651,38 +724,36 @@ private fun MenuInfoRow(
     icon: ImageVector,
     text: String,
     loading: Boolean,
+    position: GroupPosition = GroupPosition.SINGLE,
     onClick: (() -> Unit)? = null,
 ) {
-    val clickableModifier = if (onClick != null) {
-        Modifier.clickable(onClick = onClick)
-    } else Modifier
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(clickableModifier)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Card(
+        onClick = onClick ?: {},
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        shape = groupShape(position),
+        // Not actually interactive when there's no genre to open yet
+        // (still resolving, or resolution came back empty) — no ripple,
+        // no press feedback pretending there's something to tap.
+        enabled = onClick != null,
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        Box(
-            Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(13.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-            contentAlignment = Alignment.Center,
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-        }
-        Spacer(Modifier.width(16.dp))
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-        if (loading) {
-            ExpressiveInlineLoadingIndicator(
-                modifier = Modifier.padding(start = 8.dp),
-                size = 14.dp,
-                strokeWidth = 2.dp,
-            )
-        } else if (onClick != null) {
-            Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(16.dp))
+            Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            if (loading) {
+                ExpressiveInlineLoadingIndicator(
+                    modifier = Modifier.padding(start = 8.dp),
+                    size = 14.dp,
+                    strokeWidth = 2.dp,
+                )
+            } else if (onClick != null) {
+                Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+            }
         }
     }
 }

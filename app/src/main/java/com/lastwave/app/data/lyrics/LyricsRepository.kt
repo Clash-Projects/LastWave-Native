@@ -70,6 +70,7 @@ class LyricsRepository @Inject constructor(
     private val lyricsPlusApi: LyricsPlusApi,
     private val kugouApi: KugouLyricsApi,
     private val lrclibApi: LrclibLyricsApi,
+    private val downloadedTrackDao: dagger.Lazy<com.lastwave.app.data.local.db.DownloadedTrackDao>,
 ) {
     private val cache = ConcurrentHashMap<String, LyricsResult>()
 
@@ -83,6 +84,50 @@ class LyricsRepository @Inject constructor(
         val cacheKey = "${artist.trim().lowercase()}|${title.trim().lowercase()}"
         if (!forceRefresh) {
             cache[cacheKey]?.let { return@withContext it }
+        }
+
+        // 0. LOCAL OFFLINE: Check if this track is downloaded with embedded or saved lyrics
+        val localTrack = runCatching {
+            val dao = downloadedTrackDao.get()
+            dao.findByTitleAndArtist(title, artist)
+                ?: dao.findByTrackKey("${artist.lowercase()}_${title.lowercase()}")
+        }.getOrNull()
+        if (localTrack != null && (localTrack.hasLyrics || !localTrack.syncedLyrics.isNullOrBlank() || !localTrack.lrcFilePath.isNullOrBlank())) {
+            var synced = localTrack.syncedLyrics
+            if (synced.isNullOrBlank() && !localTrack.lrcFilePath.isNullOrBlank()) {
+                val lrcFile = java.io.File(localTrack.lrcFilePath)
+                if (lrcFile.exists() && lrcFile.length() > 0) {
+                    synced = runCatching { lrcFile.readText() }.getOrNull()
+                }
+            }
+            if (!synced.isNullOrBlank()) {
+                val lines = parseLrc(synced)
+                if (lines.isNotEmpty()) {
+                    val result = LyricsResult.Success(
+                        lines = lines,
+                        isSynced = true,
+                        isWordSynced = false,
+                        plainLyrics = localTrack.plainLyrics,
+                        isInstrumental = false,
+                        source = "Downloaded Lyrics (LRC)",
+                    )
+                    cache[cacheKey] = result
+                    return@withContext result
+                }
+            }
+            val plain = localTrack.plainLyrics
+            if (!plain.isNullOrBlank()) {
+                val result = LyricsResult.Success(
+                    lines = emptyList(),
+                    isSynced = false,
+                    isWordSynced = false,
+                    plainLyrics = plain.trim(),
+                    isInstrumental = false,
+                    source = "Downloaded Lyrics (Plain)",
+                )
+                cache[cacheKey] = result
+                return@withContext result
+            }
         }
 
         // 1. PRIMARY: Try word-by-word / syllable sync from LyricsPlus

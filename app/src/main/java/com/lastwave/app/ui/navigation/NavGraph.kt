@@ -182,6 +182,9 @@ fun LastWaveNavHost(
                 onSignOut = authViewModel::signOut,
                 onRestoreBackupAndSignIn = authViewModel::beginRestoreAndSignIn,
                 onDismissError = authViewModel::dismissError,
+                onOpenDownloads = {
+                    navController.navigate(Screen.Downloads.route)
+                },
             )
         }
 
@@ -211,6 +214,9 @@ fun LastWaveNavHost(
                 },
                 onOpenGenerator = {
                     navController.navigate(Screen.Create.route) { launchSingleTop = true }
+                },
+                onOpenNewReleases = {
+                    navController.navigate(Screen.NewReleases.route)
                 },
             )
         }
@@ -394,6 +400,14 @@ fun LastWaveNavHost(
         composable(Screen.Discover.route) {
             PredictiveBackScreen(onBack = { navController.popBackStack() }) {
                 DiscoverScreen(onBack = { navController.popBackStack() })
+            }
+        }
+
+        composable(Screen.NewReleases.route) {
+            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+                com.lastwave.app.ui.newreleases.NewReleasesScreen(
+                    onBack = { navController.popBackStack() },
+                )
             }
         }
 

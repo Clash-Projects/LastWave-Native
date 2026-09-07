@@ -3,6 +3,7 @@ package com.lastwave.app.ui.feed
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lastwave.app.data.feed.FeedRepository
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistResult
@@ -38,6 +39,7 @@ class FeedPlaylistDetailViewModel @Inject constructor(
     private val musicPlayer: MusicPlayer,
     private val importManager: PlaylistImportManager,
     private val playlistRepository: PlaylistRepository,
+    private val feedRepository: FeedRepository,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow<FeedPlaylistDetailUiState>(FeedPlaylistDetailUiState.Loading)
     val uiState: StateFlow<FeedPlaylistDetailUiState> = _uiState.asStateFlow()
@@ -54,15 +56,102 @@ class FeedPlaylistDetailViewModel @Inject constructor(
         currentPlaylistId = playlistId
         viewModelScope.launch {
             _uiState.value = FeedPlaylistDetailUiState.Loading
-            val result = runCatching {
-                innerTube.fetchPlaylist(playlistId)
-            }.getOrNull()
+
+            // Instant warm render from cached feed if present
+            if (playlistId == "yt_liked") {
+                val cached = feedRepository.getCachedFeed()?.ytLikedSongs.orEmpty()
+                if (cached.isNotEmpty()) {
+                    _uiState.value = FeedPlaylistDetailUiState.Success(
+                        YouTubePlaylistResult(
+                            id = "yt_liked",
+                            title = "Liked on YouTube",
+                            author = "Your favorites",
+                            artworkUrl = cached.firstOrNull()?.artworkUrl,
+                            trackCount = cached.size,
+                            tracks = cached,
+                        )
+                    )
+                }
+            } else if (playlistId == "yt_recent") {
+                val cached = feedRepository.getCachedFeed()?.ytRecentSongs.orEmpty()
+                if (cached.isNotEmpty()) {
+                    _uiState.value = FeedPlaylistDetailUiState.Success(
+                        YouTubePlaylistResult(
+                            id = "yt_recent",
+                            title = "Recently played",
+                            author = "On YouTube",
+                            artworkUrl = cached.firstOrNull()?.artworkUrl,
+                            trackCount = cached.size,
+                            tracks = cached,
+                        )
+                    )
+                }
+            }
+
+            val result = when (playlistId) {
+                "yt_liked" -> {
+                    val pl = runCatching { innerTube.fetchPlaylist("LM") }.getOrNull()
+                    if (pl != null && pl.tracks.isNotEmpty()) {
+                        pl.copy(
+                            id = "yt_liked",
+                            title = pl.title.ifBlank { "Liked on YouTube" },
+                            author = pl.author?.takeIf(String::isNotBlank) ?: "Your favorites",
+                        )
+                    } else {
+                        val taste = runCatching {
+                            innerTube.fetchTasteSignals(recentLimit = 0, likedLimit = 50, feedLimit = 0)
+                        }.getOrNull()
+                        val tracks = taste?.likedTracks.orEmpty().ifEmpty {
+                            feedRepository.getCachedFeed()?.ytLikedSongs.orEmpty()
+                        }
+                        if (tracks.isNotEmpty()) {
+                            YouTubePlaylistResult(
+                                id = "yt_liked",
+                                title = "Liked on YouTube",
+                                author = "Your favorites",
+                                artworkUrl = tracks.firstOrNull()?.artworkUrl,
+                                trackCount = tracks.size,
+                                tracks = tracks,
+                            )
+                        } else null
+                    }
+                }
+                "yt_recent" -> {
+                    val taste = runCatching {
+                        innerTube.fetchTasteSignals(recentLimit = 50, likedLimit = 0, feedLimit = 0)
+                    }.getOrNull()
+                    val tracks = taste?.recentTracks.orEmpty().ifEmpty {
+                        feedRepository.getCachedFeed()?.ytRecentSongs.orEmpty()
+                    }
+                    if (tracks.isNotEmpty()) {
+                        YouTubePlaylistResult(
+                            id = "yt_recent",
+                            title = "Recently played",
+                            author = "On YouTube",
+                            artworkUrl = tracks.firstOrNull()?.artworkUrl,
+                            trackCount = tracks.size,
+                            tracks = tracks,
+                        )
+                    } else {
+                        val pl = runCatching { innerTube.fetchPlaylist("FEmusic_history") }.getOrNull()
+                        pl?.copy(
+                            id = "yt_recent",
+                            title = pl.title.ifBlank { "Recently played" },
+                            author = pl.author?.takeIf(String::isNotBlank) ?: "On YouTube",
+                        )
+                    }
+                }
+                else -> runCatching { innerTube.fetchPlaylist(playlistId) }.getOrNull()
+            }
 
             if (currentPlaylistId != playlistId) return@launch
-            _uiState.value = when {
-                result == null -> FeedPlaylistDetailUiState.Error("Couldn't open this playlist. Check your connection and try again.")
-                result.tracks.isEmpty() -> FeedPlaylistDetailUiState.Error("This playlist doesn't have any playable tracks right now.")
-                else -> FeedPlaylistDetailUiState.Success(result)
+            if (result != null && result.tracks.isNotEmpty()) {
+                _uiState.value = FeedPlaylistDetailUiState.Success(result)
+            } else if (_uiState.value !is FeedPlaylistDetailUiState.Success) {
+                _uiState.value = when {
+                    result == null -> FeedPlaylistDetailUiState.Error("Couldn't open this playlist. Check your connection and try again.")
+                    else -> FeedPlaylistDetailUiState.Error("This playlist doesn't have any playable tracks right now.")
+                }
             }
         }
     }

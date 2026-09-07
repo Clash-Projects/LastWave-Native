@@ -1,6 +1,5 @@
 package com.lastwave.app.ui.common
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -27,13 +26,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.lastwave.app.ui.theme.isLiquidGlassEnabled
 import com.lastwave.app.ui.theme.liquidGlassChrome
+import com.lastwave.app.ui.theme.liquidGlassContainerColor
 
 /**
- * Reusable liquid-glass card with a protected, crisp foreground layer.
- *
- * The optical substrate/reflection is painted before content and the thin
- * Fresnel edge after it. Text and icons are never placed in a RenderEffect,
- * blurred, dimmed, or covered by a translucent sheen.
+ * Shared Kyant0 glass card. Effects sample the background, never the foreground.
  */
 @Composable
 fun LiquidGlassCard(
@@ -69,7 +65,6 @@ fun LiquidGlassCard(
                 containerColor = if (tintColor.isSpecified) tintColor else MaterialTheme.colorScheme.surfaceContainer,
                 contentColor = resolvedContentColor,
             ),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
         ) {
             Column(Modifier.padding(16.dp), content = content)
         }
@@ -91,9 +86,9 @@ fun LiquidGlassCard(
 
     Box(
         modifier = modifier
-            .clip(shape)
-            .background(glassTint, shape)
             .liquidGlassChrome(shape, enabled = true)
+            .clip(shape)
+            .background(liquidGlassContainerColor(glassTint), shape)
             .then(clickModifier)
             .padding(16.dp),
         contentAlignment = Alignment.TopStart,

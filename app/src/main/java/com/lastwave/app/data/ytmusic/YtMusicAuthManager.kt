@@ -38,13 +38,13 @@ class YtMusicAuthManager @Inject constructor(
     }
 
     /** SAPISID token, extracted in priority order exactly like music.youtube.com. */
-    fun sapisid(): String? =
-        connection.value.cookies[COOKIE_SAPISID_PRIMARY]
-            ?: connection.value.cookies["SAPISID"]
-            ?: connection.value.cookies["APISID"]
+    fun sapisid(account: YtConnection = connection.value): String? =
+        account.cookies[COOKIE_SAPISID_PRIMARY]
+            ?: account.cookies["SAPISID"]
+            ?: account.cookies["APISID"]
 
-    fun cookieHeaderValue(): String? {
-        val cookies = connection.value.cookies
+    fun cookieHeaderValue(account: YtConnection = connection.value): String? {
+        val cookies = account.cookies
         if (cookies.isEmpty()) return null
         return cookies.entries.joinToString("; ") { "${it.key}=${it.value}" }
     }
@@ -59,8 +59,8 @@ class YtMusicAuthManager @Inject constructor(
      * reverse-engineered scheme documented at stackoverflow.com/a/32065323
      * and used by every InnerTube client with credentials.
      */
-    fun authorizationHeaderValue(origin: String = AUTH_ORIGIN): String? {
-        val sapisid = sapisid() ?: return null
+    fun authorizationHeaderValue(origin: String = AUTH_ORIGIN, account: YtConnection = connection.value): String? {
+        val sapisid = sapisid(account) ?: return null
         val timestamp = System.currentTimeMillis() / 1000
         val payload = "$timestamp $sapisid $origin"
         val digest = MessageDigest.getInstance("SHA-1").digest(payload.toByteArray(Charsets.UTF_8))

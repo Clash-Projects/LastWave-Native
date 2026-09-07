@@ -46,6 +46,7 @@ object Md3SchemeBuilder {
     }
 
     /** Full dynamic scheme, seeded from [hex]'s hue. Matches _applyMaterialYouScheme(). */
+    @Suppress("UNUSED_PARAMETER")
     fun buildScheme(hex: String, amoled: Boolean, liquidGlass: Boolean = false): ColorScheme {
         val h = hueOf(hex)
         val hT = (h + 60) % 360
@@ -55,11 +56,11 @@ object Md3SchemeBuilder {
             tertiaryHue = hT,
             neutralHue = h,
             amoled = amoled,
-            liquidGlass = liquidGlass,
         )
     }
 
     /** Pure grayscale scheme (all chroma = 0). Matches _applyMonochromeScheme(). */
+    @Suppress("UNUSED_PARAMETER")
     fun buildMonochromeScheme(amoled: Boolean, liquidGlass: Boolean = false): ColorScheme = build(
         primaryHue = 0,
         secondaryHue = 0,
@@ -67,7 +68,6 @@ object Md3SchemeBuilder {
         neutralHue = 0,
         amoled = amoled,
         monochrome = true,
-        liquidGlass = liquidGlass,
     )
 
     private fun build(
@@ -77,7 +77,6 @@ object Md3SchemeBuilder {
         neutralHue: Int,
         amoled: Boolean,
         monochrome: Boolean = false,
-        liquidGlass: Boolean = false,
     ): ColorScheme {
         val cP = if (monochrome) 0 else CHROMA_PRIMARY
         val cS = if (monochrome) 0 else CHROMA_SECONDARY
@@ -137,26 +136,8 @@ object Md3SchemeBuilder {
             scrim = Color.Black,
         )
 
-        // Experimental "liquid glass": only the CONTAINER roles go
-        // translucent — background/surface (the page itself), on* text roles,
-        // outline and scrim stay fully opaque so contrast, scrims and the
-        // window backdrop are untouched. Elevation hierarchy is preserved by
-        // making higher containers slightly MORE opaque, mirroring how iOS's
-        if (!liquidGlass) return scheme
-
-        return scheme.copy(
-            surfaceContainer = scheme.surfaceContainer.copy(alpha = GLASS_CONTAINER_ALPHA),
-            surfaceContainerHigh = scheme.surfaceContainerHigh.copy(alpha = GLASS_CONTAINER_ALPHA + 0.04f),
-            surfaceContainerHighest = scheme.surfaceContainerHighest.copy(alpha = GLASS_CONTAINER_ALPHA + 0.08f),
-            surfaceVariant = scheme.surfaceVariant.copy(alpha = 0.86f),
-            primaryContainer = scheme.primaryContainer,
-            secondaryContainer = scheme.secondaryContainer,
-            tertiaryContainer = scheme.tertiaryContainer,
-        )
+        return scheme
     }
-
-    /** Real translucency while retaining enough density for white text. */
-    private const val GLASS_CONTAINER_ALPHA = 0.74f
 
     /**
      * HSL(h in 0-360, s in 0-100, l in 0-100) -> Compose Color.

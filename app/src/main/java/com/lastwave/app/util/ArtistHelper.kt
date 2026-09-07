@@ -6,7 +6,7 @@ package com.lastwave.app.util
  */
 object ArtistHelper {
     private val SEPARATOR_REGEX = Regex(
-        "(?:\\s*,\\s*|\\s+&\\s+|\\s*\\/\\s*|\\s+(?:ft\\.?|feat\\.?|featuring|with|x|X)\\s+)",
+        "(?:\\s*,\\s*|\\s*&\\s*|\\s*;\\s*|\\s*\\/\\s*|\\s*\\+\\s*|\\s+(?:ft\\.?|feat\\.?|featuring|with|and|x|X)\\s+)",
         RegexOption.IGNORE_CASE
     )
 
