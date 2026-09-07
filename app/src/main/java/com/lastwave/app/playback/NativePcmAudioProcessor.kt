@@ -205,6 +205,13 @@ class NativePcmAudioProcessor(
         check(processedFrames <= outputCapacityFrames) {
             "Native PCM output exceeded its buffer: $processedFrames > $outputCapacityFrames frames"
         }
+        // Real-signal tap for the VU meter: read-only, never touches positions.
+        AudioLevelMonitor.onProcessedPcm(
+            output = output,
+            frameCount = processedFrames,
+            channelCount = outputAudioFormat.channelCount,
+            sampleRateHz = outputAudioFormat.sampleRate,
+        )
         output.position(processedFrames * outputAudioFormat.bytesPerFrame)
         output.flip()
     }
@@ -231,10 +238,12 @@ class NativePcmAudioProcessor(
         retainedEndBytes = 0
         retainedEndBuffer.clear()
         engine.resetMediaProcessor()
+        AudioLevelMonitor.reset()
     }
 
     override fun onReset() {
         engine.resetMediaProcessor()
+        AudioLevelMonitor.reset()
         copyBuffer = AudioProcessor.EMPTY_BUFFER
         trimCombineBuffer = AudioProcessor.EMPTY_BUFFER
         retainedEndBuffer = AudioProcessor.EMPTY_BUFFER

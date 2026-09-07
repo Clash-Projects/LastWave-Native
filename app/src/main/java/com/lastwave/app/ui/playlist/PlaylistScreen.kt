@@ -215,6 +215,14 @@ fun PlaylistScreen(
                 },
             )
 
+            // Old-HiFi analog VU strip on top of the playlist screen.
+            // Real bass when the PCM tap flows, simulated groove otherwise.
+            com.lastwave.app.ui.common.AnalogVuMeter(
+                isPlaying = playbackState.isPlaying,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                level = com.lastwave.app.ui.common.rememberRealBassLevel(playbackState.isPlaying),
+            )
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()

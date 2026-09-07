@@ -309,6 +309,13 @@ fun PlaylistDetailScreen(
                         .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 150.dp)
                         .padding(horizontal = 4.dp),
                 ) {
+                    // Old-HiFi analog VU on top of the playlist hero.
+                    // Real bass when the PCM tap flows, simulated groove otherwise.
+                    com.lastwave.app.ui.common.AnalogVuMeter(
+                        isPlaying = playbackState.isPlaying,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        level = com.lastwave.app.ui.common.rememberRealBassLevel(playbackState.isPlaying),
+                    )
                     // Big Bold Playlist Title (overlaid in hero)
                     Text(
                         text = playlist.title,

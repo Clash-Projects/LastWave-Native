@@ -1980,6 +1980,14 @@ private fun FullPlayer(
                                             }
                                         }
                                     }
+                                    Spacer(Modifier.height(2.dp))
+                                    // Old-HiFi analog VU bridge between artwork and title.
+                                    // Real bass when the PCM tap flows, simulated groove otherwise.
+                                    com.lastwave.app.ui.common.AnalogVuMeter(
+                                        isPlaying = state.isPlaying,
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+                                        level = com.lastwave.app.ui.common.rememberRealBassLevel(state.isPlaying),
+                                    )
                                     Spacer(Modifier.height(6.dp))
                                     Column(
                                         modifier = Modifier
