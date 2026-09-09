@@ -4,7 +4,11 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.net.wifi.WifiManager
+import android.os.PowerManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.LinearGradient
@@ -130,14 +134,30 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     private var notificationSignature = ""
     private var widgetSignature = ""
     private var systemStateSignature = ""
+    private var legacyBroadcastSignature = ""
     private var sessionQueueSignature = ""
     private var carBrowseQueueSignature = ""
     @Volatile private var isPlaybackForeground = false
     private var artworkRequestKey = ""
     private var notificationPalette = NotificationPalette.default()
+    private var playbackWakeLock: PowerManager.WakeLock? = null
+    private var playbackWifiLock: WifiManager.WifiLock? = null
 
     override fun onCreate() {
         super.onCreate()
+        val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+        playbackWakeLock = powerManager?.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "LastWave:PlaybackWakeLock",
+        )?.apply { setReferenceCounted(false) }
+
+        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        playbackWifiLock = wifiManager?.createWifiLock(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+            else WifiManager.WIFI_MODE_FULL_HIGH_PERF,
+            "LastWave:PlaybackWifiLock",
+        )?.apply { setReferenceCounted(false) }
+
         createNotificationChannel()
         runCatching {
             val session = MediaSessionCompat(this, "LastWavePlayer").apply {
@@ -174,6 +194,20 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                     }
                 })
                 setSessionActivity(openAppPendingIntent())
+                // KWGT / Bluetooth / headset discovery happens while idle too:
+                // publish an initial state so media buttons (and widget play
+                // buttons) can wake the player before any track is queued.
+                setPlaybackState(
+                    PlaybackStateCompat.Builder()
+                        .setActions(
+                            PlaybackStateCompat.ACTION_PLAY or
+                                PlaybackStateCompat.ACTION_PLAY_PAUSE or
+                                PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID or
+                                PlaybackStateCompat.ACTION_PLAY_FROM_SEARCH,
+                        )
+                        .setState(PlaybackStateCompat.STATE_NONE, 0, 0f)
+                        .build(),
+                )
                 isActive = true
             }
             mediaSession = session
@@ -213,6 +247,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                 // doing string work, artwork lookup and binder-state checks.
                 .distinctUntilChanged(::sameServiceState)
                 .collect { state ->
+                    updateWakeLocks(state)
                     requestArtwork(state.current)
                     publishSystemState(state)
                     publishNotification(state)
@@ -249,12 +284,22 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         clientUid: Int,
         rootHints: Bundle?,
     ): BrowserRoot? {
-        if (mediaSession == null || !isAllowedMediaClient(clientPackageName, clientUid)) return null
+        if (mediaSession == null) return null
+        // KWGT, Wear OS, Bluetooth companions and other third-party
+        // controllers connect here as ordinary user apps — NOT as system /
+        // car hosts. Returning null rejects the connection
+        // (onConnectionFailed), which is why KWGT never listed LastWave as
+        // a media app and its transport buttons did nothing. The browse tree
+        // only exposes queue/playlist/download metadata, so any
+        // UID-verified caller may browse; transport stays gated by the
+        // session callback itself.
+        if (!isAllowedMediaClient(clientPackageName, clientUid)) return null
         return BrowserRoot(
             AndroidAutoMediaLibrary.ROOT_ID,
             Bundle().apply {
                 putInt(CONTENT_STYLE_BROWSABLE_HINT, CONTENT_STYLE_LIST)
                 putInt(CONTENT_STYLE_PLAYABLE_HINT, CONTENT_STYLE_LIST)
+                putBoolean("android.media.browse.SEARCH_SUPPORTED", true)
             },
         )
     }
@@ -293,20 +338,19 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     }
 
     private fun isAllowedMediaClient(clientPackageName: String, clientUid: Int): Boolean = runCatching {
-        val ownsPackage = packageManager.getPackagesForUid(clientUid)
-            ?.contains(clientPackageName) == true
-        if (!ownsPackage) return@runCatching false
-        if (clientUid == applicationInfo.uid || clientUid == android.os.Process.SYSTEM_UID) {
-            return@runCatching true
-        }
-        if (clientPackageName in KNOWN_CAR_HOST_PACKAGES) return@runCatching true
-        @Suppress("DEPRECATION")
-        val info = packageManager.getApplicationInfo(clientPackageName, 0)
-        info.flags and (
-            android.content.pm.ApplicationInfo.FLAG_SYSTEM or
-                android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP
-            ) != 0
-    }.getOrDefault(false)
+        // System_server sometimes proxies browse connections (notably some
+        // Android Auto ROMs); always allow it.
+        if (clientUid == android.os.Process.SYSTEM_UID || clientUid == android.os.Process.myUid()) return@runCatching true
+        // Android Auto projection & automotive packages
+        if (clientPackageName == "com.google.android.projection.gearhead" ||
+            clientPackageName == "com.google.android.carprojection" ||
+            clientPackageName == "com.google.android.apps.auto.repl" ||
+            clientPackageName == "com.google.android.googlequicksearchbox"
+        ) return@runCatching true
+        val packages = packageManager.getPackagesForUid(clientUid)
+        if (packages.isNullOrEmpty()) return@runCatching true
+        packages.contains(clientPackageName)
+    }.getOrDefault(true)
 
     private fun playCarMediaId(mediaId: String) {
         scope.launch {
@@ -371,28 +415,110 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         }
     }
 
+    /**
+     * Stock Android music broadcasts (`com.android.music.metachanged` /
+     * `playstatechanged` / `playbackcomplete`, plus the HTC doubles). KWGT,
+     * Tasker, Zooper-style widgets and a long tail of headset/Bluetooth
+     * helpers still listen for these alongside the modern MediaSession, and
+     * several only list an app as a "media player" once they have seen one.
+     * One ordered broadcast per track / play-state change; position ticks
+     * are intentionally NOT rebroadcast.
+     */
+    private fun broadcastLegacyState(state: MusicPlayerState) {
+        val track = state.current
+        val playing = state.isPlaying
+        val signature = "${track?.title}|${track?.artist}|${track?.album}|$playing"
+        if (signature == legacyBroadcastSignature) return
+        legacyBroadcastSignature = signature
+        val title = track?.title.orEmpty()
+        val artist = track?.artist.orEmpty()
+        val album = track?.album.orEmpty()
+        val extras = { intent: Intent ->
+            intent
+                .putExtra("track", title)
+                .putExtra("artist", artist)
+                .putExtra("album", album)
+                .putExtra("playing", playing)
+                .putExtra("isPlaying", playing)
+                .putExtra("duration", state.durationMs)
+                .putExtra("position", state.positionMs)
+                .putExtra("package", packageName)
+        }
+        runCatching {
+            if (track != null) {
+                sendBroadcast(
+                    extras(Intent("com.android.music.metachanged"))
+                        .putExtra("id", state.currentIndex.toLong()),
+                )
+                sendBroadcast(extras(Intent("com.htc.music.metachanged")))
+            } else {
+                sendBroadcast(Intent("com.android.music.playbackcomplete"))
+            }
+            sendBroadcast(extras(Intent("com.android.music.playstatechanged")))
+            sendBroadcast(extras(Intent("com.htc.music.playstatechanged")))
+        }.onFailure { error ->
+            android.util.Log.w("MusicPlaybackService", "Legacy player broadcast failed", error)
+        }
+    }
+
+    private fun updateWakeLocks(state: MusicPlayerState) {
+        val shouldHold = state.isPlaying || state.isBuffering
+        if (shouldHold) {
+            runCatching {
+                if (playbackWakeLock?.isHeld == false) {
+                    playbackWakeLock?.acquire(60 * 60 * 1000L)
+                }
+                if (playbackWifiLock?.isHeld == false) {
+                    playbackWifiLock?.acquire()
+                }
+            }
+        } else {
+            runCatching {
+                if (playbackWakeLock?.isHeld == true) playbackWakeLock?.release()
+                if (playbackWifiLock?.isHeld == true) playbackWifiLock?.release()
+            }
+        }
+    }
+
     private fun promoteForPlayback(): Boolean {
         if (isPlaybackForeground) return true
         // Browse-only Android Auto connections stay notification-free. A
         // started playback request promotes the already-bound service here.
+        val notification = buildNotification(musicPlayer.state.value, artworkBitmap)
         val promoted = runCatching {
-            startForeground(NOTIFICATION_ID, buildNotification(musicPlayer.state.value, artworkBitmap))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
         }.onFailure { firstError ->
             android.util.Log.w("MusicPlaybackService", "Rich startup notification rejected; retrying minimal", firstError)
         }.recoverCatching {
-            startForeground(
-                NOTIFICATION_ID,
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    Notification.Builder(this, CHANNEL_ID)
-                } else {
-                    @Suppress("DEPRECATION") Notification.Builder(this)
-                }.build(),
-            )
+            val minimal = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Notification.Builder(this, CHANNEL_ID)
+            } else {
+                @Suppress("DEPRECATION") Notification.Builder(this)
+            }.setSmallIcon(R.drawable.ic_launcher_logo)
+             .setContentTitle(musicPlayer.state.value.current?.title ?: "LastWave")
+             .setContentText(musicPlayer.state.value.current?.artist ?: "Music player")
+             .build()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    minimal,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, minimal)
+            }
         }.isSuccess
         isPlaybackForeground = promoted
         if (!promoted) {
-            android.util.Log.w("MusicPlaybackService", "Foreground promotion refused by system; stopping started service")
-            stopSelf()
+            android.util.Log.w("MusicPlaybackService", "Foreground promotion refused by system")
         }
         return promoted
     }
@@ -401,6 +527,10 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (!promoteForPlayback()) return START_NOT_STICKY
         when (intent?.action) {
+            Intent.ACTION_MEDIA_BUTTON -> androidx.media.session.MediaButtonReceiver.handleIntent(mediaSession, intent)
+            MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH -> playCarSearch(
+                resolveCarSearchQuery(intent.getStringExtra(android.app.SearchManager.QUERY), intent.extras),
+            )
             ACTION_PREVIOUS -> musicPlayer.previous()
             ACTION_TOGGLE -> musicPlayer.togglePlayPause()
             ACTION_NEXT -> musicPlayer.next()
@@ -409,7 +539,22 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         return START_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // Swiping the app away from Recents fires this even while music is
+        // actively playing in the foreground service. Only tear playback
+        // down when nothing is actually playing/buffering; otherwise let the
+        // foreground service + notification keep the session alive, which is
+        // the normal Android media-app behavior.
+        val state = musicPlayer.state.value
+        if (!state.isPlaying && !state.isBuffering) {
+            musicPlayer.stopAndClear()
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
+        runCatching { if (playbackWakeLock?.isHeld == true) playbackWakeLock?.release() }
+        runCatching { if (playbackWifiLock?.isHeld == true) playbackWifiLock?.release() }
         detectorJob?.cancel()
         artworkJob?.cancel()
         if (isPlaybackForeground) {
@@ -417,9 +562,12 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             else @Suppress("DEPRECATION") stopForeground(true)
             isPlaybackForeground = false
         }
+        getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
         val releasedToken = platformSessionToken
         runCatching { mediaSession?.isActive = false }
         runCatching { mediaSession?.release() }
+        // Let KWGT-style listeners clear their cached track on service death.
+        runCatching { sendBroadcast(Intent("com.android.music.playbackcomplete")) }
         platformSessionToken = null
         ownController?.let { controller -> ActiveMediaSessionHolder.clear(controller) }
         ActiveMediaSessionHolder.clearToken(releasedToken)
@@ -456,8 +604,8 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         }
 
         // If previous track reached threshold before transition but wasn't submitted yet, submit now
-        if (pendingPreviousTrack != null && !submissionAttempted && accumulatedMs >= 30_000L) {
-            val prev = pendingPreviousTrack!!
+        val prev = pendingPreviousTrack
+        if (prev != null && !submissionAttempted && accumulatedMs >= 30_000L) {
             val (prevTitle, prevArtist) = cleanTrackMetadata(prev.title, prev.artist)
             val prevStartedAt = pendingPreviousStartedAt
             scope.launch(Dispatchers.IO) {
@@ -635,6 +783,10 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             track != null -> PlaybackStateCompat.STATE_PAUSED
             else -> PlaybackStateCompat.STATE_NONE
         }
+        // Legacy stock-Android broadcasts KWGT/Tasker/Zooper-style widgets
+        // still listen for. Sent even when the OEM media stack is broken
+        // (session == null) so the fallback path keeps working.
+        broadcastLegacyState(state)
         val session = mediaSession ?: return
         publishSessionQueue(session, state)
         val signature = buildString {
@@ -770,17 +922,25 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
             return
         }
-        if (!isPlaybackForeground) return
-        val signature = "${track?.title}|${track?.artist}|${track?.album}|${state.isPlaying}|${state.isBuffering}|$artworkUrl|${artworkBitmap != null}"
+        if (!isPlaybackForeground) {
+            if (!promoteForPlayback()) return
+        }
+        val signature = "${track.title}|${track.artist}|${track.album}|${state.isPlaying}|${state.isBuffering}|$artworkUrl|${artworkBitmap != null}"
         if (!force && signature == notificationSignature) return
-        notificationSignature = signature
-        runCatching {
+        val success = runCatching {
             getSystemService(NotificationManager::class.java)
                 ?.notify(NOTIFICATION_ID, buildNotification(state, artworkBitmap))
+            true
         }.onFailure { error ->
             // Some OEMs throw from notify() for transient binder failures;
-            // the next state emission rebuilds and retries anyway.
+            // clearing signature allows subsequent state emissions to retry.
             android.util.Log.w("MusicPlaybackService", "Notification publish failed", error)
+        }.getOrDefault(false)
+
+        if (success) {
+            notificationSignature = signature
+        } else {
+            notificationSignature = ""
         }
     }
 
@@ -865,6 +1025,43 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         } else {
             @Suppress("DEPRECATION") Notification.Builder(this)
         }
+
+        // On Android 13+ (API 33+, Tiramisu), SystemUI / Samsung One UI 5/6/7
+        // hosts the media player natively via MediaStyle and SecMediaHost.
+        // Providing custom RemoteViews conflicts with the system media carousel
+        // causing notifications to be dropped or rejected by Samsung SystemUI.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val mediaStyle = Notification.MediaStyle()
+                .setShowActionsInCompactView(0, 1, 2)
+            platformSessionToken?.let { mediaStyle.setMediaSession(it) }
+
+            return builder
+                .setSmallIcon(R.drawable.ic_launcher_logo)
+                .setContentTitle(state.current?.title ?: "LastWave")
+                .setContentText(state.current?.artist ?: "Music player")
+                .setSubText(state.current?.album)
+                .setContentIntent(openAppPendingIntent())
+                .setLargeIcon(scaledBitmap(art, 384))
+                .setOnlyAlertOnce(true)
+                .setOngoing(state.isPlaying)
+                .setShowWhen(false)
+                .setCategory(Notification.CATEGORY_TRANSPORT)
+                .setColor(notificationPalette.primary)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setStyle(mediaStyle)
+                .addAction(Notification.Action.Builder(R.drawable.ic_widget_skip_previous, "Previous", serviceAction(ACTION_PREVIOUS, 1)).build())
+                .addAction(Notification.Action.Builder(if (state.isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play, "Play or pause", serviceAction(ACTION_TOGGLE, 2)).build())
+                .addAction(Notification.Action.Builder(R.drawable.ic_widget_skip_next, "Next", serviceAction(ACTION_NEXT, 3)).build())
+                .addAction(Notification.Action.Builder(android.R.drawable.ic_menu_close_clear_cancel, "Stop", serviceAction(ACTION_STOP, 4)).build())
+                .setColorized(true)
+                .apply {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
+                    }
+                }
+                .build()
+        }
+
         val compact = notificationRemoteViews(
             layout = R.layout.notification_player_compact,
             widthDp = 520,
@@ -1051,10 +1248,6 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         const val ACTION_TOGGLE = "com.lastwave.app.playback.TOGGLE"
         const val ACTION_NEXT = "com.lastwave.app.playback.NEXT"
         const val ACTION_STOP = "com.lastwave.app.playback.STOP"
-        val KNOWN_CAR_HOST_PACKAGES = setOf(
-            "com.google.android.projection.gearhead",
-            "com.google.android.gms",
-        )
     }
 }
 

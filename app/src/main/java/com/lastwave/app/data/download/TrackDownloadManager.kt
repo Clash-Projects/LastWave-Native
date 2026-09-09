@@ -18,7 +18,8 @@ import com.lastwave.app.MainActivity
 import com.lastwave.app.R
 import com.lastwave.app.data.local.db.DownloadedTrackDao
 import com.lastwave.app.data.local.db.DownloadedTrackEntity
-import com.lastwave.app.data.lyrics.LrclibLyricsApi
+import com.lastwave.app.data.lyrics.LyricsRepository
+import com.lastwave.app.data.lyrics.LyricsResult
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.lossless.LosslessMusicApi
@@ -114,7 +115,7 @@ class TrackDownloadManager @Inject constructor(
     private val losslessMusicApi: LosslessMusicApi,
     private val innerTube: InnerTubeMusicApi,
     private val artworkRepository: ArtworkRepository,
-    private val lrclibLyricsApi: LrclibLyricsApi,
+    private val lyricsRepository: LyricsRepository,
     private val audioTagWriter: AudioTagWriter,
     okHttpClient: OkHttpClient,
     private val downloadedTrackDao: DownloadedTrackDao,
@@ -207,6 +208,34 @@ class TrackDownloadManager @Inject constructor(
         return activeKeys.contains(key) || (progress != null && !progress.isFinished && progress.error == null)
     }
 
+    // A single failed I/O check is not proof the file is gone: content-resolver
+    // access can transiently fail right after boot, mid-MediaScan, or under an
+    // OS storage hiccup. Callers used to treat one failure as "file deleted"
+    // and would silently re-download (making the track vanish from the list
+    // until, and unless, the re-download succeeded). Retry briefly before
+    // concluding the file is actually missing.
+    private suspend fun isDownloadedFilePresent(track: DownloadedTrackEntity): Boolean {
+        repeat(3) { attempt ->
+            val present = when {
+                !track.mediaStoreUri.isNullOrBlank() -> runCatching {
+                    context.contentResolver.openInputStream(Uri.parse(track.mediaStoreUri))?.use { }
+                    true
+                }.getOrDefault(false)
+                track.filePath.startsWith("content://") -> runCatching {
+                    context.contentResolver.openInputStream(Uri.parse(track.filePath))?.use { }
+                    true
+                }.getOrDefault(false)
+                else -> runCatching {
+                    val f = File(track.filePath)
+                    f.exists() && f.length() > 0
+                }.getOrDefault(false)
+            }
+            if (present) return true
+            if (attempt < 2) delay(150L)
+        }
+        return false
+    }
+
     suspend fun isTrackDownloaded(title: String, artist: String): Boolean = withContext(Dispatchers.IO) {
         val key = makeDownloadKey(title, artist)
         val existing = runCatching {
@@ -215,17 +244,7 @@ class TrackDownloadManager @Inject constructor(
         }.getOrNull()
 
         if (existing != null) {
-            val fileStillPresent = when {
-                existing.mediaStoreUri != null -> runCatching {
-                    context.contentResolver.openInputStream(Uri.parse(existing.mediaStoreUri))?.use { }
-                    true
-                }.getOrDefault(false)
-                else -> runCatching {
-                    val f = File(existing.filePath)
-                    f.exists() && f.length() > 0
-                }.getOrDefault(false)
-            }
-            if (fileStillPresent) return@withContext true
+            if (isDownloadedFilePresent(existing)) return@withContext true
         }
 
         // Check if file already exists in public Music/LastWave directory
@@ -288,16 +307,7 @@ class TrackDownloadManager @Inject constructor(
                     ?: downloadedTrackDao.findByTitleAndArtist(title.trim(), artist.trim())
             }.getOrNull()
             if (existing != null) {
-                val fileStillPresent = when {
-                    existing.mediaStoreUri != null -> runCatching {
-                        context.contentResolver.openInputStream(Uri.parse(existing.mediaStoreUri))?.use { }
-                        true
-                    }.getOrDefault(false)
-                    else -> runCatching {
-                        val f = File(existing.filePath)
-                        f.exists() && f.length() > 0
-                    }.getOrDefault(false)
-                }
+                val fileStillPresent = isDownloadedFilePresent(existing)
                 if (fileStillPresent) {
                     activeKeys.remove(key)
                     return@launch
@@ -380,6 +390,7 @@ class TrackDownloadManager @Inject constructor(
                             losslessMusicApi.resolveStream(
                                 title = title,
                                 artist = artist,
+                                expectedAlbum = resolvedAlbum,
                                 preferredQuality = downloadQuality,
                             )
                         }.getOrNull()
@@ -448,7 +459,7 @@ class TrackDownloadManager @Inject constructor(
                 val lyricsDeferred = if (shouldDownloadLyrics) {
                     async(Dispatchers.IO) {
                         runCatching {
-                            lrclibLyricsApi.fetchLyrics(
+                            lyricsRepository.getLyrics(
                                 title = title,
                                 artist = artist,
                                 album = resolvedAlbum,
@@ -577,6 +588,10 @@ class TrackDownloadManager @Inject constructor(
                         durationRetriever.setDataSource(tempDownloadFile.absolutePath)
                         val durStr = durationRetriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
                         durStr?.toLongOrNull()?.takeIf { it > 0 }?.let { durationMs = it }
+                        if (resolvedAlbum.isNullOrBlank()) {
+                            resolvedAlbum = durationRetriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ALBUM)
+                                ?.takeIf(String::isNotBlank)
+                        }
                     } catch (_: Exception) {
                     } finally {
                         runCatching { durationRetriever.release() }
@@ -590,9 +605,9 @@ class TrackDownloadManager @Inject constructor(
 
                     if (shouldDownloadLyrics) {
                         var lyricsRecord = lyricsDeferred?.await()
-                        if (lyricsRecord == null && durationMs > 0) {
+                        if (lyricsRecord !is LyricsResult.Success && durationMs > 0) {
                             lyricsRecord = runCatching {
-                                lrclibLyricsApi.fetchLyrics(
+                                lyricsRepository.getLyrics(
                                     title = title,
                                     artist = artist,
                                     album = resolvedAlbum,
@@ -601,9 +616,16 @@ class TrackDownloadManager @Inject constructor(
                             }.getOrNull()
                         }
 
-                        if (lyricsRecord != null) {
-                            syncedLyrics = lyricsRecord.syncedLyrics
-                            plainLyrics = lyricsRecord.plainLyrics
+                        if (lyricsRecord is LyricsResult.Success) {
+                            val lyrics = lyricsRecord
+                            syncedLyrics = lyrics.lines.takeIf { lyrics.isSynced && it.isNotEmpty() }
+                                ?.joinToString("\n") { line ->
+                                    val timeMs = line.timeMs.coerceAtLeast(0L)
+                                    String.format(java.util.Locale.ROOT, "[%02d:%02d.%02d]%s",
+                                        timeMs / 60_000, timeMs / 1_000 % 60, timeMs / 10 % 100, line.text)
+                                }
+                            plainLyrics = lyrics.plainLyrics?.takeIf(String::isNotBlank)
+                                ?: lyrics.lines.takeIf { it.isNotEmpty() }?.joinToString("\n") { it.text }
                             hasLyrics = !(syncedLyrics.isNullOrBlank() && plainLyrics.isNullOrBlank())
                         }
                     }
@@ -624,6 +646,7 @@ class TrackDownloadManager @Inject constructor(
                         artist = artist,
                         album = resolvedAlbum,
                         artworkUrl = resolvedArtworkUrl,
+                        artworkFallbackUrl = preloadedBestMatch?.artworkUrl,
                         lyrics = if (shouldDownloadLyrics) (syncedLyrics ?: plainLyrics) else null,
                         year = year,
                     )
@@ -670,7 +693,12 @@ class TrackDownloadManager @Inject constructor(
                         )
                     }
 
-                    val finalPath = file?.absolutePath ?: uri?.toString() ?: safeFilename
+                    val publicMusicDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), PUBLIC_DIR_NAME)
+                    val expectedPublicFile = File(publicMusicDir, safeFilename)
+                    val finalPath = file?.absolutePath
+                        ?: expectedPublicFile.takeIf { it.exists() && it.length() > 0 }?.absolutePath
+                        ?: uri?.toString()
+                        ?: expectedPublicFile.absolutePath
 
 
                 // 7. Also write the sidecar .lrc companion file for players that read them
