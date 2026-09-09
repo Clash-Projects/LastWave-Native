@@ -3,6 +3,27 @@
 ## Unreleased
 
 ### Fixed
+- **Songs silently disappearing from the Home listing during background polling.** (Fix by [@musaibbhat120605](https://github.com/musaibbhat120605))
+
+  `HomeViewModel`'s 12-second background refresh loop merged newly
+  polled recent tracks with the existing in-memory history and then
+  truncated the **entire combined list** to `HOME_TRACK_HISTORY_CAP`
+  (500 entries). `loadNextPage()` (triggered by scrolling) appends
+  paginated tracks without any cap of its own — so once a user
+  scrolled far enough to load more than 500 tracks, the very next
+  background poll would silently drop everything past position 500,
+  including tracks the user had just scrolled into view seconds
+  earlier. This made songs appear to randomly vanish from the Home
+  listing with no user action to explain it.
+
+  Fixed by making the background poll's cap dynamic: it now only
+  bounds organic growth from polling (`max(HOME_TRACK_HISTORY_CAP,
+  currentListSize)`), so it can never truncate below what pagination
+  has already legitimately loaded into view.
+
+  Files changed:
+  `app/src/main/java/com/lastwave/app/ui/home/HomeViewModel.kt`
+
 - **Duplicate/overlapping "now playing" notification on Android 10 (One UI 2.x).**
   `buildNotification()` used `Notification.DecoratedMediaCustomViewStyle`
   with a `MediaSession` attached, alongside a fully custom `RemoteViews`
@@ -136,49 +157,3 @@
 
   Files changed:
   `app/src/main/java/com/lastwave/app/ui/settings/DownloadsViewModel.kt`
-
-## 2026-09-05 — musaibbhat120605
-
-### Changed
-- **Nothing OS-style redesign (foundation + nav bar + list surfaces).**
-  Full UI redesign in progress. Done so far:
-  - New monochrome + single-red-accent color scheme (`Md3SchemeBuilder.
-    buildNothingScheme()`), wired in as the app's only scheme — replaces
-    the accent-picker/dynamic-color paths. Liquid Glass forced off.
-  - All shapes flattened to 0dp, both in the central `Shape.kt` and in
-    several screens' own local shape overrides that had been silently
-    shadowing it (`HomeScreen.kt`, `SettingsScreen.kt`, `GenerateScreen.kt`,
-    `ExpressiveGroup.kt`).
-  - All non-zero `tonalElevation`/`shadowElevation` values across the UI
-    layer flattened to 0dp (14 files) — no more drop-shadow/elevation look.
-  - Typography stripped of its rounded/expressive variable-font styling
-    down to flat weight-only hierarchy; label styles got wide letter-
-    spacing for a "stenciled hardware label" read.
-  - Added a real bundled dot-matrix font, DSEG7 Classic (SIL OFL license,
-    see `/licenses/DSEG-LICENSE.txt`), exposed as `NothingDigitsFontFamily`
-    for numeric/technical text (durations, bitrate, counts, dates) —
-    still needs to be applied at each screen's actual number `Text()`
-    call sites.
-  - Motion (`ExpressiveMotion.kt`): removed all spring/bounce and scale-
-    morph transitions in favor of short (120-200ms) ease-out fades/slides.
-  - Bottom nav bar (`MainShell.kt`): removed the filled-pill selection
-    background and elevation/shadow on the dock; selection now reads as a
-    small red dot beneath the icon. Icons swapped to their Outlined
-    variants; the one primary action (Generator button) stays a flat solid
-    red circle as the deliberate single accent-color exception.
-
-  Still to do: apply `NothingDigitsFontFamily` to actual number displays;
-  outline-only buttons elsewhere; Now Playing screen layout; remaining
-  screens not yet touched (Album/Artist/Playlist detail, Search, full
-  Settings pass beyond shapes/elevation).
-
-  Files changed: `Md3SchemeBuilder.kt`, `ThemeRepository.kt`, `Shape.kt`,
-  `Type.kt`, `ExpressiveMotion.kt`, `MainShell.kt`, `HomeScreen.kt`,
-  `SettingsScreen.kt`, `GenerateScreen.kt`, `ExpressiveGroup.kt`, plus
-  elevation-only edits across `AlbumDetailScreen.kt`,
-  `ArtistDetailScreen.kt`, `ExpressiveHeader.kt`,
-  `ExpressiveLoadingIndicator.kt`, `GenerationProgressCard.kt`,
-  `NavGraph.kt`, `PlayerHost.kt`, `PlaylistDetailScreen.kt`,
-  `PlaylistScreen.kt`, `SearchScreen.kt`, `YouTubePlaylistImportScreen.kt`.
-  New asset: `res/font/dseg7_classic_regular.ttf`,
-  `res/font/dseg7_classic_bold.ttf`, `licenses/DSEG-LICENSE.txt`.
