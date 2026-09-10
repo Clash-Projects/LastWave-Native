@@ -27,3 +27,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "LastWave"
 include(":app")
+include(":desktop")
