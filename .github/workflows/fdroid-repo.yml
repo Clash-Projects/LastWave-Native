@@ -91,6 +91,17 @@ jobs:
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
+      - name: Seed repo with APKs already published to Pages
+        run: |
+          set -euo pipefail
+          mkdir -p fdroid/repo
+          # Carry forward versions already in the repo, otherwise the index
+          # would be rebuilt with only the newest APK and older ones vanish.
+          if [ -d pages/fdroid/repo ]; then
+            find pages/fdroid/repo -maxdepth 1 -name '*.apk' -exec cp -n {} fdroid/repo/ \;
+          fi
+          ls -1 fdroid/repo/*.apk || true
+
       - name: Download release APK (universal)
         env:
           GH_TOKEN: ${{ github.token }}
