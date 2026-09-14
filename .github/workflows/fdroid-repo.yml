@@ -40,12 +40,15 @@ jobs:
           sudo apt-get install -y python3-pip python3-venv
           # Ubuntu noble ships fdroidserver 2.2.1, whose androguard scan path
           # fails on AGP 8+ resources.arsc ("ResParserError: res1 must be
-          # zero!"). 2.4.2 (Debian trixie) is verified working with these APKs.
-          # Install it in a venv so it can't clash with Debian-managed packages.
+          # zero!"). 2.4.2 (Debian trixie) is verified working with these APKs,
+          # but only with androguard 3.4.0a1 — androguard 4.x crashes with
+          # "NoOverwriteDict has no attribute append". Pin both.
+          # Installed in a venv so it can't clash with Debian-managed packages.
           python3 -m venv /opt/fdroid-venv
-          /opt/fdroid-venv/bin/pip install -q "fdroidserver==2.4.2"
+          /opt/fdroid-venv/bin/pip install -q "fdroidserver==2.4.2" "androguard==3.4.0a1"
           echo "/opt/fdroid-venv/bin" >> "$GITHUB_PATH"
           /opt/fdroid-venv/bin/fdroid --version
+          /opt/fdroid-venv/bin/python -c "import androguard; print('androguard', androguard.__version__)"
 
       - name: Restore repo signing keystore
         env:
