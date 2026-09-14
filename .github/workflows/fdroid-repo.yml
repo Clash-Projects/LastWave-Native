@@ -19,10 +19,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout feature/fdroid (workflow files + metadata)
+      - name: Checkout (config, metadata, tools)
         uses: actions/checkout@v4
-        with:
-          ref: feature/fdroid
 
       - name: Checkout pages branch (repo content)
         uses: actions/checkout@v4
