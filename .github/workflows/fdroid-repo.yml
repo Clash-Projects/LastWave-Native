@@ -81,6 +81,7 @@ jobs:
           UPSTREAM_REPO: Clash-Projects/LastWave-Native
         run: |
           set -euo pipefail
+          mkdir -p fdroid/repo
           TAG="${{ steps.rel.outputs.tag }}"
           URL=$(python3 fdroid/tools/resolve_apk.py --tag "$TAG" --upstream "$UPSTREAM_REPO")
           echo "Downloading $URL"
