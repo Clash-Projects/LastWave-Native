@@ -1,0 +1,13 @@
+LastWave F-Droid custom repo — index signing certificate fingerprint
+
+SHA-256:
+F8:2B:CE:41:6A:8F:3F:31:E0:88:58:64:FD:D5:CB:4D:6D:8C:92:74:16:F3:35:B1:2B:CC:53:AC:74:86:84:17
+
+Owner: CN=Zeus, OU=F-Droid
+Generated: 2026-09-15 via `fdroid init` (fdroidserver 2.4.2)
+
+Users should compare this fingerprint when adding the repo:
+  https://iamsrishanth.github.io/LastWave-Native/fdroid/repo
+
+Verify locally:
+  keytool -printcert -jarfile repo/index-v1.jar
