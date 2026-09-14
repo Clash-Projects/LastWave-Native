@@ -17,6 +17,8 @@ jobs:
   fdroid:
     name: Rebuild F-Droid repo index & deploy to Pages
     runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/lib/android-sdk
 
     steps:
       - name: Checkout (config, metadata, tools)
@@ -37,7 +39,8 @@ jobs:
       - name: Install fdroidserver
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-pip python3-venv
+          sudo apt-get install -y python3-pip python3-venv android-sdk-build-tools
+          ls /usr/lib/android-sdk/build-tools/*/apksigner || true
           # Ubuntu noble ships fdroidserver 2.2.1, whose androguard scan path
           # fails on AGP 8+ resources.arsc ("ResParserError: res1 must be
           # zero!"). 2.4.2 (Debian trixie) is verified working with these APKs,
