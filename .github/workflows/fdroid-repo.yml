@@ -66,22 +66,27 @@ jobs:
         id: rel
         env:
           GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          UPSTREAM_REPO: Clash-Projects/LastWave-Native
         run: |
+          set -euo pipefail
           TAG="${{ inputs.tag_name }}"
           if [ -z "$TAG" ]; then
-            TAG=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | python3 -c "import json,sys; print(json.load(sys.stdin)['tag_name'])")
+            TAG=$(python3 fdroid/tools/resolve_apk.py --print-tag --upstream "$UPSTREAM_REPO")
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Download release APK (universal)
         env:
           GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          UPSTREAM_REPO: Clash-Projects/LastWave-Native
         run: |
+          set -euo pipefail
           TAG="${{ steps.rel.outputs.tag }}"
-          URL=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG" \
-            | python3 -c "import json,sys; d=json.load(sys.stdin); assets=[a for a in d['assets'] if a['name'].endswith('.apk') and 'uncompressed' not in a['name'] and 'raw' not in a['name'] and 'android7' not in a['name']]; print(assets[0]['browser_download_url'])")
+          URL=$(python3 fdroid/tools/resolve_apk.py --tag "$TAG" --upstream "$UPSTREAM_REPO")
           echo "Downloading $URL"
-          curl -sL -o "fdroid/repo/LastWave-v${TAG}-universal.apk" "$URL"
+          curl -sL -H "Authorization: token $GH_TOKEN" -o "fdroid/repo/LastWave-v${TAG}-universal.apk" "$URL"
 
       - name: Rebuild repo index
         env:
