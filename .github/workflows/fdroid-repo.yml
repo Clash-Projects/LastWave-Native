@@ -37,7 +37,12 @@ jobs:
       - name: Install fdroidserver
         run: |
           sudo apt-get update
-          sudo apt-get install -y fdroidserver
+          sudo apt-get install -y fdroidserver python3-pip
+          # Ubuntu's packaged androguard fails on AGP 8+ resources.arsc
+          # ("ResParserError: res1 must be zero!"). 3.4.0a1 is the version
+          # shipped by Debian trixie and is verified working with these APKs.
+          sudo python3 -m pip install --break-system-packages "androguard==3.4.0a1"
+          python3 -c "import androguard; print('androguard', androguard.__version__)"
 
       - name: Restore repo signing keystore
         env:
