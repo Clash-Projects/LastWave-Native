@@ -1,0 +1,23 @@
+# F-Droid repo config for LastWave — committed TEMPLATE.
+# The REAL config.yml (same file with keystorepass/keypass filled in) is
+# generated at deploy time and NEVER committed. See fdroid/README.md.
+#
+# CI supplies secrets: FDROID_KEYSTORE_PASS, FDROID_KEY_PASS (workflow sed-replaces
+# the CHANGE_ME placeholders below).
+
+repo_url: https://iamsrishanth.github.io/LastWave-Native/fdroid/repo
+repo_name: LastWave
+repo_description: >-
+  LastWave updates — Hi-Res Lossless music streaming and player for Android.
+  Official release APKs, byte-identical to the upstream GitHub Releases, so
+  F-Droid and Droid-ify users can install and auto-update LastWave.
+repo_icon: lastwave_logo.png
+
+# Repo index signing key — generated once by `fdroid init`, must never change.
+keystore: fdroid/keystore.p12
+repo_keyalias: Zeus
+keydname: CN=Zeus, OU=F-Droid
+keystorepass: CHANGE_ME_FDROID_KEYSTORE_PASS
+keypass: CHANGE_ME_FDROID_KEY_PASS
+
+sdk_path: $ANDROID_HOME

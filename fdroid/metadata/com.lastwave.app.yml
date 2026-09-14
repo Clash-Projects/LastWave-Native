@@ -1,0 +1,41 @@
+Categories:
+  - Multimedia
+License: GPL-3.0-only
+AuthorName: Srishanth Goud
+AuthorEmail: lasabrosocafe2022@gmail.com
+WebSite: https://github.com/iamsrishanth/LastWave-Native
+SourceCode: https://github.com/duxtami/LastWave-native
+IssueTracker: https://github.com/duxtami/LastWave-native/issues
+Changelog: https://github.com/duxtami/LastWave-native/releases
+Name: LastWave
+Summary: Hi-Res Lossless music streaming & player with real-time synced lyrics
+Description: |-
+    LastWave is a native Android music streaming app engineered for audiophiles.
+    It delivers studio-quality Hi-Res Lossless FLAC (up to 24-bit/192kHz) and Opus
+    playback, offline downloads with full embedded metadata, kinetic real-time
+    synchronized lyrics, smart algorithmic playlist generation, and automatic
+    scrobbling across all your devices.
+
+    Built around Material 3 Expressive with an uncompromising audio fidelity
+    pipeline: bit-perfect USB DAC output, FFmpeg software decoding for every
+    supported codec, and Android Auto support.
+
+    <b>Features</b>
+    * Hi-Res Lossless FLAC streaming (up to 24-bit/192kHz) and Opus playback
+    * Bit-perfect USB DAC output routing
+    * Real-time kinetic synced lyrics (LRCLIB)
+    * Offline downloads with embedded metadata and cover art
+    * Smart algorithmic playlist generation
+    * Last.fm scrobbling across devices
+    * Android Auto and Cast support
+    * Home-screen Now Playing widget
+
+    <b>About this repository</b>
+    This custom F-Droid repo redistributes the official release APKs so that
+    F-Droid and Droid-ify users can install and auto-update LastWave. APKs are
+    byte-identical to the upstream GitHub Releases (same signing certificate).
+    Versions before 3.3.1 used a different signing key and are not included.
+AntiFeatures:
+  - NonFreeNet
+CurrentVersionCode: 17
+UpdateCheckMode: None

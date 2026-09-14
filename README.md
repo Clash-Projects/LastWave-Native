@@ -102,6 +102,20 @@ LastWave features a lossless streaming and download engine powered directly by t
 3. Connect your Last.fm account to sync your scrobbles, taste profile, and discovery feed.
 4. Start streaming in bit-perfect lossless quality.
 
+### <img src="https://api.iconify.design/lucide:store.svg?color=%23C6F100" width="20" height="20" align="center" /> Install & auto-update via F-Droid / Droid-ify
+
+A custom F-Droid repository serves the official release APKs with automatic updates:
+
+| Field | Value |
+|-------|-------|
+| **Repo URL** | `https://iamsrishanth.github.io/LastWave-Native/fdroid/repo` |
+| **Fingerprint (SHA-256)** | `F8 2B CE 41 6A 8F 3F 31 E0 88 58 64 FD D5 CB 4D 6D 8C 92 74 16 F3 35 B1 2B CC 53 AC 74 86 84 17` |
+
+- **F-Droid:** Settings → Repositories → `+` → paste the URL → OK. (On a phone, opening the URL in a browser triggers one-tap "Add to F-Droid".)
+- **Droid-ify:** Settings → Repos → `+` → paste the URL, then the fingerprint above.
+- APKs are byte-identical to the GitHub Releases (same signing certificate); versions before 3.3.1 used a different key and are not served here.
+- Repo config, metadata, and rebuild instructions live in [`fdroid/`](fdroid/README.md).
+
 ---
 
 ## <img src="https://api.iconify.design/lucide:terminal.svg?color=%23C6F100" width="20" height="20" align="center" /> Building from Source

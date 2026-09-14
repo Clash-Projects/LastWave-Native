@@ -1,0 +1,11 @@
+# F-Droid repo secrets and build output — never commit these, any branch
+config.yml
+keystore.p12
+keystore.jks
+*.keystore
+lastwave_logo.png
+repo/
+tmp/
+srclibs/
+.fdroid*
+FDROID_BACKUP/
