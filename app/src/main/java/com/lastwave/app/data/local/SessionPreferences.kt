@@ -10,18 +10,24 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import com.lastwave.app.data.network.LastFmAppCredentials
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Bring-your-own-key: there is no shared Last.fm key anywhere in the app.
+ * [apiKey]/[apiSecret] are blank until the user pastes their own key
+ * (created at last.fm/api/account/create) in Settings → Integrations.
+ * Every Last.fm call site treats a blank key as "no key" and skips itself.
+ */
 data class SessionData(
-    val apiKey: String = LastFmAppCredentials.API_KEY,
-    val apiSecret: String = LastFmAppCredentials.API_SECRET,
+    val apiKey: String = "",
+    val apiSecret: String = "",
     val sessionKey: String = "",
     val username: String = "",
     val isLoaded: Boolean = true,
 ) {
     val isAuthenticated: Boolean get() = isLoaded && username.isNotBlank()
+    val hasApiKey: Boolean get() = apiKey.isNotBlank() && apiSecret.isNotBlank()
 }
 
 @Singleton
@@ -43,8 +49,8 @@ class SessionPreferences @Inject constructor(
             val storedKey = p.readSafely(Keys.API_KEY)
             val storedSecret = p.readSafely(Keys.API_SECRET)
             SessionData(
-                apiKey = if (!storedKey.isNullOrBlank()) storedKey else LastFmAppCredentials.API_KEY,
-                apiSecret = if (!storedSecret.isNullOrBlank()) storedSecret else LastFmAppCredentials.API_SECRET,
+                apiKey = storedKey ?: "",
+                apiSecret = storedSecret ?: "",
                 sessionKey = p.readSafely(Keys.SESSION_KEY) ?: "",
                 username = p.readSafely(Keys.USERNAME) ?: "",
                 isLoaded = true,
@@ -53,8 +59,8 @@ class SessionPreferences @Inject constructor(
         scope = externalScope,
         started = SharingStarted.Eagerly,
         initialValue = SessionData(
-            apiKey = LastFmAppCredentials.API_KEY,
-            apiSecret = LastFmAppCredentials.API_SECRET,
+            apiKey = "",
+            apiSecret = "",
             sessionKey = "",
             username = "",
             isLoaded = false,
@@ -63,7 +69,48 @@ class SessionPreferences @Inject constructor(
 
     val currentSession: SessionData get() = session.value
 
-    suspend fun saveSession(username: String, sessionKey: String = "", apiKey: String = LastFmAppCredentials.API_KEY, apiSecret: String = LastFmAppCredentials.API_SECRET) {
+    /**
+     * Guest mode is the account-free onboarding path: the user skips both
+     * YouTube Music and Last.fm and enters MainShell immediately. It is
+     * persisted in the same DataStore so a previously-selected guest session
+     * skips Login on the next cold start (see NavGraph LaunchGate). Any real
+     * sign-in (YouTube or Last.fm) clears it; see [saveSession]/[setSignedIn].
+     */
+    val guestMode: StateFlow<Boolean> = dataStore.data
+        .recoverPreferences("SessionPreferences.guestMode")
+        .map { p -> p.readSafely(Keys.GUEST_MODE) ?: false }
+        .stateIn(
+            scope = externalScope,
+            started = SharingStarted.Eagerly,
+            initialValue = false,
+        )
+
+    val isGuestMode: Boolean get() = guestMode.value
+
+    /** Enter account-free guest mode, clearing any stale Last.fm identity. */
+    suspend fun enterGuestMode() {
+        dataStore.edit {
+            it.remove(Keys.SESSION_KEY)
+            it.remove(Keys.USERNAME)
+            it[Keys.GUEST_MODE] = true
+        }
+    }
+
+    suspend fun setGuestMode(enabled: Boolean) {
+        dataStore.edit {
+            it[Keys.GUEST_MODE] = enabled
+            if (enabled) {
+                it.remove(Keys.SESSION_KEY)
+                it.remove(Keys.USERNAME)
+            }
+        }
+    }
+
+    suspend fun exitGuestMode() {
+        dataStore.edit { it[Keys.GUEST_MODE] = false }
+    }
+
+    suspend fun saveSession(username: String, sessionKey: String = "", apiKey: String = "", apiSecret: String = "") {
         dataStore.edit {
             it[Keys.USERNAME] = username.trim()
             it[Keys.SESSION_KEY] = sessionKey.trim()
@@ -103,8 +150,8 @@ class SessionPreferences @Inject constructor(
             it.remove(Keys.SESSION_KEY)
             it.remove(Keys.USERNAME)
             it[Keys.GUEST_MODE] = false
-            // API key/secret are intentionally kept — matches the web app's
-            // signOut(), which only clears the session, not the developer credentials.
+            // The user's own API key/secret are intentionally kept, so a
+            // disconnect never forces re-pasting the key to reconnect.
         }
     }
 

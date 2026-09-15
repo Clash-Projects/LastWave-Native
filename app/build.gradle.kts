@@ -77,12 +77,10 @@ android {
         val lyricsApiKey = resolveSecret("LYRICS_API_KEY", "API_KEY", "LYRICS_AUTH_TOKEN")
         buildConfigField("byte[]", "LYRICS_API_KEY_BYTES", obfuscateSecret(lyricsApiKey))
 
-        val lastfmApiKey = resolveSecret("LASTFM_API_KEY").ifBlank { "2e00eb783c677abeab81e99c99be74e1" }
-        buildConfigField("byte[]", "LASTFM_API_KEY_BYTES", obfuscateSecret(lastfmApiKey))
-
-        val lastfmApiSecret = resolveSecret("LASTFM_API_SECRET").ifBlank { "b7e562de696f17fdfde7c448f02b599f" }
-        buildConfigField("byte[]", "LASTFM_API_SECRET_BYTES", obfuscateSecret(lastfmApiSecret))
-
+        // No shared Last.fm key: bring-your-own-key model. Everyone creates
+        // their own key at last.fm/api/account/create and pastes it in
+        // Settings → Integrations / Scrobbling. Nothing Last.fm-related is
+        // baked into the build.
         buildConfigField("byte[]", "SECRET_MASK_BYTES", maskLiteral)
 
         externalNativeBuild {

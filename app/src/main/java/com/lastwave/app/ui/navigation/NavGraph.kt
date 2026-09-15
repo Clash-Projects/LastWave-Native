@@ -37,26 +37,80 @@ import com.lastwave.app.ui.common.PredictiveBackScreen
 import com.lastwave.app.ui.common.ExpressiveLoadingIndicator
 import com.lastwave.app.ui.common.ExpressiveMotion
 import com.lastwave.app.ui.genres.GenreExplorer
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.flow.stateIn
 
 /** Thin bridge so LastWaveNavHost (a plain composable, no direct Hilt
  *  singleton access) can observe GenreExplorer's pending genre and
  *  navigate — same reasoning as MainShellViewModel's bridge to
  *  MixLauncher. */
 @HiltViewModel
-class GenreExplorerNavBridge @Inject constructor(genreExplorer: GenreExplorer) : androidx.lifecycle.ViewModel() {
+class GenreExplorerNavBridge @Inject constructor(genreExplorer: GenreExplorer) : ViewModel() {
     val pendingGenre = genreExplorer.pendingGenre
 }
 
 @HiltViewModel
-class MixLauncherNavBridge @Inject constructor(val mixLauncher: com.lastwave.app.ui.generate.MixLauncher) : androidx.lifecycle.ViewModel()
+class MixLauncherNavBridge @Inject constructor(val mixLauncher: com.lastwave.app.ui.generate.MixLauncher) : ViewModel()
 
 @HiltViewModel
-class ArtistAlbumNavBridge @Inject constructor(val navigator: ArtistAlbumNavigator) : androidx.lifecycle.ViewModel()
+class ArtistAlbumNavBridge @Inject constructor(val navigator: ArtistAlbumNavigator) : ViewModel()
 
 @HiltViewModel
-class AppRouteNavBridge @Inject constructor(val routeNavigator: AppRouteNavigator) : androidx.lifecycle.ViewModel()
+class AppRouteNavBridge @Inject constructor(val routeNavigator: AppRouteNavigator) : ViewModel()
+
+/**
+ * Splash / onboarding gate for the YouTube Music-first flow.
+ *
+ * Routes to MainShell when ANY onboarding signal is present:
+ *  - a Last.fm session (legacy [AuthState.SignedIn]), OR
+ *  - a YouTube Music connection (cookies captured via YtMusicAuthManager), OR
+ *  - a previously-selected guest mode (account-free).
+ * Otherwise routes to Login, which now shows only "Login with YouTube Music"
+ * and "Continue as Guest".
+ */
+@HiltViewModel
+class LaunchGateViewModel @Inject constructor(
+    authRepository: com.lastwave.app.data.repository.AuthRepository,
+    sessionPreferences: com.lastwave.app.data.local.SessionPreferences,
+    ytAuthManager: com.lastwave.app.data.ytmusic.YtMusicAuthManager,
+) : ViewModel() {
+    sealed interface GateTarget {
+        data object Loading : GateTarget
+        data object Login : GateTarget
+        data object MainShell : GateTarget
+    }
+
+    val gateTarget: kotlinx.coroutines.flow.StateFlow<GateTarget> =
+        kotlinx.coroutines.flow.combine(
+            authRepository.authState,
+            sessionPreferences.session,
+            sessionPreferences.guestMode,
+            ytAuthManager.connection,
+        ) { authState, session, guestMode, ytConnection ->
+            // Wait for DataStore to load before deciding; otherwise every
+            // cold start would flash Login.
+            if (!session.isLoaded) {
+                GateTarget.Loading
+            } else if (authState is AuthState.Unknown) {
+                GateTarget.Loading
+            } else if (authState is AuthState.SignedIn) {
+                GateTarget.MainShell
+            } else if (guestMode) {
+                GateTarget.MainShell
+            } else if (ytConnection.isConnected) {
+                GateTarget.MainShell
+            } else {
+                GateTarget.Login
+            }
+        }.stateIn(
+            scope = viewModelScope,
+            started = kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000),
+            initialValue = GateTarget.Loading,
+        )
+}
 
 @Composable
 fun LastWaveNavHost(
@@ -132,27 +186,22 @@ fun LastWaveNavHost(
     ) {
 
         // Resolves the persisted session BEFORE showing any interactive UI.
-        // This is what makes login persistent: without this gate, the app
-        // used to start directly on the Login route and only redirect away
-        // reactively once DataStore's first read arrived — meaning every
-        // cold start visibly showed the login form for a moment, and felt
-        // like being asked to log in again even though it wasn't. Now we
-        // wait for AuthState to resolve to something other than Unknown
-        // before deciding where to go, so a valid session skips Login
-        // completely and a real logged-out state is the only way to see it.
+        // YouTube Music-first gate: MainShell when Last.fm signed in OR
+        // YouTube Music connected OR guest mode was previously selected.
+        // This keeps login persistent without flashing Login on cold start.
         composable(Screen.Splash.route) {
-            val authViewModel: AuthViewModel = hiltViewModel()
-            val authState by authViewModel.authState.collectAsStateWithLifecycle()
+            val gateViewModel: LaunchGateViewModel = hiltViewModel()
+            val gateTarget by gateViewModel.gateTarget.collectAsStateWithLifecycle()
 
-            LaunchedEffect(authState) {
-                when (authState) {
-                    is AuthState.SignedIn -> navController.navigate(Screen.MainShell.route) {
+            LaunchedEffect(gateTarget) {
+                when (gateTarget) {
+                    LaunchGateViewModel.GateTarget.MainShell -> navController.navigate(Screen.MainShell.route) {
                         popUpTo(Screen.Splash.route) { inclusive = true }
                     }
-                    AuthState.SignedOut, is AuthState.Error -> navController.navigate(Screen.Login.route) {
+                    LaunchGateViewModel.GateTarget.Login -> navController.navigate(Screen.Login.route) {
                         popUpTo(Screen.Splash.route) { inclusive = true }
                     }
-                    else -> Unit // still Unknown — keep waiting
+                    LaunchGateViewModel.GateTarget.Loading -> Unit // keep waiting
                 }
             }
 
@@ -161,29 +210,37 @@ fun LastWaveNavHost(
 
         composable(Screen.Login.route) {
             val authViewModel: AuthViewModel = hiltViewModel()
-            val authState by authViewModel.authState.collectAsStateWithLifecycle()
+            val gateViewModel: LaunchGateViewModel = hiltViewModel()
+            val gateTarget by gateViewModel.gateTarget.collectAsStateWithLifecycle()
             val webAuthState by authViewModel.webAuthState.collectAsStateWithLifecycle()
 
-            // Real one-tap sign-in now: tap Connect, approve in an
-            // embedded WebView, done — see AuthViewModel/LoginScreen for
-            // the full flow. No credentials form to fill in here anymore.
-            LaunchedEffect(authState, webAuthState) {
-                if (authState is AuthState.SignedIn && webAuthState == com.lastwave.app.ui.auth.WebAuthState.Idle) {
+            // YouTube Music-first onboarding: any onboarded signal (Last.fm
+            // session, YT connection, or guest flag) skips straight to
+            // MainShell. YT login returns here via YouTubeLogin's onConnected
+            // pop, then this effect immediately forwards to MainShell.
+            LaunchedEffect(gateTarget, webAuthState) {
+                if (gateTarget == LaunchGateViewModel.GateTarget.MainShell &&
+                    webAuthState == com.lastwave.app.ui.auth.WebAuthState.Idle
+                ) {
                     navController.navigate(Screen.MainShell.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
                 }
             }
 
+            val restoreError = (webAuthState as? com.lastwave.app.ui.auth.WebAuthState.Error)?.message
+            val restoring = webAuthState == com.lastwave.app.ui.auth.WebAuthState.RestoringBackup
             LoginScreen(
-                authState = authState,
-                webAuthState = webAuthState,
-                onBeginSignIn = authViewModel::beginSignIn,
-                onReturnedFromBrowser = authViewModel::onReturnedFromBrowser,
-                onCancelWebAuth = authViewModel::cancelSignIn,
-                onSignOut = authViewModel::signOut,
-                onRestoreBackupAndSignIn = authViewModel::beginRestoreAndSignIn,
+                onLoginWithYouTube = {
+                    navController.navigate(Screen.YouTubeLogin.route)
+                },
+                onContinueAsGuest = {
+                    authViewModel.continueAsGuest()
+                },
+                onRestoreBackupAndSignIn = authViewModel::restoreBackupOnly,
                 onDismissError = authViewModel::dismissError,
+                errorMessage = restoreError,
+                isBusy = restoring,
                 onOpenDownloads = {
                     navController.navigate(Screen.Downloads.route)
                 },

@@ -265,7 +265,25 @@ fun SettingsScreen(
     val hiddenYtLibraryPlaylistIds by viewModel.hiddenYtLibraryPlaylistIds.collectAsStateWithLifecycle()
     val eq by viewModel.equalizer.collectAsStateWithLifecycle()
     val updateInfo by viewModel.updateInfo.collectAsStateWithLifecycle()
+    val isLastFmConnected by viewModel.isLastFmConnected.collectAsStateWithLifecycle()
+    val hasApiKey by viewModel.hasApiKey.collectAsStateWithLifecycle()
+    val lastFmAuthUrl by viewModel.lastFmAuthUrl.collectAsStateWithLifecycle()
+    val lastFmConnecting by viewModel.lastFmConnecting.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    // Last.fm web auth (Settings → Integrations): open the auth URL in Custom
+    // Tabs the moment SettingsViewModel produces one.
+    androidx.compose.runtime.LaunchedEffect(lastFmAuthUrl) {
+        lastFmAuthUrl?.let { url ->
+            runCatching {
+                androidx.browser.customtabs.CustomTabsIntent.Builder().build()
+                    .launchUrl(context, android.net.Uri.parse(url))
+            }.onFailure {
+                viewModel.showToast("No browser available to connect Last.fm")
+                viewModel.cancelLastFmConnect()
+            }
+        }
+    }
     var showQualityDialog by remember { mutableStateOf(false) }
     var showDownloadQualityDialog by remember { mutableStateOf(false) }
     var showEqSheet by remember { mutableStateOf(false) }
@@ -339,11 +357,32 @@ fun SettingsScreen(
             modifier = Modifier.safeHorizontalContentPadding(),
         ) {
             item {
-                AccountCard(
-                    isSignedIn = session.username.isNotBlank(),
-                    username = session.username,
-                    onLogOut = { viewModel.logOut(onLoggedOut) },
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SectionLabel("Integrations / Scrobbling")
+                    // Last.fm is optional here — never a gate. Connected:
+                    // global scrobbles + stats sync. Disconnected: Stats and
+                    // recommendations run local-first from Room.
+                    LastFmIntegrationCard(
+                        isConnected = isLastFmConnected,
+                        username = session.username,
+                        connecting = lastFmConnecting,
+                        awaitingApproval = lastFmAuthUrl != null,
+                        hasApiKey = hasApiKey,
+                        onConnect = { viewModel.beginLastFmConnect() },
+                        onCancel = viewModel::cancelLastFmConnect,
+                        onDisconnect = viewModel::disconnectLastFm,
+                        onSaveKeys = viewModel::saveApiCredentials,
+                        onRemoveKey = viewModel::clearApiKey,
+                        onOpenCreateKeyPage = {
+                            runCatching {
+                                androidx.browser.customtabs.CustomTabsIntent.Builder().build()
+                                    .launchUrl(context, android.net.Uri.parse(LAST_FM_CREATE_KEY_URL))
+                            }.onFailure {
+                                viewModel.showToast("No browser available to open Last.fm")
+                            }
+                        },
+                    )
+                }
             }
 
             item {
@@ -2052,72 +2091,190 @@ private fun relativeTime(timestampMillis: Long): String {
     }
 }
 
+private const val LAST_FM_CREATE_KEY_URL = "https://www.last.fm/api/account/create"
+
 @Composable
-private fun AccountCard(
-    isSignedIn: Boolean,
+private fun LastFmIntegrationCard(
+    isConnected: Boolean,
     username: String,
-    onLogOut: () -> Unit,
+    connecting: Boolean,
+    awaitingApproval: Boolean,
+    hasApiKey: Boolean,
+    onConnect: () -> Unit,
+    onCancel: () -> Unit,
+    onDisconnect: () -> Unit,
+    onSaveKeys: (String, String) -> Unit,
+    onRemoveKey: () -> Unit,
+    onOpenCreateKeyPage: () -> Unit,
 ) {
-    var showLogoutConfirm by remember { mutableStateOf(false) }
+    var showDisconnectConfirm by remember { mutableStateOf(false) }
+    // No shared key exists, so the form starts open until a key is saved.
+    var showKeyForm by remember(hasApiKey) { mutableStateOf(!hasApiKey) }
+    var keyInput by remember { mutableStateOf("") }
+    var secretInput by remember { mutableStateOf("") }
 
     Card(
         shape = CardOuterShape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
         modifier = Modifier.fillMaxWidth().animateContentSize(),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center,
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    if (isSignedIn && username.isNotBlank()) username.take(1).uppercase() else "L",
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleMedium,
-                )
+                Box(
+                    Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        if (isConnected && username.isNotBlank()) username.take(1).uppercase() else "L",
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Last.fm",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        if (isConnected && username.isNotBlank()) username else "Not connected",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        if (isConnected) "Scrobbles sync globally • Stats from Last.fm"
+                        else "Optional • Stats use local listening when disconnected",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "Last.fm Account",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    if (username.isNotBlank()) username else "Not connected",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
+            when {
+                isConnected -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { showDisconnectConfirm = true },
+                            shape = ExpressivePillShape,
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Disconnect") }
+                    }
+                }
+                awaitingApproval || connecting -> {
+                    com.lastwave.app.ui.common.ExpressiveLoadingIndicator(
+                        message = if (connecting) "Connecting to Last.fm…" else "Waiting for approval in the browser…",
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    TextButton(onClick = onCancel) { Text("Cancel") }
+                }
+                else -> {
+                    Button(
+                        onClick = onConnect,
+                        enabled = hasApiKey,
+                        shape = ExpressivePillShape,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Connect Last.fm") }
+                    Text(
+                        if (hasApiKey) "Approve in your browser. You can disconnect anytime — Stats keep working locally."
+                        else "Add your API key below first, then connect.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
-            Spacer(Modifier.width(8.dp))
-            FilledTonalIconButton(
-                onClick = { showLogoutConfirm = true },
-                colors = IconButtonDefaults.filledTonalIconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                ),
-            ) {
-                Icon(Icons.Filled.Logout, contentDescription = "Log out")
+
+            // ── Bring-your-own-key (required, no shared key): Last.fm
+            //    rate-limits per API key, so each person adds their own key
+            //    here before connecting.
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "API key",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            if (hasApiKey) "Your key is saved"
+                            else "Required — get one free, then paste it here",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = { showKeyForm = !showKeyForm }) {
+                        Text(if (showKeyForm) "Hide" else if (hasApiKey) "Change" else "Add key")
+                    }
+                }
+                if (showKeyForm) {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = keyInput,
+                        onValueChange = { keyInput = it.trim() },
+                        label = { Text("API key (32 chars)") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    androidx.compose.material3.OutlinedTextField(
+                        value = secretInput,
+                        onValueChange = { secretInput = it.trim() },
+                        label = { Text("Shared secret") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = {
+                                onSaveKeys(keyInput, secretInput)
+                                keyInput = ""
+                                secretInput = ""
+                                showKeyForm = false
+                            },
+                            enabled = keyInput.length >= 16 && secretInput.length >= 16,
+                            shape = ExpressivePillShape,
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Save key") }
+                        if (hasApiKey) {
+                            OutlinedButton(
+                                onClick = onRemoveKey,
+                                shape = ExpressivePillShape,
+                            ) { Text("Remove") }
+                        }
+                    }
+                    TextButton(onClick = onOpenCreateKeyPage) {
+                        Text("Get a free key at last.fm/api →")
+                    }
+                } else {
+                    TextButton(onClick = onOpenCreateKeyPage) {
+                        Text("How to get a free key →")
+                    }
+                }
             }
         }
     }
 
-    if (showLogoutConfirm) {
+    if (showDisconnectConfirm) {
         AlertDialog(
-            onDismissRequest = { showLogoutConfirm = false },
-            title = { Text(stringResource(R.string.dialog_logout_title)) },
-            text = { Text(stringResource(R.string.dialog_logout_text)) },
-            confirmButton = { TextButton(onClick = { showLogoutConfirm = false; onLogOut() }) { Text(stringResource(R.string.common_log_out)) } },
-            dismissButton = { TextButton(onClick = { showLogoutConfirm = false }) { Text(stringResource(R.string.common_cancel)) } },
+            onDismissRequest = { showDisconnectConfirm = false },
+            title = { Text("Disconnect Last.fm?") },
+            text = { Text("Global scrobbles pause. Your Stats switch to local listening history — nothing is deleted.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDisconnectConfirm = false
+                    onDisconnect()
+                }) { Text("Disconnect") }
+            },
+            dismissButton = { TextButton(onClick = { showDisconnectConfirm = false }) { Text("Cancel") } },
         )
     }
 }

@@ -155,6 +155,16 @@ class FeedRepository @Inject constructor(
         val likedSongsIdDef = async(Dispatchers.IO) {
             runCatching { playlistRepository.ensureLikedSongs().id }.getOrNull()
         }
+        // Local-first fallback for guest/disconnected: liked songs + saved
+        // playlist tracks from Room (on-device history proxy). Never throws.
+        val localLibraryDef = async(Dispatchers.IO) {
+            runCatching {
+                val liked = playlistRepository.getLikedSongs()?.tracks.orEmpty()
+                val saved = playlistRepository.getAll().flatMap { it.tracks }
+                (liked + saved).filter { it.name.isNotBlank() && it.artist.isNotBlank() }
+                    .distinctBy { it.key }
+            }.getOrDefault(emptyList())
+        }
         // Real Last.fm albums for the taste — fetched up-front in parallel.
         // Never derive albums from per-track `album` strings here: those are
         // usually just the single name and open a whole different record.
@@ -177,9 +187,25 @@ class FeedRepository @Inject constructor(
         val ytTaste = ytTasteDef.await()
         val likedSongsId = likedSongsIdDef.await()
 
+        val localLibrary = localLibraryDef.await()
+        val localQuickPicks = localLibrary.map {
+            YouTubeMusicTrack(it.youtubeVideoIdOrNull().orEmpty(), it.name, it.artist, it.album, it.artworkUrl)
+        }
+
+        // Connected: personal mixes + taste signals + related artists lead.
+        // Guest/disconnected: local-first — liked + saved Room tracks plus
+        // accountless public trending (homeSongs/charts). Account-only
+        // shelves (ytLikedSongs) stay empty so the UI suppresses them.
         val ytLikedSongs = ytTaste?.likedTracks.orEmpty().ifEmpty { previous?.ytLikedSongs.orEmpty() }
+            .takeIf { isYtConnected } .orEmpty()
         val ytRecentSongs = ytTaste?.recentTracks.orEmpty().ifEmpty { previous?.ytRecentSongs.orEmpty() }
-        val ytQuickPicks = ytTaste?.feedTracks.orEmpty().ifEmpty { homeSongs }.ifEmpty { previous?.quickPicks.orEmpty() }
+            .takeIf { isYtConnected } .orEmpty()
+        val ytQuickPicks = if (isYtConnected) {
+            ytTaste?.feedTracks.orEmpty().ifEmpty { homeSongs }.ifEmpty { previous?.quickPicks.orEmpty() }
+        } else {
+            // Guest: local liked + public trending, never account-only.
+            (localQuickPicks + homeSongs).ifEmpty { previous?.quickPicks.orEmpty() }
+        }
 
         val affinity = tasteProfile?.artistAffinity.orEmpty()
         val previousPickIds = previous?.quickPicks.orEmpty().mapTo(mutableSetOf()) { it.videoId }
@@ -236,7 +262,11 @@ class FeedRepository @Inject constructor(
             ytLikedSongs.forEachIndexed { i, t -> add(t to trackScore(t, i, 2.2)) }
             ytRecentSongs.forEachIndexed { i, t -> add(t to trackScore(t, i, 1.6)) }
             regularPicks.forEachIndexed { i, t -> add(t to trackScore(t, i, 2.6)) }
+            // Local-first: liked + saved Room tracks score as personal picks
+            // for guest/disconnected so Quick Picks never looks generic.
+            localQuickPicks.forEachIndexed { i, t -> add(t to trackScore(t, i, 2.4)) }
             homeSongs.forEachIndexed { i, t -> add(t to trackScore(t, i, 1.2)) }
+            charts.forEachIndexed { i, t -> add(t to trackScore(t, i, 1.0)) }
         }
             .distinctBy { (t, _) -> t.artist.trim().lowercase() to t.title.trim().lowercase() }
             .sortedByDescending { it.second }
@@ -372,9 +402,9 @@ class FeedRepository @Inject constructor(
             .distinctBy { ArtistHelper.primaryArtist(it.artist).trim().lowercase() }.take(8)
             .map { FeedMix(title = "${ArtistHelper.primaryArtist(it.artist)} mix", seed = it) }
 
-        // Heavy rotation blends long-term taste + liked signals, scored by
-        // affinity so the shelf reflects who you actually replay — not just
-        // list position.
+        // Heavy rotation: connected blends long-term taste + liked signals;
+        // guest/disconnected builds it from local Room listening history
+        // (liked + saved) so "Heavy Rotation" never empties.
         val heavyCandidates = buildList {
             tasteProfile?.topTracksRaw?.forEachIndexed { i, t ->
                 val aff = ArtistHelper.splitArtists(t.artist).maxOfOrNull { affinity[it.trim().lowercase()] ?: 0.0 } ?: 0.0
@@ -390,10 +420,16 @@ class FeedRepository @Inject constructor(
                         ) to (12.0 / (1 + i / 6.0) + (affinity[ArtistHelper.primaryArtist(it.artist).trim().lowercase()] ?: 0.0) * 30),
                     )
                 }
+            // Local-first: Room liked + saved rank by affinity like taste.
+            localLibrary.forEachIndexed { i, t ->
+                val aff = ArtistHelper.splitArtists(t.artist).maxOfOrNull { affinity[it.trim().lowercase()] ?: 0.0 } ?: 0.0
+                add(t to (aff * 35 + 16.0 / (1 + i / 6.0)))
+            }
         }.distinctBy { (t, _) -> t.key }
             .sortedByDescending { it.second }
             .map { it.first }
         val heavyRotation = heavyCandidates.distinctBy(GeneratedTrack::key).take(15)
+            .ifEmpty { localLibrary.take(15) }
 
         // Preserve each provider's history order while sharing the existing shelf.
         val ytJumpCandidates = buildList {
@@ -413,7 +449,18 @@ class FeedRepository @Inject constructor(
         val lastFmJumpCandidates = recentTracks.map {
             it.copy(artist = ArtistRef(name = ArtistHelper.primaryArtist(it.artist.displayName)))
         }
-        val jumpCandidates = blend(ytJumpCandidates, lastFmJumpCandidates)
+        // Local-first "Jump Back In": Room liked + saved as recent history
+        // when Last.fm/YT history is unavailable (guest/offline).
+        val localJumpCandidates = localLibrary.take(20).map {
+            RecentTrack(
+                name = it.name,
+                artist = ArtistRef(name = ArtistHelper.primaryArtist(it.artist)),
+                album = ArtistRef(name = it.album.orEmpty()),
+                image = it.artworkUrl?.let { url -> listOf(ImageDto(url, "extralarge")) }.orEmpty(),
+                url = it.url,
+            )
+        }
+        val jumpCandidates = (blend(ytJumpCandidates, lastFmJumpCandidates) + localJumpCandidates)
             .distinctBy { it.artist.displayName.trim().lowercase() to it.name.trim().lowercase() }
         val jumpBackIn = diversify(jumpCandidates, { it.artist.displayName }, maxPerArtist = 2).take(15)
 

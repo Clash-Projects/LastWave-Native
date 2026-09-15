@@ -23,8 +23,10 @@ class LastFmTrackInfoProvider @Inject constructor(
     private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun fetchArtworkUrl(name: String, artist: String): String? {
-        val session = sessionPreferences.session.first()
-        val apiKey = session.apiKey.ifBlank { com.lastwave.app.data.network.LastFmAppCredentials.API_KEY }
+        // No shared key: without a personal key this provider abstains and
+        // the artwork chain falls through to iTunes/other providers.
+        val apiKey = sessionPreferences.session.first().apiKey
+        if (apiKey.isBlank()) return null
         val params = mapOf(
             "method" to "track.getInfo",
             "track" to name,

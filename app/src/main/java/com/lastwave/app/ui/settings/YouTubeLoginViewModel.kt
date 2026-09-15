@@ -25,6 +25,7 @@ class YouTubeLoginViewModel @Inject constructor(
     private val ytAuthManager: YtMusicAuthManager,
     private val innerTube: InnerTubeMusicApi,
     private val syncManager: YtMusicSyncManager,
+    private val sessionPreferences: com.lastwave.app.data.local.SessionPreferences,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(YouTubeLoginUiState())
@@ -51,6 +52,9 @@ class YouTubeLoginViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 ytAuthManager.connect(rawCookieHeader ?: return@launch, "", null, null)
+                // A successful YouTube Music login ends guest mode: the
+                // LaunchGate then routes on the YT connection itself.
+                runCatching { sessionPreferences.exitGuestMode() }
                 val info = runCatching { innerTube.fetchAccountInfo() }.getOrNull()
                 val displayName = info?.accountName ?: "Google account"
                 if (info != null) {

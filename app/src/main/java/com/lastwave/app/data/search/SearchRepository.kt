@@ -6,7 +6,6 @@ import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.local.SessionPreferences
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YouTubeMusicTrack
-import com.lastwave.app.data.network.LastFmAppCredentials
 import com.lastwave.app.data.network.LastFmApiService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
@@ -111,9 +110,10 @@ class SearchRepository @Inject constructor(
                     entityId = playlist.id,
                 )
             }
+            // No shared key: user search needs a personal key, otherwise empty.
             SearchTab.USERS -> {
-                val key = sessionPreferences.session.first().apiKey.ifBlank { com.lastwave.app.data.network.LastFmAppCredentials.API_KEY }
-                lookupUser(key, query)
+                val key = sessionPreferences.session.first().apiKey
+                if (key.isBlank()) emptyList() else lookupUser(key, query)
             }
         }.filter { it.name.isNotBlank() }
     }
@@ -156,8 +156,12 @@ class SearchRepository @Inject constructor(
                     )
                 }
             } else {
-                val similar = try {
-                    val apiKey = sessionPreferences.session.first().apiKey.ifBlank { LastFmAppCredentials.API_KEY }
+                // No shared key: without a personal key there is no Last.fm
+                // fallback — the YT radio above (empty here) is the result.
+                val apiKey = sessionPreferences.session.first().apiKey
+                if (apiKey.isBlank()) {
+                    emptyList()
+                } else try {
                     val response = api.get(
                         mapOf(
                             "method" to "track.getsimilar",
@@ -181,7 +185,6 @@ class SearchRepository @Inject constructor(
                 } catch (_: Exception) {
                     emptyList()
                 }
-                similar
             }
 
             val seedTitleKey = queueTitleKey(seedTitle)

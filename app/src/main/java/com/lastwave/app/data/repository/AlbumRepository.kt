@@ -5,7 +5,6 @@ import com.lastwave.app.data.model.AlbumPageData
 import com.lastwave.app.data.model.ArtistAlbumItem
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.network.LastFmApiService
-import com.lastwave.app.data.network.LastFmAppCredentials
 import com.lastwave.app.playback.PlayableTrack
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -154,8 +153,8 @@ class AlbumRepository @Inject constructor(
 
     private suspend fun fetchLastFmAlbumInfo(albumTitle: String, artistName: String): LastFmAlbumMeta? {
         val session = runCatching { sessionPreferences.session.first() }.getOrNull()
-        val apiKey = session?.apiKey?.takeIf(String::isNotBlank) ?: LastFmAppCredentials.API_KEY
-        if (apiKey.isBlank()) return null
+        // No shared key: without a personal key the YT Music path below is used.
+        val apiKey = session?.apiKey?.takeIf(String::isNotBlank) ?: return null
 
         val response = lastFmApi.get(
             mapOf(

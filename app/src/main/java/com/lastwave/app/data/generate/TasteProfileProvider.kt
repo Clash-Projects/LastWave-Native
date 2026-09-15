@@ -48,8 +48,10 @@ class TasteProfileProvider @Inject constructor(
     )
 
     private suspend fun call(params: Map<String, String>): JsonObject? {
-        val session = sessionPreferences.session.first()
-        val apiKey = session.apiKey.ifBlank { com.lastwave.app.data.network.LastFmAppCredentials.API_KEY }
+        // No shared key: blank means "no Last.fm" — callers treat null as
+        // absent taste and fall back to YouTube/local signals.
+        val apiKey = sessionPreferences.session.first().apiKey
+        if (apiKey.isBlank()) return null
         return try {
             val response = api.get(params + ("api_key" to apiKey) + ("format" to "json"))
             val body = response.body()?.string() ?: return null

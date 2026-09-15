@@ -25,15 +25,16 @@ import javax.inject.Inject
 
 private const val GENERATION_TIMEOUT_MS = 60_000L
 
-/** Port of generator.html's exact 8-mode list (data-mode attributes, in order). */
+/** Generator modes. YouTube Music is the primary engine; Last.fm only fills
+ *  gaps when connected, and guest/offline falls back to local + charts. */
 enum class GenerateMode(val label: String, val description: String, val storageValue: String) {
     TOP("Top Tracks", "Your most played tracks of all time", "top"),
     RECENT("Recent Tracks", "What you've been listening to lately", "recent"),
-    SIMILAR_TRACKS("Song Radio", "Related picks from Last.fm + YouTube Music", "similar-tracks"),
-    SIMILAR_ARTISTS("Similar Artists", "Cross-engine artist discovery", "similar-artists"),
-    TAG("By Tag / Genre", "Genre picks from Last.fm + YouTube Music", "tag"),
-    MIX("My Mix", "Smart blend of taste, radio & deep cuts", "mix"),
-    RECOMMENDATIONS("My Recommendation", "35 dual-engine discoveries", "recommendations"),
+    SIMILAR_TRACKS("Song Radio", "YouTube Music radio from any song", "similar-tracks"),
+    SIMILAR_ARTISTS("Similar Artists", "YouTube-first artist discovery", "similar-artists"),
+    TAG("By Tag / Genre", "YouTube-first genre picks", "tag"),
+    MIX("My Mix", "Your taste, mixes & local favorites", "mix"),
+    RECOMMENDATIONS("My Recommendation", "35 YouTube-first discoveries", "recommendations"),
     LIBRARY("My Library", "Re-discover the sounds of your past", "library"),
 }
 

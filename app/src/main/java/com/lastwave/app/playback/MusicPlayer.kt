@@ -2253,10 +2253,27 @@ class MusicPlayer @Inject constructor(
             try {
                 val seedVideoId = seed.videoId?.takeIf(String::isNotBlank)
                     ?: innerTube.findBestMatchOrNull(seed.title, seed.artist, prefetchStreams = false)?.videoId
+                    ?: runCatching { innerTube.fetchCharts().firstOrNull()?.videoId }.getOrNull()
                     ?: return@launch
 
                 radioUsedSeeds.add(seedVideoId)
-                val related = innerTube.fetchRelatedSongs(seedVideoId, limit = RADIO_QUEUE_BATCH_SIZE, prefetchStreams = false)
+                // Smoothly handles both YouTube Music connected and
+                // accountless states: fetchRelatedSongs works with or without
+                // cookies (InnerTube falls back to anonymous). When it comes
+                // back empty (offline / guest with no seed match), public
+                // charts + home songs keep the endless queue alive.
+                val relatedPrimary = runCatching {
+                    innerTube.fetchRelatedSongs(seedVideoId, limit = RADIO_QUEUE_BATCH_SIZE, prefetchStreams = false)
+                }.getOrDefault(emptyList())
+                val related = relatedPrimary.ifEmpty {
+                    if (!radioQueueActive) return@launch
+                    runCatching { innerTube.fetchCharts().take(RADIO_QUEUE_BATCH_SIZE) }
+                        .getOrDefault(emptyList())
+                        .ifEmpty {
+                            runCatching { innerTube.fetchHomeSongs().take(RADIO_QUEUE_BATCH_SIZE) }
+                                .getOrDefault(emptyList())
+                        }
+                }
                 if (related.isEmpty() || !radioQueueActive) return@launch
 
                 val seedTitleLower = seed.title.trim().lowercase()
@@ -2350,7 +2367,20 @@ class MusicPlayer @Inject constructor(
                     ?: return@launch
 
                 radioUsedSeeds.add(seedVideoId)
-                val related = innerTube.fetchRelatedSongs(seedVideoId, limit = RADIO_QUEUE_BATCH_SIZE, prefetchStreams = false)
+                // Same connected/accountless contract as startRadioQueue:
+                // related radio first, public charts/home as the offline pad.
+                val relatedPrimaryExtend = runCatching {
+                    innerTube.fetchRelatedSongs(seedVideoId, limit = RADIO_QUEUE_BATCH_SIZE, prefetchStreams = false)
+                }.getOrDefault(emptyList())
+                val related = relatedPrimaryExtend.ifEmpty {
+                    if (!radioQueueActive) return@launch
+                    runCatching { innerTube.fetchCharts().take(RADIO_QUEUE_BATCH_SIZE) }
+                        .getOrDefault(emptyList())
+                        .ifEmpty {
+                            runCatching { innerTube.fetchHomeSongs().take(RADIO_QUEUE_BATCH_SIZE) }
+                                .getOrDefault(emptyList())
+                        }
+                }
                 if (related.isEmpty() || !radioQueueActive) return@launch
 
                 val knownVideoIds = currentQueue.mapNotNullTo(mutableSetOf()) { it.videoId }

@@ -27,6 +27,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -117,6 +119,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.lastwave.app.ui.shell.FloatingNavDefaults
 import coil.compose.SubcomposeAsyncImage
+import com.lastwave.app.data.repository.HomeAlbum
+import com.lastwave.app.data.repository.HomeArtistItem
 import com.lastwave.app.data.repository.HomeSortMode
 import com.lastwave.app.data.repository.HomeTrack
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -205,12 +209,24 @@ fun HomeScreen(
                     .safeHorizontalContentPadding(),
             ) {
             HeaderRow(
-                displayUsername = if (uiState.isViewingFriend) uiState.viewingUsername else uiState.username,
+                displayUsername = when {
+                    uiState.isViewingFriend -> uiState.viewingUsername
+                    uiState.username.isNotBlank() -> uiState.username
+                    uiState.isLocalStatsMode -> "Guest"
+                    else -> uiState.username
+                },
                 isViewingFriend = uiState.isViewingFriend,
                 onClick = onOpenFriends,
                 viewModel = viewModel,
             )
             Spacer(Modifier.height(2.dp))
+
+            if (uiState.isLocalStatsMode && !uiState.isViewingFriend) {
+                LocalStatsBanner(
+                    onOpenSettings = onOpenSettings,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 8.dp),
+                )
+            }
 
             uiState.stats?.let { stats ->
                 StatsCard(
@@ -218,7 +234,19 @@ fun HomeScreen(
                     trackCount = stats.trackCount,
                     artistCount = stats.artistCount,
                     albumCount = stats.albumCount,
+                    // Honest label: local Room aggregates are plays, not global scrobbles.
+                    headlineLabel = if (uiState.isLocalStatsMode && !uiState.isViewingFriend) "Plays" else "Scrobbles",
                     onOpenGenres = onOpenGenres,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 0.dp),
+                )
+                Spacer(Modifier.height(12.dp))
+            }
+
+            if (uiState.topArtists.isNotEmpty() || uiState.topAlbums.isNotEmpty() || uiState.topTags.isNotEmpty()) {
+                PodiumSection(
+                    artists = uiState.topArtists,
+                    albums = uiState.topAlbums,
+                    tags = uiState.topTags,
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 0.dp),
                 )
                 Spacer(Modifier.height(12.dp))
@@ -488,6 +516,176 @@ private fun ProfileAvatar(avatarUrl: String?, modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun LocalStatsBanner(
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = modifier.fillMaxWidth(),
+        onClick = onOpenSettings,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Connect Last.fm in Settings to sync global scrobbles",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PodiumSection(
+    artists: List<HomeArtistItem>,
+    albums: List<HomeAlbum>,
+    tags: List<String>,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (artists.isNotEmpty()) {
+            PodiumSectionTitle("Top Artists")
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(horizontal = 2.dp),
+            ) {
+                items(artists, key = { "artist_${it.name.lowercase()}" }) { artist ->
+                    ArtistPodiumCard(artist)
+                }
+            }
+        }
+        if (albums.isNotEmpty()) {
+            PodiumSectionTitle("Top Albums")
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(horizontal = 2.dp),
+            ) {
+                items(albums, key = { "album_${it.artist.lowercase()}_${it.name.lowercase()}" }) { album ->
+                    AlbumPodiumCard(album)
+                }
+            }
+        }
+        if (tags.isNotEmpty()) {
+            PodiumSectionTitle("Genres")
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(horizontal = 2.dp),
+            ) {
+                items(tags, key = { "tag_$it" }) { tag ->
+                    Surface(
+                        shape = BadgePillShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ) {
+                        Text(
+                            tag.replaceFirstChar { c -> c.uppercase() },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PodiumSectionTitle(label: String) {
+    Text(
+        label,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.padding(start = 2.dp),
+    )
+}
+
+private fun formatPlays(count: Long): String =
+    if (count >= 1000) "%.1fk plays".format(count / 1000.0) else "$count plays"
+
+@Composable
+private fun ArtistPodiumCard(artist: HomeArtistItem) {
+    Column(
+        modifier = Modifier.width(84.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        ) {
+            ArtworkImage(
+                name = artist.name,
+                artist = artist.name,
+                embeddedUrl = artist.artworkUrl,
+                fallbackIcon = Icons.Filled.MusicNote,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            artist.name,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (artist.playCount > 0) {
+            Text(
+                formatPlays(artist.playCount),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AlbumPodiumCard(album: HomeAlbum) {
+    Column(
+        modifier = Modifier.width(96.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .clip(ArtworkShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        ) {
+            ArtworkImage(
+                name = album.name,
+                artist = album.artist,
+                embeddedUrl = album.artworkUrl,
+                fallbackIcon = Icons.Filled.MusicNote,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            album.name,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            album.artist,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
 private fun StatsCard(
     scrobbles: Long,
     trackCount: Long,
@@ -495,6 +693,7 @@ private fun StatsCard(
     albumCount: Long,
     onOpenGenres: () -> Unit,
     modifier: Modifier = Modifier,
+    headlineLabel: String = "Scrobbles",
 ) {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
@@ -529,7 +728,7 @@ private fun StatsCard(
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                             )
                             Text(
-                                "Scrobbles",
+                                headlineLabel,
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
                             )

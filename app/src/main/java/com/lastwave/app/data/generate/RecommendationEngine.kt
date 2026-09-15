@@ -513,16 +513,25 @@ class RecommendationEngine(
     }
 
     /** Main entry point for a complete recommendation set. [blacklist] is
-     *  strict; [familiarKeys] only lowers and caps already-saved songs. */
+     *  strict; [familiarKeys] only lowers and caps already-saved songs.
+     *  [youtubeCandidates] are YouTube Music-first discoveries (radio, mixes,
+     *  local seeds) that lead the pool at top weight — Last.fm sources refill
+     *  around them rather than interleaving 50/50. */
     suspend fun run(
         total: Int,
         profile: TasteProfile,
         blacklist: Set<String>,
         familiarKeys: Set<String> = emptySet(),
+        youtubeCandidates: List<GeneratedTrack> = emptyList(),
     ): List<GeneratedTrack> {
         onProgress("Reading your listening mood\u2026")
         val ctx = RecoContext(total, profile, blacklist)
-        ctx.addAll(profile.ytMusicFeedRaw.take(40), 3, "yt-feed")
+        // YouTube Music-first: personal feed + precomputed radio lead at
+        // weight 4, above every Last.fm source below.
+        ctx.addAll(profile.ytMusicFeedRaw.take(40), 4, "yt-feed")
+        if (youtubeCandidates.isNotEmpty()) {
+            ctx.addAll(youtubeCandidates.take(60), 4, "yt-radio")
+        }
 
         var cycle = 1
         var stalledCycles = 0

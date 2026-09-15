@@ -29,9 +29,17 @@ class AuthViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val authCallback: LastFmAuthCallbackCoordinator,
     private val backupRepository: BackupRepository,
+    private val sessionPreferences: com.lastwave.app.data.local.SessionPreferences,
 ) : ViewModel() {
 
     val authState: StateFlow<AuthState> = authRepository.authState
+
+    /**
+     * Guest onboarding state. True once the user taps "Continue as Guest";
+     * LaunchGate treats it as onboarded (skip Login) exactly like a YouTube
+     * Music connection or a Last.fm session.
+     */
+    val isGuestMode: StateFlow<Boolean> = sessionPreferences.guestMode
 
     private val _webAuthState = MutableStateFlow<WebAuthState>(WebAuthState.Idle)
     val webAuthState: StateFlow<WebAuthState> = _webAuthState.asStateFlow()
@@ -51,7 +59,12 @@ class AuthViewModel @Inject constructor(
     /** Opens Last.fm's callback-based web authorization flow. */
     fun beginSignIn() {
         pendingRestoreContent = null
-        _webAuthState.value = WebAuthState.AwaitingApproval(authRepository.authUrl())
+        val url = authRepository.authUrl()
+        if (url == null) {
+            _webAuthState.value = WebAuthState.Error("Add your Last.fm API key in Settings → Integrations first")
+            return
+        }
+        _webAuthState.value = WebAuthState.AwaitingApproval(url)
     }
 
     fun signInDirect(username: String) {
@@ -70,14 +83,57 @@ class AuthViewModel @Inject constructor(
     fun beginRestoreAndSignIn(content: String) {
         when (backupRepository.checkBackup(content)) {
             is BackupCheck.Valid -> {
+                val url = authRepository.authUrl()
+                if (url == null) {
+                    _webAuthState.value = WebAuthState.Error("Add your Last.fm API key in Settings → Integrations first")
+                    return
+                }
                 pendingRestoreContent = content
-                _webAuthState.value = WebAuthState.AwaitingApproval(authRepository.authUrl())
+                _webAuthState.value = WebAuthState.AwaitingApproval(url)
             }
             BackupCheck.UnsupportedSchema -> {
                 _webAuthState.value = WebAuthState.Error("This backup was created by a newer LastWave version")
             }
             BackupCheck.Invalid -> {
                 _webAuthState.value = WebAuthState.Error("That file is not a valid LastWave backup")
+            }
+        }
+    }
+
+    /**
+     * Onboarding restore path for the YouTube Music-first flow: restores the
+     * backup immediately without requiring Last.fm web auth. The LaunchGate
+     * then routes based on whatever session the backup itself contained
+     * (YouTube cookies, Last.fm session, or guest flag).
+     */
+    fun restoreBackupOnly(content: String) {
+        when (backupRepository.checkBackup(content)) {
+            BackupCheck.UnsupportedSchema -> {
+                _webAuthState.value = WebAuthState.Error("This backup was created by a newer LastWave version")
+                return
+            }
+            BackupCheck.Invalid -> {
+                _webAuthState.value = WebAuthState.Error("That file is not a valid LastWave backup")
+                return
+            }
+            is BackupCheck.Valid -> Unit
+        }
+        _webAuthState.value = WebAuthState.RestoringBackup
+        viewModelScope.launch {
+            _webAuthState.value = when (
+                val restoreResult = backupRepository.restore(
+                    content = content,
+                    preserveSignedInSession = false,
+                )
+            ) {
+                is RestoreResult.Success -> WebAuthState.Idle
+                RestoreResult.UnsupportedSchema -> WebAuthState.Error(
+                    "This backup was created by a newer LastWave version",
+                )
+                RestoreResult.InvalidFile -> WebAuthState.Error(
+                    "That file is not a valid LastWave backup",
+                )
+                is RestoreResult.Failed -> WebAuthState.Error(restoreResult.message)
             }
         }
     }
@@ -135,6 +191,24 @@ class AuthViewModel @Inject constructor(
 
     fun signOut() {
         viewModelScope.launch { authRepository.signOut() }
+    }
+
+    /**
+     * Account-free onboarding: persist guest mode so the next cold start
+     * skips Login entirely. Any later YouTube Music connect or Last.fm
+     * sign-in clears it (see SessionPreferences.saveSession/setSignedIn and
+     * YouTubeLoginViewModel).
+     */
+    fun continueAsGuest() {
+        viewModelScope.launch {
+            runCatching { sessionPreferences.enterGuestMode() }
+        }
+    }
+
+    fun exitGuestMode() {
+        viewModelScope.launch {
+            runCatching { sessionPreferences.exitGuestMode() }
+        }
     }
 
     fun dismissError() {

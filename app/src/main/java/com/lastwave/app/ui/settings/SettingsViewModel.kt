@@ -76,6 +76,7 @@ data class SettingsScreenState(
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val authRepository: AuthRepository,
+    private val authCallback: com.lastwave.app.data.repository.LastFmAuthCallbackCoordinator,
     private val sessionPreferences: SessionPreferences,
     private val themeRepository: ThemeRepository,
     private val settingsPreferences: SettingsPreferences,
@@ -239,8 +240,108 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    // ── Integrations / Scrobbling: Last.fm is optional and lives here, not
+    //    in onboarding. Bring-your-own-key with no shared key: everyone
+    //    pastes their own API key/secret (created at last.fm/api/account/
+    //    create) before connecting. Connect/disconnect anytime; stats +
+    //    scrobbling degrade to local-first when disconnected. ──
+
+    /** True when a Last.fm username is persisted (scrobbles sync globally). */
+    val isLastFmConnected: StateFlow<Boolean> = session
+        .map { it.username.isNotBlank() }
+        .stateIn(viewModelScope, SettingsSharing, false)
+
+    /**
+     * True when the user pasted their own API key + secret. There is no
+     * shared key: web auth and every Last.fm call require this.
+     */
+    val hasApiKey: StateFlow<Boolean> = session
+        .map { it.apiKey.isNotBlank() && it.apiSecret.isNotBlank() }
+        .stateIn(viewModelScope, SettingsSharing, false)
+
     fun saveApiCredentials(apiKey: String, apiSecret: String) {
-        launchSettingsAction("save API credentials") { authRepository.saveApiCredentials(apiKey, apiSecret) }
+        val key = apiKey.trim()
+        val secret = apiSecret.trim()
+        if (key.length < 16 || secret.length < 16) {
+            _uiState.update { it.copy(toastMessage = "That key/secret looks too short — check both fields") }
+            return
+        }
+        launchSettingsAction("save API credentials") {
+            authRepository.saveApiCredentials(key, secret)
+            _uiState.update { it.copy(toastMessage = "API key saved — now connect Last.fm") }
+        }
+    }
+
+    /** Forgets the saved key (e.g. it was revoked). Reconnecting needs a key again. */
+    fun clearApiKey() {
+        launchSettingsAction("remove the API key") {
+            sessionPreferences.setApiCredentials("", "")
+            _uiState.update { it.copy(toastMessage = "API key removed") }
+        }
+    }
+
+    /** Pending Last.fm web-auth URL for Settings to open in Custom Tabs. Null when idle. */
+    private val _lastFmAuthUrl = MutableStateFlow<String?>(null)
+    val lastFmAuthUrl: StateFlow<String?> = _lastFmAuthUrl.asStateFlow()
+
+    private val _lastFmConnecting = MutableStateFlow(false)
+    val lastFmConnecting: StateFlow<Boolean> = _lastFmConnecting.asStateFlow()
+
+    init {
+        // Complete Settings-initiated Last.fm web auth from the app callback.
+        // AuthViewModel observes the same singleton for the (legacy) login
+        // path; both funnel through AuthRepository.completeWebAuth.
+        viewModelScope.launch {
+            authCallback.pendingToken.collect { token ->
+                token ?: return@collect
+                if (_lastFmAuthUrl.value == null && !_lastFmConnecting.value) return@collect
+                authCallback.consume(token)
+                _lastFmConnecting.value = true
+                try {
+                    val result = authRepository.completeWebAuth(token)
+                    if (result.isFailure) {
+                        _uiState.update {
+                            it.copy(toastMessage = result.exceptionOrNull()?.message ?: "Could not connect Last.fm")
+                        }
+                    } else {
+                        runCatching { sessionPreferences.exitGuestMode() }
+                        _uiState.update { it.copy(toastMessage = "Last.fm connected") }
+                    }
+                } finally {
+                    _lastFmConnecting.value = false
+                    _lastFmAuthUrl.value = null
+                }
+            }
+        }
+    }
+
+    /** Starts Last.fm web auth; the URL flows to Settings via [lastFmAuthUrl]. */
+    fun beginLastFmConnect() {
+        val url = authRepository.authUrl()
+        if (url == null) {
+            _uiState.update { it.copy(toastMessage = "Paste your API key below first — then connect") }
+            return
+        }
+        _lastFmAuthUrl.value = url
+    }
+
+    fun cancelLastFmConnect() {
+        _lastFmAuthUrl.value = null
+        _lastFmConnecting.value = false
+    }
+
+    fun onReturnedFromBrowser() {
+        authCallback.pendingToken.value?.let { token ->
+            // Collected by the init observer above; this is a resume fallback.
+        }
+    }
+
+    fun disconnectLastFm() {
+        launchSettingsAction("disconnect Last.fm") {
+            authRepository.signOut()
+            _lastFmAuthUrl.value = null
+            _uiState.update { it.copy(toastMessage = "Last.fm disconnected — using local stats") }
+        }
     }
 
     fun logOut(onComplete: () -> Unit) {

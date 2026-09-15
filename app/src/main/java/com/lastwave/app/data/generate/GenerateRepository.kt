@@ -74,7 +74,11 @@ class GenerateRepository @Inject constructor(
     // for the same request at the same time, never a longer-lived/stale
     suspend fun call(params: Map<String, String>): JsonObject {
         val session = sessionPreferences.session.first()
-        val apiKey = session.apiKey.ifBlank { com.lastwave.app.data.network.LastFmAppCredentials.API_KEY }
+        // No shared key: every caller already guards on key presence (or
+        // degrades to YouTube/local), so a blank key here is a hard error
+        // rather than a silent anonymous call.
+        val apiKey = session.apiKey
+        if (apiKey.isBlank()) throw IllegalStateException("Add your Last.fm API key in Settings → Integrations")
         val requestParams = params + ("api_key" to apiKey) + ("format" to "json")
         // Keep the in-flight key deterministic without retaining the private
         // API key in memory longer than the request itself.
@@ -154,16 +158,147 @@ class GenerateRepository @Inject constructor(
         album = album,
     )
 
+    /**
+     * YouTube Music-first blend (replaces the old 50/50 Last.fm interleave).
+     * YouTube candidates always lead; Last.fm only fills gaps that YouTube
+     * didn't cover. Guest/offline callers pass an empty [lastFm] and get a
+     * pure YouTube + local mix.
+     */
     private fun blendSources(
         youtube: List<GeneratedTrack>,
         lastFm: List<GeneratedTrack>,
+    ): List<GeneratedTrack> = youtubeFirstBlend(youtube, lastFm)
+
+    private fun youtubeFirstBlend(
+        youtube: List<GeneratedTrack>,
+        lastFm: List<GeneratedTrack>,
     ): List<GeneratedTrack> {
-        val blended = ArrayList<GeneratedTrack>(youtube.size + lastFm.size)
-        repeat(maxOf(youtube.size, lastFm.size)) { index ->
-            youtube.getOrNull(index)?.let(blended::add)
-            lastFm.getOrNull(index)?.let(blended::add)
+        if (youtube.isEmpty()) return deduplicate(lastFm)
+        if (lastFm.isEmpty()) return deduplicate(youtube)
+        val seen = mutableSetOf<String>()
+        val out = ArrayList<GeneratedTrack>(youtube.size + lastFm.size)
+        for (t in youtube) {
+            if (seen.add(t.key)) out.add(t)
         }
-        return deduplicate(blended)
+        for (t in lastFm) {
+            if (seen.add(t.key)) out.add(t)
+        }
+        return out
+    }
+
+    /** True when Last.fm can be used as a supplementary source. Guest mode
+     *  and signed-out states never touch Last.fm — they stay local-first. */
+    private suspend fun isLastFmAvailable(): Boolean {
+        val session = sessionPreferences.session.first()
+        if (session.username.isBlank() || session.username.equals("Guest User", ignoreCase = true)) return false
+        return true
+    }
+
+    /**
+     * Local-first seed pool for guest/offline mixes: liked songs + saved
+     * playlist tracks from Room (the on-device listening history proxy),
+     * shuffled. Callers combine this with accountless InnerTube charts /
+     * home songs when YouTube Music is unavailable.
+     */
+    private suspend fun localSeedPool(limit: Int = 40): List<GeneratedTrack> {
+        if (limit <= 0) return emptyList()
+        return try {
+            val liked = try {
+                playlistRepository.getLikedSongs()?.tracks.orEmpty()
+            } catch (_: Exception) { emptyList() }
+            val saved = try {
+                playlistRepository.getAll().flatMap { it.tracks }
+            } catch (_: Exception) { emptyList() }
+            (liked + saved)
+                .filter { it.name.isNotBlank() && it.artist.isNotBlank() }
+                .distinctBy { it.key }
+                .shuffled()
+                .take(limit)
+        } catch (_: Exception) { emptyList() }
+    }
+
+    /** Accountless public fallback: home songs, then charts. Never throws. */
+    private suspend fun publicChartsFallback(limit: Int): List<GeneratedTrack> {
+        if (limit <= 0) return emptyList()
+        return try {
+            val home = runCatching { innerTube.fetchHomeSongs() }.getOrDefault(emptyList())
+            val charts = if (home.size < limit) {
+                runCatching { innerTube.fetchCharts() }.getOrDefault(emptyList())
+            } else emptyList()
+            (home + charts).map { it.toGeneratedTrack() }.distinctBy { it.key }.take(limit)
+        } catch (_: Exception) { emptyList() }
+    }
+
+    /**
+     * Guest / offline mix builder: local Room seeds (liked + saved) expanded
+     * through accountless YouTube radio, padded with public charts. Used when
+     * YouTube Music is unavailable and whenever Last.fm is disconnected.
+     */
+    suspend fun fetchLocalFallbackMix(limit: Int): List<GeneratedTrack> {
+        val seeds = localSeedPool(limit = 8)
+        val radio = mutableListOf<GeneratedTrack>()
+        for (seed in seeds.take(3)) {
+            try {
+                radio += fetchYouTubeRadio(seed.name, seed.artist, seed.youtubeVideoIdOrNull(), limit = 12)
+            } catch (_: Exception) { }
+            if (radio.size >= limit) break
+        }
+        val charts = publicChartsFallback(limit)
+        return deduplicate(filterRecommendationExclusions(radio + seeds + charts)).take(limit)
+    }
+
+    /**
+     * YouTube Music-first mix from explicit seeds (radio generation entry
+     * point). Each seed expands via [InnerTubeMusicApi.fetchRelatedSongs];
+     * local Room seeds + public charts pad thin results so guest/offline
+     * never returns short.
+     */
+    suspend fun generateMixFromSeeds(
+        seeds: List<GeneratedTrack>,
+        count: Int,
+        onProgress: (String) -> Unit = {},
+    ): List<GeneratedTrack> = kotlinx.coroutines.supervisorScope {
+        val target = count.coerceIn(5, 50)
+        onProgress("Starting your mix with YouTube Music…")
+        val cleanSeeds = seeds.filter { it.name.isNotBlank() && it.artist.isNotBlank() }
+            .distinctBy { it.key }.shuffled().take(5)
+        if (cleanSeeds.isEmpty()) {
+            return@supervisorScope fetchLocalFallbackMix(target)
+        }
+        val jobs = cleanSeeds.map { seed ->
+            async(Dispatchers.IO) {
+                try {
+                    fetchYouTubeRadio(seed.name, seed.artist, seed.youtubeVideoIdOrNull(), limit = 20)
+                } catch (_: Exception) { emptyList() }
+            }
+        }
+        val radio = jobs.awaitAll().flatten()
+        var pool = deduplicate(filterRecommendationExclusions(radio)).toMutableList()
+        if (pool.size < target) {
+            onProgress("Adding local favorites…")
+            val local = localSeedPool(limit = target).filterNot { it.key in pool.mapTo(mutableSetOf()) { t -> t.key } }
+            pool += local
+        }
+        if (pool.size < target) {
+            val charts = publicChartsFallback(target * 2)
+                .filterNot { c -> pool.any { it.key == c.key } }
+            pool += charts
+        }
+        // Last.fm is strictly supplementary and only when connected.
+        if (pool.size < target && runCatching { isLastFmAvailable() }.getOrDefault(false)) {
+            for (seed in cleanSeeds.take(2)) {
+                try {
+                    val result = call(
+                        mapOf("method" to "track.getsimilar", "track" to seed.name, "artist" to seed.artist, "limit" to "20"),
+                    )
+                    val extra = GenerateJson.normalise(result["similartracks"]?.jsonObject?.get("track"))
+                    val known = pool.mapTo(mutableSetOf()) { it.key }
+                    pool += extra.filter { it.key !in known }
+                } catch (_: Exception) { }
+                if (pool.size >= target) break
+            }
+        }
+        precheck(pool).take(target).ifEmpty { deduplicate(pool).take(target) }
     }
 
     private suspend fun resolveSeedVideoId(
@@ -656,11 +791,16 @@ class GenerateRepository @Inject constructor(
         val weighted = mutableListOf<Weighted>()
         val tasteProfile = runCatching { tasteProfileProvider.get() }.getOrNull()
         var topArtists: List<String> = tasteProfile?.topArtistsRaw.orEmpty()
+        val lastFmAvailable = runCatching { isLastFmAvailable() }.getOrDefault(false)
 
+        // ── Primary engine: YouTube Music (personal mixes, taste signals,
+        //    related radio) + local Room seeds. Last.fm below is strictly
+        //    supplementary and skipped entirely for guest/disconnected. ──
         val youtubeDiscovery = try {
             fetchYouTubeDiscovery(
-                seeds = tasteProfile?.recentTracksRaw.orEmpty() + tasteProfile?.topTracksRaw.orEmpty(),
-                limit = maxOf(12, total / 2).coerceAtMost(30),
+                seeds = tasteProfile?.recentTracksRaw.orEmpty() + tasteProfile?.topTracksRaw.orEmpty() +
+                    tasteProfile?.ytMusicRecentRaw.orEmpty() + tasteProfile?.ytMusicLikedRaw.orEmpty(),
+                limit = maxOf(20, total).coerceAtMost(40),
             )
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -668,16 +808,35 @@ class GenerateRepository @Inject constructor(
             Log.d(TAG, "YouTube mix source unavailable", error)
             emptyList()
         }
+        // Personal/public home mixes as seeds. Bounded to 2 playlists fetched
+        // in parallel so a slow playlist cannot stall the whole mix.
+        val homeMixSeeds = try {
+            val mixes = innerTube.fetchHomeMixes().take(2)
+            kotlinx.coroutines.coroutineScope {
+                mixes.map { mix ->
+                    async(Dispatchers.IO) {
+                        runCatching { innerTube.fetchPlaylist(mix.id, maxTracks = 6)?.tracks.orEmpty() }
+                            .getOrDefault(emptyList())
+                    }
+                }.awaitAll().flatten()
+            }.map { it.toGeneratedTrack() }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) { emptyList() }
 
-        // Connected taste signals and anonymous radio candidates are both
-        // playable, while Last.fm history still drives the strongest seeds.
-        (tasteProfile?.ytMusicFeedRaw.orEmpty() + youtubeDiscovery)
+        // Weight 4: personal YT mixes + taste feed + discovery radio (primary).
+        (tasteProfile?.ytMusicFeedRaw.orEmpty() + homeMixSeeds + youtubeDiscovery)
             .distinctBy(GeneratedTrack::key)
             .shuffled()
-            .take(maxOf(8, total / 3).coerceAtMost(16))
-            .forEach { weighted += Weighted(it, 3) }
+            .take(maxOf(12, total / 2).coerceAtMost(24))
+            .forEach { weighted += Weighted(it, 4) }
 
-        // Bucket A — weight 3: recent plays + similar
+        // Weight 3: local Room seeds (liked + saved) keep guest/offline personal.
+        runCatching { localSeedPool(limit = 12) }.getOrDefault(emptyList())
+            .shuffled().take(8).forEach { weighted += Weighted(it, 3) }
+
+        // Bucket A — weight 3: recent plays + similar (Last.fm supplementary only)
+        if (lastFmAvailable) {
         try {
             onProgress("Personalising from recent plays\u2026")
             val rd = call(mapOf("method" to "user.getrecenttracks", "user" to username(), "limit" to "50"))
@@ -702,30 +861,23 @@ class GenerateRepository @Inject constructor(
             }
             similarToRecent.forEach { weighted += Weighted(it, 3) }
         } catch (e: Exception) { Log.d(TAG, "fetchMix bucket A miss", e) }
+        } // end Last.fm Bucket A (supplementary only)
 
-        // Connected YT Music is supplementary: use at most three seeds while
-        // Last.fm remains the primary taste source whenever it is available.
+        // ── YouTube taste expansion (primary): each YT seed grows its own
+        //    related-song radio via InnerTube — no Last.fm needed. ──
         val ytSeeds = buildList {
-            addAll(tasteProfile?.ytMusicRecentRaw.orEmpty().shuffled().take(2))
-            addAll(tasteProfile?.ytMusicLikedRaw.orEmpty().shuffled().take(1))
-            addAll(tasteProfile?.ytMusicFeedRaw.orEmpty().shuffled().take(1))
-        }.distinctBy(GeneratedTrack::key).shuffled().take(3)
-        ytSeeds.forEach { weighted += Weighted(it, 2) }
+            addAll(tasteProfile?.ytMusicRecentRaw.orEmpty().shuffled().take(3))
+            addAll(tasteProfile?.ytMusicLikedRaw.orEmpty().shuffled().take(2))
+            addAll(tasteProfile?.ytMusicFeedRaw.orEmpty().shuffled().take(2))
+            addAll(youtubeDiscovery.shuffled().take(2))
+        }.distinctBy(GeneratedTrack::key).shuffled().take(6)
+        ytSeeds.forEach { weighted += Weighted(it, 3) }
         val similarToYtTaste = coroutineScope {
             ytSeeds.map { seed ->
-                async {
+                async(Dispatchers.IO) {
                     try {
-                        val data = call(
-                            mapOf(
-                                "method" to "track.getsimilar",
-                                "track" to seed.name,
-                                "artist" to seed.artist,
-                                "limit" to maxOf(6, total / 5).toString(),
-                            ),
-                        )
-                        GenerateJson.normalise(data["similartracks"]?.jsonObject?.get("track"))
-                    } catch (e: Exception) {
-                        Log.d(TAG, "fetchMix YT-taste seed miss", e)
+                        fetchYouTubeRadio(seed.name, seed.artist, seed.youtubeVideoIdOrNull(), limit = 12)
+                    } catch (_: Exception) {
                         emptyList()
                     }
                 }
@@ -733,7 +885,8 @@ class GenerateRepository @Inject constructor(
         }
         similarToYtTaste.forEach { weighted += Weighted(it, 3) }
 
-        // Bucket B — weight 2: confirmed top tracks (randomized period)
+        if (lastFmAvailable) {
+        // Bucket B — weight 2: confirmed top tracks (randomized period, supplementary)
         try {
             onProgress("Pulling in your top tracks\u2026")
             val r = Math.random()
@@ -781,8 +934,8 @@ class GenerateRepository @Inject constructor(
         }
         weighted += bucketB2
 
-        // Bucket C — weight 1: genre/tag discovery pad, only if still thin
-        if (weighted.size < total * 2) {
+        // Bucket C — weight 1: genre/tag discovery pad, only if still thin (Last.fm only)
+        if (lastFmAvailable && weighted.size < total * 2) {
             try {
                 onProgress("Adding genre discoveries\u2026")
                 val td = call(mapOf("method" to "user.gettoptags", "user" to username(), "limit" to "8"))
@@ -794,6 +947,13 @@ class GenerateRepository @Inject constructor(
                     GenerateJson.normalise(td2["tracks"]?.jsonObject?.get("track")).forEach { weighted += Weighted(it, 1) }
                 }
             } catch (e: Exception) { Log.d(TAG, "fetchMix bucket C miss", e) }
+        }
+        } // end Last.fm Buckets B/B2/C (supplementary only)
+
+        // Guest/offline pad: public charts keep the mix full when taste is thin.
+        if (weighted.size < total) {
+            runCatching { publicChartsFallback(total) }.getOrDefault(emptyList())
+                .forEach { weighted += Weighted(it, 1) }
         }
 
         onProgress("Curating your personalised mix\u2026")
@@ -810,8 +970,8 @@ class GenerateRepository @Inject constructor(
             }
         }
 
-        // Sort by weight tier descending, shuffled within tier
-        val merged = listOf(3, 2, 1).flatMap { w ->
+        // Sort by weight tier descending, shuffled within tier (4 = YT primary first)
+        val merged = listOf(4, 3, 2, 1).flatMap { w ->
             bestWeight.entries.filter { it.value == w }.map { trackOf[it.key]!! }.shuffled()
         }
 
@@ -826,8 +986,24 @@ class GenerateRepository @Inject constructor(
 
         var pool = filterRecommendationExclusions(diverse)
 
-        // Fallback: similar artists if pool is thin
-        if (pool.size < total && topArtists.isNotEmpty()) {
+        // Fallback 1: YouTube radio expansion when thin (primary).
+        if (pool.size < total) {
+            try {
+                onProgress("Finding more recommendations\u2026")
+                val seed = pool.shuffled().firstOrNull()
+                    ?: weighted.map { it.track }.shuffled().firstOrNull()
+                if (seed != null) {
+                    val extra = runCatching {
+                        fetchYouTubeRadio(seed.name, seed.artist, seed.youtubeVideoIdOrNull(), limit = total)
+                    }.getOrDefault(emptyList())
+                    val known = pool.mapTo(mutableSetOf()) { it.key }
+                    pool = pool + extra.filter { it.key !in known }
+                }
+            } catch (e: Exception) { Log.d(TAG, "fetchMix YT fallback miss", e) }
+        }
+
+        // Fallback 2: Last.fm similar artists only when connected.
+        if (pool.size < total && lastFmAvailable && topArtists.isNotEmpty()) {
             try {
                 onProgress("Finding more recommendations\u2026")
                 val fa = topArtists.random()
@@ -839,6 +1015,13 @@ class GenerateRepository @Inject constructor(
                     } catch (e: Exception) { Log.d(TAG, "fetchMix fallback similar-artist miss", e) }
                 }
             } catch (e: Exception) { Log.d(TAG, "fetchMix fallback miss", e) }
+        }
+
+        // Fallback 3: public charts guarantee a full mix for guest/offline.
+        if (pool.size < total) {
+            val charts = runCatching { publicChartsFallback(total * 2) }.getOrDefault(emptyList())
+            val known = pool.mapTo(mutableSetOf()) { it.key }
+            pool = pool + charts.filter { it.key !in known }
         }
 
         return filterPlayable(deduplicate(filterRecommendationExclusions(pool))).take(total)
@@ -1087,9 +1270,15 @@ class GenerateRepository @Inject constructor(
     ): List<GeneratedTrack> = kotlinx.coroutines.supervisorScope {
         onProgress("Building your taste profile\u2026")
         val profile = tasteProfileProvider.get()
+        val lastFmAvailable = runCatching { isLastFmAvailable() }.getOrDefault(false)
+        // Primary: YouTube Music discovery from full taste (YT + local seeds).
         val youtubeDeferred = async(Dispatchers.IO) {
             try {
-                fetchYouTubeDiscovery(profile.recentTracksRaw + profile.topTracksRaw, total)
+                val seeds = profile.recentTracksRaw + profile.topTracksRaw +
+                    profile.ytMusicRecentRaw + profile.ytMusicLikedRaw + profile.ytMusicFeedRaw
+                val discovery = fetchYouTubeDiscovery(seeds, total * 2)
+                val local = localSeedPool(limit = total)
+                (discovery + local).distinctBy { it.key }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
@@ -1100,32 +1289,59 @@ class GenerateRepository @Inject constructor(
 
         val blacklist = (profile.recentTrackKeys + profile.topTrackKeys).toMutableSet()
         blacklist.addAll(recommendationExclusionKeys())
-        try {
-            val lovedRes = call(mapOf("method" to "user.getlovedtracks", "user" to username(), "limit" to "200"))
-            GenerateJson.normalise(lovedRes["lovedtracks"]?.jsonObject?.get("track")).forEach { blacklist.add(it.key) }
-        } catch (e: Exception) { Log.d(TAG, "fetchRecommendations loved-tracks miss", e) }
+        if (lastFmAvailable) {
+            try {
+                val lovedRes = call(mapOf("method" to "user.getlovedtracks", "user" to username(), "limit" to "200"))
+                GenerateJson.normalise(lovedRes["lovedtracks"]?.jsonObject?.get("track")).forEach { blacklist.add(it.key) }
+            } catch (e: Exception) { Log.d(TAG, "fetchRecommendations loved-tracks miss", e) }
+        }
         val savedPlaylistKeys = savedPlaylistTrackKeys()
 
-        val engine = RecommendationEngine(
-            rawCall = { params -> call(params) },
-            isFresh = { tracks -> filterRecommendationExclusions(tracks) },
-            onProgress = onProgress,
-        )
-        val recommended = try {
-            engine.run(total, profile, blacklist, savedPlaylistKeys)
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (error: Exception) {
-            Log.d(TAG, "Last.fm recommendation engine unavailable", error)
+        // Supplementary: Last.fm scoring engine only when connected. Guest /
+        // offline skips it entirely and relies on YouTube + local.
+        val recommended: List<GeneratedTrack> = if (lastFmAvailable) {
+            val engine = RecommendationEngine(
+                rawCall = { params -> call(params) },
+                isFresh = { tracks -> filterRecommendationExclusions(tracks) },
+                onProgress = onProgress,
+            )
+            try {
+                engine.run(
+                    total,
+                    profile,
+                    blacklist,
+                    savedPlaylistKeys,
+                    youtubeCandidates = youtubeDeferred.await().filterNot { it.key in blacklist },
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                Log.d(TAG, "Last.fm recommendation engine unavailable", error)
+                emptyList()
+            }
+        } else {
             emptyList()
         }
-        onProgress("Blending accountless YouTube radio\u2026")
-        val youtube = youtubeDeferred.await()
-        val blended = blendSources(
-            youtube = youtube.filterNot { it.key in blacklist },
-            lastFm = recommended,
-        )
-        filterPlayable(filterRecommendationExclusions(blended)).take(total)
+        onProgress("Curating YouTube Music recommendations\u2026")
+        val youtube = if (lastFmAvailable) youtubeDeferred.await() else {
+            // Already awaited inside engine.run above when connected; for
+            // guest we await here (deferred is complete, no extra cost).
+            runCatching { youtubeDeferred.await() }.getOrDefault(emptyList())
+        }
+        val youtubeFresh = youtube.filterNot { it.key in blacklist }
+        // YouTube-first: YT leads, Last.fm fills only when connected.
+        val blended = if (lastFmAvailable) {
+            youtubeFirstBlend(youtube = youtubeFresh, lastFm = recommended)
+        } else {
+            val charts = publicChartsFallback(total).filterNot { it.key in blacklist }
+            deduplicate(youtubeFresh + charts)
+        }
+        val result = filterPlayable(filterRecommendationExclusions(blended)).take(total)
+        if (result.size < total) {
+            val pad = publicChartsFallback(total * 2)
+                .filterNot { it.key in blacklist || result.any { r -> r.key == it.key } }
+            (result + pad).take(total)
+        } else result
     }
 
     // ── Start Mix From Track — YouTube Music Radio primary ──

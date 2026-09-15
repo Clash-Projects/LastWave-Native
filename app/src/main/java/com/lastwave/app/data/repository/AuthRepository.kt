@@ -4,7 +4,6 @@ import android.net.Uri
 import com.lastwave.app.data.local.SessionPreferences
 import com.lastwave.app.data.model.AuthState
 import com.lastwave.app.data.network.LastFmApiService
-import com.lastwave.app.data.network.LastFmAppCredentials
 import com.lastwave.app.data.network.LastFmErrors
 import com.lastwave.app.data.network.LastFmException
 import com.lastwave.app.data.network.LastFmSigner
@@ -55,24 +54,44 @@ class AuthRepository @Inject constructor(
         )
     }
 
-    /** Starts web auth; Last.fm returns an authorized token through the app callback. */
-    fun authUrl(): String =
-        Uri.parse("https://www.last.fm/api/auth/")
+    /**
+     * Starts web auth; Last.fm returns an authorized token through the app callback.
+     *
+     * Bring-your-own-key with no shared fallback: returns null when the user
+     * hasn't pasted their own API key yet, so callers can prompt for it
+     * instead of opening a broken auth page. Reads the synchronous
+     * [currentSession] so callers stay non-suspend.
+     */
+    fun authUrl(): String? {
+        val apiKey = sessionPreferences.currentSession.apiKey
+        if (apiKey.isBlank()) return null
+        return Uri.parse("https://www.last.fm/api/auth/")
             .buildUpon()
-            .appendQueryParameter("api_key", LastFmAppCredentials.API_KEY)
+            .appendQueryParameter("api_key", apiKey)
             .appendQueryParameter("cb", LAST_FM_AUTH_CALLBACK_URI)
             .build()
             .toString()
+    }
 
     suspend fun completeWebAuth(token: String): Result<String> {
         transientState.value = AuthState.SigningIn
+        // Must match the key that produced authUrl() above, and must be
+        // preserved on save.
+        val stored = sessionPreferences.session.first()
+        val apiKey = stored.apiKey
+        val apiSecret = stored.apiSecret
+        if (apiKey.isBlank() || apiSecret.isBlank()) {
+            val message = "Add your Last.fm API key in Settings → Integrations first"
+            transientState.value = AuthState.Error(message)
+            return Result.failure(LastFmException(message))
+        }
         return try {
             val signParams = mapOf(
                 "method" to "auth.getSession",
                 "token" to token,
-                "api_key" to LastFmAppCredentials.API_KEY,
+                "api_key" to apiKey,
             )
-            val sig = LastFmSigner.sign(signParams, LastFmAppCredentials.API_SECRET)
+            val sig = LastFmSigner.sign(signParams, apiSecret)
             val body = signParams + mapOf("api_sig" to sig, "format" to "json")
             val response = api.post(body)
             val text = response.body()?.string() ?: throw LastFmException("Empty response from Last.fm")
@@ -91,8 +110,8 @@ class AuthRepository @Inject constructor(
             sessionPreferences.saveSession(
                 username = username,
                 sessionKey = sessionKey,
-                apiKey = LastFmAppCredentials.API_KEY,
-                apiSecret = LastFmAppCredentials.API_SECRET,
+                apiKey = apiKey,
+                apiSecret = apiSecret,
             )
             transientState.value = null // defer to persisted SignedIn state
             Result.success(username)
@@ -104,7 +123,13 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun signInDirect(username: String): Result<String> {
-        return signIn(LastFmAppCredentials.API_KEY, LastFmAppCredentials.API_SECRET, username)
+        val stored = sessionPreferences.currentSession
+        if (stored.apiKey.isBlank() || stored.apiSecret.isBlank()) {
+            val message = "Add your Last.fm API key in Settings → Integrations first"
+            transientState.value = AuthState.Error(message)
+            return Result.failure(LastFmException(message))
+        }
+        return signIn(stored.apiKey, stored.apiSecret, username)
     }
 
     /**
