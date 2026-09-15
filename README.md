@@ -25,10 +25,10 @@
 </p>
 
 <p align="center">
-  <a href="https://t.me/clashprojects">
+  <a href="https://t.me/Songsproject">
     <img src="https://img.shields.io/badge/Telegram-Updates%20%26%20Support-24A1DE?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram Support" />
   </a>
-  <a href="https://t.me/MaterialYouApp">
+  <a href="https://t.me/MaterialMyapp">
     <img src="https://img.shields.io/badge/Telegram-More%20From%20Us-0088cc?style=for-the-badge&logo=telegram&logoColor=white" alt="More From Us" />
   </a>
 </p>
