@@ -100,23 +100,13 @@ class NowPlayingWidget : GlanceAppWidget() {
         val entryPoint = runCatching {
             EntryPointAccessors.fromApplication(context.applicationContext, WidgetEntryPoint::class.java)
         }.getOrNull()
-        val scheme = entryPoint?.themeRepository()?.uiState?.value?.colorScheme
-            ?: com.lastwave.app.ui.theme.Md3SchemeBuilder.buildScheme("#E03030", false)
+        val themeUiState = entryPoint?.themeRepository()?.uiState?.value
+        val darkScheme = themeUiState?.darkColorScheme
+            ?: com.lastwave.app.ui.theme.Md3SchemeBuilder.buildDarkScheme("#E03030", false)
+        val lightScheme = themeUiState?.lightColorScheme
+            ?: com.lastwave.app.ui.theme.Md3SchemeBuilder.buildLightScheme("#E03030", false)
 
-        val darkThemeSurface = Color(0xFF0F1017)
-        val darkThemeRaised = Color(0xFF1E1F2B)
-
-        val widgetScheme = scheme.copy(
-            surface = darkThemeSurface,
-            onSurface = Color(0xFFEEEEF5),
-            surfaceVariant = darkThemeRaised,
-            onSurfaceVariant = Color(0xFFA0A1B2),
-            primary = scheme.primary,
-            onPrimary = scheme.onPrimary,
-            primaryContainer = Color(0xFF2C2738),
-            onPrimaryContainer = Color(0xFFEADBFA),
-        )
-        val colors = ColorProviders(light = widgetScheme, dark = widgetScheme)
+        val colors = ColorProviders(light = lightScheme, dark = darkScheme)
         val hasNotificationAccess = NotificationManagerCompat
             .getEnabledListenerPackages(context)
             .contains(context.packageName)
@@ -211,9 +201,9 @@ private fun EmptyWidget(hasNotificationAccess: Boolean) {
         modifier = GlanceModifier
             .fillMaxSize()
             .background(GlanceTheme.colors.surface)
-            .cornerRadius(24.dp)
+            .cornerRadius(28.dp)
             .appWidgetBackground()
-            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
             .then(
                 if (needsAccess) GlanceModifier.clickable(actionRunCallback<OpenMusicAccessAction>())
                 else GlanceModifier.clickable(actionRunCallback<OpenLastWaveAction>()),
@@ -223,9 +213,9 @@ private fun EmptyWidget(hasNotificationAccess: Boolean) {
         Image(
             provider = ImageProvider(R.drawable.ic_launcher_foreground),
             contentDescription = null,
-            modifier = GlanceModifier.size(36.dp),
+            modifier = GlanceModifier.size(38.dp),
         )
-        Spacer(GlanceModifier.width(10.dp))
+        Spacer(GlanceModifier.width(12.dp))
         Column(modifier = GlanceModifier.defaultWeight()) {
             Text(
                 text = if (needsAccess) "Allow music access" else "Nothing playing",
@@ -253,7 +243,7 @@ private fun PlayerWidget(state: WidgetUiState) {
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MiniArtwork(state.art, 50, state.isPlaying, state.animationFrame)
+        MiniArtwork(state.art, 54, state.isPlaying, state.animationFrame)
         Spacer(GlanceModifier.width(12.dp))
         Column(
             modifier = GlanceModifier.defaultWeight(),
@@ -283,7 +273,7 @@ private fun PlayerWidget(state: WidgetUiState) {
 private fun playerSurface(modifier: GlanceModifier): GlanceModifier = modifier
     .fillMaxSize()
     .background(GlanceTheme.colors.surface)
-    .cornerRadius(24.dp)
+    .cornerRadius(28.dp)
     .appWidgetBackground()
 
 @Composable
@@ -387,12 +377,30 @@ private fun PlaybackControls(isPlaying: Boolean) {
     val label = if (isPlaying) "Pause" else "Play"
     val icon = if (isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play
     Row(verticalAlignment = Alignment.CenterVertically) {
+        // Previous Button
+        Box(
+            modifier = GlanceModifier
+                .size(32.dp)
+                .background(GlanceTheme.colors.surfaceVariant)
+                .cornerRadius(16.dp)
+                .clickable(actionRunCallback<SkipPreviousAction>()),
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                provider = ImageProvider(R.drawable.ic_widget_skip_previous),
+                contentDescription = "Previous",
+                modifier = GlanceModifier.size(14.dp),
+                colorFilter = ColorFilter.tint(GlanceTheme.colors.onSurfaceVariant),
+            )
+        }
+        Spacer(GlanceModifier.width(8.dp))
+        // Play/Pause Button
         Row(
             modifier = GlanceModifier
-                .height(30.dp)
-                .background(GlanceTheme.colors.primaryContainer)
-                .cornerRadius(15.dp)
-                .padding(horizontal = 12.dp)
+                .height(32.dp)
+                .background(GlanceTheme.colors.primary)
+                .cornerRadius(16.dp)
+                .padding(horizontal = 14.dp)
                 .clickable(actionRunCallback<TogglePlayPauseAction>()),
             verticalAlignment = Alignment.CenterVertically,
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -401,24 +409,25 @@ private fun PlaybackControls(isPlaying: Boolean) {
                 provider = ImageProvider(icon),
                 contentDescription = label,
                 modifier = GlanceModifier.size(14.dp),
-                colorFilter = ColorFilter.tint(GlanceTheme.colors.onPrimaryContainer),
+                colorFilter = ColorFilter.tint(GlanceTheme.colors.onPrimary),
             )
-            Spacer(GlanceModifier.width(5.dp))
+            Spacer(GlanceModifier.width(6.dp))
             Text(
                 text = label,
                 style = TextStyle(
-                    color = GlanceTheme.colors.onPrimaryContainer,
+                    color = GlanceTheme.colors.onPrimary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                 ),
             )
         }
         Spacer(GlanceModifier.width(8.dp))
+        // Next Button
         Box(
             modifier = GlanceModifier
-                .size(30.dp)
-                .background(GlanceTheme.colors.primaryContainer)
-                .cornerRadius(15.dp)
+                .size(32.dp)
+                .background(GlanceTheme.colors.surfaceVariant)
+                .cornerRadius(16.dp)
                 .clickable(actionRunCallback<SkipNextAction>()),
             contentAlignment = Alignment.Center,
         ) {
@@ -426,7 +435,7 @@ private fun PlaybackControls(isPlaying: Boolean) {
                 provider = ImageProvider(R.drawable.ic_widget_skip_next),
                 contentDescription = "Next",
                 modifier = GlanceModifier.size(14.dp),
-                colorFilter = ColorFilter.tint(GlanceTheme.colors.onPrimaryContainer),
+                colorFilter = ColorFilter.tint(GlanceTheme.colors.onSurfaceVariant),
             )
         }
     }

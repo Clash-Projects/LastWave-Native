@@ -240,6 +240,26 @@ object DatabaseModule {
         }
     }
 
+    private val migration12To13 = object : Migration(12, 13) {
+        override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `song_play_stats` (
+                    `trackKey` TEXT NOT NULL PRIMARY KEY,
+                    `title` TEXT NOT NULL DEFAULT '',
+                    `artist` TEXT NOT NULL DEFAULT '',
+                    `videoId` TEXT,
+                    `artworkUrl` TEXT,
+                    `totalPlayTimeMs` INTEGER NOT NULL DEFAULT 0,
+                    `playCount` INTEGER NOT NULL DEFAULT 0,
+                    `skipCount` INTEGER NOT NULL DEFAULT 0,
+                    `lastPlayedAtMillis` INTEGER NOT NULL DEFAULT 0
+                )
+                """.trimIndent(),
+            )
+        }
+    }
+
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase =
@@ -258,6 +278,7 @@ object DatabaseModule {
                 migration9To10,
                 migration10To11,
                 migration11To12,
+                migration12To13,
             )
             .build()
 
@@ -278,4 +299,9 @@ object DatabaseModule {
     @Singleton
     fun provideDownloadedTrackDao(database: AppDatabase): com.lastwave.app.data.local.db.DownloadedTrackDao =
         database.downloadedTrackDao()
+
+    @Provides
+    @Singleton
+    fun provideSongPlayStatsDao(database: AppDatabase): com.lastwave.app.data.local.db.SongPlayStatsDao =
+        database.songPlayStatsDao()
 }

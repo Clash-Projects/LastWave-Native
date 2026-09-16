@@ -15,6 +15,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -33,6 +34,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioCapabilities
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.drm.DrmSessionManager
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
@@ -51,6 +53,10 @@ import com.lastwave.app.data.music.YouTubeAudioStream
 import com.lastwave.app.data.music.YOUTUBE_WEB_USER_AGENT
 import com.lastwave.app.data.lossless.LosslessAudioStream
 import com.lastwave.app.data.lossless.LosslessMusicApi
+import com.lastwave.app.data.plugin.ModulePlaybackResolver
+import com.lastwave.app.data.plugin.ModuleDrmFactory
+import com.lastwave.app.data.plugin.SegmentedDashBridge
+import com.lastwave.app.data.plugin.stableCacheKey
 import com.lastwave.app.widget.WidgetUpdater
 import kotlinx.coroutines.flow.first
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -79,6 +85,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -169,6 +176,11 @@ class MusicPlayer @Inject constructor(
     @ApplicationContext context: Context,
     private val innerTube: InnerTubeMusicApi,
     private val losslessMusicApi: LosslessMusicApi,
+    private val moduleResolver: ModulePlaybackResolver,
+    private val moduleDrmFactory: ModuleDrmFactory,
+    private val moduleManager: com.lastwave.app.data.plugin.ModuleManager,
+    private val offlineLicense: com.lastwave.app.data.plugin.ModuleOfflineLicense,
+    private val segBridge: SegmentedDashBridge,
     private val settingsPreferences: SettingsPreferences,
     private val equalizerPreferences: EqualizerPreferences,
     private val discoverRepository: DiscoverRepository,
@@ -177,6 +189,7 @@ class MusicPlayer @Inject constructor(
     private val applicationScope: CoroutineScope,
     private val downloadedTrackDao: dagger.Lazy<com.lastwave.app.data.local.db.DownloadedTrackDao>,
     private val usbDacMonitor: UsbDacMonitor,
+    private val songPlayStatsRepository: dagger.Lazy<com.lastwave.app.data.repository.SongPlayStatsRepository>,
 ) {
     private val appContext = context.applicationContext
     private val streamResolutionWakeLock by lazy {
@@ -363,6 +376,41 @@ class MusicPlayer @Inject constructor(
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     }
 
+    /**
+     * Feeds SongPlayStatsRepository — the real "how much did you actually
+     * listen to this" + skip signal that LocalTasteSuggestionEngine scores
+     * on. Called right before onMediaItemTransition overwrites [_state],
+     * since that's the last moment the outgoing track's position is known.
+     * AUTO transition = the track played out naturally; anything else
+     * (SEEK, via next()/previous()/tapping the queue) with < 85% played is
+     * counted as a skip.
+     */
+    private fun recordLocalListenSignal(reason: Int) {
+        val previousTrack = _state.value.current ?: return
+        val previousPositionMs = _state.value.positionMs
+        val previousDurationMs = _state.value.durationMs
+        if (previousPositionMs <= 0L) return
+        val playedRatio = if (previousDurationMs > 0L) {
+            (previousPositionMs.toDouble() / previousDurationMs.toDouble()).coerceIn(0.0, 1.0)
+        } else 1.0
+        val completedNaturally = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || playedRatio >= 0.85
+        val wasSkip = !completedNaturally
+        applicationScope.launch(Dispatchers.IO) {
+            val repo = songPlayStatsRepository.get()
+            repo.recordListenedMs(
+                title = previousTrack.title,
+                artist = previousTrack.artist,
+                videoId = previousTrack.videoId,
+                artworkUrl = previousTrack.artworkUrl,
+                listenedMs = previousPositionMs,
+                completed = completedNaturally,
+            )
+            if (wasSkip) {
+                repo.recordSkip(previousTrack.title, previousTrack.artist, previousTrack.videoId)
+            }
+        }
+    }
+
     private val listener: Player.Listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
             if (player === this@MusicPlayer.player) refresh(player)
@@ -377,6 +425,7 @@ class MusicPlayer @Inject constructor(
         }
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             if (isCasting) return
+            recordLocalListenSignal(reason)
             if (mediaItem != null) {
                 losslessBypassMediaIds.retainAll(setOf(mediaItem.mediaId))
                 if (retryMediaId != mediaItem.mediaId) {
@@ -687,7 +736,20 @@ class MusicPlayer @Inject constructor(
         }
 
         return ExoPlayer.Builder(appContext, renderersFactory)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(appContext).setDataSourceFactory(resolving))
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(appContext).setDataSourceFactory(resolving)
+                    // Module-resolved items carry their Widevine session in
+                    // the prepared stream; the session manager (and license
+                    // envelope) comes from the module via ModuleDrmFactory.
+                    // Everything else plays clear as before.
+                    .setDrmSessionManagerProvider { mediaItem ->
+                        val stream = mediaItem.localConfiguration?.customCacheKey
+                            ?.let(preparedStreams::get)
+                        val descriptor = stream?.segmentedDrm
+                        if (descriptor?.drm == null) DrmSessionManager.DRM_UNSUPPORTED
+                        else moduleDrmFactory.sessionManagerFor(descriptor)
+                    },
+            )
             .setLoadControl(loadControl)
             .build().apply {
                 setAudioAttributes(
@@ -2526,6 +2588,8 @@ class MusicPlayer @Inject constructor(
         val samplingRateKHz: Double? = null,
         val youtubeCandidate: YouTubeAudioStream? = null,
         val durationMs: Long? = null,
+        /** Provider chunk descriptor; when set, playback is DASH+Widevine. */
+        val segmentedDrm: com.lastwave.app.data.plugin.SegmentedStreamDescriptor? = null,
     )
 
     private fun isNetworkException(error: Throwable): Boolean {
@@ -2555,7 +2619,7 @@ class MusicPlayer @Inject constructor(
     private fun sanitizeFilename(title: String): String =
         title.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim().ifBlank { "track" }
 
-    private fun checkAndBuildLocalStream(
+    private suspend fun checkAndBuildLocalStream(
         targetUrl: String,
         displayTitle: String,
         displayArtist: String,
@@ -2585,6 +2649,16 @@ class MusicPlayer @Inject constructor(
         }
 
         if (!isAccessible) return null
+
+        // Module offline download: same bytes as streaming, keys in the
+        // sidecar. Unusable here (no keys / unrenewable expiry) -> null so
+        // playback falls through to streaming instead of failing on ciphertext.
+        offlineModuleStream(
+            targetUrl = targetUrl,
+            uri = uri,
+            displayTitle = displayTitle,
+            displayArtist = displayArtist,
+        )?.let { return it }
 
         val pathLower = (uri.path ?: targetUrl).lowercase()
         val mime = fallbackMime?.takeIf(String::isNotBlank) ?: when {
@@ -2645,6 +2719,70 @@ class MusicPlayer @Inject constructor(
             isLossless = isLossless,
             bitDepth = bitDepth,
             samplingRateKHz = samplingRateKHz,
+        )
+    }
+
+    /**
+     * Offline playback for module downloads: local MPD over the downloaded
+     * bytes + persisted CDM keys. Returns null unless this exact file has
+     * usable keys (fresh or renewed), letting remote streaming take over.
+     */
+    private suspend fun offlineModuleStream(
+        targetUrl: String,
+        uri: Uri,
+        displayTitle: String,
+        displayArtist: String,
+    ): ResolvedStream? {
+        val sidecar = moduleManager.readOfflineSidecar(displayTitle, displayArtist) ?: return null
+        if (sidecar.keySetIdB64.isBlank()) return null
+        val filePath = when {
+            targetUrl.startsWith("content://") -> null
+            targetUrl.startsWith("file://") -> uri.path
+            else -> targetUrl
+        }
+        val matches = (filePath != null && sidecar.audioFilePath == filePath) ||
+            (sidecar.mediaStoreUri.isNotBlank() && sidecar.mediaStoreUri == targetUrl) ||
+            (sidecar.bytes > 0 && filePath != null &&
+                runCatching { File(filePath).length() == sidecar.bytes }.getOrDefault(false))
+        if (!matches) return null
+        val initialDesc = runCatching {
+            persistenceJson.decodeFromString<com.lastwave.app.data.plugin.SegmentedStreamDescriptor>(
+                sidecar.descriptorJson,
+            )
+        }.getOrNull()
+        val drm = initialDesc?.drm ?: return null
+        val readyDesc = initialDesc.copy(drm = drm.copy(keySetIdB64 = sidecar.keySetIdB64, licenseUrl = sidecar.licenseUrl))
+        val finalDesc = if (System.currentTimeMillis() > sidecar.licenseExpiresAtMs) {
+            val renewed = withTimeoutOrNull(OFFLINE_LICENSE_RENEW_TIMEOUT_MS) {
+                offlineLicense.renew(readyDesc, sidecar.keySetIdB64)
+            } ?: return null
+            val updated = readyDesc.copy(
+                drm = readyDesc.drm?.copy(keySetIdB64 = renewed.keySetIdB64),
+            )
+            moduleManager.writeOfflineSidecar(
+                displayTitle, displayArtist,
+                sidecar.copy(
+                    keySetIdB64 = renewed.keySetIdB64,
+                    licenseExpiresAtMs = renewed.licenseExpiresAtMs,
+                    descriptorJson = moduleManager.encodeDescriptor(updated),
+                ),
+            )
+            updated
+        } else {
+            readyDesc
+        }
+        var descriptor = finalDesc
+        val s = descriptor.stream
+        return ResolvedStream(
+            url = segBridge.mpdUriForBase(descriptor, targetUrl).toString(),
+            mimeType = MimeTypes.APPLICATION_MPD,
+            bitrateKbps = s.bandwidth.takeIf { it > 0 }?.div(1000),
+            audioCodec = segBridge.audioBadge(descriptor),
+            cacheKey = "offline:${displayArtist.lowercase()}_${displayTitle.lowercase()}",
+            isLossless = !s.codec.equals("opus", ignoreCase = true),
+            bitDepth = s.bitDepth.takeIf { it > 0 },
+            samplingRateKHz = s.sampleRate.takeIf { it > 0 }?.div(1000.0),
+            segmentedDrm = descriptor,
         )
     }
 
@@ -2851,11 +2989,68 @@ class MusicPlayer @Inject constructor(
         val youtubeDeferred = applicationScope.async(Dispatchers.IO) {
             resolveYoutubeTrackAudioStream(track, videoId)
         }
+        // Provider modules are queried in parallel with the backend from the
+        // start: on a backend miss with a module hit, playback starts from
+        // the module instantly instead of waiting for a fresh lookup.
+        val moduleDeferred = applicationScope.async(Dispatchers.IO) {
+            if (!misc.preferProviderModules) null
+            else resolveModuleTrackAudioStream(track, misc)
+        }
         return try {
-            resolveLosslessTrackAudioStream(track, misc, excludedLosslessUrls) ?: youtubeDeferred.await()
+            resolveLosslessTrackAudioStream(track, misc, excludedLosslessUrls)
+                ?: runCatching {
+                    withTimeoutOrNull(MODULE_RESOLVE_TIMEOUT_MS) { moduleDeferred.await() }
+                }.getOrNull()
+                ?: youtubeDeferred.await()
         } finally {
             youtubeDeferred.cancel()
+            moduleDeferred.cancel()
         }
+    }
+
+    private suspend fun resolveModuleTrackAudioStream(
+        track: PlayableTrack,
+        misc: MiscSettings,
+    ): ResolvedStream? {
+        val descriptor = moduleResolver.resolve(track.title, track.artist, misc.losslessQuality)
+            ?: return null
+        val s = descriptor.stream
+        // Progressive clear module streams play directly like backend URLs.
+        if (s.type == "progressive" || (s.baseUrl.isNotBlank() && s.segments.isEmpty())) {
+            val lossless = !s.codec.equals("opus", ignoreCase = true) &&
+                !s.codec.equals("mp3", ignoreCase = true) &&
+                !s.codec.equals("aac", ignoreCase = true)
+            return ResolvedStream(
+                url = s.baseUrl,
+                mimeType = s.mimeType.ifBlank { "audio/flac" },
+                bitrateKbps = s.bandwidth.takeIf { it > 0 }?.div(1000),
+                audioCodec = if (lossless) {
+                    if ((s.bitDepth) > 16 || (s.sampleRate) > 48000) "HI-RES FLAC" else "LOSSLESS"
+                } else s.codec.uppercase(),
+                cacheKey = "modprog:${descriptor.trackId}:${s.quality}",
+                requestHeaders = descriptor.headers,
+                isLossless = lossless,
+                bitDepth = s.bitDepth.takeIf { it > 0 },
+                samplingRateKHz = s.sampleRate.takeIf { it > 0 }?.div(1000.0),
+            )
+        }
+        return ResolvedStream(
+            url = segBridge.mpdUri(descriptor).toString(),
+            mimeType = MimeTypes.APPLICATION_MPD,
+            bitrateKbps = s.bandwidth.takeIf { it > 0 }?.div(1000),
+            audioCodec = try {
+                moduleResolver.badgeFor(descriptor, segBridge.audioBadge(descriptor))
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                segBridge.audioBadge(descriptor)
+            },
+            cacheKey = descriptor.stableCacheKey(),
+            isLossless = !s.codec.equals("opus", ignoreCase = true),
+            bitDepth = s.bitDepth.takeIf { it > 0 },
+            samplingRateKHz = s.sampleRate.takeIf { it > 0 }?.div(1000.0),
+            segmentedDrm = descriptor,
+        )
     }
 
     private suspend fun resolveLosslessTrackAudioStream(
@@ -2883,7 +3078,7 @@ class MusicPlayer @Inject constructor(
             else -> "LOSSLESS"
         }
         // One stable CacheDataSource key per track + quality (no per-URL hash).
-        // Amazon FLAC URLs are signed and rotate; keying by URL fragments the
+        // Provider FLAC URLs are signed and rotate; keying by URL fragments the
         // disk cache so backward/forward seeks can never hit locally cached
         // ranges. Playback reads (via ResolvingDataSource customCacheKey) and
         // the progressive current-stream cacher below share this key, so
@@ -3377,6 +3572,10 @@ class MusicPlayer @Inject constructor(
         const val CURRENT_TRACK_CACHE_MAX_SKIP_WINDOWS = 64
         const val MAX_PREPARED_STREAMS = 256
         const val RESOLVED_URL_EXPIRY_MARGIN_MS = 2 * 60 * 1000L
+        /** Module lookups must never stall the YouTube fallback behind them. */
+        const val MODULE_RESOLVE_TIMEOUT_MS = 25_000L
+        /** Offline license renewal attempt before giving up to streaming. */
+        const val OFFLINE_LICENSE_RENEW_TIMEOUT_MS = 8_000L
         val PERMANENT_PLAYBACK_ERROR_CODES = setOf(
             PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
             PlaybackException.ERROR_CODE_IO_NO_PERMISSION,
@@ -3421,6 +3620,11 @@ private fun PlayableTrack.toMediaItem(resolved: MusicPlayer.ResolvedStream? = nu
             (resolved?.mimeType ?: playbackMimeType)?.takeIf(String::isNotBlank)?.let(::setMimeType)
             resolved?.let {
                 setCustomCacheKey(it.cacheKey)
+                // Segmented provider module: MPD uri + Widevine config so the
+                // stock DASH source decrypts chunk-by-chunk via MediaCrypto.
+                it.segmentedDrm?.let { descriptor ->
+                    SegmentedDashBridge.drmConfigurationFor(descriptor)?.let(::setDrmConfiguration)
+                }
             }
         }
         .setMediaMetadata(
@@ -3438,7 +3642,7 @@ private fun PlayableTrack.toMediaItem(resolved: MusicPlayer.ResolvedStream? = nu
         .build()
 }
 
-private fun PlayableTrack.mediaIdKey(): String = when {
+    private fun PlayableTrack.mediaIdKey(): String = when {
     !playbackUrl.isNullOrBlank() -> "local:${playbackUrl}"
     !videoId.isNullOrBlank() -> videoId
     else -> "query:${artist.lowercase()}|${title.lowercase()}"

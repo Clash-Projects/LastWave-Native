@@ -78,6 +78,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -153,16 +154,22 @@ import com.lastwave.app.ui.theme.liquidGlassChrome
 import com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance
 import com.lastwave.app.R
 import com.lastwave.app.data.local.AccentMode
+import com.lastwave.app.data.local.ThemeMode
 import com.lastwave.app.data.local.EQ_BAND_FREQS_HZ
 import com.lastwave.app.data.local.EQ_MAX_GAIN_DB
 import com.lastwave.app.data.local.EqualizerPresets
 import com.lastwave.app.data.local.EqualizerSettings
 import com.lastwave.app.data.local.eqBandLabel
+import com.lastwave.app.ui.common.ConnectedButtonGroup
+import com.lastwave.app.ui.common.ConnectedButtonItem
 import com.lastwave.app.ui.common.ExpressiveHeader
 import com.lastwave.app.ui.common.safeDrawingBottomPadding
 import com.lastwave.app.ui.common.safeHorizontalContentPadding
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.theme.ExpressivePillShape
+import androidx.compose.material.icons.filled.BrightnessAuto
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.DarkMode
 import kotlin.math.roundToInt
 
 private data class AccentPreset(val name: String, val hex: String)
@@ -241,6 +248,7 @@ fun SettingsScreen(
     onLoggedOut: () -> Unit = {},
     onOpenChooseApps: () -> Unit = {},
     onOpenDownloads: () -> Unit = {},
+    onOpenModules: () -> Unit = {},
     onOpenHomeSections: () -> Unit = {},
     onOpenExcludedSongs: () -> Unit = {},
     onOpenYouTubeImport: () -> Unit = {},
@@ -598,21 +606,78 @@ fun SettingsScreen(
             }
 
             item {
+                Card(
+                    onClick = onOpenModules,
+                    shape = RoundedCornerShape(22.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.secondary),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.Extension,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSecondary,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(16.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.settings_modules_title),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                stringResource(R.string.settings_modules_sub),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
+                            )
+                        }
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowForwardIos,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f),
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+            }
+
+            item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_appearance))
-                    SettingsGroup(rowCount = 5) { index, position ->
+                    SettingsGroup(rowCount = 6) { index, position ->
                         when (index) {
-                            0 -> SettingsToggleCard(
+                            0 -> ThemeModeSelectorCard(
+                                currentThemeMode = theme?.themeMode ?: ThemeMode.SYSTEM,
+                                onSelectThemeMode = viewModel::setThemeMode,
+                                position = position,
+                            )
+                            1 -> SettingsToggleCard(
                                 icon = Icons.Filled.Contrast,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
                                 title = stringResource(R.string.settings_amoled),
                                 subtitle = stringResource(R.string.settings_amoled_sub),
                                 checked = theme?.amoled ?: false,
+                                enabled = theme?.themeMode != ThemeMode.LIGHT,
                                 onCheckedChange = viewModel::setAmoled,
                                 position = position,
                             )
-                            1 -> SettingsToggleCard(
+                            2 -> SettingsToggleCard(
                                 icon = Icons.Filled.Palette,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -624,7 +689,7 @@ fun SettingsScreen(
                                 },
                                 position = position,
                             )
-                            2 -> SettingsToggleCard(
+                            3 -> SettingsToggleCard(
                                 icon = Icons.Filled.Album,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -634,7 +699,7 @@ fun SettingsScreen(
                                 onCheckedChange = viewModel::setDynamicNowPlaying,
                                 position = position,
                             )
-                            3 -> SettingsToggleCard(
+                            4 -> SettingsToggleCard(
                                 icon = Icons.Filled.TextFields,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -644,7 +709,7 @@ fun SettingsScreen(
                                 onCheckedChange = viewModel::setUseCustomFont,
                                 position = position,
                             )
-                            4 -> SettingsActionCard(
+                            5 -> SettingsActionCard(
                                 icon = Icons.Filled.Dashboard,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1763,6 +1828,73 @@ private fun IconBadge(icon: ImageVector, container: Color, tint: Color, modifier
 }
 
 @Composable
+private fun ThemeModeSelectorCard(
+    currentThemeMode: ThemeMode,
+    onSelectThemeMode: (ThemeMode) -> Unit,
+    position: GroupPosition = GroupPosition.SINGLE,
+) {
+    val shape = groupShape(position)
+    val liquidGlass = LocalLiquidGlass.current
+
+    Card(
+        shape = shape,
+        colors = CardDefaults.cardColors(containerColor = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHigh)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .liquidGlassChrome(shape, liquidGlass),
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconBadge(
+                    Icons.Filled.BrightnessAuto,
+                    MaterialTheme.colorScheme.primaryContainer,
+                    MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.settings_theme_mode),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        stringResource(R.string.settings_theme_mode_sub),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            val items = listOf(
+                ConnectedButtonItem(stringResource(R.string.theme_mode_system), Icons.Filled.BrightnessAuto),
+                ConnectedButtonItem(stringResource(R.string.theme_mode_light), Icons.Filled.LightMode),
+                ConnectedButtonItem(stringResource(R.string.theme_mode_dark), Icons.Filled.DarkMode),
+            )
+            val selectedIdx = when (currentThemeMode) {
+                ThemeMode.SYSTEM -> 0
+                ThemeMode.LIGHT -> 1
+                ThemeMode.DARK -> 2
+            }
+            ConnectedButtonGroup(
+                items = items,
+                selectedIndex = selectedIdx,
+                onSelect = { idx ->
+                    val mode = when (idx) {
+                        0 -> ThemeMode.SYSTEM
+                        1 -> ThemeMode.LIGHT
+                        else -> ThemeMode.DARK
+                    }
+                    onSelectThemeMode(mode)
+                },
+            )
+        }
+    }
+}
+
+@Composable
 private fun SettingsToggleCard(
     icon: ImageVector,
     iconContainer: Color,
@@ -1772,6 +1904,7 @@ private fun SettingsToggleCard(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     position: GroupPosition = GroupPosition.SINGLE,
+    enabled: Boolean = true,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val scale = rememberPressScale(interactionSource)
@@ -1779,34 +1912,41 @@ private fun SettingsToggleCard(
     val liquidGlass = LocalLiquidGlass.current
 
     Card(
-        onClick = { onCheckedChange(!checked) },
+        onClick = { if (enabled) onCheckedChange(!checked) },
         shape = shape,
-        colors = CardDefaults.cardColors(containerColor = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHigh)),
-        // Pinned at 0dp: Material3's Card blends an extra primary-tinted
-        // alpha layer on top of containerColor whenever tonalElevation is
-        // above 0dp (surfaceColorAtElevation) — with a Switch already
-        // providing this row's own selected/unselected signal, any such
-        // blend on the row itself would read as a second, redundant layer
-        // behind the label. Same root cause as ModeCard's fix below.
+        enabled = enabled,
+        colors = CardDefaults.cardColors(
+            containerColor = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHigh),
+            disabledContainerColor = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)),
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
-            .scale(scale)
+            .scale(if (enabled) scale else 1f)
             .liquidGlassChrome(shape, liquidGlass),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconBadge(icon, iconContainer, iconTint)
+            IconBadge(
+                icon,
+                if (enabled) iconContainer else iconContainer.copy(alpha = 0.5f),
+                if (enabled) iconTint else iconTint.copy(alpha = 0.5f),
+            )
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                )
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
                     maxLines = 2,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
@@ -1814,7 +1954,8 @@ private fun SettingsToggleCard(
             Spacer(Modifier.width(8.dp))
             Switch(
                 checked = checked,
-                onCheckedChange = onCheckedChange,
+                enabled = enabled,
+                onCheckedChange = if (enabled) onCheckedChange else null,
                 thumbContent = if (checked) {
                     {
                         Icon(

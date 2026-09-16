@@ -49,6 +49,7 @@ Thumbs.db
 Screenshot/release.jks
 keystore_credentials.txt
 .env
-*.env
 .wrangler/
+.gradle_home/
+.mygradle/
 

@@ -13,20 +13,30 @@ import androidx.core.view.WindowCompat
 import com.lastwave.app.data.repository.ThemeUiState
 import com.kyant.backdrop.backdrops.rememberCanvasBackdrop
 
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.staticCompositionLocalOf
+import com.lastwave.app.data.local.ThemeMode
+
+/** Shared composition local indicating whether the active theme is dark mode. */
+val LocalIsDarkTheme = staticCompositionLocalOf { true }
+
 /**
- * Wraps the whole app. The color scheme itself always comes from
- * [Md3SchemeBuilder] (accent/AMOLED-aware, dark-only — the web app never had
- * a light mode, so neither does this), never from MaterialTheme's own
- * light/dark scheme resolution.
- *
- * Liquid Glass changes individual surfaces, never the selected page background.
- * Backdrop sources stay separate from the foreground surfaces that sample them.
+ * Wraps the whole app. Supports System Default, Light, and Dark modes.
+ * Dynamically updates system bar icons, background surface, and Liquid Glass layers.
  */
 @Composable
 fun LastWaveTheme(
     themeState: ThemeUiState,
     content: @Composable () -> Unit,
 ) {
+    val isSystemDark = isSystemInDarkTheme()
+    val isDark = when (themeState.themeMode) {
+        ThemeMode.SYSTEM -> isSystemDark
+        ThemeMode.DARK -> true
+        ThemeMode.LIGHT -> false
+    }
+    val activeColorScheme = if (isDark) themeState.darkColorScheme else themeState.lightColorScheme
+
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -34,8 +44,8 @@ fun LastWaveTheme(
             runCatching {
                 window.statusBarColor = android.graphics.Color.TRANSPARENT
                 window.navigationBarColor = android.graphics.Color.TRANSPARENT
-                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
-                WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = false
+                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !isDark
+                WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !isDark
                 // Setting navigationBarColor to TRANSPARENT above is not enough on
                 // its own: Android 10+ automatically draws its own translucent
                 // black scrim over a transparent nav bar ("contrast enforcement")
@@ -53,7 +63,7 @@ fun LastWaveTheme(
     }
 
     MaterialTheme(
-        colorScheme = themeState.colorScheme,
+        colorScheme = activeColorScheme,
         typography = if (themeState.useCustomFont) LastWaveTypography else SystemTypography,
         shapes = LastWaveShapes,
     ) {
@@ -61,7 +71,10 @@ fun LastWaveTheme(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background,
         ) {
-            CompositionLocalProvider(LocalLiquidGlass provides themeState.liquidGlass) {
+            CompositionLocalProvider(
+                LocalLiquidGlass provides themeState.liquidGlass,
+                LocalIsDarkTheme provides isDark,
+            ) {
                 if (isLiquidGlassBackdropSupported()) {
                     val backgroundColor = MaterialTheme.colorScheme.background
                     val backgroundBackdrop = rememberCanvasBackdrop { drawRect(backgroundColor) }

@@ -9,8 +9,9 @@ import androidx.room.RoomDatabase
         RecommendationExclusionEntity::class,
         SavedPlaylistEntity::class,
         DownloadedTrackEntity::class,
+        SongPlayStatsEntity::class,
     ],
-    version = 12,
+    version = 13,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -18,4 +19,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun recommendationExclusionDao(): RecommendationExclusionDao
     abstract fun savedPlaylistDao(): SavedPlaylistDao
     abstract fun downloadedTrackDao(): DownloadedTrackDao
+    abstract fun songPlayStatsDao(): SongPlayStatsDao
 }

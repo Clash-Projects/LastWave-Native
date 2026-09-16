@@ -21,7 +21,19 @@ enum class AccentMode(val storageValue: String) {
     }
 }
 
+enum class ThemeMode(val storageValue: String) {
+    SYSTEM("system"),
+    LIGHT("light"),
+    DARK("dark");
+
+    companion object {
+        fun fromStorage(value: String?): ThemeMode =
+            entries.firstOrNull { it.storageValue == value } ?: SYSTEM
+    }
+}
+
 data class ThemePrefs(
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val accentColor: String = "#E03030",
     val accentLight: String = "#FF6060",
     val accentMode: AccentMode = AccentMode.MANUAL,
@@ -36,6 +48,7 @@ class ThemePreferences @Inject constructor(
     private val dataStore: DataStore<Preferences>,
 ) {
     private object Keys {
+        val THEME_MODE = stringPreferencesKey("lw_themeMode")
         val ACCENT_COLOR = stringPreferencesKey("lw_accent")
         val ACCENT_LIGHT = stringPreferencesKey("lw_accentLight")
         val ACCENT_MODE = stringPreferencesKey("lw_accentMode")
@@ -47,6 +60,7 @@ class ThemePreferences @Inject constructor(
         .recoverPreferences("ThemePreferences")
         .map { p ->
             ThemePrefs(
+                themeMode = ThemeMode.fromStorage(p.readSafely(Keys.THEME_MODE)),
                 accentColor = p.readSafely(Keys.ACCENT_COLOR) ?: "#E03030",
                 accentLight = p.readSafely(Keys.ACCENT_LIGHT) ?: "#FF6060",
                 accentMode = AccentMode.fromStorage(p.readSafely(Keys.ACCENT_MODE)),
@@ -54,6 +68,10 @@ class ThemePreferences @Inject constructor(
                 liquidGlass = p.readSafely(Keys.LIQUID_GLASS) ?: false,
             )
         }
+
+    suspend fun setThemeMode(mode: ThemeMode) {
+        dataStore.edit { it[Keys.THEME_MODE] = mode.storageValue }
+    }
 
     suspend fun setManualAccent(color: String, light: String) {
         dataStore.edit {

@@ -77,6 +77,12 @@ android {
         val lyricsApiKey = resolveSecret("LYRICS_API_KEY", "API_KEY", "LYRICS_AUTH_TOKEN")
         buildConfigField("byte[]", "LYRICS_API_KEY_BYTES", obfuscateSecret(lyricsApiKey))
 
+        // Provider-module code key (AES-256, base64 of 32 bytes). Provisioned
+        // per build via env / gradle property / local.properties / .env as
+        // PROVIDER_MODULE_KEY — never committed. Empty = modules unloadable.
+        val providerModuleKey = resolveSecret("PROVIDER_MODULE_KEY")
+        buildConfigField("byte[]", "PROVIDER_MODULE_KEY_BYTES", obfuscateSecret(providerModuleKey))
+
         // No shared Last.fm key: bring-your-own-key model. Everyone creates
         // their own key at last.fm/api/account/create and pastes it in
         // Settings → Integrations / Scrobbling. Nothing Last.fm-related is
@@ -255,9 +261,15 @@ dependencies {
     // controls, Bluetooth/headset controls and a MediaController-backed UI.
     implementation("androidx.media3:media3-exoplayer:1.2.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.2.1")
+    // Segmented provider-module path: DASH chunk source + CDM decryption.
+    // Pinned to the same 1.2.1 line as exoplayer/hls to avoid binary mismatch.
+    implementation("androidx.media3:media3-exoplayer-dash:1.2.1")
     // MediaBrowserServiceCompat/MediaSessionCompat bridge used by Android
     // Auto to browse the LastWave library and control the same player.
     implementation("androidx.media:media:1.7.0")
+
+    // Provider-module QuickJS runtime (pinned to the cached 1.0.12 line).
+    implementation("io.github.dokar3:quickjs-kt-android:1.0.12")
 
     // GPLv3 Media3-matched FFmpeg software decoder (distribution must comply).
     // The renderer factory prefers FFmpeg for every codec it supports so all

@@ -45,9 +45,13 @@ object Md3SchemeBuilder {
         return (h * 360f).roundToInt().let { ((it % 360) + 360) % 360 }
     }
 
-    /** Full dynamic scheme, seeded from [hex]'s hue. Matches _applyMaterialYouScheme(). */
+    /** Full dynamic dark scheme, seeded from [hex]'s hue. Matches _applyMaterialYouScheme(). */
     @Suppress("UNUSED_PARAMETER")
-    fun buildScheme(hex: String, amoled: Boolean, liquidGlass: Boolean = false): ColorScheme {
+    fun buildScheme(hex: String, amoled: Boolean, liquidGlass: Boolean = false): ColorScheme =
+        buildDarkScheme(hex, amoled, liquidGlass)
+
+    /** Dark scheme, seeded from [hex]'s hue. */
+    fun buildDarkScheme(hex: String, amoled: Boolean, liquidGlass: Boolean = false): ColorScheme {
         val h = hueOf(hex)
         val hT = (h + 60) % 360
         return build(
@@ -59,14 +63,42 @@ object Md3SchemeBuilder {
         )
     }
 
-    /** Pure grayscale scheme (all chroma = 0). Matches _applyMonochromeScheme(). */
+    /** Full dynamic light scheme, seeded from [hex]'s hue. */
     @Suppress("UNUSED_PARAMETER")
-    fun buildMonochromeScheme(amoled: Boolean, liquidGlass: Boolean = false): ColorScheme = build(
+    fun buildLightScheme(hex: String, liquidGlass: Boolean = false): ColorScheme {
+        val h = hueOf(hex)
+        val hT = (h + 60) % 360
+        return buildLight(
+            primaryHue = h,
+            secondaryHue = h,
+            tertiaryHue = hT,
+            neutralHue = h,
+            monochrome = false,
+        )
+    }
+
+    /** Pure grayscale dark scheme (all chroma = 0). Matches _applyMonochromeScheme(). */
+    @Suppress("UNUSED_PARAMETER")
+    fun buildMonochromeScheme(amoled: Boolean, liquidGlass: Boolean = false): ColorScheme =
+        buildMonochromeDarkScheme(amoled, liquidGlass)
+
+    /** Pure grayscale dark scheme. */
+    fun buildMonochromeDarkScheme(amoled: Boolean, liquidGlass: Boolean = false): ColorScheme = build(
         primaryHue = 0,
         secondaryHue = 0,
         tertiaryHue = 0,
         neutralHue = 0,
         amoled = amoled,
+        monochrome = true,
+    )
+
+    /** Pure grayscale light scheme (all chroma = 0). */
+    @Suppress("UNUSED_PARAMETER")
+    fun buildMonochromeLightScheme(liquidGlass: Boolean = false): ColorScheme = buildLight(
+        primaryHue = 0,
+        secondaryHue = 0,
+        tertiaryHue = 0,
+        neutralHue = 0,
         monochrome = true,
     )
 
@@ -137,6 +169,62 @@ object Md3SchemeBuilder {
         )
 
         return scheme
+    }
+
+    private fun buildLight(
+        primaryHue: Int,
+        secondaryHue: Int,
+        tertiaryHue: Int,
+        neutralHue: Int,
+        monochrome: Boolean = false,
+    ): ColorScheme {
+        val cP = if (monochrome) 0 else CHROMA_PRIMARY + 15
+        val cS = if (monochrome) 0 else CHROMA_SECONDARY + 8
+        val cT = if (monochrome) 0 else CHROMA_TERTIARY + 12
+        val cN = if (monochrome) 0 else 4
+        val cNV = if (monochrome) 0 else 6
+
+        return androidx.compose.material3.lightColorScheme(
+            primary = hsl(primaryHue, cP, 40),
+            onPrimary = Color.White,
+            primaryContainer = hsl(primaryHue, cP, 90),
+            onPrimaryContainer = hsl(primaryHue, cP, 10),
+
+            secondary = hsl(secondaryHue, cS, 40),
+            onSecondary = Color.White,
+            secondaryContainer = hsl(secondaryHue, cS, 90),
+            onSecondaryContainer = hsl(secondaryHue, cS, 10),
+
+            tertiary = hsl(tertiaryHue, cT, 40),
+            onTertiary = Color.White,
+            tertiaryContainer = hsl(tertiaryHue, cT, 90),
+            onTertiaryContainer = hsl(tertiaryHue, cT, 10),
+
+            error = hsl(0, 70, 40),
+            errorContainer = hsl(0, 70, 90),
+            onErrorContainer = hsl(0, 70, 12),
+            onError = Color.White,
+
+            background = hsl(neutralHue, cN, 98),
+            onBackground = hsl(neutralHue, cNV, 10),
+            surface = hsl(neutralHue, cN, 98),
+            onSurface = hsl(neutralHue, cNV, 10),
+            surfaceContainerLowest = Color.White,
+            surfaceContainerLow = hsl(neutralHue, cN, 96),
+            surfaceContainer = hsl(neutralHue, cN, 94),
+            surfaceContainerHigh = hsl(neutralHue, cN, 92),
+            surfaceContainerHighest = hsl(neutralHue, cN, 90),
+            surfaceVariant = hsl(neutralHue, cNV, 90),
+            onSurfaceVariant = hsl(neutralHue, cNV, 30),
+
+            outline = hsl(neutralHue, cNV, 50),
+            outlineVariant = hsl(neutralHue, cNV, 80),
+
+            inverseSurface = hsl(neutralHue, cNV, 20),
+            inverseOnSurface = hsl(neutralHue, cNV, 95),
+            inversePrimary = hsl(primaryHue, cP, 80),
+            scrim = Color.Black,
+        )
     }
 
     /**

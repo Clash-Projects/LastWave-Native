@@ -163,38 +163,70 @@ fun Modifier.liquidGlassChrome(
     backdrop: Backdrop? = LocalLiquidGlassBackdrop.current,
 ): Modifier {
     if (!enabled) return this
-    return canvasLiquidGlassChrome(shape)
+    val isDark = LocalIsDarkTheme.current
+    return canvasLiquidGlassChrome(shape, isDark)
 }
 
-fun Modifier.canvasLiquidGlassChrome(shape: Shape): Modifier = drawWithCache {
+fun Modifier.canvasLiquidGlassChrome(shape: Shape, isDark: Boolean = true): Modifier = drawWithCache {
     if (!size.width.isFinite() || !size.height.isFinite() || size.width <= 0f || size.height <= 0f) {
         return@drawWithCache onDrawWithContent { drawContent() }
     }
     val outline = shape.createOutline(size, layoutDirection, this)
-    val substrate = Color(0xFF0C0E14).copy(alpha = 0.42f)
-    val reflection = Brush.verticalGradient(
-        0f to Color.White.copy(alpha = 0.20f),
-        0.15f to Color.White.copy(alpha = 0.075f),
-        0.50f to Color.Transparent,
-        1f to Color.Black.copy(alpha = 0.14f),
-        startY = 0f,
-        endY = size.height,
-    )
-    val refraction = Brush.linearGradient(
-        0f to Color(0xFFB8D8FF).copy(alpha = 0.075f),
-        0.48f to Color.Transparent,
-        1f to Color(0xFFFFD8F0).copy(alpha = 0.055f),
-        start = Offset.Zero,
-        end = Offset(size.width, size.height),
-    )
+    val substrate = if (isDark) Color(0xFF0C0E14).copy(alpha = 0.42f) else Color(0xFFFFFFFF).copy(alpha = 0.55f)
+    val reflection = if (isDark) {
+        Brush.verticalGradient(
+            0f to Color.White.copy(alpha = 0.20f),
+            0.15f to Color.White.copy(alpha = 0.075f),
+            0.50f to Color.Transparent,
+            1f to Color.Black.copy(alpha = 0.14f),
+            startY = 0f,
+            endY = size.height,
+        )
+    } else {
+        Brush.verticalGradient(
+            0f to Color.White.copy(alpha = 0.60f),
+            0.15f to Color.White.copy(alpha = 0.25f),
+            0.50f to Color.Transparent,
+            1f to Color(0xFF808080).copy(alpha = 0.08f),
+            startY = 0f,
+            endY = size.height,
+        )
+    }
+    val refraction = if (isDark) {
+        Brush.linearGradient(
+            0f to Color(0xFFB8D8FF).copy(alpha = 0.075f),
+            0.48f to Color.Transparent,
+            1f to Color(0xFFFFD8F0).copy(alpha = 0.055f),
+            start = Offset.Zero,
+            end = Offset(size.width, size.height),
+        )
+    } else {
+        Brush.linearGradient(
+            0f to Color(0xFF90CAFF).copy(alpha = 0.09f),
+            0.48f to Color.Transparent,
+            1f to Color(0xFFFFB4E6).copy(alpha = 0.07f),
+            start = Offset.Zero,
+            end = Offset(size.width, size.height),
+        )
+    }
     val strokeWidth = 1.dp.toPx()
-    val borderBrush = Brush.verticalGradient(
-        0f to Color.White.copy(alpha = 0.16f),
-        0.5f to Color.White.copy(alpha = 0.05f),
-        1f to Color.Transparent,
-        startY = 0f,
-        endY = size.height,
-    )
+    val borderBrush = if (isDark) {
+        Brush.verticalGradient(
+            0f to Color.White.copy(alpha = 0.16f),
+            0.5f to Color.White.copy(alpha = 0.05f),
+            1f to Color.Transparent,
+            startY = 0f,
+            endY = size.height,
+        )
+    } else {
+        Brush.verticalGradient(
+            0f to Color.White.copy(alpha = 0.80f),
+            0.5f to Color.White.copy(alpha = 0.35f),
+            1f to Color(0xFFE0E0E0).copy(alpha = 0.50f),
+            startY = 0f,
+            endY = size.height,
+        )
+    }
 
     onDrawWithContent {
         drawOutline(outline, substrate)

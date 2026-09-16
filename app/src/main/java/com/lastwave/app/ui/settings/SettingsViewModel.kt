@@ -7,6 +7,7 @@ import com.lastwave.app.data.backup.BackupRepository
 import com.lastwave.app.data.backup.RestoreResult
 import com.lastwave.app.data.generate.GenerateRepository
 import com.lastwave.app.data.local.AccentMode
+import com.lastwave.app.data.local.ThemeMode
 import com.lastwave.app.data.local.AppLanguage
 import com.lastwave.app.data.local.EqualizerSettings
 import com.lastwave.app.data.local.LyricsUiVersion
@@ -360,6 +361,7 @@ class SettingsViewModel @Inject constructor(
 
     // ── Appearance (§8.2 / §8.3 / §8.4) ──
 
+    fun setThemeMode(mode: ThemeMode) = launchSettingsAction("update theme mode") { themeRepository.setThemeMode(mode) }
     fun setAmoled(enabled: Boolean) = launchSettingsAction("update AMOLED mode") { themeRepository.setAmoled(enabled) }
     fun setLiquidGlass(enabled: Boolean) = launchSettingsAction("update Liquid Glass") { themeRepository.setLiquidGlass(enabled) }
     fun setAccentMode(mode: AccentMode) = launchSettingsAction("update accent mode") { themeRepository.setMode(mode) }

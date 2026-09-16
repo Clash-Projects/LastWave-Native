@@ -39,9 +39,22 @@
     <string name="settings_downloads_sub_structured">%1$d song(s) • %2$s • Music/%3$s • %4$s</string>
     <string name="settings_downloads_empty">No offline songs downloaded</string>
 
+    <string name="settings_modules_title">Provider Modules</string>
+    <string name="settings_modules_sub">Extra sources queried alongside the backend</string>
+    <string name="settings_modules_query_title">Query modules during playback</string>
+    <string name="settings_modules_query_sub">On • module hits play instantly when the backend misses</string>
+    <string name="settings_modules_add">Add module</string>
+    <string name="settings_modules_add_sub">Install an encrypted .lwp package</string>
+    <string name="settings_modules_empty">No modules installed</string>
+
     <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_theme_mode">Theme</string>
+    <string name="settings_theme_mode_sub">Choose system default, light, or dark</string>
+    <string name="theme_mode_system">System</string>
+    <string name="theme_mode_light">Light</string>
+    <string name="theme_mode_dark">Dark</string>
     <string name="settings_amoled">AMOLED Mode</string>
-    <string name="settings_amoled_sub">Pure black background</string>
+    <string name="settings_amoled_sub">Pure black background (Dark mode only)</string>
     <string name="settings_dynamic_color">Dynamic Color</string>
     <string name="settings_dynamic_color_sub">Use your wallpaper\'s colors</string>
     <string name="settings_dynamic_now_playing">Dynamic Now Playing</string>

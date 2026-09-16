@@ -27,4 +27,8 @@ class ThemeViewModel @Inject constructor(
     fun setAmoled(enabled: Boolean) = viewModelScope.launch {
         themeRepository.setAmoled(enabled)
     }
+
+    fun setThemeMode(mode: com.lastwave.app.data.local.ThemeMode) = viewModelScope.launch {
+        themeRepository.setThemeMode(mode)
+    }
 }

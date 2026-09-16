@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Author: musaibbhat120605
+**Date:** September 16, 2026
+
+#### Added
+- **SongPlayStatsEntity + SongPlayStatsDao** — local per-track listening stats (total play time, skip count, play count, last played).
+- **SongPlayStatsRepository** — records listened time and skips.
+- **LocalTasteSuggestionEngine** — local, Last.fm-free recommendation engine (ported scoring model: play time, skip penalty, liked bonus, recency, time-of-day), seeded via existing `InnerTubeMusicApi.fetchRelatedSongs`.
+- **Room migration 12 → 13** — creates `song_play_stats` table without wiping existing data.
+
+#### Changed
+- **MusicPlayer.kt** — hooks `onMediaItemTransition` to record listened duration and detect skips (non-AUTO transition + <85% played).
+- **AppDatabase.kt / DatabaseModule.kt** — registers the new entity/DAO, bumps DB version, adds migration.
+- **FeedScreen.kt** — redesigned `QuickTilesGrid`/`QuickTileCard` (Liked Songs / Mix / New Releases): equal-width scrollable cards with per-type gradient icons, replacing the old grid-chunked layout that left an orphaned half-row.
+
+#### Not yet wired
+- `LocalTasteSuggestionEngine.run()` isn't called from any screen yet — integration notes are in the file itself (Feed's discover section or as a Last.fm fallback in `GenerateRepository`).
+
 ### Fixed
 - **Player state and cached track lost after leaving the app in the background with nothing playing.** (Fix by [@musaibbhat120605](https://github.com/musaibbhat120605))
 

@@ -61,6 +61,9 @@ data class MiscSettings(
     /** When true, the player attempts to resolve and stream lossless / Hi-Res audio
      *  directly from lossless CDN when a high-confidence match exists. Falls back to YouTube Music. */
     val preferLosslessStreaming: Boolean = true,
+    /** When true, the player also queries installed provider modules in
+     *  parallel with the backend; a module hit plays instantly on miss. */
+    val preferProviderModules: Boolean = true,
     /** Preferred quality preset for lossless streaming (27: 24/192, 7: 24/96, 6: 16/44.1, 5: 320k).
      *  If a track does not support the requested quality, the worker automatically selects the highest available. */
     val losslessQuality: Int = 27,
@@ -171,6 +174,7 @@ class SettingsPreferences @Inject constructor(
         val USE_CUSTOM_FONT = booleanPreferencesKey("lw_use_custom_font")
         val PINNED_FRIENDS = stringSetPreferencesKey("lw_pinned_friends")
         val PREFER_LOSSLESS_STREAMING = booleanPreferencesKey("lw_prefer_lossless_streaming")
+        val PREFER_PROVIDER_MODULES = booleanPreferencesKey("lw_prefer_provider_modules")
         val LOSSLESS_QUALITY = intPreferencesKey("lw_lossless_quality")
         val DOWNLOAD_QUALITY = intPreferencesKey("lw_download_quality")
         val MUSIC_ENHANCER = booleanPreferencesKey("lw_music_enhancer")
@@ -198,6 +202,7 @@ class SettingsPreferences @Inject constructor(
                 useCustomFont = p.readSafely(Keys.USE_CUSTOM_FONT) ?: true,
                 pinnedFriends = p.readSafely(Keys.PINNED_FRIENDS) ?: emptySet(),
                 preferLosslessStreaming = p.readSafely(Keys.PREFER_LOSSLESS_STREAMING) ?: true,
+                preferProviderModules = p.readSafely(Keys.PREFER_PROVIDER_MODULES) ?: true,
                 losslessQuality = p.readSafely(Keys.LOSSLESS_QUALITY)?.takeIf { it in LOSSLESS_QUALITIES } ?: 27,
                 downloadQuality = p.readSafely(Keys.DOWNLOAD_QUALITY)?.takeIf { it in DOWNLOAD_QUALITIES } ?: 27,
                 isStudioMasterClarityEnabled = p.readSafely(Keys.MUSIC_ENHANCER) ?: true,
@@ -231,6 +236,12 @@ class SettingsPreferences @Inject constructor(
     suspend fun setPreferLosslessStreaming(enabled: Boolean) {
         dataStore.edit {
             it[Keys.PREFER_LOSSLESS_STREAMING] = enabled
+        }
+    }
+
+    suspend fun setPreferProviderModules(enabled: Boolean) {
+        dataStore.edit {
+            it[Keys.PREFER_PROVIDER_MODULES] = enabled
         }
     }
 
