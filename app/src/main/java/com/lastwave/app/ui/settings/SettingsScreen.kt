@@ -253,6 +253,7 @@ fun SettingsScreen(
     onOpenExcludedSongs: () -> Unit = {},
     onOpenYouTubeImport: () -> Unit = {},
     onOpenYouTubeLogin: () -> Unit = {},
+    onOpenExternalImport: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val session by viewModel.session.collectAsStateWithLifecycle()
@@ -973,20 +974,31 @@ fun SettingsScreen(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_imports))
-                    SettingsGroup(rowCount = 1) { _, position ->
-                        SettingsActionCard(
-                            icon = Icons.Filled.FileDownload,
-                            iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                            iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                            title = stringResource(R.string.settings_import_file),
-                            subtitle = stringResource(R.string.settings_import_file_sub),
-                            onClick = {
-                                runCatching {
-                                    csvPickerLauncher.launch(arrayOf("text/*", "text/csv", "application/csv", "audio/x-mpegurl", "application/x-mpegurl", "application/vnd.apple.mpegurl", "*/*"))
-                                }.onFailure { viewModel.showToast("No file picker is available") }
-                            },
-                            position = position,
-                        )
+                    SettingsGroup(rowCount = 2) { index, position ->
+                        when (index) {
+                            0 -> SettingsActionCard(
+                                icon = Icons.Filled.QueueMusic,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = "Import from Spotify / Apple Music",
+                                subtitle = "Paste a public playlist link",
+                                onClick = onOpenExternalImport,
+                                position = position,
+                            )
+                            else -> SettingsActionCard(
+                                icon = Icons.Filled.FileDownload,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_import_file),
+                                subtitle = stringResource(R.string.settings_import_file_sub),
+                                onClick = {
+                                    runCatching {
+                                        csvPickerLauncher.launch(arrayOf("text/*", "text/csv", "application/csv", "audio/x-mpegurl", "application/x-mpegurl", "application/vnd.apple.mpegurl", "*/*"))
+                                    }.onFailure { viewModel.showToast("No file picker is available") }
+                                },
+                                position = position,
+                            )
+                        }
                     }
                 }
             }
