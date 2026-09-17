@@ -133,9 +133,10 @@ cd LastWave-native
 
 ## <img src="https://api.iconify.design/lucide:message-circle.svg?color=%2324A1DE" width="20" height="20" align="center" /> Community & Support
 
-- <img src="https://api.iconify.design/lucide:send.svg?color=%2324A1DE" width="16" height="16" align="center" /> **Updates & Support:** [Join @clashprojects on Telegram](https://t.me/clashprojects)
-- <img src="https://api.iconify.design/lucide:sparkles.svg?color=%230088cc" width="16" height="16" align="center" /> **More From Us:** [Join @MaterialYouApp on Telegram](https://t.me/MaterialYouApp)
-- <img src="https://api.iconify.design/lucide:message-square.svg?color=%235865F2" width="16" height="16" align="center" /> **Discord Community:** [Join Discord](https://discord.gg/DmyM2p2fMe)
+* <img src="https://api.iconify.design/lucide:send.svg?color=%2324A1DE" width="16" height="16" align="center" /> **Updates & Support:** [Join @clashprojects on Telegram](https://t.me/clashprojects)
+* <img src="https://api.iconify.design/lucide:sparkles.svg?color=%230088cc" width="16" height="16" align="center" /> **More From Us:** [Join @MaterialYouApp on Telegram](https://t.me/MaterialYouApp)
+* <img src="https://api.iconify.design/lucide:message-square.svg?color=%235865F2" width="16" height="16" align="center" /> **Discord Community:** [Join Discord](https://discord.gg/DmyM2p2fMe)
+* <img src="https://api.iconify.design/lucide:globe.svg?color=%2324A1DE" width="16" height="16" align="center" /> **LastWave Website:** [visit site now](https://lastwave.pages.dev)
 
 ---
 
