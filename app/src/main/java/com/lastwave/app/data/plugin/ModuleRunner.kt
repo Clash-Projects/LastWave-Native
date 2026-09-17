@@ -56,6 +56,11 @@ class ModuleRunner @Inject constructor(
 
     private val engines = ConcurrentHashMap<String, PooledEngine>()
 
+    private fun providerTarget(handle: ProviderHandle): String {
+        val g = globalOf(handle)
+        return "((globalThis.LastWave && globalThis.LastWave.$g) || globalThis.$g || globalThis.LastWaveProvider || globalThis.AmazonProvider)"
+    }
+
     /** Single op per song: match + playback, descriptor JSON or "null". */
     suspend fun resolvePlayback(
         handle: ProviderHandle,
@@ -66,10 +71,13 @@ class ModuleRunner @Inject constructor(
     ): String = withEngine(handle) { js ->
         val target = "{\"title\":${q(title)},\"artist\":${q(artist)}," +
             "\"durationSec\":$durationSec,\"quality\":${q(quality)}}"
-        js.evaluate<String>(
-            "globalThis.LastWave.${globalOf(handle)}.resolvePlayback($target).then(r=>JSON.stringify(r));",
+        Log.d(TAG, "resolvePlayback: target=$target")
+        val res = js.evaluate<String>(
+            "${providerTarget(handle)}.resolvePlayback($target).then(r=>JSON.stringify(r));",
             "resolve.js",
         )
+        Log.d(TAG, "resolvePlayback result len: ${res.length}")
+        res
     }
 
     /** Cheap re-resolve for an expired source: straight to manifest, no search. */
@@ -86,7 +94,7 @@ class ModuleRunner @Inject constructor(
             "\"title\":${q(title)},\"artist\":${q(artist)}," +
             "\"album\":${q(album)},\"durationSec\":$durationSec}"
         js.evaluate<String>(
-            "globalThis.LastWave.${globalOf(handle)}.refreshPlayback($ref).then(r=>JSON.stringify(r));",
+            "${providerTarget(handle)}.refreshPlayback($ref).then(r=>JSON.stringify(r));",
             "refresh.js",
         )
     }
@@ -100,7 +108,7 @@ class ModuleRunner @Inject constructor(
     ): String = withEngine(handle) { js ->
         val ctx = "{\"licenseUrl\":${q(licenseUrl)},\"headers\":${JSONObject(headers).toString()}}"
         js.evaluate<String>(
-            "globalThis.LastWave.${globalOf(handle)}.buildLicenseRequest(${q(challengeB64)},$ctx).then(r=>JSON.stringify(r));",
+            "${providerTarget(handle)}.buildLicenseRequest(${q(challengeB64)},$ctx).then(r=>JSON.stringify(r));",
             "license_build.js",
         )
     }
@@ -109,7 +117,7 @@ class ModuleRunner @Inject constructor(
     suspend fun parseLicenseResponse(handle: ProviderHandle, responseB64: String): String =
         withEngine(handle) { js ->
             js.evaluate<String>(
-                "globalThis.LastWave.${globalOf(handle)}.parseLicenseResponse(${q(responseB64)},{ }).then(r=>JSON.stringify(r));",
+                "${providerTarget(handle)}.parseLicenseResponse(${q(responseB64)},{ }).then(r=>JSON.stringify(r));",
                 "license_parse.js",
             )
         }
@@ -122,7 +130,7 @@ class ModuleRunner @Inject constructor(
         val raw = runCatching {
             withEngine(handle) { js ->
                 js.evaluate<String>(
-                    "globalThis.LastWave.${globalOf(handle)}.getDownloadPolicy().then(r=>JSON.stringify(r));",
+                    "${providerTarget(handle)}.getDownloadPolicy().then(r=>JSON.stringify(r));",
                     "policy.js",
                 )
             }
@@ -161,12 +169,26 @@ class ModuleRunner @Inject constructor(
                         Charsets.UTF_8,
                     )
                     bindBridge(pooled.js, handle)
-                    pooled.js.evaluate<String>("$source\n\"__module_loaded__\";", "module.js")
                     pooled.js.evaluate<String>(namespaceScript(), "bridge.js")
+                    pooled.js.evaluate<String>("$source\n\"__module_loaded__\";", "module.js")
+                    val g = globalOf(handle)
+                    pooled.js.evaluate<String>(
+                        """
+                        if (typeof globalThis.LastWave === 'undefined') globalThis.LastWave = {};
+                        if (typeof globalThis['$g'] !== 'undefined') globalThis.LastWave['$g'] = globalThis['$g'];
+                        if (typeof globalThis.LastWaveProvider !== 'undefined') {
+                            globalThis.LastWave.LastWaveProvider = globalThis.LastWaveProvider;
+                            if (typeof globalThis['$g'] === 'undefined') globalThis['$g'] = globalThis.LastWaveProvider;
+                        }
+                        "__globals_ready__";
+                        """.trimIndent(),
+                        "globals.js",
+                    )
                     pooled.loaded = true
                 }
                 block(pooled.js)
             } catch (e: Exception) {
+                Log.e(TAG, "Engine error in ${handle.id}: ${e.message}", e)
                 engines.remove(handle.id, pooled)
                 runCatching { pooled.js.close() }
                 throw e
@@ -175,7 +197,8 @@ class ModuleRunner @Inject constructor(
     }
 
     private fun namespaceScript(): String =
-        "globalThis.LastWave={httpRequest:a=>globalThis.__lw_httpRequest(a)," +
+        "globalThis.LastWave=Object.assign(globalThis.LastWave||{},{" +
+            "httpRequest:a=>globalThis.__lw_httpRequest(a)," +
             "rsaSign:a=>globalThis.__lw_rsaSign(a)," +
             "b64decode:a=>globalThis.__lw_b64decode(a)," +
             "b64encode:a=>globalThis.__lw_b64encode(a)," +
@@ -183,7 +206,8 @@ class ModuleRunner @Inject constructor(
             "storeSet:a=>globalThis.__lw_storeSet(a)," +
             "logWrite:a=>globalThis.__lw_logWrite(a)," +
             "uuid:()=>globalThis.__lw_uuid(\"\")," +
-            "sleepMs:a=>globalThis.__lw_sleepMs(a)};\"__bridge_ready__\";"
+            "sleepMs:a=>globalThis.__lw_sleepMs(a)});" +
+            "\"__bridge_ready__\";"
 
     private fun bindBridge(engine: QuickJs, handle: ProviderHandle) {
         fun strArg(args: Array<Any?>): String = args.firstOrNull() as? String ?: ""

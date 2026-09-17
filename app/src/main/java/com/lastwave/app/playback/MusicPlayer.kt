@@ -567,7 +567,7 @@ class MusicPlayer @Inject constructor(
                             allowLocalDownloads = false,
                             videoId = videoId,
                             allowLossless = failedMediaId !in losslessBypassMediaIds,
-                            excludedLosslessUrls = if (failedLosslessStream && retry > 1) {
+                            excludedLosslessUrls = if (failedLosslessStream) {
                                 setOfNotNull(rejectedStream?.url)
                             } else emptySet(),
                         )
@@ -2980,24 +2980,25 @@ class MusicPlayer @Inject constructor(
         excludedLosslessUrls: Set<String>,
     ): ResolvedStream {
         val isYouTubeRequested = misc.losslessQuality == com.lastwave.app.data.lossless.LosslessMusicApi.QUALITY_YOUTUBE || !misc.preferLosslessStreaming
-        if (!allowLossless || isYouTubeRequested || (!videoId.isNullOrBlank() &&
+        if (isYouTubeRequested || (!videoId.isNullOrBlank() &&
                 (track.artist.isBlank() || track.artist.equals("Unknown artist", ignoreCase = true)))
         ) return resolveYoutubeTrackAudioStream(track, videoId)
 
-        // Resolve both sources together, but always await lossless first. If it
-        // fails, the YouTube result is already being prepared.
+        // Resolve YouTube in background as ultimate fallback
         val youtubeDeferred = applicationScope.async(Dispatchers.IO) {
             resolveYoutubeTrackAudioStream(track, videoId)
         }
-        // Provider modules are queried in parallel with the backend from the
-        // start: on a backend miss with a module hit, playback starts from
-        // the module instantly instead of waiting for a fresh lookup.
+        // Provider modules queried in parallel with backend; priority is Backend -> Module -> YouTube
         val moduleDeferred = applicationScope.async(Dispatchers.IO) {
             if (!misc.preferProviderModules) null
             else resolveModuleTrackAudioStream(track, misc)
         }
         return try {
-            resolveLosslessTrackAudioStream(track, misc, excludedLosslessUrls)
+            val backendStream = if (allowLossless) {
+                resolveLosslessTrackAudioStream(track, misc, excludedLosslessUrls)
+            } else null
+
+            backendStream
                 ?: runCatching {
                     withTimeoutOrNull(MODULE_RESOLVE_TIMEOUT_MS) { moduleDeferred.await() }
                 }.getOrNull()

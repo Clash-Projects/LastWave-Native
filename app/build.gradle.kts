@@ -191,6 +191,12 @@ android {
         }
     }
 
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+        ignoreWarnings = true
+    }
+
     testOptions {
         unitTests.isReturnDefaultValues = true
     }

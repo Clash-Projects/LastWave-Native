@@ -996,149 +996,151 @@ private fun QuickTilesGrid(
     tiles: List<FeedQuickTile>,
     onTileClick: (FeedQuickTile) -> Unit,
 ) {
-    val sizeClass = rememberWindowSizeClass()
-    val columns = when (sizeClass) {
-        WindowSizeClass.COMPACT -> 2
-        WindowSizeClass.MEDIUM -> 3
-        WindowSizeClass.EXPANDED -> 4
-    }
-    val tileLimit = when (sizeClass) {
-        WindowSizeClass.COMPACT -> 6
-        WindowSizeClass.MEDIUM -> 6
-        WindowSizeClass.EXPANDED -> 8
-    }
-    val rows = remember(tiles, columns, tileLimit) { tiles.take(tileLimit).chunked(columns) }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        rows.forEach { rowItems ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                rowItems.forEach { tile ->
-                    QuickTileCard(
-                        tile = tile,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onTileClick(tile) },
-                    )
-                }
-                val remaining = columns - rowItems.size
-                if (remaining > 0) {
-                    repeat(remaining) {
-                        Spacer(Modifier.weight(1f))
-                    }
-                }
-            }
+        items(tiles, key = { it.playlistId ?: it.localPlaylistId?.toString() ?: it.collection ?: it.title }) { tile ->
+            QuickTileCard(
+                tile = tile,
+                onClick = { onTileClick(tile) },
+            )
         }
     }
 }
 
 @Composable
-private fun QuickTileCard(tile: FeedQuickTile, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun QuickTileCard(
+    tile: FeedQuickTile,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
     val liquidGlass = LocalLiquidGlass.current
     val tileShape = RoundedCornerShape(18.dp)
+
+    // Per-type vibrant gradient pairs for the artwork/icon box matching modern expressive designs
+    val isLikedTile = tile.isLiked || tile.collection == "yt_liked" || tile.playlistId == "yt_liked"
+    val isMixTile = tile.collection == "radio" || tile.title.contains("Mix", ignoreCase = true)
+    val isNewReleasesTile = tile.collection == "new_releases"
+
+    val iconGradient = when {
+        isLikedTile -> Brush.linearGradient(
+            colors = listOf(Color(0xFFE91E63), Color(0xFFFF5252)),
+        )
+        isMixTile -> Brush.linearGradient(
+            colors = listOf(Color(0xFF7C4DFF), Color(0xFF536DFE)),
+        )
+        isNewReleasesTile -> Brush.linearGradient(
+            colors = listOf(Color(0xFFFF6D00), Color(0xFFFFAB00)),
+        )
+        else -> Brush.linearGradient(
+            colors = listOf(
+                MaterialTheme.colorScheme.primaryContainer,
+                MaterialTheme.colorScheme.surfaceContainerHighest,
+            ),
+        )
+    }
+
     LiquidGlassSurface(
         glassModifier = Modifier.liquidGlassChrome(tileShape, liquidGlass),
         onClick = onClick,
         shape = tileShape,
         color = liquidGlassContainerColor(
-            if (tile.isLiked) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
-            else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f),
+            when {
+                isLikedTile -> Color(0xFFE91E63).copy(alpha = 0.12f)
+                isMixTile -> Color(0xFF7C4DFF).copy(alpha = 0.12f)
+                isNewReleasesTile -> Color(0xFFFF6D00).copy(alpha = 0.12f)
+                else -> MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f)
+            },
         ),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
         ),
         modifier = modifier
-            .height(64.dp),
+            .width(136.dp)
+            .height(148.dp),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxSize(),
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(10.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
         ) {
             Box(
                 modifier = Modifier
-                    .fillMaxHeight()
+                    .fillMaxWidth()
                     .aspectRatio(1f)
-                    .clip(RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp))
-                    .background(
-                        if (tile.isLiked) MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
-                        else MaterialTheme.colorScheme.surfaceContainerHighest
-                    ),
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(iconGradient),
                 contentAlignment = Alignment.Center,
             ) {
-                if (tile.isLiked) {
-                    Icon(
-                        Icons.Filled.Favorite,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp),
-                    )
-                } else if (!tile.artworkUrl.isNullOrBlank()) {
+                if (!tile.artworkUrl.isNullOrBlank() && !isLikedTile && !isMixTile) {
                     AsyncImage(
                         model = tile.artworkUrl,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
                     )
-                } else if (tile.collection == "new_releases") {
+                } else if (isLikedTile) {
+                    Icon(
+                        Icons.Filled.Favorite,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(36.dp),
+                    )
+                } else if (isMixTile) {
+                    Icon(
+                        Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(36.dp),
+                    )
+                } else if (isNewReleasesTile) {
                     Icon(
                         Icons.Filled.NewReleases,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp),
+                        tint = Color.White,
+                        modifier = Modifier.size(36.dp),
                     )
                 } else {
                     Icon(
                         Icons.Filled.MusicNote,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.size(24.dp),
+                        tint = Color.White.copy(alpha = 0.9f),
+                        modifier = Modifier.size(36.dp),
                     )
                 }
             }
+
             Column(
                 modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 10.dp, end = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(1.dp),
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, start = 2.dp, end = 2.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
                     text = tile.title,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp, lineHeight = 17.sp),
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 13.sp,
+                        lineHeight = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                    ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
                     text = tile.subtitle ?: if (tile.actionVideoId != null) "Track" else "Playlist",
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                    ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                 )
-            }
-            if (tile.actionVideoId != null) {
-                Box(
-                    modifier = Modifier
-                        .padding(end = 10.dp)
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        Icons.Filled.PlayArrow,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
             }
         }
     }

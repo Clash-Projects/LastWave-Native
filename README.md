@@ -31,6 +31,23 @@
   <a href="https://t.me/MaterialYouApp">
     <img src="https://img.shields.io/badge/Telegram-More%20From%20Us-0088cc?style=for-the-badge&logo=telegram&logoColor=white" alt="More From Us" />
   </a>
+  <a href="https://discord.gg/DmyM2p2fMe">
+    <img src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord Community" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://buymeachai.ezee.li/ajisth69" target="_blank">
+    <img src="https://img.shields.io/badge/UPI-Buy%20Me%20A%20Chai-FF813F?style=for-the-badge&logo=googlepay&logoColor=white" alt="UPI (Buy Me A Chai)" height="34" />
+  </a>
+  &nbsp;
+  <a href="https://buymeacoffee.com/ajisth" target="_blank">
+    <img src="https://img.shields.io/badge/Buy%20Me%20A%20Coffee-ajisth-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy Me A Coffee" height="34" />
+  </a>
+  &nbsp;
+  <a href="https://github.com/sponsors/ajisth69" target="_blank">
+    <img src="https://img.shields.io/badge/Sponsor-GitHub-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="GitHub Sponsors" height="34" />
+  </a>
 </p>
 
 </div>

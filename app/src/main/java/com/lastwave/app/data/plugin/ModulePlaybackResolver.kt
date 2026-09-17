@@ -44,9 +44,17 @@ class ModulePlaybackResolver @Inject constructor(
             if (title.isBlank() || artist.isBlank()) return@withContext null
             val quality = moduleQuality(repoQuality)
             val handles = runCatching { manager.enabledHandles() }.getOrDefault(emptyList())
+            Log.d(TAG, "resolve: title='$title', artist='$artist', quality=$quality, handles=${handles.map { it.id }}")
             for (handle in handles) {
-                val descriptor = runCatching { resolveVia(handle, title, artist, quality) }.getOrNull()
-                if (descriptor != null) return@withContext descriptor
+                try {
+                    val descriptor = resolveVia(handle, title, artist, quality)
+                    if (descriptor != null) {
+                        Log.d(TAG, "resolve: success via ${handle.id}, quality=${descriptor.stream.quality}, codec=${descriptor.stream.codec}")
+                        return@withContext descriptor
+                    }
+                } catch (e: Throwable) {
+                    Log.e(TAG, "resolve error via ${handle.id}: ${e.message}", e)
+                }
             }
             null
         }

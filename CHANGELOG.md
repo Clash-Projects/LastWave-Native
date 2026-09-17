@@ -5,6 +5,8 @@
 ### Author: musaibbhat120605
 **Date:** September 16, 2026
 
+###Musaib Bhat will step down as the developer of LastWave on 16 September 2026. His contributions have been invaluable, and his work will always remain a cornerstone for our community.
+
 #### Added
 - **SongPlayStatsEntity + SongPlayStatsDao** — local per-track listening stats (total play time, skip count, play count, last played).
 - **SongPlayStatsRepository** — records listened time and skips.
