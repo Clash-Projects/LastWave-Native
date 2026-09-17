@@ -315,13 +315,13 @@ class AppleMusicPlaylistImporter @Inject constructor(
          */
         val SERVER_DATA_SCRIPT = Regex(
             """<script[^>]*\bid\s*=\s*["']?serialized-server-data["']?[^>]*>(.*?)</script>""",
-            setOf(RegexOption.DOT_ALL, RegexOption.IGNORE_CASE),
+            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
         )
         val SCHEMA_SCRIPT = Regex(
             """<script[^>]*\bid\s*=\s*["']?schema:music-playlist["']?[^>]*>(.*?)</script>""",
-            setOf(RegexOption.DOT_ALL, RegexOption.IGNORE_CASE),
+            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
         )
-        val TITLE_TAG = Regex("<title[^>]*>(.*?)</title>", setOf(RegexOption.DOT_ALL, RegexOption.IGNORE_CASE))
+        val TITLE_TAG = Regex("<title[^>]*>(.*?)</title>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
         val WHITESPACE = Regex("\\s+")
         val BIDI_MARKS = Regex("[\\u200E\\u200F\\u202A-\\u202E\\u2066-\\u2069\\uFEFF]")
         val APPLE_SUFFIX = Regex(
