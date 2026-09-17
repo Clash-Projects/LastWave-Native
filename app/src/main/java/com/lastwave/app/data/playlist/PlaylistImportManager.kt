@@ -19,6 +19,8 @@ class PlaylistImportManager @Inject constructor(
     private val innerTube: InnerTubeMusicApi,
     private val csvPlaylistImporter: CsvPlaylistImporter,
     private val ytMusicPreferences: YtMusicPreferences,
+    private val spotifyPlaylistImporter: SpotifyPlaylistImporter,
+    private val appleMusicPlaylistImporter: AppleMusicPlaylistImporter,
 ) {
 
     suspend fun importYouTubePlaylist(
@@ -82,6 +84,38 @@ class PlaylistImportManager @Inject constructor(
         val saved = playlistRepository.save(
             title = result.suggestedTitle,
             subtitle = "$fileType Import \u2022 ${result.matchedCount} imported, ${result.totalRows - result.matchedCount} skipped",
+            mode = "custom",
+            tracks = result.tracks,
+        )
+        Pair(saved, result)
+    }
+
+    /**
+     * Imports a **public** Spotify or Apple Music playlist from a pasted link.
+     *
+     * The provider page is scraped (no API key or account needed), each row is
+     * matched to a playable track, and the result is stored as a `custom`
+     * playlist. Rows that cannot be matched are skipped and reported in the
+     * returned [ExternalImportResult].
+     */
+    suspend fun importExternalPlaylist(
+        url: String,
+    ): Pair<SavedPlaylist, ExternalImportResult> = withContext(Dispatchers.IO) {
+        val source = ExternalPlaylistLink.detect(url)
+            ?: throw IllegalArgumentException("Paste a Spotify or Apple Music playlist link.")
+
+        val result = when (source) {
+            ExternalPlaylistSource.SPOTIFY -> spotifyPlaylistImporter.fetchAndMatch(url)
+            ExternalPlaylistSource.APPLE_MUSIC -> appleMusicPlaylistImporter.fetchAndMatch(url)
+        }
+
+        require(result.tracks.isNotEmpty()) {
+            "No tracks from that playlist could be matched. Make sure the playlist is public."
+        }
+
+        val saved = playlistRepository.save(
+            title = result.suggestedTitle,
+            subtitle = "${result.source.label} Import \u2022 ${result.matchedCount} imported, ${result.totalRows - result.matchedCount} skipped",
             mode = "custom",
             tracks = result.tracks,
         )
