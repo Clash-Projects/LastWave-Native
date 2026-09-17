@@ -2,7 +2,7 @@
 
 <img src="lastwave_logo.png" alt="LastWave Logo" width="120" height="120" style="border-radius: 50%;" />
 
-# LastWave v4.1.0
+# LastWave v4.1.0+
 
 **High-Resolution Lossless Music Streaming & Player with Real-Time Synced Lyrics & Smart Discovery for Android, built with Material 3 Expressive design.**
 
@@ -17,7 +17,7 @@
     <img src="https://img.shields.io/badge/Audio-Hi--Res%20Lossless%20FLAC-00E5FF?style=for-the-badge&logo=flac&logoColor=white&labelColor=012226" alt="Hi-Res Lossless FLAC" />
   </a>
   <a href="#">
-    <img src="https://img.shields.io/badge/Version-4.1.0--native-C6F100?style=for-the-badge&labelColor=012226" alt="Version 4.1.0-native" />
+    <img src="https://img.shields.io/badge/Version-4.1.0%2B--native-C6F100?style=for-the-badge&labelColor=012226" alt="Version 4.1.0+-native" />
   </a>
   <a href="#">
     <img src="https://img.shields.io/badge/Platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white&labelColor=2d2d2d" alt="Platform" />

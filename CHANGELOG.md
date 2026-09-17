@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased
+## 4.1.0+ (2026-09-17)
+
+### Added
+- **Direct MPEG-DASH Lossless Tidal Fallback Streams:**
+  - Integrated zero-compute MPEG-DASH manifest streaming (`application/dash+xml`) for lossless Tidal fallback tracks when Qobuz misses.
+  - Native ExoPlayer playback via `media3-exoplayer-dash` directly fetching high-fidelity FLAC audio segments from official CDNs without proxy lag or server transcode bottleneck.
+
+### Fixed
+- **Background Progressive Stream Cacher for DASH Manifests:**
+  - Prevented progressive chunk range caching on dynamic MPD manifests (`application/dash+xml` or `.mpd` URLs), ensuring smooth playback buffering and preventing stream fallback hiccups.
 
 ### Fixed
 - **Player state and cached track lost after leaving the app in the background with nothing playing.** (Fix by [@musaibbhat120605](https://github.com/musaibbhat120605))

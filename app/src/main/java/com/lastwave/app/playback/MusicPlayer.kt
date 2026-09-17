@@ -2099,6 +2099,7 @@ class MusicPlayer @Inject constructor(
     private fun cacheCurrentTrackStream(stream: ResolvedStream?) {
         currentTrackCacheJob?.cancel()
         if (stream == null) return
+        if (stream.mimeType == "application/dash+xml" || stream.url.contains(".mpd")) return
         val uri = Uri.parse(stream.url)
         if (uri.scheme !in setOf("http", "https")) return
         val cacheKey = stream.cacheKey
