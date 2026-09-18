@@ -3,6 +3,21 @@
 ## Unreleased
 
 ### Fixed
+- **Search returning no results for Cyrillic / non-Latin queries (#102).**
+  Title/artist matching used a Latin-only word pattern (`[^a-z0-9]+`),
+  reducing every non-Latin query to blank, and the Songs-filtered search had
+  no fallback when the filter matched nothing. Matching now uses a
+  Unicode-aware pattern (letters + numbers from any script) with
+  locale-independent case folding, and an empty filtered search retries once
+  unfiltered. Matching helpers were extracted to `TextMatch` with unit tests
+  covering Cyrillic, CJK and Arabic input.
+
+  Files changed:
+  `app/src/main/java/com/lastwave/app/data/music/TextMatch.kt` (new),
+  `app/src/main/java/com/lastwave/app/data/music/InnerTubeMusicApi.kt`,
+  `app/src/test/java/com/lastwave/app/data/music/TextMatchTest.kt` (new)
+
+### Fixed
 - **Logged-out YouTube Music playlists collapsing to a dead "Tap Retry" error.**
   `InnerTubeMusicApi.fetchPlaylist()` treated ANY single continuation-page
   failure (rate-limit/offline blip while paging a large playlist) as a total
