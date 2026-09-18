@@ -3,6 +3,22 @@
 ## Unreleased
 
 ### Fixed
+- **Home-screen widget stuck on the previous song (#94).**
+  Two publishers wrote the same widget snapshot with independent dedup
+  guards: the playback service (authoritative, fires on every player-state
+  transition) and the scrobble listener (watches all media sessions,
+  including our own, on an async binder timeline). During a track change
+  the listener could still see the previous track's session metadata and
+  overwrite the fresh snapshot last, with nothing re-firing afterwards.
+  The listener now yields while our own session is active and otherwise
+  only elects external packages, and snapshot write + refresh in
+  `WidgetUpdater` is mutex-serialized against interleaved publishers.
+
+  Files changed:
+  `app/src/main/java/com/lastwave/app/service/MediaScrobbleListenerService.kt`
+  `app/src/main/java/com/lastwave/app/widget/WidgetUpdater.kt`
+
+### Fixed
 - **Logged-out YouTube Music playlists collapsing to a dead "Tap Retry" error.**
   `InnerTubeMusicApi.fetchPlaylist()` treated ANY single continuation-page
   failure (rate-limit/offline blip while paging a large playlist) as a total

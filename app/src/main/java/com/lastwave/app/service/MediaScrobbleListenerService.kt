@@ -511,7 +511,30 @@ class MediaScrobbleListenerService : NotificationListenerService() {
      *  that don't publish album art on their MediaSession, in which case
      *  the widget falls back to showing just the app icon. */
     private fun publishBestWidgetState(preferred: WatchedSession? = null) {
+        // Single-writer rule (issue #94): MusicPlaybackService.publishWidget
+        // is the authoritative publisher for our own playback and fires on
+        // every player-state transition. This listener ALSO watches our own
+        // session for scrobbling, but its metadata/state callbacks arrive on
+        // a different (async binder) timeline — during a track change it can
+        // still see the PREVIOUS track and overwrite the fresh snapshot,
+        // leaving the widget stuck on the old song with no later event to
+        // repair it (both sides dedupe by signature, so nobody re-fires).
+        // While our own session is active, yield entirely; otherwise only
+        // elect external packages below so we can never clobber our own UI.
+        val ownPackage = packageName
+        val ownActive = watched.values.any { session ->
+            session.controller.packageName == ownPackage &&
+                when (session.controller.playbackState?.state) {
+                    PlaybackState.STATE_PLAYING,
+                    PlaybackState.STATE_BUFFERING,
+                    PlaybackState.STATE_CONNECTING,
+                    -> true
+                    else -> false
+                }
+        }
+        if (ownActive) return
         val best = watched.values
+            .filter { it.controller.packageName != ownPackage }
             .filter { session ->
                 val meta = session.controller.metadata
                 val title = meta?.getString(MediaMetadata.METADATA_KEY_TITLE)

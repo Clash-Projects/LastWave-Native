@@ -15,6 +15,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 
 private const val TAG = "WidgetUpdater"
 private const val ART_FILE_NAME = "widget_now_playing_art.png"
@@ -32,6 +33,14 @@ object WidgetUpdater {
         private set
 
     private val animationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    // Snapshot write + Glance refresh must be atomic: the playback service
+    // (track transitions, artwork landing late) and the scrobble listener
+    // (external apps) publish from different threads, and interleaved
+    // write/write or write/refresh pairs could otherwise leave a stale
+    // snapshot on screen with no later event to repair it (issue #94).
+    // The 550ms wave ticker only re-composes and stays outside the mutex.
+    private val publishMutex = kotlinx.coroutines.sync.Mutex()
 
     @Volatile
     private var waveAnimationJob: Job? = null
@@ -68,7 +77,7 @@ object WidgetUpdater {
         sourcePackage: String,
         art: Bitmap?,
         isPlaying: Boolean,
-    ) {
+    ) = publishMutex.withLock {
         val artPath = art?.let { bitmap -> writeArt(context, bitmap) }
         NowPlayingWidgetSnapshot.write(
             context,
@@ -87,7 +96,7 @@ object WidgetUpdater {
         if (isPlaying) startWaveAnimation(context) else stopWaveAnimation()
     }
 
-    suspend fun clear(context: Context) {
+    suspend fun clear(context: Context) = publishMutex.withLock {
         stopWaveAnimation()
         val current = NowPlayingWidgetSnapshot.read(context)
         NowPlayingWidgetSnapshot.write(
@@ -101,9 +110,9 @@ object WidgetUpdater {
      * media-session callback catches up. Always writes and refreshes so a
      * stale persisted flag can never leave the play/pause glyph out of
      * sync with the real session. */
-    suspend fun setPlaying(context: Context, isPlaying: Boolean) {
+    suspend fun setPlaying(context: Context, isPlaying: Boolean) = publishMutex.withLock {
         val current = NowPlayingWidgetSnapshot.read(context)
-        if (!current.hasSession) return
+        if (!current.hasSession) return@withLock
         NowPlayingWidgetSnapshot.write(context, current.copy(isPlaying = isPlaying))
         updateAll(context)
         if (isPlaying) startWaveAnimation(context) else stopWaveAnimation()
