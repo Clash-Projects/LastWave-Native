@@ -378,11 +378,16 @@ class YtMusicLibraryManager @Inject constructor(
             createdAtMillis = 0L,
             remotePlaylistId = result.id,
             remoteArtworkUrl = artworkUrl,
-            remoteTrackCount = trackCount,
+            // Track count is unknown when continuation pages failed — leave it
+            // null so loadDetail treats this as refreshable instead of
+            // serving a truncated snapshot as final.
+            remoteTrackCount = trackCount.takeIf { result.isComplete },
         )
         details[localId] = playlist
-        writeToDiskCache(localId, playlist)
-        updateRemoteTrackCount(remoteId, trackCount)
+        if (result.isComplete) {
+            writeToDiskCache(localId, playlist)
+            updateRemoteTrackCount(remoteId, trackCount)
+        }
         onUpdate?.invoke(playlist)
         playlist
     }

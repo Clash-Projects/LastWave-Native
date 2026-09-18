@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### Fixed
+- **Logged-out YouTube Music playlists collapsing to a dead "Tap Retry" error.**
+  `InnerTubeMusicApi.fetchPlaylist()` treated ANY single continuation-page
+  failure (rate-limit/offline blip while paging a large playlist) as a total
+  failure and returned null — discarding tracks already loaded — so the
+  detail screen showed `Error` and every retry re-fetched from scratch into
+  the same failure. Continuation failures now keep the collected prefix and
+  return it with `isComplete = false` (null is kept only when zero tracks
+  loaded, preserving every caller's existing contract); failures are logged
+  to logcat under `LastWavePlaylist` with browseId + stage for diagnosis.
+  `FeedPlaylistDetailViewModel` shows truncated results with an inline
+  "Some tracks couldn't load. Retry." affordance instead of the dead error,
+  and `YtMusicLibraryManager` no longer poisons the disk cache / track
+  count with truncated snapshots (null count forces a network refresh next
+  open).
+
+  Files changed:
+  `app/src/main/java/com/lastwave/app/data/music/InnerTubeMusicApi.kt`
+  `app/src/main/java/com/lastwave/app/ui/feed/FeedPlaylistDetailViewModel.kt`
+  `app/src/main/java/com/lastwave/app/data/ytmusic/YtMusicLibraryManager.kt`
+
 ### Author: musaibbhat120605
 **Date:** September 16, 2026
 

@@ -95,6 +95,11 @@ class FeedPlaylistDetailViewModel @Inject constructor(
                 _uiState.value = FeedPlaylistDetailUiState.Success(
                     result.copy(id = playlistId, title = if (liked || recent) title else result.title.ifBlank { title },
                         author = result.author?.takeIf(String::isNotBlank) ?: author),
+                    // Truncated continuation pages still show what loaded, with
+                    // an inline retry for the remainder (fixes logged-out
+                    // playlists that previously collapsed to a dead Error).
+                    isLoadingMore = false,
+                    loadError = if (result.isComplete) null else "Some tracks couldn't load. Retry.",
                 )
             } catch (error: CancellationException) {
                 throw error

@@ -110,6 +110,10 @@ data class YouTubePlaylistResult(
     val artworkUrl: String? = null,
     val trackCount: Int = 0,
     val tracks: List<YouTubeMusicTrack> = emptyList(),
+    /** False when continuation pages failed mid-load and [tracks] is only a
+     *  prefix. Callers showing this must offer retry instead of caching it
+     *  as the full playlist. */
+    val isComplete: Boolean = true,
 )
 
 data class YouTubePlaylistSummary(
@@ -260,7 +264,16 @@ class InnerTubeMusicApi @Inject constructor(
             else -> "VL$rawId"
         }
 
-        val (root, authenticatedAs) = fetchPlaylistRoot(browseId) ?: return@withContext null
+        val rootResult = runCatching { fetchPlaylistRoot(browseId) }
+        val (root, authenticatedAs) = rootResult.getOrNull() ?: run {
+            val cause = rootResult.exceptionOrNull()?.javaClass?.simpleName
+                ?: "null-response"
+            android.util.Log.w(
+                PLAYLIST_LOG_TAG,
+                "playlist-root-failed browseId=$browseId error=$cause",
+            )
+            return@withContext null
+        }
         val header = playlistHeader(root)
 
         val title = extractTitleFromHeader(header, root)
@@ -277,7 +290,14 @@ class InnerTubeMusicApi @Inject constructor(
         fun trackContainers(page: JsonElement): List<JsonElement> =
             if (playlistPage) playlistTrackContainers(page) else listOf(page)
         val containers = trackContainers(root)
-        if (containers.isEmpty()) return@withContext null
+        if (containers.isEmpty()) {
+            val topKeys = (root as? JsonObject)?.keys?.take(8)?.joinToString(",").orEmpty()
+            android.util.Log.w(
+                PLAYLIST_LOG_TAG,
+                "playlist-empty-containers browseId=$browseId keys=$topKeys",
+            )
+            return@withContext null
+        }
         val initialSongs = containers.flatMap(::parseSongRenderers).distinctBy { it.videoId }.let { parsed ->
             trackLimit?.let { parsed.take(it) } ?: parsed
         }
@@ -294,18 +314,40 @@ class InnerTubeMusicApi @Inject constructor(
         }
         val seenTokens = mutableSetOf<String>()
         var page = 0
+        var truncated = false
         while (
             !token.isNullOrBlank() &&
             page < MAX_CONTINUATION_PAGES &&
             (trackLimit == null || songs.size < trackLimit)
         ) {
             val currentToken = token ?: break
-            if (!seenTokens.add(currentToken)) return@withContext null
+            if (!seenTokens.add(currentToken)) {
+                truncated = true
+                break
+            }
             val nextPage = runCatching {
                 browseContinuation(currentToken, authenticated = authenticatedAs)
-            }.getOrNull() ?: return@withContext null
+            }.getOrNull()
+            if (nextPage == null) {
+                // Transient page failure (rate-limit/offline): keep the tracks
+                // already collected instead of failing the whole playlist —
+                // callers surface isComplete=false with a retry affordance.
+                android.util.Log.w(
+                    PLAYLIST_LOG_TAG,
+                    "playlist-continuation-failed browseId=$browseId page=$page collected=${songs.size}",
+                )
+                truncated = true
+                break
+            }
             val pageContainers = trackContainers(nextPage)
-            if (pageContainers.isEmpty()) return@withContext null
+            if (pageContainers.isEmpty()) {
+                android.util.Log.w(
+                    PLAYLIST_LOG_TAG,
+                    "playlist-continuation-empty browseId=$browseId page=$page collected=${songs.size}",
+                )
+                truncated = true
+                break
+            }
             val pageSongs = pageContainers.flatMap(::parseSongRenderers)
             val knownVideoIds = songs.mapTo(mutableSetOf()) { it.videoId }
             val newSongs = pageSongs
@@ -316,10 +358,23 @@ class InnerTubeMusicApi @Inject constructor(
             token = continuation(pageContainers)
             page++
         }
-        if (!token.isNullOrBlank() && (trackLimit == null || songs.size < trackLimit)) return@withContext null
+        if (!token.isNullOrBlank() && (trackLimit == null || songs.size < trackLimit)) truncated = true
         if (trackLimit == null && songs.isNotEmpty()) onPageLoaded?.invoke(songs.toList())
+        if (truncated) {
+            android.util.Log.w(
+                PLAYLIST_LOG_TAG,
+                "playlist-truncated browseId=$browseId collected=${songs.size} pages=$page",
+            )
+        }
 
         songs.take(3).forEach { prefetchStream(it.videoId) }
+        // Zero tracks means nothing usable loaded (root error page, private /
+        // deleted playlist, or blocked request) — keep the null contract so
+        // callers fall back to cached data / error UI instead of an empty list.
+        if (songs.isEmpty()) {
+            android.util.Log.w(PLAYLIST_LOG_TAG, "playlist-no-tracks browseId=$browseId")
+            return@withContext null
+        }
         YouTubePlaylistResult(
             id = rawId,
             title = title ?: "",
@@ -327,6 +382,7 @@ class InnerTubeMusicApi @Inject constructor(
             artworkUrl = artworkUrl,
             trackCount = songs.size,
             tracks = songs,
+            isComplete = !truncated,
         )
     }
 
@@ -2817,6 +2873,7 @@ class InnerTubeMusicApi @Inject constructor(
         const val NEWPIPE_SOURCE = "NEWPIPE"
         const val ANONYMOUS_AUTH_SCOPE = "anonymous"
         const val STREAM_LOG_TAG = "LastWaveStream"
+        const val PLAYLIST_LOG_TAG = "LastWavePlaylist"
         const val WEB_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
         const val FALLBACK_WEB_KEY = "AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30"
         const val FALLBACK_WEB_VERSION = "1.20260707.12.00"
