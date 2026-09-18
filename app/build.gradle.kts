@@ -60,22 +60,35 @@ android {
         }
         val maskLiteral = "new byte[] { " + secretMask.joinToString(", ") { "(byte) $it" } + " }"
 
-        val losslessBackendUrl = resolveSecret(
+        val backendAUrl = resolveSecret(
+            "BACKEND_A_URL",
             "LOSSLESS_BACKEND_URL",
             "LOSSLESS_BASE_URL",
             "BACKEND_BASE_URL"
         )
-        buildConfigField("byte[]", "LOSSLESS_BACKEND_URL_BYTES", obfuscateSecret(losslessBackendUrl))
+        buildConfigField("byte[]", "LOSSLESS_BACKEND_URL_BYTES", obfuscateSecret(backendAUrl))
 
-        val losslessApiKey = resolveSecret(
+        val backendAKey = resolveSecret(
+            "BACKEND_A_KEY",
             "LOSSLESS_API_KEY",
             "LOSSLESS_AUTH_KEY",
             "API_AUTH_KEY"
         )
-        buildConfigField("byte[]", "LOSSLESS_API_KEY_BYTES", obfuscateSecret(losslessApiKey))
+        buildConfigField("byte[]", "LOSSLESS_API_KEY_BYTES", obfuscateSecret(backendAKey))
 
-        val lyricsApiKey = resolveSecret("LYRICS_API_KEY", "API_KEY", "LYRICS_AUTH_TOKEN")
-        buildConfigField("byte[]", "LYRICS_API_KEY_BYTES", obfuscateSecret(lyricsApiKey))
+        val backendBUrl = resolveSecret(
+            "BACKEND_B_URL",
+            "TIDAL_BACKEND_URL",
+            "TIDAL_BASE_URL"
+        )
+        buildConfigField("byte[]", "BACKEND_B_URL_BYTES", obfuscateSecret(backendBUrl))
+
+        val backendBKey = resolveSecret(
+            "BACKEND_B_KEY",
+            "TIDAL_API_KEY",
+            "TIDAL_AUTH_KEY"
+        )
+        buildConfigField("byte[]", "BACKEND_B_KEY_BYTES", obfuscateSecret(backendBKey))
 
         val lastfmApiKey = resolveSecret("LASTFM_API_KEY").ifBlank { "2e00eb783c677abeab81e99c99be74e1" }
         buildConfigField("byte[]", "LASTFM_API_KEY_BYTES", obfuscateSecret(lastfmApiKey))
@@ -257,6 +270,7 @@ dependencies {
     // controls, Bluetooth/headset controls and a MediaController-backed UI.
     implementation("androidx.media3:media3-exoplayer:1.2.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.2.1")
+    implementation("androidx.media3:media3-exoplayer-dash:1.2.1")
     // MediaBrowserServiceCompat/MediaSessionCompat bridge used by Android
     // Auto to browse the LastWave library and control the same player.
     implementation("androidx.media:media:1.7.0")

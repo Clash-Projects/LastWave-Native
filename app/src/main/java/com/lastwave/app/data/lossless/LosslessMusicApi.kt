@@ -3,8 +3,11 @@ package com.lastwave.app.data.lossless
 import android.util.Log
 import com.lastwave.app.data.artwork.awaitSuccessfulBodyOrNull
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -31,32 +34,34 @@ data class LosslessAudioStream(
     val durationSeconds: Int = 0,
 )
 
+// --- Playback Backend A Models ---
+
 @Serializable
-private data class LosslessSearchResponse(
+private data class BackendASearchResponse(
     val success: Boolean = false,
-    val results: LosslessSearchResults? = null,
+    val results: BackendASearchResults? = null,
 )
 
 @Serializable
-private data class LosslessSearchResults(
-    val tracks: LosslessTrackList? = null,
+private data class BackendASearchResults(
+    val tracks: BackendATrackList? = null,
 )
 
 @Serializable
-private data class LosslessTrackList(
-    val items: List<LosslessTrackItem> = emptyList(),
+private data class BackendATrackList(
+    val items: List<BackendATrackItem> = emptyList(),
 )
 
 @Serializable
-private data class LosslessTrackItem(
+private data class BackendATrackItem(
     val id: Long,
     val title: String,
     val duration: Int = 0,
-    val source: String = "qobuz",
+    val source: String = "backend_a",
     val version: String? = null,
-    val performer: LosslessPerformer? = null,
+    val performer: BackendAPerformer? = null,
     val performers: String? = null,
-    val album: LosslessAlbumInfo? = null,
+    val album: BackendAAlbumInfo? = null,
     val hires: Boolean = false,
     @SerialName("maximum_bit_depth")
     val maxBitDepth: Int? = null,
@@ -65,26 +70,26 @@ private data class LosslessTrackItem(
 )
 
 @Serializable
-private data class LosslessPerformer(
+private data class BackendAPerformer(
     val name: String,
     val id: Long = 0,
 )
 
 @Serializable
-private data class LosslessAlbumInfo(
+private data class BackendAAlbumInfo(
     val title: String? = null,
-    val artist: LosslessPerformer? = null,
+    val artist: BackendAPerformer? = null,
 )
 
 @Serializable
-private data class LosslessTrackUrlResponse(
+private data class BackendATrackUrlResponse(
     val success: Boolean = false,
-    val data: LosslessTrackUrlData? = null,
+    val data: BackendATrackUrlData? = null,
     val error: String? = null,
 )
 
 @Serializable
-private data class LosslessTrackUrlData(
+private data class BackendATrackUrlData(
     val url: String? = null,
     @SerialName("format_id")
     val formatId: Int = 6,
@@ -95,6 +100,57 @@ private data class LosslessTrackUrlData(
     @SerialName("bit_depth")
     val bitDepth: Int = 16,
     val duration: Int = 0,
+)
+
+// --- Playback Backend B Models ---
+
+@Serializable
+private data class BackendBSearchResponse(
+    val data: BackendBSearchData? = null,
+)
+
+@Serializable
+private data class BackendBSearchData(
+    val items: List<BackendBTrackItem> = emptyList(),
+)
+
+@Serializable
+private data class BackendBTrackItem(
+    val id: Long,
+    val title: String,
+    val duration: Int = 0,
+    val version: String? = null,
+    val artist: BackendBArtist? = null,
+    val artists: List<BackendBArtist> = emptyList(),
+    val album: BackendBAlbum? = null,
+    val audioQuality: String? = null,
+)
+
+@Serializable
+private data class BackendBArtist(
+    val name: String? = null,
+    val id: Long = 0,
+)
+
+@Serializable
+private data class BackendBAlbum(
+    val title: String? = null,
+    val id: Long = 0,
+)
+
+@Serializable
+private data class BackendBTrackUrlResponse(
+    val data: BackendBTrackData? = null,
+)
+
+@Serializable
+private data class BackendBTrackData(
+    val trackId: Long = 0,
+    val audioQuality: String? = null,
+    val bitDepth: Int? = null,
+    val sampleRate: Double? = null,
+    val manifest: String? = null,
+    val manifestMimeType: String? = null,
 )
 
 @Singleton
@@ -123,6 +179,18 @@ class LosslessMusicApi @Inject constructor(
         val BACKEND_API_KEY: String
             get() = decodeSecretBytes(
                 com.lastwave.app.BuildConfig.LOSSLESS_API_KEY_BYTES,
+                com.lastwave.app.BuildConfig.SECRET_MASK_BYTES
+            )
+
+        val BACKEND_B_BASE_URL: String
+            get() = decodeSecretBytes(
+                com.lastwave.app.BuildConfig.BACKEND_B_URL_BYTES,
+                com.lastwave.app.BuildConfig.SECRET_MASK_BYTES
+            )
+
+        val BACKEND_B_API_KEY: String
+            get() = decodeSecretBytes(
+                com.lastwave.app.BuildConfig.BACKEND_B_KEY_BYTES,
                 com.lastwave.app.BuildConfig.SECRET_MASK_BYTES
             )
 
@@ -203,8 +271,9 @@ class LosslessMusicApi @Inject constructor(
     }
 
     /**
-     * Resolves a high-confidence, verified direct CDN audio stream URL for a given track.
-     * If no high-confidence exact match is found, returns null so playback safely falls back to YouTube Music.
+     * Resolves a high-confidence, verified direct audio stream URL for a given track.
+     * Hits both playback backend engines simultaneously in parallel; whichever responds first wins.
+     * If no high-confidence exact match is found across both engines, returns null so playback safely falls back to YouTube Music.
      */
     suspend fun resolveStream(
         title: String,
@@ -216,38 +285,144 @@ class LosslessMusicApi @Inject constructor(
     ): LosslessAudioStream? = withContext(Dispatchers.IO) {
         if (preferredQuality == QUALITY_YOUTUBE || title.isBlank() || artist.isBlank()) return@withContext null
 
+        val hasBackendA = BACKEND_BASE_URL.isNotBlank()
+        val hasBackendB = BACKEND_B_BASE_URL.isNotBlank()
+
+        if (!hasBackendA && !hasBackendB) return@withContext null
+        if (hasBackendA && !hasBackendB) {
+            return@withContext resolveStreamEngineA(
+                title, artist, expectedDurationSeconds, expectedAlbum, preferredQuality, excludedUrls
+            )
+        }
+        if (!hasBackendA && hasBackendB) {
+            return@withContext resolveStreamEngineB(
+                title, artist, expectedDurationSeconds, expectedAlbum, preferredQuality, excludedUrls
+            )
+        }
+
+        // Both engines available: execute concurrent race
+        coroutineScope {
+            val resultChannel = Channel<LosslessAudioStream?>(capacity = 2)
+
+            val jobA = async {
+                val stream = try {
+                    resolveStreamEngineA(title, artist, expectedDurationSeconds, expectedAlbum, preferredQuality, excludedUrls)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.d(TAG, "Playback backend engine A resolution failed: ${e.message}")
+                    null
+                }
+                resultChannel.send(stream)
+            }
+
+            val jobB = async {
+                val stream = try {
+                    resolveStreamEngineB(title, artist, expectedDurationSeconds, expectedAlbum, preferredQuality, excludedUrls)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.d(TAG, "Playback backend engine B resolution failed: ${e.message}")
+                    null
+                }
+                resultChannel.send(stream)
+            }
+
+            var winner: LosslessAudioStream? = null
+            var completedCount = 0
+
+            while (completedCount < 2) {
+                val candidateStream = resultChannel.receive()
+                completedCount++
+                if (candidateStream != null && candidateStream.url !in excludedUrls) {
+                    winner = candidateStream
+                    jobA.cancel()
+                    jobB.cancel()
+                    break
+                }
+            }
+
+            resultChannel.close()
+            winner
+        }
+    }
+
+    private suspend fun resolveStreamEngineA(
+        title: String,
+        artist: String,
+        expectedDurationSeconds: Int?,
+        expectedAlbum: String?,
+        preferredQuality: Int,
+        excludedUrls: Set<String>,
+    ): LosslessAudioStream? {
         try {
-            // 1. Search catalog via backend
-            val candidate = findBestVerifiedMatch(
+            val candidate = findBestVerifiedMatchEngineA(
                 title = title,
                 artist = artist,
                 expectedDurationSeconds = expectedDurationSeconds,
                 expectedAlbum = expectedAlbum,
-            ) ?: return@withContext null
+            ) ?: return null
 
-            // 2. Fetch direct CDN streaming URL with fallback tier resolution
-            val directStream = fetchTrackStreamUrl(candidate, preferredQuality, fallback = true)
+            val directStream = fetchTrackStreamUrlEngineA(candidate, preferredQuality, fallback = true)
             if (directStream != null && directStream.url !in excludedUrls) {
-                return@withContext directStream
+                return directStream
             }
 
             val qualitiesToTry = getQualityAttemptOrder(preferredQuality).filter { it != preferredQuality }
             for (quality in qualitiesToTry) {
                 currentCoroutineContext().ensureActive()
-                val stream = fetchTrackStreamUrl(candidate, quality, fallback = true)
-                if (stream != null && stream.url !in excludedUrls) return@withContext stream
+                val stream = fetchTrackStreamUrlEngineA(candidate, quality, fallback = true)
+                if (stream != null && stream.url !in excludedUrls) return stream
             }
-            null
+            return null
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.d(TAG, "Lossless resolution failed gracefully: ${e.message}")
-            null
+            Log.d(TAG, "Backend A resolution failed gracefully: ${e.message}")
+            return null
         }
     }
 
-    private suspend fun fetchTrackStreamUrl(
-        candidate: LosslessTrackItem,
+    private suspend fun resolveStreamEngineB(
+        title: String,
+        artist: String,
+        expectedDurationSeconds: Int?,
+        expectedAlbum: String?,
+        preferredQuality: Int,
+        excludedUrls: Set<String>,
+    ): LosslessAudioStream? {
+        try {
+            val candidate = findBestVerifiedMatchEngineB(
+                title = title,
+                artist = artist,
+                expectedDurationSeconds = expectedDurationSeconds,
+                expectedAlbum = expectedAlbum,
+            ) ?: return null
+
+            val directStream = fetchTrackStreamUrlEngineB(candidate, preferredQuality)
+            if (directStream != null && directStream.url !in excludedUrls) {
+                return directStream
+            }
+
+            val qualitiesToTry = getQualityAttemptOrder(preferredQuality).filter { it != preferredQuality }
+            for (quality in qualitiesToTry) {
+                currentCoroutineContext().ensureActive()
+                val stream = fetchTrackStreamUrlEngineB(candidate, quality)
+                if (stream != null && stream.url !in excludedUrls) return stream
+            }
+            return null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.d(TAG, "Backend B resolution failed gracefully: ${e.message}")
+            return null
+        }
+    }
+
+    // --- Backend A Implementation ---
+
+    private suspend fun fetchTrackStreamUrlEngineA(
+        candidate: BackendATrackItem,
         quality: Int,
         fallback: Boolean,
     ): LosslessAudioStream? {
@@ -269,9 +444,9 @@ class LosslessMusicApi @Inject constructor(
         return try {
             val body = resolutionClient.newCall(requestBuilder.build()).awaitSuccessfulBodyOrNull()
                 ?: return null
-            val parsed = json.decodeFromString<LosslessTrackUrlResponse>(body)
+            val parsed = json.decodeFromString<BackendATrackUrlResponse>(body)
             if (!parsed.success) {
-                Log.w(TAG, "Lossless stream response for track ${candidate.id} quality $quality rejected: ${parsed.error.orEmpty()}")
+                Log.w(TAG, "Backend A stream response for track ${candidate.id} quality $quality rejected: ${parsed.error.orEmpty()}")
                 return null
             }
             val data = parsed.data ?: return null
@@ -298,17 +473,17 @@ class LosslessMusicApi @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.d(TAG, "Lossless stream fetch for quality $quality failed: ${e.message}")
+            Log.d(TAG, "Backend A stream fetch for quality $quality failed: ${e.message}")
             null
         }
     }
 
-    private suspend fun findBestVerifiedMatch(
+    private suspend fun findBestVerifiedMatchEngineA(
         title: String,
         artist: String,
         expectedDurationSeconds: Int?,
         expectedAlbum: String?,
-    ): LosslessTrackItem? {
+    ): BackendATrackItem? {
         val cleanTitle = cleanForSearch(title)
         val cleanArtist = cleanForSearch(artist)
 
@@ -339,13 +514,13 @@ class LosslessMusicApi @Inject constructor(
             val items = try {
                 val body = resolutionClient.newCall(reqBuilder.build()).awaitSuccessfulBodyOrNull()
                 if (body == null) emptyList() else {
-                    val searchRes = json.decodeFromString<LosslessSearchResponse>(body)
+                    val searchRes = json.decodeFromString<BackendASearchResponse>(body)
                     if (searchRes.success) searchRes.results?.tracks?.items.orEmpty() else emptyList()
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.d(TAG, "Lossless search failed gracefully: ${e.message}")
+                Log.d(TAG, "Backend A search failed gracefully: ${e.message}")
                 emptyList()
             }
 
@@ -354,17 +529,160 @@ class LosslessMusicApi @Inject constructor(
             items.asSequence()
                 .mapNotNull { item ->
                     verifiedMatchScore(
-                        item = item,
+                        candidateTitle = item.title,
+                        candidateVersion = item.version,
+                        candidatePerformer = item.performer?.name.orEmpty(),
+                        candidateAlbumArtist = item.album?.artist?.name.orEmpty(),
+                        candidatePerformersText = item.performers,
+                        candidateAlbumTitle = item.album?.title.orEmpty(),
+                        candidateDuration = item.duration,
                         title = title,
                         artist = artist,
                         expectedDurationSeconds = expectedDurationSeconds,
                         expectedAlbum = expectedAlbum,
                     )?.let { score -> item to score }
                 }
-                .sortedWith(
-                    compareBy<Pair<LosslessTrackItem, Int>> { it.first.source != "qobuz" }
-                        .thenByDescending { it.second }
-                )
+                .sortedByDescending { it.second }
+                .firstOrNull()
+                ?.first
+                ?.let { return it }
+        }
+
+        return null
+    }
+
+    // --- Backend B Implementation ---
+
+    private fun mapQualityToBackendB(quality: Int): String = when (quality) {
+        QUALITY_MAX_HI_RES, QUALITY_HI_RES_96 -> "HI_RES_LOSSLESS"
+        QUALITY_CD_LOSSLESS -> "LOSSLESS"
+        QUALITY_MP3_320 -> "HIGH"
+        else -> "LOSSLESS"
+    }
+
+    private suspend fun fetchTrackStreamUrlEngineB(
+        candidate: BackendBTrackItem,
+        quality: Int,
+    ): LosslessAudioStream? {
+        val qualityParam = mapQualityToBackendB(quality)
+        val urlBuilder = "$BACKEND_B_BASE_URL/track/".toHttpUrlOrNull()?.newBuilder() ?: return null
+        urlBuilder.addQueryParameter("id", candidate.id.toString())
+        urlBuilder.addQueryParameter("quality", qualityParam)
+
+        val requestBuilder = Request.Builder().url(urlBuilder.build()).get()
+        if (BACKEND_B_API_KEY.isNotBlank()) requestBuilder.addHeader("X-API-Key", BACKEND_B_API_KEY)
+
+        return try {
+            val body = resolutionClient.newCall(requestBuilder.build()).awaitSuccessfulBodyOrNull() ?: return null
+            val parsed = json.decodeFromString<BackendBTrackUrlResponse>(body)
+            val data = parsed.data ?: return null
+
+            val manifestB64 = data.manifest?.takeIf { it.isNotBlank() } ?: return null
+            val manifestUrl = "data:${data.manifestMimeType ?: "application/dash+xml"};base64,$manifestB64"
+
+            val bitDepth = data.bitDepth ?: when (quality) {
+                QUALITY_MAX_HI_RES, QUALITY_HI_RES_96 -> 24
+                else -> 16
+            }
+            val samplingRate = data.sampleRate ?: 44100.0
+            val samplingRateKHz = if (samplingRate > 1000.0) samplingRate / 1000.0 else samplingRate
+
+            val resolvedFormatId = when {
+                bitDepth > 16 || samplingRateKHz > 48.0 -> QUALITY_MAX_HI_RES
+                qualityParam == "HIGH" -> QUALITY_MP3_320
+                else -> QUALITY_CD_LOSSLESS
+            }
+
+            val bitrateKbps = when (resolvedFormatId) {
+                QUALITY_MAX_HI_RES, QUALITY_HI_RES_96 -> ((bitDepth * samplingRateKHz * 2 * 1000) / 1000).toInt()
+                QUALITY_CD_LOSSLESS -> 1411
+                QUALITY_MP3_320 -> 320
+                else -> null
+            }
+
+            LosslessAudioStream(
+                url = manifestUrl,
+                mimeType = data.manifestMimeType ?: "application/dash+xml",
+                bitDepth = bitDepth,
+                samplingRate = samplingRateKHz,
+                formatId = resolvedFormatId,
+                bitrateKbps = bitrateKbps,
+                trackId = candidate.id,
+                durationSeconds = candidate.duration,
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.d(TAG, "Backend B stream fetch failed: ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun findBestVerifiedMatchEngineB(
+        title: String,
+        artist: String,
+        expectedDurationSeconds: Int?,
+        expectedAlbum: String?,
+    ): BackendBTrackItem? {
+        val cleanTitle = cleanForSearch(title)
+        val cleanArtist = cleanForSearch(artist)
+
+        val individualArtists = artist.split(Regex("""(?i)\s*(?:&|,|\bx\b|feat\.?|ft\.?|featuring|with|\+)\s*"""))
+            .map { cleanForSearch(it) }
+            .filter { it.isNotBlank() }
+
+        val queries = listOfNotNull(
+            "$cleanTitle $cleanArtist".trim().takeIf { it.isNotBlank() },
+            individualArtists.firstOrNull()?.let { "$cleanTitle $it".trim() }?.takeIf { it.isNotBlank() && it != "$cleanTitle $cleanArtist" },
+            "$cleanArtist $cleanTitle".trim().takeIf { it.isNotBlank() },
+            cleanTitle.takeIf { it.isNotBlank() },
+            title.trim().takeIf { it.isNotBlank() },
+        ).distinct()
+
+        for (query in queries) {
+            currentCoroutineContext().ensureActive()
+            val urlBuilder = "$BACKEND_B_BASE_URL/search/".toHttpUrlOrNull()?.newBuilder() ?: continue
+            urlBuilder.addQueryParameter("s", query)
+
+            val reqBuilder = Request.Builder().url(urlBuilder.build()).get()
+            if (BACKEND_B_API_KEY.isNotBlank()) {
+                reqBuilder.addHeader("X-API-Key", BACKEND_B_API_KEY)
+            }
+
+            val items = try {
+                val body = resolutionClient.newCall(reqBuilder.build()).awaitSuccessfulBodyOrNull()
+                if (body == null) emptyList() else {
+                    val searchRes = json.decodeFromString<BackendBSearchResponse>(body)
+                    searchRes.data?.items.orEmpty()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.d(TAG, "Backend B search failed gracefully: ${e.message}")
+                emptyList()
+            }
+
+            if (items.isEmpty()) continue
+
+            items.asSequence()
+                .mapNotNull { item ->
+                    val primaryArtist = item.artist?.name.orEmpty()
+                    val artistsCombined = item.artists.mapNotNull { it.name }.filter(String::isNotBlank).joinToString(" - ")
+                    verifiedMatchScore(
+                        candidateTitle = item.title,
+                        candidateVersion = item.version,
+                        candidatePerformer = primaryArtist,
+                        candidateAlbumArtist = primaryArtist,
+                        candidatePerformersText = artistsCombined,
+                        candidateAlbumTitle = item.album?.title.orEmpty(),
+                        candidateDuration = item.duration,
+                        title = title,
+                        artist = artist,
+                        expectedDurationSeconds = expectedDurationSeconds,
+                        expectedAlbum = expectedAlbum,
+                    )?.let { score -> item to score }
+                }
+                .sortedByDescending { it.second }
                 .firstOrNull()
                 ?.first
                 ?.let { return it }
@@ -374,7 +692,13 @@ class LosslessMusicApi @Inject constructor(
     }
 
     private fun verifiedMatchScore(
-        item: LosslessTrackItem,
+        candidateTitle: String,
+        candidateVersion: String?,
+        candidatePerformer: String,
+        candidateAlbumArtist: String,
+        candidatePerformersText: String?,
+        candidateAlbumTitle: String,
+        candidateDuration: Int,
         title: String,
         artist: String,
         expectedDurationSeconds: Int?,
@@ -382,12 +706,10 @@ class LosslessMusicApi @Inject constructor(
     ): Int? {
         val matchArtist = cleanForSearch(artist).ifBlank { artist }
         val targetTitle = normalizeTitle(title, matchArtist)
-        val candidateTitle = normalizeTitle(item.title, matchArtist)
+        val candidateTitleNorm = normalizeTitle(candidateTitle, matchArtist)
         if (targetTitle.isBlank()) return null
 
-        val performer = item.performer?.name.orEmpty()
-        val albumArtist = item.album?.artist?.name.orEmpty()
-        val primaryIdentities = listOf(performer, albumArtist)
+        val primaryIdentities = listOf(candidatePerformer, candidateAlbumArtist)
             .map(::normalizeText)
             .filter(String::isNotBlank)
 
@@ -399,36 +721,37 @@ class LosslessMusicApi @Inject constructor(
             targetArtists.any { ta -> iden == ta }
         }
 
-        val titleDistance = levenshtein(targetTitle, candidateTitle)
-        val isExactMatch = targetTitle == candidateTitle
+        val titleDistance = levenshtein(targetTitle, candidateTitleNorm)
+        val isExactMatch = targetTitle == candidateTitleNorm
         val maxFuzz = (targetTitle.length / 5).coerceIn(1, 2)
         val isFuzzyMatch = artistExact && titleDistance <= maxFuzz
-        val isDescriptorMatch = artistExact && targetTitle.length >= 4 && candidateTitle.length >= 4 && (
-            (candidateTitle.startsWith(targetTitle) && listOf("rap", "song", "theme", "track", "audio", "music").contains(candidateTitle.substring(targetTitle.length).trim())) ||
-            (targetTitle.startsWith(candidateTitle) && listOf("rap", "song", "theme", "track", "audio", "music").contains(targetTitle.substring(candidateTitle.length).trim()))
+        val isDescriptorMatch = artistExact && targetTitle.length >= 4 && candidateTitleNorm.length >= 4 && (
+            (candidateTitleNorm.startsWith(targetTitle) && listOf("rap", "song", "theme", "track", "audio", "music").contains(candidateTitleNorm.substring(targetTitle.length).trim())) ||
+            (targetTitle.startsWith(candidateTitleNorm) && listOf("rap", "song", "theme", "track", "audio", "music").contains(targetTitle.substring(candidateTitleNorm.length).trim()))
         )
 
         if (!isExactMatch && !isFuzzyMatch && !isDescriptorMatch) return null
 
         val targetVariants = identityVariants(title, matchArtist)
-        val candidateVariants = identityVariants("${item.title} ${item.version.orEmpty()}", matchArtist)
+        val candidateVariants = identityVariants("$candidateTitle ${candidateVersion.orEmpty()}", matchArtist)
         if (targetVariants != candidateVariants) return null
 
-        if (!isVerifiedArtistMatch(matchArtist, performer, albumArtist, item.performers)) return null
+        if (!isVerifiedArtistMatch(matchArtist, candidatePerformer, candidateAlbumArtist, candidatePerformersText)) return null
 
         val durationDifference = if (expectedDurationSeconds != null && expectedDurationSeconds > 0) {
-            if (item.duration <= 0) return null
-            kotlin.math.abs(item.duration - expectedDurationSeconds).also { if (it > MAX_DURATION_DIFFERENCE_SECONDS) return null }
+            if (candidateDuration <= 0) return null
+            kotlin.math.abs(candidateDuration - expectedDurationSeconds).also { if (it > MAX_DURATION_DIFFERENCE_SECONDS) return null }
         } else null
 
         var score = 1_000 - titleDistance * 50
         if (artistExact) score += 300
         expectedAlbum?.takeIf(String::isNotBlank)?.let { album ->
-            if (normalizeTitle(album, "") == normalizeTitle(item.album?.title.orEmpty(), "")) score += 120
+            if (normalizeTitle(album, "") == normalizeTitle(candidateAlbumTitle, "")) score += 120
         }
         durationDifference?.let { score += (MAX_DURATION_DIFFERENCE_SECONDS - it) * 10 }
         return score
     }
+
 
     private fun cleanForSearch(raw: String): String {
         return raw

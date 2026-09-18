@@ -2,8 +2,6 @@ package com.lastwave.app.data.lyrics
 
 import com.lastwave.app.data.artwork.awaitSuccessfulBodyOrNull
 import kotlinx.coroutines.CancellationException
-
-import com.lastwave.app.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -65,7 +63,6 @@ class LyricsPlusApi @Inject constructor(
 
     private val endpoints = listOf(
         "https://lyricsplus.prjktla.my.id/v2/lyrics/get",
-        "https://lyricsplus.clashgram.workers.dev/v2/lyrics/get",
     )
 
     suspend fun fetchWordLyrics(
@@ -115,11 +112,6 @@ class LyricsPlusApi @Inject constructor(
         album: String?,
         durationSeconds: Int?,
     ): LyricsPlusResponse? {
-        val apiKey = com.lastwave.app.data.lossless.LosslessMusicApi.decodeSecretBytes(
-            BuildConfig.LYRICS_API_KEY_BYTES,
-            BuildConfig.SECRET_MASK_BYTES
-        ).trim()
-
         for (baseUrl in endpoints) {
             val urlBuilder = baseUrl.toHttpUrlOrNull()?.newBuilder() ?: continue
             urlBuilder.addQueryParameter("title", title.trim())
@@ -135,10 +127,6 @@ class LyricsPlusApi @Inject constructor(
                 .url(urlBuilder.build())
                 .header("User-Agent", "LastWave-Android/1.0 (https://github.com/duxtami/LastWave)")
                 .header("Accept", "application/json")
-
-            if (apiKey.isNotBlank()) {
-                requestBuilder.header("x-api-key", apiKey)
-            }
 
             try {
                 val body = okHttpClient.newCall(requestBuilder.build()).awaitSuccessfulBodyOrNull() ?: continue

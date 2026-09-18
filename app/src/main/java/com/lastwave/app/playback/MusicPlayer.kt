@@ -481,7 +481,7 @@ class MusicPlayer @Inject constructor(
             } ?: currentTrack?.let { logResolutionFailure(it, "player-error", errorRetryCount, error) }
 
             if (failedLosslessStream) {
-                if (failedMediaId != null && (errorRetryCount > 0 || !isRetryablePlaybackFailure(error))) {
+                if (failedMediaId != null) {
                     losslessBypassMediaIds += failedMediaId
                 }
             } else if (!failedLocalStream && !videoId.isNullOrBlank()) {
@@ -506,7 +506,7 @@ class MusicPlayer @Inject constructor(
                             runCatching { mediaCache.removeResource(cacheKey) }
                             preparedStreams.remove(cacheKey)
                         }
-                        val retryDelayMs = if (failedLocalStream) 0L else playbackRetryDelayMs(error, retry)
+                        val retryDelayMs = if (failedLocalStream || failedLosslessStream) 0L else playbackRetryDelayMs(error, retry)
                         if (retryDelayMs > 0L) delay(retryDelayMs)
                         currentCoroutineContext().ensureActive()
                         val updated = currentTrack.copy(
@@ -518,7 +518,7 @@ class MusicPlayer @Inject constructor(
                             allowLocalDownloads = false,
                             videoId = videoId,
                             allowLossless = failedMediaId !in losslessBypassMediaIds,
-                            excludedLosslessUrls = if (failedLosslessStream && retry > 1) {
+                            excludedLosslessUrls = if (failedLosslessStream) {
                                 setOfNotNull(rejectedStream?.url)
                             } else emptySet(),
                         )
@@ -606,12 +606,22 @@ class MusicPlayer @Inject constructor(
                 throw java.io.IOException("Signed stream expired before open")
             }
             when {
-                resolvedPlaceholder != null -> dataSpec.buildUpon()
-                    .setUri(resolvedPlaceholder.url)
-                    .setKey(resolvedPlaceholder.cacheKey)
-                    .build()
-                    .withRequestHeaders(resolvedPlaceholder.requestHeaders)
-                stream != null -> dataSpec.withRequestHeaders(stream.requestHeaders)
+                resolvedPlaceholder != null -> {
+                    val resolvedUri = Uri.parse(resolvedPlaceholder.url)
+                    val specBuilder = dataSpec.buildUpon().setUri(resolvedUri)
+                    if (resolvedUri.scheme != "data") {
+                        specBuilder.setKey(resolvedPlaceholder.cacheKey)
+                    }
+                    specBuilder.build().withRequestHeaders(resolvedPlaceholder.requestHeaders)
+                }
+                stream != null -> {
+                    val streamUri = Uri.parse(stream.url)
+                    val specBuilder = dataSpec.buildUpon()
+                    if (streamUri.scheme == "data") {
+                        specBuilder.setKey(null)
+                    }
+                    specBuilder.build().withRequestHeaders(stream.requestHeaders)
+                }
                 else -> dataSpec
             }
         }
