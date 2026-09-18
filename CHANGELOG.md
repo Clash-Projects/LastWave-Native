@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Added
+- **One-tap "Save album to library" on the album detail screen (#79).**
+  Previously an album could only be kept by adding its songs one by one to
+  a custom playlist. The album hero now has a save button that stores all
+  tracks via `PlaylistRepository`, mirroring the feed playlist detail's
+  save flow (saving / saved / error states). Shared-playlist pages already
+  had this via the feed detail screen.
+
+  Files changed:
+  `app/src/main/java/com/lastwave/app/ui/album/AlbumViewModel.kt`
+  `app/src/main/java/com/lastwave/app/ui/album/AlbumDetailScreen.kt`
+
 ### Fixed
 - **Search returning no results for Cyrillic / non-Latin queries (#102).**
   Title/artist matching used a Latin-only word pattern (`[^a-z0-9]+`),

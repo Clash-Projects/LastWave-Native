@@ -35,6 +35,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -161,6 +163,7 @@ fun AlbumDetailScreen(
             }
             is AlbumUiState.Success -> {
                 val data = state.data
+                val saveState by viewModel.saveUiState.collectAsStateWithLifecycle()
                 val isAlbumPlaying = playbackState.isPlaying &&
                     (playbackState.sourceLabel.contains(data.title, ignoreCase = true) || playbackState.current?.album.equals(data.title, ignoreCase = true))
 
@@ -362,6 +365,42 @@ fun AlbumDetailScreen(
                                         )
                                     }
                                 }
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+
+                            // One-tap save of the whole album (issue #79)
+                            FilledTonalButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    viewModel.saveToLibrary()
+                                },
+                                enabled = !saveState.isSaving && !saveState.savedToLibrary && data.tracks.isNotEmpty(),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Icon(
+                                    if (saveState.savedToLibrary) Icons.Filled.Check else Icons.Filled.BookmarkAdd,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    when {
+                                        saveState.isSaving -> "Saving…"
+                                        saveState.savedToLibrary -> "Saved to library"
+                                        else -> "Save album to library"
+                                    },
+                                )
+                            }
+                            saveState.saveError?.let { message ->
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    text = message,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
                             }
                         }
                     }
