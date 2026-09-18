@@ -106,7 +106,7 @@ android {
     }
 
     signingConfigs {
-        create("release") {
+        getByName("release") {
             val base64Key = resolveSecret("SIGNING_KEY")
             val storeFilePath = resolveSecret("RELEASE_STORE_FILE")
             val storePasswordProp = resolveSecret("RELEASE_STORE_PASSWORD", "KEY_STORE_PASSWORD")

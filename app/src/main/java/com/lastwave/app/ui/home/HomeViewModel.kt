@@ -478,13 +478,13 @@ class HomeViewModel @Inject constructor(
     /** Podium meta for a connected Last.fm account: top artists + albums for
      *  [username] (own or friend) plus own taste tags. Each fetch fails
      *  independently so one flaky call never clears the others. */
-    private fun preloadTopMeta(username: String) {
+    private fun preloadTopMeta(username: String, period: String = "overall") {
         viewModelScope.launch(Dispatchers.IO) {
-            homeRepository.fetchTopArtistsForPeriod("overall", 10, username = username)
+            homeRepository.fetchTopArtistsForPeriod(period, 10, username = username)
                 .onSuccess { artists -> _uiState.update { it.copy(topArtists = artists.take(10)) } }
         }
         viewModelScope.launch(Dispatchers.IO) {
-            homeRepository.fetchTopAlbums(limit = 10, username = username)
+            homeRepository.fetchTopAlbums(period = period, limit = 10, username = username)
                 .onSuccess { albums -> _uiState.update { it.copy(topAlbums = albums.take(10)) } }
         }
         // Tags are personal (own taste), not the viewed friend's.
@@ -616,6 +616,16 @@ class HomeViewModel @Inject constructor(
     fun setSortMode(mode: HomeSortMode) {
         _uiState.update { it.copy(sortMode = mode) }
         val target = _uiState.value.viewingUsername
+        
+        val period = when (mode) {
+            HomeSortMode.RECENT, HomeSortMode.MOST_PLAYED -> "overall"
+            HomeSortMode.LAST_7_DAYS -> "7day"
+            HomeSortMode.LAST_30_DAYS -> "1month"
+        }
+        if (!_uiState.value.isLocalStatsMode) {
+            preloadTopMeta(target, period)
+        }
+        
         if (mode == HomeSortMode.LAST_7_DAYS && _uiState.value.topTracks7Days.isEmpty()) {
             viewModelScope.launch(Dispatchers.IO) {
                 homeRepository.fetchTopTracksForPeriod("7day", 50, username = target).onSuccess { tracks ->

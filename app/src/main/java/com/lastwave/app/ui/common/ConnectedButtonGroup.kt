@@ -92,15 +92,7 @@ fun ConnectedButtonGroup(
                 label = "connectedBtnFg_$index",
             )
 
-            val borderColor by animateColorAsState(
-                targetValue = if (isSelected) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.outlineVariant
-                },
-                animationSpec = ExpressiveMotion.effectsDefault(),
-                label = "connectedBtnBorder_$index",
-            )
+
 
             Surface(
                 modifier = Modifier
@@ -117,7 +109,7 @@ fun ConnectedButtonGroup(
                 shape = shape,
                 color = containerColor,
                 contentColor = contentColor,
-                border = BorderStroke(1.dp, borderColor),
+                border = null,
                 tonalElevation = if (isSelected) 2.dp else 0.dp,
             ) {
                 Box(

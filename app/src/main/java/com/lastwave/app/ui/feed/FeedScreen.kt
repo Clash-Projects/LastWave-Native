@@ -1026,13 +1026,13 @@ private fun QuickTileCard(
 
     val iconGradient = when {
         isLikedTile -> Brush.linearGradient(
-            colors = listOf(Color(0xFFE91E63), Color(0xFFFF5252)),
+            colors = listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.primary),
         )
         isMixTile -> Brush.linearGradient(
-            colors = listOf(Color(0xFF7C4DFF), Color(0xFF536DFE)),
+            colors = listOf(MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.secondary),
         )
         isNewReleasesTile -> Brush.linearGradient(
-            colors = listOf(Color(0xFFFF6D00), Color(0xFFFFAB00)),
+            colors = listOf(MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.tertiary),
         )
         else -> Brush.linearGradient(
             colors = listOf(
@@ -1048,9 +1048,9 @@ private fun QuickTileCard(
         shape = tileShape,
         color = liquidGlassContainerColor(
             when {
-                isLikedTile -> Color(0xFFE91E63).copy(alpha = 0.12f)
-                isMixTile -> Color(0xFF7C4DFF).copy(alpha = 0.12f)
-                isNewReleasesTile -> Color(0xFFFF6D00).copy(alpha = 0.12f)
+                isLikedTile -> MaterialTheme.colorScheme.primaryContainer
+                isMixTile -> MaterialTheme.colorScheme.secondaryContainer
+                isNewReleasesTile -> MaterialTheme.colorScheme.tertiaryContainer
                 else -> MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f)
             },
         ),
@@ -1085,9 +1085,9 @@ private fun QuickTileCard(
                     )
                 } else if (isLikedTile) {
                     Icon(
-                        Icons.Filled.Favorite,
+                        Icons.Filled.ThumbUp,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(36.dp),
                     )
                 } else if (isMixTile) {
@@ -1127,7 +1127,7 @@ private fun QuickTileCard(
                         lineHeight = 16.sp,
                         fontWeight = FontWeight.Bold,
                     ),
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -1179,10 +1179,7 @@ private fun QuickPicksRows(
                         shape = RoundedCornerShape(18.dp),
                         color = if (isCurrent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
                         else MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.65f),
-                        border = if (isCurrent) androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                        ) else null,
+                        border = null,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Row(
@@ -1214,7 +1211,7 @@ private fun QuickPicksRows(
                                     track.title,
                                     style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.5.sp),
                                     fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                     color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.padding(start = 2.dp),

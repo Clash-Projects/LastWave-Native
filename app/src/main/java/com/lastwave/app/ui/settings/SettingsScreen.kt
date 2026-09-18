@@ -1318,7 +1318,7 @@ fun SettingsScreen(
             onDismissRequest = { showLanguageDialog = false },
             title = { Text(stringResource(R.string.settings_language_dialog_title)) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                     AppLanguage.SELECTABLE.forEach { language ->
                         val selected = language == currentLanguage
                         Row(
@@ -1329,17 +1329,9 @@ fun SettingsScreen(
                                     viewModel.setAppLanguage(language)
                                     showLanguageDialog = false
                                 }
-                                .padding(horizontal = 8.dp, vertical = 10.dp),
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            RadioButton(
-                                selected = selected,
-                                onClick = {
-                                    viewModel.setAppLanguage(language)
-                                    showLanguageDialog = false
-                                },
-                            )
-                            Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(
                                     language.nativeDisplayName(),
@@ -2343,12 +2335,13 @@ private fun LastFmIntegrationCard(
                 }
             }
 
-            // ── Bring-your-own-key (required, no shared key): Last.fm
-            //    rate-limits per API key, so each person adds their own key
-            //    here before connecting.
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
+            if (!isConnected) {
+                // ── Bring-your-own-key (required, no shared key): Last.fm
+                //    rate-limits per API key, so each person adds their own key
+                //    here before connecting.
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
@@ -2412,6 +2405,7 @@ private fun LastFmIntegrationCard(
                         Text("How to get a free key →")
                     }
                 }
+            }
             }
         }
     }
