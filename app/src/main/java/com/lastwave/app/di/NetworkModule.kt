@@ -58,12 +58,13 @@ object NetworkModule {
             maxRequestsPerHost = 8
         }
 
-        val cacheDir = File(context.cacheDir, "lfm_http_cache")
-        val cache = Cache(cacheDir, HTTP_CACHE_SIZE)
+        val cache: Cache? = runCatching {
+            Cache(File(context.cacheDir, "lfm_http_cache"), HTTP_CACHE_SIZE)
+        }.getOrNull()
 
         return OkHttpClient.Builder()
             .dispatcher(dispatcher)
-            .cache(cache)
+            .apply { cache?.let { cache(it) } }
             .connectionPool(ConnectionPool(10, 5, TimeUnit.MINUTES))
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)

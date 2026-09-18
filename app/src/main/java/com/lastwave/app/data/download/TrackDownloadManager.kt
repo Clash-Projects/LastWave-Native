@@ -1041,13 +1041,23 @@ class TrackDownloadManager @Inject constructor(
             manifestUrl
         }
 
-        val initMatch = Regex("""initialization="([^"]+)"""").find(xmlText)
+        // Restrict template lookup to the audio AdaptationSet block so a video
+        // representation is never assembled as audio. Supports ' and " quotes.
+        val audioBlock = Regex(
+            """<AdaptationSet[^>]*?(?:mimeType=['"]audio[^'"]*['"]|contentType=['"]audio['"])[^>]*>(.*?)</AdaptationSet>""",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
+        ).find(xmlText)?.groupValues?.getOrNull(1)
+        val templateScope = audioBlock ?: xmlText
+        val initMatch = Regex("""initialization=['"]([^'"]+)['"]""").find(templateScope)
             ?: throw DownloadProtocolException("Missing DASH initialization segment template")
-        val mediaMatch = Regex("""media="([^"]+)"""").find(xmlText)
+        val mediaMatch = Regex("""media=['"]([^'"]+)['"]""").find(templateScope)
             ?: throw DownloadProtocolException("Missing DASH media segment template")
 
         val initUrl = initMatch.groupValues[1].replace("&amp;", "&")
         val mediaTemplate = mediaMatch.groupValues[1].replace("&amp;", "&")
+        if (!mediaTemplate.contains("\$Number\$")) {
+            throw DownloadProtocolException("DASH media template lacks \$Number\$; falling back")
+        }
 
         var segmentCount = 0
         val timelineMatches = Regex("""<S(?:\s+[^>]*)?/>|<S\b[^>]*>.*?</S>""").findAll(xmlText)

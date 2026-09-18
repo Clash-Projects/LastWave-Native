@@ -81,6 +81,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -276,7 +277,7 @@ class MusicPlayer @Inject constructor(
     private var radioQueueActive = false
     private val radioUsedSeeds = ConcurrentHashMap.newKeySet<String>()
     private var unavailableSkipJob: Job? = null
-    private val unavailableMediaIds = mutableSetOf<String>()
+    private val unavailableMediaIds = ConcurrentHashMap.newKeySet<String>()
     private var sleepTimerDeadlineMs: Long? = null
     private var sleepTimerStep = 0
     @Volatile
@@ -440,7 +441,6 @@ class MusicPlayer @Inject constructor(
         override fun onPlayerError(error: PlaybackException) {
             if (isCasting) return
             cancelCrossfade()
-            resolutionRequests.clear()
             val currentTrack = _state.value.current
             val currentPos = player.currentPosition.coerceAtLeast(0)
             val trackVideoId = currentTrack?.videoId
@@ -481,7 +481,7 @@ class MusicPlayer @Inject constructor(
             } ?: currentTrack?.let { logResolutionFailure(it, "player-error", errorRetryCount, error) }
 
             if (failedLosslessStream) {
-                if (failedMediaId != null) {
+                if (failedMediaId != null && (errorRetryCount > 0 || !isRetryablePlaybackFailure(error))) {
                     losslessBypassMediaIds += failedMediaId
                 }
             } else if (!failedLocalStream && !videoId.isNullOrBlank()) {
@@ -595,7 +595,9 @@ class MusicPlayer @Inject constructor(
                 // Media3 can open the next item before its transition callback.
                 // Resolve queue placeholders on its loader thread as well.
                 runBlocking(Dispatchers.IO) {
-                    resolveTrackAudioStreamWithRetry(track, track.videoId, allowLossless = true).also { resolved ->
+                    (withTimeoutOrNull(8_000L) {
+                        resolveTrackAudioStreamWithRetry(track, track.videoId, allowLossless = true)
+                    } ?: throw java.io.IOException("Stream resolution timed out")).also { resolved ->
                         applicationScope.launch(Dispatchers.Main.immediate) { registerPreparedStream(resolved) }
                     }
                 }
@@ -2064,6 +2066,14 @@ class MusicPlayer @Inject constructor(
                 true
             }
             if (!installed) return@launch
+
+            // Manifest URLs are not progressive media: skip CacheWriter prefetch
+            // (same guard as cacheCurrentTrackStream) to avoid building a
+            // DataSpec on a manifest.
+            if (resolved.mimeType == "application/dash+xml" ||
+                resolved.url.startsWith("data:") ||
+                resolved.url.contains(".mpd")
+            ) return@launch
 
             val dataSpec = DataSpec.Builder()
                 .setUri(Uri.parse(resolved.url))

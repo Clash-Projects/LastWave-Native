@@ -1,6 +1,6 @@
 # Changelog
 
-## 4.1.0+ (2026-09-17)
+## 4.1.1 (2026-09-18)
 
 ### Added
 - **Direct MPEG-DASH Lossless Tidal Fallback Streams:**

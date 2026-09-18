@@ -5,11 +5,14 @@ import com.lastwave.app.data.artwork.awaitSuccessfulBodyOrNull
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -331,15 +334,23 @@ class LosslessMusicApi @Inject constructor(
             var winner: LosslessAudioStream? = null
             var completedCount = 0
 
-            while (completedCount < 2) {
-                val candidateStream = resultChannel.receive()
-                completedCount++
-                if (candidateStream != null && candidateStream.url !in excludedUrls) {
-                    winner = candidateStream
-                    jobA.cancel()
-                    jobB.cancel()
-                    break
+            // Bound the dual-backend race so a hung backend cannot pile up
+            // resolution past loader/UX timeouts; loser cleanup is non-blocking.
+            withTimeoutOrNull(9_000L) {
+                while (completedCount < 2) {
+                    val candidateStream = resultChannel.receive()
+                    completedCount++
+                    if (candidateStream != null && candidateStream.url !in excludedUrls) {
+                        winner = candidateStream
+                        launch { jobA.cancelAndJoin() }
+                        launch { jobB.cancelAndJoin() }
+                        break
+                    }
                 }
+            }
+            if (winner == null) {
+                launch { jobA.cancelAndJoin() }
+                launch { jobB.cancelAndJoin() }
             }
 
             resultChannel.close()

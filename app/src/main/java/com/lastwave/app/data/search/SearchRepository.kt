@@ -65,8 +65,10 @@ class SearchRepository @Inject constructor(
                 val array = json.parseToJsonElement(body) as? JsonArray ?: return@withContext emptyList()
                 if (array.size < 2) return@withContext emptyList()
                 val suggestions = array[1] as? JsonArray ?: return@withContext emptyList()
-                suggestions.mapNotNull { (it as? JsonPrimitive)?.content }
+                suggestions.mapNotNull { (it as? JsonPrimitive)?.content }.distinct()
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             emptyList()
         }

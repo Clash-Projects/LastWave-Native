@@ -70,3 +70,14 @@
 -dontwarn com.metrolist.innertubex.**
 -dontwarn io.ktor.**
 
+# Release-only Backend-B data: MPD + FFmpeg wrapper.
+-keep class org.jellyfin.media3.decoder.ffmpeg.** { *; }
+-keepclasseswithmembernames class * { native <methods>; }
+-keep class com.lastwave.app.BuildConfig { *; }
+
+# Media3 DASH, HLS and reflective MediaSource factories
+-keep class androidx.media3.exoplayer.dash.** { *; }
+-keep class androidx.media3.exoplayer.hls.** { *; }
+-keep class androidx.media3.exoplayer.source.** { *; }
+-dontwarn androidx.media3.exoplayer.dash.**
+

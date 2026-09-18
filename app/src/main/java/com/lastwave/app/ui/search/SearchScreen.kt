@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -267,7 +268,10 @@ fun SearchScreen(
                     val matchingRecent = remember(state.query, state.recentSearches) {
                         val q = state.query.trim().lowercase()
                         if (q.isEmpty()) emptyList()
-                        else state.recentSearches.filter { it.lowercase().contains(q) }.take(3)
+                        else state.recentSearches.distinct().filter { it.lowercase().contains(q) }.take(3)
+                    }
+                    val filteredSuggestions = remember(state.suggestions, matchingRecent) {
+                        state.suggestions.distinct().filter { !matchingRecent.contains(it) }
                     }
 
                     LazyColumn(
@@ -278,7 +282,7 @@ fun SearchScreen(
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         if (matchingRecent.isNotEmpty()) {
-                            items(matchingRecent, key = { "recent_match_$it" }) { recentText ->
+                            itemsIndexed(matchingRecent, key = { index, item -> "recent_match_${item}_$index" }) { _, recentText ->
                                 SuggestionRow(
                                     fullText = recentText,
                                     query = state.query,
@@ -292,7 +296,7 @@ fun SearchScreen(
                             }
                         }
 
-                        items(state.suggestions.filter { !matchingRecent.contains(it) }, key = { "sugg_$it" }) { suggestion ->
+                        itemsIndexed(filteredSuggestions, key = { index, item -> "sugg_${item}_$index" }) { _, suggestion ->
                             SuggestionRow(
                                 fullText = suggestion,
                                 query = state.query,
@@ -336,7 +340,7 @@ fun SearchScreen(
                                     }
                                 }
                             }
-                            items(state.recentSearches, key = { "hist_$it" }) { recentQuery ->
+                            itemsIndexed(state.recentSearches, key = { index, item -> "hist_${item}_$index" }) { _, recentQuery ->
                                 RecentSearchRow(
                                     text = recentQuery,
                                     onClick = {
@@ -465,11 +469,11 @@ fun SearchScreen(
                                         }
                                     }
 
-                                    items(
+                                    itemsIndexed(
                                         if (state.tab == SearchTab.USERS) state.results else otherResults,
-                                        key = { it.entityId ?: it.url.ifBlank { it.name + it.artist.orEmpty() } },
-                                        contentType = { "search_result" },
-                                    ) { item ->
+                                        key = { index, item -> "${item.entityId ?: item.url.ifBlank { item.name + item.artist.orEmpty() }}_$index" },
+                                        contentType = { _, _ -> "search_result" },
+                                    ) { _, item ->
                                         val isItemPlaying = state.tab == SearchTab.TRACKS && playbackState.isPlaying &&
                                             playbackState.current?.title.equals(item.name, ignoreCase = true) &&
                                             (item.artist.isNullOrBlank() || playbackState.current?.artist.equals(item.artist, ignoreCase = true))

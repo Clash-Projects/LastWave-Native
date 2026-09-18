@@ -10,6 +10,7 @@ import com.lastwave.app.data.search.SearchTab
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.PlayableTrack
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -79,9 +80,15 @@ class SearchViewModel @Inject constructor(
         // Fast suggestions debounce (120ms)
         suggestionsJob = viewModelScope.launch {
             delay(120)
-            val suggestions = repository.getSuggestions(query)
-            if (_uiState.value.query == query) {
-                _uiState.update { it.copy(suggestions = suggestions) }
+            try {
+                val suggestions = repository.getSuggestions(query)
+                if (_uiState.value.query == query) {
+                    _uiState.update { it.copy(suggestions = suggestions) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Keep stale suggestions; cancelled debounce is rethrown above.
             }
         }
 
@@ -194,6 +201,8 @@ class SearchViewModel @Inject constructor(
                     results = results,
                 )
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             if (lastIssuedQuery != query || _uiState.value.query != query || _uiState.value.tab != tab) return
             _uiState.update { it.copy(status = SearchStatus.EMPTY, results = emptyList()) }
