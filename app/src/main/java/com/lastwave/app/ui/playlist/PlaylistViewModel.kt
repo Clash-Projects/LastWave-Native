@@ -74,6 +74,7 @@ class PlaylistViewModel @Inject constructor(
     private val ytMusicPreferences: com.lastwave.app.data.ytmusic.YtMusicPreferences,
     private val ytMusicSyncManager: com.lastwave.app.data.ytmusic.YtMusicSyncManager,
     private val ytMusicLibraryManager: com.lastwave.app.data.ytmusic.YtMusicLibraryManager,
+    private val trackDownloadManager: com.lastwave.app.data.download.TrackDownloadManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PlaylistUiState())
@@ -443,6 +444,73 @@ class PlaylistViewModel @Inject constructor(
     }
 
     fun dismissToast() = _uiState.update { it.copy(toastMessage = null) }
+
+    /** Queues a download for every playlist track that is not already on
+     *  disk in Music/LastWave. Already-downloaded (or already-queued)
+     *  tracks are skipped so tapping this twice never duplicates files. */
+    fun downloadPlaylist(playlistId: Long) {
+        viewModelScope.launch {
+            var playlist = _uiState.value.playlists.firstOrNull { it.id == playlistId }
+                ?: _uiState.value.detailPlaylist?.takeIf { it.id == playlistId }
+                ?: runCatching { playlistRepository.getById(playlistId) }.getOrNull()
+            if (playlist == null && playlistId < 0L) {
+                playlist = runCatching { ytMusicLibraryManager.loadDetail(playlistId) }.getOrNull()
+            }
+            if (playlist == null) {
+                _uiState.update { it.copy(toastMessage = "Playlist could not be loaded") }
+                return@launch
+            }
+            var tracks = playlist.tracks
+            if (tracks.isEmpty() && playlist.isYouTubeOnly) {
+                val refreshed = runCatching { ytMusicLibraryManager.loadDetail(playlistId) }.getOrNull()
+                if (refreshed != null && refreshed.tracks.isNotEmpty()) {
+                    tracks = refreshed.tracks
+                    _uiState.update { current ->
+                        current.copy(
+                            detailPlaylist = if (current.detailPlaylist?.id == playlistId) refreshed else current.detailPlaylist,
+                            playlists = current.playlists.map { existing ->
+                                if (existing.id == refreshed.id) refreshed else existing
+                            },
+                        )
+                    }
+                }
+            }
+            if (tracks.isEmpty()) {
+                _uiState.update { it.copy(toastMessage = "No songs to download in this playlist") }
+                return@launch
+            }
+            var queued = 0
+            var skipped = 0
+            for (track in tracks) {
+                if (track.name.isBlank()) {
+                    skipped++
+                    continue
+                }
+                if (trackDownloadManager.isDownloading(track.name, track.artist)) {
+                    skipped++
+                    continue
+                }
+                val alreadyDownloaded = runCatching {
+                    trackDownloadManager.isTrackDownloaded(track.name, track.artist)
+                }.getOrDefault(false)
+                if (alreadyDownloaded) {
+                    skipped++
+                    continue
+                }
+                trackDownloadManager.downloadTrack(track.name, track.artist, track.album, track.artworkUrl)
+                queued++
+            }
+            _uiState.update {
+                it.copy(
+                    toastMessage = when {
+                        queued > 0 && skipped > 0 -> "Downloading $queued songs ($skipped already saved)"
+                        queued > 0 -> if (queued == 1) "Downloading 1 song" else "Downloading $queued songs"
+                        else -> "All songs already downloaded"
+                    },
+                )
+            }
+        }
+    }
 
     /** Port of §4.2's "Generate Fresh" — re-runs the same mode with the
      *  same inputs and saves a brand-new playlist inspired from the original. */

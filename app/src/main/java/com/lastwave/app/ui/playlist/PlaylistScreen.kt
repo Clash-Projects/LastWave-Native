@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ExpandLess
@@ -271,6 +272,7 @@ fun PlaylistScreen(
                                     onRename = { viewModel.requestRename(playlist.id) },
                                     onEditCover = { coverEditorPlaylistId = playlist.id },
                                     onTogglePin = { viewModel.togglePinned(playlist.id) },
+                                    onDownload = { viewModel.downloadPlaylist(playlist.id) },
                                     onRegenerate = {
                                         viewModel.regenerate(playlist.id) { newId ->
                                             onOpenPlaylist(newId)
@@ -510,6 +512,7 @@ private fun PlaylistCard(
     onRename: () -> Unit,
     onEditCover: () -> Unit,
     onTogglePin: () -> Unit,
+    onDownload: () -> Unit,
     onRegenerate: () -> Unit,
     onDelete: () -> Unit,
     onMakeLocal: () -> Unit,
@@ -677,6 +680,11 @@ private fun PlaylistCard(
                         text = { Text(if (playlist.isPinned) "Unpin" else "Pin") },
                         leadingIcon = { Icon(Icons.Filled.PushPin, contentDescription = null) },
                         onClick = { onTogglePin(); menuExpanded = false },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Download all songs") },
+                        leadingIcon = { Icon(Icons.Filled.Download, contentDescription = null) },
+                        onClick = { onDownload(); menuExpanded = false },
                     )
                     if (playlist.isYouTubeOnly) {
                         DropdownMenuItem(

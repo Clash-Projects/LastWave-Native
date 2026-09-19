@@ -52,6 +52,7 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
@@ -408,6 +409,17 @@ fun PlaylistDetailScreen(
                                 fontWeight = FontWeight.Bold,
                             )
                         }
+                        // Download all songs not yet saved in Music/LastWave
+                        FilledTonalIconButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.downloadPlaylist(playlistId)
+                            },
+                            shape = CircleShape,
+                            modifier = Modifier.size(50.dp),
+                        ) {
+                            Icon(Icons.Filled.Download, contentDescription = "Download all songs", modifier = Modifier.size(22.dp))
+                        }
                     }
 
                     Spacer(Modifier.height(18.dp))
@@ -741,6 +753,15 @@ fun PlaylistDetailScreen(
                                 leadingIcon = { Icon(Icons.Filled.PushPin, contentDescription = null) },
                                 onClick = {
                                     viewModel.togglePinned(playlistId)
+                                    overflowMenuOpen = false
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Download all songs") },
+                                leadingIcon = { Icon(Icons.Filled.Download, contentDescription = null) },
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    viewModel.downloadPlaylist(playlistId)
                                     overflowMenuOpen = false
                                 },
                             )
