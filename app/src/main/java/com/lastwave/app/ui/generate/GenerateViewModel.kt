@@ -35,6 +35,7 @@ enum class GenerateMode(val label: String, val description: String, val storageV
     TAG("By Tag / Genre", "YouTube-first genre picks", "tag"),
     MIX("My Mix", "Your taste, mixes & local favorites", "mix"),
     RECOMMENDATIONS("My Recommendation", "35 YouTube-first discoveries", "recommendations"),
+    NEVER_HEARD("Never Heard", "Fresh discoveries you've never listened to before", "never-heard"),
     LIBRARY("My Library", "Re-discover the sounds of your past", "library"),
 }
 
@@ -256,6 +257,7 @@ class GenerateViewModel @Inject constructor(
                         GenerateMode.TAG -> repository.fetchTagTracks(state.tagInput, candidateCount)
                         GenerateMode.MIX -> repository.fetchMix(candidateCount, onProgress)
                         GenerateMode.RECOMMENDATIONS -> repository.fetchRecommendations(targetCount, onProgress)
+                        GenerateMode.NEVER_HEARD -> repository.fetchNeverHeardTracks(candidateCount, onProgress)
                     }
                 }
 
@@ -268,11 +270,15 @@ class GenerateViewModel @Inject constructor(
                 } else {
                     repository.precheck(raw)
                 }
-                val finalTracks = repository.preferPlaylistFreshness(
-                    tracks = preparedTracks,
-                    limit = targetCount,
-                    savedKeys = repository.savedPlaylistTrackKeys(),
-                )
+                val finalTracks = if (mode == GenerateMode.NEVER_HEARD) {
+                    preparedTracks.take(targetCount)
+                } else {
+                    repository.preferPlaylistFreshness(
+                        tracks = preparedTracks,
+                        limit = targetCount,
+                        savedKeys = repository.savedPlaylistTrackKeys(),
+                    )
+                }
                 if (finalTracks.isEmpty()) {
                     val message = if (mode == GenerateMode.SIMILAR_TRACKS && state.seedTrackName.isNotBlank()) {
                         "No similar songs found to mix for \"${state.seedTrackName}\"."

@@ -4,6 +4,9 @@ import android.util.Log
 import com.lastwave.app.data.local.SessionPreferences
 import com.lastwave.app.data.local.db.RecommendationExclusionDao
 import com.lastwave.app.data.local.db.RecommendationExclusionEntity
+import com.lastwave.app.data.local.db.DownloadedTrackDao
+import com.lastwave.app.data.local.db.SongPlayStatsDao
+import com.lastwave.app.data.music.TextMatch
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.network.LastFmApiService
 import com.lastwave.app.data.playlist.PlaylistRepository
@@ -49,6 +52,8 @@ class GenerateRepository @Inject constructor(
     private val playlistRepository: PlaylistRepository,
     private val viewingProfileState: com.lastwave.app.data.repository.ViewingProfileState,
     private val innerTube: com.lastwave.app.data.music.InnerTubeMusicApi,
+    private val songPlayStatsDao: SongPlayStatsDao,
+    private val downloadedTrackDao: DownloadedTrackDao,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val requestScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -1416,5 +1421,239 @@ class GenerateRepository @Inject constructor(
             }
         }
         (youtube.await() + lastFm.await()).distinctBy { it.trim().lowercase() }.take(15)
+    }
+
+    /**
+     * Builds a playlist of completely unheard songs tailored to the user's taste.
+     * Strictly excludes any songs the user has heard before across:
+     * - Last.fm recent scrobbles, top tracks, and loved tracks
+     * - YouTube Music listening history, liked tracks, and feed tracks
+     * - Local playback history / play stats (SongPlayStatsDao)
+     * - Room database saved playlists and liked songs
+     * - Downloaded offline tracks (DownloadedTrackDao)
+     * - Recommendation exclusions
+     *
+     * In addition to exact track keys, it excludes matching YouTube video IDs,
+     * normalized composite keys, normalized base titles (stripping feat./remaster clauses),
+     * and fuzzy title similarities (>= 80%) for matching artists to prevent live/remix
+     * duplicates of heard tracks.
+     */
+    suspend fun fetchNeverHeardTracks(
+        total: Int,
+        onProgress: (String) -> Unit = {},
+    ): List<GeneratedTrack> = kotlinx.coroutines.supervisorScope {
+        onProgress("Building your taste profile and history footprint\u2026")
+
+        val tasteProfile = runCatching { tasteProfileProvider.get() }.getOrNull()
+        val lastFmAvailable = runCatching { isLastFmAvailable() }.getOrDefault(false)
+
+        val heardKeys = mutableSetOf<String>()
+        val heardVideoIds = mutableSetOf<String>()
+        val heardNormalizedKeys = mutableSetOf<String>()
+        val heardTitlesByArtist = mutableMapOf<String, MutableSet<String>>()
+
+        fun recordHeard(name: String, artist: String, videoId: String? = null, key: String? = null) {
+            val cleanName = name.trim()
+            val cleanArtist = artist.trim()
+            if (cleanName.isBlank() && cleanArtist.isBlank()) return
+            if (key != null) heardKeys.add(key.lowercase())
+            else heardKeys.add("$cleanName|$cleanArtist".lowercase())
+            if (!videoId.isNullOrBlank()) heardVideoIds.add(videoId)
+
+            val normArtist = TextMatch.normalize(cleanArtist)
+            val normTitle = TextMatch.normalize(cleanName)
+            val normBaseTitle = TextMatch.normalize(TextMatch.baseTitle(cleanName))
+            if (normTitle.isNotBlank() && normArtist.isNotBlank()) {
+                heardNormalizedKeys.add("$normTitle|$normArtist")
+            }
+            if (normBaseTitle.isNotBlank() && normArtist.isNotBlank()) {
+                heardNormalizedKeys.add("$normBaseTitle|$normArtist")
+                heardTitlesByArtist.getOrPut(normArtist) { mutableSetOf() }.add(normBaseTitle)
+            }
+        }
+
+        // 1. Signals from TasteProfile (Last.fm recent/top, YT Music recent/liked/feed)
+        if (tasteProfile != null) {
+            tasteProfile.recentTrackKeys.forEach { heardKeys.add(it.lowercase()) }
+            tasteProfile.topTrackKeys.forEach { heardKeys.add(it.lowercase()) }
+            tasteProfile.recentTracksRaw.forEach { recordHeard(it.name, it.artist, it.youtubeVideoIdOrNull(), it.key) }
+            tasteProfile.topTracksRaw.forEach { recordHeard(it.name, it.artist, it.youtubeVideoIdOrNull(), it.key) }
+            tasteProfile.ytMusicRecentRaw.forEach { recordHeard(it.name, it.artist, it.youtubeVideoIdOrNull(), it.key) }
+            tasteProfile.ytMusicLikedRaw.forEach { recordHeard(it.name, it.artist, it.youtubeVideoIdOrNull(), it.key) }
+            tasteProfile.ytMusicFeedRaw.forEach { recordHeard(it.name, it.artist, it.youtubeVideoIdOrNull(), it.key) }
+        }
+
+        // 2. Room: Recommendation exclusions
+        runCatching { recommendationExclusionKeys() }.getOrDefault(emptySet()).forEach {
+            heardKeys.add(it.lowercase())
+        }
+
+        // 3. Room: Saved playlists and liked songs
+        runCatching { playlistRepository.getAll() }.getOrDefault(emptyList()).forEach { playlist ->
+            playlist.tracks.forEach { recordHeard(it.name, it.artist, it.youtubeVideoIdOrNull(), it.key) }
+        }
+
+        // 4. Room: Song play stats (tracks played locally in LastWave)
+        runCatching { songPlayStatsDao.getAllTrackKeys() }.getOrDefault(emptyList()).forEach {
+            heardKeys.add(it.lowercase())
+        }
+
+        // 5. Room: Downloaded tracks
+        runCatching { downloadedTrackDao.getAllList() }.getOrDefault(emptyList()).forEach {
+            recordHeard(it.title, it.artist, null, it.trackKey)
+        }
+
+        // 6. Last.fm: fetch loved tracks and recent scrobbles directly if connected
+        if (lastFmAvailable) {
+            try {
+                val lovedRes = call(mapOf("method" to "user.getlovedtracks", "user" to username(), "limit" to "200"))
+                GenerateJson.normalise(lovedRes["lovedtracks"]?.jsonObject?.get("track")).forEach {
+                    recordHeard(it.name, it.artist, it.youtubeVideoIdOrNull(), it.key)
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "fetchNeverHeardTracks loved tracks fetch failed", e)
+            }
+            try {
+                val recentRes = call(mapOf("method" to "user.getrecenttracks", "user" to username(), "limit" to "200"))
+                val rRaw = recentRes["recenttracks"]?.jsonObject?.get("track")
+                GenerateJson.normalise(rRaw).forEach {
+                    recordHeard(it.name, it.artist, it.youtubeVideoIdOrNull(), it.key)
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "fetchNeverHeardTracks recent tracks fetch failed", e)
+            }
+        }
+
+        fun isUnheard(track: GeneratedTrack): Boolean {
+            val name = track.name.trim()
+            val artist = track.artist.trim()
+            if (name.isBlank() || artist.isBlank()) return false
+
+            val key = track.key.lowercase()
+            if (key in heardKeys) return false
+
+            val vid = track.youtubeVideoIdOrNull()
+            if (vid != null && vid in heardVideoIds) return false
+
+            val normArtist = TextMatch.normalize(artist)
+            val normTitle = TextMatch.normalize(name)
+            val normBase = TextMatch.normalize(TextMatch.baseTitle(name))
+
+            if ("$normTitle|$normArtist" in heardNormalizedKeys) return false
+            if ("$normBase|$normArtist" in heardNormalizedKeys) return false
+
+            val artistHeardTitles = heardTitlesByArtist[normArtist]
+            if (!artistHeardTitles.isNullOrEmpty()) {
+                if (normBase in artistHeardTitles) return false
+                for (heardTitle in artistHeardTitles) {
+                    if (TextMatch.similarity(normBase, heardTitle) >= 80) return false
+                }
+            }
+            return true
+        }
+
+        onProgress("Finding fresh tracks matching your taste\u2026")
+
+        // Gather taste seeds
+        val topArtists: List<String> = buildList {
+            addAll(tasteProfile?.topArtistsRaw.orEmpty())
+            addAll(tasteProfile?.topArtistNames.orEmpty())
+            addAll(tasteProfile?.recentArtists.orEmpty())
+        }.filter { it.isNotBlank() }.distinct()
+
+        val tasteTracks: List<GeneratedTrack> = buildList {
+            addAll(tasteProfile?.ytMusicLikedRaw.orEmpty())
+            addAll(tasteProfile?.topTracksRaw.orEmpty())
+            addAll(tasteProfile?.recentTracksRaw.orEmpty())
+            addAll(tasteProfile?.ytMusicRecentRaw.orEmpty())
+            addAll(tasteProfile?.ytMusicFeedRaw.orEmpty())
+        }.filter { it.name.isNotBlank() && it.artist.isNotBlank() }.distinctBy { it.key }
+
+        val candidatePool = mutableListOf<GeneratedTrack>()
+
+        // 1. YouTube Discovery from taste tracks
+        if (tasteTracks.isNotEmpty()) {
+            try {
+                val discovery = fetchYouTubeDiscovery(tasteTracks.shuffled().take(10), limit = maxOf(40, total * 3))
+                candidatePool.addAll(discovery)
+            } catch (e: Exception) {
+                Log.d(TAG, "Never-heard YT discovery failed", e)
+            }
+        }
+
+        // 2. Similar artists discovery
+        if (topArtists.isNotEmpty()) {
+            val sampledArtists = topArtists.shuffled().take(5)
+            val similarTracks = sampledArtists.map { artist ->
+                async(Dispatchers.IO) {
+                    try {
+                        onProgress("Exploring artists similar to $artist\u2026")
+                        fetchSimilarArtistTracks(artist, limit = 12)
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                }
+            }.awaitAll().flatten()
+            candidatePool.addAll(similarTracks)
+        }
+
+        // 3. YouTube Radio on random taste seeds
+        if (tasteTracks.isNotEmpty()) {
+            val radioSeeds = tasteTracks.shuffled().take(4)
+            val radioTracks = radioSeeds.map { seed ->
+                async(Dispatchers.IO) {
+                    try {
+                        fetchYouTubeRadio(seed.name, seed.artist, seed.youtubeVideoIdOrNull(), limit = 15)
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                }
+            }.awaitAll().flatten()
+            candidatePool.addAll(radioTracks)
+        }
+
+        // 4. Genre tags if available
+        val topTags = tasteProfile?.topTags.orEmpty().toList()
+        if (topTags.isNotEmpty()) {
+            val tag = topTags.shuffled().firstOrNull()
+            if (tag != null) {
+                try {
+                    val tagTracks = fetchTagTracks(tag, limit = 20)
+                    candidatePool.addAll(tagTracks)
+                } catch (e: Exception) {
+                    Log.d(TAG, "Never-heard tag tracks failed", e)
+                }
+            }
+        }
+
+        // Filter strictly for unheard tracks
+        onProgress("Excluding previously heard songs\u2026")
+        var unheard = candidatePool.filter(::isUnheard)
+        unheard = filterRecommendationExclusions(unheard)
+
+        // If we need more candidates, expand via radio on the unheard candidates that match taste!
+        if (unheard.size < total * 2 && unheard.isNotEmpty()) {
+            val extraSeeds = unheard.shuffled().take(4)
+            val extra = extraSeeds.map { seed ->
+                async(Dispatchers.IO) {
+                    try {
+                        fetchYouTubeRadio(seed.name, seed.artist, seed.youtubeVideoIdOrNull(), limit = 15)
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                }
+            }.awaitAll().flatten().filter(::isUnheard)
+            unheard = unheard + extra
+        }
+
+        // Fallback for empty/thin taste (e.g. brand new user with no history):
+        if (unheard.size < total) {
+            val fallback = publicChartsFallback(total * 3).filter(::isUnheard)
+            unheard = unheard + fallback
+        }
+
+        // Apply precheck (dedup + artist diversity cap of max 3 tracks per artist)
+        val diverse = precheck(unheard.distinctBy { it.key })
+        filterPlayable(diverse).take(total)
     }
 }

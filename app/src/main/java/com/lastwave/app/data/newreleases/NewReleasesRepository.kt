@@ -1,5 +1,6 @@
 package com.lastwave.app.data.newreleases
 
+import com.lastwave.app.data.feed.FeedRepository
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistSummary
@@ -10,9 +11,26 @@ import java.util.ArrayDeque
 import javax.inject.Inject
 import javax.inject.Singleton
 
+internal fun getLocalizedSearchQueries(hl: String, year: Int): List<String> = when (hl.lowercase().substringBefore('-')) {
+    "tr" -> listOf("yeni çıkanlar $year", "yeni şarkılar $year", "türkçe yeni müzik $year", "yeni albümler $year")
+    "es" -> listOf("música nueva $year", "canciones nuevas $year", "nuevos lanzamientos $year", "éxitos $year")
+    "fr" -> listOf("nouvelle musique $year", "nouveautés $year", "nouvelles chansons $year", "hits français $year")
+    "de" -> listOf("neue musik $year", "neue lieder $year", "aktuelle hits $year", "neuerscheinungen $year")
+    "ru" -> listOf("новинки музыки $year", "новые песни $year", "свежая музыка $year", "русские хиты $year")
+    "pt" -> listOf("músicas novas $year", "lançamentos $year", "novas músicas $year", "hits brasil $year")
+    "id" -> listOf("lagu baru $year", "musik terbaru $year", "rilisan terbaru $year")
+    "hi" -> listOf("नए गाने $year", "new hindi songs $year", "latest bollywood $year")
+    "ja" -> listOf("新曲 $year", "最新音楽 $year", "最新リリース $year", "J-POP 新曲 $year")
+    "ko" -> listOf("신곡 $year", "최신 음악 $year", "최신 가요 $year", "K-POP 신곡 $year")
+    "zh" -> listOf("最新歌曲 $year", "新歌推荐 $year", "华语新歌 $year")
+    "ar" -> listOf("أغاني جديدة $year", "جديد الموسيقى $year", "أحدث الأغاني $year")
+    else -> listOf("new music $year", "new songs $year", "new music friday", "latest releases $year")
+}
+
 @Singleton
 class NewReleasesRepository @Inject constructor(
     private val innerTube: InnerTubeMusicApi,
+    private val feedRepository: FeedRepository,
 ) {
     private val mutex = Mutex()
     private val albumQueue = ArrayDeque<YouTubePlaylistSummary>()
@@ -23,15 +41,15 @@ class NewReleasesRepository @Inject constructor(
     private var albumsToken: String? = null
     private var searchIndex = 0
     private var gridLoaded = false
-    private val searchQueries: List<String> = run {
-            val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
-            listOf("new music $year", "new songs $year", "new music friday",
-                "latest releases $year", "new pop hits $year", "new hip hop $year",
-                "new indie $year", "new rock $year")
-        }
+
+    private fun getLocalizedSearchQueries(): List<String> {
+        val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        val (hl, _) = innerTube.getEffectiveHlGl()
+        return getLocalizedSearchQueries(hl, year)
+    }
 
     val hasMore: Boolean
-        get() = !gridLoaded || albumQueue.isNotEmpty() || exploreToken != null || albumsToken != null || searchIndex < searchQueries.size
+        get() = !gridLoaded || albumQueue.isNotEmpty() || exploreToken != null || albumsToken != null || searchIndex < getLocalizedSearchQueries().size
 
     private fun clear() {
         albumQueue.clear()
@@ -48,17 +66,31 @@ class NewReleasesRepository @Inject constructor(
 
     suspend fun fetchInitialBatch(): List<YouTubeMusicTrack> = mutex.withLock {
         clear()
-        val batch = innerTube.fetchNewReleasesPage()
-        exploreToken = batch.continuationToken
-        enqueue(batch.albums)
-        val direct = unique(batch.directTracks)
-        if (direct.isNotEmpty()) return@withLock direct
-        if (albumQueue.isEmpty()) {
-            val grid = innerTube.fetchNewReleasesAlbumsGrid()
-            gridLoaded = true
-            albumsToken = grid.second
-            enqueue(grid.first)
+
+        // 1. Maintain 100% consistency with the Home screen:
+        // Load the exact releases from the Home "New Releases" section, starting with
+        // the album whose artwork is used as the "New Releases" tile thumbnail.
+        val homeReleases = feedRepository.getCachedFeed()?.newReleases.orEmpty()
+        if (homeReleases.isNotEmpty()) {
+            enqueue(homeReleases)
+        } else {
+            // If the Home feed has not cached newReleases yet, fetch regional new releases directly
+            val freshReleases = runCatching { innerTube.fetchNewReleases() }.getOrDefault(emptyList())
+            if (freshReleases.isNotEmpty()) {
+                enqueue(freshReleases)
+            }
         }
+
+        // 2. Pre-populate additional regional releases from InnerTube's albums grid for pagination
+        if (albumQueue.size < 15) {
+            val grid = runCatching { innerTube.fetchNewReleasesAlbumsGrid() }.getOrNull()
+            if (grid != null) {
+                gridLoaded = true
+                albumsToken = grid.second
+                enqueue(grid.first)
+            }
+        }
+
         nextBatch()
     }
 
@@ -67,17 +99,33 @@ class NewReleasesRepository @Inject constructor(
     }
 
     private suspend fun nextBatch(): List<YouTubeMusicTrack> {
+        val collected = mutableListOf<YouTubeMusicTrack>()
+        val minBatchSize = 10
+
         while (hasMore) {
             if (albumQueue.isNotEmpty()) {
                 val album = albumQueue.first
-                val page = innerTube.fetchAlbumPage(album.id, album.title, album.author.orEmpty())
-                    ?: throw java.io.IOException("Couldn't load ${album.title}. Tap Retry.")
-                val tracks = page.tracks.mapNotNull { it.toYouTubeMusicTrack() }
+                val page = try {
+                    innerTube.fetchAlbumPage(album.id, album.title, album.author.orEmpty())
+                } catch (_: Exception) {
+                    null
+                }
                 albumQueue.removeFirst()
-                val fresh = unique(tracks)
-                if (fresh.isNotEmpty()) return fresh
+                if (page != null) {
+                    val tracks = page.tracks.mapNotNull { it.toYouTubeMusicTrack() }
+                    val fresh = unique(tracks)
+                    collected.addAll(fresh)
+                    if (collected.size >= minBatchSize) {
+                        return collected
+                    }
+                }
                 continue
             }
+
+            if (collected.isNotEmpty()) {
+                return collected
+            }
+
             if (!gridLoaded) {
                 val grid = innerTube.fetchNewReleasesAlbumsGrid()
                 gridLoaded = true
@@ -85,6 +133,7 @@ class NewReleasesRepository @Inject constructor(
                 enqueue(grid.first)
                 continue
             }
+
             albumsToken?.let { token ->
                 val batch = innerTube.fetchNewReleasesAlbumsGrid(token)
                 seenTokens.add(token)
@@ -98,20 +147,20 @@ class NewReleasesRepository @Inject constructor(
                 val fresh = unique(batch.directTracks)
                 if (fresh.isNotEmpty()) return fresh
             } ?: run {
-                val query = searchQueries.getOrNull(searchIndex) ?: return emptyList()
+                val queries = getLocalizedSearchQueries()
+                val query = queries.getOrNull(searchIndex) ?: return emptyList()
                 val tracks = innerTube.searchSongs(query, limit = 30, prefetchStreams = false)
                 searchIndex++
                 val fresh = unique(tracks)
                 if (fresh.isNotEmpty()) return fresh
             }
         }
-        return emptyList()
+        return collected
     }
 
     private fun enqueue(albums: List<YouTubePlaylistSummary>) {
         albums.filter {
-            (it.id.startsWith("MPRE") || it.id.startsWith("PL") || it.id.startsWith("OLAK") || it.id.startsWith("VL")) &&
-                seenAlbumIds.add(it.id)
+            it.id.isNotBlank() && seenAlbumIds.add(it.id)
         }.forEach(albumQueue::addLast)
     }
 

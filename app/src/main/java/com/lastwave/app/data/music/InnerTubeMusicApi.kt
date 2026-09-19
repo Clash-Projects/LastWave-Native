@@ -1,6 +1,10 @@
 package com.lastwave.app.data.music
 
 import android.net.Uri
+import com.lastwave.app.data.local.AppLanguage
+import com.lastwave.app.data.local.SettingsPreferences
+import com.lastwave.app.data.local.appLocale
+import java.util.Locale
 import com.lastwave.app.data.music.potoken.BotGuardTokenGenerator
 import com.lastwave.app.data.ytmusic.YtMusicAuthManager
 import com.lastwave.app.data.ytmusic.YtConnection
@@ -162,6 +166,7 @@ class InnerTubeMusicApi @Inject constructor(
     private val streamExtractor: YouTubeStreamExtractor,
     private val innerTubeXExtractor: InnerTubeXStreamExtractor,
     private val ytAuth: YtMusicAuthManager,
+    private val settingsPreferences: SettingsPreferences,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val configMutex = Mutex()
@@ -2291,6 +2296,10 @@ class InnerTubeMusicApi @Inject constructor(
             .header("X-Goog-Api-Format-Version", "1")
             .header("X-YouTube-Client-Name", CLIENT_IDS[clientName] ?: clientName)
             .header("X-YouTube-Client-Version", clientVersion)
+            .apply {
+                val (hl, gl) = getEffectiveHlGl()
+                header("Accept-Language", "$hl-$gl,$hl;q=0.9,en;q=0.8")
+            }
 
         if (!visitorData.isNullOrBlank()) {
             builder.header("X-Goog-Visitor-Id", visitorData)
@@ -2363,17 +2372,63 @@ class InnerTubeMusicApi @Inject constructor(
         else -> false
     }
 
-    private fun context(name: String, version: String, visitorData: String?, osVersion: String? = null): JsonObject =
-        buildJsonObject {
+    fun getEffectiveHlGl(): Pair<String, String> {
+        val languageTag = runCatching { settingsPreferences.readLanguageTagSync() }.getOrNull()
+        val language = AppLanguage.fromTag(languageTag)
+        val locale = language.appLocale()
+        val hl = when (language) {
+            AppLanguage.SYSTEM -> {
+                val sysLang = locale.language.ifBlank { "en" }
+                val sysCountry = locale.country
+                if (sysCountry.isNotBlank() && (sysLang.equals("zh", ignoreCase = true) || sysLang.equals("pt", ignoreCase = true))) {
+                    "$sysLang-$sysCountry"
+                } else sysLang
+            }
+            AppLanguage.CHINESE_SIMPLIFIED -> "zh-CN"
+            AppLanguage.PORTUGUESE_BRAZIL -> "pt-BR"
+            else -> language.tag
+        }
+        val gl = resolveRegionCode(language, locale)
+        return hl to gl
+    }
+
+    private fun resolveRegionCode(language: AppLanguage, locale: Locale): String {
+        val sysCountry = runCatching { Locale.getDefault().country }.getOrDefault("")
+        val localeCountry = locale.country
+        if (localeCountry.length == 2 && localeCountry.all { it.isLetter() }) {
+            return localeCountry.uppercase()
+        }
+        return when (language) {
+            AppLanguage.TURKISH -> "TR"
+            AppLanguage.CHINESE_SIMPLIFIED -> "CN"
+            AppLanguage.RUSSIAN -> "RU"
+            AppLanguage.PORTUGUESE_BRAZIL -> "BR"
+            AppLanguage.SPANISH -> if (sysCountry in LATIN_AMERICA_OR_SPAIN) sysCountry else "ES"
+            AppLanguage.INDONESIAN -> "ID"
+            AppLanguage.HINDI -> "IN"
+            AppLanguage.GERMAN -> if (sysCountry in setOf("AT", "CH", "DE")) sysCountry else "DE"
+            AppLanguage.FRENCH -> if (sysCountry in setOf("BE", "CA", "CH", "FR")) sysCountry else "FR"
+            AppLanguage.JAPANESE -> "JP"
+            AppLanguage.KOREAN -> "KR"
+            AppLanguage.ARABIC -> if (sysCountry in ARABIC_COUNTRIES) sysCountry else "SA"
+            AppLanguage.ENGLISH -> if (sysCountry in ENGLISH_COUNTRIES) sysCountry else "US"
+            AppLanguage.SYSTEM -> if (sysCountry.length == 2 && sysCountry.all { it.isLetter() }) sysCountry.uppercase() else "US"
+        }
+    }
+
+    private fun context(name: String, version: String, visitorData: String?, osVersion: String? = null): JsonObject {
+        val (hl, gl) = getEffectiveHlGl()
+        return buildJsonObject {
             put("client", buildJsonObject {
                 put("clientName", name)
                 put("clientVersion", version)
-                put("hl", "en")
-                put("gl", "US")
+                put("hl", hl)
+                put("gl", gl)
                 if (!visitorData.isNullOrBlank()) put("visitorData", visitorData)
                 if (!osVersion.isNullOrBlank()) put("osVersion", osVersion)
             })
         }
+    }
 
     private fun parseSongRenderers(root: JsonElement): List<YouTubeMusicTrack> {
         val renderers = mutableListOf<JsonObject>()
@@ -2767,6 +2822,9 @@ class InnerTubeMusicApi @Inject constructor(
     }
 
     private companion object {
+        val LATIN_AMERICA_OR_SPAIN = setOf("ES", "MX", "AR", "CO", "CL", "PE", "VE", "EC", "GT", "CU", "BO", "DO", "HN", "PY", "SV", "NI", "CR", "PR", "PA", "UY")
+        val ARABIC_COUNTRIES = setOf("SA", "EG", "AE", "IQ", "MA", "DZ", "SD", "YE", "SY", "TN", "JO", "LY", "LB", "OM", "KW", "QA", "BH")
+        val ENGLISH_COUNTRIES = setOf("US", "GB", "CA", "AU", "NZ", "IE", "ZA")
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         val CLIENT_IDS = mapOf(
             "WEB_REMIX" to "67",

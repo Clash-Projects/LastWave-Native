@@ -33,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
@@ -192,6 +193,9 @@ fun GenerateScreen(
                                     GenerateMode.RECOMMENDATIONS -> HintText(
                                         "$RECOMMENDATION_TRACK_COUNT dual-engine tracks, respecting your exclusions",
                                     )
+                                    GenerateMode.NEVER_HEARD -> HintText(
+                                        "Fresh discoveries tailored to your taste, strictly excluding songs you've heard before across listening history, library, and likes.",
+                                    )
                                 }
 
                                 Spacer(Modifier.height(20.dp))
@@ -268,6 +272,7 @@ private fun iconFor(mode: GenerateMode): ImageVector = when (mode) {
     GenerateMode.TAG -> Icons.Filled.Sell
     GenerateMode.MIX -> Icons.Filled.Shuffle
     GenerateMode.RECOMMENDATIONS -> Icons.Filled.AutoAwesome
+    GenerateMode.NEVER_HEARD -> Icons.Filled.Explore
     GenerateMode.LIBRARY -> Icons.Filled.LibraryMusic
 }
 

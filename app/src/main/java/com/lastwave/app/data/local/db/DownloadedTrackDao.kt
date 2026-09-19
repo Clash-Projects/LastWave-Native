@@ -37,6 +37,9 @@ interface DownloadedTrackDao {
     @Query("DELETE FROM downloaded_tracks")
     suspend fun clearAll()
 
+    @Query("SELECT trackKey FROM downloaded_tracks")
+    suspend fun getAllTrackKeys(): List<String>
+
     @Query("SELECT COUNT(*) FROM downloaded_tracks")
     fun count(): Flow<Int>
 

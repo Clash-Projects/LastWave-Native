@@ -103,6 +103,7 @@ object PlaylistNamer {
             "top", "library" -> "Top Tracks"
             "mix" -> "My Mix"
             "recommendations" -> "Recommendations"
+            "never-heard" -> "Never-Heard Mix"
             "similar-tracks", "start-mix" -> if (!seedTrackName.isNullOrBlank()) "Track Mix \u00b7 $seedTrackName" else "Track Mix"
             "similar-artists" -> if (!seedArtistInput.isNullOrBlank()) "Artist Mix \u00b7 $seedArtistInput" else "Artist Mix"
             "discover" -> "Discover Feed"
