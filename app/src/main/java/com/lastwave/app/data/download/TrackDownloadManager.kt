@@ -390,9 +390,12 @@ class TrackDownloadManager @Inject constructor(
         album: String? = null,
         artworkUrl: String? = null,
         year: String? = null,
-    ) {
+    ): Boolean {
         val key = makeDownloadKey(title, artist)
-        if (!activeKeys.add(key)) return
+        if (!activeKeys.add(key)) return false
+        // A previous terminal result for the same song must not look like the
+        // result of this new request to aggregate playlist observers.
+        _downloads.update { it - key }
         reconnectGenerations[key] = AtomicLong()
 
         val job = applicationScope.launch(Dispatchers.IO) {
@@ -1313,6 +1316,7 @@ class TrackDownloadManager @Inject constructor(
 
         }
         activeJobs[key] = job
+        return true
     }
 
     private suspend fun downloadToTempFile(

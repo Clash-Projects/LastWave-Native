@@ -776,7 +776,7 @@ fun PlaylistDetailScreen(
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Download all songs") },
+                                text = { Text("Download playlist") },
                                 leadingIcon = { Icon(Icons.Filled.Download, contentDescription = null) },
                                 onClick = {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)

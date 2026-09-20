@@ -3,6 +3,8 @@ package com.lastwave.app.ui.search
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lastwave.app.data.download.PlaylistDownloadCoordinator
+import com.lastwave.app.data.download.PlaylistDownloadStage
 import com.lastwave.app.data.search.SearchHistoryRepository
 import com.lastwave.app.data.search.SearchRepository
 import com.lastwave.app.data.search.SearchResultItem
@@ -30,6 +32,7 @@ data class SearchUiState(
     val suggestions: List<String> = emptyList(),
     val recentSearches: List<String> = emptyList(),
     val isShowingSuggestions: Boolean = false,
+    val toastMessage: String? = null,
 )
 
 /**
@@ -41,6 +44,7 @@ class SearchViewModel @Inject constructor(
     private val repository: SearchRepository,
     private val historyRepository: SearchHistoryRepository,
     private val musicPlayer: MusicPlayer,
+    private val playlistDownloadCoordinator: PlaylistDownloadCoordinator,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SearchUiState())
@@ -50,11 +54,29 @@ class SearchViewModel @Inject constructor(
     private var suggestionsJob: Job? = null
     private var searchQueueJob: Job? = null
     private var lastIssuedQuery: String = ""
+    private val requestedDownloadKeys = mutableSetOf<String>()
 
     init {
         viewModelScope.launch {
             historyRepository.history.collect { history ->
                 _uiState.update { it.copy(recentSearches = history) }
+            }
+        }
+        viewModelScope.launch {
+            playlistDownloadCoordinator.events.collect { event ->
+                if (event.requestKey !in requestedDownloadKeys) return@collect
+                val firstProgress = event.stage == PlaylistDownloadStage.DOWNLOADING &&
+                    event.completed == 0 && event.failed == 0
+                val terminal = event.stage in setOf(
+                    PlaylistDownloadStage.COMPLETED,
+                    PlaylistDownloadStage.PARTIAL,
+                    PlaylistDownloadStage.FAILED,
+                    PlaylistDownloadStage.CANCELLED,
+                )
+                if (firstProgress || terminal) {
+                    _uiState.update { it.copy(toastMessage = event.message) }
+                }
+                if (terminal) requestedDownloadKeys.remove(event.requestKey)
             }
         }
     }
@@ -142,6 +164,17 @@ class SearchViewModel @Inject constructor(
     fun dismissSuggestions() {
         _uiState.update { it.copy(isShowingSuggestions = false) }
     }
+
+    fun downloadPlaylist(item: SearchResultItem) {
+        val playlistId = item.entityId?.takeIf(String::isNotBlank) ?: return
+        val requestKey = playlistDownloadCoordinator.downloadRemotePlaylist(playlistId, item.name)
+        requestedDownloadKeys += requestKey
+        val message = playlistDownloadCoordinator.states.value[requestKey]?.message
+            ?: "Preparing playlist download…"
+        _uiState.update { it.copy(toastMessage = message) }
+    }
+
+    fun dismissToast() = _uiState.update { it.copy(toastMessage = null) }
 
     fun playResult(item: SearchResultItem) {
         searchQueueJob?.cancel()

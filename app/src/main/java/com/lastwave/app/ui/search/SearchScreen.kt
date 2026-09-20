@@ -37,6 +37,7 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.History
@@ -50,6 +51,8 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,6 +62,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -132,8 +136,16 @@ fun SearchScreen(
     val playbackState by musicPlayer.chromeState.collectAsStateWithLifecycle()
     var menuTarget by remember { mutableStateOf<TrackMenuTarget?>(null) }
     val addToPlaylist = com.lastwave.app.ui.player.LocalAddToPlaylist.current
+    val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val liquidGlass = LocalLiquidGlass.current
+
+    LaunchedEffect(state.toastMessage) {
+        state.toastMessage?.let { message ->
+            android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.dismissToast()
+        }
+    }
 
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -460,6 +472,7 @@ fun SearchScreen(
                                                         SearchTab.PLAYLISTS, SearchTab.USERS -> null
                                                     }
                                                 },
+                                                onDownloadPlaylist = { viewModel.downloadPlaylist(topResult) },
                                             )
                                             Spacer(Modifier.height(8.dp))
                                         }
@@ -507,6 +520,7 @@ fun SearchScreen(
                                                     SearchTab.PLAYLISTS, SearchTab.USERS -> null
                                                 }
                                             },
+                                            onDownloadPlaylist = { viewModel.downloadPlaylist(item) },
                                         )
                                     }
                                 }
@@ -537,6 +551,7 @@ private fun TopResultCard(
     isPlaying: Boolean = false,
     onPlay: () -> Unit,
     onMenu: () -> Unit,
+    onDownloadPlaylist: () -> Unit,
 ) {
     val liquidGlass = LocalLiquidGlass.current
     val shape = RoundedCornerShape(20.dp)
@@ -550,6 +565,7 @@ private fun TopResultCard(
     } else {
         MaterialTheme.colorScheme.onSurface
     }
+    var playlistMenuExpanded by remember { mutableStateOf(false) }
     Card(
         shape = shape,
         colors = CardDefaults.cardColors(
@@ -643,6 +659,29 @@ private fun TopResultCard(
                 }
             }
             Spacer(Modifier.width(8.dp))
+            if (tab == SearchTab.PLAYLISTS) {
+                Box {
+                    com.lastwave.app.ui.common.OverflowMenuButton(
+                        onClick = { playlistMenuExpanded = true },
+                    )
+                    DropdownMenu(
+                        expanded = playlistMenuExpanded,
+                        onDismissRequest = { playlistMenuExpanded = false },
+                        shape = RoundedCornerShape(22.dp),
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Download playlist") },
+                            leadingIcon = { Icon(Icons.Filled.Download, contentDescription = null) },
+                            onClick = {
+                                playlistMenuExpanded = false
+                                onDownloadPlaylist()
+                            },
+                        )
+                    }
+                }
+                Spacer(Modifier.width(4.dp))
+            }
             FilledIconButton(
                 onClick = onPlay,
                 shape = CircleShape,
@@ -794,9 +833,11 @@ private fun SearchResultRow(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onMenu: () -> Unit,
+    onDownloadPlaylist: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    var playlistMenuExpanded by remember { mutableStateOf(false) }
     fun openLastFm(path: String) {
         val base = item.url.ifBlank { "https://www.last.fm/user/${item.name}" }.trimEnd('/')
         try {
@@ -866,7 +907,28 @@ private fun SearchResultRow(
             IconButton(onClick = { openLastFm("/+removefriend") }) {
                 Icon(Icons.Filled.PersonRemove, contentDescription = "Unfollow ${item.name} on Last.fm")
             }
-        } else if (tab != SearchTab.PLAYLISTS) {
+        } else if (tab == SearchTab.PLAYLISTS) {
+            Box {
+                com.lastwave.app.ui.common.OverflowMenuButton(
+                    onClick = { playlistMenuExpanded = true },
+                )
+                DropdownMenu(
+                    expanded = playlistMenuExpanded,
+                    onDismissRequest = { playlistMenuExpanded = false },
+                    shape = RoundedCornerShape(22.dp),
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Download playlist") },
+                        leadingIcon = { Icon(Icons.Filled.Download, contentDescription = null) },
+                        onClick = {
+                            playlistMenuExpanded = false
+                            onDownloadPlaylist()
+                        },
+                    )
+                }
+            }
+        } else {
             com.lastwave.app.ui.common.OverflowMenuButton(onClick = onMenu)
         }
     }

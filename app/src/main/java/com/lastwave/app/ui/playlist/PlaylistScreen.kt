@@ -682,7 +682,7 @@ private fun PlaylistCard(
                         onClick = { onTogglePin(); menuExpanded = false },
                     )
                     DropdownMenuItem(
-                        text = { Text("Download all songs") },
+                        text = { Text("Download playlist") },
                         leadingIcon = { Icon(Icons.Filled.Download, contentDescription = null) },
                         onClick = { onDownload(); menuExpanded = false },
                     )
