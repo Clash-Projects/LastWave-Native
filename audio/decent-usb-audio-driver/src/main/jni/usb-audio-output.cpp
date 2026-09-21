@@ -398,9 +398,9 @@ extern "C" {
 JNIEXPORT jlong JNICALL
 Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioCreate(
         JNIEnv *, jobject, jint fd, jint ifId, jint epOut, jint epFb,
-        jint rate, jint ch, jint bits, jint maxPkt) {
-    LOGI("Create: fd=%d ep=0x%02x rate=%d ch=%d bits=%d maxPkt=%d",
-         fd, epOut, rate, ch, bits, maxPkt);
+        jint rate, jint ch, jint bits, jint maxPkt, jint interval) {
+    LOGI("Create: fd=%d ep=0x%02x rate=%d ch=%d bits=%d maxPkt=%d interval=%d",
+         fd, epOut, rate, ch, bits, maxPkt, interval);
     auto *ctx = new(std::nothrow) UsbAudioContext();
     if (!ctx) return 0;
     ctx->fd = fd;
@@ -414,6 +414,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioCreate(
     ctx->bytesPerFrame = (bits / 8) * ch;
     ctx->maxPacketSize = maxPkt;
     ctx->running.store(false);
+    ctx->paused.store(false);
     ctx->transferBuffer = nullptr;
     ctx->transferBufferCapacity = 0;
     ctx->framesWritten = 0;
@@ -424,8 +425,13 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioCreate(
     ctx->urbsInFlight = 0;
     ctx->ringAllocated = false;
     ctx->frameAccumulator = 0.0;
-    ctx->calibratedFpmf = rate / 8000.0;
     ctx->residualBytes = 0;
+    int microframes = 1;
+    if (interval > 1 && interval <= 16) {
+        microframes = 1 << (interval - 1);
+    }
+    ctx->isoMicroframes = microframes;
+    ctx->calibratedFpmf = (rate / 8000.0) * microframes;
     memset(ctx->residualBuffer, 0, sizeof(ctx->residualBuffer));
     memset(ctx->ring, 0, sizeof(ctx->ring));
     ctx->feedbackUrb = nullptr;
@@ -474,6 +480,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioStart(
     auto *ctx = reinterpret_cast<UsbAudioContext *>(h);
     if (!ctx) return JNI_FALSE;
     ctx->running.store(true);
+    ctx->paused.store(false);
     ctx->framesWritten = 0;
     ctx->framesClock.store(0);
     ctx->submitIdx = 0;
@@ -482,34 +489,16 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioStart(
     ctx->frameAccumulator = 0.0;
     ctx->residualBytes = 0;
 
-    // Initial calibration from the DAC's async feedback endpoint.
-    // Pipeline is empty here, so REAPURBNDELAY can only return the feedback URB.
-    double nominalFpmf = ctx->sampleRate / 8000.0;
+    double nominalFpmf = (ctx->sampleRate / 8000.0) * (ctx->isoMicroframes > 0 ? ctx->isoMicroframes : 1);
     ctx->calibratedFpmf = nominalFpmf;
-
-    if (ctx->endpointFeedback > 0) {
-        double fb = readFeedback(ctx->fd, ctx->endpointFeedback);
-        if (fb > 0 && fb > nominalFpmf * 0.99 && fb < nominalFpmf * 1.01) {
-            ctx->calibratedFpmf = fb;
-            LOGI("Start: initial feedback=%.4f fpmf (%.1f Hz), nominal=%.4f (%.1f Hz)",
-                 fb, fb * 8000.0, nominalFpmf, nominalFpmf * 8000.0);
-        } else {
-            LOGW("Start: ignoring feedback=%.4f, using nominal %.4f fpmf",
-                 fb, nominalFpmf);
-        }
-
-        // Start continuous feedback: submit a feedback URB that will be
-        // automatically recycled in the reap loop during streaming.
-        // The host controller schedules the feedback endpoint once per
-        // microframe (~1 ms effective interval).
-        submitFeedbackUrb(ctx);
-    }
-
-    LOGI("Start: rate=%d ch=%d bits=%d ring=%d slots×%dpkt fpmf=%.4f feedback=%s",
+    // Do not submit the async feedback URB while streaming. Reaping it on
+    // the audio thread every ~1 ms stole ISO completions and jittered
+    // frames-per-microframe — 48 kHz-family (integer fpmf) survived,
+    // 88.2/176.4/352.8 (11.025 / 22.05 / 44.1) turned into 1 ms crackle.
+    LOGI("Start: rate=%d ch=%d bits=%d ring=%d slots×%dpkt fpmf=%.4f (nominal, no live feedback)",
          ctx->sampleRate, ctx->channelCount, ctx->bitDepth,
          USB_AUDIO_NUM_URBS, USB_AUDIO_PACKETS_PER_URB,
-         ctx->calibratedFpmf,
-         ctx->feedbackInFlight ? "continuous" : "one-shot");
+         ctx->calibratedFpmf);
     return JNI_TRUE;
 }
 
@@ -517,7 +506,7 @@ JNIEXPORT void JNICALL
 Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioWrite(
         JNIEnv *env, jobject, jlong h, jfloatArray pcm) {
     auto *ctx = reinterpret_cast<UsbAudioContext *>(h);
-    if (!ctx || !ctx->running.load()) return;
+    if (!ctx || !ctx->running.load() || ctx->paused.load()) return;
 
     jint totalSamples = env->GetArrayLength(pcm);
     if (totalSamples <= 0) return;
@@ -576,6 +565,17 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioStop(
     if (!ctx) return;
     ctx->running.store(false);
     LOGI("Stop: %lld frames, %d URBs in flight",
+         (long long)ctx->framesWritten, ctx->urbsInFlight);
+}
+
+JNIEXPORT void JNICALL
+Java_com_decent_usbaudio_UsbAudioStream_nativeSetPaused(
+        JNIEnv *, jobject, jlong h, jboolean paused) {
+    auto *ctx = reinterpret_cast<UsbAudioContext *>(h);
+    if (!ctx) return;
+    ctx->paused.store(paused == JNI_TRUE);
+    LOGI("Paused=%d frames=%lld inflight=%d",
+         paused == JNI_TRUE ? 1 : 0,
          (long long)ctx->framesWritten, ctx->urbsInFlight);
 }
 
@@ -726,7 +726,7 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
     // This matches the DAC's actual hardware clock instead of the nominal rate.
     double fpmf = ctx->calibratedFpmf;
 
-    while (offset < dataLen && ctx->running.load()) {
+    while (offset < dataLen && ctx->running.load() && !ctx->paused.load()) {
         int pktSizes[USB_AUDIO_PACKETS_PER_URB];
         int numPackets = 0;
         int urbBytes = 0;
@@ -741,7 +741,13 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
             int b = frames * ctx->bytesPerFrame;
             if (ctx->maxPacketSize > 0 && b > ctx->maxPacketSize) {
                 int maxFrames = ctx->maxPacketSize / ctx->bytesPerFrame;
-                if (maxFrames < 1) break;
+                if (maxFrames < 1) {
+                    ctx->frameAccumulator += frames;
+                    break;
+                }
+                // Put unsent frames back. Dropping them permanently under-runs
+                // 88.2/176.4/352.8 (needs 12/23/45 frames per µframe).
+                ctx->frameAccumulator += (frames - maxFrames);
                 frames = maxFrames;
                 b = frames * ctx->bytesPerFrame;
             }
@@ -774,6 +780,7 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
         }
 
         if (ctx->urbsInFlight >= USB_AUDIO_NUM_URBS) {
+            if (ctx->paused.load()) break;
             int result = reapOldestUrb(ctx, 200);
             if (result == -2) {
                 LOGE("submitPcmToUrbs: reap timeout, inflight=%d", ctx->urbsInFlight);
@@ -826,7 +833,7 @@ JNIEXPORT void JNICALL
 Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioWriteRaw(
         JNIEnv *env, jobject, jlong h, jbyteArray pcm, jint inputBitDepth) {
     auto *ctx = reinterpret_cast<UsbAudioContext *>(h);
-    if (!ctx || !ctx->running.load()) return;
+    if (!ctx || !ctx->running.load() || ctx->paused.load()) return;
 
     jint inputBytes = env->GetArrayLength(pcm);
     if (inputBytes <= 0) return;

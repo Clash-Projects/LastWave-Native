@@ -458,11 +458,7 @@ class StreamHealthTracker {
         val wallDelta = wallMs - exclusiveOriginWallMs
         if (wallDelta < 800L) return driftPpm
         val audioMs = (framesWritten - exclusiveOriginFrames).toDouble() * 1000.0 / rateHz.toDouble()
-        // Write() still in flight: frames have not caught wall yet. Keep the
-        // last reading instead of publishing −1e6 PPM or wiping the estimate.
-        if (audioMs < wallDelta * 0.25 && wallDelta < 4_000L) {
-            return driftPpm
-        }
+        if (wallDelta < 1_000L || audioMs < 50.0) return driftPpm
         val instant = ((audioMs - wallDelta) / wallDelta * 1_000_000.0)
             .coerceIn(-50_000.0, 50_000.0)
         driftPpm = if (driftPpm == null) instant else driftPpm!! * 0.85 + instant * 0.15

@@ -53,9 +53,9 @@ class LosslessAtmosManifestTest {
     }
 
     @Test
-    fun ec3WithoutChannelTagRejected() {
-        // Fail closed: ec-3 bytes without a 6ch declaration are not Atmos.
-        assertFalse(LosslessMusicApi.isAtmosManifest("<MPD><Representation codecs=\"ec-3\"/></MPD>"))
+    fun ec3WithoutChannelTagIsStillAtmos() {
+        // Dolby JOC often uses a hex channel mask, not value="6".
+        assertTrue(LosslessMusicApi.isAtmosManifest("<MPD><Representation codecs=\"ec-3\"/></MPD>"))
     }
 
     @Test

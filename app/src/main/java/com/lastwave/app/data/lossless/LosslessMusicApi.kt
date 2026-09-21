@@ -30,11 +30,19 @@ data class LosslessAudioStream(
     val bitrateKbps: Int? = null,
     val trackId: Long = 0,
     val durationSeconds: Int = 0,
+    val audioCodecOverride: String? = null,
 )
 
 data class BackendCredentials(
     val baseUrl: String = "",
     val apiKey: String = "",
+)
+
+/** URI or inline MPD extracted from `/trackManifests`. */
+data class AtmosManifestRef(
+    val mpdUri: String? = null,
+    val mpdXml: String? = null,
+    val mpdBase64: String? = null,
 )
 
 private data class TidalCandidateItem(
@@ -46,6 +54,7 @@ private data class TidalCandidateItem(
     val albumTitle: String = "",
     val performers: String = "",
     val isAtmos: Boolean = false,
+    val isSpatial: Boolean = false,
 )
 
 @Singleton
@@ -124,21 +133,25 @@ class LosslessMusicApi @Inject constructor(
         }
 
         private val MANIFEST_CODECS = Regex("""codecs="([^"]+)"""")
-        private val SIX_CHANNELS = Regex("""value=["']6["']""")
 
         /**
-         * True only when DASH manifest XML really carries E-AC-3 spatial
-         * audio on a 6-channel declaration. The atmos endpoint answers
-         * stereo-only tracks with a plain FLAC/AAC rendition, so claiming
-         * Atmos from anything less would badge stereo as DOLBY ATMOS.
-         * Fails closed (false) on anything unparseable.
+         * True when DASH manifest XML carries E-AC-3 / Dolby Atmos (or JOC).
+         * Tidal's atmos endpoint answers stereo-only tracks with FLAC/AAC, so
+         * those stay false. Channel-count is not required: Atmos JOC often
+         * declares a Dolby hex mask (`F801`) or 16ch, not `value="6"`.
          */
         fun isAtmosManifest(mpdXml: String): Boolean {
             if (mpdXml.isBlank()) return false
             val lower = mpdXml.lowercase()
-            val spatial = lower.contains("ec-3") || lower.contains("eac3") || lower.contains("ec3")
-            if (!spatial) return false
-            return lower.contains("audiochannelconfiguration") && SIX_CHANNELS.containsMatchIn(lower)
+            return lower.contains("ec-3") || lower.contains("eac3") || lower.contains("ec3") ||
+                lower.contains("atmos") || lower.contains("joc")
+        }
+
+        fun isSpatialManifest(mpdXml: String): Boolean {
+            if (mpdXml.isBlank()) return false
+            val lower = mpdXml.lowercase()
+            return lower.contains("mha1") || lower.contains("mhm1") || lower.contains("mpeg-h") ||
+                lower.contains("360ra") || lower.contains("sony_360") || lower.contains("spatial")
         }
 
         /** First `codecs=` value inside a base64 DASH data URL, or null when unreadable. */
@@ -164,6 +177,62 @@ class LosslessMusicApi @Inject constructor(
         fun isAtmosStreamUrl(url: String): Boolean {
             if (!url.startsWith("data:application/dash+xml")) return false
             return isAtmosCodec(manifestCodecOf(url))
+        }
+
+        /**
+         * Pull an MPD URI or inline XML/base64 out of the many JSON shapes the
+         * backend has used for `/trackManifests/?atmos=true`.
+         */
+        fun extractAtmosManifestRef(json: JSONObject): AtmosManifestRef? {
+            fun fromObject(obj: JSONObject?): AtmosManifestRef? {
+                if (obj == null) return null
+                sequenceOf("uri", "url", "manifestUrl", "mpdUrl").forEach { key ->
+                    val value = obj.optString(key)?.takeIf { it.isNotBlank() } ?: return@forEach
+                    if (value.startsWith("http", ignoreCase = true)) {
+                        return AtmosManifestRef(mpdUri = value)
+                    }
+                }
+                val manifest = obj.optString("manifest")
+                if (manifest.isNotBlank()) {
+                    val trimmed = manifest.trimStart()
+                    return when {
+                        trimmed.startsWith("<") -> AtmosManifestRef(mpdXml = manifest)
+                        trimmed.startsWith("http", ignoreCase = true) -> AtmosManifestRef(mpdUri = manifest)
+                        else -> AtmosManifestRef(mpdBase64 = manifest)
+                    }
+                }
+                return null
+            }
+            fun walk(obj: JSONObject?, depth: Int): AtmosManifestRef? {
+                if (obj == null || depth > 6) return null
+                fromObject(obj)?.let { return it }
+                obj.optJSONObject("attributes")?.let { walk(it, depth + 1) }?.let { return it }
+                obj.optJSONObject("data")?.let { walk(it, depth + 1) }?.let { return it }
+                return null
+            }
+            return walk(json, 0)
+        }
+
+        fun parseSpatialFlags(item: JSONObject): Pair<Boolean, Boolean> {
+            var atmos = false
+            var spatial = false
+            fun consider(raw: String?) {
+                val m = raw?.uppercase().orEmpty()
+                if (m.isBlank()) return
+                if (m.contains("DOLBY") || m.contains("ATMOS")) atmos = true
+                if (m.contains("360") || m.contains("SONY") || (m.contains("SPATIAL") && !m.contains("ATMOS"))) {
+                    spatial = true
+                }
+            }
+            val modes = item.optJSONArray("audioModes")
+            val modeCount = modes?.length() ?: 0
+            for (i in 0 until modeCount) consider(modes?.optString(i))
+            val tags = item.optJSONObject("mediaMetadata")?.optJSONArray("tags")
+                ?: item.optJSONArray("mediaMetadataTags")
+            val tagCount = tags?.length() ?: 0
+            for (i in 0 until tagCount) consider(tags?.optString(i))
+            consider(item.optString("audioQuality"))
+            return atmos to spatial
         }
 
         private const val TAG = "LosslessMusicApi"
@@ -374,7 +443,7 @@ class LosslessMusicApi @Inject constructor(
                         expectedAlbum = expectedAlbum,
                     )?.let { score ->
                         var finalScore = score
-                        if (preferredQuality == QUALITY_DOLBY_ATMOS && item.isAtmos) finalScore += 200
+                        if (preferredQuality == QUALITY_DOLBY_ATMOS && (item.isAtmos || item.isSpatial)) finalScore += 200
                         item to finalScore
                     }
                 }
@@ -414,8 +483,7 @@ class LosslessMusicApi @Inject constructor(
                     .mapNotNull { artistsArray?.optJSONObject(it)?.optString("name") }
                     .joinToString(", ")
                 val albumTitle = item.optJSONObject("album")?.optString("title").orEmpty()
-                val audioModes = item.optJSONArray("audioModes")
-                val isAtmos = (0 until (audioModes?.length() ?: 0)).any { audioModes?.optString(it) == "DOLBY_ATMOS" }
+                val (isAtmos, isSpatial) = parseSpatialFlags(item)
 
                 result.add(
                     TidalCandidateItem(
@@ -427,6 +495,7 @@ class LosslessMusicApi @Inject constructor(
                         albumTitle = albumTitle,
                         performers = performers,
                         isAtmos = isAtmos,
+                        isSpatial = isSpatial,
                     ),
                 )
             }
@@ -439,9 +508,10 @@ class LosslessMusicApi @Inject constructor(
         quality: Int,
         creds: BackendCredentials,
     ): LosslessAudioStream? {
-        if (quality == QUALITY_DOLBY_ATMOS && candidate.isAtmos) {
-            val atmosStream = fetchTidalAtmosStream(candidate, creds)
-            if (atmosStream != null) return atmosStream
+        if (quality == QUALITY_DOLBY_ATMOS) {
+            fetchTidalAtmosStream(candidate, creds)?.let { return it }
+            fetchTidalSpatialStream(candidate, creds)?.let { return it }
+            return null
         }
 
         val qualityParam = when (quality) {
@@ -506,45 +576,82 @@ class LosslessMusicApi @Inject constructor(
     private suspend fun fetchTidalAtmosStream(
         candidate: TidalCandidateItem,
         creds: BackendCredentials,
+    ): LosslessAudioStream? =
+        fetchSpatialManifest(
+            candidate = candidate,
+            creds = creds,
+            query = "atmos=true",
+            accept = { isAtmosManifest(it) },
+            formatId = QUALITY_DOLBY_ATMOS,
+            codecOverride = "DOLBY ATMOS",
+            logLabel = "Atmos",
+        )
+
+    private suspend fun fetchTidalSpatialStream(
+        candidate: TidalCandidateItem,
+        creds: BackendCredentials,
+    ): LosslessAudioStream? =
+        fetchSpatialManifest(
+            candidate = candidate,
+            creds = creds,
+            query = "spatial=true",
+            accept = { isSpatialManifest(it) || isAtmosManifest(it) },
+            formatId = QUALITY_DOLBY_ATMOS,
+            codecOverride = "SPATIAL AUDIO",
+            logLabel = "Spatial",
+        )
+
+    private suspend fun fetchSpatialManifest(
+        candidate: TidalCandidateItem,
+        creds: BackendCredentials,
+        query: String,
+        accept: (String) -> Boolean,
+        formatId: Int,
+        codecOverride: String,
+        logLabel: String,
     ): LosslessAudioStream? {
-        val url = "${creds.baseUrl}/trackManifests/?id=${candidate.id}&atmos=true"
+        val url = "${creds.baseUrl}/trackManifests/?id=${candidate.id}&$query"
         val reqBuilder = Request.Builder().url(url).get()
         if (creds.apiKey.isNotBlank()) reqBuilder.addHeader("X-API-Key", creds.apiKey)
 
         return try {
             val body = resolutionClient.newCall(reqBuilder.build()).awaitSuccessfulBodyOrNull() ?: return null
             val json = JSONObject(body)
-            val data = json.optJSONObject("data")
-            val attr = data?.optJSONObject("data")?.optJSONObject("data")?.optJSONObject("attributes")
-            val mpdUri = attr?.optString("uri")
-            if (mpdUri.isNullOrBlank()) return null
-
-            // Fetch MPD XML directly
-            val mpdReq = Request.Builder().url(mpdUri).get().build()
-            val mpdXml = resolutionClient.newCall(mpdReq).awaitSuccessfulBodyOrNull() ?: return null
-            // Ground truth: the endpoint answers stereo-only tracks with a
-            // plain rendition (atmos_available=false). Claiming those as
-            // Atmos would badge stereo as DOLBY ATMOS, so fail to null and
-            // let the caller fall back to honest stereo tiers instead.
-            if (!isAtmosManifest(mpdXml)) {
-                Log.d(TAG, "Atmos manifest lacks E-AC-3/6ch for track ${candidate.id}; falling back")
+            val mpdXml = resolveManifestXml(json) ?: return null
+            if (!accept(mpdXml)) {
+                Log.d(TAG, "$logLabel manifest is not spatial for track ${candidate.id}; falling back")
                 return null
             }
             val b64 = android.util.Base64.encodeToString(mpdXml.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
-
             LosslessAudioStream(
                 url = "data:application/dash+xml;base64,$b64",
                 mimeType = "application/dash+xml",
                 bitDepth = 24,
                 samplingRate = 48.0,
-                formatId = QUALITY_DOLBY_ATMOS,
+                formatId = formatId,
                 bitrateKbps = 768,
                 trackId = candidate.id,
                 durationSeconds = candidate.duration,
+                audioCodecOverride = codecOverride,
             )
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            Log.w(TAG, "$logLabel fetch failed for track ${candidate.id}: ${error.message}")
             null
         }
+    }
+
+    private suspend fun resolveManifestXml(json: JSONObject): String? {
+        val ref = extractAtmosManifestRef(json) ?: return null
+        ref.mpdXml?.takeIf { it.isNotBlank() }?.let { return it }
+        ref.mpdBase64?.takeIf { it.isNotBlank() }?.let { encoded ->
+            val decoded = runCatching {
+                String(android.util.Base64.decode(encoded, android.util.Base64.DEFAULT), Charsets.UTF_8)
+            }.getOrNull()
+            if (!decoded.isNullOrBlank()) return decoded
+        }
+        val mpdUri = ref.mpdUri?.takeIf { it.isNotBlank() } ?: return null
+        val mpdReq = Request.Builder().url(mpdUri).get().build()
+        return resolutionClient.newCall(mpdReq).awaitSuccessfulBodyOrNull()
     }
 
     private fun verifiedMatchScore(
