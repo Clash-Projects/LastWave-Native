@@ -14,3 +14,4 @@ find_library(log-lib log)
 target_link_libraries(decent_usb_audio
     ${log-lib}
 )
+target_link_options(decent_usb_audio PRIVATE "-Wl,-z,max-page-size=16384")

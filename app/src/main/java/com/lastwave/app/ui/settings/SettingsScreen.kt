@@ -1079,10 +1079,10 @@ fun SettingsScreen(
                                 title = "USB Exclusive Output",
                                 subtitle = if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
                                     "Requires Android 10 or newer"
-                                } else if (usbExclusiveEnabled) {
-                                    "Direct DAC access \u2022 bypasses the Android mixer"
+                                } else if (usbExclusiveEnabled || misc.isBitPerfectEnabled) {
+                                    "Direct usbdevfs to the DAC \u2022 Bit-Perfect engages this automatically"
                                 } else {
-                                    "Off \u2022 Needs a USB DAC attached to take effect"
+                                    "Off \u2022 Needs a USB DAC and Bit-Perfect (or this toggle)"
                                 },
                                 checked = usbExclusiveEnabled,
                                 onCheckedChange = viewModel::setUsbExclusiveEnabled,

@@ -17,7 +17,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lastwave.app.util.AppLocaleManager
-import com.decent.usbaudio.UsbAudioPermissionHelper
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
@@ -64,11 +63,6 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             .onFailure { android.util.Log.e(STARTUP_TAG, "Splash compatibility layer unavailable", it) }
             .getOrNull()
         super.onCreate(savedInstanceState)
-        // Claim an attached USB DAC before the kernel driver binds.
-        // Driver stack needs API 29+; never load it on the legacy build.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            runCatching { UsbAudioPermissionHelper.handleIntent(applicationContext, intent) }
-        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             // Adopt choices made via system Settings -> App languages so the
             // in-app picker shows the truth. The framework recreates us itself.
@@ -231,9 +225,6 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         runCatching { lastFmAuthCallback.capture(intent) }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            runCatching { UsbAudioPermissionHelper.handleIntent(applicationContext, intent) }
-        }
         handlePlaybackIntent(intent)
         handleNavigationIntent(intent)
     }

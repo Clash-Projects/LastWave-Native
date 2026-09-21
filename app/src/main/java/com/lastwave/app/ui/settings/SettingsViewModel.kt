@@ -418,6 +418,7 @@ class SettingsViewModel @Inject constructor(
         launchSettingsAction("update Bit-Perfect mode") {
             applyNativeAudio { it.setBitPerfect(enabled) }
             settingsPreferences.setBitPerfectEnabled(enabled)
+            com.lastwave.app.playback.usb.UsbExclusivePrefs.setEnabled(context, enabled)
             if (enabled) {
                 // When Bit-Perfect is turned on, automatically turn off Studio Master Clarity
                 settingsPreferences.setStudioMasterClarity(false)
@@ -440,7 +441,11 @@ class SettingsViewModel @Inject constructor(
         }
         com.lastwave.app.playback.usb.UsbExclusivePrefs.setEnabled(context, enabled)
         if (enabled) {
-            _uiState.update { it.copy(toastMessage = "USB exclusive on — restart playback with a DAC attached") }
+            applyNativeAudio { it.setBitPerfect(true) }
+            settingsPreferences.setBitPerfectEnabled(true)
+            settingsPreferences.setStudioMasterClarity(false)
+            applyNativeAudio { it.setStudioMasterClarity(false) }
+            _uiState.update { it.copy(toastMessage = "USB exclusive on — Bit-Perfect will use usbdevfs when a DAC is granted") }
         }
     }
 

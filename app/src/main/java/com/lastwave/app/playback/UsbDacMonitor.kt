@@ -111,7 +111,7 @@ class UsbDacMonitor @Inject constructor(
         val peripheral = bus.firstOrNull { it.isAudioPeripheral() }
         val granted = peripheral?.let { runCatching { usbManager?.hasPermission(it) }.getOrDefault(false) } == true
 
-        val dac = mixer?.let { info ->
+        val mixerDac = mixer?.let { info ->
             UsbDacInfo(
                 name = info.productName?.toString()?.takeIf { it.isNotBlank() }
                     ?: peripheral?.productName?.takeIf { it.isNotBlank() }
@@ -125,10 +125,26 @@ class UsbDacMonitor @Inject constructor(
                 deviceId = info.id,
             )
         }
+        val dac = mixerDac ?: peripheral?.let { usb ->
+            UsbDacInfo(
+                name = usb.productName?.takeIf { it.isNotBlank() } ?: "USB DAC",
+                vendorId = usb.vendorId,
+                productId = usb.productId,
+                sampleRatesHz = emptyList(),
+                channelCounts = emptyList(),
+                usbPermissionGranted = granted,
+                hasUsbPeripheral = true,
+                deviceId = -1,
+            )
+        }
         _state.update { current ->
-            // Dropping the DAC also drops the routing request — the device
-            // it pointed at no longer exists.
-            val stillThere = dac?.deviceId?.let { id -> current.dac?.deviceId == id } ?: false
+            val stillThere = when {
+                dac == null -> false
+                dac.deviceId > 0 && current.dac?.deviceId == dac.deviceId -> true
+                dac.hasUsbPeripheral && current.dac?.vendorId == dac.vendorId &&
+                    current.dac?.productId == dac.productId -> true
+                else -> false
+            }
             current.copy(
                 dac = dac,
                 routeRequested = if (dac == null) false else current.routeRequested && stillThere,

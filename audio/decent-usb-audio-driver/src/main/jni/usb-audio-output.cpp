@@ -659,6 +659,16 @@ void padInt16ToInt32(const uint8_t *src, uint8_t *dst, int numSamples) {
     for (int i = 0; i < numSamples; i++) out[i] = (int32_t)in16[i] << 16;
 }
 
+void padInt16ToInt24(const uint8_t *src, uint8_t *dst, int numSamples) {
+    auto *in16 = reinterpret_cast<const int16_t *>(src);
+    for (int i = 0; i < numSamples; i++) {
+        int32_t s = (int32_t)in16[i] << 8;
+        dst[i * 3] = (uint8_t)(s & 0xFF);
+        dst[i * 3 + 1] = (uint8_t)((s >> 8) & 0xFF);
+        dst[i * 3 + 2] = (uint8_t)((s >> 16) & 0xFF);
+    }
+}
+
 // int32 (24-bit sign-extended from libFLAC) → 32-bit: shift left 8
 void shiftInt32From24(const uint8_t *src, uint8_t *dst, int numSamples) {
     auto *out = reinterpret_cast<int32_t *>(dst);
@@ -817,6 +827,8 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioWriteRaw(
         memcpy(ctx->transferBuffer, rawData, inputBytes);
     } else if (inputBitDepth == 16 && ctx->bitDepth == 32) {
         padInt16ToInt32((uint8_t *)rawData, ctx->transferBuffer, totalSamples);
+    } else if (inputBitDepth == 16 && ctx->bitDepth == 24) {
+        padInt16ToInt24((uint8_t *)rawData, ctx->transferBuffer, totalSamples);
     } else if (inputBitDepth == 24 && ctx->bitDepth == 32) {
         // 24-bit packed (3 bytes/sample) → 32-bit: sign-extend + shift left 8
         padInt24ToInt32((uint8_t *)rawData, ctx->transferBuffer, totalSamples);

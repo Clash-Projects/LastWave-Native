@@ -32,6 +32,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
     private var connection: UsbDeviceConnection? = null
     private var currentDevice: UsbDevice? = null
     private var claimedInterface: UsbInterface? = null
+    private var claimedControlInterface: UsbInterface? = null
 
     companion object {
         private const val TAG = "UsbAudioDevice"
@@ -211,6 +212,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
         if (controlInterface != null) {
             val claimed = conn.claimInterface(controlInterface, true)
             Log.i(TAG, "Claimed AudioControl interface ${controlInterface.id} force=true: $claimed")
+            if (claimed) claimedControlInterface = controlInterface
         }
 
         // Claim the AudioStreaming interface with force=true to disconnect kernel driver (snd-usb-audio)
@@ -274,7 +276,8 @@ class UsbAudioDevice private constructor(private val context: Context) {
                 altSettingCount = altSettingCount,
                 clockSourceId = clockSourceId,
                 bestAltSetting = bestAlt,
-                bestBitDepth = bestBits
+                bestBitDepth = bestBits,
+                controlInterfaceId = controlInterface?.id ?: 0,
         )
         cachedDeviceInfo = info
         return info
@@ -300,6 +303,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
         // so the same fd is reused (native claims are on this fd).
         cachedDeviceInfo = null
         claimedInterface = null
+        claimedControlInterface = null
         // DO NOT close connection — the fd from reset+native claim must be reused
         // The next openDevice() will see connection != null and skip re-opening
     }
@@ -460,10 +464,47 @@ class UsbAudioDevice private constructor(private val context: Context) {
             connection?.releaseInterface(iface)
             claimedInterface = null
         }
+        claimedControlInterface?.let { iface ->
+            connection?.releaseInterface(iface)
+            claimedControlInterface = null
+        }
         connection?.close()
         connection = null
         currentDevice = null
         Log.i(TAG, "USB device closed")
+    }
+
+    fun endpointsForAlt(altSetting: Int): Triple<Int, Int, Int>? {
+        val device = currentDevice ?: return null
+        for (i in 0 until device.interfaceCount) {
+            val iface = device.getInterface(i)
+            if (iface.interfaceClass != UsbConstants.USB_CLASS_AUDIO ||
+                iface.interfaceSubclass != 2 ||
+                iface.alternateSetting != altSetting
+            ) {
+                continue
+            }
+            var endpointOut = -1
+            var endpointFeedback = -1
+            var maxPacketSize = 0
+            for (e in 0 until iface.endpointCount) {
+                val ep = iface.getEndpoint(e)
+                if (ep.type != UsbConstants.USB_ENDPOINT_XFER_ISOC) continue
+                if (ep.direction == UsbConstants.USB_DIR_OUT) {
+                    endpointOut = ep.address
+                    maxPacketSize = ep.maxPacketSize
+                } else if (ep.direction == UsbConstants.USB_DIR_IN) {
+                    endpointFeedback = ep.address
+                }
+            }
+            if (endpointOut >= 0) return Triple(endpointOut, endpointFeedback, maxPacketSize)
+        }
+        return null
+    }
+
+    private fun clockWIndex(csId: Int): Int {
+        val iface = cachedDeviceInfo?.controlInterfaceId ?: 0
+        return (csId shl 8) or iface
     }
 
     /**
@@ -500,7 +541,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
         }
 
         for (csId in clockSourceIds) {
-            val wIndex = (csId shl 8) or 0  // entityId << 8 | audioControlInterface(0)
+            val wIndex = clockWIndex(csId)
             val ret = conn.controlTransfer(
                     0x21,    // bmRequestType: Host-to-Device, Class, Interface
                     0x01,    // bRequest: SET_CUR
@@ -532,17 +573,20 @@ class UsbAudioDevice private constructor(private val context: Context) {
         val clockSourceIds = if (detectedId > 0) intArrayOf(detectedId)
                 else intArrayOf(0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x28, 0x29)
         for (csId in clockSourceIds) {
-            val wIndex = (csId shl 8) or 0
+            val wIndex = clockWIndex(csId)
             val ret = conn.controlTransfer(
                     0xA1,    // bmRequestType: Device-to-Host, Class, Interface
-                    0x01,    // bRequest: GET_CUR (actually CUR is 0x01 for both)
+                    0x01,    // bRequest: GET_CUR (UAC2)
                     0x0100,  // wValue: CS_SAM_FREQ_CONTROL
                     wIndex,
                     data,
                     data.size,
                     1000
             )
-            if (ret >= 4) {
+            val retUac1 = if (ret < 4) conn.controlTransfer(
+                    0xA1, 0x81, 0x0100, wIndex, data, data.size, 1000
+            ) else ret
+            if (retUac1 >= 4) {
                 val rate = (data[0].toInt() and 0xFF) or
                         ((data[1].toInt() and 0xFF) shl 8) or
                         ((data[2].toInt() and 0xFF) shl 16) or
@@ -572,7 +616,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
         val clockSourceIds = if (detectedId > 0) intArrayOf(detectedId)
                 else intArrayOf(0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x28, 0x29)
         for (csId in clockSourceIds) {
-            val wIndex = (csId shl 8) or 0
+            val wIndex = clockWIndex(csId)
             val ret = conn.controlTransfer(
                     0xA1,    // bmRequestType: Device-to-Host, Class, Interface
                     0x01,    // bRequest: GET_CUR

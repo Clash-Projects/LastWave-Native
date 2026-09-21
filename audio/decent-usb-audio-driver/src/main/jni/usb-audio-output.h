@@ -146,6 +146,9 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
 /** 16-bit → 32-bit: shift left 16. */
 void padInt16ToInt32(const uint8_t *src, uint8_t *dst, int numSamples);
 
+/** 16-bit → 24-bit packed: shift left 8. */
+void padInt16ToInt24(const uint8_t *src, uint8_t *dst, int numSamples);
+
 /** 24-bit packed (3 bytes/sample) → 32-bit: sign-extend + shift left 8. */
 void padInt24ToInt32(const uint8_t *src, uint8_t *dst, int numSamples);
 

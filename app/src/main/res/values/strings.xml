@@ -272,9 +272,15 @@
     <string name="signal_detail_bit_perfect_unavailable">Nominal mixer rate %1$d Hz — bit-perfect mode not configured</string>
     <string name="signal_detail_bit_perfect_configured">Android accepted the bit-perfect USB output configuration</string>
     <string name="signal_detail_usb_exclusive">USB exclusive — mixer bypassed, DAC owns the clock</string>
+    <string name="signal_detail_mixer_not_exclusive">Android mixer path — not exclusive usbdevfs</string>
+    <string name="signal_detail_usb_exclusive_route">Exclusive usbdevfs — %1$s</string>
+    <string name="signal_detail_usb_clock_ok">DAC clock matches the source rate (GET_CUR)</string>
+    <string name="signal_detail_usb_clock_mismatch">DAC clock did not confirm the source rate</string>
+    <string name="signal_detail_usb_hw_vol">UAC Feature Unit volume — PCM unscaled</string>
+    <string name="signal_detail_usb_sysvol_unused">USB exclusive — Android mixer volume unused</string>
     <string name="signal_detail_route_unverified">DAC routing requested; actual output route is not verified</string>
-    <string name="settings_bit_perfect_on_detail">DSP bypassed; requests bit-perfect USB output on supported Android 14+ devices</string>
-    <string name="settings_bit_perfect_off_detail">Bypass DSP and request supported bit-perfect USB output</string>
+    <string name="settings_bit_perfect_on_detail">DSP bypassed; USB DACs use exclusive usbdevfs (gold badge only when the DAC clock matches)</string>
+    <string name="settings_bit_perfect_off_detail">Bypass DSP and, with a USB DAC, stream exclusive usbdevfs to the device</string>
     <string name="signal_detail_mixer_src">Resamples %1$d Hz → %2$d Hz</string>
     <string name="signal_detail_mixer_unreadable">Mixer rate unreadable</string>
     <string name="signal_detail_no_dac">No USB DAC connected</string>

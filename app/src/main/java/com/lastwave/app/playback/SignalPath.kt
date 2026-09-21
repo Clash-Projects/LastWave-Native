@@ -54,8 +54,12 @@ data class SignalPathInput(
     val glitchCount: Long,
     val isPlaying: Boolean,
     val platformBitPerfectConfigured: Boolean = false,
-    /** True while the direct USB-exclusive sink owns output (mixer bypassed by construction). */
+    /** True while usbdevfs exclusive output owns the DAC clock. */
     val usbExclusiveActive: Boolean = false,
+    /** GET_CUR sample rate matches the requested exclusive rate. */
+    val exclusiveClockMatched: Boolean = false,
+    /** UAC Feature Unit volume is in use (PCM payload unscaled). */
+    val exclusiveHardwareVolume: Boolean = false,
 )
 
 /**
@@ -199,7 +203,13 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
     }
 
     // 5 — App gain staging (fades, ducking and software volume all scale here).
-    if (i.appVolume == 1f) {
+    if (i.usbExclusiveActive && i.exclusiveHardwareVolume) {
+        checks += PathCheck(
+            R.string.signal_label_appvol,
+            R.string.signal_detail_usb_hw_vol,
+            passed = true,
+        )
+    } else if (i.appVolume == 1f) {
         checks += PathCheck(
             R.string.signal_label_appvol,
             R.string.signal_detail_gain_unity,
@@ -216,7 +226,13 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
 
     // 6 — System gain staging (digital attenuation happens before the DAC,
     // unless the route uses fixed/hardware volume, which never scales PCM).
-    if (i.systemVolumeFixed) {
+    if (i.usbExclusiveActive && i.exclusiveHardwareVolume) {
+        checks += PathCheck(
+            R.string.signal_label_sysvol,
+            R.string.signal_detail_usb_hw_vol,
+            passed = true,
+        )
+    } else if (i.systemVolumeFixed) {
         checks += PathCheck(
             R.string.signal_label_sysvol,
             R.string.signal_detail_sysvol_hw,
@@ -243,15 +259,21 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
         )
     }
 
-    // 7 — Platform mixer (AudioFlinger resamples when rates differ).
-    // USB-exclusive output never passes the mixer at all.
+    // 7 — Platform mixer. Gold requires exclusive usbdevfs; an Android
+    // mixer BIT_PERFECT grant is never treated as verified bit-perfect.
     val plat = i.platformMixerRateHz.takeIf { it > 0 }
     if (i.usbExclusiveActive) {
-        checks += PathCheck(R.string.signal_label_mixer,
-            R.string.signal_detail_usb_exclusive, passed = true)
+        checks += PathCheck(
+            R.string.signal_label_mixer,
+            R.string.signal_detail_usb_exclusive,
+            passed = true,
+        )
     } else if (i.platformBitPerfectConfigured) {
-        checks += PathCheck(R.string.signal_label_mixer,
-            R.string.signal_detail_bit_perfect_configured, passed = true)
+        checks += PathCheck(
+            R.string.signal_label_mixer,
+            R.string.signal_detail_mixer_not_exclusive,
+            passed = false,
+        )
     } else if (app != null && plat != null) {
         if (plat == app) {
             checks += PathCheck(
@@ -290,6 +312,13 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
             listOf(dac.name),
             passed = false,
         )
+        i.usbExclusiveActive ->
+            checks += PathCheck(
+                R.string.signal_label_output,
+                R.string.signal_detail_usb_exclusive_route,
+                listOf(dac.name),
+                passed = true,
+            )
         app != null && dac.sampleRatesHz.isNotEmpty() && app in dac.sampleRatesHz ->
             checks += PathCheck(
                 R.string.signal_label_output,
@@ -312,36 +341,30 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
         )
     }
 
-    // 9 — Routing verification: requesting the DAC is not proof the platform
-    // granted it. Raw output requires the BIT_PERFECT grant on that route;
-    // otherwise Android still owns the stream (shared mixer hijack).
+    // 9 — Exclusive clock verification. Mixer routing is never gold.
     when {
-        dac == null -> checks += PathCheck(
-            R.string.signal_label_output,
-            R.string.signal_detail_no_dac,
-            passed = false,
-        )
-        !i.routedToDac -> checks += PathCheck(
-            R.string.signal_label_output,
-            R.string.signal_detail_not_routed,
-            listOf(dac.name),
-            passed = false,
-        )
-        !i.routeVerified -> checks += PathCheck(
+        !i.usbExclusiveActive -> checks += PathCheck(
             R.string.signal_label_output,
             R.string.signal_detail_route_unverified,
             passed = false,
         )
+        i.exclusiveClockMatched || i.routeVerified -> checks += PathCheck(
+            R.string.signal_label_output,
+            R.string.signal_detail_usb_clock_ok,
+            passed = true,
+        )
         else -> checks += PathCheck(
             R.string.signal_label_output,
-            R.string.signal_detail_bit_perfect_configured,
-            passed = true,
+            R.string.signal_detail_usb_clock_mismatch,
+            passed = false,
         )
     }
 
     return SignalPathReport(
         checks = checks,
-        bitPerfect = checks.all { it.passed },
+        bitPerfect = i.usbExclusiveActive &&
+            (i.exclusiveClockMatched || i.routeVerified) &&
+            checks.all { it.passed },
         sourceLabel = i.sourceLabel,
         sourceRateHz = src,
         appRateHz = app ?: 0,

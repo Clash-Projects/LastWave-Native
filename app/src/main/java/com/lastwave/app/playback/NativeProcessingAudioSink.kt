@@ -38,6 +38,7 @@ class NativeProcessingAudioSink(
     private val processor: NativePcmAudioProcessor,
     private val onPlatformEffectsRequired: (Boolean) -> Unit = {},
     private val usbOutput: UsbBitPerfectOutput? = null,
+    private val exclusiveUsb: ExclusiveUsbOutput? = null,
 ) : AudioSink {
     private var activeDelegate: DefaultAudioSink = fallbackDelegate
     // Read on the main thread for the signal-path verdict, written on the
@@ -52,6 +53,10 @@ class NativeProcessingAudioSink(
     // next configures (next track). A mid-track toggle leaves stale config.
     @Volatile private var bitPerfectAtConfigure = false
     @Volatile private var hasConfigured = false
+    @Volatile private var exclusiveWanted = false
+    @Volatile private var usbExclusive = false
+    @Volatile private var exclusiveStartFailed = false
+    @Volatile private var exclusiveEnded = false
 
     private var configuredFormat: Format? = null
     private var configuredBufferSize = 0
@@ -106,7 +111,11 @@ class NativeProcessingAudioSink(
         AudioOffloadSupport.DEFAULT_UNSUPPORTED
 
     override fun getCurrentPositionUs(sourceEnded: Boolean): Long =
-        activeDelegate.getCurrentPositionUs(sourceEnded)
+        if (usbExclusive) {
+            exclusiveUsb?.getCurrentPositionUs() ?: AudioSink.CURRENT_POSITION_NOT_SET
+        } else {
+            activeDelegate.getCurrentPositionUs(sourceEnded)
+        }
 
     override fun configure(format: Format, specifiedBufferSize: Int, outputChannels: IntArray?) {
         configuredFormat = format
@@ -117,6 +126,13 @@ class NativeProcessingAudioSink(
         processingActive = false
         processedFormat = null
         hasConfigured = true
+        exclusiveStartFailed = false
+        exclusiveEnded = false
+
+        if (tryConfigureExclusiveUsb(format)) {
+            bitPerfectAtConfigure = true
+            return
+        }
 
         if (bitPerfectRequested) {
             Log.i(
@@ -324,6 +340,7 @@ class NativeProcessingAudioSink(
 
     override fun play() {
         playing = true
+        if (usbExclusive) return
         if (!processingActive) {
             activeDelegate.play()
             return
@@ -342,6 +359,10 @@ class NativeProcessingAudioSink(
     override fun handleDiscontinuity() {
         clearPending()
         clearEndOfStream()
+        if (usbExclusive) {
+            exclusiveUsb?.flush()
+            return
+        }
         if (!processingActive) {
             activeDelegate.handleDiscontinuity()
             return
@@ -363,6 +384,28 @@ class NativeProcessingAudioSink(
         presentationTimeUs: Long,
         encodedAccessUnitCount: Int,
     ): Boolean {
+        maybeAdoptExclusiveUsb()
+        if (usbExclusive) {
+            val fmt = configuredFormat
+            val gain = exclusiveUsb?.softwareGain() ?: lastVolume
+            val needsGain = gain < 1f - 1e-6f && gain >= 0f && buffer.hasRemaining() &&
+                fmt?.sampleMimeType == MimeTypes.AUDIO_RAW
+            if (needsGain && fmt != null) {
+                if (lastGainBuffer !== buffer) {
+                    scalePcmInPlace(buffer, buffer.position(), buffer.limit(), fmt.pcmEncoding, gain)
+                    lastGainBuffer = buffer
+                }
+            } else {
+                lastGainBuffer = null
+            }
+            val ok = exclusiveUsb?.write(buffer, presentationTimeUs) == true
+            if (ok) {
+                exclusiveEnded = false
+                return true
+            }
+            exclusiveStartFailed = true
+            leaveExclusiveUsb(configureAndroid = true)
+        }
         if (!processingActive) {
             return handleDirectPassthrough(buffer, presentationTimeUs, encodedAccessUnitCount)
         }
@@ -519,6 +562,10 @@ class NativeProcessingAudioSink(
     }
 
     override fun playToEndOfStream() {
+        if (usbExclusive) {
+            exclusiveEnded = true
+            return
+        }
         if (!processingActive) {
             activeDelegate.playToEndOfStream()
             return
@@ -545,14 +592,22 @@ class NativeProcessingAudioSink(
     }
 
     override fun isEnded(): Boolean =
-        activeDelegate.isEnded() &&
-            pendingOutput?.hasRemaining() != true &&
-            endOfStreamOutput?.hasRemaining() != true
+        if (usbExclusive) {
+            exclusiveEnded
+        } else {
+            activeDelegate.isEnded() &&
+                pendingOutput?.hasRemaining() != true &&
+                endOfStreamOutput?.hasRemaining() != true
+        }
 
     override fun hasPendingData(): Boolean =
-        pendingOutput?.hasRemaining() == true ||
-            endOfStreamOutput?.hasRemaining() == true ||
-            activeDelegate.hasPendingData()
+        if (usbExclusive) {
+            !exclusiveEnded && exclusiveUsb?.hasPendingData() == true
+        } else {
+            pendingOutput?.hasRemaining() == true ||
+                endOfStreamOutput?.hasRemaining() == true ||
+                activeDelegate.hasPendingData()
+        }
 
     override fun setPlaybackParameters(playbackParameters: PlaybackParameters) {
         enhancedDelegate.setPlaybackParameters(playbackParameters)
@@ -618,7 +673,28 @@ class NativeProcessingAudioSink(
 
     /** Actual rate the sink configured, 0 when unresolved. */
     fun currentOutputSampleRateHz(): Int =
-        if (processingActive) processedFormat?.sampleRate ?: 0 else configuredFormat?.sampleRate ?: 0
+        if (usbExclusive) {
+            exclusiveUsb?.currentRateHz() ?: 0
+        } else if (processingActive) {
+            processedFormat?.sampleRate ?: 0
+        } else {
+            configuredFormat?.sampleRate ?: 0
+        }
+
+    fun syncExclusiveUsb(wanted: Boolean) {
+        val wasWanted = exclusiveWanted
+        exclusiveWanted = wanted
+        if (wanted && !wasWanted) {
+            exclusiveStartFailed = false
+        } else if (!wanted && usbExclusive) {
+            leaveExclusiveUsb(configureAndroid = hasConfigured && configuredFormat != null)
+        }
+    }
+
+    fun notifyExclusiveUsbMayStart() {
+        exclusiveWanted = true
+        exclusiveStartFailed = false
+    }
 
     fun setBitPerfectRequested(enabled: Boolean) {
         if (bitPerfectRequested == enabled) return
@@ -642,7 +718,10 @@ class NativeProcessingAudioSink(
      * runtime recovery rerouted through conversion since).
      */
     fun isBitPerfectBypassActive(): Boolean =
-        bitPerfectRequested && hasConfigured && bitPerfectAtConfigure && !processingActive
+        usbExclusive ||
+            (bitPerfectRequested && hasConfigured && bitPerfectAtConfigure && !processingActive)
+
+    fun isExclusiveUsbActive(): Boolean = usbExclusive
 
     /**
      * True when the toggle changed after the active configuration was built
@@ -650,7 +729,74 @@ class NativeProcessingAudioSink(
      * reconfigures, instead of claiming bypass for pre-toggle audio.
      */
     fun isBitPerfectConfigStale(): Boolean =
-        hasConfigured && (bitPerfectRequested != bitPerfectAtConfigure)
+        !usbExclusive && hasConfigured && (bitPerfectRequested != bitPerfectAtConfigure)
+
+    private fun tryConfigureExclusiveUsb(format: Format): Boolean {
+        if (!exclusiveWanted || exclusiveStartFailed) return false
+        val session = exclusiveUsb ?: return false
+        if (format.sampleMimeType != MimeTypes.AUDIO_RAW ||
+            format.sampleRate <= 0 ||
+            format.channelCount !in 1..2 ||
+            format.pcmEncoding !in SUPPORTED_ENCODINGS
+        ) {
+            return false
+        }
+        val started = runCatching { session.configure(format) }.getOrDefault(false)
+        if (!started) {
+            exclusiveStartFailed = true
+            usbExclusive = false
+            return false
+        }
+        enterExclusiveUsb()
+        processingActive = false
+        processedFormat = null
+        lastGainBuffer = null
+        usbOutput?.setFormat(null)
+        runCatching { enhancedDelegate.pause() }
+        runCatching { fallbackDelegate.pause() }
+        runCatching { enhancedDelegate.flush() }
+        runCatching { fallbackDelegate.flush() }
+        activeDelegate = fallbackDelegate
+        syncDelegateVolume()
+        notifyPlatformEffectsRequired(false)
+        Log.i(
+            TAG,
+            "EXCLUSIVE USB OUTPUT rate=${format.sampleRate} enc=${format.pcmEncoding} " +
+                "ch=${format.channelCount} AudioTrack=idle",
+        )
+        return true
+    }
+
+    private fun maybeAdoptExclusiveUsb() {
+        if (!exclusiveWanted || usbExclusive || exclusiveStartFailed || !hasConfigured) return
+        val format = configuredFormat ?: return
+        if (tryConfigureExclusiveUsb(format)) {
+            bitPerfectAtConfigure = true
+        }
+    }
+
+    private fun enterExclusiveUsb() {
+        usbExclusive = true
+        exclusiveWanted = true
+        exclusiveStartFailed = false
+        exclusiveEnded = false
+    }
+
+    private fun leaveExclusiveUsb(configureAndroid: Boolean) {
+        usbExclusive = false
+        exclusiveEnded = false
+        runCatching { exclusiveUsb?.reset() }
+        if (!configureAndroid) return
+        val format = configuredFormat ?: return
+        if (bitPerfectRequested &&
+            tryConfigureBitPerfectDirect(format, configuredBufferSize, configuredOutputChannels)
+        ) {
+            bitPerfectAtConfigure = true
+            return
+        }
+        configureFallback(format, configuredBufferSize, configuredOutputChannels)
+        bitPerfectAtConfigure = false
+    }
 
     private fun configureUsbOutput(format: Format, media3Encoding: Int, channels: IntArray?) {
         if (format.sampleMimeType != MimeTypes.AUDIO_RAW || format.sampleRate <= 0) {
@@ -731,17 +877,21 @@ class NativeProcessingAudioSink(
         // duck, bypassing ExoPlayer.getVolume. Bit-perfect verification must
         // observe the gain that actually reaches AudioTrack, not the request.
         lastVolume = volume
-        // On the direct bypass path gain is applied in software inside
-        // handleDirectPassthrough (the BIT_PERFECT mixer ignores AudioTrack
-        // volume, which is exactly why the keys went dead). Pin the platform
-        // gain at unity there so it can never double-attenuate.
-        val forwarded = if (bitPerfectRequested && bitPerfectAtConfigure && !processingActive) 1f else volume
+        exclusiveUsb?.setVolume(volume)
+        // Exclusive usbdevfs never uses AudioTrack volume. Feature Unit
+        // volume (when present) keeps PCM untouched. Mixer BIT_PERFECT
+        // ignores AudioTrack volume, so the direct path pins platform gain
+        // at unity and scales in software only when exclusive is off.
+        val forwarded = if (usbExclusive ||
+            (bitPerfectRequested && bitPerfectAtConfigure && !processingActive)
+        ) 1f else volume
         enhancedDelegate.setVolume(forwarded)
         fallbackDelegate.setVolume(forwarded)
     }
 
     /** Last gain reaching the output (1 = unity). */
-    fun currentVolume(): Float = lastVolume
+    fun currentVolume(): Float =
+        if (usbExclusive) exclusiveUsb?.softwareGain() ?: lastVolume else lastVolume
 
     /**
      * Reconciles platform gain after a (re)configure: unity on the direct
@@ -749,19 +899,27 @@ class NativeProcessingAudioSink(
      * the last requested volume.
      */
     private fun syncDelegateVolume() {
-        val forwarded = if (bitPerfectRequested && bitPerfectAtConfigure && !processingActive) 1f else lastVolume
+        val forwarded = if (usbExclusive ||
+            (bitPerfectRequested && bitPerfectAtConfigure && !processingActive)
+        ) 1f else lastVolume
         runCatching { enhancedDelegate.setVolume(forwarded) }
         runCatching { fallbackDelegate.setVolume(forwarded) }
     }
 
     override fun pause() {
         playing = false
+        if (usbExclusive) return
         activeDelegate.pause()
     }
 
     override fun flush() {
         clearPending()
         clearEndOfStream()
+        exclusiveEnded = false
+        if (usbExclusive) {
+            exclusiveUsb?.flush()
+            return
+        }
         if (processingActive) {
             try {
                 processor.flush()
@@ -778,6 +936,10 @@ class NativeProcessingAudioSink(
 
     override fun reset() {
         usbOutput?.setFormat(null)
+        exclusiveUsb?.reset()
+        usbExclusive = false
+        exclusiveEnded = false
+        exclusiveStartFailed = false
         clearPending()
         clearEndOfStream()
         configuredFormat = null
@@ -797,6 +959,10 @@ class NativeProcessingAudioSink(
 
     override fun release() {
         usbOutput?.setFormat(null)
+        if (usbExclusive) runCatching { exclusiveUsb?.reset() }
+        usbExclusive = false
+        exclusiveEnded = false
+        exclusiveStartFailed = false
         clearPending()
         clearEndOfStream()
         processedFormat = null

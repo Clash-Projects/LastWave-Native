@@ -40,8 +40,6 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import coil.imageLoader
 import coil.request.ImageRequest
-import com.decent.usbaudio.UsbAudioDevice
-import com.decent.usbaudio.media3.UsbAudioSink
 import com.lastwave.app.data.discover.DiscoverRepository
 import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.generate.youtubeVideoIdOrNull
@@ -80,7 +78,6 @@ import kotlinx.coroutines.isActive
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -193,6 +190,7 @@ class MusicPlayer @Inject constructor(
     private val applicationScope: CoroutineScope,
     private val downloadedTrackDao: dagger.Lazy<com.lastwave.app.data.local.db.DownloadedTrackDao>,
     private val usbDacMonitor: UsbDacMonitor,
+    private val exclusiveUsbOutput: ExclusiveUsbOutput,
     private val songPlayStatsRepository: dagger.Lazy<com.lastwave.app.data.repository.SongPlayStatsRepository>,
 ) {
     private val appContext = context.applicationContext
@@ -368,8 +366,9 @@ class MusicPlayer @Inject constructor(
     }
     /** Every ExoPlayer audio sink, so DAC routing/rate follow player rebuilds. */
     private val audioSinks = CopyOnWriteArrayList<NativeProcessingAudioSink>()
-    /** True while the direct USB-exclusive sink owns output (set on the renderer thread). */
+    /** True while the usbdevfs exclusive session owns output. */
     @Volatile private var usbExclusiveSinkActive = false
+    @Volatile private var usbExclusivePrefEnabled = false
     /** AudioDeviceInfo id currently requested via setPreferredDevice, if any. */
     private var routedDacDeviceId: Int? = null
     private val healthTracker = StreamHealthTracker()
@@ -699,32 +698,10 @@ class MusicPlayer @Inject constructor(
         }
     }
 
-    // Do not initialize ExoPlayer/audio/cache merely to draw the launcher.
-    // Several Android 11 OEM audio stacks are fragile during cold start; the
-    // engine is needed only when the user actually operates playback.
-    //
-    // USB exclusive output stays fully default-OFF: unless the exclusive
-    // toggle is enabled and a USB DAC is attached, the sink graph below is
-    // exactly the pre-existing one.
-    private fun maybeBuildUsbExclusiveSink(
-        context: Context,
-        fallbackSink: DefaultAudioSink,
-    ): UsbAudioSink? {
-        // Exclusive USB needs API 29+ (and is irrelevant to the legacy
-        // minSdk-24 APK): fail closed before touching driver classes so
-        // nothing from that path ever loads on old devices.
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return null
-        val enabled = runCatching {
-            runBlocking { UsbExclusivePrefs.isEnabledNow(appContext) }
-        }.getOrDefault(false)
-        if (!enabled) return null
-        val attached = runCatching {
-            UsbAudioDevice.getInstance(context).findUsbAudioDevice() != null
-        }.getOrDefault(false)
-        if (!attached) return null
-        return runCatching { UsbAudioSink(fallbackSink, context) }.getOrNull()
-    }
-
+    // USB exclusive output is engaged from [applyDacRoutingFor] while
+    // Bit-Perfect (or the USB Exclusive toggle) is on and a DAC is granted.
+    // The sink graph is always NativeProcessingAudioSink so exclusive can
+    // start mid-session without rebuilding ExoPlayer.
     private fun createPlayer(
         engineProvider: () -> NativeAudioEngine?,
         effects: AudioEffectsEngine,
@@ -775,10 +752,6 @@ class MusicPlayer @Inject constructor(
                 else -> dataSpec
             }
         }
-        val usbExclusiveRequested = runCatching {
-            runBlocking { UsbExclusivePrefs.isEnabledNow(appContext) }
-        }.getOrDefault(false)
-        val usbSinkHolder = AtomicReference<UsbAudioSink?>()
         val baseLoadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 /* minBufferMs = */ if (handleAudioFocus) 45_000 else 15_000,
@@ -789,15 +762,6 @@ class MusicPlayer @Inject constructor(
             .setPrioritizeTimeOverSizeThresholds(true)
             .setBackBuffer(15_000, true)
             .build()
-        // Neutral until a UsbAudioSink reports an active native engine: with
-        // the toggle off the holder stays null and every call delegates.
-        val loadControl = if (usbExclusiveRequested) {
-            UsbAudioSink.wrapLoadControl(baseLoadControl) {
-                usbSinkHolder.get()?.isNativeEngineActive == true
-            }
-        } else {
-            baseLoadControl
-        }
         val renderersFactory = object : DefaultRenderersFactory(appContext) {
             override fun buildAudioSink(
                 context: Context,
@@ -809,23 +773,7 @@ class MusicPlayer @Inject constructor(
                     .setEnableAudioTrackPlaybackParams(false)
                     .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
                     .build()
-                // USB exclusive path: bypasses the DSP graph and drives the
-                // DAC directly. Returns null (default) unless explicitly
-                // enabled with a DAC attached.
-                val exclusiveSink = maybeBuildUsbExclusiveSink(context, fallbackSink)
-                if (exclusiveSink != null) {
-                    usbSinkHolder.set(exclusiveSink)
-                    usbExclusiveSinkActive = true
-                    runCatching { effects.setUsbExclusiveActive(true) }
-                    return exclusiveSink
-                }
-                usbExclusiveSinkActive = false
-                runCatching { effects.setUsbExclusiveActive(false) }
                 val engine = runCatching(engineProvider).getOrNull()
-                if (engine?.isAvailable != true) {
-                    effects.setFallbackRequired(true)
-                    return fallbackSink
-                }
                 val enhancedSink = try {
                     DefaultAudioSink.Builder(context)
                         .setEnableFloatOutput(true)
@@ -835,24 +783,37 @@ class MusicPlayer @Inject constructor(
                 } catch (error: Exception) {
                     android.util.Log.w("MusicPlayer", "Enhanced audio sink unavailable; using PCM16", error)
                     effects.setFallbackRequired(true)
-                    return fallbackSink
+                    DefaultAudioSink.Builder(context)
+                        .setEnableFloatOutput(false)
+                        .setEnableAudioTrackPlaybackParams(false)
+                        .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
+                        .build()
                 } catch (error: LinkageError) {
                     android.util.Log.w("MusicPlayer", "Enhanced audio sink linkage failed; using PCM16", error)
                     effects.setFallbackRequired(true)
-                    return fallbackSink
+                    DefaultAudioSink.Builder(context)
+                        .setEnableFloatOutput(false)
+                        .setEnableAudioTrackPlaybackParams(false)
+                        .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
+                        .build()
                 }
-                effects.setFallbackRequired(false)
+                if (engine?.isAvailable == true) {
+                    effects.setFallbackRequired(false)
+                } else {
+                    effects.setFallbackRequired(true)
+                }
+                val processorEngine = engine ?: nativeAudioEngine.get()
                 return NativeProcessingAudioSink(
                     enhancedDelegate = enhancedSink,
                     fallbackDelegate = fallbackSink,
-                    processor = NativePcmAudioProcessor(engine),
+                    processor = NativePcmAudioProcessor(processorEngine),
                     onPlatformEffectsRequired = effects::setFallbackRequired,
                     usbOutput = if (handleAudioFocus) UsbBitPerfectOutput(audioManager) else null,
+                    exclusiveUsb = exclusiveUsbOutput,
                 ).also { sink ->
-                    sink.setBitPerfectRequested(bitPerfectEnabled)
+                    sink.setBitPerfectRequested(bitPerfectEnabled || usbExclusivePrefEnabled)
+                    sink.syncExclusiveUsb(exclusiveUsbWanted())
                     audioSinks.add(sink)
-                    // A sink built after routing was requested (e.g. crossfade
-                    // player) must join the same DAC route immediately.
                     runCatching {
                         routedDacDeviceId?.let { id -> findOutputDevice(id)?.let(sink::setPreferredDevice) }
                     }
@@ -886,11 +847,8 @@ class MusicPlayer @Inject constructor(
                         else moduleDrmFactory.sessionManagerFor(descriptor)
                     },
             )
-            .setLoadControl(loadControl)
+            .setLoadControl(baseLoadControl)
             .build().apply {
-                usbSinkHolder.get()?.let { sink ->
-                    runCatching { sink.attachToPlayer(this) }
-                }
                 // Feed ReplayGain container tags into loudness normalization.
                 // Additive listener: never touches playback, 0 dB without tags.
                 addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
@@ -1145,11 +1103,20 @@ class MusicPlayer @Inject constructor(
 
         applicationScope.launch {
             usbDacMonitor.state.collect {
-                if (bitPerfectEnabled) {
-                    // DAC (re)attached while engaged: prompt once per device
-                    // so a deny isn't nagged on every mixer refresh.
+                if (bitPerfectEnabled || usbExclusivePrefEnabled) {
                     maybeRequestUsbPermission()
                 }
+                onMain {
+                    applyDacRoutingFor(currentSourceRateHz())
+                    updateSignalPath()
+                }
+            }
+        }
+
+        applicationScope.launch {
+            UsbExclusivePrefs.enabledFlow(appContext).collect { enabled ->
+                usbExclusivePrefEnabled = enabled
+                if (enabled) maybeRequestUsbPermission()
                 onMain {
                     applyDacRoutingFor(currentSourceRateHz())
                     updateSignalPath()
@@ -1754,7 +1721,7 @@ class MusicPlayer @Inject constructor(
      * No peripheral / already granted / toggle off = silent no-op.
      */
     private fun maybeRequestUsbPermission() {
-        if (!bitPerfectEnabled) return
+        if (!bitPerfectEnabled && !usbExclusivePrefEnabled) return
         val dac = usbDacMonitor.state.value.dac ?: run {
             usbPermissionPromptedKey = null
             return
@@ -1778,6 +1745,14 @@ class MusicPlayer @Inject constructor(
         resolved.samplingRateKHz?.times(1000.0)?.toInt()?.takeIf { it > 0 }
             ?: currentSourceRateHz()
 
+    private fun exclusiveUsbWanted(): Boolean {
+        if (isCasting) return false
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return false
+        if (!bitPerfectEnabled && !usbExclusivePrefEnabled) return false
+        val dac = usbDacMonitor.state.value.dac
+        return dac?.hasUsbPeripheral == true && dac.usbPermissionGranted
+    }
+
     /**
      * Routes ExoPlayer output to the USB DAC at the track's native rate.
      * Always active when a DAC is present (it can only improve delivery);
@@ -1788,28 +1763,35 @@ class MusicPlayer @Inject constructor(
      */
     private fun applyDacRoutingFor(sourceRateHz: Int?) {
         val dac = usbDacMonitor.state.value.dac
-        val device = if (dac != null && (sourceRateHz ?: 0) > 0) {
+        val exclusiveWanted = exclusiveUsbWanted()
+        exclusiveUsbOutput.setWanted(exclusiveWanted)
+        audioSinks.forEach { sink ->
+            sink.setBitPerfectRequested(bitPerfectEnabled || exclusiveWanted)
+            sink.syncExclusiveUsb(exclusiveWanted)
+        }
+        val exclusive = exclusiveUsbOutput.isActive()
+        usbExclusiveSinkActive = exclusive
+        runCatching { audioEffectsEngine.setUsbExclusiveActive(exclusive) }
+        runCatching { secondaryEffects?.setUsbExclusiveActive(exclusive) }
+        val device = if (!exclusive && dac != null && dac.deviceId > 0 && (sourceRateHz ?: 0) > 0) {
             findOutputDevice(dac.deviceId)
         } else {
             null
         }
         routedDacDeviceId = device?.id
         audioSinks.forEach { sink ->
-            sink.setBitPerfectRequested(bitPerfectEnabled)
-            runCatching { sink.setPreferredDevice(device) }
+            runCatching { sink.setPreferredDevice(if (exclusive) null else device) }
             runCatching { sink.setOutputSampleRateOverride(sourceRateHz) }
         }
         android.util.Log.i(
             "MusicPlayer",
             "BIT-PERFECT OUTPUT REQUEST srcRate=$sourceRateHz " +
-                "dac=${dac?.name} routed=${device != null} bitPerfect=$bitPerfectEnabled",
+                "dac=${dac?.name} routed=${device != null} exclusive=$exclusive " +
+                "wanted=$exclusiveWanted bitPerfect=$bitPerfectEnabled",
         )
-        usbDacMonitor.setRouteRequested(device != null)
-        // Volume is a Bit-Perfect property, not a DAC property: it stays
-        // fully user-controlled (never forced to MAX), and the verdict
-        // reports scaled output honestly until unity. (DAC routing above
-        // stays untouched.)
-        manageDacSystemVolume(bitPerfectEnabled)
+        usbDacMonitor.setRouteRequested(exclusive || device != null)
+        exclusiveUsbOutput.syncListeningGain()
+        manageDacSystemVolume(bitPerfectEnabled || exclusiveWanted)
     }
 
     /**
@@ -1906,46 +1888,59 @@ class MusicPlayer @Inject constructor(
         val dac = usbDacMonitor.state.value.dac
         val srcLabel = snapshot.audioCodec
             ?: if (snapshot.isLossless) "LOSSLESS" else "Audio"
-        // Truthful bypass: the DataStore wish AND the native read-back AND an
-        // actually-direct sink configuration — never the toggle alone. A
-        // mid-track toggle (stale) or a compatibility reroute fails closed.
-        val sinkDirect = audioSinks.any { sink ->
+        val exclusive = exclusiveUsbOutput.isActive() || audioSinks.any { sink ->
+            runCatching { sink.isExclusiveUsbActive() }.getOrDefault(false)
+        }
+        usbExclusiveSinkActive = exclusive
+        val sinkDirect = exclusive || audioSinks.any { sink ->
             runCatching { sink.isBitPerfectBypassActive() }.getOrDefault(false)
         }
-        val sinkStale = audioSinks.any { sink ->
+        val sinkStale = !exclusive && audioSinks.any { sink ->
             runCatching { sink.isBitPerfectConfigStale() }.getOrDefault(false)
         }
         val dspBypassActuallyActive =
-            bitPerfectEnabled && nativeBitPerfectApplied && sinkDirect && !sinkStale
+            exclusive || (bitPerfectEnabled && nativeBitPerfectApplied && sinkDirect && !sinkStale)
         val mixerBypassGranted = audioSinks.any {
             runCatching { it.isPlatformBitPerfectConfigured() }.getOrDefault(false)
         }
-        val routedRequested = routedDacDeviceId != null && routedDacDeviceId == dac?.deviceId
+        val routedRequested = exclusive ||
+            (routedDacDeviceId != null && routedDacDeviceId == dac?.deviceId)
+        val exclusiveRate = exclusiveUsbOutput.currentRateHz()
+        val exclusiveAppRate = if (exclusive && exclusiveRate > 0) exclusiveRate else appRateHz
+        val hardwareVolume = exclusive && exclusiveUsbOutput.usesHardwareVolume()
+        val exclusiveAppVolume = if (exclusive && hardwareVolume) {
+            1f
+        } else if (exclusive) {
+            exclusiveUsbOutput.softwareGain()
+        } else {
+            appVolume
+        }
+        exclusiveUsbOutput.syncListeningGain()
         _signalPath.value = evaluateSignalPath(
             SignalPathInput(
                 sourceLabel = srcLabel,
                 sourceRateHz = sourceRateHz,
                 sourceBitDepth = snapshot.bitDepth?.takeIf { it > 0 },
                 isLossless = snapshot.isLossless,
-                appOutputRateHz = appRateHz,
+                appOutputRateHz = exclusiveAppRate,
                 platformMixerRateHz = platformRateHz,
                 platformBitPerfectConfigured = mixerBypassGranted,
                 dspBypassEnabled = dspBypassActuallyActive,
                 crossfadeMixing = outgoingPlayer != null,
                 speed = speed,
-                appVolume = appVolume,
+                appVolume = exclusiveAppVolume,
                 systemVolume = sysVol,
                 systemVolumeMax = sysMax,
-                systemVolumeFixed = sysFixed,
+                systemVolumeFixed = sysFixed || hardwareVolume,
                 dac = dac,
                 routedToDac = routedRequested,
-                // Requested != granted: raw output only when the platform
-                // actually bypassed the shared mixer on the DAC route.
-                routeVerified = routedRequested && mixerBypassGranted && sinkDirect && !sinkStale,
+                routeVerified = exclusive && exclusiveUsbOutput.isClockMatched(),
                 driftPpm = healthTracker.driftPpm,
                 glitchCount = healthTracker.glitchCount,
                 isPlaying = snapshot.isPlaying,
-                usbExclusiveActive = usbExclusiveSinkActive,
+                usbExclusiveActive = exclusive,
+                exclusiveClockMatched = exclusive && exclusiveUsbOutput.isClockMatched(),
+                exclusiveHardwareVolume = hardwareVolume,
             ),
         )
     }
