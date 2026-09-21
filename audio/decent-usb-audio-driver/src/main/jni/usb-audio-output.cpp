@@ -417,6 +417,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioCreate(
     ctx->transferBuffer = nullptr;
     ctx->transferBufferCapacity = 0;
     ctx->framesWritten = 0;
+    ctx->framesClock = 0;
     ctx->interfaceClaimed = true;
     ctx->submitIdx = 0;
     ctx->reapIdx = 0;
@@ -474,6 +475,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioStart(
     if (!ctx) return JNI_FALSE;
     ctx->running.store(true);
     ctx->framesWritten = 0;
+    ctx->framesClock = 0;
     ctx->submitIdx = 0;
     ctx->reapIdx = 0;
     ctx->urbsInFlight = 0;
@@ -548,6 +550,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioWrite(
     submitPcmToUrbs(ctx, ctx->transferBuffer, totalBytes);
 
     ctx->framesWritten += totalFrames;
+    ctx->framesClock += totalFrames;
 
     clock_gettime(CLOCK_MONOTONIC, &writeEnd);
     long writeUs = (writeEnd.tv_sec - writeStart.tv_sec) * 1000000L +
@@ -629,6 +632,14 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeGetFramesWritten(
     auto *ctx = reinterpret_cast<UsbAudioContext *>(h);
     if (!ctx) return 0;
     return (jlong)ctx->framesWritten;
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_decent_usbaudio_UsbAudioStream_nativeGetFramesClock(
+        JNIEnv *, jobject, jlong h) {
+    auto *ctx = reinterpret_cast<UsbAudioContext *>(h);
+    if (!ctx) return 0;
+    return (jlong)ctx->framesClock;
 }
 
 JNIEXPORT jint JNICALL
@@ -728,6 +739,12 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
             int frames = (int)ctx->frameAccumulator;
             ctx->frameAccumulator -= frames;
             int b = frames * ctx->bytesPerFrame;
+            if (ctx->maxPacketSize > 0 && b > ctx->maxPacketSize) {
+                int maxFrames = ctx->maxPacketSize / ctx->bytesPerFrame;
+                if (maxFrames < 1) break;
+                frames = maxFrames;
+                b = frames * ctx->bytesPerFrame;
+            }
 
             if (b > remaining) {
                 // Not enough data for a full packet — don't truncate.
@@ -830,8 +847,16 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioWriteRaw(
     } else if (inputBitDepth == 16 && ctx->bitDepth == 24) {
         padInt16ToInt24((uint8_t *)rawData, ctx->transferBuffer, totalSamples);
     } else if (inputBitDepth == 24 && ctx->bitDepth == 32) {
-        // 24-bit packed (3 bytes/sample) → 32-bit: sign-extend + shift left 8
         padInt24ToInt32((uint8_t *)rawData, ctx->transferBuffer, totalSamples);
+    } else if (inputBitDepth == 32 && ctx->bitDepth == 24) {
+        auto *in32 = reinterpret_cast<const int32_t *>(rawData);
+        for (int i = 0; i < totalSamples; i++) {
+            int32_t s = in32[i];
+            if (s < -0x800000 || s > 0x7FFFFF) s >>= 8;
+            ctx->transferBuffer[i * 3] = (uint8_t)(s & 0xFF);
+            ctx->transferBuffer[i * 3 + 1] = (uint8_t)((s >> 8) & 0xFF);
+            ctx->transferBuffer[i * 3 + 2] = (uint8_t)((s >> 16) & 0xFF);
+        }
     } else if (inputBitDepth == 32 && ctx->bitDepth == 32) {
         // libFLAC 24-bit → PCM_32BIT (sign-extended): shift left 8 to fill 32-bit range
         shiftInt32From24((uint8_t *)rawData, ctx->transferBuffer, totalSamples);
@@ -847,6 +872,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioWriteRaw(
     submitPcmToUrbs(ctx, ctx->transferBuffer, outputBytes);
 
     ctx->framesWritten += totalFrames;
+    ctx->framesClock += totalFrames;
     if (ctx->framesWritten % ctx->sampleRate < (int64_t)totalFrames) {
         LOGI("WriteRaw: %lld frames (~%.0f sec) inflight=%d inputBits=%d fpmf=%.4f fb#%lld",
              (long long)ctx->framesWritten, (double)ctx->framesWritten/ctx->sampleRate,

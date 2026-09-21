@@ -71,6 +71,10 @@ class UsbAudioStream(
     val framesWritten: Long
         get() = if (nativeHandle != 0L) nativeGetFramesWritten(nativeHandle) else 0L
 
+    /** Monotonic DAC clock (not cleared on flush) for drift measurement. */
+    val framesClock: Long
+        get() = if (nativeHandle != 0L) nativeGetFramesClock(nativeHandle) else 0L
+
     /**
      * Select alternate setting on the USB streaming interface.
      * This determines the active format (bit depth) of the endpoint.
@@ -202,6 +206,7 @@ class UsbAudioStream(
     private external fun nativeUsbAudioDestroy(handle: Long)
     private external fun nativeIsRunning(handle: Long): Boolean
     private external fun nativeGetFramesWritten(handle: Long): Long
+    private external fun nativeGetFramesClock(handle: Long): Long
 
     companion object {
         private const val TAG = "UsbAudioStream"

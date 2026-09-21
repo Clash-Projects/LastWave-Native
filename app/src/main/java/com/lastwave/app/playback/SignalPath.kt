@@ -434,4 +434,18 @@ class StreamHealthTracker {
         driftPpm = if (driftPpm == null) instant else driftPpm!! * 0.85 + instant * 0.15
         return driftPpm
     }
+
+    /**
+     * Exclusive usbdevfs clock vs wall. DASH/FLAC ExoPlayer timelines often
+     * jump or freeze, which left drift stuck on "measuring…" for lossless.
+     * [framesWritten] is the DAC packet clock.
+     */
+    fun sampleExclusive(framesWritten: Long, rateHz: Int, wallMs: Long, playing: Boolean): Double? {
+        if (!playing || rateHz <= 0 || framesWritten < 0L) {
+            lastPositionMs = -1L
+            return driftPpm
+        }
+        val positionMs = framesWritten * 1000L / rateHz
+        return sample(positionMs, wallMs, true)
+    }
 }

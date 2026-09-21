@@ -109,6 +109,16 @@ class ExclusiveUsbSignalPathTest {
         assertThat(report.checks.all { it.passed }).isTrue()
     }
 
+    @Test
+    fun exclusiveClockDriftUsesFrameClockNotExoPosition() {
+        val tracker = StreamHealthTracker()
+        val rate = 176_400
+        assertThat(tracker.sampleExclusive(0L, rate, 1_000L, true)).isNull()
+        val first = tracker.sampleExclusive(rate.toLong(), rate, 2_000L, true)
+        assertThat(first).isNotNull()
+        assertThat(kotlin.math.abs(first!!)).isLessThan(5_000.0)
+    }
+
     private fun exclusiveInput() = SignalPathInput(
         sourceLabel = "FLAC",
         sourceRateHz = 96000,

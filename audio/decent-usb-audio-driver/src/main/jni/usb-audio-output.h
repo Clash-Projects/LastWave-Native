@@ -81,6 +81,7 @@ struct UsbAudioContext {
     int32_t transferBufferCapacity;
 
     int64_t framesWritten;
+    int64_t framesClock;
     bool interfaceClaimed;
 
     // ── Ring buffer ─────────────────────────────────────────────

@@ -1051,7 +1051,17 @@ class MusicPlayer @Inject constructor(
                     val tickerNow = SystemClock.elapsedRealtime()
                     if (player.isPlaying && tickerNow - lastSignalPathMs >= SIGNAL_PATH_TICK_MS) {
                         lastSignalPathMs = tickerNow
-                        healthTracker.sample(pos, tickerNow, true)
+                        val exclusiveRate = exclusiveUsbOutput.currentRateHz()
+                        if (exclusiveUsbOutput.isActive() && exclusiveRate > 0) {
+                            healthTracker.sampleExclusive(
+                                exclusiveUsbOutput.framesWritten(),
+                                exclusiveRate,
+                                tickerNow,
+                                true,
+                            )
+                        } else {
+                            healthTracker.sample(pos, tickerNow, true)
+                        }
                         updateSignalPath()
                     }
 

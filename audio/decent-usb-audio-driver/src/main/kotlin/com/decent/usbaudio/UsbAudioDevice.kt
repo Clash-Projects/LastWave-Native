@@ -319,9 +319,12 @@ class UsbAudioDevice private constructor(private val context: Context) {
      */
     private fun parseClockSourceId(conn: UsbDeviceConnection): Int {
         val raw = conn.rawDescriptors ?: return -1
+        parsedClockSourceIds = emptyList()
+        parsedClockSelectorId = -1
 
         var i = 0
         var inAudioControl = false
+        var firstClock = -1
 
         while (i + 1 < raw.size) {
             val bLength = raw[i].toInt() and 0xFF
@@ -341,19 +344,25 @@ class UsbAudioDevice private constructor(private val context: Context) {
             // CS_INTERFACE descriptor (0x24) inside AudioControl
             if (inAudioControl && bDescriptorType == 0x24 && bLength >= 3) {
                 val bDescriptorSubtype = raw[i + 2].toInt() and 0xFF
-                // CLOCK_SOURCE = 0x0A
                 if (bDescriptorSubtype == 0x0A && bLength >= 5) {
                     val bClockID = raw[i + 3].toInt() and 0xFF
                     Log.i(TAG, "parseClockSourceId: found CLOCK_SOURCE bClockID=0x${bClockID.toString(16)}")
-                    return bClockID
+                    parsedClockSourceIds = parsedClockSourceIds + bClockID
+                    if (firstClock < 0) firstClock = bClockID
+                }
+                if (bDescriptorSubtype == 0x0B && bLength >= 5) {
+                    parsedClockSelectorId = raw[i + 3].toInt() and 0xFF
+                    Log.i(TAG, "parseClockSourceId: CLOCK_SELECTOR id=0x${parsedClockSelectorId.toString(16)}")
                 }
             }
 
             i += bLength
         }
 
-        Log.w(TAG, "parseClockSourceId: no CLOCK_SOURCE descriptor found")
-        return -1
+        if (firstClock < 0) {
+            Log.w(TAG, "parseClockSourceId: no CLOCK_SOURCE descriptor found")
+        }
+        return firstClock
     }
 
     /**
@@ -367,6 +376,8 @@ class UsbAudioDevice private constructor(private val context: Context) {
      */
     /** Parsed alt setting: (altNumber, bitResolution) */
     private var parsedAltSettings: List<Pair<Int, Int>> = emptyList()
+    private var parsedClockSourceIds: List<Int> = emptyList()
+    private var parsedClockSelectorId: Int = -1
 
     private fun parseBestAltSetting(conn: UsbDeviceConnection): Pair<Int, Int> {
         val raw = conn.rawDescriptors ?: return Pair(1, 16)
@@ -427,32 +438,39 @@ class UsbAudioDevice private constructor(private val context: Context) {
      *
      * @return Pair(altSetting, bitDepth)
      */
-    fun findAltSettingForBitDepth(targetBitDepth: Int): Pair<Int, Int> {
-        if (parsedAltSettings.isEmpty()) {
-            val info = cachedDeviceInfo ?: return Pair(1, 16)
-            return Pair(info.bestAltSetting, info.bestBitDepth)
+    fun findAltSettingForBitDepth(
+        targetBitDepth: Int,
+        sampleRateHz: Int = 48_000,
+        channelCount: Int = 2,
+    ): Pair<Int, Int> {
+        val needed = minIsoPacketBytes(sampleRateHz, channelCount, targetBitDepth)
+        val ranked = parsedAltSettings.map { (alt, bits) ->
+            val packet = isoPacketBytes(endpointsForAlt(alt)?.third ?: 0)
+            Triple(alt, bits, packet)
+        }
+        val capable = ranked.filter { it.third <= 0 || it.third >= needed }
+        val pool = capable.ifEmpty { ranked }
+
+        fun pick(from: List<Triple<Int, Int, Int>>): Pair<Int, Int>? {
+            val exact = from.filter { it.second == targetBitDepth }.maxByOrNull { it.third }
+            if (exact != null) return Pair(exact.first, exact.second)
+            val higher = from.filter { it.second > targetBitDepth }.minByOrNull { it.second }
+            if (higher != null) return Pair(higher.first, higher.second)
+            val best = from.maxByOrNull { it.second } ?: return null
+            return Pair(best.first, best.second)
         }
 
-        // Exact match
-        val exact = parsedAltSettings.firstOrNull { it.second == targetBitDepth }
-        if (exact != null) {
-            Log.i(TAG, "findAltSettingForBitDepth($targetBitDepth): exact match alt=${exact.first}")
-            return exact
+        val chosen = pick(pool)
+        if (chosen != null) {
+            Log.i(
+                TAG,
+                "findAltSettingForBitDepth($targetBitDepth, $sampleRateHz Hz): " +
+                    "alt=${chosen.first} bits=${chosen.second} needed=$needed",
+            )
+            return chosen
         }
-
-        // Next higher
-        val higher = parsedAltSettings
-                .filter { it.second > targetBitDepth }
-                .minByOrNull { it.second }
-        if (higher != null) {
-            Log.i(TAG, "findAltSettingForBitDepth($targetBitDepth): next higher alt=${higher.first} bits=${higher.second}")
-            return higher
-        }
-
-        // Fallback to best
-        val best = parsedAltSettings.maxByOrNull { it.second } ?: Pair(1, 16)
-        Log.i(TAG, "findAltSettingForBitDepth($targetBitDepth): fallback to best alt=${best.first} bits=${best.second}")
-        return best
+        val info = cachedDeviceInfo ?: return Pair(1, 16)
+        return Pair(info.bestAltSetting, info.bestBitDepth)
     }
 
     /**
@@ -507,6 +525,61 @@ class UsbAudioDevice private constructor(private val context: Context) {
         return (csId shl 8) or iface
     }
 
+    private fun isoPacketBytes(raw: Int): Int {
+        if (raw <= 0) return 0
+        val size = raw and 0x7FF
+        val extra = (raw shr 11) and 0x3
+        val decoded = size * (1 + extra)
+        return maxOf(raw, decoded)
+    }
+
+    private fun minIsoPacketBytes(rateHz: Int, channels: Int, bitDepth: Int): Int {
+        val bpf = ((bitDepth + 7) / 8).coerceAtLeast(1) * channels.coerceIn(1, 8)
+        val frames = (rateHz + 7999) / 8000 + 1
+        return frames * bpf
+    }
+
+    private fun clockSourceIdsToTry(): IntArray {
+        val parsed = parsedClockSourceIds.filter { it > 0 }
+        val detected = cachedDeviceInfo?.clockSourceId ?: -1
+        val extras = intArrayOf(
+            0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
+            0x28, 0x29, 0x2A, 0x06, 0x07, 0x08,
+            0x10, 0x11, 0x12, 0x20, 0x21, 0x22,
+        )
+        return (listOfNotNull(detected.takeIf { it > 0 }) + parsed + extras.toList())
+            .distinct()
+            .toIntArray()
+    }
+
+    private fun setCurSampleRate(csId: Int, sampleRateHz: Int): Boolean {
+        val conn = connection ?: return false
+        val data = ByteArray(4)
+        data[0] = (sampleRateHz and 0xFF).toByte()
+        data[1] = ((sampleRateHz shr 8) and 0xFF).toByte()
+        data[2] = ((sampleRateHz shr 16) and 0xFF).toByte()
+        data[3] = ((sampleRateHz shr 24) and 0xFF).toByte()
+        val ret = conn.controlTransfer(0x21, 0x01, 0x0100, clockWIndex(csId), data, data.size, 1000)
+        return ret >= 0
+    }
+
+    private fun readSampleRateFrom(csId: Int): Int {
+        val conn = connection ?: return -1
+        val data = ByteArray(4)
+        val wIndex = clockWIndex(csId)
+        val ret = conn.controlTransfer(0xA1, 0x01, 0x0100, wIndex, data, data.size, 1000)
+        val retUac1 = if (ret < 4) {
+            conn.controlTransfer(0xA1, 0x81, 0x0100, wIndex, data, data.size, 1000)
+        } else {
+            ret
+        }
+        if (retUac1 < 4) return -1
+        return (data[0].toInt() and 0xFF) or
+            ((data[1].toInt() and 0xFF) shl 8) or
+            ((data[2].toInt() and 0xFF) shl 16) or
+            ((data[3].toInt() and 0xFF) shl 24)
+    }
+
     /**
      * Set the sample rate on a UAC2 Clock Source entity via SET_CUR control transfer.
      *
@@ -521,44 +594,35 @@ class UsbAudioDevice private constructor(private val context: Context) {
      *   data = 4-byte LE sample rate
      */
     fun setSampleRate(sampleRateHz: Int): Boolean {
-        val conn = connection ?: return false
-
-        val data = ByteArray(4)
-        data[0] = (sampleRateHz and 0xFF).toByte()
-        data[1] = ((sampleRateHz shr 8) and 0xFF).toByte()
-        data[2] = ((sampleRateHz shr 16) and 0xFF).toByte()
-        data[3] = ((sampleRateHz shr 24) and 0xFF).toByte()
-
-        // Use auto-detected clock source ID from USB descriptors.
-        // If not available, fall back to brute-force trying common IDs.
-        val detectedId = cachedDeviceInfo?.clockSourceId ?: -1
-        val clockSourceIds = if (detectedId > 0) {
-            intArrayOf(detectedId)  // use the one we parsed from descriptors
-        } else {
-            intArrayOf(0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
-                    0x28, 0x29, 0x2A, 0x06, 0x07, 0x08,
-                    0x10, 0x11, 0x12, 0x20, 0x21, 0x22)
-        }
-
-        for (csId in clockSourceIds) {
-            val wIndex = clockWIndex(csId)
-            val ret = conn.controlTransfer(
-                    0x21,    // bmRequestType: Host-to-Device, Class, Interface
-                    0x01,    // bRequest: SET_CUR
-                    0x0100,  // wValue: CS_SAM_FREQ_CONTROL
-                    wIndex,
-                    data,
-                    data.size,
-                    1000     // timeout ms
-            )
-            if (ret >= 0) {
-                Log.i(TAG, "setSampleRate($sampleRateHz Hz): SUCCESS with clockSourceId=0x${csId.toString(16)} (wIndex=0x${wIndex.toString(16)}, ret=$ret)")
+        if (connection == null) return false
+        for (csId in clockSourceIdsToTry()) {
+            if (!setCurSampleRate(csId, sampleRateHz)) continue
+            Thread.sleep(8)
+            val got = readSampleRateFrom(csId)
+            if (got == sampleRateHz) {
+                Log.i(TAG, "setSampleRate($sampleRateHz Hz): GET_CUR match clock=0x${csId.toString(16)}")
                 return true
             }
+            Log.w(TAG, "setSampleRate($sampleRateHz Hz): clock=0x${csId.toString(16)} read back $got Hz")
         }
-
-        Log.w(TAG, "setSampleRate($sampleRateHz Hz): all clock source IDs failed, DAC may auto-detect")
+        Log.w(TAG, "setSampleRate($sampleRateHz Hz): no GET_CUR match, DAC may auto-detect")
         return false
+    }
+
+    fun selectClockForSampleRate(sampleRateHz: Int): Boolean {
+        if (parsedClockSelectorId <= 0) {
+            return setSampleRate(sampleRateHz)
+        }
+        val conn = connection ?: return false
+        for (pin in 1..4) {
+            val data = byteArrayOf(pin.toByte())
+            val wIndex = clockWIndex(parsedClockSelectorId)
+            val ret = conn.controlTransfer(0x21, 0x01, 0x0100, wIndex, data, 1, 1000)
+            if (ret < 0) continue
+            Log.i(TAG, "CLOCK_SELECTOR pin=$pin ret=$ret, retrying SET_CUR $sampleRateHz")
+            if (setSampleRate(sampleRateHz)) return true
+        }
+        return setSampleRate(sampleRateHz)
     }
 
     /**
@@ -566,33 +630,10 @@ class UsbAudioDevice private constructor(private val context: Context) {
      * This verifies whether our SET_CUR actually took effect.
      */
     fun readSampleRate(): Int {
-        val conn = connection ?: return -1
-        val data = ByteArray(4)
-
-        val detectedId = cachedDeviceInfo?.clockSourceId ?: -1
-        val clockSourceIds = if (detectedId > 0) intArrayOf(detectedId)
-                else intArrayOf(0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x28, 0x29)
-        for (csId in clockSourceIds) {
-            val wIndex = clockWIndex(csId)
-            val ret = conn.controlTransfer(
-                    0xA1,    // bmRequestType: Device-to-Host, Class, Interface
-                    0x01,    // bRequest: GET_CUR (UAC2)
-                    0x0100,  // wValue: CS_SAM_FREQ_CONTROL
-                    wIndex,
-                    data,
-                    data.size,
-                    1000
-            )
-            val retUac1 = if (ret < 4) conn.controlTransfer(
-                    0xA1, 0x81, 0x0100, wIndex, data, data.size, 1000
-            ) else ret
-            if (retUac1 >= 4) {
-                val rate = (data[0].toInt() and 0xFF) or
-                        ((data[1].toInt() and 0xFF) shl 8) or
-                        ((data[2].toInt() and 0xFF) shl 16) or
-                        ((data[3].toInt() and 0xFF) shl 24)
-                Log.i(TAG, "readSampleRate: GET_CUR clockSourceId=0x${csId.toString(16)} " +
-                        "returned $rate Hz (raw=${data.joinToString(",") { "0x${(it.toInt() and 0xFF).toString(16)}" }})")
+        for (csId in clockSourceIdsToTry()) {
+            val rate = readSampleRateFrom(csId)
+            if (rate > 0) {
+                Log.i(TAG, "readSampleRate: GET_CUR clockSourceId=0x${csId.toString(16)} returned $rate Hz")
                 return rate
             }
         }
@@ -611,11 +652,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
     fun readClockValid(): Boolean {
         val conn = connection ?: return false
         val data = ByteArray(1)
-
-        val detectedId = cachedDeviceInfo?.clockSourceId ?: -1
-        val clockSourceIds = if (detectedId > 0) intArrayOf(detectedId)
-                else intArrayOf(0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x28, 0x29)
-        for (csId in clockSourceIds) {
+        for (csId in clockSourceIdsToTry()) {
             val wIndex = clockWIndex(csId)
             val ret = conn.controlTransfer(
                     0xA1,    // bmRequestType: Device-to-Host, Class, Interface

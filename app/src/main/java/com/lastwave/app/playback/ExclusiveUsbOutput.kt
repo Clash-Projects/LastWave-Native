@@ -57,9 +57,18 @@ class ExclusiveUsbOutput @Inject constructor(
     private var volumeReceiverRegistered = false
     @Volatile private var lastAppliedCombined = Float.NaN
     private var volumeProbed = false
+    @Volatile private var lastNonMaxListeningGain = Float.NaN
+    @Volatile private var ignoreStreamMusicMax = false
 
     private val audioManager: AudioManager? =
         appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    private val volumePrefs =
+        appContext.getSharedPreferences("lastwave_exclusive_usb", Context.MODE_PRIVATE)
+
+    init {
+        lastNonMaxListeningGain = volumePrefs.getFloat(KEY_LAST_NON_MAX_GAIN, Float.NaN)
+        rememberStreamGain(readStreamMusicGain())
+    }
 
     private val volumeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -105,8 +114,13 @@ class ExclusiveUsbOutput @Inject constructor(
 
     fun currentRateHz(): Int = if (active) configuredRateHz else 0
 
+    fun framesWritten(): Long = stream?.framesClock ?: 0L
+
     fun syncListeningGain() {
-        val next = readStreamMusicGain() ?: return
+        val stream = readStreamMusicGain() ?: return
+        if (ignoreStreamMusicMax && stream >= 0.999f) return
+        if (stream < 0.999f) ignoreStreamMusicMax = false
+        val next = stream
         if (lastAppliedCombined.isFinite() &&
             kotlin.math.abs(next - listeningGain) < 1e-4f
         ) {
@@ -240,7 +254,7 @@ class ExclusiveUsbOutput @Inject constructor(
         val info = device.openDevice(usbDevice) ?: return failLocked("openDevice failed")
 
         val depthHint = if (floatSource || sourceBits == 0) info.bestBitDepth else sourceBits
-        val (alt, bits) = device.findAltSettingForBitDepth(depthHint)
+        val (alt, bits) = device.findAltSettingForBitDepth(depthHint, sampleRate, channelCount)
 
         val reuse = stream
         if (reuse != null &&
@@ -260,6 +274,15 @@ class ExclusiveUsbOutput @Inject constructor(
         }
         device.setSampleRate(sampleRate)
         waitForClock(device)
+        val reportedAfterSet = device.readSampleRate()
+        if (reportedAfterSet > 0 && reportedAfterSet != sampleRate) {
+            Log.w(
+                TAG,
+                "SET_CUR $sampleRate Hz read back $reportedAfterSet Hz — trying clock selector",
+            )
+            device.selectClockForSampleRate(sampleRate)
+            waitForClock(device)
+        }
         device.setAltSetting(0)
         if (!device.setAltSetting(alt)) {
             return failLocked("setAltSetting($alt) failed")
@@ -269,8 +292,15 @@ class ExclusiveUsbOutput @Inject constructor(
         val endpoints = device.endpointsForAlt(alt)
         val epOut = endpoints?.first ?: info.endpointOutAddress
         val epFb = (endpoints?.second ?: info.endpointFeedbackAddress).let { if (it < 0) 0 else it }
-        val packet = endpoints?.third ?: info.maxPacketSize
+        val packet = isoPacketBytes(endpoints?.third ?: info.maxPacketSize)
+        val needed = minIsoPacketBytes(sampleRate, channelCount, bits)
         if (epOut < 0 || packet <= 0) return failLocked("no ISO OUT endpoint for alt $alt")
+        if (needed > packet) {
+            Log.w(
+                TAG,
+                "alt $alt maxPacket=$packet < needed $needed for ${sampleRate}Hz ${bits}-bit — continuing",
+            )
+        }
 
         val created = UsbAudioStream(
             info.fd,
@@ -307,13 +337,15 @@ class ExclusiveUsbOutput @Inject constructor(
         )
 
         ensureVolumeObserverLocked()
-        syncListeningGainLocked()
+        rememberStreamGain(readStreamMusicGain())
         if (!volumeProbed) {
             volumeProbed = true
             val volume = UacFeatureVolume(info.connection, info.controlInterfaceId)
             hardwareVolume = volume.attach()
             featureVolume = if (hardwareVolume) volume else null
         }
+        listeningGain = listeningGainForDac()
+        lastAppliedCombined = Float.NaN
         applyVolumeLocked()
         Log.i(
             TAG,
@@ -363,11 +395,37 @@ class ExclusiveUsbOutput @Inject constructor(
         val max = runCatching { manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }.getOrDefault(0)
         if (max <= 0) return null
         val vol = runCatching { manager.getStreamVolume(AudioManager.STREAM_MUSIC) }.getOrDefault(max)
-        return vol.coerceIn(0, max).toFloat() / max
+        val gain = vol.coerceIn(0, max).toFloat() / max
+        rememberStreamGain(gain)
+        return gain
+    }
+
+    private fun rememberStreamGain(gain: Float?) {
+        if (gain != null && gain in 0.01f..0.999f) {
+            lastNonMaxListeningGain = gain
+            runCatching { volumePrefs.edit().putFloat(KEY_LAST_NON_MAX_GAIN, gain).apply() }
+        }
+    }
+
+    /**
+     * USB connect often reports STREAM_MUSIC at max while the DAC analog
+     * path is still 0 dB. Prefer the last non-max key level so Feature Unit
+     * SET_CUR matches what the user hears after the first volume press.
+     */
+    private fun listeningGainForDac(): Float {
+        val stream = readStreamMusicGain() ?: listeningGain
+        if (stream >= 0.999f && lastNonMaxListeningGain.isFinite() &&
+            lastNonMaxListeningGain in 0.01f..0.999f
+        ) {
+            ignoreStreamMusicMax = true
+            return lastNonMaxListeningGain
+        }
+        ignoreStreamMusicMax = false
+        return stream
     }
 
     private fun syncListeningGainLocked() {
-        listeningGain = readStreamMusicGain() ?: return
+        listeningGain = listeningGainForDac()
         applyVolumeLocked()
     }
 
@@ -405,6 +463,7 @@ class ExclusiveUsbOutput @Inject constructor(
         usb = null
         featureVolume = null
         volumeProbed = false
+        ignoreStreamMusicMax = false
         hardwareVolume = false
         clockMatched = false
         configuredRateHz = 0
@@ -425,12 +484,27 @@ class ExclusiveUsbOutput @Inject constructor(
         const val TAG = "ExclusiveUsb"
         const val VOLUME_CHANGED_ACTION = "android.media.VOLUME_CHANGED_ACTION"
         const val EXTRA_VOLUME_STREAM_TYPE = "android.media.EXTRA_VOLUME_STREAM_TYPE"
+        const val KEY_LAST_NON_MAX_GAIN = "last_non_max_stream_gain"
         const val PLL_SETTLE_MS = 50L
         const val CLOCK_VALID_TRIES = 20
         const val CLOCK_VALID_STEP_MS = 5L
         const val RAW_PCM16 = 2
         const val RAW_PCM24 = 0x15
         const val RAW_PCM32 = 0x16
+
+        fun isoPacketBytes(raw: Int): Int {
+            if (raw <= 0) return 0
+            val size = raw and 0x7FF
+            val extra = (raw shr 11) and 0x3
+            val decoded = size * (1 + extra)
+            return maxOf(raw, decoded)
+        }
+
+        fun minIsoPacketBytes(rateHz: Int, channels: Int, bitDepth: Int): Int {
+            val bpf = ((bitDepth + 7) / 8).coerceAtLeast(1) * channels.coerceIn(1, 8)
+            val frames = (rateHz + 7999) / 8000 + 1
+            return frames * bpf
+        }
 
         fun sourceBitDepth(encoding: Int): Int = when (encoding) {
             C.ENCODING_PCM_16BIT, RAW_PCM16 -> 16
