@@ -1129,7 +1129,7 @@ class MusicPlayer @Inject constructor(
                                 true,
                             )
                         } else {
-                            healthTracker.sample(reported, tickerNow, true)
+                            healthTracker.sample(pos, tickerNow, true)
                         }
                         updateSignalPath()
                     }
