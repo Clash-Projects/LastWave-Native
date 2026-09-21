@@ -546,8 +546,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
         val ranked = parsedAltSettings.map { alt ->
             val packet = parsedIsoOut[alt.alt]?.maxPacketBytes
                 ?: isoPacketCapacity(endpointsForAlt(alt.alt)?.third ?: 0)
-            val interval = parsedIsoOut[alt.alt]?.interval ?: 1
-            val needed = minIsoPacketBytes(sampleRateHz, channelCount, alt.wireBits, interval)
+            val needed = minIsoPacketBytes(sampleRateHz, channelCount, alt.wireBits, 1)
             Triple(alt, packet, needed)
         }
         val capable = ranked.filter { it.second >= it.third }
@@ -556,8 +555,12 @@ class UsbAudioDevice private constructor(private val context: Context) {
 
         fun pick(from: List<ParsedAlt>): ParsedAlt? {
             val exact = from.filter { it.bitResolution == targetBitDepth }
+            // 24-bit packed (3 bytes) makes 11-frame packets at 88.2 kHz a
+            // length the host cannot DMA. A 4-byte subslot stays aligned.
+            val aligned = exact.filter { it.subslotSize >= 4 }
+            val exactPick = (if (aligned.isNotEmpty()) aligned else exact)
                 .minByOrNull { kotlin.math.abs(it.wireBits - targetBitDepth) }
-            if (exact != null) return exact
+            if (exactPick != null) return exactPick
             val higher = from.filter { it.bitResolution > targetBitDepth || it.wireBits > targetBitDepth }
                 .minByOrNull { it.wireBits }
             if (higher != null) return higher

@@ -338,7 +338,10 @@ class ExclusiveUsbOutput @Inject constructor(
         val epOut = endpoints?.first ?: info.endpointOutAddress
         val epFb = (endpoints?.second ?: info.endpointFeedbackAddress).let { if (it < 0) 0 else it }
         val packet = endpoints?.third ?: info.maxPacketSize
-        val interval = device.isoIntervalForAlt(alt)
+        // Packet timing is one microframe. The descriptor bInterval is not
+        // the usbdevfs schedule; using it made packets ~8× too long and the
+        // song ended after a few seconds.
+        val interval = 1
         val needed = minIsoPacketBytes(sampleRate, channelCount, bits, interval)
         if (epOut < 0 || packet <= 0) return failLocked("no ISO OUT endpoint for alt $alt")
         if (needed > packet) {
