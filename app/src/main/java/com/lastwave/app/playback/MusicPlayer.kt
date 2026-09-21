@@ -53,7 +53,6 @@ import com.lastwave.app.data.music.YouTubeAudioStream
 import com.lastwave.app.data.music.YOUTUBE_WEB_USER_AGENT
 import com.lastwave.app.data.lossless.LosslessAudioStream
 import com.lastwave.app.data.lossless.LosslessMusicApi
-import com.lastwave.app.data.plugin.ModulePlaybackResolver
 import com.lastwave.app.data.plugin.ModuleDrmFactory
 import com.lastwave.app.data.plugin.SegmentedDashBridge
 import com.lastwave.app.data.plugin.stableCacheKey
@@ -178,7 +177,6 @@ class MusicPlayer @Inject constructor(
     @ApplicationContext context: Context,
     private val innerTube: InnerTubeMusicApi,
     private val losslessMusicApi: LosslessMusicApi,
-    private val moduleResolver: ModulePlaybackResolver,
     private val moduleDrmFactory: ModuleDrmFactory,
     private val moduleManager: com.lastwave.app.data.plugin.ModuleManager,
     private val offlineLicense: com.lastwave.app.data.plugin.ModuleOfflineLicense,
@@ -991,7 +989,7 @@ class MusicPlayer @Inject constructor(
                             val buf = player.bufferedPosition.coerceAtLeast(0)
                             val sleepRemaining = remaining?.coerceAtLeast(0)
 
-                            if (updateCrossfade(pos, dur)) {
+                            if (updateCrossfade(pos)) {
                                 cadenceMs = 60L
                             } else {
 
@@ -1654,7 +1652,7 @@ class MusicPlayer @Inject constructor(
     }
 
     @MainThread
-    private fun updateCrossfade(positionMs: Long, durationMs: Long): Boolean {
+    private fun updateCrossfade(positionMs: Long): Boolean {
         if (!crossfadeEnabled || bitPerfectEnabled) return false
         outgoingPlayer?.let { outgoing ->
             val progress = (positionMs.toFloat() / overlapDurationMs.coerceAtLeast(1L)).coerceIn(0f, 1f)
@@ -4094,24 +4092,6 @@ class MusicPlayer @Inject constructor(
             error.errorCode == PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE ||
             error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
             error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
-    }
-
-    private fun publishStreamQuality(stream: com.lastwave.app.data.music.YouTubeAudioStream) {
-        val trueBitrate = stream.bitrate.takeIf { value -> value > 0 }?.let { (it + 500) / 1_000 }
-        val rawCodec = stream.mimeType?.substringAfter("audio/")?.substringBefore(';')?.uppercase()?.ifBlank { "WEBM" } ?: "WEBM"
-        val codec = when {
-            rawCodec.contains("OPUS") || rawCodec == "WEBM" -> "WEBM"
-            rawCodec.contains("M4A") || rawCodec.contains("MP4") || rawCodec.contains("AAC") -> "M4A"
-            else -> rawCodec
-        }
-        _state.update {
-            it.copy(
-                bitrateKbps = trueBitrate,
-                audioCodec = codec,
-                isLossless = false,
-            )
-        }
-        updateBitPerfectState()
     }
 
     private fun publishLocalTrackQuality(track: PlayableTrack) {

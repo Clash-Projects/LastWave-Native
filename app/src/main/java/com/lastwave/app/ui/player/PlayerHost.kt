@@ -3189,6 +3189,10 @@ private fun qualityLabel(state: MusicPlayerState): String = when {
     state.isLossless && state.audioCodec == "MP3 320k" -> "MP3 320 kbps"
     // Lossless without measured depth/rate → badge text, never raw kbps.
     state.isLossless -> state.audioCodec ?: "LOSSLESS"
+    // Unknown container ("AUDIO"/"LOCAL AUDIO") → plain label. Never render
+    // a measured-bitrate number next to it ("AUDIO 2442 kbps") — the number
+    // is not a quality claim and only ever confused.
+    state.audioCodec?.uppercase() in setOf("AUDIO", "LOCAL AUDIO") -> "AUDIO"
     // YouTube lossy → e.g. "OPUS 138 kbps" or "AAC 131 kbps".
     state.audioCodec != null && state.bitrateKbps != null -> "${state.audioCodec.uppercase()} ${state.bitrateKbps} kbps"
     state.audioCodec != null -> state.audioCodec.uppercase()

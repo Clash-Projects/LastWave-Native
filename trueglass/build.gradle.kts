@@ -12,6 +12,18 @@ android {
         minSdk = 29
     }
 
+    // Must mirror every app build type (debug/release/rawRelease) or variant
+    // matching fails when the app builds rawRelease (same as the audio
+    // driver modules).
+    buildTypes {
+        getByName("debug")
+        getByName("release")
+        create("rawRelease") {
+            initWith(getByName("release"))
+            isMinifyEnabled = false
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
