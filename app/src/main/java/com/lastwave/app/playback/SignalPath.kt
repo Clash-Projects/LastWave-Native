@@ -396,11 +396,15 @@ class StreamHealthTracker {
 
     private var lastPositionMs = -1L
     private var lastWallMs = 0L
+    private var exclusiveOriginFrames = -1L
+    private var exclusiveOriginWallMs = 0L
 
     fun reset() {
         driftPpm = null
         lastPositionMs = -1L
         lastWallMs = 0L
+        exclusiveOriginFrames = -1L
+        exclusiveOriginWallMs = 0L
     }
 
     /**
@@ -436,16 +440,32 @@ class StreamHealthTracker {
     }
 
     /**
-     * Exclusive usbdevfs clock vs wall. DASH/FLAC ExoPlayer timelines often
-     * jump or freeze, which left drift stuck on "measuring…" for lossless.
-     * [framesWritten] is the DAC packet clock.
+     * Exclusive usbdevfs clock vs wall. Do not reuse [sample]: lossless
+     * handleBuffer blocks for seconds inside USB write(), so the Java-visible
+     * frame count jumps >1.5 s and the ExoPlayer seek detector stuck drift
+     * on "measuring…". Compare cumulative frames to wall from a baseline.
      */
     fun sampleExclusive(framesWritten: Long, rateHz: Int, wallMs: Long, playing: Boolean): Double? {
         if (!playing || rateHz <= 0 || framesWritten < 0L) {
-            lastPositionMs = -1L
+            exclusiveOriginFrames = -1L
             return driftPpm
         }
-        val positionMs = framesWritten * 1000L / rateHz
-        return sample(positionMs, wallMs, true)
+        if (exclusiveOriginFrames < 0L || framesWritten < exclusiveOriginFrames) {
+            exclusiveOriginFrames = framesWritten
+            exclusiveOriginWallMs = wallMs
+            return driftPpm
+        }
+        val wallDelta = wallMs - exclusiveOriginWallMs
+        if (wallDelta < 800L) return driftPpm
+        val audioMs = (framesWritten - exclusiveOriginFrames).toDouble() * 1000.0 / rateHz.toDouble()
+        // Write() still in flight: frames have not caught wall yet. Keep the
+        // last reading instead of publishing −1e6 PPM or wiping the estimate.
+        if (audioMs < wallDelta * 0.25 && wallDelta < 4_000L) {
+            return driftPpm
+        }
+        val instant = ((audioMs - wallDelta) / wallDelta * 1_000_000.0)
+            .coerceIn(-50_000.0, 50_000.0)
+        driftPpm = if (driftPpm == null) instant else driftPpm!! * 0.85 + instant * 0.15
+        return driftPpm
     }
 }

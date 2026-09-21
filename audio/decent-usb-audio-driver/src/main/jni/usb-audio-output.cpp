@@ -417,7 +417,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioCreate(
     ctx->transferBuffer = nullptr;
     ctx->transferBufferCapacity = 0;
     ctx->framesWritten = 0;
-    ctx->framesClock = 0;
+    ctx->framesClock.store(0);
     ctx->interfaceClaimed = true;
     ctx->submitIdx = 0;
     ctx->reapIdx = 0;
@@ -475,7 +475,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioStart(
     if (!ctx) return JNI_FALSE;
     ctx->running.store(true);
     ctx->framesWritten = 0;
-    ctx->framesClock = 0;
+    ctx->framesClock.store(0);
     ctx->submitIdx = 0;
     ctx->reapIdx = 0;
     ctx->urbsInFlight = 0;
@@ -489,12 +489,13 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioStart(
 
     if (ctx->endpointFeedback > 0) {
         double fb = readFeedback(ctx->fd, ctx->endpointFeedback);
-        if (fb > 0) {
+        if (fb > 0 && fb > nominalFpmf * 0.99 && fb < nominalFpmf * 1.01) {
             ctx->calibratedFpmf = fb;
             LOGI("Start: initial feedback=%.4f fpmf (%.1f Hz), nominal=%.4f (%.1f Hz)",
                  fb, fb * 8000.0, nominalFpmf, nominalFpmf * 8000.0);
         } else {
-            LOGW("Start: feedback not responding, using nominal %.4f fpmf", nominalFpmf);
+            LOGW("Start: ignoring feedback=%.4f, using nominal %.4f fpmf",
+                 fb, nominalFpmf);
         }
 
         // Start continuous feedback: submit a feedback URB that will be
@@ -550,7 +551,6 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioWrite(
     submitPcmToUrbs(ctx, ctx->transferBuffer, totalBytes);
 
     ctx->framesWritten += totalFrames;
-    ctx->framesClock += totalFrames;
 
     clock_gettime(CLOCK_MONOTONIC, &writeEnd);
     long writeUs = (writeEnd.tv_sec - writeStart.tv_sec) * 1000000L +
@@ -639,7 +639,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeGetFramesClock(
         JNIEnv *, jobject, jlong h) {
     auto *ctx = reinterpret_cast<UsbAudioContext *>(h);
     if (!ctx) return 0;
-    return (jlong)ctx->framesClock;
+    return (jlong)ctx->framesClock.load(std::memory_order_relaxed);
 }
 
 JNIEXPORT jint JNICALL
@@ -745,6 +745,7 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
                 frames = maxFrames;
                 b = frames * ctx->bytesPerFrame;
             }
+            if (urbBytes + b > USB_AUDIO_URB_BUFFER_SIZE) break;
 
             if (b > remaining) {
                 // Not enough data for a full packet — don't truncate.
@@ -790,11 +791,18 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
         UrbSlot *slot = &ctx->ring[ctx->submitIdx];
         memcpy(slot->buffer, data + offset, urbBytes);
 
+        if (urbBytes > USB_AUDIO_URB_BUFFER_SIZE) {
+            LOGE("submitPcmToUrbs: urbBytes=%d exceeds buffer", urbBytes);
+            break;
+        }
         if (submitRingUrb(ctx, pktSizes, numPackets, urbBytes) < 0) {
             LOGE("submitPcmToUrbs: submit failed, stopping stream");
             ctx->running.store(false);
             free(mergedBuf);
             return;
+        }
+        if (ctx->bytesPerFrame > 0) {
+            ctx->framesClock.fetch_add(urbBytes / ctx->bytesPerFrame, std::memory_order_relaxed);
         }
         offset += urbBytes;
     }
@@ -872,7 +880,6 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioWriteRaw(
     submitPcmToUrbs(ctx, ctx->transferBuffer, outputBytes);
 
     ctx->framesWritten += totalFrames;
-    ctx->framesClock += totalFrames;
     if (ctx->framesWritten % ctx->sampleRate < (int64_t)totalFrames) {
         LOGI("WriteRaw: %lld frames (~%.0f sec) inflight=%d inputBits=%d fpmf=%.4f fb#%lld",
              (long long)ctx->framesWritten, (double)ctx->framesWritten/ctx->sampleRate,

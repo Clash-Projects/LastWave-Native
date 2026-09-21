@@ -272,17 +272,8 @@ class ExclusiveUsbOutput @Inject constructor(
         if (!device.setAltSetting(0)) {
             Log.w(TAG, "alt 0 before SET_CUR failed; continuing")
         }
-        device.setSampleRate(sampleRate)
+        device.lockSampleRate(sampleRate)
         waitForClock(device)
-        val reportedAfterSet = device.readSampleRate()
-        if (reportedAfterSet > 0 && reportedAfterSet != sampleRate) {
-            Log.w(
-                TAG,
-                "SET_CUR $sampleRate Hz read back $reportedAfterSet Hz — trying clock selector",
-            )
-            device.selectClockForSampleRate(sampleRate)
-            waitForClock(device)
-        }
         device.setAltSetting(0)
         if (!device.setAltSetting(alt)) {
             return failLocked("setAltSetting($alt) failed")
@@ -486,7 +477,7 @@ class ExclusiveUsbOutput @Inject constructor(
         const val EXTRA_VOLUME_STREAM_TYPE = "android.media.EXTRA_VOLUME_STREAM_TYPE"
         const val KEY_LAST_NON_MAX_GAIN = "last_non_max_stream_gain"
         const val PLL_SETTLE_MS = 50L
-        const val CLOCK_VALID_TRIES = 20
+        const val CLOCK_VALID_TRIES = 40
         const val CLOCK_VALID_STEP_MS = 5L
         const val RAW_PCM16 = 2
         const val RAW_PCM24 = 0x15
@@ -494,10 +485,9 @@ class ExclusiveUsbOutput @Inject constructor(
 
         fun isoPacketBytes(raw: Int): Int {
             if (raw <= 0) return 0
-            val size = raw and 0x7FF
             val extra = (raw shr 11) and 0x3
-            val decoded = size * (1 + extra)
-            return maxOf(raw, decoded)
+            val size = raw and 0x7FF
+            return if (extra > 0) size * (1 + extra) else raw
         }
 
         fun minIsoPacketBytes(rateHz: Int, channels: Int, bitDepth: Int): Int {

@@ -119,6 +119,23 @@ class ExclusiveUsbSignalPathTest {
         assertThat(kotlin.math.abs(first!!)).isLessThan(5_000.0)
     }
 
+    @Test
+    fun exclusiveClockDriftSurvivesBlockingUsbWriteCatchUp() {
+        val tracker = StreamHealthTracker()
+        val rate = 96_000
+        assertThat(tracker.sampleExclusive(0L, rate, 0L, true)).isNull()
+        // 1 s wall, no new frames: write() still blocked. Stay on measuring,
+        // do not treat it as a stall that wipes the estimate forever.
+        assertThat(tracker.sampleExclusive(0L, rate, 1_000L, true)).isNull()
+        // 3 s of frames land in one tick after the JNI write returns.
+        val caught = tracker.sampleExclusive(rate * 3L, rate, 3_000L, true)
+        assertThat(caught).isNotNull()
+        assertThat(kotlin.math.abs(caught!!)).isLessThan(5_000.0)
+        val next = tracker.sampleExclusive(rate * 4L, rate, 4_000L, true)
+        assertThat(next).isNotNull()
+        assertThat(kotlin.math.abs(next!!)).isLessThan(5_000.0)
+    }
+
     private fun exclusiveInput() = SignalPathInput(
         sourceLabel = "FLAC",
         sourceRateHz = 96000,

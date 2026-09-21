@@ -36,7 +36,7 @@
  * Worst case: 384kHz * 4 bytes * 2 channels / 8000 microframes * 8 packets
  *           = 384 * 8 = 3072 bytes per URB. Round up generously.
  */
-#define USB_AUDIO_URB_BUFFER_SIZE 4096
+#define USB_AUDIO_URB_BUFFER_SIZE 16384
 
 /**
  * One slot in the pre-allocated URB ring buffer.
@@ -81,7 +81,7 @@ struct UsbAudioContext {
     int32_t transferBufferCapacity;
 
     int64_t framesWritten;
-    int64_t framesClock;
+    std::atomic<int64_t> framesClock;
     bool interfaceClaimed;
 
     // ── Ring buffer ─────────────────────────────────────────────
