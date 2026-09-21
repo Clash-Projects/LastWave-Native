@@ -382,6 +382,11 @@ class MusicPlayer @Inject constructor(
      */
     @Volatile private var lastSeekTargetMs = -1L
     @Volatile private var lastSeekAtElapsedMs = 0L
+    /** Wall-clock progress anchor so the seek bar keeps moving when ExoPlayer's timeline stalls. */
+    @Volatile private var progressAnchorPosMs = 0L
+    @Volatile private var progressAnchorWallMs = 0L
+    @Volatile private var progressAnchorPlaying = false
+    @Volatile private var progressAnchorTrackKey: String? = null
     private val _signalPath = MutableStateFlow(SignalPathReport.initial())
     /** Verified signal-path report; BIT-PERFECT shows only when all checks pass. */
     val signalPath: StateFlow<SignalPathReport> = _signalPath.asStateFlow()
@@ -899,6 +904,9 @@ class MusicPlayer @Inject constructor(
                         val rateHz = format.sampleRate
                         val sampleMime = format.sampleMimeType?.lowercase().orEmpty()
                         val detectedCodec = when {
+                            sampleMime.contains("eac3") || sampleMime.contains("ec-3") ||
+                                sampleMime.contains("ac-3") || sampleMime.contains("ac3") -> "DOLBY ATMOS"
+                            sampleMime.contains("mha1") || sampleMime.contains("mhm1") -> "SPATIAL AUDIO"
                             sampleMime.contains("opus") -> "OPUS"
                             sampleMime.contains("flac") -> "FLAC"
                             sampleMime.contains("mp4a") || sampleMime.contains("aac") -> "AAC"
@@ -922,10 +930,12 @@ class MusicPlayer @Inject constructor(
                             if (depth != null && updated.bitDepth == null) {
                                 updated = updated.copy(bitDepth = depth)
                             }
-                            if (detectedCodec == "FLAC") {
-                                updated = updated.copy(isLossless = true)
-                            }
-                            if ((updated.audioCodec == null || updated.audioCodec == "AUDIO") && detectedCodec != null) {
+                            if (isSpatialAudioCodec(detectedCodec)) {
+                                updated = updated.copy(audioCodec = detectedCodec, isLossless = false)
+                            } else if (!isSpatialAudioCodec(updated.audioCodec) &&
+                                (updated.audioCodec == null || updated.audioCodec == "AUDIO") &&
+                                detectedCodec != null
+                            ) {
                                 updated = updated.copy(
                                     audioCodec = detectedCodec,
                                     bitrateKbps = updated.bitrateKbps ?: bitrate ?: if (detectedCodec == "OPUS") 160 else null,
@@ -1030,14 +1040,17 @@ class MusicPlayer @Inject constructor(
                             cadenceMs = 60L
                         } else {
                             val dur = effectiveDuration(player.duration, player, _state.value.durationMs)
-                            // Never pin the position to a stale/approximate
-                            // duration: clamping here froze the bar at the old
-                            // value while audio played on. Display layers
-                            // already coerce the fraction into [0, 1]. Mask
-                            // pre-seek reads so the bar never flashes back.
-                            val pos = settleSeekPosition(
+                            val reported = settleSeekPosition(
                                 exclusiveAwarePositionMs(player.currentPosition.coerceAtLeast(0)),
                             )
+                            val outputRunning = player.isPlaying ||
+                                (_state.value.isPlaying &&
+                                    exclusiveUsbOutput.isActive() &&
+                                    !exclusiveUsbOutput.isPaused())
+                            val trackKey = _state.value.current?.let { track ->
+                                track.videoId?.takeIf { it.isNotBlank() } ?: "${track.title}|${track.artist}"
+                            }
+                            val pos = smoothPositionMs(reported, outputRunning, dur, trackKey)
                             val buf = player.bufferedPosition.coerceAtLeast(0)
                             val sleepRemaining = remaining?.coerceAtLeast(0)
 
@@ -1101,7 +1114,8 @@ class MusicPlayer @Inject constructor(
                     // Stream-health sampling: effective clock drift + glitch
                     // watch, 1 Hz while playing. Feeds the signal-path popup.
                     val tickerNow = SystemClock.elapsedRealtime()
-                    if (player.isPlaying && tickerNow - lastSignalPathMs >= SIGNAL_PATH_TICK_MS) {
+                    val healthPlaying = player.isPlaying || _state.value.isPlaying
+                    if (healthPlaying && tickerNow - lastSignalPathMs >= SIGNAL_PATH_TICK_MS) {
                         lastSignalPathMs = tickerNow
                         val exclusiveRate = exclusiveUsbOutput.currentRateHz()
                         if (exclusiveUsbOutput.isActive() && exclusiveRate > 0) {
@@ -1112,13 +1126,13 @@ class MusicPlayer @Inject constructor(
                                 true,
                             )
                         } else {
-                            healthTracker.sample(pos, tickerNow, true)
+                            healthTracker.sample(reported, tickerNow, true)
                         }
                         updateSignalPath()
                     }
 
                     val previous = _state.value
-                    val unchanged = !player.isPlaying &&
+                    val unchanged = !outputRunning &&
                         previous.positionMs == pos &&
                         previous.bufferedPositionMs == buf &&
                         previous.durationMs == dur &&
@@ -1145,9 +1159,7 @@ class MusicPlayer @Inject constructor(
                             // Preserve lazy player startup when there is no
                             // restored or active queue. The short-circuit
                             // avoids touching ExoPlayer.
-                            val exclusiveHolding =
-                                exclusiveUsbOutput.isActive() && !exclusiveUsbOutput.isPaused()
-                            cadenceMs = if (player.isPlaying || exclusiveHolding) 60L else 500L
+                            cadenceMs = if (outputRunning) 60L else 500L
                             }
                         }
                     }
@@ -1679,6 +1691,53 @@ class MusicPlayer @Inject constructor(
         val us = exclusiveUsbOutput.getCurrentPositionUs()
         if (us == androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET) return fallbackMs
         return (us / 1_000L).coerceAtLeast(0L)
+    }
+
+    /**
+     * Seek-bar position. ExoPlayer's timeline (and the exclusive sink, until
+     * the first USB write) can sit still while audio plays — DASH flushes and
+     * a blocked renderer both do this. While output is running, advance from
+     * the last real report using wall time, and only jump when the reporter
+     * seeks.
+     */
+    private fun smoothPositionMs(
+        reportedMs: Long,
+        playing: Boolean,
+        durationMs: Long,
+        trackKey: String?,
+    ): Long {
+        val now = SystemClock.elapsedRealtime()
+        if (trackKey != progressAnchorTrackKey) {
+            progressAnchorTrackKey = trackKey
+            progressAnchorPlaying = false
+        }
+        fun clamp(ms: Long) = if (durationMs > 0L) ms.coerceIn(0L, durationMs) else ms.coerceAtLeast(0L)
+        if (!playing) {
+            progressAnchorPosMs = reportedMs
+            progressAnchorWallMs = now
+            progressAnchorPlaying = false
+            return clamp(reportedMs)
+        }
+        if (!progressAnchorPlaying) {
+            progressAnchorPosMs = reportedMs
+            progressAnchorWallMs = now
+            progressAnchorPlaying = true
+            return clamp(reportedMs)
+        }
+        val predicted = progressAnchorPosMs + (now - progressAnchorWallMs).coerceAtLeast(0L)
+        val seekBack = reportedMs + 1_200L < minOf(predicted, progressAnchorPosMs)
+        val seekForward = reportedMs > predicted + 1_200L
+        if (seekBack || seekForward) {
+            progressAnchorPosMs = reportedMs
+            progressAnchorWallMs = now
+            return clamp(reportedMs)
+        }
+        if (reportedMs >= predicted - 80L && reportedMs > progressAnchorPosMs) {
+            progressAnchorPosMs = reportedMs
+            progressAnchorWallMs = now
+            return clamp(reportedMs)
+        }
+        return clamp(maxOf(reportedMs, predicted))
     }
 
     @MainThread
@@ -4395,11 +4454,13 @@ class MusicPlayer @Inject constructor(
         // TIME_UNSET (buffering / container not parsed yet): that reset froze
         // the bar at 0:00 and disabled seeking until the next event.
         val dur = effectiveDuration(player.duration, player, previous.durationMs)
-        // Never pin the position to a possibly stale/approximate duration:
-        // clamping here froze the bar at the old value while audio played on.
-        // Display layers already coerce the fraction into [0, 1]. Mask
-        // pre-seek reads so event-driven refreshes can't flash the bar back.
-        val pos = settleSeekPosition(exclusiveAwarePositionMs(player.currentPosition.coerceAtLeast(0)))
+        val reported = settleSeekPosition(exclusiveAwarePositionMs(player.currentPosition.coerceAtLeast(0)))
+        val outputRunning = isPlayingState ||
+            (exclusiveUsbOutput.isActive() && !exclusiveUsbOutput.isPaused() && previous.isPlaying)
+        val trackKey = (current ?: previous.current)?.let { track ->
+            track.videoId?.takeIf { it.isNotBlank() } ?: "${track.title}|${track.artist}"
+        }
+        val pos = smoothPositionMs(reported, outputRunning, dur, trackKey)
         _state.value = MusicPlayerState(
             current = current,
             queue = queue,

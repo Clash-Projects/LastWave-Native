@@ -17,7 +17,7 @@ class QualityBadgeTest {
                     bitrateKbps = 2116,
                 ),
             ),
-        ).isEqualTo("FLAC 24/44.1kHz")
+        ).isEqualTo("24/44.1kHz")
     }
 
     @Test
@@ -32,7 +32,7 @@ class QualityBadgeTest {
                     bitrateKbps = 1411,
                 ),
             ),
-        ).isEqualTo("FLAC 16/44.1kHz")
+        ).isEqualTo("16/44.1kHz")
     }
 
     @Test
@@ -46,7 +46,7 @@ class QualityBadgeTest {
                     audioCodec = "HI-RES FLAC",
                 ),
             ),
-        ).isEqualTo("FLAC 24/96kHz")
+        ).isEqualTo("24/96kHz")
     }
 
     @Test
@@ -63,7 +63,7 @@ class QualityBadgeTest {
                     bitDepth = 16,
                 ),
             ),
-        ).isEqualTo("FLAC 16/44.1kHz")
+        ).isEqualTo("16/44.1kHz")
     }
 
     @Test
@@ -77,7 +77,7 @@ class QualityBadgeTest {
                     samplingRateKHz = 44.1,
                 ),
             ),
-        ).isEqualTo("FLAC 16/44.1kHz")
+        ).isEqualTo("16/44.1kHz")
     }
 
     @Test
@@ -92,7 +92,7 @@ class QualityBadgeTest {
                     bitrateKbps = 768,
                 ),
             ),
-        ).isEqualTo("DOLBY ATMOS")
+        ).isEqualTo("ATMOS")
         assertThat(spatialIndicatorLabel("DOLBY ATMOS")).isEqualTo("ATMOS")
         assertThat(spatialIndicatorLabel("SPATIAL AUDIO")).isEqualTo("SPATIAL")
     }
@@ -103,7 +103,7 @@ class QualityBadgeTest {
             qualityBadgeLabel(
                 MusicPlayerState(audioCodec = "SPATIAL AUDIO", isLossless = true, bitDepth = 24, samplingRateKHz = 48.0),
             ),
-        ).isEqualTo("SPATIAL AUDIO")
+        ).isEqualTo("SPATIAL")
     }
 
     @Test

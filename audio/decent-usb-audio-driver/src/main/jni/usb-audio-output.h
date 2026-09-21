@@ -102,8 +102,16 @@ struct UsbAudioContext {
     /** Whether ring buffers have been allocated. */
     bool ringAllocated;
 
-    /** Fractional accumulator for sample-rate-to-packet-size conversion. */
+    /** Fractional accumulator kept only as a fallback; packet sizes use [microframeIndex]. */
     double frameAccumulator;
+
+    /**
+     * Monotonic USB microframe index. Packet size is
+     * floor(rate*(n+step)/8000) - floor(rate*n/8000), which is the UAC
+     * pattern (44.1 → 5/6, 88.2 → 11/12, 176.4 → 22/23, 352.8 → 44/45).
+     * Advanced only when the URB is actually submitted.
+     */
+    int64_t microframeIndex;
 
     /**
      * Frames per microframe, calibrated from the DAC's async feedback endpoint.

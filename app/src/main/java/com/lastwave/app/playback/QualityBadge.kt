@@ -5,15 +5,13 @@ import kotlin.math.roundToInt
 /**
  * Now-playing quality pill text.
  *
- * Lossless is `FLAC 24/44.1kHz` (codec + bit depth / sample rate), never a
- * truncated PCM bitrate like `FLAC 1411 kbps`. Spatial mixes keep a short
- * dedicated badge so they are not mistaken for stereo FLAC.
+ * Lossless is `24/44.1kHz` (bit depth / sample rate). The pill is narrow,
+ * so the codec name is not prefixed. Spatial mixes use a short `ATMOS` or
+ * `SPATIAL` badge.
  */
 fun qualityBadgeLabel(state: MusicPlayerState): String {
     val spatial = spatialIndicatorLabel(state.audioCodec)
-    if (spatial != null) {
-        return if (spatial == "ATMOS") "DOLBY ATMOS" else "SPATIAL AUDIO"
-    }
+    if (spatial != null) return spatial
 
     val codec = state.audioCodec
     val flacLike = isFlacLikeCodec(codec) || state.isLossless
@@ -21,7 +19,10 @@ fun qualityBadgeLabel(state: MusicPlayerState): String {
     val rate = state.samplingRateKHz
 
     if (flacLike && depth != null && rate != null && rate > 0.0) {
-        return "FLAC $depth/${formatSampleRateKHz(rate)}kHz"
+        return "$depth/${formatSampleRateKHz(rate)}kHz"
+    }
+    if (flacLike && rate != null && rate > 0.0) {
+        return "${formatSampleRateKHz(rate)}kHz"
     }
     if (flacLike) return codec?.takeIf { it.isNotBlank() && !it.equals("AUDIO", true) } ?: "FLAC"
 

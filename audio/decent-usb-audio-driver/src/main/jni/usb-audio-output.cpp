@@ -425,6 +425,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioCreate(
     ctx->urbsInFlight = 0;
     ctx->ringAllocated = false;
     ctx->frameAccumulator = 0.0;
+    ctx->microframeIndex = 0;
     ctx->residualBytes = 0;
     int microframes = 1;
     if (interval > 1 && interval <= 16) {
@@ -487,6 +488,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioStart(
     ctx->reapIdx = 0;
     ctx->urbsInFlight = 0;
     ctx->frameAccumulator = 0.0;
+    ctx->microframeIndex = 0;
     ctx->residualBytes = 0;
 
     double nominalFpmf = (ctx->sampleRate / 8000.0) * (ctx->isoMicroframes > 0 ? ctx->isoMicroframes : 1);
@@ -585,6 +587,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeFlush(
     auto *ctx = reinterpret_cast<UsbAudioContext *>(h);
     if (!ctx) return;
     ctx->frameAccumulator = 0.0;
+    ctx->microframeIndex = 0;
     ctx->residualBytes = 0;
     ctx->framesWritten = 0;
     LOGI("Flush: frameAccumulator, residual, and framesWritten reset");
@@ -722,55 +725,56 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
     }
 
     int offset = 0;
-    // Use calibrated fpmf from DAC's async feedback endpoint (read at start).
-    // This matches the DAC's actual hardware clock instead of the nominal rate.
-    double fpmf = ctx->calibratedFpmf;
+    // Nominal UAC packet pattern. Do not follow live async feedback: reaping
+    // that URB on this thread jittered 88.2/176.4/352.8 into a 1 ms buzz.
+    // 48 kHz-family rates are an integer number of frames per microframe;
+    // the 44.1 family alternates (88.2 → 11/12). Integer division below is
+    // the pattern the DAC's async buffer is sized for.
+    const int step = ctx->isoMicroframes > 0 ? ctx->isoMicroframes : 1;
 
     while (offset < dataLen && ctx->running.load() && !ctx->paused.load()) {
         int pktSizes[USB_AUDIO_PACKETS_PER_URB];
         int numPackets = 0;
         int urbBytes = 0;
+        // Phase is committed only when this URB is submitted. A short tail
+        // that is saved for the next write() must not consume microframes,
+        // or 11/12, 22/23 and 44/45 drift off the DAC and buzz at 1 kHz.
+        const int64_t savedIndex = ctx->microframeIndex;
 
         for (int p = 0; p < USB_AUDIO_PACKETS_PER_URB; p++) {
             int remaining = dataLen - offset - urbBytes;
             if (remaining <= 0) break;
 
-            ctx->frameAccumulator += fpmf;
-            int frames = (int)ctx->frameAccumulator;
-            ctx->frameAccumulator -= frames;
+            int64_t index = ctx->microframeIndex;
+            int64_t startFrames = (static_cast<int64_t>(ctx->sampleRate) * index) / 8000;
+            int64_t endFrames = (static_cast<int64_t>(ctx->sampleRate) * (index + step)) / 8000;
+            int frames = static_cast<int>(endFrames - startFrames);
+            if (frames < 1) frames = 1;
             int b = frames * ctx->bytesPerFrame;
             if (ctx->maxPacketSize > 0 && b > ctx->maxPacketSize) {
                 int maxFrames = ctx->maxPacketSize / ctx->bytesPerFrame;
-                if (maxFrames < 1) {
-                    ctx->frameAccumulator += frames;
-                    break;
-                }
-                // Put unsent frames back. Dropping them permanently under-runs
-                // 88.2/176.4/352.8 (needs 12/23/45 frames per µframe).
-                ctx->frameAccumulator += (frames - maxFrames);
+                if (maxFrames < 1) break;
                 frames = maxFrames;
                 b = frames * ctx->bytesPerFrame;
             }
             if (urbBytes + b > USB_AUDIO_URB_BUFFER_SIZE) break;
-
-            if (b > remaining) {
-                // Not enough data for a full packet — don't truncate.
-                // Save remaining data for next call to avoid short ISO packets
-                // that create silence microframes in the xHCI schedule.
-                break;
-            }
+            if (b > remaining) break;
 
             pktSizes[p] = b;
             urbBytes += b;
             numPackets++;
+            ctx->microframeIndex = index + step;
         }
-        if (numPackets <= 0 || urbBytes <= 0) break;
+        if (numPackets <= 0 || urbBytes <= 0) {
+            ctx->microframeIndex = savedIndex;
+            break;
+        }
 
         // Never submit short URBs (< full packet count). Short URBs create
         // empty ISO microframes in the xHCI schedule — the DAC receives
         // silence for those microframes → audible click/pop.
-        // Instead, save leftover data for the next write() call.
         if (numPackets < USB_AUDIO_PACKETS_PER_URB) {
+            ctx->microframeIndex = savedIndex;
             int leftover = dataLen - offset;
             if (leftover > 0 && leftover < (int)sizeof(ctx->residualBuffer)) {
                 memcpy(ctx->residualBuffer, data + offset, leftover);
@@ -780,7 +784,10 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
         }
 
         if (ctx->urbsInFlight >= USB_AUDIO_NUM_URBS) {
-            if (ctx->paused.load()) break;
+            if (ctx->paused.load()) {
+                ctx->microframeIndex = savedIndex;
+                break;
+            }
             int result = reapOldestUrb(ctx, 200);
             if (result == -2) {
                 LOGE("submitPcmToUrbs: reap timeout, inflight=%d", ctx->urbsInFlight);
@@ -800,6 +807,7 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
 
         if (urbBytes > USB_AUDIO_URB_BUFFER_SIZE) {
             LOGE("submitPcmToUrbs: urbBytes=%d exceeds buffer", urbBytes);
+            ctx->microframeIndex = savedIndex;
             break;
         }
         if (submitRingUrb(ctx, pktSizes, numPackets, urbBytes) < 0) {

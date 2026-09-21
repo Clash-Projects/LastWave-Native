@@ -2782,7 +2782,7 @@ private fun PlayerUtilityControls(state: MusicPlayerState, player: MusicPlayer, 
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,
             onClick = { showSignalPath = true },
-            modifier = Modifier.weight(1.3f).height(if (isTranslucent) 44.dp else 48.dp)
+            modifier = Modifier.weight(1.8f).height(if (isTranslucent) 44.dp else 48.dp)
                 .liquidGlassChrome(RoundedCornerShape(24.dp), LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls),
         ) {
             Row(
@@ -2797,9 +2797,13 @@ private fun PlayerUtilityControls(state: MusicPlayerState, player: MusicPlayer, 
                     modifier = Modifier.size(17.dp),
                 )
                 Text(
-                    qualityBadgeLabel(state) + if (signalPath.bitPerfect) " • " + stringResource(com.lastwave.app.R.string.signal_bit_perfect) else "",
+                    qualityBadgeLabel(state),
                     style = if (isTranslucent) MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.3.sp) else MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = if (isTranslucent) Color.White.copy(alpha = 0.90f) else Color.Unspecified,
+                    color = when {
+                        signalPath.bitPerfect -> Color(0xFFE6C15A)
+                        isTranslucent -> Color.White.copy(alpha = 0.90f)
+                        else -> Color.Unspecified
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(start = 5.dp),

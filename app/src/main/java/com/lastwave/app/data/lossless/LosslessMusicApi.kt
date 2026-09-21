@@ -511,6 +511,10 @@ class LosslessMusicApi @Inject constructor(
         if (quality == QUALITY_DOLBY_ATMOS) {
             fetchTidalAtmosStream(candidate, creds)?.let { return it }
             fetchTidalSpatialStream(candidate, creds)?.let { return it }
+            for (param in listOf("DOLBY_ATMOS", "ATMOS", "DOLBY")) {
+                val spatial = fetchTrackQualityParam(candidate, param, creds) ?: continue
+                if (spatial.audioCodecOverride != null) return spatial
+            }
             return null
         }
 
@@ -521,7 +525,22 @@ class LosslessMusicApi @Inject constructor(
             QUALITY_DATA_SAVER -> "LOW"
             else -> "LOSSLESS"
         }
+        return loadTrackManifest(candidate, qualityParam, quality, creds)
+    }
 
+    private suspend fun fetchTrackQualityParam(
+        candidate: TidalCandidateItem,
+        qualityParam: String,
+        creds: BackendCredentials,
+    ): LosslessAudioStream? =
+        loadTrackManifest(candidate, qualityParam, QUALITY_DOLBY_ATMOS, creds)
+
+    private suspend fun loadTrackManifest(
+        candidate: TidalCandidateItem,
+        qualityParam: String,
+        quality: Int,
+        creds: BackendCredentials,
+    ): LosslessAudioStream? {
         val url = "${creds.baseUrl}/track/?id=${candidate.id}&quality=$qualityParam"
         val reqBuilder = Request.Builder().url(url).get()
         if (creds.apiKey.isNotBlank()) reqBuilder.addHeader("X-API-Key", creds.apiKey)
@@ -547,13 +566,31 @@ class LosslessMusicApi @Inject constructor(
             val bitDepth = data.optInt("bitDepth", 16)
             val sampleRate = data.optDouble("sampleRate", 44100.0)
             val audioQuality = data.optString("audioQuality", "LOSSLESS")
-            val formatId = when (audioQuality.uppercase()) {
-                "HI_RES_LOSSLESS", "HI_RES" -> QUALITY_MAX_HI_RES
-                "LOSSLESS" -> QUALITY_CD_LOSSLESS
-                "HIGH" -> QUALITY_MP3_320
-                "LOW" -> QUALITY_DATA_SAVER
+            val manifestUrl = "data:application/dash+xml;base64,$manifest"
+            val manifestIsAtmos = isAtmosStreamUrl(manifestUrl) || isAtmosManifest(
+                runCatching {
+                    String(android.util.Base64.decode(manifest, android.util.Base64.DEFAULT), Charsets.UTF_8)
+                }.getOrDefault(""),
+            )
+            val manifestIsSpatial = !manifestIsAtmos && runCatching {
+                isSpatialManifest(String(android.util.Base64.decode(manifest, android.util.Base64.DEFAULT), Charsets.UTF_8))
+            }.getOrDefault(false)
+            val qualityUpper = audioQuality.uppercase()
+            val formatId = when {
+                manifestIsAtmos || manifestIsSpatial -> QUALITY_DOLBY_ATMOS
+                qualityUpper == "HI_RES_LOSSLESS" || qualityUpper == "HI_RES" -> QUALITY_MAX_HI_RES
+                qualityUpper == "LOSSLESS" -> QUALITY_CD_LOSSLESS
+                qualityUpper == "HIGH" -> QUALITY_MP3_320
+                qualityUpper == "LOW" -> QUALITY_DATA_SAVER
                 else -> quality
             }
+            val codecOverride = when {
+                manifestIsAtmos -> "DOLBY ATMOS"
+                manifestIsSpatial -> "SPATIAL AUDIO"
+                else -> null
+            }
+            // A spatial request that came back as stereo FLAC is not Atmos.
+            if (quality == QUALITY_DOLBY_ATMOS && codecOverride == null) return null
             val samplingRateKHz = if (sampleRate > 1000) sampleRate / 1000.0 else sampleRate
             val bitrateKbps = if (formatId == QUALITY_MP3_320) 320 else if (formatId == QUALITY_DATA_SAVER) 96
             else ((bitDepth * samplingRateKHz * 2 * 1000) / 1000).toInt()
@@ -567,6 +604,7 @@ class LosslessMusicApi @Inject constructor(
                 bitrateKbps = bitrateKbps,
                 trackId = candidate.id,
                 durationSeconds = candidate.duration,
+                audioCodecOverride = codecOverride,
             )
         } catch (_: Exception) {
             null
