@@ -382,11 +382,10 @@ class MusicPlayer @Inject constructor(
      */
     @Volatile private var lastSeekTargetMs = -1L
     @Volatile private var lastSeekAtElapsedMs = 0L
-    /** Wall-clock progress anchor so the seek bar keeps moving when ExoPlayer's timeline stalls. */
-    @Volatile private var progressAnchorPosMs = 0L
-    @Volatile private var progressAnchorWallMs = 0L
-    @Volatile private var progressAnchorPlaying = false
-    @Volatile private var progressAnchorTrackKey: String? = null
+    @Volatile private var playheadPosMs = 0L
+    @Volatile private var playheadWallMs = 0L
+    @Volatile private var playheadMoving = false
+    @Volatile private var playheadKey: String? = null
     private val _signalPath = MutableStateFlow(SignalPathReport.initial())
     /** Verified signal-path report; BIT-PERFECT shows only when all checks pass. */
     val signalPath: StateFlow<SignalPathReport> = _signalPath.asStateFlow()
@@ -535,7 +534,9 @@ class MusicPlayer @Inject constructor(
                     it.copy(
                         current = currentTrack,
                         currentIndex = currentIndex,
-                        positionMs = player.currentPosition.coerceAtLeast(0L),
+                        positionMs = player.currentPosition.coerceAtLeast(0L).let { raw ->
+                            if (raw > 1_500L) 0L else raw
+                        },
                         bufferedPositionMs = player.bufferedPosition.coerceAtLeast(0L),
                         durationMs = effectiveDuration(player.duration, player, it.durationMs),
                         queue = if (currentQueue.isNotEmpty()) currentQueue else it.queue,
@@ -1019,12 +1020,17 @@ class MusicPlayer @Inject constructor(
                 // below, including crossfade handoffs and track mismatches.
                 var cadenceMs = 500L
                 try {
+                    val playingNow = _state.value.isPlaying && !exclusiveUsbOutput.isPaused()
+                    val playhead = advancePlayhead(playingNow)
+                    if (playhead != _state.value.positionMs) {
+                        _state.update { it.copy(positionMs = playhead) }
+                    }
                     if (!isCasting && exclusiveUsbOutput.isActive()) {
                         // Never touch ExoPlayer here. Its playback thread holds
                         // the player lock inside the blocking USB write, so a
                         // currentPosition read froze the seek bar after the
                         // first buffer and left drift on "measuring…".
-                        publishExclusiveProgress()
+                        publishExclusiveDrift()
                         cadenceMs = if (exclusiveUsbOutput.isPaused()) 250L else 60L
                     } else if (isCasting) {
                         val remaining = sleepTimerDeadlineMs?.minus(SystemClock.elapsedRealtime())
@@ -1047,17 +1053,7 @@ class MusicPlayer @Inject constructor(
                             cadenceMs = 60L
                         } else {
                             val dur = effectiveDuration(player.duration, player, _state.value.durationMs)
-                            val reported = settleSeekPosition(
-                                exclusiveAwarePositionMs(player.currentPosition.coerceAtLeast(0)),
-                            )
-                            val outputRunning = player.isPlaying ||
-                                (_state.value.isPlaying &&
-                                    exclusiveUsbOutput.isActive() &&
-                                    !exclusiveUsbOutput.isPaused())
-                            val trackKey = _state.value.current?.let { track ->
-                                track.videoId?.takeIf { it.isNotBlank() } ?: "${track.title}|${track.artist}"
-                            }
-                            val pos = smoothPositionMs(reported, outputRunning, dur, trackKey)
+                            val pos = _state.value.positionMs
                             val buf = player.bufferedPosition.coerceAtLeast(0)
                             val sleepRemaining = remaining?.coerceAtLeast(0)
 
@@ -1139,7 +1135,7 @@ class MusicPlayer @Inject constructor(
                     }
 
                     val previous = _state.value
-                    val unchanged = !outputRunning &&
+                    val unchanged = !_state.value.isPlaying &&
                         previous.positionMs == pos &&
                         previous.bufferedPositionMs == buf &&
                         previous.durationMs == dur &&
@@ -1166,7 +1162,7 @@ class MusicPlayer @Inject constructor(
                             // Preserve lazy player startup when there is no
                             // restored or active queue. The short-circuit
                             // avoids touching ExoPlayer.
-                            cadenceMs = if (outputRunning) 60L else 500L
+                            cadenceMs = if (_state.value.isPlaying) 60L else 500L
                             }
                         }
                     }
@@ -1700,24 +1696,49 @@ class MusicPlayer @Inject constructor(
         return (us / 1_000L).coerceAtLeast(0L)
     }
 
-    private fun exclusivePositionMs(durationMs: Long, fallbackMs: Long): Long {
-        val us = exclusiveUsbOutput.getCurrentPositionUs()
-        if (us == androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET) return fallbackMs
-        val ms = (us / 1_000L).coerceAtLeast(0L)
-        return if (durationMs > 0L) ms.coerceAtMost(durationMs) else ms
+    /**
+     * Seek bar clock. ExoPlayer's position stays at 0 in normal playback and
+     * at the end in bit-perfect playback, so the bar follows wall time while
+     * the track is actually playing, and a seek target when the user scrubs.
+     */
+    private fun advancePlayhead(playing: Boolean): Long {
+        val now = SystemClock.elapsedRealtime()
+        val key = _state.value.current?.let { track ->
+            track.videoId?.takeIf { it.isNotBlank() } ?: "${track.title}|${track.artist}"
+        }
+        val seekAge = now - lastSeekAtElapsedMs
+        if (lastSeekTargetMs >= 0L && seekAge in 0..SEEK_SETTLE_WINDOW_MS) {
+            playheadPosMs = lastSeekTargetMs
+            playheadWallMs = now
+            playheadKey = key
+            playheadMoving = playing
+            return playheadPosMs
+        }
+        if (key != playheadKey) {
+            playheadKey = key
+            playheadPosMs = 0L
+            playheadWallMs = now
+            playheadMoving = playing
+            return 0L
+        }
+        if (!playing) {
+            if (playheadMoving) {
+                playheadPosMs += (now - playheadWallMs).coerceAtLeast(0L)
+                playheadMoving = false
+            }
+            playheadWallMs = now
+            return playheadPosMs
+        }
+        if (!playheadMoving) {
+            playheadWallMs = now
+            playheadMoving = true
+        }
+        val pos = playheadPosMs + (now - playheadWallMs).coerceAtLeast(0L)
+        val dur = _state.value.durationMs
+        return if (dur > 0L) pos.coerceAtMost(dur) else pos
     }
 
-    /**
-     * Exclusive USB progress. Reads only the DAC frame clock. Calling into
-     * ExoPlayer here blocks on the same lock the USB write holds, which froze
-     * the seek bar and starved the drift sample.
-     */
-    private fun publishExclusiveProgress() {
-        val snapshot = _state.value
-        val pos = exclusivePositionMs(snapshot.durationMs, snapshot.positionMs)
-        if (pos != snapshot.positionMs) {
-            _state.update { it.copy(positionMs = pos) }
-        }
+    private fun publishExclusiveDrift() {
         if (exclusiveUsbOutput.isPaused()) return
         val now = SystemClock.elapsedRealtime()
         if (now - lastSignalPathMs < SIGNAL_PATH_TICK_MS) return
@@ -1731,60 +1752,11 @@ class MusicPlayer @Inject constructor(
                 true,
             )
         }
-        val drift = healthTracker.driftPpm
-        val glitches = healthTracker.glitchCount
         _signalPath.value = _signalPath.value.copy(
-            driftPpm = drift,
-            glitchCount = glitches,
-            isPlaying = snapshot.isPlaying,
+            driftPpm = healthTracker.driftPpm,
+            glitchCount = healthTracker.glitchCount,
+            isPlaying = _state.value.isPlaying,
         )
-    }
-
-    /**
-     * Seek-bar position. ExoPlayer's timeline (and the exclusive sink, until
-     * the first USB write) can sit still while audio plays — DASH flushes and
-     * a blocked renderer both do this. While output is running, advance from
-     * the last real report using wall time, and only jump when the reporter
-     * seeks.
-     */
-    private fun smoothPositionMs(
-        reportedMs: Long,
-        playing: Boolean,
-        durationMs: Long,
-        trackKey: String?,
-    ): Long {
-        val now = SystemClock.elapsedRealtime()
-        if (trackKey != progressAnchorTrackKey) {
-            progressAnchorTrackKey = trackKey
-            progressAnchorPlaying = false
-        }
-        fun clamp(ms: Long) = if (durationMs > 0L) ms.coerceIn(0L, durationMs) else ms.coerceAtLeast(0L)
-        if (!playing) {
-            progressAnchorPosMs = reportedMs
-            progressAnchorWallMs = now
-            progressAnchorPlaying = false
-            return clamp(reportedMs)
-        }
-        if (!progressAnchorPlaying) {
-            progressAnchorPosMs = reportedMs
-            progressAnchorWallMs = now
-            progressAnchorPlaying = true
-            return clamp(reportedMs)
-        }
-        val predicted = progressAnchorPosMs + (now - progressAnchorWallMs).coerceAtLeast(0L)
-        val seekBack = reportedMs + 1_200L < minOf(predicted, progressAnchorPosMs)
-        val seekForward = reportedMs > predicted + 1_200L
-        if (seekBack || seekForward) {
-            progressAnchorPosMs = reportedMs
-            progressAnchorWallMs = now
-            return clamp(reportedMs)
-        }
-        if (reportedMs >= predicted - 80L && reportedMs > progressAnchorPosMs) {
-            progressAnchorPosMs = reportedMs
-            progressAnchorWallMs = now
-            return clamp(reportedMs)
-        }
-        return clamp(maxOf(reportedMs, predicted))
     }
 
     @MainThread
@@ -4501,15 +4473,7 @@ class MusicPlayer @Inject constructor(
         // TIME_UNSET (buffering / container not parsed yet): that reset froze
         // the bar at 0:00 and disabled seeking until the next event.
         val dur = effectiveDuration(player.duration, player, previous.durationMs)
-        val pos = if (exclusiveUsbOutput.isActive()) {
-            exclusivePositionMs(dur, previous.positionMs)
-        } else {
-            val reported = settleSeekPosition(player.currentPosition.coerceAtLeast(0))
-            val trackKey = (current ?: previous.current)?.let { track ->
-                track.videoId?.takeIf { it.isNotBlank() } ?: "${track.title}|${track.artist}"
-            }
-            smoothPositionMs(reported, isPlayingState, dur, trackKey)
-        }
+        val pos = previous.positionMs
         _state.value = MusicPlayerState(
             current = current,
             queue = queue,

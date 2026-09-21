@@ -187,21 +187,13 @@ class ExclusiveUsbOutput @Inject constructor(
             }
             val clock = running.framesClock
             if (startMediaTimeNeedsInit) {
-                startMediaTimeUs = presentationTimeUs.coerceAtLeast(0L)
+                // Decoder timestamps are not the playhead. A DASH buffer can
+                // report a presentation time at the end of the window, which
+                // pinned the bit-perfect bar there. Count frames from this
+                // write, starting at 0 unless noteSeek() just placed us.
                 mediaTimeBaseFrames = clock
+                startMediaTimeUs = 0L
                 startMediaTimeNeedsInit = false
-            } else {
-                val estimated = startMediaTimeUs +
-                    (clock - mediaTimeBaseFrames).coerceAtLeast(0L) *
-                    C.MICROS_PER_SECOND / configuredRateHz.coerceAtLeast(1)
-                val delta = kotlin.math.abs(presentationTimeUs - estimated)
-                // Real seeks jump seconds. Decoder flushes often reset PTS
-                // back to 0 — ignore those or the slider sticks at 0:01.
-                val decoderReset = presentationTimeUs < 500_000L && estimated > 1_000_000L
-                if (delta > 1_500_000L && !decoderReset) {
-                    startMediaTimeUs = presentationTimeUs.coerceAtLeast(0L)
-                    mediaTimeBaseFrames = clock
-                }
             }
             recheckClockLocked()
             val remaining = buffer.remaining()
@@ -346,7 +338,7 @@ class ExclusiveUsbOutput @Inject constructor(
         val epOut = endpoints?.first ?: info.endpointOutAddress
         val epFb = (endpoints?.second ?: info.endpointFeedbackAddress).let { if (it < 0) 0 else it }
         val packet = endpoints?.third ?: info.maxPacketSize
-        val interval = 1
+        val interval = device.isoIntervalForAlt(alt)
         val needed = minIsoPacketBytes(sampleRate, channelCount, bits, interval)
         if (epOut < 0 || packet <= 0) return failLocked("no ISO OUT endpoint for alt $alt")
         if (needed > packet) {
