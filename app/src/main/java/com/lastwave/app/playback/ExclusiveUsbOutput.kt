@@ -253,6 +253,8 @@ class ExclusiveUsbOutput @Inject constructor(
     fun handleDiscontinuity() {
         synchronized(lock) {
             stream?.flush()
+            startMediaTimeNeedsInit = true
+            mediaTimeBaseFrames = stream?.framesClock ?: 0L
         }
     }
 
@@ -318,6 +320,8 @@ class ExclusiveUsbOutput @Inject constructor(
         ) {
             paused = false
             reuse.setPaused(false)
+            startMediaTimeNeedsInit = true
+            mediaTimeBaseFrames = reuse.framesClock
             ensureVolumeObserverLocked()
             syncListeningGainLocked()
             return true
@@ -342,7 +346,7 @@ class ExclusiveUsbOutput @Inject constructor(
         val epOut = endpoints?.first ?: info.endpointOutAddress
         val epFb = (endpoints?.second ?: info.endpointFeedbackAddress).let { if (it < 0) 0 else it }
         val packet = endpoints?.third ?: info.maxPacketSize
-        val interval = device.isoIntervalForAlt(alt)
+        val interval = 1
         val needed = minIsoPacketBytes(sampleRate, channelCount, bits, interval)
         if (epOut < 0 || packet <= 0) return failLocked("no ISO OUT endpoint for alt $alt")
         if (needed > packet) {

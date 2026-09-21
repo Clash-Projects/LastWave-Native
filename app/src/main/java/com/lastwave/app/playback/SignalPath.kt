@@ -460,9 +460,9 @@ class StreamHealthTracker {
             return driftPpm
         }
         val wallDelta = wallMs - exclusiveOriginWallMs
-        if (wallDelta < 800L) return driftPpm
+        if (wallDelta < 500L) return driftPpm
         val audioMs = (framesWritten - exclusiveOriginFrames).toDouble() * 1000.0 / rateHz.toDouble()
-        if (wallDelta < 1_000L || audioMs < 50.0) return driftPpm
+        if (audioMs < 200.0) return driftPpm
         val instant = ((audioMs - wallDelta) / wallDelta * 1_000_000.0)
             .coerceIn(-50_000.0, 50_000.0)
         driftPpm = if (driftPpm == null) instant else driftPpm!! * 0.85 + instant * 0.15

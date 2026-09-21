@@ -363,7 +363,7 @@ class NativeProcessingAudioSink(
         clearPending()
         clearEndOfStream()
         if (usbExclusive) {
-            exclusiveUsb?.flush()
+            exclusiveUsb?.handleDiscontinuity()
             return
         }
         if (!processingActive) {

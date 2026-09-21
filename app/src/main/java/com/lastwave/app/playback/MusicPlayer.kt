@@ -1019,7 +1019,14 @@ class MusicPlayer @Inject constructor(
                 // below, including crossfade handoffs and track mismatches.
                 var cadenceMs = 500L
                 try {
-                    if (isCasting) {
+                    if (!isCasting && exclusiveUsbOutput.isActive()) {
+                        // Never touch ExoPlayer here. Its playback thread holds
+                        // the player lock inside the blocking USB write, so a
+                        // currentPosition read froze the seek bar after the
+                        // first buffer and left drift on "measuring…".
+                        publishExclusiveProgress()
+                        cadenceMs = if (exclusiveUsbOutput.isPaused()) 250L else 60L
+                    } else if (isCasting) {
                         val remaining = sleepTimerDeadlineMs?.minus(SystemClock.elapsedRealtime())
                         if (remaining != null && remaining <= 0) {
                             sleepTimerDeadlineMs = null
@@ -1691,6 +1698,46 @@ class MusicPlayer @Inject constructor(
         val us = exclusiveUsbOutput.getCurrentPositionUs()
         if (us == androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET) return fallbackMs
         return (us / 1_000L).coerceAtLeast(0L)
+    }
+
+    private fun exclusivePositionMs(durationMs: Long, fallbackMs: Long): Long {
+        val us = exclusiveUsbOutput.getCurrentPositionUs()
+        if (us == androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET) return fallbackMs
+        val ms = (us / 1_000L).coerceAtLeast(0L)
+        return if (durationMs > 0L) ms.coerceAtMost(durationMs) else ms
+    }
+
+    /**
+     * Exclusive USB progress. Reads only the DAC frame clock. Calling into
+     * ExoPlayer here blocks on the same lock the USB write holds, which froze
+     * the seek bar and starved the drift sample.
+     */
+    private fun publishExclusiveProgress() {
+        val snapshot = _state.value
+        val pos = exclusivePositionMs(snapshot.durationMs, snapshot.positionMs)
+        if (pos != snapshot.positionMs) {
+            _state.update { it.copy(positionMs = pos) }
+        }
+        if (exclusiveUsbOutput.isPaused()) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastSignalPathMs < SIGNAL_PATH_TICK_MS) return
+        lastSignalPathMs = now
+        val rate = exclusiveUsbOutput.currentRateHz()
+        if (rate > 0) {
+            healthTracker.sampleExclusive(
+                exclusiveUsbOutput.framesWritten(),
+                rate,
+                now,
+                true,
+            )
+        }
+        val drift = healthTracker.driftPpm
+        val glitches = healthTracker.glitchCount
+        _signalPath.value = _signalPath.value.copy(
+            driftPpm = drift,
+            glitchCount = glitches,
+            isPlaying = snapshot.isPlaying,
+        )
     }
 
     /**
@@ -4454,13 +4501,15 @@ class MusicPlayer @Inject constructor(
         // TIME_UNSET (buffering / container not parsed yet): that reset froze
         // the bar at 0:00 and disabled seeking until the next event.
         val dur = effectiveDuration(player.duration, player, previous.durationMs)
-        val reported = settleSeekPosition(exclusiveAwarePositionMs(player.currentPosition.coerceAtLeast(0)))
-        val outputRunning = isPlayingState ||
-            (exclusiveUsbOutput.isActive() && !exclusiveUsbOutput.isPaused() && previous.isPlaying)
-        val trackKey = (current ?: previous.current)?.let { track ->
-            track.videoId?.takeIf { it.isNotBlank() } ?: "${track.title}|${track.artist}"
+        val pos = if (exclusiveUsbOutput.isActive()) {
+            exclusivePositionMs(dur, previous.positionMs)
+        } else {
+            val reported = settleSeekPosition(player.currentPosition.coerceAtLeast(0))
+            val trackKey = (current ?: previous.current)?.let { track ->
+                track.videoId?.takeIf { it.isNotBlank() } ?: "${track.title}|${track.artist}"
+            }
+            smoothPositionMs(reported, isPlayingState, dur, trackKey)
         }
-        val pos = smoothPositionMs(reported, outputRunning, dur, trackKey)
         _state.value = MusicPlayerState(
             current = current,
             queue = queue,
