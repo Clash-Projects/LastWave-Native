@@ -49,13 +49,14 @@ class ExclusiveUsbOutput @Inject constructor(
     private var usb: UsbAudioDevice? = null
     private var sourceEncoding = 0
     private var useFloatWrite = false
-    private var startMediaTimeUs = 0L
-    private var startMediaTimeNeedsInit = true
+    @Volatile private var startMediaTimeUs = 0L
+    @Volatile private var startMediaTimeNeedsInit = true
     private var pendingVolume = 1f
     private var featureVolume: UacFeatureVolume? = null
     private var clockRechecked = false
     private var volumeReceiverRegistered = false
-    private var lastAppliedCombined = Float.NaN
+    @Volatile private var lastAppliedCombined = Float.NaN
+    private var volumeProbed = false
 
     private val audioManager: AudioManager? =
         appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
@@ -105,7 +106,17 @@ class ExclusiveUsbOutput @Inject constructor(
     fun currentRateHz(): Int = if (active) configuredRateHz else 0
 
     fun syncListeningGain() {
-        synchronized(lock) { syncListeningGainLocked() }
+        val next = readStreamMusicGain() ?: return
+        if (lastAppliedCombined.isFinite() &&
+            kotlin.math.abs(next - listeningGain) < 1e-4f
+        ) {
+            listeningGain = next
+            return
+        }
+        synchronized(lock) {
+            listeningGain = next
+            applyVolumeLocked()
+        }
     }
 
     fun configure(format: Format): Boolean {
@@ -161,21 +172,33 @@ class ExclusiveUsbOutput @Inject constructor(
     }
 
     fun getCurrentPositionUs(): Long {
+        val running = stream ?: return androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET
+        if (!active || startMediaTimeNeedsInit || configuredRateHz <= 0) {
+            return androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET
+        }
+        return startMediaTimeUs + running.framesWritten * C.MICROS_PER_SECOND / configuredRateHz
+    }
+
+    /**
+     * Writes are blocking and consume the Media3 buffer. Reporting "pending"
+     * while the ISO stream is merely alive makes ExoPlayer wait to drain an
+     * AudioTrack that does not exist — next-track / seek stalls for seconds.
+     */
+    fun hasPendingData(): Boolean = false
+
+    fun flush() {
         synchronized(lock) {
-            val running = stream ?: return androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET
-            if (!active || startMediaTimeNeedsInit || configuredRateHz <= 0) {
-                return androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET
-            }
-            return startMediaTimeUs + running.framesWritten * C.MICROS_PER_SECOND / configuredRateHz
+            stream?.flush()
+            startMediaTimeNeedsInit = true
         }
     }
 
-    fun hasPendingData(): Boolean {
-        val running = stream
-        return active && running != null && running.isAlive
-    }
-
-    fun flush() {
+    /**
+     * ExoPlayer sink reset between items. Keep the USB session so the next
+     * configure can reuse the stream instead of closeDevice + Feature Unit
+     * re-probe (seconds of control-transfer timeouts).
+     */
+    fun prepareForNextItem() {
         synchronized(lock) {
             stream?.flush()
             startMediaTimeNeedsInit = true
@@ -285,9 +308,12 @@ class ExclusiveUsbOutput @Inject constructor(
 
         ensureVolumeObserverLocked()
         syncListeningGainLocked()
-        val volume = UacFeatureVolume(info.connection, info.controlInterfaceId)
-        hardwareVolume = volume.attach()
-        featureVolume = if (hardwareVolume) volume else null
+        if (!volumeProbed) {
+            volumeProbed = true
+            val volume = UacFeatureVolume(info.connection, info.controlInterfaceId)
+            hardwareVolume = volume.attach()
+            featureVolume = if (hardwareVolume) volume else null
+        }
         applyVolumeLocked()
         Log.i(
             TAG,
@@ -332,12 +358,16 @@ class ExclusiveUsbOutput @Inject constructor(
         volumeReceiverRegistered = false
     }
 
-    private fun syncListeningGainLocked() {
-        val manager = audioManager ?: return
+    private fun readStreamMusicGain(): Float? {
+        val manager = audioManager ?: return null
         val max = runCatching { manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }.getOrDefault(0)
-        if (max <= 0) return
+        if (max <= 0) return null
         val vol = runCatching { manager.getStreamVolume(AudioManager.STREAM_MUSIC) }.getOrDefault(max)
-        listeningGain = vol.coerceIn(0, max).toFloat() / max
+        return vol.coerceIn(0, max).toFloat() / max
+    }
+
+    private fun syncListeningGainLocked() {
+        listeningGain = readStreamMusicGain() ?: return
         applyVolumeLocked()
     }
 
@@ -374,6 +404,7 @@ class ExclusiveUsbOutput @Inject constructor(
         }
         usb = null
         featureVolume = null
+        volumeProbed = false
         hardwareVolume = false
         clockMatched = false
         configuredRateHz = 0

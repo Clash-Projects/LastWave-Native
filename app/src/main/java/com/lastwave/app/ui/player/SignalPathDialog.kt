@@ -152,9 +152,10 @@ fun SignalPathDialog(
                 } else {
                     stringResource(R.string.signal_idle)
                 }
-                // Never claim both at once: a passing verdict means the mixer
-                // granted direct output, otherwise the shared mix applies.
-                val routeTrack = if (report.bitPerfect) {
+                // Exclusive usbdevfs never uses AudioTrack. Gold is a stricter
+                // verdict (clock + unity/FU + DSP off); do not call exclusive
+                // output "Shared AudioTrack" just because a metadata check failed.
+                val routeTrack = if (report.usbExclusiveActive || report.bitPerfect) {
                     stringResource(R.string.signal_direct_track)
                 } else {
                     stringResource(R.string.signal_shared_track)

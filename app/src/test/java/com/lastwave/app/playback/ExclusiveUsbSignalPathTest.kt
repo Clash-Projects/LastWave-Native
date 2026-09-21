@@ -93,6 +93,22 @@ class ExclusiveUsbSignalPathTest {
         assertThat(report.bitPerfect).isTrue()
     }
 
+    @Test
+    fun exclusiveUsesDecodedOutputRateWhenSourceMetadataMissing() {
+        val report = evaluateSignalPath(
+            exclusiveInput().copy(
+                sourceRateHz = null,
+                sourceBitDepth = null,
+                appOutputRateHz = 44100,
+            ),
+        )
+        assertThat(report.bitPerfect).isTrue()
+        assertThat(report.sourceRateHz).isEqualTo(44100)
+        assertThat(report.appRateHz).isEqualTo(44100)
+        assertThat(report.usbExclusiveActive).isTrue()
+        assertThat(report.checks.all { it.passed }).isTrue()
+    }
+
     private fun exclusiveInput() = SignalPathInput(
         sourceLabel = "FLAC",
         sourceRateHz = 96000,

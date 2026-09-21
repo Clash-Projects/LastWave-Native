@@ -25,7 +25,7 @@ class UacFeatureVolume(
 
     fun attach(): Boolean {
         available = false
-        val ids = parseFeatureUnitIds() + FALLBACK_UNIT_IDS.toList()
+        val ids = parseFeatureUnitIds().ifEmpty { FALLBACK_UNIT_IDS.toList() }
         for (id in ids.distinct()) {
             val found = discoverChannels(id)
             if (found.isEmpty()) continue

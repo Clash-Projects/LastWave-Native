@@ -602,7 +602,7 @@ class NativeProcessingAudioSink(
 
     override fun hasPendingData(): Boolean =
         if (usbExclusive) {
-            !exclusiveEnded && exclusiveUsb?.hasPendingData() == true
+            false
         } else {
             pendingOutput?.hasRemaining() == true ||
                 endOfStreamOutput?.hasRemaining() == true ||
@@ -936,10 +936,15 @@ class NativeProcessingAudioSink(
 
     override fun reset() {
         usbOutput?.setFormat(null)
-        exclusiveUsb?.reset()
-        usbExclusive = false
-        exclusiveEnded = false
-        exclusiveStartFailed = false
+        if (usbExclusive && exclusiveWanted) {
+            exclusiveUsb?.prepareForNextItem()
+            exclusiveEnded = false
+        } else {
+            exclusiveUsb?.reset()
+            usbExclusive = false
+            exclusiveEnded = false
+            exclusiveStartFailed = false
+        }
         clearPending()
         clearEndOfStream()
         configuredFormat = null
@@ -949,7 +954,7 @@ class NativeProcessingAudioSink(
         processingActive = false
         playing = false
         hasConfigured = false
-        bitPerfectAtConfigure = false
+        bitPerfectAtConfigure = usbExclusive
         notifyPlatformEffectsRequired(false)
         safeResetProcessor()
         safeReset(enhancedDelegate)

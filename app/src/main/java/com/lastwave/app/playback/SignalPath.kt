@@ -85,6 +85,7 @@ data class SignalPathReport(
     val driftPpm: Double?,
     val glitchCount: Long,
     val isPlaying: Boolean,
+    val usbExclusiveActive: Boolean = false,
 ) {
     companion object {
         fun initial() = SignalPathReport(
@@ -100,6 +101,7 @@ data class SignalPathReport(
             driftPpm = null,
             glitchCount = 0L,
             isPlaying = false,
+            usbExclusiveActive = false,
         )
     }
 }
@@ -112,8 +114,11 @@ fun AudioManager.mixerRateHz(): Int = runCatching {
 fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
     val checks = mutableListOf<PathCheck>()
 
-    // 1 — Source format.
+    // 1 — Source format. Exclusive usbdevfs is clocked by the decoded PCM
+    // rate, so a missing container/tag rate still uses the exclusive output
+    // rate rather than failing gold as "unknown".
     val src = i.sourceRateHz?.takeIf { it > 0 }
+        ?: i.appOutputRateHz.takeIf { it > 0 && i.usbExclusiveActive }
     val bitDepth = i.sourceBitDepth?.takeIf { it > 0 }
     if (src != null) {
         if (bitDepth != null) {
@@ -373,6 +378,7 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
         driftPpm = i.driftPpm,
         glitchCount = i.glitchCount,
         isPlaying = i.isPlaying,
+        usbExclusiveActive = i.usbExclusiveActive,
     )
 }
 

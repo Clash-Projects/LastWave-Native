@@ -872,6 +872,14 @@ class MusicPlayer @Inject constructor(
                         format: androidx.media3.common.Format,
                     ) {
                         runCatching { effects.setReplayGainFromFormat(format) }
+                        val rateHz = format.sampleRate
+                        if (rateHz > 0) {
+                            _state.update { snapshot ->
+                                val kHz = rateHz / 1000.0
+                                if (snapshot.samplingRateKHz == kHz) snapshot
+                                else snapshot.copy(samplingRateKHz = kHz)
+                            }
+                        }
                     }
                 })
                 setAudioAttributes(
@@ -1897,10 +1905,19 @@ class MusicPlayer @Inject constructor(
             healthTracker.reset()
         }
         val initialized = playerDelegate.isInitialized()
+        val exclusive = exclusiveUsbOutput.isActive() || audioSinks.any { sink ->
+            runCatching { sink.isExclusiveUsbActive() }.getOrDefault(false)
+        }
+        val exclusiveRate = exclusiveUsbOutput.currentRateHz()
+        val appRateHz = if (exclusive && exclusiveRate > 0) {
+            exclusiveRate
+        } else {
+            audioSinks.firstNotNullOfOrNull { sink ->
+                runCatching { sink.currentOutputSampleRateHz() }.getOrNull()?.takeIf { it > 0 }
+            } ?: 0
+        }
         val sourceRateHz = snapshot.samplingRateKHz?.times(1000.0)?.toInt()?.takeIf { it > 0 }
-        val appRateHz = audioSinks.firstNotNullOfOrNull { sink ->
-            runCatching { sink.currentOutputSampleRateHz() }.getOrNull()?.takeIf { it > 0 }
-        } ?: 0
+            ?: appRateHz.takeIf { exclusive && it > 0 }
         val platformRateHz = runCatching { audioManager?.mixerRateHz() }.getOrNull() ?: 0
         val speed = if (initialized) {
             runCatching { player.playbackParameters.speed }.getOrDefault(snapshot.speed)
@@ -1934,9 +1951,6 @@ class MusicPlayer @Inject constructor(
         val dac = usbDacMonitor.state.value.dac
         val srcLabel = snapshot.audioCodec
             ?: if (snapshot.isLossless) "LOSSLESS" else "Audio"
-        val exclusive = exclusiveUsbOutput.isActive() || audioSinks.any { sink ->
-            runCatching { sink.isExclusiveUsbActive() }.getOrDefault(false)
-        }
         usbExclusiveSinkActive = exclusive
         val sinkDirect = exclusive || audioSinks.any { sink ->
             runCatching { sink.isBitPerfectBypassActive() }.getOrDefault(false)
@@ -1951,8 +1965,6 @@ class MusicPlayer @Inject constructor(
         }
         val routedRequested = exclusive ||
             (routedDacDeviceId != null && routedDacDeviceId == dac?.deviceId)
-        val exclusiveRate = exclusiveUsbOutput.currentRateHz()
-        val exclusiveAppRate = if (exclusive && exclusiveRate > 0) exclusiveRate else appRateHz
         val hardwareVolume = exclusive && exclusiveUsbOutput.usesHardwareVolume()
         val exclusiveAppVolume = if (exclusive && hardwareVolume) {
             1f
@@ -1968,7 +1980,7 @@ class MusicPlayer @Inject constructor(
                 sourceRateHz = sourceRateHz,
                 sourceBitDepth = snapshot.bitDepth?.takeIf { it > 0 },
                 isLossless = snapshot.isLossless,
-                appOutputRateHz = exclusiveAppRate,
+                appOutputRateHz = appRateHz,
                 platformMixerRateHz = platformRateHz,
                 platformBitPerfectConfigured = mixerBypassGranted,
                 dspBypassEnabled = dspBypassActuallyActive,
