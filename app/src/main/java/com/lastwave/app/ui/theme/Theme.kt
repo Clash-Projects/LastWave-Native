@@ -11,8 +11,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.lastwave.app.data.repository.ThemeUiState
-import com.lastwave.trueglass.compose.rememberTrueGlassBackdrop
-import com.lastwave.trueglass.compose.trueGlassSource
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -23,9 +21,9 @@ val LocalIsDarkTheme = staticCompositionLocalOf { true }
 
 /**
  * Wraps the whole app. Supports System Default, Light, and Dark modes.
- * TrueGlass backdrop is a single GPU RenderNode layer (never a Bitmap, never
- * EGL) shared app-wide; screens add their own sibling sibling sources for
- * local content (nav bar, player, headers).
+ * Kyant0 Backdrop captures underlying content into a hardware-accelerated layer
+ * shared app-wide; screens add their own sibling sources for local content
+ * (nav bar, player, headers).
  */
 @Composable
 fun LastWaveTheme(
@@ -71,7 +69,11 @@ fun LastWaveTheme(
                 LocalIsDarkTheme provides isDark,
             ) {
                 if (isLiquidGlassBackdropSupported()) {
-                    val backgroundBackdrop = rememberTrueGlassBackdrop()
+                    val backgroundColor = MaterialTheme.colorScheme.background
+                    val backgroundBackdrop = rememberLayerBackdrop {
+                        drawRect(backgroundColor)
+                        drawContent()
+                    }
                     CompositionLocalProvider(
                         LocalLiquidGlassBackdrop provides backgroundBackdrop,
                         LocalLiquidGlassOverlayBackdrop provides backgroundBackdrop,

@@ -79,3 +79,18 @@ Reworked the material recipe in `ui/theme/LiquidGlass.kt` to read as optical dep
 - Capability gating, backdrop capture ownership, `BackdropBlur` (player artwork blur), and all layout/navigation/player behavior are unchanged. `chromaticAberration`/`gradientBlur` remain off; no per-frame allocations added.
 
 Source-reviewed only; visual fidelity and device behavior still require on-device verification.
+
+## Full Kyant0 Backdrop Rebuild (2026-09-22)
+
+Completely stripped the experimental in-house engine (`:trueglass` module, custom AGSL shaders, frame layouts, and canvas mocks) and rebuilt the entire Liquid Glass system on official Kyant0 Backdrop 2.0.1 (`io.github.kyant0:backdrop`).
+
+- **Architecture**: Single, unified Liquid Glass pipeline centered around `Modifier.drawBackdrop` and `Modifier.layerBackdrop`. Sibling background layers ensure rendered surfaces sample content behind them without recursive self-capture loops.
+- **RenderThread Crash Prevention**: Guarded against cyclic rendering loops (Fatal signal 11 SIGSEGV) by strictly enforcing sibling capture models and utilizing `exportedBackdrop` where glass elements overlap or nest.
+- **Defensive Effect Bounds**: Explicitly validates non-empty, finite bounds (`size.isSpecified && size.width > 0f && size.height > 0f`) before effect execution, and clamps lens refraction height and amount to component dimensions.
+- **Hardware & Platform Gating**:
+  - API 33+: Full pipeline (`colorControls` vibrancy, Gaussian `blur`, and SDF `lens` refraction on `CornerBasedShape`s with soft depth `Shadow`).
+  - API 31–32: Background `colorControls` and hardware `blur`; `lens` safely omitted to prevent `RuntimeShader` incompatibility.
+  - API < 31 / Software / Low RAM / Previews: Clean, restrained Material surface fallback without fake blur or white border strokes.
+- **Optical Depth Hierarchy**: Distinct presets for `BottomNavigation`, `MiniPlayer`, `PlayerControls`, `FloatingControls`, `ModalSheet`, `ContextMenu`, `Overlay`, and `Card`.
+- **Zero Fake Outlines**: Replaced cartoon border strokes and specular white rings with genuine optical refraction, subtle theme-aware surface substrate, and soft elevation shadows.
+
