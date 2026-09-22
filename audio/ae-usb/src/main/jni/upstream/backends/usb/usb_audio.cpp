@@ -571,6 +571,7 @@ bool UsbAudioDriver::parseDescriptors() {
             // learn from AS_GENERAL.bTerminalLink parsed below.
             int outEp = -1, inEp = -1;
             int rawMaxPacketOut = 0, rawMaxPacketIn = 0;
+            int outInterval = 1, inInterval = 1;
 
             for (int e = 0; e < alt.bNumEndpoints; e++) {
                 const struct libusb_endpoint_descriptor& ep = alt.endpoint[e];
@@ -579,9 +580,11 @@ bool UsbAudioDriver::parseDescriptors() {
                 if ((ep.bEndpointAddress & LIBUSB_ENDPOINT_DIR_MASK) == LIBUSB_ENDPOINT_OUT) {
                     outEp = ep.bEndpointAddress;
                     rawMaxPacketOut = ep.wMaxPacketSize;
+                    outInterval = ep.bInterval > 0 ? ep.bInterval : 1;
                 } else {
                     inEp = ep.bEndpointAddress;
                     rawMaxPacketIn = ep.wMaxPacketSize;
+                    inInterval = ep.bInterval > 0 ? ep.bInterval : 1;
                 }
             }
             if (outEp < 0 && inEp < 0) continue;
@@ -742,6 +745,7 @@ bool UsbAudioDriver::parseDescriptors() {
                 fmt.isCapture = isCaptureAs;
                 fmt.feedbackEpAddr = fbEp;
                 fmt.clockSourceId = resolvedClockId;
+                fmt.bInterval = isCaptureAs ? inInterval : outInterval;
                 formats.push_back(fmt);
             }
         }
@@ -1208,36 +1212,54 @@ bool UsbAudioDriver::configure(int sampleRate, int channels, int bitDepth, bool 
     LOGI("configure requested: rate=%d ch=%d bits=%d preferDsd=%d",
          sampleRate, channels, bitDepth, preferDsd ? 1 : 0);
 
-    // Pass 1: exact match including DSD preference. When preferDsd is true we
-    // only accept a DSD-flagged alt; when false we only accept a non-DSD alt.
-    // Capture alts (ADC IN) are never candidates for the playback configure().
+    // UAC2 stamps every clock rate onto every alt. The first alt is often the
+    // small-packet 44.1/48 setting. Opening that alt at 96 kHz truncates every
+    // service interval (hiss) and GET_CUR never matches. Prefer an alt whose
+    // wMaxPacketSize can hold one service interval at this rate.
+    const bool highSpeed = usbSpeed >= LIBUSB_SPEED_HIGH;
+    auto packetCap = [](const UsbAudioFormat& f) {
+        int base = f.maxPacketSize & 0x7FF;
+        int mult = ((f.maxPacketSize >> 11) & 0x03) + 1;
+        return base * mult;
+    };
+    auto intervalBytes = [&](const UsbAudioFormat& f) {
+        int sub = f.subslotSize > 0 ? f.subslotSize : (f.bitDepth + 7) / 8;
+        int ch = f.channels > 0 ? f.channels : 1;
+        int interval = f.bInterval >= 1 ? f.bInterval : 1;
+        double frames;
+        if (highSpeed) {
+            int microframes = 1 << (interval - 1);
+            if (microframes < 1) microframes = 1;
+            frames = (sampleRate / 8000.0) * microframes;
+        } else {
+            frames = (sampleRate / 1000.0) * interval;
+        }
+        int n = (int)std::ceil(frames);
+        if (n < 1) n = 1;
+        return n * sub * ch;
+    };
+    auto consider = [&](UsbAudioFormat& f, bool requirePacketFit) -> int {
+        if (f.isCapture || f.sampleRate != sampleRate) return -1;
+        int cap = packetCap(f);
+        int need = intervalBytes(f);
+        if (requirePacketFit && cap > 0 && cap < need) return -1;
+        int score = 0;
+        if (f.bitDepth == bitDepth) score += 1000;
+        else if (f.bitDepth > bitDepth) score += 200;
+        if (f.channels == channels) score += 100;
+        if (f.isDsd == preferDsd) score += 50;
+        int slack = cap > need ? cap - need : 0;
+        score += std::max(0, 40 - slack / 16);
+        return score;
+    };
     UsbAudioFormat* best = nullptr;
-    for (auto& f : formats) {
-        if (f.isCapture) continue;
-        if (f.sampleRate == sampleRate && f.channels == channels && f.bitDepth == bitDepth
-                && f.isDsd == preferDsd) {
-            best = &f;
-            break;
-        }
-    }
-    // Pass 2: exact match on (rate, channels, bits) ignoring DSD flag.
-    if (!best) {
+    int bestScore = -1;
+    for (int pass = 0; pass < 2 && !best; pass++) {
         for (auto& f : formats) {
-            if (f.isCapture) continue;
-            if (f.sampleRate == sampleRate && f.channels == channels && f.bitDepth == bitDepth) {
+            int score = consider(f, pass == 0);
+            if (score > bestScore) {
                 best = &f;
-                break;
-            }
-        }
-    }
-    // Relax: match rate, prefer highest bit depth
-    if (!best) {
-        for (auto& f : formats) {
-            if (f.isCapture) continue;
-            if (f.sampleRate == sampleRate) {
-                if (!best || f.bitDepth > best->bitDepth) {
-                    best = &f;
-                }
+                bestScore = score;
             }
         }
     }
@@ -1770,7 +1792,7 @@ bool UsbAudioDriver::start() {
             static_cast<unsigned char>(activeFormat.endpointAddr),
             transferBuffers[i], nominalBufSize,
             packetsPerTransfer,
-            transferCallback, &transferCtx[i], 1000);
+            transferCallback, &transferCtx[i], 0);
 
         libusb_set_iso_packet_lengths(transfers[i], bytesPerPacket);
     }
@@ -1867,7 +1889,7 @@ bool UsbAudioDriver::start() {
                 static_cast<unsigned char>(activeFormat.feedbackEpAddr),
                 feedbackBuffer, fbPktSize,
                 1, // 1 iso packet
-                feedbackCallback, this, 1000);
+                feedbackCallback, this, 0);
             libusb_set_iso_packet_lengths(feedbackTransfer, fbPktSize);
 
             rc = libusb_submit_transfer(feedbackTransfer);

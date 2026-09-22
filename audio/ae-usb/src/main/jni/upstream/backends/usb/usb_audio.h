@@ -78,6 +78,7 @@ struct UsbAudioFormat {
     bool isCapture = false;  // True when this alt-setting feeds data IN from the device (ADC/mic)
     int feedbackEpAddr = -1; // Iso IN feedback EP for playback alt-settings; -1 for capture
     int clockSourceId = -1;  // Resolved via AS_GENERAL.bTerminalLink -> Terminal.bCSourceID
+    int bInterval = 1;       // Endpoint bInterval; sizes one service interval
 };
 
 class UsbAudioDriver {

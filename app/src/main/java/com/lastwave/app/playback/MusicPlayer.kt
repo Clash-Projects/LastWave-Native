@@ -349,6 +349,9 @@ class MusicPlayer @Inject constructor(
     // Written by the settings collector, read on the main thread.
     @Volatile
     private var bitPerfectEnabled = false
+    /** PCM rate reported by the decoder. Wins over a catalog tag that guessed 44.1. */
+    @Volatile
+    private var decodedSampleRateHz = 0
     /**
      * Whether the native layer actually honors the current Bit-Perfect
      * request (read back after every [updateBitPerfectState], not just the
@@ -551,6 +554,7 @@ class MusicPlayer @Inject constructor(
                         samplingRateKHz = null,
                     )
                 }
+                decodedSampleRateHz = 0
                 mediaItem.localConfiguration
                     ?.customCacheKey
                     ?.let(preparedStreams::get)
@@ -858,10 +862,13 @@ class MusicPlayer @Inject constructor(
                     processor = NativePcmAudioProcessor(processorEngine),
                     onPlatformEffectsRequired = effects::setFallbackRequired,
                     usbOutput = if (handleAudioFocus) UsbBitPerfectOutput(audioManager) else null,
-                    exclusiveUsb = exclusiveUsbOutput,
+                    // The crossfade standby must not share the DAC. Its
+                    // volume is 0, and a second configure() retunes the clock
+                    // to the next track (44.1 PCM written into a 96 kHz alt).
+                    exclusiveUsb = if (handleAudioFocus) exclusiveUsbOutput else null,
                 ).also { sink ->
                     sink.setBitPerfectRequested(bitPerfectEnabled || usbExclusivePrefEnabled)
-                    sink.syncExclusiveUsb(exclusiveUsbWanted())
+                    sink.syncExclusiveUsb(handleAudioFocus && exclusiveUsbWanted())
                     audioSinks.add(sink)
                     runCatching {
                         routedDacDeviceId?.let { id -> findOutputDevice(id)?.let(sink::setPreferredDevice) }
@@ -929,6 +936,7 @@ class MusicPlayer @Inject constructor(
                         _state.update { snapshot ->
                             var updated = snapshot
                             if (rateHz > 0) {
+                                decodedSampleRateHz = rateHz
                                 val kHz = rateHz / 1000.0
                                 if (updated.samplingRateKHz != kHz) updated = updated.copy(samplingRateKHz = kHz)
                             }
@@ -2404,6 +2412,7 @@ class MusicPlayer @Inject constructor(
                 samplingRateKHz = null,
             )
         }
+        decodedSampleRateHz = 0
         playRequest = applicationScope.launch(Dispatchers.IO) {
             try {
                 val resolved = resolveTrackAudioStreamWithRetry(
@@ -4126,7 +4135,11 @@ class MusicPlayer @Inject constructor(
                     audioCodec = resolved.audioCodec,
                     isLossless = resolved.isLossless,
                     bitDepth = resolved.bitDepth,
-                    samplingRateKHz = resolved.samplingRateKHz,
+                    samplingRateKHz = if (decodedSampleRateHz > 0) {
+                        decodedSampleRateHz / 1000.0
+                    } else {
+                        resolved.samplingRateKHz ?: it.samplingRateKHz
+                    },
                     // Seed the progress denominator the moment the stream
                     // resolves instead of waiting for ExoPlayer to parse the
                     // container (which can lag 30-40s on throttled URLs and left

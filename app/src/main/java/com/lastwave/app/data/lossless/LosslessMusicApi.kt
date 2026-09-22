@@ -567,7 +567,10 @@ class LosslessMusicApi @Inject constructor(
             }
 
             val bitDepth = data.optInt("bitDepth", 16)
-            val sampleRate = data.optDouble("sampleRate", 44100.0)
+            // Missing sampleRate used to become 44.1 kHz. A 96 kHz FLAC then
+            // looked like the app had resampled 44.1 → 96. Leave it unknown
+            // so the decoder's real rate is what the signal path shows.
+            val sampleRate = if (data.has("sampleRate")) data.optDouble("sampleRate") else 0.0
             val audioQuality = data.optString("audioQuality", "LOSSLESS")
             val manifestUrl = "data:application/dash+xml;base64,$manifest"
             val manifestIsAtmos = isAtmosStreamUrl(manifestUrl) || isAtmosManifest(
