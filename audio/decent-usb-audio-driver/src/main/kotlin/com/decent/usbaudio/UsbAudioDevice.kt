@@ -546,7 +546,8 @@ class UsbAudioDevice private constructor(private val context: Context) {
         val ranked = parsedAltSettings.map { alt ->
             val packet = parsedIsoOut[alt.alt]?.maxPacketBytes
                 ?: isoPacketCapacity(endpointsForAlt(alt.alt)?.third ?: 0)
-            val needed = minIsoPacketBytes(sampleRateHz, channelCount, alt.wireBits, 1)
+            val interval = parsedIsoOut[alt.alt]?.interval?.coerceIn(1, 16) ?: 1
+            val needed = minIsoPacketBytes(sampleRateHz, channelCount, alt.wireBits, interval)
             Triple(alt, packet, needed)
         }
         val capable = ranked.filter { it.second >= it.third }

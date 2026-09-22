@@ -354,10 +354,11 @@ class ExclusiveUsbOutput @Inject constructor(
         val epOut = endpoints?.first ?: info.endpointOutAddress
         val epFb = (endpoints?.second ?: info.endpointFeedbackAddress).let { if (it < 0) 0 else it }
         val packet = endpoints?.third ?: info.maxPacketSize
-        // Packet timing is one microframe. The descriptor bInterval is not
-        // the usbdevfs schedule; using it made packets ~8× too long and the
-        // song ended after a few seconds.
-        val interval = 1
+        // Kernel usbdevfs schedules ISO packets from the endpoint bInterval
+        // (2^(bInterval-1) microframes). 44.1/48/96/192 alts are interval 1.
+        // 88.2/176.4/352.8 alts are interval 4, so each packet must carry a
+        // full millisecond of audio or the DAC buzzes once per millisecond.
+        val interval = device.isoIntervalForAlt(alt).coerceIn(1, 16)
         val needed = minIsoPacketBytes(sampleRate, channelCount, bits, interval)
         if (epOut < 0 || packet <= 0) return failLocked("no ISO OUT endpoint for alt $alt")
         if (needed > packet) {
@@ -401,7 +402,8 @@ class ExclusiveUsbOutput @Inject constructor(
         Log.i(
             TAG,
             "exclusive USB started ${info.deviceName} ${sampleRate}Hz ${channelCount}ch " +
-                "srcBits=$sourceBits dacBits=$bits alt=$alt GET_CUR=$reported clockMatched=$clockMatched",
+                "srcBits=$sourceBits dacBits=$bits alt=$alt bInterval=$interval " +
+                "GET_CUR=$reported clockMatched=$clockMatched",
         )
 
         ensureVolumeObserverLocked()

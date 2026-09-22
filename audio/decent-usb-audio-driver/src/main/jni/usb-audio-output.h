@@ -16,8 +16,9 @@
 #include <linux/usbdevice_fs.h>
 
 /**
- * Number of isochronous packets per URB submission.
- * At USB high-speed (125us microframes), 8 packets = 1ms of audio.
+ * Number of isochronous packets per URB submission when bInterval is 1.
+ * The kernel spaces packets by the endpoint bInterval, so a bInterval of 4
+ * is one packet per millisecond and the URB carries fewer packets.
  */
 #define USB_AUDIO_PACKETS_PER_URB 8
 
@@ -33,10 +34,10 @@
 
 /**
  * Max bytes per URB data buffer.
- * Worst case: 384kHz * 4 bytes * 2 channels / 8000 microframes * 8 packets
- *           = 384 * 8 = 3072 bytes per URB. Round up generously.
+ * Worst case is a 1 ms service interval (bInterval 4) at 384 kHz / 32-bit
+ * stereo: 384 frames * 8 bytes * 8 packets. 32 KB leaves headroom.
  */
-#define USB_AUDIO_URB_BUFFER_SIZE 16384
+#define USB_AUDIO_URB_BUFFER_SIZE 32768
 
 /**
  * One slot in the pre-allocated URB ring buffer.
@@ -74,6 +75,18 @@ struct UsbAudioContext {
     int32_t bytesPerFrame;
     int32_t maxPacketSize;
     int32_t isoMicroframes;
+    /** Raw endpoint bInterval (1 = every microframe, 4 = every millisecond). */
+    int32_t bInterval;
+    /** Packets per second the host actually schedules for this bInterval. */
+    int32_t packetsPerSecond;
+    /** ALSA packsize[0] / packsize[1]: frames in a small and a large packet. */
+    int32_t packSmall;
+    int32_t packLarge;
+    /** rate % packetsPerSecond. Added into sampleAccum to choose large packets. */
+    int32_t sampleRem;
+    int32_t sampleAccum;
+    /** How many ISO packets to put in one URB at this bInterval. */
+    int32_t packetsPerUrb;
 
     std::atomic<bool> running;
     std::atomic<bool> paused;
