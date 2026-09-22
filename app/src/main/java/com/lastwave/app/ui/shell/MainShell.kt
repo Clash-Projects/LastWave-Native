@@ -90,7 +90,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.GraphicsLayer
-import androidx.compose.ui.graphics.layer.toImageBitmap
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.core.graphics.scale
 import com.lastwave.app.ui.theme.drawInteractiveGlass

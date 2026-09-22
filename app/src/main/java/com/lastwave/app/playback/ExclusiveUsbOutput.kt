@@ -130,10 +130,21 @@ class ExclusiveUsbOutput @Inject constructor(
         stream?.setPaused(value)
     }
 
+    /** True while the isochronous stream is still accepting PCM. */
+    fun isStreamAlive(): Boolean = active && stream?.isAlive == true
+
     /** Re-anchor the Media3 clock after an explicit seek. */
     fun noteSeek(positionUs: Long) {
+        val timeUs = positionUs.coerceAtLeast(0L)
+        val rate = configuredRateHz.coerceAtLeast(1)
+        val targetFrames = timeUs * rate / C.MICROS_PER_SECOND
+        Log.i(
+            TAG,
+            "seek timeUs=$timeUs targetFrames=$targetFrames rate=$rate " +
+                "clock=${stream?.framesClock} alive=${stream?.isAlive}",
+        )
         mediaTimeBaseFrames = stream?.framesClock ?: 0L
-        startMediaTimeUs = positionUs.coerceAtLeast(0L)
+        startMediaTimeUs = timeUs
         startMediaTimeNeedsInit = false
     }
 
@@ -247,16 +258,21 @@ class ExclusiveUsbOutput @Inject constructor(
         }
     }
 
-    /** Revive a stream that stopped during a seek without closing the device. */
+    /**
+     * The stream stopped without the device being closed. [flush] discards
+     * leftover URBs and marks it running again. [start] would zero the DAC
+     * clock and make the sink position jump back to the beginning.
+     */
     fun restartIfStopped(): Boolean {
         val running = stream ?: return false
         if (running.isAlive) return false
-        if (!running.start()) return false
+        running.flush()
+        if (!running.isAlive) return false
         synchronized(lock) {
             paused = false
-            mediaTimeBaseFrames = 0L
-            startMediaTimeNeedsInit = false
+            mediaTimeBaseFrames = running.framesClock
         }
+        Log.i(TAG, "seek rearmed clock=${running.framesClock} startUs=$startMediaTimeUs")
         return true
     }
 
@@ -402,7 +418,9 @@ class ExclusiveUsbOutput @Inject constructor(
         Log.i(
             TAG,
             "exclusive USB started ${info.deviceName} ${sampleRate}Hz ${channelCount}ch " +
-                "srcBits=$sourceBits dacBits=$bits alt=$alt bInterval=$interval " +
+                "srcBits=$sourceBits dacBits=$bits bpf=${((bits + 7) / 8) * channelCount} " +
+                "alt=$alt ep=0x${epOut.toString(16)} bInterval=$interval " +
+                "isoMicroframes=${1 shl (interval - 1)} maxPacket=$packet needed=$needed " +
                 "GET_CUR=$reported clockMatched=$clockMatched",
         )
 

@@ -87,6 +87,16 @@ struct UsbAudioContext {
     int32_t sampleAccum;
     /** How many ISO packets to put in one URB at this bInterval. */
     int32_t packetsPerUrb;
+    /**
+     * Remainder for the integer packetizer, in microframes of sample-time.
+     * phase += sampleRate * isoMicroframes; frames = phase / 8000; phase %= 8000.
+     */
+    int64_t phase;
+    /** sampleRate * isoMicroframes. Added once per ISO service opportunity. */
+    int64_t serviceNumerator;
+    int64_t packetsSubmitted;
+    /** Consecutive reap timeouts. A single timeout is not fatal. */
+    int32_t reapStalls;
 
     std::atomic<bool> running;
     std::atomic<bool> paused;

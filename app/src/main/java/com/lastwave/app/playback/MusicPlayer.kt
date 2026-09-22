@@ -1024,7 +1024,8 @@ class MusicPlayer @Inject constructor(
                 // below, including crossfade handoffs and track mismatches.
                 var cadenceMs = 500L
                 try {
-                    val playingNow = _state.value.isPlaying && !exclusiveUsbOutput.isPaused()
+                    val usbAlive = !exclusiveUsbOutput.isActive() || exclusiveUsbOutput.isStreamAlive()
+                    val playingNow = _state.value.isPlaying && !exclusiveUsbOutput.isPaused() && usbAlive
                     val playhead = advancePlayhead(playingNow)
                     if (playhead != _state.value.positionMs) {
                         _state.update { it.copy(positionMs = playhead) }
