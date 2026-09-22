@@ -51,8 +51,10 @@ import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.toArgb
@@ -74,8 +76,6 @@ import com.kyant.backdrop.effects.*
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.highlight.HighlightStyle
 import com.kyant.backdrop.shadow.Shadow
-import com.kyant.shapes.RoundedCornerStyle
-import com.kyant.shapes.roundedRectangleOutline
 import kotlinx.coroutines.launch
 
 /** Shared opt-in flag for Settings > Experimental > Liquid Glass. */
@@ -147,22 +147,171 @@ class SquircleShape(
         bottomStart: Float,
         layoutDirection: LayoutDirection,
     ): Outline {
-        val minSide = size.minDimension
-        val maxR = if (minSide > 0f) minSide / 2f else 0f
-        val ts = topStart.coerceIn(0f, maxR)
-        val te = topEnd.coerceIn(0f, maxR)
-        val be = bottomEnd.coerceIn(0f, maxR)
-        val bs = bottomStart.coerceIn(0f, maxR)
+        val w = size.width
+        val h = size.height
+        if (w <= 0f || h <= 0f) return Outline.Rectangle(androidx.compose.ui.geometry.Rect.Zero)
+
         val isLtr = layoutDirection == LayoutDirection.Ltr
-        return roundedRectangleOutline(
-            size = size,
-            topLeft = if (isLtr) ts else te,
-            topRight = if (isLtr) te else ts,
-            bottomRight = if (isLtr) be else bs,
-            bottomLeft = if (isLtr) bs else be,
-            style = RoundedCornerStyle.Continuous,
-        )
+        val tl = if (isLtr) topStart else topEnd
+        val tr = if (isLtr) topEnd else topStart
+        val br = if (isLtr) bottomEnd else bottomStart
+        val bl = if (isLtr) bottomStart else bottomEnd
+
+        if (tl <= 0f && tr <= 0f && br <= 0f && bl <= 0f) {
+            return Outline.Rectangle(androidx.compose.ui.geometry.Rect(0f, 0f, w, h))
+        }
+
+        val path = createSquirclePath(w, h, tl, tr, br, bl)
+        return Outline.Generic(path)
     }
+}
+
+/**
+ * Builds a path with continuous G2 curvature (Apple superellipse squircle) across 4 independently sized corners.
+ * Uses exact G2 cubic Bezier parameters to guarantee zero curvature discontinuity at edge junctions.
+ */
+fun createSquirclePath(
+    w: Float,
+    h: Float,
+    tlRadius: Float,
+    trRadius: Float,
+    brRadius: Float,
+    blRadius: Float,
+): Path {
+    val path = Path()
+    val maxRadius = minOf(w, h) / 2f
+    val tl = tlRadius.coerceIn(0f, maxRadius)
+    val tr = trRadius.coerceIn(0f, maxRadius)
+    val br = brRadius.coerceIn(0f, maxRadius)
+    val bl = blRadius.coerceIn(0f, maxRadius)
+
+    val k = 1.528665f
+    var lTl = tl * k
+    var lTr = tr * k
+    var lBr = br * k
+    var lBl = bl * k
+
+    val maxWTop = lTl + lTr
+    if (maxWTop > w && maxWTop > 0f) {
+        val scale = w / maxWTop
+        lTl *= scale
+        lTr *= scale
+    }
+    val maxWBottom = lBl + lBr
+    if (maxWBottom > w && maxWBottom > 0f) {
+        val scale = w / maxWBottom
+        lBl *= scale
+        lBr *= scale
+    }
+    val maxHLeft = lTl + lBl
+    if (maxHLeft > h && maxHLeft > 0f) {
+        val scale = h / maxHLeft
+        lTl *= scale
+        lBl *= scale
+    }
+    val maxHRight = lTr + lBr
+    if (maxHRight > h && maxHRight > 0f) {
+        val scale = h / maxHRight
+        lTr *= scale
+        lBr *= scale
+    }
+
+    path.moveTo(lTl, 0f)
+
+    path.lineTo(w - lTr, 0f)
+    if (lTr > 0.001f) {
+        path.cubicTo(
+            w - lTr * (1f - 0.712053f), 0f,
+            w - lTr * (1f - 0.566789f), lTr * 0.030183f,
+            w - lTr * (1f - 0.455953f), lTr * 0.087377f,
+        )
+        path.cubicTo(
+            w - lTr * (1f - 0.345118f), lTr * 0.144571f,
+            w - lTr * (1f - 0.242846f), lTr * 0.242846f,
+            w - lTr * (1f - 0.144571f), lTr * 0.345118f,
+        )
+        path.cubicTo(
+            w - lTr * (1f - 0.087377f), lTr * 0.455953f,
+            w - lTr * 0.030183f, lTr * (1f - 0.566789f),
+            w, lTr * (1f - 0.712053f),
+        )
+        path.lineTo(w, lTr)
+    } else {
+        path.lineTo(w, 0f)
+        path.lineTo(w, lTr)
+    }
+
+    path.lineTo(w, h - lBr)
+    if (lBr > 0.001f) {
+        path.cubicTo(
+            w, h - lBr * (1f - 0.712053f),
+            w - lBr * 0.030183f, h - lBr * (1f - 0.566789f),
+            w - lBr * 0.087377f, h - lBr * (1f - 0.455953f),
+        )
+        path.cubicTo(
+            w - lBr * 0.144571f, h - lBr * (1f - 0.345118f),
+            w - lBr * 0.242846f, h - lBr * (1f - 0.242846f),
+            w - lBr * 0.345118f, h - lBr * (1f - 0.144571f),
+        )
+        path.cubicTo(
+            w - lBr * 0.455953f, h - lBr * (1f - 0.087377f),
+            w - lBr * (1f - 0.566789f), h - lBr * 0.030183f,
+            w - lBr * (1f - 0.712053f), h,
+        )
+        path.lineTo(w - lBr, h)
+    } else {
+        path.lineTo(w, h)
+        path.lineTo(w - lBr, h)
+    }
+
+    path.lineTo(lBl, h)
+    if (lBl > 0.001f) {
+        path.cubicTo(
+            lBl * (1f - 0.712053f), h,
+            lBl * (1f - 0.566789f), h - lBl * 0.030183f,
+            lBl * (1f - 0.455953f), h - lBl * 0.087377f,
+        )
+        path.cubicTo(
+            lBl * (1f - 0.345118f), h - lBl * 0.144571f,
+            lBl * (1f - 0.242846f), h - lBl * 0.242846f,
+            lBl * (1f - 0.144571f), h - lBl * 0.345118f,
+        )
+        path.cubicTo(
+            lBl * (1f - 0.087377f), h - lBl * 0.455953f,
+            lBl * 0.030183f, h - lBl * (1f - 0.566789f),
+            0f, h - lBl * (1f - 0.712053f),
+        )
+        path.lineTo(0f, h - lBl)
+    } else {
+        path.lineTo(0f, h)
+        path.lineTo(0f, h - lBl)
+    }
+
+    path.lineTo(0f, lTl)
+    if (lTl > 0.001f) {
+        path.cubicTo(
+            0f, lTl * (1f - 0.712053f),
+            lTl * 0.030183f, lTl * (1f - 0.566789f),
+            lTl * 0.087377f, lTl * (1f - 0.455953f),
+        )
+        path.cubicTo(
+            lTl * 0.144571f, lTl * (1f - 0.345118f),
+            lTl * 0.242846f, lTl * (1f - 0.242846f),
+            lTl * 0.345118f, lTl * (1f - 0.144571f),
+        )
+        path.cubicTo(
+            lTl * 0.455953f, lTl * (1f - 0.087377f),
+            lTl * (1f - 0.566789f), lTl * 0.030183f,
+            lTl * (1f - 0.712053f), 0f,
+        )
+        path.lineTo(lTl, 0f)
+    } else {
+        path.lineTo(0f, 0f)
+        path.lineTo(lTl, 0f)
+    }
+
+    path.close()
+    return path
 }
 
 /** Keeps glass inside Material's visual bounds while retaining its outer touch target. */
@@ -489,6 +638,7 @@ fun Modifier.liquidGlassChrome(
     // 1. Press and Touch Tracking
     val pressProgress = remember { Animatable(0f) }
     val touchPosition = remember { mutableStateOf<Offset?>(null) }
+    val lastTouchPos = remember { mutableStateOf<Offset?>(null) }
     val touchBlend = remember { Animatable(0f) }
 
     // 2. Ambient Idle Motion (gently drifts the idle highlight across the glass)
@@ -588,7 +738,7 @@ fun Modifier.liquidGlassChrome(
                             setFloatUniform("tintIntensity", if (isDark) 0.15f else 0.35f)
                         },
                         "content",
-                    ),
+                    ).asComposeRenderEffect(),
                 )
             }
 
@@ -637,8 +787,8 @@ fun Modifier.liquidGlassChrome(
                 size.width * (0.5f + ambientDrift * 0.08f),
                 0f,
             )
-            val touchPos = touchPosition.value
-            val activeCenter = if (touchPos != null) {
+            val touchPos = touchPosition.value ?: lastTouchPos.value
+            val activeCenter = if (touchPos != null && touchBlend.value > 0.001f) {
                 val blend = touchBlend.value
                 Offset(
                     lerp(ambientCenter.x, touchPos.x, blend),
@@ -678,6 +828,7 @@ fun Modifier.liquidGlassChrome(
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 touchPosition.value = down.position
+                lastTouchPos.value = down.position
                 onPointerPosition?.invoke(down.position)
 
                 // Haptic feedback tap on press down
@@ -697,10 +848,14 @@ fun Modifier.liquidGlassChrome(
                         view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
 
                         scope.launch { pressProgress.animateTo(0f, springSpec) }
-                        scope.launch { touchBlend.animateTo(0f, springSpec) }
+                        scope.launch {
+                            touchBlend.animateTo(0f, springSpec)
+                            lastTouchPos.value = null
+                        }
                         break
                     }
                     touchPosition.value = change.position
+                    lastTouchPos.value = change.position
                     onPointerPosition?.invoke(change.position)
                 }
             }
