@@ -2,15 +2,24 @@ package com.lastwave.app.ui.theme
 
 import android.app.ActivityManager
 import android.content.Context
+import android.graphics.RenderEffect
+import android.graphics.RuntimeShader
 import android.os.Build
+import android.view.HapticFeedbackConstants
+import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -20,28 +29,40 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerBasedShape
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.isSpecified
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import com.kyant.backdrop.Backdrop
@@ -49,12 +70,12 @@ import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.colorControls
-import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.*
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.highlight.HighlightStyle
 import com.kyant.backdrop.shadow.Shadow
+import com.kyant.shapes.RoundedCornerStyle
+import com.kyant.shapes.roundedRectangleOutline
 import kotlinx.coroutines.launch
 
 /** Shared opt-in flag for Settings > Experimental > Liquid Glass. */
@@ -67,6 +88,12 @@ val LocalLiquidGlassBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 val LocalLiquidGlassOverlayBackdrop = staticCompositionLocalOf<LayerBackdrop?> { null }
 
 /**
+ * Content-brightness hint in [0f, 1f] for surfaces sitting over bright artwork or backgrounds.
+ * Allows liquid glass to adapt its substrate tint and specular intensity.
+ */
+val LocalLiquidGlassContentBrightness = compositionLocalOf { 0f }
+
+/**
  * Typealiases for clean, unified Backdrop types across the application.
  */
 typealias LayerBackdrop = LayerBackdrop
@@ -74,7 +101,69 @@ typealias Backdrop = Backdrop
 
 /** Factory matching Kyant0 Backdrop's official API */
 @Composable
-fun rememberLayerBackdrop(): LayerBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
+fun rememberLayerBackdrop(
+    onDraw: ContentDrawScope.() -> Unit = { drawContent() },
+): LayerBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop(onDraw = onDraw)
+
+/**
+ * Continuous-curvature squircle (G2 superellipse) implementing [CornerBasedShape].
+ * Produces authentic Apple iOS continuous curvature that eliminates the optical
+ * crease where straight edges meet corners, while maintaining full compatibility
+ * with [com.kyant.backdrop.effects.lens].
+ */
+class SquircleShape(
+    topStart: CornerSize,
+    topEnd: CornerSize,
+    bottomEnd: CornerSize,
+    bottomStart: CornerSize,
+) : CornerBasedShape(topStart, topEnd, bottomEnd, bottomStart) {
+
+    constructor(radius: Dp) : this(
+        CornerSize(radius),
+        CornerSize(radius),
+        CornerSize(radius),
+        CornerSize(radius),
+    )
+
+    constructor(percent: Int = 50) : this(
+        CornerSize(percent),
+        CornerSize(percent),
+        CornerSize(percent),
+        CornerSize(percent),
+    )
+
+    override fun copy(
+        topStart: CornerSize,
+        topEnd: CornerSize,
+        bottomEnd: CornerSize,
+        bottomStart: CornerSize,
+    ): CornerBasedShape = SquircleShape(topStart, topEnd, bottomEnd, bottomStart)
+
+    override fun createOutline(
+        size: Size,
+        topStart: Float,
+        topEnd: Float,
+        bottomEnd: Float,
+        bottomStart: Float,
+        layoutDirection: LayoutDirection,
+    ): Outline {
+        val minSide = size.minDimension
+        val maxR = if (minSide > 0f) minSide / 2f else 0f
+        val ts = topStart.coerceIn(0f, maxR)
+        val te = topEnd.coerceIn(0f, maxR)
+        val be = bottomEnd.coerceIn(0f, maxR)
+        val bs = bottomStart.coerceIn(0f, maxR)
+        val isLtr = layoutDirection == LayoutDirection.Ltr
+        return roundedRectangleOutline(
+            size = size,
+            topLeft = if (isLtr) ts else te,
+            topRight = if (isLtr) te else ts,
+            bottomRight = if (isLtr) be else bs,
+            bottomLeft = if (isLtr) bs else be,
+            style = RoundedCornerStyle.Continuous,
+        )
+    }
+}
 
 /** Keeps glass inside Material's visual bounds while retaining its outer touch target. */
 @Composable
@@ -178,18 +267,24 @@ enum class LiquidGlassPreset(
     val depthEffect: Boolean,
     val shadowRadiusDp: Float,
     val hasRimHighlight: Boolean,
+    val progressiveBlur: Boolean = false,
+    val pressScale: Float = 0.96f,
+    val interactiveSquish: Boolean = true,
 ) {
-    /** Flagship bottom navigation dock: deep material, strong ambient presence, zero cartoon border. */
+    /** Flagship bottom navigation dock: deep material, strong ambient presence, progressive blur over feed. */
     BottomNavigation(
-        blurDp = 10f,
-        lensHeightDp = 14f,
-        lensAmountDp = 18f,
+        blurDp = 4f,
+        lensHeightDp = 16f,
+        lensAmountDp = 32f,
         depthEffect = true,
         shadowRadiusDp = 12f,
-        hasRimHighlight = false,
+        hasRimHighlight = true,
+        progressiveBlur = true,
+        pressScale = 0.96f,
+        interactiveSquish = true,
     ),
 
-    /** Floating mini-player bar: responsive optical slab with gentle depth. */
+    /** Floating mini-player bar: responsive optical slab with progressive blur and gentle depth. */
     MiniPlayer(
         blurDp = 8f,
         lensHeightDp = 12f,
@@ -197,6 +292,9 @@ enum class LiquidGlassPreset(
         depthEffect = true,
         shadowRadiusDp = 10f,
         hasRimHighlight = false,
+        progressiveBlur = true,
+        pressScale = 0.98f,
+        interactiveSquish = true,
     ),
 
     /** Full player playback controls (play/pause, skip): high tactile presence. */
@@ -207,16 +305,22 @@ enum class LiquidGlassPreset(
         depthEffect = true,
         shadowRadiusDp = 6f,
         hasRimHighlight = true,
+        progressiveBlur = false,
+        pressScale = 0.92f,
+        interactiveSquish = true,
     ),
 
-    /** Floating action pills and icon buttons: compact floating pieces of optical glass. */
+    /** Floating action pills and icon buttons: compact floating pieces of optical glass with spring squish. */
     FloatingControls(
-        blurDp = 6f,
-        lensHeightDp = 8f,
-        lensAmountDp = 10f,
+        blurDp = 4f,
+        lensHeightDp = 16f,
+        lensAmountDp = 32f,
         depthEffect = true,
-        shadowRadiusDp = 6f,
+        shadowRadiusDp = 8f,
         hasRimHighlight = true,
+        progressiveBlur = false,
+        pressScale = 0.92f,
+        interactiveSquish = true,
     ),
 
     /** Modal sheets & drawers: large surface with wide soft blur and controlled thickness. */
@@ -227,6 +331,9 @@ enum class LiquidGlassPreset(
         depthEffect = true,
         shadowRadiusDp = 16f,
         hasRimHighlight = false,
+        progressiveBlur = true,
+        pressScale = 1.0f,
+        interactiveSquish = false,
     ),
 
     /** Context menus: floating card with clear text separation. */
@@ -237,6 +344,9 @@ enum class LiquidGlassPreset(
         depthEffect = true,
         shadowRadiusDp = 10f,
         hasRimHighlight = false,
+        progressiveBlur = false,
+        pressScale = 0.98f,
+        interactiveSquish = false,
     ),
 
     /** Dialogs and header overlays. */
@@ -247,6 +357,9 @@ enum class LiquidGlassPreset(
         depthEffect = true,
         shadowRadiusDp = 8f,
         hasRimHighlight = false,
+        progressiveBlur = false,
+        pressScale = 1.0f,
+        interactiveSquish = false,
     ),
 
     /** Compact cards and playlist items. */
@@ -257,6 +370,9 @@ enum class LiquidGlassPreset(
         depthEffect = false,
         shadowRadiusDp = 4f,
         hasRimHighlight = false,
+        progressiveBlur = false,
+        pressScale = 0.98f,
+        interactiveSquish = true,
     ),
 }
 
@@ -305,9 +421,7 @@ fun liquidGlassContainerColor(
     enabled: Boolean = LocalLiquidGlass.current,
     backdrop: Backdrop? = LocalLiquidGlassBackdrop.current,
 ): Color = if (enabled && isLiquidGlassBackdropSupported() && backdrop != null) {
-    val isDark = LocalIsDarkTheme.current
-    val cap = if (isDark) 0.16f else 0.22f
-    color.copy(alpha = minOf(color.alpha, cap))
+    Color.Transparent
 } else if (enabled) {
     color.copy(alpha = minOf(color.alpha, 0.74f))
 } else color
@@ -315,113 +429,288 @@ fun liquidGlassContainerColor(
 @Composable
 fun isLiquidGlassEnabled(): Boolean = LocalLiquidGlass.current
 
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+private object ProgressiveBlurShaderHolder {
+    private const val SHADER_SRC = """
+        uniform shader content;
+        uniform float2 size;
+        layout(color) uniform half4 tint;
+        uniform float tintIntensity;
+
+        half4 main(float2 coord) {
+            float blurAlpha = smoothstep(size.y, size.y * 0.5, coord.y);
+            float tintAlpha = smoothstep(size.y, size.y * 0.5, coord.y);
+            return mix(content.eval(coord) * blurAlpha, tint * tintAlpha, tintIntensity);
+        }
+    """
+    private var cachedShader: RuntimeShader? = null
+
+    fun get(): RuntimeShader {
+        return cachedShader ?: RuntimeShader(SHADER_SRC.trimIndent()).also { cachedShader = it }
+    }
+}
+
 /**
  * Central Liquid Glass Chrome Modifier built on Kyant0 Backdrop:
  * - Samples underlying sibling content without recursive self-capture.
- * - Applies saturation boost (colorControls/vibrancy) + Gaussian blur + SDF lens refraction.
+ * - Applies saturation boost (colorControls/vibrancy) + Gaussian blur + progressive edge blur + SDF lens refraction.
+ * - Dynamic tactile spring compression (scaleX/scaleY in layerBlock without misplaced backdrop sampling).
+ * - Ambient idle specular glint drift that smoothly hands off to touch-driven shine and back on release.
+ * - Dynamic shadow elevation lerp and haptic ticks on press/release.
+ * - Content-aware adaptive substrate tint.
  * - Never paints fake white strokes, neon edges, or cartoon borders.
- * - Edge definition comes from refraction contrast, subtle rim highlight, and soft depth shadow.
  */
 @Composable
 fun Modifier.liquidGlassChrome(
     shape: Shape,
-    enabled: Boolean,
+    enabled: Boolean = true,
     preset: LiquidGlassPreset = LiquidGlassPreset.Card,
     backdrop: Backdrop? = LocalLiquidGlassBackdrop.current,
     interactionSource: MutableInteractionSource? = null,
     exportedBackdrop: LayerBackdrop? = null,
+    ambientMotion: Boolean = true,
+    contentBrightness: Float = LocalLiquidGlassContentBrightness.current,
+    onPointerPosition: ((Offset?) -> Unit)? = null,
 ): Modifier {
     if (!enabled) return this
     if (!isLiquidGlassBackdropSupported() || backdrop == null) {
         return this.background(
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.74f),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f),
             shape = shape,
         ).clip(shape)
     }
 
     val isDark = LocalIsDarkTheme.current
     val density = LocalDensity.current
+    val view = LocalView.current
+    val scope = rememberCoroutineScope()
     val lensSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && shape is CornerBasedShape
 
-    val highlight = remember(isDark, lensSupported, preset.hasRimHighlight) {
+    // 1. Press and Touch Tracking
+    val pressProgress = remember { Animatable(0f) }
+    val touchPosition = remember { mutableStateOf<Offset?>(null) }
+    val touchBlend = remember { Animatable(0f) }
+
+    // 2. Ambient Idle Motion (gently drifts the idle highlight across the glass)
+    val infiniteTransition = rememberInfiniteTransition(label = "ambientGlassMotion")
+    val ambientDrift by if (ambientMotion) {
+        infiniteTransition.animateFloat(
+            initialValue = -1f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 4800, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "ambientDrift",
+        )
+    } else remember { mutableStateOf(0f) }
+
+    val ambientAlphaScale by if (ambientMotion) {
+        infiniteTransition.animateFloat(
+            initialValue = 0.9f,
+            targetValue = 1.1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 3200, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "ambientAlphaScale",
+        )
+    } else remember { mutableStateOf(1f) }
+
+    // 3. Dynamic Highlight & Shadow lerp on press
+    val highlightAlpha = lerp(
+        if (isDark) 0.35f else 0.25f,
+        0.55f,
+        pressProgress.value,
+    )
+    val highlight = remember(highlightAlpha, lensSupported, preset.hasRimHighlight) {
         if (!preset.hasRimHighlight) null
         else Highlight(
-            alpha = if (isDark) 0.26f else 0.18f,
+            alpha = highlightAlpha,
             style = if (lensSupported) HighlightStyle.Default else HighlightStyle.Plain,
         )
     }
 
-    val shadow = remember(isDark, preset.shadowRadiusDp) {
+    val shadow = remember(isDark, preset.shadowRadiusDp, pressProgress.value) {
         if (preset.shadowRadiusDp <= 0f) null
-        else Shadow(
-            radius = preset.shadowRadiusDp.dp,
-            color = Color.Black.copy(alpha = if (isDark) 0.28f else 0.12f),
-        )
+        else {
+            val baseRadius = preset.shadowRadiusDp
+            val radiusDp = lerp(baseRadius, maxOf(2f, baseRadius * 0.35f), pressProgress.value)
+            val shadowAlpha = lerp(if (isDark) 0.35f else 0.15f, if (isDark) 0.50f else 0.28f, pressProgress.value)
+            Shadow(
+                radius = radiusDp.dp,
+                color = Color.Black.copy(alpha = shadowAlpha),
+            )
+        }
     }
 
-    val surfaceTint = remember(isDark) {
-        if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.25f)
+    // 4. Content-aware adaptive surface tint
+    val surfaceTint = remember(isDark, contentBrightness) {
+        val baseAlpha = if (isDark) {
+            lerp(0.12f, 0.22f, contentBrightness)
+        } else {
+            lerp(0.42f, 0.28f, contentBrightness)
+        }
+        if (contentBrightness > 0.5f && isDark) {
+            Color.Black.copy(alpha = baseAlpha)
+        } else {
+            Color.White.copy(alpha = baseAlpha)
+        }
     }
 
-    val glassModifier = remember(
-        backdrop,
-        shape,
-        preset,
-        isDark,
-        surfaceTint,
-        highlight,
-        shadow,
-        lensSupported,
-        exportedBackdrop,
-    ) {
-        Modifier.drawBackdrop(
-            backdrop = backdrop,
-            shape = { shape },
-            effects = {
-                if (!size.isSpecified || !size.width.isFinite() || !size.height.isFinite() ||
-                    size.width <= 0f || size.height <= 0f
-                ) return@drawBackdrop
+    // 5. Draw backdrop modifier
+    val glassModifier = Modifier.drawBackdrop(
+        backdrop = backdrop,
+        shape = { shape },
+        effects = {
+            if (!size.isSpecified || !size.width.isFinite() || !size.height.isFinite() ||
+                size.width <= 0f || size.height <= 0f
+            ) return@drawBackdrop
 
-                // Step 1: Color controls for authentic vibrancy
-                colorControls(saturation = if (isDark) 1.10f else 1.05f)
+            // Step 1: Color vibrancy (API 33+) or color controls saturation (API 31+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                vibrancy()
+            } else {
+                colorControls(saturation = 1.10f)
+            }
 
-                // Step 2: Background blur
-                blur(preset.blurDp.dp.toPx())
+            // Step 2: Background blur
+            blur(preset.blurDp.dp.toPx())
 
-                // Step 3: SDF Lens refraction (API 33+ with CornerBasedShape)
-                if (lensSupported) {
-                    val maxRadius = if (shape is CornerBasedShape) {
-                        minOf(
-                            shape.topStart.toPx(size, density),
-                            shape.topEnd.toPx(size, density),
-                            shape.bottomStart.toPx(size, density),
-                            shape.bottomEnd.toPx(size, density),
-                        ).coerceAtLeast(0f)
-                    } else size.minDimension / 2f
+            // Step 3: Progressive blur (if enabled on preset, e.g. over scrolling feed/sheets)
+            if (preset.progressiveBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val progressiveShader = ProgressiveBlurShaderHolder.get()
+                effect(
+                    RenderEffect.createRuntimeShaderEffect(
+                        progressiveShader.apply {
+                            setFloatUniform("size", size.width, size.height)
+                            setColorUniform("tint", surfaceTint.toArgb())
+                            setFloatUniform("tintIntensity", if (isDark) 0.15f else 0.35f)
+                        },
+                        "content",
+                    ),
+                )
+            }
 
-                    val lensH = minOf(preset.lensHeightDp.dp.toPx(), maxRadius, size.minDimension / 2f)
-                    val lensA = minOf(preset.lensAmountDp.dp.toPx(), size.minDimension / 2f)
+            // Step 4: Continuous-curvature Squircle lens refraction (API 33+ with CornerBasedShape)
+            if (lensSupported) {
+                val maxRadius = if (shape is CornerBasedShape) {
+                    val raw = minOf(
+                        shape.topStart.toPx(size, density),
+                        shape.topEnd.toPx(size, density),
+                        shape.bottomStart.toPx(size, density),
+                        shape.bottomEnd.toPx(size, density),
+                    ).coerceAtLeast(0f)
+                    if (raw > 0f) raw else (size.minDimension / 2f)
+                } else size.minDimension / 2f
 
-                    if (lensH > 0f && lensA > 0f) {
-                        lens(
-                            refractionHeight = lensH,
-                            refractionAmount = lensA,
-                            depthEffect = preset.depthEffect,
-                            chromaticAberration = false,
-                        )
-                    }
+                val lensH = preset.lensHeightDp.dp.toPx().coerceIn(0f, maxRadius)
+                val lensA = preset.lensAmountDp.dp.toPx().coerceIn(0f, size.minDimension)
+
+                if (lensH > 0f && lensA > 0f) {
+                    lens(
+                        refractionHeight = lensH,
+                        refractionAmount = lensA,
+                        depthEffect = preset.depthEffect,
+                        chromaticAberration = false,
+                    )
                 }
-            },
-            highlight = { highlight },
-            shadow = { shadow },
-            exportedBackdrop = exportedBackdrop,
-            onDrawSurface = {
-                drawRect(surfaceTint)
-            },
-        )
-    }
+            }
+        },
+        layerBlock = if (preset.interactiveSquish) {
+            {
+                val progress = pressProgress.value
+                val scale = lerp(1f, preset.pressScale, progress)
+                scaleX = scale
+                scaleY = scale
+            }
+        } else null,
+        highlight = { highlight },
+        shadow = { shadow },
+        exportedBackdrop = exportedBackdrop,
+        onDrawSurface = {
+            // Draw substrate tint
+            drawRect(surfaceTint)
 
-    return this.clip(shape).then(glassModifier)
+            // Dynamic directional specular shine across the squircle (seamless ambient + touch)
+            val ambientCenter = Offset(
+                size.width * (0.5f + ambientDrift * 0.08f),
+                0f,
+            )
+            val touchPos = touchPosition.value
+            val activeCenter = if (touchPos != null) {
+                val blend = touchBlend.value
+                Offset(
+                    lerp(ambientCenter.x, touchPos.x, blend),
+                    lerp(ambientCenter.y, touchPos.y, blend),
+                )
+            } else {
+                ambientCenter
+            }
+
+            val shineRadius = maxOf(size.width, size.height) * 0.55f
+            val baseGlintAlpha = if (isDark) 0.24f else 0.38f
+            val glintAlpha = lerp(
+                baseGlintAlpha * ambientAlphaScale,
+                0.55f,
+                pressProgress.value,
+            )
+
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = glintAlpha),
+                        Color.Transparent,
+                    ),
+                    center = activeCenter,
+                    radius = shineRadius,
+                ),
+                radius = shineRadius,
+                center = activeCenter,
+            )
+        },
+    )
+
+    // 6. Pointer tracking & haptic feedback directly on the surface's local coordinate space
+    val pointerModifier = if (preset.interactiveSquish || onPointerPosition != null) {
+        Modifier.pointerInput(scope) {
+            val springSpec = spring<Float>(0.6f, 400f, 0.001f)
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                touchPosition.value = down.position
+                onPointerPosition?.invoke(down.position)
+
+                // Haptic feedback tap on press down
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+
+                scope.launch { pressProgress.animateTo(1f, springSpec) }
+                scope.launch { touchBlend.animateTo(1f, springSpec) }
+
+                while (true) {
+                    val event = awaitPointerEvent(pass = PointerEventPass.Initial)
+                    val change = event.changes.firstOrNull { it.id == down.id }
+                    if (change == null || !change.pressed) {
+                        touchPosition.value = null
+                        onPointerPosition?.invoke(null)
+
+                        // Light haptic tick on release
+                        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+
+                        scope.launch { pressProgress.animateTo(0f, springSpec) }
+                        scope.launch { touchBlend.animateTo(0f, springSpec) }
+                        break
+                    }
+                    touchPosition.value = change.position
+                    onPointerPosition?.invoke(change.position)
+                }
+            }
+        }
+    } else Modifier
+
+    return this
+        .clip(shape)
+        .then(pointerModifier)
+        .then(glassModifier)
 }
 
 /**
@@ -473,8 +762,8 @@ fun LiquidGlassActionPill(
 }
 
 /**
- * Circular liquid glass button for action icons and playback controls.
- * Features tactile spring compression without misplacing the backdrop sampling.
+ * Circular / squircle liquid glass button for action icons and playback controls.
+ * Features unified tactile spring compression and touch glint via [liquidGlassChrome].
  */
 @Composable
 fun LiquidGlassIconButton(
@@ -482,80 +771,20 @@ fun LiquidGlassIconButton(
     painter: Painter,
     onClick: () -> Unit,
     modifier: Modifier = Modifier.size(48.dp),
-    shape: Shape = CircleShape,
+    shape: Shape = SquircleShape(percent = 50),
     tint: Color = MaterialTheme.colorScheme.onSurface,
     contentDescription: String? = null,
 ) {
     val enabled = isLiquidGlassEnabled()
-    val capable = isLiquidGlassBackdropSupported()
-    val scope = rememberCoroutineScope()
-    val pressProgress = remember { Animatable(0f) }
-
-    val isDark = LocalIsDarkTheme.current
-    val interactiveModifier = if (enabled && capable && backdrop != null) {
-        Modifier
-            .drawBackdrop(
-                backdrop = backdrop,
-                shape = { shape },
-                effects = {
-                    if (!size.isSpecified || !size.width.isFinite() || !size.height.isFinite() ||
-                        size.width <= 0f || size.height <= 0f
-                    ) return@drawBackdrop
-                    colorControls(saturation = 1.08f)
-                    blur(6.dp.toPx())
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && shape is CornerBasedShape) {
-                        lens(
-                            refractionHeight = minOf(8.dp.toPx(), size.minDimension / 2f),
-                            refractionAmount = minOf(10.dp.toPx(), size.minDimension / 2f),
-                            depthEffect = true,
-                            chromaticAberration = false,
-                        )
-                    }
-                },
-                layerBlock = {
-                    val progress = pressProgress.value
-                    val scale = lerp(1f, 0.92f, progress)
-                    scaleX = scale
-                    scaleY = scale
-                },
-                highlight = {
-                    Highlight(
-                        alpha = lerp(0.24f, 0.40f, pressProgress.value),
-                        style = HighlightStyle.Default,
-                    )
-                },
-                shadow = {
-                    Shadow(
-                        radius = lerp(6f, 2f, pressProgress.value).dp,
-                        color = Color.Black.copy(alpha = 0.20f),
-                    )
-                },
-                onDrawSurface = {
-                    val baseAlpha = if (isDark) 0.10f else 0.25f
-                    val pressedAlpha = baseAlpha + pressProgress.value * 0.12f
-                    drawRect(Color.White.copy(alpha = pressedAlpha))
-                },
-            )
-            .pointerInput(scope) {
-                val springSpec = spring<Float>(0.6f, 400f, 0.001f)
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
-                    scope.launch { pressProgress.animateTo(1f, springSpec) }
-                    waitForUpOrCancellation()
-                    scope.launch { pressProgress.animateTo(0f, springSpec) }
-                }
-            }
-            .clip(shape)
-            .clickable(onClick = onClick)
-    } else {
-        Modifier
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f))
-            .clickable(onClick = onClick)
-    }
-
     Box(
-        modifier = modifier.then(interactiveModifier),
+        modifier = modifier
+            .liquidGlassChrome(
+                shape = shape,
+                enabled = enabled,
+                preset = LiquidGlassPreset.FloatingControls,
+                backdrop = backdrop,
+            )
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

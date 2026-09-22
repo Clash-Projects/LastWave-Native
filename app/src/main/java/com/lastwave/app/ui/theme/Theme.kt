@@ -69,7 +69,11 @@ fun LastWaveTheme(
                 LocalIsDarkTheme provides isDark,
             ) {
                 if (isLiquidGlassBackdropSupported()) {
-                    val backgroundBackdrop = rememberLayerBackdrop()
+                    val backgroundColor = MaterialTheme.colorScheme.background
+                    val backgroundBackdrop = rememberLayerBackdrop {
+                        drawRect(backgroundColor)
+                        drawContent()
+                    }
                     CompositionLocalProvider(
                         LocalLiquidGlassBackdrop provides backgroundBackdrop,
                         LocalLiquidGlassOverlayBackdrop provides backgroundBackdrop,

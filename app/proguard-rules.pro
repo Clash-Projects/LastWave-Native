@@ -63,6 +63,7 @@
 # Kyant Backdrop (AndroidLiquidGlass): AGSL RuntimeShader strings and
 # RenderEffect bridges are reached via Compose runtime — keep in release builds.
 -keep class com.kyant.backdrop.** { *; }
+-keep class com.kyant.shapes.** { *; }
 
 # Silence R8 missing-class warnings for Kotlin 2.x standard library and IO additions
 # referenced by the InnerTubeX runtime jar.
