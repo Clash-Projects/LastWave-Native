@@ -85,6 +85,7 @@ class YtMusicAuthManager @Inject constructor(
             photoUrl,
             onBehalfOfUser = current.onBehalfOfUser,
             authUserIndex = current.authUserIndex,
+            pageId = current.pageId,
         )
     }
 

@@ -107,7 +107,7 @@ fun YouTubeLoginScreen(
                                 val cookies = readYouTubeCookies()
                                 val hasSession = listOf("__Secure-3PAPISID=", "SAPISID=").any { token ->
                                     cookies?.contains(token) == true
-                                }
+                                } && cookies?.contains("LOGIN_INFO=") == true
                                 if (hasSession) {
                                     viewModel.attemptConnect(cookies)
                                 }

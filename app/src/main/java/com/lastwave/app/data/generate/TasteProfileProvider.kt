@@ -68,7 +68,7 @@ class TasteProfileProvider @Inject constructor(
         val isGuest = username.isBlank() || username.equals("Guest User", ignoreCase = true)
         val ytAccountKey = ytMusicAuth.connection.value
             .takeIf { it.isConnected }
-            ?.let { "${it.accountName}|${it.connectedAtMillis}|${it.onBehalfOfUser}|${it.authUserIndex}" }
+            ?.let { "${it.accountName}|${it.connectedAtMillis}|${it.onBehalfOfUser}|${it.authUserIndex}|${it.pageId}" }
             .orEmpty()
 
         cached?.let {

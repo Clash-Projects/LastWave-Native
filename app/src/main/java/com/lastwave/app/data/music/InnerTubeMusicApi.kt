@@ -136,10 +136,14 @@ data class YtAccountInfo(
 
 /**
  * One switchable YouTube channel within the signed-in session. Selection is
- * applied per-request, never via cookies: [channelId] (brand-channel
- * delegation token / UC id) is sent as the InnerTube context
- * `user.onBehalfOfUser`, [authUserIndex] (multi-login session index) as the
- * `X-Goog-AuthUser` header. Both null = YouTube's default (first) channel.
+ * applied per-request, never via cookies: [pageId] (brand-channel delegation
+ * token from `account/get_account_switcher`'s `pageIdToken`, the same
+ * `pageid=` music.youtube.com sends when the user picks a channel) goes out
+ * as the `X-Goog-PageId` header (+`X-Goog-AuthUser: 0`); [channelId]
+ * (legacy `onBehalfOfUser`/UC token from `account_menu`) is sent as the
+ * InnerTube context `user.onBehalfOfUser`; [authUserIndex] (multi-login
+ * session index) goes out as the `X-Goog-AuthUser` header. Blank [pageId]
+ * + null [channelId] = YouTube's default (first) channel.
  */
 data class YtChannelOption(
     val channelId: String? = null,
@@ -148,6 +152,7 @@ data class YtChannelOption(
     val channelHandle: String? = null,
     val photoUrl: String? = null,
     val isActive: Boolean = false,
+    val pageId: String = "",
 )
 
 /** One item of an OWNED playlist, carrying its `setVideoId` — the unique
@@ -738,7 +743,13 @@ class InnerTubeMusicApi @Inject constructor(
             // ping is attributed to whoever owns these cookies.
             ytAuth.cookieHeaderValue(account)?.let { builder.header("Cookie", it) }
             ytAuth.authorizationHeaderValue(account = account)?.let { builder.header("Authorization", it) }
-            account.authUserIndex?.let { builder.header("X-Goog-AuthUser", it.toString()) }
+            val historyPageId = account.pageId.takeIf { it.isNotBlank() }
+            if (historyPageId != null) {
+                builder.header("X-Goog-PageId", historyPageId)
+                builder.header("X-Goog-AuthUser", (account.authUserIndex ?: 0).toString())
+            } else {
+                account.authUserIndex?.let { builder.header("X-Goog-AuthUser", it.toString()) }
+            }
             webConfig?.visitorData?.let { builder.header("X-Goog-Visitor-Id", it) }
             val call = http.newCall(builder.build())
             call.timeout().timeout(HISTORY_PING_TIMEOUT_MS, TimeUnit.MILLISECONDS)
@@ -792,16 +803,22 @@ class InnerTubeMusicApi @Inject constructor(
 
     /**
      * Every channel/profile switchable inside the current session, active
-     * entry first. The account-menu response carries `accountItemRenderer`
-     * entries whose service endpoints embed the delegation token
-     * (`onBehalfOfUser`), a UC channel id, and/or a multi-login
-     * `authuser=N` index — the same flags music.youtube.com itself sends
-     * when the user picks a channel (cookies stay identical, which is why
-     * cookie-only clients are stuck on the first channel).
+     * entry first. Primary source is `GET /getAccountSwitcherEndpoint` — the
+     * same endpoint music.youtube.com fires on the avatar → switch-account
+     * button — whose `accountItem` entries carry the brand-channel delegation
+     * token (`pageIdToken.pageId`, surfaced in the web client's
+     * `signin?...&pageid=` switch request) and/or a multi-login
+     * `authuser=N` index. `account_menu` (`accountItemRenderer` /
+     * `onBehalfOfUser`) is kept as a fallback. Cookies stay identical across
+     * channels, which is why cookie-only clients are stuck on the first one.
      */
     suspend fun fetchAvailableChannels(): List<YtChannelOption> = withContext(Dispatchers.IO) {
         if (!ytAuth.connection.value.isConnected) return@withContext emptyList()
         val config = getWebConfig()
+        val switcherRoot = runCatching { fetchAccountSwitcherRoot(config) }.getOrNull()
+        val switcherOptions = switcherRoot?.let(::parseAccountSwitcherChannels).orEmpty()
+        if (switcherOptions.isNotEmpty()) return@withContext markActiveChannel(switcherOptions)
+
         val root = runCatching {
             post(
                 url = "$MUSIC_API/account/account_menu?key=${config.apiKey}&prettyPrint=false",
@@ -861,7 +878,160 @@ class InnerTubeMusicApi @Inject constructor(
                 isActive = false,
             )
         }
-        options.distinctBy { Triple(it.channelId, it.authUserIndex, it.accountName.lowercase()) }
+        markActiveChannel(
+            options.distinctBy { Triple(it.channelId, it.authUserIndex, it.accountName.lowercase()) },
+        )
+    }
+
+    /**
+     * GETs music.youtube.com's own account-switcher endpoint (the one the
+     * avatar → switch-account button fires), which answers as `)]}\'` +
+     * `{"code":"SUCCESS","data":{...}}`. Returns the `data` subtree, or
+     * throws on any failure (callers fall back to `account_menu`).
+     */
+    private suspend fun fetchAccountSwitcherRoot(config: WebConfig): JsonObject = withContext(Dispatchers.IO) {
+        currentCoroutineContext().ensureActive()
+        val account = ytAuth.connection.value
+        if (!account.isConnected) throw IOException("YouTube Music not connected")
+        val builder = Request.Builder()
+            .url("$YOUTUBE_MUSIC_ORIGIN/getAccountSwitcherEndpoint")
+            .get()
+            .header("User-Agent", WEB_USER_AGENT)
+            .header("Origin", YOUTUBE_MUSIC_ORIGIN)
+            .header("Referer", "$YOUTUBE_MUSIC_ORIGIN/")
+            .header("X-YouTube-Client-Name", CLIENT_IDS["WEB_REMIX"] ?: "WEB_REMIX")
+            .header("X-YouTube-Client-Version", config.clientVersion)
+        ytAuth.cookieHeaderValue(account)?.let { builder.header("Cookie", it) }
+        ytAuth.authorizationHeaderValue(account = account)?.let { builder.header("Authorization", it) }
+        // The web client always sends an explicit authuser here (0 for the
+        // first login); brand rows under it carry `authuser=0&pageid=...`.
+        builder.header("X-Goog-AuthUser", (account.authUserIndex ?: 0).toString())
+        webConfig?.visitorData?.let { builder.header("X-Goog-Visitor-Id", it) }
+        val call = http.newCall(builder.build())
+        call.timeout().timeout(ACCOUNT_SWITCHER_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        val (status, text) = call.readResponseBody()
+        if (status !in 200..299) throw InnerTubeHttpException(status)
+        // Anti-hijack prefix (`)]}\'`): the JSON payload starts at the first `{`.
+        val body = text.substringAfter('{', missingDelimiterValue = "")
+        if (body.isEmpty()) throw IOException("Empty account switcher response")
+        val parsed = try {
+            json.parseToJsonElement("{$body").jsonObject
+        } catch (error: Exception) {
+            throw IOException("Invalid account switcher response", error)
+        }
+        if (parsed["code"]?.jsonPrimitive?.contentOrNull != "SUCCESS") {
+            throw IOException("Account switcher rejected session")
+        }
+        parsed["data"]?.jsonObject ?: parsed
+    }
+
+    /**
+     * Parses `getAccountSwitcherEndpoint` rows (`accountItem`, not
+     * `accountItemRenderer`). Brand channels carry
+     * `supportedTokens[].pageIdToken.pageId`; the main channel has no
+     * `pageIdToken`. Multi-login index comes from
+     * `accountSigninToken.signinUrl`'s `authuser=N` (brand rows under the
+     * first login carry `authuser=0&pageid=...`).
+     */
+    private fun parseAccountSwitcherChannels(root: JsonObject): List<YtChannelOption> {
+        val items = mutableListOf<JsonObject>()
+        collectObjects(root, "accountItem", items)
+        if (items.isEmpty()) return emptyList()
+        val options = mutableListOf<YtChannelOption>()
+        for (item in items) {
+            val name = item.obj("accountName")?.string("simpleText")?.trim()
+                ?: item.obj("accountName")?.array("runs")?.firstOrNull()
+                    ?.asObject()?.string("text")?.trim()
+                ?: continue
+            if (name.isBlank()) continue
+            // "Other accounts" rows without a channel are still useful as
+            // multi-login targets, but nameless rows never are.
+            val (pageId, authUser, isSelected) = findSwitcherToken(item)
+            val photo = item.obj("accountPhoto")?.obj("thumbnails")?.array("thumbnails")
+                ?.lastOrNull()?.asObject()?.string("url")
+                ?: extractThumbnailsUrl(item)
+            val handle = item.obj("channelHandle")?.array("runs")?.firstOrNull()
+                ?.asObject()?.string("text")
+            options += YtChannelOption(
+                channelId = null,
+                authUserIndex = authUser,
+                accountName = name,
+                channelHandle = handle,
+                photoUrl = photo,
+                isActive = isSelected,
+                pageId = pageId.orEmpty(),
+            )
+        }
+        return options.distinctBy { Triple(it.pageId, it.authUserIndex, it.accountName.lowercase()) }
+    }
+
+    /** Marks the locally selected channel active (server `isSelected` is only
+     *  a fallback for fresh logins — we switch per-request, never server-side). */
+    private fun markActiveChannel(options: List<YtChannelOption>): List<YtChannelOption> {
+        if (options.isEmpty()) return options
+        val current = ytAuth.connection.value
+        val matchIndex = options.indexOfFirst { option ->
+            option.pageId == current.pageId &&
+                option.channelId == current.onBehalfOfUser &&
+                option.authUserIndex == current.authUserIndex
+        }
+        val resolved = if (matchIndex >= 0) {
+            options.mapIndexed { index, option -> option.copy(isActive = index == matchIndex) }
+        } else if (options.none { it.isActive }) {
+            // No stored selection and no server hint: default (blank pageId) first.
+            options.mapIndexed { index, option ->
+                option.copy(isActive = index == options.indexOfFirst { it.pageId.isBlank() }.takeIf { it >= 0 } ?: 0)
+            }
+        } else {
+            options
+        }
+        return resolved.sortedByDescending { it.isActive }
+    }
+
+    private data class SwitcherToken(
+        val pageId: String?,
+        val authUserIndex: Int?,
+        val isSelected: Boolean,
+    )
+
+    private fun findSwitcherToken(item: JsonObject): SwitcherToken {
+        var pageId: String? = null
+        var pageIdFromUrl: String? = null
+        var authUser: Int? = null
+        var isSelected = false
+        fun visit(element: JsonElement) {
+            when (element) {
+                is JsonObject -> element.forEach { (key, child) ->
+                    if (child is JsonPrimitive && child.isString) {
+                        val value = child.contentOrNull.orEmpty()
+                        when (key) {
+                            "pageId" -> if (pageId == null && value.isNotBlank()) pageId = value
+                            "signinUrl", "signinurl" -> {
+                                if (authUser == null) {
+                                    Regex("authuser=(\\d+)").find(value)?.groupValues
+                                        ?.getOrNull(1)?.toIntOrNull()?.let { authUser = it }
+                                }
+                                if (pageIdFromUrl == null) {
+                                    Regex("[?&]pageid=(\\d+)").find(value)?.groupValues
+                                        ?.getOrNull(1)?.takeIf { it.isNotBlank() }?.let { pageIdFromUrl = it }
+                                }
+                            }
+                        }
+                        if (authUser == null) {
+                            Regex("authuser=(\\d+)").find(value)?.groupValues
+                                ?.getOrNull(1)?.toIntOrNull()?.let { authUser = it }
+                        }
+                    } else if (child is JsonPrimitive) {
+                        if (key == "isSelected" && child.toString() == "true") isSelected = true
+                    }
+                    visit(child)
+                }
+                is JsonArray -> element.forEach(::visit)
+                else -> Unit
+            }
+        }
+        visit(item)
+        return SwitcherToken(pageId ?: pageIdFromUrl, authUser, isSelected)
     }
 
     /** Scoped search for a channel delegation token inside one menu entry. */
@@ -2655,9 +2825,19 @@ class InnerTubeMusicApi @Inject constructor(
             }
             ytAuth.cookieHeaderValue(account)?.let { builder.header("Cookie", it) }
             ytAuth.authorizationHeaderValue(account = account)?.let { builder.header("Authorization", it) }
-            // Multi-login session index: cookies are shared across the
-            // session's Google accounts, this flag picks which one answers.
-            account.authUserIndex?.let { builder.header("X-Goog-AuthUser", it.toString()) }
+            // Brand-channel delegation: same cookies, but YouTube answers as
+            // the selected channel instead of the default (first) one.
+            // Mirrors music.youtube.com, which sends `pageid=` on its switcher
+            // `signin` request and `X-Goog-PageId` per API call afterwards.
+            val pageId = account.pageId.takeIf { it.isNotBlank() }
+            if (pageId != null) {
+                builder.header("X-Goog-PageId", pageId)
+                builder.header("X-Goog-AuthUser", (account.authUserIndex ?: 0).toString())
+            } else {
+                // Multi-login session index: cookies are shared across the
+                // session's Google accounts, this flag picks which one answers.
+                account.authUserIndex?.let { builder.header("X-Goog-AuthUser", it.toString()) }
+            }
         }
 
         val request = builder
@@ -3301,6 +3481,7 @@ class InnerTubeMusicApi @Inject constructor(
         const val MAX_PLAYER_REQUEST_ATTEMPTS = 2
         const val CONFIG_REQUEST_TIMEOUT_MS = 4_000L
         const val RELATED_REQUEST_TIMEOUT_MS = 8_000L
+        const val ACCOUNT_SWITCHER_TIMEOUT_MS = 15_000L
         /** Per-probe socket timeout for the 0-1 byte stream validity check. */
         const val STREAM_PROBE_TIMEOUT_MS = 4_000L
         const val HISTORY_PING_TIMEOUT_MS = 15_000L
