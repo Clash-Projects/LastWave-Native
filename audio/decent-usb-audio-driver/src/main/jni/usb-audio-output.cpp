@@ -593,11 +593,19 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeFlush(
         JNIEnv *, jobject, jlong h) {
     auto *ctx = reinterpret_cast<UsbAudioContext *>(h);
     if (!ctx) return;
+    // Drop audio already queued for the old position. Leaving those URBs
+    // in the ring after a seek wedges the endpoint and the next writes
+    // produce silence. framesClock stays so the playhead does not jump.
+    ctx->paused.store(true);
+    drainAllUrbs(ctx);
     ctx->frameAccumulator = 0.0;
     ctx->microframeIndex = 0;
     ctx->residualBytes = 0;
     ctx->framesWritten = 0;
-    LOGI("Flush: frameAccumulator, residual, and framesWritten reset");
+    ctx->running.store(true);
+    ctx->paused.store(false);
+    LOGI("Flush: in-flight URBs discarded, stream kept, clock=%lld",
+         (long long)ctx->framesClock.load());
 }
 
 JNIEXPORT jint JNICALL
@@ -759,6 +767,23 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
             int frames = (int)sum;
             if (frames < 1) frames = 1;
             double carry = sum - (double)frames;
+            // 24-bit packed stereo is 6 bytes/frame. 11, 23 and 45 frames
+            // are 66/138/270 bytes, which xHCI will not DMA cleanly. Round
+            // to a 4-byte-aligned length and keep the leftover in the
+            // accumulator so the average rate does not change.
+            if (((frames * bpf) & 3) != 0) {
+                int down = frames - 1;
+                int up = frames + 1;
+                bool downOk = down >= 1 && ((down * bpf) & 3) == 0;
+                bool upOk = ((up * bpf) & 3) == 0;
+                if (upOk && (!downOk || carry >= 0.5)) {
+                    frames = up;
+                    carry -= 1.0;
+                } else if (downOk) {
+                    frames = down;
+                    carry += 1.0;
+                }
+            }
             int b = frames * bpf;
             if (urbBytes + b > USB_AUDIO_URB_BUFFER_SIZE || b > remaining) break;
 

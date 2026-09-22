@@ -409,6 +409,12 @@ class NativeProcessingAudioSink(
                 exclusiveEnded = false
                 return true
             }
+            // A seek discards in-flight URBs. The first write after that can
+            // fail once; tearing the USB session down here is what left the
+            // DAC silent while the seek bar kept moving.
+            if (exclusiveUsb?.restartIfStopped() == true) {
+                return false
+            }
             exclusiveStartFailed = true
             leaveExclusiveUsb(configureAndroid = true)
         }

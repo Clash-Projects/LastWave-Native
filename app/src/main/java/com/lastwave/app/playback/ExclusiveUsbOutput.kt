@@ -238,11 +238,26 @@ class ExclusiveUsbOutput @Inject constructor(
 
     fun flush() {
         synchronized(lock) {
-            // Residual only. Re-anchoring here froze the slider: DASH/FLAC
-            // flushes mid-track, framesWritten went to 0, and ExoPlayer kept
-            // the last position (often 0:01) until the next write.
             stream?.flush()
+            // Seek only flushes the sink. ExoPlayer does not call play()
+            // again, so a pause flag left set here means every later buffer
+            // is refused and the DAC stays silent while the bar moves on.
+            paused = false
+            stream?.setPaused(false)
         }
+    }
+
+    /** Revive a stream that stopped during a seek without closing the device. */
+    fun restartIfStopped(): Boolean {
+        val running = stream ?: return false
+        if (running.isAlive) return false
+        if (!running.start()) return false
+        synchronized(lock) {
+            paused = false
+            mediaTimeBaseFrames = 0L
+            startMediaTimeNeedsInit = false
+        }
+        return true
     }
 
     fun handleDiscontinuity() {
