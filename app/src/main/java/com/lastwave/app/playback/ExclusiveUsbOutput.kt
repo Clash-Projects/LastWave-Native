@@ -49,6 +49,12 @@ class ExclusiveUsbOutput @Inject constructor(
 
     private val usbAudio = UsbAudioDevice.getInstance(appContext)
     private var stream: UsbAudioStream? = null
+    private val pcmLock = Object()
+    private val pcmQueue = ArrayDeque<QueuedPcm>()
+    @Volatile private var queuedBytes = 0
+    @Volatile private var flushRequested = false
+    @Volatile private var writerStop = false
+    private var writer: Thread? = null
     private var connection: UsbDeviceConnection? = null
     private var sourceEncoding = 0
     private var useFloatWrite = false
@@ -130,6 +136,13 @@ class ExclusiveUsbOutput @Inject constructor(
      */
     fun setPaused(value: Boolean) {
         paused = value
+        synchronized(pcmLock) {
+            if (value) {
+                pcmQueue.clear()
+                queuedBytes = 0
+            }
+            pcmLock.notifyAll()
+        }
     }
 
     /** True while the isochronous stream is still accepting PCM. */
@@ -192,37 +205,41 @@ class ExclusiveUsbOutput @Inject constructor(
     fun write(buffer: ByteBuffer, presentationTimeUs: Long): Boolean {
         if (!buffer.hasRemaining()) return true
         if (paused) return false
-        synchronized(lock) {
-            val running = stream
-            if (paused) return false
-            if (!wanted || !active || running == null || !running.isAlive) {
-                return false
-            }
-            val clock = running.framesWritten
-            if (startMediaTimeNeedsInit) {
-                // Anchor once, to the first buffer. Later DASH chunks must
-                // not rebase this or ExoPlayer waits after the first segment.
-                mediaTimeBaseFrames = clock
-                startMediaTimeUs = presentationTimeUs.coerceAtLeast(0L)
-                startMediaTimeNeedsInit = false
-            }
-            recheckClockLocked()
-            val remaining = buffer.remaining()
-            if (useFloatWrite) {
-                val floats = FloatArray(remaining / Float.SIZE_BYTES)
-                val view = buffer.order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
-                view.get(floats)
-                buffer.position(buffer.limit())
-                running.write(floats)
-            } else {
-                val encoding = writeRawEncoding(sourceEncoding)
-                if (encoding < 0) return false
-                val bytes = ByteArray(remaining)
-                buffer.get(bytes)
-                running.writeRaw(bytes, encoding)
-            }
-            return running.isAlive
+        val running = stream
+        if (!wanted || !active || running == null || !running.isAlive) return false
+        val size = buffer.remaining()
+        // Full queue means "try again", like AudioTrack. Blocking here holds
+        // ExoPlayer's playback thread, and that thread is what loads the next
+        // network bytes. A forward seek then plays the buffered couple of
+        // seconds and sticks on the loading spinner.
+        synchronized(pcmLock) {
+            if (queuedBytes > 0 && queuedBytes + size > MAX_QUEUED_BYTES) return false
         }
+        if (startMediaTimeNeedsInit) {
+            mediaTimeBaseFrames = running.framesWritten
+            startMediaTimeUs = presentationTimeUs.coerceAtLeast(0L)
+            startMediaTimeNeedsInit = false
+        }
+        recheckClockLocked()
+        val chunk = if (useFloatWrite) {
+            val floats = FloatArray(size / Float.SIZE_BYTES)
+            buffer.order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(floats)
+            buffer.position(buffer.limit())
+            QueuedPcm(floats, null, 0, size)
+        } else {
+            val encoding = writeRawEncoding(sourceEncoding)
+            if (encoding < 0) return false
+            val bytes = ByteArray(size)
+            buffer.get(bytes)
+            QueuedPcm(null, bytes, encoding, size)
+        }
+        synchronized(pcmLock) {
+            if (paused || writerStop) return false
+            pcmQueue.addLast(chunk)
+            queuedBytes += size
+            pcmLock.notifyAll()
+        }
+        return true
     }
 
     fun getCurrentPositionUs(): Long {
@@ -247,15 +264,19 @@ class ExclusiveUsbOutput @Inject constructor(
      * BUFFERING between DASH chunks. While exclusive USB is playing, the
      * isochronous pipeline is that pending audio.
      */
-    fun hasPendingData(): Boolean = active && !paused && stream?.isAlive == true
+    fun hasPendingData(): Boolean =
+        active && !paused && (queuedBytes > 0 || stream?.isAlive == true)
 
     fun flush() {
-        synchronized(lock) {
-            stream?.flush()
+        synchronized(pcmLock) {
+            pcmQueue.clear()
+            queuedBytes = 0
+            flushRequested = true
             // Seek only flushes the sink. ExoPlayer does not call play()
             // again, so a pause flag left set here means every later buffer
             // is refused and the DAC stays silent while the bar moves on.
             paused = false
+            pcmLock.notifyAll()
         }
     }
 
@@ -288,13 +309,16 @@ class ExclusiveUsbOutput @Inject constructor(
      * re-probe (seconds of control-transfer timeouts).
      */
     fun prepareForNextItem() {
-        synchronized(lock) {
-            stream?.flush()
+        synchronized(pcmLock) {
+            pcmQueue.clear()
+            queuedBytes = 0
+            flushRequested = true
             paused = false
-            startMediaTimeNeedsInit = true
-            startMediaTimeUs = 0L
-            mediaTimeBaseFrames = stream?.framesWritten ?: 0L
+            pcmLock.notifyAll()
         }
+        startMediaTimeNeedsInit = true
+        startMediaTimeUs = 0L
+        mediaTimeBaseFrames = stream?.framesWritten ?: 0L
     }
 
     fun reset() {
@@ -422,6 +446,7 @@ class ExclusiveUsbOutput @Inject constructor(
             TAG,
             "exclusive volume hardware=$hardwareVolume listening=$listeningGain softwareGain=$softwareGainValue",
         )
+        startWriterLocked(created)
         return true
     }
 
@@ -510,7 +535,55 @@ class ExclusiveUsbOutput @Inject constructor(
         }
     }
 
+    private fun startWriterLocked(target: UsbAudioStream) {
+        stopWriterLocked()
+        writerStop = false
+        flushRequested = false
+        val thread = Thread({ writeLoop(target) }, "ExclusiveUsbWriter")
+        writer = thread
+        thread.start()
+    }
+
+    private fun stopWriterLocked() {
+        writerStop = true
+        synchronized(pcmLock) {
+            pcmQueue.clear()
+            queuedBytes = 0
+            pcmLock.notifyAll()
+        }
+        writer?.join(2_000)
+        writer = null
+    }
+
+    private fun writeLoop(target: UsbAudioStream) {
+        while (!writerStop) {
+            val next = synchronized(pcmLock) {
+                while (!writerStop && !flushRequested && (paused || pcmQueue.isEmpty())) {
+                    pcmLock.wait()
+                }
+                if (writerStop) return@synchronized null
+                if (flushRequested) {
+                    flushRequested = false
+                    pcmQueue.clear()
+                    queuedBytes = 0
+                    return@synchronized FLUSH_MARKER
+                }
+                val chunk = pcmQueue.removeFirst()
+                queuedBytes = (queuedBytes - chunk.byteSize).coerceAtLeast(0)
+                chunk
+            } ?: break
+            if (next === FLUSH_MARKER) {
+                runCatching { target.flush() }
+                continue
+            }
+            if (!target.isAlive) break
+            if (next.floats != null) target.write(next.floats)
+            else if (next.raw != null) target.writeRaw(next.raw, next.encoding)
+        }
+    }
+
     private fun stopStreamLocked() {
+        stopWriterLocked()
         val running = stream ?: return
         runCatching { running.stop() }
         runCatching { running.drainUrbs() }
@@ -541,6 +614,13 @@ class ExclusiveUsbOutput @Inject constructor(
         if (closeDevice) unregisterVolumeObserverLocked()
     }
 
+    private class QueuedPcm(
+        val floats: FloatArray?,
+        val raw: ByteArray?,
+        val encoding: Int,
+        val byteSize: Int,
+    )
+
     private fun failLocked(reason: String): Boolean {
         Log.w(TAG, "Exclusive USB fail-open: $reason")
         teardownLocked(closeDevice = true)
@@ -558,6 +638,8 @@ class ExclusiveUsbOutput @Inject constructor(
         const val RAW_PCM16 = 2
         const val RAW_PCM24 = 0x15
         const val RAW_PCM32 = 0x16
+        const val MAX_QUEUED_BYTES = 512 * 1024
+        val FLUSH_MARKER = QueuedPcm(null, null, -1, 0)
 
         fun isoPacketBytes(raw: Int): Int {
             if (raw <= 0) return 0
