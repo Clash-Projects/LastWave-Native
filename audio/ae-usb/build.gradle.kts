@@ -8,7 +8,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        minSdk = 29
+        minSdk = 24
         externalNativeBuild { cmake { cppFlags("-fno-fast-math") } }
     }
 
