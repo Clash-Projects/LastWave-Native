@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Matches any USB Audio Class device (class 1 = Audio).
+     When a USB DAC is connected, Android offers the app as a handler,
+     allowing it to claim the device before the kernel snd-usb-audio driver binds. -->
+<resources>
+    <usb-device class="1" />
+</resources>

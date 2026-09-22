@@ -284,7 +284,7 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
 
     // Bit-perfect USB exclusive output: audio_engine UsbAudioDriver.
-    implementation(project(":audio:ae-usb"))
+    implementation(project(":audio:decent-usb-audio-driver"))
 }
 
 kotlin {

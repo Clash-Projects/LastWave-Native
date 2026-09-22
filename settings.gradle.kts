@@ -27,4 +27,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "LastWave"
 include(":app")
-include(":audio:ae-usb")
+include(":audio:decent-usb-audio-driver")
