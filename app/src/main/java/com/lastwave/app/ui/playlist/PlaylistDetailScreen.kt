@@ -76,6 +76,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -359,7 +360,14 @@ fun PlaylistDetailScreen(
                                 }
                             },
                             shape = CircleShape,
-                            modifier = Modifier.size(50.dp),
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = liquidGlassContainerColor(
+                                    MaterialTheme.colorScheme.secondaryContainer,
+                                    backdrop = headerBackdrop,
+                                ),
+                            ),
+                            modifier = Modifier.size(50.dp)
+                                .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, headerBackdrop),
                         ) {
                             Icon(Icons.Filled.Shuffle, contentDescription = "Shuffle", modifier = Modifier.size(22.dp))
                         }
@@ -417,7 +425,14 @@ fun PlaylistDetailScreen(
                                 viewModel.downloadPlaylist(playlistId)
                             },
                             shape = CircleShape,
-                            modifier = Modifier.size(50.dp),
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = liquidGlassContainerColor(
+                                    MaterialTheme.colorScheme.secondaryContainer,
+                                    backdrop = headerBackdrop,
+                                ),
+                            ),
+                            modifier = Modifier.size(50.dp)
+                                .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, headerBackdrop),
                         ) {
                             Icon(Icons.Filled.Download, contentDescription = "Download all songs", modifier = Modifier.size(22.dp))
                         }
@@ -641,7 +656,7 @@ fun PlaylistDetailScreen(
         Surface(
             color = liquidGlassContainerColor(topBarBg, backdrop = headerBackdrop),
             tonalElevation = topBarElevation,
-            shadowElevation = topBarElevation,
+            shadowElevation = if (LocalLiquidGlass.current && showScrolledHeader) 0.dp else topBarElevation,
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
@@ -723,7 +738,14 @@ fun PlaylistDetailScreen(
                                 sourceLabel = playlist.title,
                             )
                         },
-                        modifier = Modifier.size(38.dp),
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = liquidGlassContainerColor(
+                                MaterialTheme.colorScheme.secondaryContainer,
+                                backdrop = headerBackdrop,
+                            ),
+                        ),
+                        modifier = Modifier.size(38.dp)
+                            .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, headerBackdrop),
                     ) {
                         Icon(
                             if (isThisPlaylistPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,

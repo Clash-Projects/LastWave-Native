@@ -558,7 +558,7 @@ private fun ModernLyricsControls(
                     label = "playerTabScale",
                 )
                 LiquidGlassSurface(
-                    glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current),
+                    glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, interactionSource = playerInteraction),
                     onClick = onToggleFullscreen,
                     interactionSource = playerInteraction,
                     shape = CircleShape,

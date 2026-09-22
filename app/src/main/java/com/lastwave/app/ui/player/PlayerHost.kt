@@ -748,6 +748,7 @@ private fun MiniPlayer(
     // Liquid Glass dressing for the floating mini player (no-op when the
     // experimental setting is off — see ui/theme/LiquidGlass.kt).
     val liquidGlass = LocalLiquidGlass.current
+    val barInteraction = remember { MutableInteractionSource() }
     var dragX by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
     var dragY by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
     val shownX by animateFloatAsState(dragX, ExpressiveMotion.spatialSpring(), label = "miniPlayerX")
@@ -797,15 +798,19 @@ private fun MiniPlayer(
                     else dragY += amount.y
                 }
             }
-            .clickable(onClick = onExpand),
+            .clickable(interactionSource = barInteraction, indication = null, onClick = onExpand),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
             shape = shape,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = if (liquidGlass) 0.80f else 1f),
+            color = liquidGlassContainerColor(
+                MaterialTheme.colorScheme.surfaceContainerHigh,
+                enabled = liquidGlass,
+                backdrop = backdrop,
+            ),
             tonalElevation = if (edgeToEdge || liquidGlass) 0.dp else 6.dp,
             shadowElevation = if (edgeToEdge || liquidGlass) 0.dp else 12.dp,
-            modifier = Modifier.fillMaxWidth().liquidGlassChrome(shape, liquidGlass, LiquidGlassPreset.MiniPlayer, backdrop),
+            modifier = Modifier.fillMaxWidth().liquidGlassChrome(shape, liquidGlass, LiquidGlassPreset.MiniPlayer, backdrop, interactionSource = barInteraction),
         ) {
             Column(
                 modifier = if (edgeToEdge) {
@@ -853,7 +858,8 @@ private fun MiniPlayer(
                             else MaterialTheme.colorScheme.primary,
                         contentColor = if (liquidGlass) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(48.dp),
+                        modifier = Modifier.size(48.dp)
+                            .liquidGlassChrome(CircleShape, liquidGlass, LiquidGlassPreset.FloatingControls, backdrop),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             if (state.isBuffering) {
@@ -873,8 +879,9 @@ private fun MiniPlayer(
                         modifier = Modifier
                             .padding(start = 8.dp)
                             .size(44.dp)
+                            .liquidGlassChrome(CircleShape, liquidGlass, LiquidGlassPreset.FloatingControls, backdrop)
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.secondaryContainer),
+                            .background(liquidGlassContainerColor(MaterialTheme.colorScheme.secondaryContainer, backdrop = backdrop)),
                     ) {
                         Icon(
                             Icons.Filled.SkipNext,
@@ -2189,7 +2196,7 @@ private fun FullPlayer(
                                                 label = "likeScale",
                                             )
                                             LiquidGlassSurface(
-                                                glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls),
+                                                glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = likeInteraction),
                                                 onClick = onToggleLiked,
                                                 interactionSource = likeInteraction,
                                                 shape = CircleShape,
@@ -2228,7 +2235,7 @@ private fun FullPlayer(
                                                 label = "lyricsScale",
                                             )
                                             LiquidGlassSurface(
-                                                glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls),
+                                                glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = lyricsInteraction),
                                                 onClick = { onTabChange(FullPlayerTab.LYRICS) },
                                                 interactionSource = lyricsInteraction,
                                                 shape = CircleShape,
@@ -2608,7 +2615,7 @@ private fun MainControls(state: MusicPlayerState, player: MusicPlayer, isTranslu
         verticalAlignment = Alignment.CenterVertically,
     ) {
         LiquidGlassSurface(
-            glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls),
+            glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = prevInteraction),
             onClick = player::previous,
             interactionSource = prevInteraction,
             shape = CircleShape,
@@ -2628,7 +2635,7 @@ private fun MainControls(state: MusicPlayerState, player: MusicPlayer, isTranslu
             }
         }
         LiquidGlassSurface(
-            glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls),
+            glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = playInteraction),
             onClick = player::togglePlayPause,
             interactionSource = playInteraction,
             shape = CircleShape,
@@ -2658,7 +2665,7 @@ private fun MainControls(state: MusicPlayerState, player: MusicPlayer, isTranslu
             }
         }
         LiquidGlassSurface(
-            glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls),
+            glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = nextInteraction),
             onClick = player::next,
             interactionSource = nextInteraction,
             shape = CircleShape,
@@ -2704,9 +2711,8 @@ private fun PlayerModeButton(
         if (active) MaterialTheme.colorScheme.onPrimaryContainer else foreground, label = "modeContent",
     )
     LiquidGlassSurface(
-        glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls),
+glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = interaction),
         onClick = onClick,
-        interactionSource = interaction,
         shape = CircleShape,
         color = container,
         contentColor = content,

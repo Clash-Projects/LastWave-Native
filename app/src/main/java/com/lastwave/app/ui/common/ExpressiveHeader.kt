@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -79,7 +80,8 @@ fun ExpressiveHeader(
     val glow = MaterialTheme.colorScheme.primary
     val secondaryGlow = MaterialTheme.colorScheme.tertiary
     // Liquid Glass: the header surface turns translucent via the scheme and
-    // gets a specular sheen + hairline border. No-op when setting is off.
+    // the AGSL lens supplies rim/specular from bevel lighting. No-op when
+    // the setting is off.
     val liquidGlass = LocalLiquidGlass.current
     Box(modifier.fillMaxWidth().zIndex(1f)) {
         Surface(
@@ -111,8 +113,9 @@ fun ExpressiveHeader(
                         FilledTonalIconButton(
                             onClick = onBack,
                             colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                containerColor = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHighest),
                             ),
+                            modifier = Modifier.liquidGlassChrome(CircleShape, liquidGlass),
                         ) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
@@ -195,8 +198,9 @@ fun HeaderActionIcon(
     FilledTonalIconButton(
         onClick = onClick,
         colors = IconButtonDefaults.filledTonalIconButtonColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            containerColor = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHighest),
         ),
+        modifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current),
     ) {
         Icon(icon, contentDescription = contentDescription)
     }

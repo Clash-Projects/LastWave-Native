@@ -184,7 +184,7 @@ fun ExpressiveGroupRow(
         modifier = modifier
             .fillMaxWidth()
             .scale(scale)
-            .liquidGlassChrome(shape, liquidGlass),
+            .liquidGlassChrome(shape, liquidGlass, interactionSource = interactionSource),
     ) {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 12.dp),
@@ -260,7 +260,7 @@ fun ExpressiveGroupTrackRow(
         modifier = modifier
             .fillMaxWidth()
             .scale(scale)
-            .liquidGlassChrome(shape, liquidGlass)
+            .liquidGlassChrome(shape, liquidGlass, interactionSource = interactionSource)
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = androidx.compose.material3.ripple(),
@@ -388,7 +388,7 @@ fun ExpressiveGroupSelectRow(
         modifier = modifier
             .fillMaxWidth()
             .scale(scale)
-            .liquidGlassChrome(shape, liquidGlass),
+            .liquidGlassChrome(shape, liquidGlass, interactionSource = interactionSource),
     ) {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(horizontal = 16.dp, vertical = 14.dp),

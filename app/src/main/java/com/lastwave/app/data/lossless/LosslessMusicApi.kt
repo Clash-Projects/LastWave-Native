@@ -68,7 +68,7 @@ class LosslessMusicApi @Inject constructor(
         .readTimeout(5, TimeUnit.SECONDS)
         .build()
     private val resolutionClient = client.newBuilder()
-        .callTimeout(5, TimeUnit.SECONDS)
+        .callTimeout(4, TimeUnit.SECONDS)
         .build()
 
     @Volatile
@@ -418,8 +418,7 @@ class LosslessMusicApi @Inject constructor(
         val queries = listOf(
             "$cleanTitle $cleanArtist".trim(),
             cleanTitle.trim(),
-            title.trim().takeIf { it.isNotBlank() },
-        ).distinct().filterNotNull()
+        ).distinct()
 
         for (query in queries) {
             currentCoroutineContext().ensureActive()

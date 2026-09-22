@@ -956,7 +956,7 @@ private fun TasteStrip(
                     modifier = Modifier,
                     border = androidx.compose.foundation.BorderStroke(
                         1.dp,
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f),
                     ),
                 ) {
                     Row(
@@ -1173,7 +1173,7 @@ private fun QuickTileCard(
         ),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.10f),
         ),
         modifier = modifier
             .width(136.dp),

@@ -48,6 +48,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -334,7 +335,14 @@ fun AlbumDetailScreen(
                                     },
                                     enabled = data.tracks.isNotEmpty(),
                                     shape = CircleShape,
-                                    modifier = Modifier.size(48.dp),
+                                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                        containerColor = liquidGlassContainerColor(
+                                            MaterialTheme.colorScheme.secondaryContainer,
+                                            backdrop = headerBackdrop,
+                                        ),
+                                    ),
+                                    modifier = Modifier.size(48.dp)
+                                        .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, headerBackdrop),
                                 ) {
                                     Icon(
                                         Icons.Filled.Shuffle,
@@ -352,15 +360,20 @@ fun AlbumDetailScreen(
                                     },
                                     enabled = data.tracks.isNotEmpty(),
                                     shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    shadowElevation = 6.dp,
-                                    modifier = Modifier.size(56.dp),
+                                    color = if (LocalLiquidGlass.current) MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+                                        else MaterialTheme.colorScheme.primary,
+                                    contentColor = if (LocalLiquidGlass.current) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.onPrimary,
+                                    shadowElevation = if (LocalLiquidGlass.current) 0.dp else 6.dp,
+                                    modifier = Modifier.size(56.dp)
+                                        .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, headerBackdrop),
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(
                                             if (isAlbumPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                             contentDescription = "Play Album",
-                                            tint = MaterialTheme.colorScheme.onPrimary,
+                                            tint = if (LocalLiquidGlass.current) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.onPrimary,
                                             modifier = Modifier.size(30.dp),
                                         )
                                     }
@@ -602,7 +615,7 @@ fun AlbumDetailScreen(
         Surface(
             color = liquidGlassContainerColor(if (showScrolledHeader) MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.98f) else Color.Transparent, backdrop = headerBackdrop),
             tonalElevation = if (showScrolledHeader) 4.dp else 0.dp,
-            shadowElevation = if (showScrolledHeader) 6.dp else 0.dp,
+            shadowElevation = if (showScrolledHeader && !LocalLiquidGlass.current) 6.dp else 0.dp,
             modifier = Modifier
                 .fillMaxWidth()
                 .zIndex(10f)
@@ -660,7 +673,14 @@ fun AlbumDetailScreen(
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             viewModel.playAll()
                         },
-                        modifier = Modifier.size(38.dp),
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = liquidGlassContainerColor(
+                                MaterialTheme.colorScheme.secondaryContainer,
+                                backdrop = headerBackdrop,
+                            ),
+                        ),
+                        modifier = Modifier.size(38.dp)
+                            .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, headerBackdrop),
                     ) {
                         Icon(Icons.Filled.PlayArrow, contentDescription = "Play", modifier = Modifier.size(22.dp))
                     }

@@ -41,9 +41,10 @@ fun LiquidGlassCard(
     }
 
     val baseColor = if (tintColor.isSpecified) tintColor else MaterialTheme.colorScheme.surfaceContainer
+    val glassInteraction = remember { MutableInteractionSource() }
     val clickModifier = if (onClick != null) {
         Modifier.clickable(
-            interactionSource = remember { MutableInteractionSource() },
+            interactionSource = glassInteraction,
             indication = null,
             role = Role.Button,
             onClick = onClick,
@@ -52,7 +53,7 @@ fun LiquidGlassCard(
 
     Card(
         modifier = modifier
-            .liquidGlassChrome(shape, enabled)
+            .liquidGlassChrome(shape, enabled, interactionSource = glassInteraction)
             .then(clickModifier),
         shape = shape,
         colors = CardDefaults.cardColors(

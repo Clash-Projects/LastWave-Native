@@ -26,6 +26,7 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
     @Inject lateinit var applicationScope: CoroutineScope
     @Inject lateinit var okHttpClient: dagger.Lazy<okhttp3.OkHttpClient>
     @Inject lateinit var streamExtractor: dagger.Lazy<com.lastwave.app.data.music.YouTubeStreamExtractor>
+    @Inject lateinit var innerTubeMusicApi: dagger.Lazy<com.lastwave.app.data.music.InnerTubeMusicApi>
     @Inject lateinit var ytMusicSyncManager: dagger.Lazy<com.lastwave.app.data.ytmusic.YtMusicSyncManager>
     @Inject lateinit var ytMusicHistorySyncManager: dagger.Lazy<com.lastwave.app.data.ytmusic.YtMusicHistorySyncManager>
     @Inject lateinit var likedSongsManager: dagger.Lazy<com.lastwave.app.data.playlist.LikedSongsManager>
@@ -74,6 +75,9 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
             // NewPipe is optional fallback infrastructure. A broken extractor
             // install must not escape an application-scope coroutine.
             runCatching { streamExtractor.get().preWarm() }
+            // Warm the InnerTube web config (visitor data) so the first
+            // playback's direct-URL fast path can attach it immediately.
+            runCatching { innerTubeMusicApi.get().preWarmPlayback() }
             runCatching { likedSongsManager.get().start() }
                 .onFailure { android.util.Log.e("LastWaveStartup", "Liked Songs startup disabled", it) }
         }

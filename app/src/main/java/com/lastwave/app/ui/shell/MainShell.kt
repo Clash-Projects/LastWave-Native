@@ -3,6 +3,7 @@ package com.lastwave.app.ui.shell
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -13,6 +14,9 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,14 +53,22 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -310,6 +322,10 @@ private fun FloatingNavBar(
     modifier: Modifier = Modifier,
 ) {
     val liquidGlass = LocalLiquidGlass.current
+    val glassHoverIndex = remember(liquidGlass) { mutableStateOf<Int?>(null) }
+    val glassNavBounds = remember { mutableStateMapOf<Int, Rect>() }
+    val dockInteraction = remember { MutableInteractionSource() }
+    val fabInteraction = remember { MutableInteractionSource() }
     Box(
         modifier = modifier
             .windowInsetsPadding(
@@ -325,13 +341,45 @@ private fun FloatingNavBar(
         ) {
             Surface(
                 shape = DockShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = if (liquidGlass) 0.80f else 1f),
+                color = liquidGlassContainerColor(
+                    MaterialTheme.colorScheme.surfaceContainerHigh,
+                    enabled = liquidGlass,
+                    backdrop = backdrop,
+                ),
                 tonalElevation = if (liquidGlass) 0.dp else 6.dp,
                 shadowElevation = if (liquidGlass) 0.dp else 12.dp,
-                modifier = Modifier.liquidGlassChrome(DockShape, liquidGlass, LiquidGlassPreset.BottomNavigation, backdrop),
+                modifier = Modifier.liquidGlassChrome(DockShape, liquidGlass, LiquidGlassPreset.BottomNavigation, backdrop, interactionSource = dockInteraction),
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    modifier = Modifier
+                        .then(
+                            if (liquidGlass) {
+                                Modifier.pointerInput(Unit) {
+                                    val bridge = 6.dp.toPx()
+                                    val hitIndex: (Offset) -> Int? = { pos ->
+                                        glassNavBounds.entries
+                                            .firstOrNull { it.value.inflate(bridge).contains(pos) }
+                                            ?.key
+                                    }
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                        glassHoverIndex.value = hitIndex(down.position)
+                                        while (true) {
+                                            val event = awaitPointerEvent()
+                                            val change = event.changes.firstOrNull { it.id == down.id }
+                                            if (change == null || !change.pressed) {
+                                                glassHoverIndex.value = null
+                                                break
+                                            }
+                                            glassHoverIndex.value = hitIndex(change.position)
+                                        }
+                                    }
+                                }
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -341,7 +389,12 @@ private fun FloatingNavBar(
                             label = androidx.compose.ui.res.stringResource(tab.labelRes),
                             icon = tab.icon(),
                             selected = selectedIndex == index,
+                            glassHovered = liquidGlass && glassHoverIndex.value == index,
+                            onGlassBounds = { rect ->
+                                if (glassNavBounds[index] != rect) glassNavBounds[index] = rect
+                            },
                             onClick = onClick,
+                            interactionSource = dockInteraction,
                         )
                     }
                 }
@@ -366,8 +419,8 @@ private fun FloatingNavBar(
                         tonalElevation = if (liquidGlass) 0.dp else 4.dp,
                         modifier = Modifier
                             .size(56.dp)
-                            .liquidGlassChrome(CircleShape, liquidGlass, LiquidGlassPreset.FloatingControls, backdrop)
-                            .clickable(onClick = onOpenGenerator),
+                            .liquidGlassChrome(CircleShape, liquidGlass, LiquidGlassPreset.FloatingControls, backdrop, interactionSource = fabInteraction)
+                            .clickable(interactionSource = fabInteraction, indication = null, onClick = onOpenGenerator),
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                             Icon(
@@ -389,7 +442,10 @@ private fun FloatingNavItem(
     label: String,
     icon: ImageVector,
     selected: Boolean,
+    glassHovered: Boolean,
+    onGlassBounds: (Rect) -> Unit,
     onClick: () -> Unit,
+    interactionSource: MutableInteractionSource? = null,
 ) {
     val backgroundColor by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(
@@ -403,14 +459,21 @@ private fun FloatingNavItem(
         animationSpec = navSpring(),
         label = "navItemContent",
     )
+    val glassIconScale by animateFloatAsState(
+        targetValue = if (glassHovered) 1.4f else 1f,
+        animationSpec = navSpring(),
+        label = "navGlassIconScale",
+    )
 
     Surface(
         onClick = onClick,
         shape = PillShape,
         color = backgroundColor,
+        interactionSource = interactionSource,
         modifier = Modifier
             .height(48.dp)
-            .animateContentSize(animationSpec = navSpring()),
+            .animateContentSize(animationSpec = navSpring())
+            .onGloballyPositioned { onGlassBounds(it.boundsInParent()) },
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -423,7 +486,7 @@ private fun FloatingNavItem(
                 imageVector = icon,
                 contentDescription = label,
                 tint = contentColor,
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier.size(24.dp).scale(glassIconScale),
             )
             AnimatedVisibility(
                 visible = selected,

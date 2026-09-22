@@ -103,6 +103,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import com.lastwave.app.ui.theme.LocalLiquidGlass
+import com.lastwave.app.ui.theme.LiquidGlassPreset
 import com.lastwave.app.ui.theme.liquidGlassContainerColor
 import com.lastwave.app.ui.theme.liquidGlassChrome
 
@@ -646,13 +647,20 @@ private fun TopResultCard(
             FilledIconButton(
                 onClick = onPlay,
                 shape = CircleShape,
-                colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary),
-                modifier = Modifier.size(46.dp),
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = if (liquidGlass) MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+                        else MaterialTheme.colorScheme.primary,
+                    contentColor = if (liquidGlass) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onPrimary,
+                ),
+                modifier = Modifier.size(46.dp)
+                    .liquidGlassChrome(CircleShape, liquidGlass, LiquidGlassPreset.FloatingControls),
             ) {
                 Icon(
                     if (tab == SearchTab.PLAYLISTS) Icons.AutoMirrored.Filled.ArrowForward else Icons.Filled.PlayArrow,
                     contentDescription = if (tab == SearchTab.PLAYLISTS) "Open playlist" else "Play top result",
-                    tint = MaterialTheme.colorScheme.onPrimary,
+                    tint = if (liquidGlass) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(26.dp),
                 )
             }
@@ -915,7 +923,7 @@ private fun SearchFilterPills(
                 color = liquidGlassContainerColor(pillBg),
                 modifier = Modifier
                     .clip(CircleShape)
-                    .liquidGlassChrome(CircleShape, liquidGlass)
+                    .liquidGlassChrome(CircleShape, liquidGlass, interactionSource = interactionSource)
                     .clickable(
                         interactionSource = interactionSource,
                         indication = null,

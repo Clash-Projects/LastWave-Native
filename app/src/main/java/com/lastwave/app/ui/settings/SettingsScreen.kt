@@ -2136,7 +2136,7 @@ private fun SettingsToggleCard(
         modifier = Modifier
             .fillMaxWidth()
             .scale(if (enabled) scale else 1f)
-            .liquidGlassChrome(shape, liquidGlass),
+            .liquidGlassChrome(shape, liquidGlass, interactionSource = interactionSource),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
@@ -2343,7 +2343,7 @@ private fun SettingsActionCard(
         modifier = Modifier
             .fillMaxWidth()
             .scale(scale)
-            .liquidGlassChrome(shape, liquidGlass),
+            .liquidGlassChrome(shape, liquidGlass, interactionSource = interactionSource),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
