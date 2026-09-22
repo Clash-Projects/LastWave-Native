@@ -283,8 +283,8 @@ dependencies {
     testImplementation("io.mockk:mockk:1.13.10")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
 
-    // Bit-perfect USB exclusive output: vendor usbdevfs driver, LastWave sink routing.
-    implementation(project(":audio:decent-usb-audio-driver"))
+    // Bit-perfect USB exclusive output: audio_engine UsbAudioDriver.
+    implementation(project(":audio:ae-usb"))
 }
 
 kotlin {

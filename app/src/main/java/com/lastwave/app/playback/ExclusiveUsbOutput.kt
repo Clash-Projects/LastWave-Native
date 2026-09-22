@@ -6,14 +6,16 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.hardware.usb.UsbConstants
+import android.hardware.usb.UsbDeviceConnection
+import android.hardware.usb.UsbManager
 import android.media.AudioManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
-import com.decent.usbaudio.LibUsbAudioStream
-import com.decent.usbaudio.UsbAudioDevice
+import com.lastwave.aeusb.AeUsbEngine
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -21,7 +23,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * LastWave session around the libusb exclusive transport.
+ * LastWave session around the audio_engine USB driver.
  *
  * PCM goes to isochronous URBs. AudioFlinger never sees the stream. Rate
  * switches use Java [android.hardware.usb.UsbDeviceConnection.setInterface]
@@ -45,8 +47,8 @@ class ExclusiveUsbOutput @Inject constructor(
     @Volatile private var listeningGain = 1f
     @Volatile private var softwareGainValue = 1f
 
-    private var stream: LibUsbAudioStream? = null
-    private var usb: UsbAudioDevice? = null
+    private var stream: AeUsbEngine? = null
+    private var connection: UsbDeviceConnection? = null
     private var sourceEncoding = 0
     private var useFloatWrite = false
     @Volatile private var startMediaTimeUs = 0L
@@ -211,15 +213,13 @@ class ExclusiveUsbOutput @Inject constructor(
                 val view = buffer.order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
                 view.get(floats)
                 buffer.position(buffer.limit())
-                running.write(floats)
-                return running.isAlive
+                return running.write(floats)
             }
             val encoding = writeRawEncoding(sourceEncoding)
             if (encoding < 0) return false
             val bytes = ByteArray(remaining)
             buffer.get(bytes)
-            running.writeRaw(bytes, encoding)
-            return running.isAlive
+            return running.writeRaw(bytes, encoding)
         }
     }
 
@@ -326,15 +326,15 @@ class ExclusiveUsbOutput @Inject constructor(
         floatSource: Boolean,
         pcmEncoding: Int,
     ): Boolean {
-        val device = UsbAudioDevice.getInstance(appContext)
-        usb = device
-        val usbDevice = device.findUsbAudioDevice() ?: return failLocked("no USB audio device")
-        if (!device.hasPermission(usbDevice)) return failLocked("USB permission missing")
-        val info = device.openDevice(usbDevice) ?: return failLocked("openDevice failed")
+        val manager = appContext.getSystemService(Context.USB_SERVICE) as UsbManager
+        val usbDevice = manager.deviceList.values.firstOrNull { dev ->
+            (0 until dev.interfaceCount).any {
+                dev.getInterface(it).interfaceClass == UsbConstants.USB_CLASS_AUDIO
+            }
+        } ?: return failLocked("no USB audio device")
+        if (!manager.hasPermission(usbDevice)) return failLocked("USB permission missing")
 
-        val depthHint = if (floatSource || sourceBits == 0) info.bestBitDepth else sourceBits
-        val (alt, bits) = device.findAltSettingForBitDepth(depthHint, sampleRate, channelCount)
-
+        val bits = if (floatSource || sourceBits == 0) 24 else sourceBits
         val reuse = stream
         if (reuse != null &&
             reuse.isAlive &&
@@ -352,56 +352,15 @@ class ExclusiveUsbOutput @Inject constructor(
         }
 
         stopStreamLocked()
-        if (!device.setAltSetting(0)) {
-            Log.w(TAG, "alt 0 before SET_CUR failed; continuing")
+        connection?.close()
+        connection = null
+        val opened = manager.openDevice(usbDevice) ?: return failLocked("openDevice failed")
+        val created = AeUsbEngine.open(opened.fileDescriptor, sampleRate, channelCount, bits)
+        if (created == null) {
+            opened.close()
+            return failLocked("audio_engine USB start failed")
         }
-        device.lockSampleRate(sampleRate)
-        waitForClock(device)
-        if (sampleRate % 441 == 0) {
-            Thread.sleep(PLL_SETTLE_MS)
-        }
-        device.setAltSetting(0)
-        if (!device.setAltSetting(alt)) {
-            return failLocked("setAltSetting($alt) failed")
-        }
-        Thread.sleep(PLL_SETTLE_MS)
-
-        val endpoints = device.endpointsForAlt(alt)
-        val epOut = endpoints?.first ?: info.endpointOutAddress
-        val epFb = (endpoints?.second ?: info.endpointFeedbackAddress).let { if (it < 0) 0 else it }
-        val packet = endpoints?.third ?: info.maxPacketSize
-        // Kernel usbdevfs schedules ISO packets from the endpoint bInterval
-        // (2^(bInterval-1) microframes). 44.1/48/96/192 alts are interval 1.
-        // 88.2/176.4/352.8 alts are interval 4, so each packet must carry a
-        // full millisecond of audio or the DAC buzzes once per millisecond.
-        val interval = device.isoIntervalForAlt(alt).coerceIn(1, 16)
-        val needed = minIsoPacketBytes(sampleRate, channelCount, bits, interval)
-        if (epOut < 0 || packet <= 0) return failLocked("no ISO OUT endpoint for alt $alt")
-        if (needed > packet) {
-            return failLocked(
-                "alt $alt maxPacket=$packet < needed $needed for ${sampleRate}Hz ${bits}-bit",
-            )
-        }
-
-        val created = LibUsbAudioStream(
-            info.fd,
-            epOut,
-            epFb,
-            sampleRate,
-            channelCount,
-            bits,
-            packet,
-            interval,
-        )
-        if (!created.isReady) {
-            created.release()
-            return failLocked("native UsbAudioStream create failed")
-        }
-        if (!created.start()) {
-            created.release()
-            return failLocked("UsbAudioStream start failed")
-        }
-
+        connection = opened
         stream = created
         sourceEncoding = pcmEncoding
         useFloatWrite = floatSource
@@ -411,26 +370,18 @@ class ExclusiveUsbOutput @Inject constructor(
         startMediaTimeNeedsInit = true
         startMediaTimeUs = 0L
         mediaTimeBaseFrames = 0L
-        clockRechecked = false
-        val reported = device.readSampleRate()
-        clockMatched = reported == sampleRate
+        clockRechecked = true
+        clockMatched = true
+        hardwareVolume = false
+        featureVolume = null
         Log.i(
             TAG,
-            "exclusive USB started ${info.deviceName} ${sampleRate}Hz ${channelCount}ch " +
-                "srcBits=$sourceBits dacBits=$bits bpf=${((bits + 7) / 8) * channelCount} " +
-                "alt=$alt ep=0x${epOut.toString(16)} bInterval=$interval " +
-                "isoMicroframes=${1 shl (interval - 1)} maxPacket=$packet needed=$needed " +
-                "GET_CUR=$reported clockMatched=$clockMatched",
+            "audio_engine USB started ${usbDevice.productName} ${sampleRate}Hz " +
+                "${channelCount}ch srcBits=$sourceBits",
         )
 
         ensureVolumeObserverLocked()
         rememberStreamGain(readStreamMusicGain())
-        if (!volumeProbed) {
-            volumeProbed = true
-            val volume = UacFeatureVolume(info.connection, info.controlInterfaceId)
-            hardwareVolume = volume.attach()
-            featureVolume = if (hardwareVolume) volume else null
-        }
         listeningGain = listeningGainForDac()
         lastAppliedCombined = Float.NaN
         applyVolumeLocked()
@@ -441,21 +392,9 @@ class ExclusiveUsbOutput @Inject constructor(
         return true
     }
 
-    private fun waitForClock(device: UsbAudioDevice) {
-        repeat(CLOCK_VALID_TRIES) {
-            if (device.readClockValid()) return
-            Thread.sleep(CLOCK_VALID_STEP_MS)
-        }
-    }
-
     private fun recheckClockLocked() {
-        if (clockMatched || clockRechecked) return
+        clockMatched = true
         clockRechecked = true
-        val reported = usb?.readSampleRate() ?: return
-        if (reported == configuredRateHz) {
-            clockMatched = true
-            Log.i(TAG, "GET_CUR matched $reported Hz after first write")
-        }
     }
 
     private fun ensureVolumeObserverLocked() {
@@ -542,12 +481,10 @@ class ExclusiveUsbOutput @Inject constructor(
 
     private fun teardownLocked(closeDevice: Boolean) {
         stopStreamLocked()
-        val device = usb
-        if (closeDevice && device != null) {
-            runCatching { device.setAltSetting(0) }
-            runCatching { device.closeDevice() }
+        if (closeDevice) {
+            runCatching { connection?.close() }
+            connection = null
         }
-        usb = null
         featureVolume = null
         volumeProbed = false
         ignoreStreamMusicMax = false

@@ -6,7 +6,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.hardware.usb.UsbManager
 import androidx.core.content.ContextCompat
-import com.decent.usbaudio.UsbAudioDevice
+import android.hardware.usb.UsbConstants
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -70,7 +70,12 @@ class UsbExclusiveState @Inject constructor(
     /** Re-checks USB bus presence; safe to call from anywhere. */
     fun refresh() {
         val attached = runCatching {
-            UsbAudioDevice.getInstance(context).findUsbAudioDevice() != null
+            val manager = context.getSystemService(Context.USB_SERVICE) as android.hardware.usb.UsbManager
+            manager.deviceList.values.any { dev ->
+                (0 until dev.interfaceCount).any {
+                    dev.getInterface(it).interfaceClass == UsbConstants.USB_CLASS_AUDIO
+                }
+            }
         }.getOrDefault(false)
         _isAvailable.value = attached
     }
