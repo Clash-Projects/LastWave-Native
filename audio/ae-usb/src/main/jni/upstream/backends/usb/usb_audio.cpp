@@ -180,7 +180,13 @@ bool UsbAudioDriver::open(int fd) {
 
     opened = true;
     capFirstActivationAfterOpen.store(true);
-    LOGI("USB device opened via fd %d", fd);
+    if (!parseDescriptors()) {
+        LOGE("parseDescriptors failed for fd %d", fd);
+        close();
+        return false;
+    }
+    LOGI("USB device opened via fd %d (%zu formats, hwVolume=%d)",
+         fd, formats.size(), volumeFuUnitId >= 0 ? 1 : 0);
     return true;
 }
 
@@ -247,7 +253,12 @@ bool UsbAudioDriver::open(uint16_t vid, uint16_t pid) {
 
     opened = true;
     capFirstActivationAfterOpen.store(true);
-    LOGI("USB device opened: VID=%04X PID=%04X", vid, pid);
+    if (!parseDescriptors()) {
+        LOGE("parseDescriptors failed for VID=%04X PID=%04X", vid, pid);
+        close();
+        return false;
+    }
+    LOGI("USB device opened: VID=%04X PID=%04X (%zu formats)", vid, pid, formats.size());
     return true;
 }
 
@@ -335,7 +346,12 @@ bool UsbAudioDriver::parseDescriptors() {
 
     int rc = libusb_get_active_config_descriptor(dev, &config);
     if (rc < 0) {
-        LOGE("get_active_config_descriptor failed: %s", libusb_error_name(rc));
+        LOGI("get_active_config_descriptor failed: %s; trying config index 0",
+             libusb_error_name(rc));
+        rc = libusb_get_config_descriptor(dev, 0, &config);
+    }
+    if (rc < 0 || !config) {
+        LOGE("config descriptor unavailable: %s", libusb_error_name(rc));
         return false;
     }
 
@@ -815,10 +831,26 @@ bool UsbAudioDriver::setSampleRate(int endpoint, int rate) {
 
     if (rc < 0) {
         LOGE("UAC1 setSampleRate(%d) failed: %s", rate, libusb_error_name(rc));
+        noteClockReadback(-1, rate);
         return true; // non-fatal, some devices auto-detect
     }
 
     LOGI("UAC1: set sample rate %d Hz on EP 0x%02x", rate, endpoint);
+    uint8_t readBuf[3] = {0, 0, 0};
+    int rcRead = libusb_control_transfer(handle,
+        LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_ENDPOINT,
+        UAC_GET_CUR,
+        0x0100,
+        static_cast<uint16_t>(endpoint),
+        readBuf, 3, 1000);
+    if (rcRead >= 3) {
+        int reported = readBuf[0] | (readBuf[1] << 8) | (readBuf[2] << 16);
+        noteClockReadback(reported, rate);
+        LOGI("UAC1 GET_CUR sample_rate=%d Hz (requested %d)", reported, rate);
+    } else {
+        noteClockReadback(-1, rate);
+        LOGI("UAC1 GET_CUR sample_rate unavailable (rc=%d)", rcRead);
+    }
     return true;
 }
 
@@ -844,6 +876,7 @@ bool UsbAudioDriver::setSampleRateUAC2(int clockId, int rate) {
     if (rc < 0) {
         LOGE("UAC2 setSampleRate(%d) clockId=%d failed: %s",
              rate, clockId, libusb_error_name(rc));
+        noteClockReadback(-1, rate);
         return false;
     }
 
@@ -866,6 +899,7 @@ bool UsbAudioDriver::setSampleRateUAC2(int clockId, int rate) {
                 | ((uint32_t)readBuf[1] << 8)
                 | ((uint32_t)readBuf[2] << 16)
                 | ((uint32_t)readBuf[3] << 24);
+        noteClockReadback((int)reportedRate, rate);
         if ((int)reportedRate == rate) {
             LOGI("UAC2: GET_CUR sample_rate=%u Hz (matches requested)", reportedRate);
         } else {
@@ -873,6 +907,7 @@ bool UsbAudioDriver::setSampleRateUAC2(int clockId, int rate) {
                  reportedRate, rate);
         }
     } else {
+        noteClockReadback(-1, rate);
         LOGD("UAC2: GET_CUR sample_rate readback not supported (rc=%d)", rcRead);
     }
 
@@ -982,6 +1017,69 @@ bool UsbAudioDriver::setHwVolumeDbQ8(int valueDbQ8) {
         return false;
     }
     return true;
+}
+
+void UsbAudioDriver::noteClockReadback(int reportedHz, int requestedHz) {
+    clockReadbackHz = reportedHz;
+    clockConfirmed = reportedHz > 0 && reportedHz == requestedHz;
+}
+
+int UsbAudioDriver::readHwVolumeCur() {
+    if (!handle || volumeFuUnitId < 0) return 0x7fffffff;
+    uint8_t data[2] = {0, 0};
+    const uint16_t wValue = (UAC_FU_VOLUME_CONTROL << 8) | 0;
+    const uint16_t wIndex = (uint16_t)((volumeFuUnitId << 8) | acInterfaceNum);
+    int rc = libusb_control_transfer(handle,
+        LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE,
+        UAC_GET_CUR, wValue, wIndex, data, sizeof(data), 1000);
+    if (rc < 2) return 0x7fffffff;
+    return (int)(int16_t)(data[0] | ((uint16_t)data[1] << 8));
+}
+
+bool UsbAudioDriver::verifyHardwareVolume() {
+    if (!handle || volumeFuUnitId < 0) return false;
+    bool tempClaim = false;
+    if (acInterfaceNum >= 0 && !acInterfaceClaimed) {
+        if (libusb_claim_interface(handle, acInterfaceNum) == 0) tempClaim = true;
+    }
+    const int original = readHwVolumeCur();
+    if (original == 0x7fffffff) {
+        if (tempClaim) libusb_release_interface(handle, acInterfaceNum);
+        return false;
+    }
+    const int test = (original == 0 || original == (int)(int16_t)0x8000) ? (-20 * 256) : 0;
+    if (!setHwVolumeDbQ8(test)) {
+        if (tempClaim) libusb_release_interface(handle, acInterfaceNum);
+        return false;
+    }
+#ifdef _WIN32
+    Sleep(8);
+#else
+    usleep(8000);
+#endif
+    const int updated = readHwVolumeCur();
+    setHwVolumeDbQ8(original);
+    if (tempClaim) libusb_release_interface(handle, acInterfaceNum);
+    const bool changed = updated != 0x7fffffff && updated != original;
+    LOGI("verify FU volume original=%d test=%d readback=%d writable=%d",
+         original, test, updated, changed ? 1 : 0);
+    return changed;
+}
+
+bool UsbAudioDriver::setListeningGain(float gain) {
+    if (volumeFuUnitId < 0) return false;
+    if (gain <= 0.0001f) {
+        setHwVolumeDbQ8(volumeMinDbQ8);
+        if (hasFuMute) setHwMute(true);
+        return true;
+    }
+    if (hasFuMute) setHwMute(false);
+    if (gain >= 0.999f) return setHwVolumeDbQ8(volumeMaxDbQ8);
+    const double db = 20.0 * std::log10(static_cast<double>(gain));
+    int q8 = static_cast<int>(db * 256.0);
+    if (q8 < volumeMinDbQ8) q8 = volumeMinDbQ8;
+    if (q8 > volumeMaxDbQ8) q8 = volumeMaxDbQ8;
+    return setHwVolumeDbQ8(q8);
 }
 
 bool UsbAudioDriver::setHwMute(bool muted) {
@@ -1164,12 +1262,11 @@ bool UsbAudioDriver::configure(int sampleRate, int channels, int bitDepth, bool 
          activeFormat.interfaceNum, activeFormat.altSetting,
          activeFormat.endpointAddr, uacVersion);
 
-    // Arm a ~30 ms startup fade-in (in channel-samples) so the first audio
-    // ramps from silence instead of popping. Re-armed on every configure()
-    // (i.e. every cold start); seamless gapless track swaps don't reconfigure,
-    // so they won't re-trigger a fade mid-stream.
-    fadeSampleTarget_ = (int64_t)(configuredRate * 30 / 1000) * configuredChannels;
+    // No startup ramp. A fade multiplies samples and is not bit-perfect.
+    fadeSampleTarget_ = 0;
     fadeSampleCounter_ = 0;
+    clockConfirmed = false;
+    clockReadbackHz = -1;
 
     // Allocate ring buffer now so callers can pre-fill before start().
     int bytesPerFrame = configuredSubslotSize * configuredChannels;
@@ -1573,6 +1670,19 @@ bool UsbAudioDriver::start() {
         return false;
     }
     interfaceClaimed = true;
+
+    // The kernel driver is detached and AC is claimed, so a Feature Unit
+    // probe can actually change GET_CUR. Doing this before the claim reports
+    // every dongle as "no hardware volume".
+    if (volumeFuUnitId >= 0 && !volumeVerified) {
+        if (!verifyHardwareVolume()) {
+            LOGI("Feature Unit volume did not change GET_CUR — software gain only");
+            volumeFuUnitId = -1;
+            hasFuMute = false;
+        } else {
+            volumeVerified = true;
+        }
+    }
 
     // Reset to zero-bandwidth, then set active alt setting
     libusb_set_interface_alt_setting(handle, activeFormat.interfaceNum, 0);

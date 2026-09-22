@@ -195,6 +195,25 @@ Java_com_lastwave_aeusb_AeUsbEngine_nativeIsStreaming(JNIEnv *, jobject, jlong h
     return (drv && drv->isStreaming()) ? JNI_TRUE : JNI_FALSE;
 }
 
+JNIEXPORT jboolean JNICALL
+Java_com_lastwave_aeusb_AeUsbEngine_nativeHasHardwareVolume(JNIEnv *, jobject, jlong h) {
+    auto *drv = reinterpret_cast<UsbAudioDriver *>(h);
+    return (drv && drv->hasHardwareVolume()) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_lastwave_aeusb_AeUsbEngine_nativeSetListeningGain(JNIEnv *, jobject, jlong h, jfloat gain) {
+    auto *drv = reinterpret_cast<UsbAudioDriver *>(h);
+    if (!drv) return JNI_FALSE;
+    return drv->setListeningGain(gain) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_lastwave_aeusb_AeUsbEngine_nativeIsClockMatched(JNIEnv *, jobject, jlong h) {
+    auto *drv = reinterpret_cast<UsbAudioDriver *>(h);
+    return (drv && drv->isClockMatched()) ? JNI_TRUE : JNI_FALSE;
+}
+
 JNIEXPORT jlong JNICALL
 Java_com_lastwave_aeusb_AeUsbEngine_nativeFramesPlayed(JNIEnv *, jobject, jlong h) {
     auto *drv = reinterpret_cast<UsbAudioDriver *>(h);

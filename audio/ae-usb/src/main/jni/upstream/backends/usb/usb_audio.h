@@ -136,6 +136,16 @@ public:
         return softwareGain.load(std::memory_order_relaxed) >= 0.9999f;
     }
 
+    // GET_CUR readback equals the rate start() programmed. A successful
+    // SET_CUR transfer alone is not proof the DAC clock moved.
+    bool isClockMatched() const {
+        return clockConfirmed && configuredRate > 0 && clockReadbackHz == configuredRate;
+    }
+
+    // Map a linear listening gain onto the verified Feature Unit. PCM stays
+    // at unity in the write path. Returns false when no writable FU exists.
+    bool setListeningGain(float gain);
+
     // --- Capture (ADC -> host) ---
     bool configureCapture(int sampleRate, int channels, int bitDepth);
     bool startCapture();
@@ -196,6 +206,9 @@ private:
     bool setInterfaceAltSetting(int interface_num, int alt_setting);
     bool setSampleRate(int endpoint, int rate);
     bool setSampleRateUAC2(int clockId, int rate);
+    bool verifyHardwareVolume();
+    int readHwVolumeCur();
+    void noteClockReadback(int reportedHz, int requestedHz);
     std::vector<int> queryUac2SampleRates(int clockId);
     bool queryHwVolumeRange();
     // Per-transfer callback context. libusb hands `user_data` back on every
@@ -247,6 +260,9 @@ private:
     int16_t volumeMaxDbQ8 = 0;
     int16_t volumeResDbQ8 = 256;    // 1 dB step default
     std::atomic<float> softwareGain{1.0f};
+    bool clockConfirmed = false;
+    int clockReadbackHz = -1;
+    bool volumeVerified = false;
 
     // Isochronous transfer queue, sized by the latency profile (see
     // setLatencyProfile). MAX_* constants size the arrays; the runtime

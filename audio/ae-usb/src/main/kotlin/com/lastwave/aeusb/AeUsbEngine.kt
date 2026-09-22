@@ -64,6 +64,19 @@ class AeUsbEngine private constructor(private var nativeHandle: Long) {
         nativeSetPaused(nativeHandle, paused)
     }
 
+    fun hasHardwareVolume(): Boolean =
+        nativeHandle != 0L && nativeHasHardwareVolume(nativeHandle)
+
+    /** Feature Unit gain. Does not scale PCM. */
+    fun setListeningGain(gain: Float): Boolean {
+        if (nativeHandle == 0L) return false
+        return nativeSetListeningGain(nativeHandle, gain)
+    }
+
+    /** True only when the DAC's GET_CUR sample rate matches the stream. */
+    fun isClockMatched(): Boolean =
+        nativeHandle != 0L && nativeIsClockMatched(nativeHandle)
+
     fun stop() = Unit
 
     fun drainUrbs(): Int = 0
@@ -107,4 +120,7 @@ class AeUsbEngine private constructor(private var nativeHandle: Long) {
     private external fun nativeClose(handle: Long)
     private external fun nativeIsStreaming(handle: Long): Boolean
     private external fun nativeFramesPlayed(handle: Long): Long
+    private external fun nativeHasHardwareVolume(handle: Long): Boolean
+    private external fun nativeSetListeningGain(handle: Long, gain: Float): Boolean
+    private external fun nativeIsClockMatched(handle: Long): Boolean
 }

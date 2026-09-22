@@ -25,12 +25,11 @@ import javax.inject.Singleton
 /**
  * LastWave session around the audio_engine USB driver.
  *
- * PCM goes to isochronous URBs. AudioFlinger never sees the stream. Rate
- * switches use Java [android.hardware.usb.UsbDeviceConnection.setInterface]
- * (not native USBDEVFS_SETINTERFACE) and keep the same fd.
+ * PCM goes to isochronous URBs. AudioFlinger never sees the stream.
  *
- * Listening level comes from STREAM_MUSIC (volume keys). A verified UAC
- * Feature Unit keeps PCM untouched; otherwise PCM is software-scaled.
+ * Listening level comes from STREAM_MUSIC (volume keys). A Feature Unit that
+ * changes GET_CUR keeps PCM untouched; otherwise PCM is software-scaled.
+ * The gold clock check is the DAC GET_CUR rate, not a successful open.
  */
 @Singleton
 class ExclusiveUsbOutput @Inject constructor(
@@ -371,13 +370,14 @@ class ExclusiveUsbOutput @Inject constructor(
         startMediaTimeUs = 0L
         mediaTimeBaseFrames = 0L
         clockRechecked = true
-        clockMatched = true
-        hardwareVolume = false
+        clockMatched = created.isClockMatched()
+        hardwareVolume = created.hasHardwareVolume()
         featureVolume = null
         Log.i(
             TAG,
             "audio_engine USB started ${usbDevice.productName} ${sampleRate}Hz " +
-                "${channelCount}ch srcBits=$sourceBits",
+                "${channelCount}ch srcBits=$sourceBits clockMatched=$clockMatched " +
+                "hardwareVolume=$hardwareVolume",
         )
 
         ensureVolumeObserverLocked()
@@ -393,7 +393,7 @@ class ExclusiveUsbOutput @Inject constructor(
     }
 
     private fun recheckClockLocked() {
-        clockMatched = true
+        clockMatched = stream?.isClockMatched() == true
         clockRechecked = true
     }
 
@@ -461,7 +461,12 @@ class ExclusiveUsbOutput @Inject constructor(
         if (hardwareVolume) {
             softwareGainValue = 1f
             if (!unchanged) {
-                featureVolume?.setNormalized(combined)
+                val applied = stream?.setListeningGain(combined) == true
+                if (!applied) {
+                    hardwareVolume = false
+                    softwareGainValue = combined
+                    Log.w(TAG, "Feature Unit SET_CUR failed; falling back to software gain")
+                }
                 lastAppliedCombined = combined
             }
         } else {
