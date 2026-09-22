@@ -219,7 +219,9 @@ import com.lastwave.app.ui.common.TrackContextMenuSheet
 import com.lastwave.app.ui.common.TrackMenuCapabilities
 import com.lastwave.app.ui.common.TrackMenuTarget
 import com.lastwave.app.ui.theme.LocalLiquidGlass
+import com.lastwave.app.ui.theme.LocalIsDarkTheme
 import com.lastwave.app.ui.theme.LiquidGlassSurface
+import com.lastwave.app.ui.theme.liquidGlass
 import com.lastwave.app.ui.theme.liquidGlassChrome
 import com.lastwave.app.ui.theme.liquidGlassContainerColor
 import com.lastwave.app.ui.theme.liquidGlassSource
@@ -227,9 +229,21 @@ import com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported
 import com.lastwave.app.ui.theme.LocalLiquidGlassBackdrop
 import com.lastwave.app.ui.theme.LocalLiquidGlassOverlayBackdrop
 import com.lastwave.app.ui.theme.LiquidGlassPreset
-import com.lastwave.app.ui.theme.BackdropBlur
 import com.lastwave.app.ui.theme.Backdrop
 import com.lastwave.app.ui.theme.rememberLayerBackdrop
+import android.graphics.Bitmap
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.layer.toImageBitmap
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.core.graphics.scale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
+import java.nio.IntBuffer
+import kotlin.time.Duration.Companion.seconds
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlin.math.abs
@@ -568,13 +582,24 @@ fun PlayerHost(
     }
     val miniPlayerVisible = state.current != null && !expanded
 
+    // SimpMusic sibling pattern: ONE backdrop capturing feed content,
+    // consumed by the sibling MiniPlayer. Unconditional remember keeps composition stable.
+    val miniBackdropColor = MaterialTheme.colorScheme.background
+    val miniBackdrop = rememberLayerBackdrop {
+        drawRect(miniBackdropColor)
+        drawContent()
+    }
+    val miniGlass = LocalLiquidGlass.current && isLiquidGlassBackdropSupported()
+
     CompositionLocalProvider(
         LocalMusicPlayer provides viewModel.player,
         LocalAddToPlaylist provides requestAddToPlaylist,
         LocalMiniPlayerScrollClearance provides if (state.current != null) 88.dp else 0.dp,
     ) {
         Box(Modifier.fillMaxSize()) {
-            content()
+            Box(Modifier.fillMaxSize().liquidGlassSource(if (miniGlass) miniBackdrop else null)) {
+                content()
+            }
             if (miniPlayerVisible) {
                 MiniPlayer(
                     state = state,
@@ -586,7 +611,7 @@ fun PlayerHost(
                     onClose = viewModel.player::stopAndClear,
                     bottomPadding = if (hasBottomNavigation) 92.dp else 12.dp,
                     edgeToEdge = !hasBottomNavigation,
-                    backdrop = null,
+                    backdrop = if (miniGlass) miniBackdrop else null,
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
             }
@@ -745,9 +770,41 @@ private fun MiniPlayer(
 ) {
     val context = LocalContext.current
     val track = state.current ?: return
-    // Liquid Glass dressing for the floating mini player (no-op when the
-    // experimental setting is off — see ui/theme/LiquidGlass.kt).
+    // SimpMusic MiniPlayer: single glass card sampling sibling feed content.
+    // Luminance loop verbatim SimpMusic (5x5 avg, 0.3..0.8, tween 500, 1s).
     val liquidGlass = LocalLiquidGlass.current
+    val isGlass = liquidGlass && isLiquidGlassBackdropSupported() && backdrop != null
+    val layer = rememberGraphicsLayer()
+    val luminance = remember { Animatable(0.5f) }
+    LaunchedEffect(layer, isGlass, track.videoId) {
+        if (!isGlass) {
+            luminance.snapTo(0.5f)
+            return@LaunchedEffect
+        }
+        val buffer = IntBuffer.allocate(25)
+        while (isActive) {
+            try {
+                withContext(Dispatchers.IO) {
+                    val thumbnail = layer.toImageBitmap()
+                        .asAndroidBitmap()
+                        .scale(5, 5, false)
+                        .copy(Bitmap.Config.ARGB_8888, false)
+                    buffer.rewind()
+                    thumbnail.copyPixelsToBuffer(buffer)
+                }
+            } catch (_: Exception) {
+            }
+            val avg = (0 until 25).sumOf { i ->
+                val c = buffer.get(i)
+                val r = (c shr 16 and 0xFF) / 255f
+                val g = (c shr 8 and 0xFF) / 255f
+                val b = (c and 0xFF) / 255f
+                0.2126 * r + 0.7152 * g + 0.0722 * b
+            } / 25
+            luminance.animateTo(avg.coerceIn(0.3, 0.8).toFloat(), tween(500))
+            delay(1.seconds)
+        }
+    }
     val barInteraction = remember { MutableInteractionSource() }
     var dragX by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
     var dragY by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
@@ -803,14 +860,15 @@ private fun MiniPlayer(
     ) {
         Surface(
             shape = shape,
-            color = liquidGlassContainerColor(
-                MaterialTheme.colorScheme.surfaceContainerHigh,
-                enabled = liquidGlass,
-                backdrop = backdrop,
+            // SimpMusic: Transparent card when glass (glass draws scrim), 85% surface otherwise.
+            color = if (isGlass) Color.Transparent else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.85f),
+            tonalElevation = if (edgeToEdge || isGlass) 0.dp else 6.dp,
+            shadowElevation = if (edgeToEdge || isGlass) 0.dp else 12.dp,
+            modifier = Modifier.fillMaxWidth().then(
+                if (isGlass && backdrop != null) {
+                    Modifier.liquidGlass(backdrop, layer, luminance.value, shape)
+                } else Modifier
             ),
-            tonalElevation = if (edgeToEdge || liquidGlass) 0.dp else 6.dp,
-            shadowElevation = if (edgeToEdge || liquidGlass) 0.dp else 12.dp,
-            modifier = Modifier.fillMaxWidth().liquidGlassChrome(shape, liquidGlass, LiquidGlassPreset.MiniPlayer, backdrop, interactionSource = barInteraction),
         ) {
             Column(
                 modifier = if (edgeToEdge) {
@@ -835,31 +893,39 @@ private fun MiniPlayer(
                             PlayerArtwork(track, Modifier.fillMaxSize(), 18.dp)
                         }
                     }
+                    // SimpMusic: glass surface follows the theme (frosted white → black text
+                    // in light, white text in dark); opaque card keeps theme tokens.
+                    val miniTitleColor = if (isGlass) {
+                        if (LocalIsDarkTheme.current) Color.White else Color.Black
+                    } else MaterialTheme.colorScheme.onSurface
+                    val miniArtistColor = if (isGlass) {
+                        if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.7f)
+                        else Color.Black.copy(alpha = 0.7f)
+                    } else MaterialTheme.colorScheme.onSurfaceVariant
                     Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
                         Text(
                             track.title,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
+                            color = miniTitleColor,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             track.artist,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = miniArtistColor,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
+                    // SimpMusic: inner controls sit plain on the glass card (no nested glass).
                     Surface(
                         onClick = onToggle,
                         shape = CircleShape,
-                        color = if (liquidGlass) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
-                            else MaterialTheme.colorScheme.primary,
-                        contentColor = if (liquidGlass) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(48.dp)
-                            .liquidGlassChrome(CircleShape, liquidGlass, LiquidGlassPreset.FloatingControls, backdrop),
+                        color = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(48.dp),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             if (state.isBuffering) {
@@ -879,9 +945,8 @@ private fun MiniPlayer(
                         modifier = Modifier
                             .padding(start = 8.dp)
                             .size(44.dp)
-                            .liquidGlassChrome(CircleShape, liquidGlass, LiquidGlassPreset.FloatingControls, backdrop)
                             .clip(CircleShape)
-                            .background(liquidGlassContainerColor(MaterialTheme.colorScheme.secondaryContainer, backdrop = backdrop)),
+                            .background(MaterialTheme.colorScheme.secondaryContainer),
                     ) {
                         Icon(
                             Icons.Filled.SkipNext,
@@ -1564,10 +1629,13 @@ private fun FullPlayer(
         }
     }
 
-    val playerBackdrop = if (isLiquidGlassBackdropSupported()) rememberLayerBackdrop() else null
+    // Unconditional remember keeps composition stable; usage gated by glass flag.
+    // Single backdrop, sibling source below — never nest glass inside its own capture.
+    val playerBackdrop = rememberLayerBackdrop()
+    val fullGlass = LocalLiquidGlass.current && isLiquidGlassBackdropSupported()
     CompositionLocalProvider(
-        LocalLiquidGlassBackdrop provides playerBackdrop,
-        LocalLiquidGlassOverlayBackdrop provides playerBackdrop,
+        LocalLiquidGlassBackdrop provides if (fullGlass) playerBackdrop else null,
+        LocalLiquidGlassOverlayBackdrop provides if (fullGlass) playerBackdrop else null,
     ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -1585,31 +1653,26 @@ private fun FullPlayer(
             val bgHeight = constraints.maxHeight.toFloat()
             val bgMaxDimension = maxOf(bgWidth, bgHeight, 1f)
 
-            Box(Modifier.matchParentSize().liquidGlassSource(playerBackdrop)) {
-            // Apple Music: Full-bleed scaled & deeply blurred artwork.
-            // Dark veil in BOTH light and dark mode: the full player sits on
-            // a dark scrim (see header comment below), so lyrics/controls use
-            // the white overlay palette. A surface veil turns light mode into
-            // near-white wash (white-on-white lyrics + dead cover tint).
-            BackdropBlur(
-                radius = 36.dp,
-                modifier = Modifier.fillMaxSize(),
-                veil = Color.Black,
-                veilAlpha = 0.52f,
-            ) {
-                PlayerArtwork(
-                    track = track,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            scaleX = 1.35f
-                            scaleY = 1.35f
-                            alpha = 0.9f
-                        },
-                    corner = 0.dp,
-                    decodeSizePx = 200,
-                )
-            }
+            Box(Modifier.matchParentSize().liquidGlassSource(if (fullGlass) playerBackdrop else null)) {
+            // Full-bleed scaled artwork + dark scrims form the glass source.
+            // No nested BackdropBlur: the old 36dp inner capture caused the self-capture SIGSEGV.
+            PlayerArtwork(
+                track = track,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = 1.35f
+                        scaleY = 1.35f
+                        alpha = 0.9f
+                    },
+                corner = 0.dp,
+                decodeSizePx = 200,
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.52f)),
+            )
 
             // Apple Music: Vibrant chromatic ambient mesh blobs
             Box(
