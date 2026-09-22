@@ -491,6 +491,7 @@ fun LiquidGlassIconButton(
     val scope = rememberCoroutineScope()
     val pressProgress = remember { Animatable(0f) }
 
+    val isDark = LocalIsDarkTheme.current
     val interactiveModifier = if (enabled && capable && backdrop != null) {
         Modifier
             .drawBackdrop(
@@ -530,7 +531,7 @@ fun LiquidGlassIconButton(
                     )
                 },
                 onDrawSurface = {
-                    val baseAlpha = if (LocalIsDarkTheme.current) 0.10f else 0.25f
+                    val baseAlpha = if (isDark) 0.10f else 0.25f
                     val pressedAlpha = baseAlpha + pressProgress.value * 0.12f
                     drawRect(Color.White.copy(alpha = pressedAlpha))
                 },
