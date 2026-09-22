@@ -207,6 +207,8 @@ import com.lastwave.app.data.local.LyricsUiVersion
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.MusicPlayerState
 import com.lastwave.app.playback.PlaybackChromeState
+import com.lastwave.app.playback.qualityBadgeLabel
+import com.lastwave.app.playback.spatialIndicatorLabel
 import com.lastwave.app.playback.PlaybackProgressState
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.ui.common.ArtworkImage
@@ -231,7 +233,6 @@ import com.lastwave.app.ui.theme.rememberLayerBackdrop
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 enum class FullPlayerTab {
     NOW_PLAYING,
@@ -2120,16 +2121,24 @@ private fun FullPlayer(
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Column(Modifier.weight(1f)) {
-                                            Text(
-                                                track.title,
-                                                style = MaterialTheme.typography.headlineSmall.copy(
-                                                    letterSpacing = (-0.35).sp,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                ),
-                                                color = Color.White,
-                                                maxLines = 1,
-                                                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
-                                            )
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            ) {
+                                                Text(
+                                                    track.title,
+                                                    style = MaterialTheme.typography.headlineSmall.copy(
+                                                        letterSpacing = (-0.35).sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                    ),
+                                                    color = Color.White,
+                                                    maxLines = 1,
+                                                    modifier = Modifier
+                                                        .weight(1f, fill = false)
+                                                        .basicMarquee(iterations = Int.MAX_VALUE),
+                                                )
+                                                spatialIndicatorLabel(state.audioCodec)?.let { SpatialAudioChip(it) }
+                                            }
                                             Spacer(Modifier.height(4.dp))
                                             val splitArtists = remember(track.artist) {
                                                 com.lastwave.app.util.ArtistHelper.splitArtists(track.artist)
@@ -2773,7 +2782,7 @@ private fun PlayerUtilityControls(state: MusicPlayerState, player: MusicPlayer, 
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,
             onClick = { showSignalPath = true },
-            modifier = Modifier.weight(1.3f).height(if (isTranslucent) 44.dp else 48.dp)
+            modifier = Modifier.weight(1.8f).height(if (isTranslucent) 44.dp else 48.dp)
                 .liquidGlassChrome(RoundedCornerShape(24.dp), LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls),
         ) {
             Row(
@@ -2788,9 +2797,13 @@ private fun PlayerUtilityControls(state: MusicPlayerState, player: MusicPlayer, 
                     modifier = Modifier.size(17.dp),
                 )
                 Text(
-                    qualityLabel(state) + if (signalPath.bitPerfect) " • " + stringResource(com.lastwave.app.R.string.signal_bit_perfect) else "",
+                    qualityBadgeLabel(state),
                     style = if (isTranslucent) MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.3.sp) else MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = if (isTranslucent) Color.White.copy(alpha = 0.90f) else Color.Unspecified,
+                    color = when {
+                        signalPath.bitPerfect -> Color(0xFFE6C15A)
+                        isTranslucent -> Color.White.copy(alpha = 0.90f)
+                        else -> Color.Unspecified
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(start = 5.dp),
@@ -3176,28 +3189,25 @@ internal fun formatTime(ms: Long): String {
     return "%d:%02d".format(total / 60, total % 60)
 }
 
-private fun qualityLabel(state: MusicPlayerState): String = when {
-    // Dolby Atmos (Tidal spatial) → badge, never kbps/resolution.
-    state.audioCodec?.equals("DOLBY ATMOS", ignoreCase = true) == true ||
-        state.audioCodec?.equals("ATMOS", ignoreCase = true) == true -> "DOLBY ATMOS"
-    // Lossless with known bit depth / sampling rate → resolution, never kbps.
-    state.isLossless && state.bitDepth != null && state.samplingRateKHz != null -> {
-        val rounded = (state.samplingRateKHz * 10).roundToInt() / 10.0
-        val rate = if (rounded % 1.0 == 0.0) rounded.toInt().toString() else rounded.toString()
-        "${state.bitDepth}-bit / $rate kHz"
+@Composable
+private fun SpatialAudioChip(label: String) {
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = Color(0xFF00A3E0),
+        contentColor = Color.White,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.6.sp,
+            ),
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+            maxLines = 1,
+        )
     }
-    state.isLossless && state.audioCodec == "MP3 320k" -> "MP3 320 kbps"
-    // Lossless without measured depth/rate → badge text, never raw kbps.
-    state.isLossless -> state.audioCodec ?: "LOSSLESS"
-    // Unknown container ("AUDIO"/"LOCAL AUDIO") → plain label. Never render
-    // a measured-bitrate number next to it ("AUDIO 2442 kbps") — the number
-    // is not a quality claim and only ever confused.
-    state.audioCodec?.uppercase() in setOf("AUDIO", "LOCAL AUDIO") -> "AUDIO"
-    // YouTube lossy → e.g. "OPUS 138 kbps" or "AAC 131 kbps".
-    state.audioCodec != null && state.bitrateKbps != null -> "${state.audioCodec.uppercase()} ${state.bitrateKbps} kbps"
-    state.audioCodec != null -> state.audioCodec.uppercase()
-    state.bitrateKbps != null -> "${state.bitrateKbps} kbps"
-    else -> "AUDIO"
 }
 
 private fun PlayableTrack.toGeneratedTrack() = com.lastwave.app.data.generate.GeneratedTrack(

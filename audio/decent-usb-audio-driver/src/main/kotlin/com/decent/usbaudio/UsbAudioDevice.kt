@@ -262,6 +262,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
         // Auto-detect Clock Source ID and best alt setting from USB descriptors
         val clockSourceId = parseClockSourceId(conn)
         val (bestAlt, bestBits) = parseBestAltSetting(conn)
+        parseStreamingEndpoints(conn.rawDescriptors)
         Log.i(TAG, "Auto-detected: clockSourceId=0x${clockSourceId.toString(16)}, " +
                 "bestAlt=$bestAlt, bestBits=$bestBits")
 
@@ -400,6 +401,12 @@ class UsbAudioDevice private constructor(private val context: Context) {
         val wireBits: Int get() = (subslotSize * 8).coerceAtLeast(bitResolution)
     }
 
+    private data class IsoOutEp(
+        val address: Int,
+        val maxPacketBytes: Int,
+        val interval: Int,
+    )
+
     private var parsedAltSettings: List<ParsedAlt> = emptyList()
     private var parsedClockSources: List<ClockSource> = emptyList()
     private var parsedClockSourceIds: List<Int> = emptyList()
@@ -407,6 +414,8 @@ class UsbAudioDevice private constructor(private val context: Context) {
     private var parsedSelectorPins: IntArray = intArrayOf()
     private var pathClockId: Int = -1
     private var activeClockId: Int = -1
+    private var parsedIsoOut: Map<Int, IsoOutEp> = emptyMap()
+    private var parsedIsoFb: Map<Int, Int> = emptyMap()
 
     private fun parseBestAltSetting(conn: UsbDeviceConnection): Pair<Int, Int> {
         val raw = conn.rawDescriptors ?: return Pair(1, 16)
@@ -469,6 +478,59 @@ class UsbAudioDevice private constructor(private val context: Context) {
         return Pair(bestAlt, bestWire)
     }
 
+    private fun parseStreamingEndpoints(raw: ByteArray?) {
+        parsedIsoOut = emptyMap()
+        parsedIsoFb = emptyMap()
+        if (raw == null) return
+        val outs = mutableMapOf<Int, IsoOutEp>()
+        val fbs = mutableMapOf<Int, Int>()
+        var i = 0
+        var currentAlt = 0
+        var inAudioStreaming = false
+        while (i + 1 < raw.size) {
+            val bLength = raw[i].toInt() and 0xFF
+            if (bLength < 2) break
+            if (i + bLength > raw.size) break
+            val bDescriptorType = raw[i + 1].toInt() and 0xFF
+            if (bDescriptorType == 0x04 && bLength >= 9) {
+                val bInterfaceClass = raw[i + 5].toInt() and 0xFF
+                val bInterfaceSubClass = raw[i + 6].toInt() and 0xFF
+                inAudioStreaming = (bInterfaceClass == 1 && bInterfaceSubClass == 2)
+                if (inAudioStreaming) currentAlt = raw[i + 3].toInt() and 0xFF
+            }
+            if (inAudioStreaming && bDescriptorType == 0x05 && bLength >= 7) {
+                val addr = raw[i + 2].toInt() and 0xFF
+                val attr = raw[i + 3].toInt() and 0xFF
+                val wMax = (raw[i + 4].toInt() and 0xFF) or
+                    ((raw[i + 5].toInt() and 0xFF) shl 8)
+                val interval = (raw[i + 6].toInt() and 0xFF).coerceAtLeast(1)
+                if (attr and 0x03 == 1) {
+                    if (addr and 0x80 == 0) {
+                        val bytes = hsIsoPacketBytes(wMax)
+                        outs[currentAlt] = IsoOutEp(addr, bytes, interval)
+                        Log.i(
+                            TAG,
+                            "ISO OUT alt=$currentAlt addr=0x${addr.toString(16)} " +
+                                "wMax=0x${wMax.toString(16)} bytes=$bytes interval=$interval",
+                        )
+                    } else {
+                        fbs[currentAlt] = addr
+                    }
+                }
+            }
+            i += bLength
+        }
+        parsedIsoOut = outs
+        parsedIsoFb = fbs
+    }
+
+    private fun hsIsoPacketBytes(wMaxPacketSize: Int): Int {
+        if (wMaxPacketSize <= 0) return 0
+        val size = wMaxPacketSize and 0x7FF
+        val extra = (wMaxPacketSize shr 11) and 0x3
+        return size * (1 + extra)
+    }
+
     /**
      * Find the alt setting that matches the given source bit depth exactly.
      * If no exact match, returns the next higher bit depth.
@@ -482,17 +544,23 @@ class UsbAudioDevice private constructor(private val context: Context) {
         channelCount: Int = 2,
     ): Pair<Int, Int> {
         val ranked = parsedAltSettings.map { alt ->
-            val packet = isoPacketCapacity(endpointsForAlt(alt.alt)?.third ?: 0)
-            val needed = minIsoPacketBytes(sampleRateHz, channelCount, alt.wireBits)
+            val packet = parsedIsoOut[alt.alt]?.maxPacketBytes
+                ?: isoPacketCapacity(endpointsForAlt(alt.alt)?.third ?: 0)
+            val needed = minIsoPacketBytes(sampleRateHz, channelCount, alt.wireBits, 1)
             Triple(alt, packet, needed)
         }
-        val capable = ranked.filter { it.second <= 0 || it.second >= it.third }
-        val pool = capable.ifEmpty { ranked }.map { it.first }
+        val capable = ranked.filter { it.second >= it.third }
+        val pool = (if (capable.isNotEmpty()) capable else ranked.sortedByDescending { it.second })
+            .map { it.first }
 
         fun pick(from: List<ParsedAlt>): ParsedAlt? {
             val exact = from.filter { it.bitResolution == targetBitDepth }
+            // 24-bit packed (3 bytes) makes 11-frame packets at 88.2 kHz a
+            // length the host cannot DMA. A 4-byte subslot stays aligned.
+            val aligned = exact.filter { it.subslotSize >= 4 }
+            val exactPick = (if (aligned.isNotEmpty()) aligned else exact)
                 .minByOrNull { kotlin.math.abs(it.wireBits - targetBitDepth) }
-            if (exact != null) return exact
+            if (exactPick != null) return exactPick
             val higher = from.filter { it.bitResolution > targetBitDepth || it.wireBits > targetBitDepth }
                 .minByOrNull { it.wireBits }
             if (higher != null) return higher
@@ -534,6 +602,10 @@ class UsbAudioDevice private constructor(private val context: Context) {
     }
 
     fun endpointsForAlt(altSetting: Int): Triple<Int, Int, Int>? {
+        parsedIsoOut[altSetting]?.let { ep ->
+            val fb = parsedIsoFb[altSetting] ?: parsedIsoFb.values.firstOrNull() ?: -1
+            return Triple(ep.address, fb, ep.maxPacketBytes)
+        }
         val device = currentDevice ?: return null
         for (i in 0 until device.interfaceCount) {
             val iface = device.getInterface(i)
@@ -561,6 +633,9 @@ class UsbAudioDevice private constructor(private val context: Context) {
         return null
     }
 
+    fun isoIntervalForAlt(altSetting: Int): Int =
+        parsedIsoOut[altSetting]?.interval ?: 1
+
     private fun clockWIndex(csId: Int): Int {
         val iface = cachedDeviceInfo?.controlInterfaceId ?: 0
         return (csId shl 8) or iface
@@ -573,9 +648,10 @@ class UsbAudioDevice private constructor(private val context: Context) {
         return if (extra > 0) size * (1 + extra) else raw
     }
 
-    private fun minIsoPacketBytes(rateHz: Int, channels: Int, bitDepth: Int): Int {
+    private fun minIsoPacketBytes(rateHz: Int, channels: Int, bitDepth: Int, interval: Int = 1): Int {
         val bpf = ((bitDepth + 7) / 8).coerceAtLeast(1) * channels.coerceIn(1, 8)
-        val frames = (rateHz + 7999) / 8000 + 1
+        val microframes = if (interval > 1) 1 shl (interval - 1).coerceAtMost(4) else 1
+        val frames = ((rateHz + 7999) / 8000) * microframes + 1
         return frames * bpf
     }
 

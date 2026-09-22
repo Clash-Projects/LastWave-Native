@@ -51,6 +51,8 @@ class ExclusiveUsbOutput @Inject constructor(
     private var useFloatWrite = false
     @Volatile private var startMediaTimeUs = 0L
     @Volatile private var startMediaTimeNeedsInit = true
+    @Volatile private var mediaTimeBaseFrames = 0L
+    @Volatile private var paused = false
     private var pendingVolume = 1f
     private var featureVolume: UacFeatureVolume? = null
     private var clockRechecked = false
@@ -116,6 +118,25 @@ class ExclusiveUsbOutput @Inject constructor(
 
     fun framesWritten(): Long = stream?.framesClock ?: 0L
 
+    fun isPaused(): Boolean = paused
+
+    /**
+     * Pause/resume ISO writes without tearing down the USB session.
+     * [pause] on the Media3 sink used to no-op while exclusive, so the DAC
+     * kept consuming PCM after the user pressed pause.
+     */
+    fun setPaused(value: Boolean) {
+        paused = value
+        stream?.setPaused(value)
+    }
+
+    /** Re-anchor the Media3 clock after an explicit seek. */
+    fun noteSeek(positionUs: Long) {
+        mediaTimeBaseFrames = stream?.framesClock ?: 0L
+        startMediaTimeUs = positionUs.coerceAtLeast(0L)
+        startMediaTimeNeedsInit = false
+    }
+
     fun syncListeningGain() {
         val stream = readStreamMusicGain() ?: return
         if (ignoreStreamMusicMax && stream >= 0.999f) return
@@ -157,13 +178,21 @@ class ExclusiveUsbOutput @Inject constructor(
 
     fun write(buffer: ByteBuffer, presentationTimeUs: Long): Boolean {
         if (!buffer.hasRemaining()) return true
+        if (paused) return false
         synchronized(lock) {
             val running = stream
+            if (paused) return false
             if (!wanted || !active || running == null || !running.isAlive) {
                 return false
             }
+            val clock = running.framesClock
             if (startMediaTimeNeedsInit) {
-                startMediaTimeUs = presentationTimeUs.coerceAtLeast(0L)
+                // Decoder timestamps are not the playhead. A DASH buffer can
+                // report a presentation time at the end of the window, which
+                // pinned the bit-perfect bar there. Count frames from this
+                // write, starting at 0 unless noteSeek() just placed us.
+                mediaTimeBaseFrames = clock
+                startMediaTimeUs = 0L
                 startMediaTimeNeedsInit = false
             }
             recheckClockLocked()
@@ -187,10 +216,14 @@ class ExclusiveUsbOutput @Inject constructor(
 
     fun getCurrentPositionUs(): Long {
         val running = stream ?: return androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET
-        if (!active || startMediaTimeNeedsInit || configuredRateHz <= 0) {
+        if (!active || configuredRateHz <= 0) {
             return androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET
         }
-        return startMediaTimeUs + running.framesWritten * C.MICROS_PER_SECOND / configuredRateHz
+        if (startMediaTimeNeedsInit) {
+            return androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET
+        }
+        val frames = (running.framesClock - mediaTimeBaseFrames).coerceAtLeast(0L)
+        return startMediaTimeUs + frames * C.MICROS_PER_SECOND / configuredRateHz
     }
 
     /**
@@ -202,8 +235,18 @@ class ExclusiveUsbOutput @Inject constructor(
 
     fun flush() {
         synchronized(lock) {
+            // Residual only. Re-anchoring here froze the slider: DASH/FLAC
+            // flushes mid-track, framesWritten went to 0, and ExoPlayer kept
+            // the last position (often 0:01) until the next write.
+            stream?.flush()
+        }
+    }
+
+    fun handleDiscontinuity() {
+        synchronized(lock) {
             stream?.flush()
             startMediaTimeNeedsInit = true
+            mediaTimeBaseFrames = stream?.framesClock ?: 0L
         }
     }
 
@@ -215,7 +258,11 @@ class ExclusiveUsbOutput @Inject constructor(
     fun prepareForNextItem() {
         synchronized(lock) {
             stream?.flush()
+            stream?.setPaused(false)
+            paused = false
             startMediaTimeNeedsInit = true
+            startMediaTimeUs = 0L
+            mediaTimeBaseFrames = stream?.framesClock ?: 0L
         }
     }
 
@@ -263,6 +310,10 @@ class ExclusiveUsbOutput @Inject constructor(
             active &&
             sourceEncoding == pcmEncoding
         ) {
+            paused = false
+            reuse.setPaused(false)
+            startMediaTimeNeedsInit = true
+            mediaTimeBaseFrames = reuse.framesClock
             ensureVolumeObserverLocked()
             syncListeningGainLocked()
             return true
@@ -274,6 +325,9 @@ class ExclusiveUsbOutput @Inject constructor(
         }
         device.lockSampleRate(sampleRate)
         waitForClock(device)
+        if (sampleRate % 441 == 0) {
+            Thread.sleep(PLL_SETTLE_MS)
+        }
         device.setAltSetting(0)
         if (!device.setAltSetting(alt)) {
             return failLocked("setAltSetting($alt) failed")
@@ -283,13 +337,16 @@ class ExclusiveUsbOutput @Inject constructor(
         val endpoints = device.endpointsForAlt(alt)
         val epOut = endpoints?.first ?: info.endpointOutAddress
         val epFb = (endpoints?.second ?: info.endpointFeedbackAddress).let { if (it < 0) 0 else it }
-        val packet = isoPacketBytes(endpoints?.third ?: info.maxPacketSize)
-        val needed = minIsoPacketBytes(sampleRate, channelCount, bits)
+        val packet = endpoints?.third ?: info.maxPacketSize
+        // Packet timing is one microframe. The descriptor bInterval is not
+        // the usbdevfs schedule; using it made packets ~8× too long and the
+        // song ended after a few seconds.
+        val interval = 1
+        val needed = minIsoPacketBytes(sampleRate, channelCount, bits, interval)
         if (epOut < 0 || packet <= 0) return failLocked("no ISO OUT endpoint for alt $alt")
         if (needed > packet) {
-            Log.w(
-                TAG,
-                "alt $alt maxPacket=$packet < needed $needed for ${sampleRate}Hz ${bits}-bit — continuing",
+            return failLocked(
+                "alt $alt maxPacket=$packet < needed $needed for ${sampleRate}Hz ${bits}-bit",
             )
         }
 
@@ -302,6 +359,7 @@ class ExclusiveUsbOutput @Inject constructor(
             channelCount,
             bits,
             packet,
+            interval,
         )
         if (!created.isReady) {
             created.release()
@@ -317,7 +375,10 @@ class ExclusiveUsbOutput @Inject constructor(
         useFloatWrite = floatSource
         configuredRateHz = sampleRate
         active = true
+        paused = false
         startMediaTimeNeedsInit = true
+        startMediaTimeUs = 0L
+        mediaTimeBaseFrames = 0L
         clockRechecked = false
         val reported = device.readSampleRate()
         clockMatched = reported == sampleRate
@@ -462,6 +523,9 @@ class ExclusiveUsbOutput @Inject constructor(
         softwareGainValue = 1f
         lastAppliedCombined = Float.NaN
         startMediaTimeNeedsInit = true
+        startMediaTimeUs = 0L
+        mediaTimeBaseFrames = 0L
+        paused = false
         if (closeDevice) unregisterVolumeObserverLocked()
     }
 
@@ -490,9 +554,10 @@ class ExclusiveUsbOutput @Inject constructor(
             return if (extra > 0) size * (1 + extra) else raw
         }
 
-        fun minIsoPacketBytes(rateHz: Int, channels: Int, bitDepth: Int): Int {
+        fun minIsoPacketBytes(rateHz: Int, channels: Int, bitDepth: Int, interval: Int = 1): Int {
             val bpf = ((bitDepth + 7) / 8).coerceAtLeast(1) * channels.coerceIn(1, 8)
-            val frames = (rateHz + 7999) / 8000 + 1
+            val microframes = if (interval > 1) 1 shl (interval - 1).coerceAtMost(4) else 1
+            val frames = ((rateHz + 7999) / 8000) * microframes + 1
             return frames * bpf
         }
 

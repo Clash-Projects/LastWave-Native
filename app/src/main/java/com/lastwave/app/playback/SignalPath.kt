@@ -428,12 +428,16 @@ class StreamHealthTracker {
         lastWallMs = wallMs
         if (wallDelta < 400L || wallDelta > 3_000L) return driftPpm
         if (kotlin.math.abs(posDelta - wallDelta) > 1_500L) {
-            // Seek (or a >1.5 s discontinuity): re-baseline, don't pollute PPM.
+            // DASH/FLAC timelines jump by seconds while audio keeps playing.
+            // Re-baseline (lastPosition already moved) but keep the last PPM.
+            // Clearing it here left lossless stuck on "measuring…".
             if (posDelta < -250L) glitchCount++
-            driftPpm = null
-            return null
+            return driftPpm
         }
-        if (wallDelta >= 800L && posDelta <= 0L) glitchCount++
+        if (posDelta <= 0L) {
+            if (wallDelta >= 800L) glitchCount++
+            return driftPpm
+        }
         val instant = (posDelta - wallDelta).toDouble() / wallDelta * 1_000_000.0
         driftPpm = if (driftPpm == null) instant else driftPpm!! * 0.85 + instant * 0.15
         return driftPpm
@@ -456,13 +460,9 @@ class StreamHealthTracker {
             return driftPpm
         }
         val wallDelta = wallMs - exclusiveOriginWallMs
-        if (wallDelta < 800L) return driftPpm
+        if (wallDelta < 500L) return driftPpm
         val audioMs = (framesWritten - exclusiveOriginFrames).toDouble() * 1000.0 / rateHz.toDouble()
-        // Write() still in flight: frames have not caught wall yet. Keep the
-        // last reading instead of publishing −1e6 PPM or wiping the estimate.
-        if (audioMs < wallDelta * 0.25 && wallDelta < 4_000L) {
-            return driftPpm
-        }
+        if (audioMs < 200.0) return driftPpm
         val instant = ((audioMs - wallDelta) / wallDelta * 1_000_000.0)
             .coerceIn(-50_000.0, 50_000.0)
         driftPpm = if (driftPpm == null) instant else driftPpm!! * 0.85 + instant * 0.15

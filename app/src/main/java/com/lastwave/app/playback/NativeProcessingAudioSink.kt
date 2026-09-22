@@ -340,7 +340,10 @@ class NativeProcessingAudioSink(
 
     override fun play() {
         playing = true
-        if (usbExclusive) return
+        if (usbExclusive) {
+            exclusiveUsb?.setPaused(false)
+            return
+        }
         if (!processingActive) {
             activeDelegate.play()
             return
@@ -360,7 +363,7 @@ class NativeProcessingAudioSink(
         clearPending()
         clearEndOfStream()
         if (usbExclusive) {
-            exclusiveUsb?.flush()
+            exclusiveUsb?.handleDiscontinuity()
             return
         }
         if (!processingActive) {
@@ -386,6 +389,9 @@ class NativeProcessingAudioSink(
     ): Boolean {
         maybeAdoptExclusiveUsb()
         if (usbExclusive) {
+            if (exclusiveUsb?.isPaused() == true || !playing) {
+                return false
+            }
             val fmt = configuredFormat
             val gain = exclusiveUsb?.softwareGain() ?: lastVolume
             val needsGain = gain < 1f - 1e-6f && gain >= 0f && buffer.hasRemaining() &&
@@ -908,7 +914,10 @@ class NativeProcessingAudioSink(
 
     override fun pause() {
         playing = false
-        if (usbExclusive) return
+        if (usbExclusive) {
+            exclusiveUsb?.setPaused(true)
+            return
+        }
         activeDelegate.pause()
     }
 
