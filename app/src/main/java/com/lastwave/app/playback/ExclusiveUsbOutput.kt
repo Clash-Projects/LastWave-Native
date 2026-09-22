@@ -12,8 +12,8 @@ import androidx.core.content.ContextCompat
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
+import com.decent.usbaudio.LibUsbAudioStream
 import com.decent.usbaudio.UsbAudioDevice
-import com.decent.usbaudio.UsbAudioStream
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -21,7 +21,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * LastWave session around the vendor usbdevfs driver.
+ * LastWave session around the libusb exclusive transport.
  *
  * PCM goes to isochronous URBs. AudioFlinger never sees the stream. Rate
  * switches use Java [android.hardware.usb.UsbDeviceConnection.setInterface]
@@ -45,7 +45,7 @@ class ExclusiveUsbOutput @Inject constructor(
     @Volatile private var listeningGain = 1f
     @Volatile private var softwareGainValue = 1f
 
-    private var stream: UsbAudioStream? = null
+    private var stream: LibUsbAudioStream? = null
     private var usb: UsbAudioDevice? = null
     private var sourceEncoding = 0
     private var useFloatWrite = false
@@ -383,9 +383,8 @@ class ExclusiveUsbOutput @Inject constructor(
             )
         }
 
-        val created = UsbAudioStream(
+        val created = LibUsbAudioStream(
             info.fd,
-            info.interfaceId,
             epOut,
             epFb,
             sampleRate,
