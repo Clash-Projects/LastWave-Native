@@ -608,7 +608,7 @@ class NativeProcessingAudioSink(
 
     override fun hasPendingData(): Boolean =
         if (usbExclusive) {
-            false
+            !exclusiveEnded && (exclusiveUsb?.hasPendingData() == true)
         } else {
             pendingOutput?.hasRemaining() == true ||
                 endOfStreamOutput?.hasRemaining() == true ||

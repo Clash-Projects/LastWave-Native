@@ -732,13 +732,17 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
     }
 
     int offset = 0;
-    // usbdevfs ISO_ASAP schedules one packet per 125 µs microframe.
-    // Scaling by bInterval made every packet ~8× too long: playback ran fast
-    // and the track ended after a few seconds. 44.1 is 5/6 frames, 48 kHz
-    // family is exact. 24-bit stereo is 6 bytes/frame, so an 11-frame packet
-    // is 66 bytes (not 4-byte aligned) and the DAC turns that into jitter.
-    // Keep the average rate, but only emit packets whose length is aligned.
-    const double fpmf = ctx->sampleRate / 8000.0;
+    // usbdevfs ISO_ASAP: one packet per 125 µs. Do not scale by bInterval
+    // (that ran playback ~8× fast and the track died after a few seconds).
+    // Hold one feedback sample for the whole stream. Updating fpmf on every
+    // URB made 88.2/176.4/352.8 change size every millisecond and buzz.
+    // 48 kHz-family is an integer and does not need it; 44.1 does, and the
+    // multiples above 44.1 overflow a DAC FIFO in milliseconds without it.
+    const double nominal = ctx->sampleRate / 8000.0;
+    const double fpmf = (ctx->calibratedFpmf > nominal * 0.99 &&
+                         ctx->calibratedFpmf < nominal * 1.01)
+            ? ctx->calibratedFpmf
+            : nominal;
     const int bpf = ctx->bytesPerFrame > 0 ? ctx->bytesPerFrame : 1;
 
     while (offset < dataLen && ctx->running.load() && !ctx->paused.load()) {
@@ -752,20 +756,9 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
             if (remaining <= 0) break;
 
             double sum = acc + fpmf;
-            int ideal = (int)sum;
-            if (ideal < 1) ideal = 1;
-            double carry = sum - (double)ideal;
-            int frames = ideal;
-            if ((bpf % 4) != 0) {
-                int down = ideal - 1;
-                if (down >= 1 && ((down * bpf) % 4) == 0) {
-                    frames = down;
-                    carry += (double)(ideal - down);
-                } else if ((((ideal + 1) * bpf) % 4) == 0) {
-                    frames = ideal + 1;
-                    carry -= 1.0;
-                }
-            }
+            int frames = (int)sum;
+            if (frames < 1) frames = 1;
+            double carry = sum - (double)frames;
             int b = frames * bpf;
             if (urbBytes + b > USB_AUDIO_URB_BUFFER_SIZE || b > remaining) break;
 

@@ -187,12 +187,10 @@ class ExclusiveUsbOutput @Inject constructor(
             }
             val clock = running.framesClock
             if (startMediaTimeNeedsInit) {
-                // Decoder timestamps are not the playhead. A DASH buffer can
-                // report a presentation time at the end of the window, which
-                // pinned the bit-perfect bar there. Count frames from this
-                // write, starting at 0 unless noteSeek() just placed us.
+                // Anchor once, to the first buffer. Later DASH chunks must
+                // not rebase this or ExoPlayer waits after the first segment.
                 mediaTimeBaseFrames = clock
-                startMediaTimeUs = 0L
+                startMediaTimeUs = presentationTimeUs.coerceAtLeast(0L)
                 startMediaTimeNeedsInit = false
             }
             recheckClockLocked()
@@ -231,7 +229,12 @@ class ExclusiveUsbOutput @Inject constructor(
      * while the ISO stream is merely alive makes ExoPlayer wait to drain an
      * AudioTrack that does not exist — next-track / seek stalls for seconds.
      */
-    fun hasPendingData(): Boolean = false
+    /**
+     * ExoPlayer treats "no pending data" as "the sink is idle" and drops to
+     * BUFFERING between DASH chunks. While exclusive USB is playing, the
+     * isochronous pipeline is that pending audio.
+     */
+    fun hasPendingData(): Boolean = active && !paused && stream?.isAlive == true
 
     fun flush() {
         synchronized(lock) {
@@ -243,11 +246,9 @@ class ExclusiveUsbOutput @Inject constructor(
     }
 
     fun handleDiscontinuity() {
-        synchronized(lock) {
-            stream?.flush()
-            startMediaTimeNeedsInit = true
-            mediaTimeBaseFrames = stream?.framesClock ?: 0L
-        }
+        // A DASH segment boundary is not a seek. Resetting the sink clock
+        // here made ExoPlayer wait forever after the first ~5s chunk
+        // ("keeps loading") while the DAC had already stopped.
     }
 
     /**
