@@ -47,9 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.lastwave.app.ui.theme.LocalLiquidGlass
-import com.lastwave.app.ui.theme.liquidGlassContainerColor
-import com.lastwave.app.ui.theme.liquidGlassChrome
+
 
 /**
  * ONE reusable grouped-container system for every screen with a list of
@@ -169,12 +167,11 @@ fun ExpressiveGroupRow(
     val scale = rememberGroupPressScale(interactionSource)
     val titleColor = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
     val shape = groupShape(position)
-    val liquidGlass = LocalLiquidGlass.current
 
     Card(
         onClick = onClick,
         shape = shape,
-        colors = CardDefaults.cardColors(containerColor = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHigh)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
         // 0dp deliberately: Material3's Card blends a primary-tinted alpha
         // layer on top of containerColor above 0dp tonalElevation, which
         // read as a second, unintended layer behind these rows' own tonal
@@ -183,8 +180,7 @@ fun ExpressiveGroupRow(
         interactionSource = interactionSource,
         modifier = modifier
             .fillMaxWidth()
-            .scale(scale)
-            .liquidGlassChrome(shape, liquidGlass, interactionSource = interactionSource),
+            .scale(scale),
     ) {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 12.dp),
@@ -246,21 +242,17 @@ fun ExpressiveGroupTrackRow(
     val scale = rememberGroupPressScale(interactionSource)
     val haptics = LocalHapticFeedback.current
     val shape = groupShape(position)
-    val liquidGlass = LocalLiquidGlass.current
-    val playingContainer = MaterialTheme.colorScheme.primaryContainer.let {
-        if (liquidGlass) it.copy(alpha = 0.92f) else it.copy(alpha = 0.45f)
-    }
+    val playingContainer = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
 
     Card(
         shape = shape,
         colors = CardDefaults.cardColors(
-            containerColor = liquidGlassContainerColor(if (isPlaying) playingContainer else MaterialTheme.colorScheme.surfaceContainerHigh),
+            containerColor = if (isPlaying) playingContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = modifier
             .fillMaxWidth()
             .scale(scale)
-            .liquidGlassChrome(shape, liquidGlass, interactionSource = interactionSource)
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = androidx.compose.material3.ripple(),
@@ -284,8 +276,7 @@ fun ExpressiveGroupTrackRow(
                     title,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = if (isPlaying) FontWeight.Bold else FontWeight.Medium,
-                    color = if (isPlaying && liquidGlass) MaterialTheme.colorScheme.onPrimaryContainer
-                    else if (isPlaying) MaterialTheme.colorScheme.primary
+                    color = if (isPlaying) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -293,8 +284,7 @@ fun ExpressiveGroupTrackRow(
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isPlaying && liquidGlass) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f)
-                    else if (isPlaying) MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                    color = if (isPlaying) MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -366,12 +356,9 @@ fun ExpressiveGroupSelectRow(
     val interactionSource = remember { MutableInteractionSource() }
     val scale = rememberGroupPressScale(interactionSource)
     val shape = groupShape(position)
-    val liquidGlass = LocalLiquidGlass.current
     val containerColor by animateColorAsState(
         targetValue = if (selected) {
-            MaterialTheme.colorScheme.primaryContainer.let {
-                if (liquidGlass) it.copy(alpha = 0.92f) else it
-            }
+            MaterialTheme.colorScheme.primaryContainer
         } else {
             MaterialTheme.colorScheme.surfaceContainerHigh
         },
@@ -382,13 +369,12 @@ fun ExpressiveGroupSelectRow(
     Card(
         onClick = onClick,
         shape = shape,
-        colors = CardDefaults.cardColors(containerColor = liquidGlassContainerColor(containerColor)),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         interactionSource = interactionSource,
         modifier = modifier
             .fillMaxWidth()
-            .scale(scale)
-            .liquidGlassChrome(shape, liquidGlass, interactionSource = interactionSource),
+            .scale(scale),
     ) {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(horizontal = 16.dp, vertical = 14.dp),
@@ -411,8 +397,7 @@ fun ExpressiveGroupSelectRow(
                     title,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                    color = if (selected && liquidGlass) MaterialTheme.colorScheme.onPrimaryContainer
-                    else MaterialTheme.colorScheme.onSurface,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -420,8 +405,7 @@ fun ExpressiveGroupSelectRow(
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (selected && liquidGlass) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f)
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

@@ -17,9 +17,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import com.lastwave.app.ui.theme.isLiquidGlassEnabled
-import com.lastwave.app.ui.theme.liquidGlassChrome
-import com.lastwave.app.ui.theme.liquidGlassContainerColor
+
 
 /**
  * Keeps content composition stable when Liquid Glass is toggled.
@@ -28,7 +26,7 @@ import com.lastwave.app.ui.theme.liquidGlassContainerColor
 fun LiquidGlassCard(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(24.dp),
-    enabled: Boolean = isLiquidGlassEnabled(),
+    enabled: Boolean = false,
     tintColor: Color = Color.Unspecified,
     contentColor: Color = Color.Unspecified,
     onClick: (() -> Unit)? = null,
@@ -41,23 +39,18 @@ fun LiquidGlassCard(
     }
 
     val baseColor = if (tintColor.isSpecified) tintColor else MaterialTheme.colorScheme.surfaceContainer
-    val glassInteraction = remember { MutableInteractionSource() }
     val clickModifier = if (onClick != null) {
         Modifier.clickable(
-            interactionSource = glassInteraction,
-            indication = null,
             role = Role.Button,
             onClick = onClick,
         )
     } else Modifier
 
     Card(
-        modifier = modifier
-            .liquidGlassChrome(shape, enabled, interactionSource = glassInteraction)
-            .then(clickModifier),
+        modifier = modifier.then(clickModifier),
         shape = shape,
         colors = CardDefaults.cardColors(
-            containerColor = liquidGlassContainerColor(baseColor, enabled = enabled),
+            containerColor = baseColor,
             contentColor = resolvedContentColor,
         ),
     ) {

@@ -70,13 +70,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import com.lastwave.app.ui.theme.LocalLiquidGlass
-import com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported
-import com.lastwave.app.ui.theme.liquidGlassSource
-import com.lastwave.app.ui.theme.liquidGlassChrome
-import com.lastwave.app.ui.theme.liquidGlassContainerColor
-import com.lastwave.app.ui.theme.LiquidGlassPreset
-import com.lastwave.app.ui.theme.rememberLayerBackdrop
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
@@ -144,13 +137,11 @@ fun ArtistDetailScreen(
         }
     }
 
-    val headerBackdrop = if (isLiquidGlassBackdropSupported()) rememberLayerBackdrop() else null
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-        Box(Modifier.fillMaxSize().liquidGlassSource(headerBackdrop)) {
         when (val state = uiState) {
             is ArtistUiState.Loading -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -279,11 +270,9 @@ fun ArtistDetailScreen(
                                 if (isArtistPlaying) {
                                     Surface(
                                         shape = RoundedCornerShape(topStart = 14.dp, bottomEnd = 28.dp),
-                                        color = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.92f)),
+                                        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.92f),
                                         tonalElevation = 4.dp,
-                                        modifier = Modifier.align(Alignment.BottomEnd).liquidGlassChrome(
-                                            RoundedCornerShape(topStart = 14.dp, bottomEnd = 28.dp), LocalLiquidGlass.current,
-                                        ),
+                                        modifier = Modifier.align(Alignment.BottomEnd),
                                     ) {
                                         PlayingWaveBars(
                                             modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
@@ -359,13 +348,9 @@ fun ArtistDetailScreen(
                                         enabled = data.topSongs.isNotEmpty(),
                                         shape = CircleShape,
                                         colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                            containerColor = liquidGlassContainerColor(
-                                                MaterialTheme.colorScheme.secondaryContainer,
-                                                backdrop = headerBackdrop,
-                                            ),
+                                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
                                         ),
-                                        modifier = Modifier.size(48.dp)
-                                            .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, headerBackdrop),
+                                        modifier = Modifier.size(48.dp),
                                     ) {
                                         Icon(
                                             Icons.Filled.Shuffle,
@@ -382,13 +367,9 @@ fun ArtistDetailScreen(
                                         },
                                         shape = CircleShape,
                                         colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                            containerColor = liquidGlassContainerColor(
-                                                MaterialTheme.colorScheme.secondaryContainer,
-                                                backdrop = headerBackdrop,
-                                            ),
+                                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
                                         ),
-                                        modifier = Modifier.size(48.dp)
-                                            .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, headerBackdrop),
+                                        modifier = Modifier.size(48.dp),
                                     ) {
                                         Icon(
                                             Icons.Filled.Radio,
@@ -407,20 +388,16 @@ fun ArtistDetailScreen(
                                     },
                                     enabled = data.topSongs.isNotEmpty(),
                                     shape = CircleShape,
-                                    color = if (LocalLiquidGlass.current) MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
-                                        else MaterialTheme.colorScheme.primary,
-                                    contentColor = if (LocalLiquidGlass.current) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.onPrimary,
-                                    shadowElevation = if (LocalLiquidGlass.current) 0.dp else 6.dp,
-                                    modifier = Modifier.size(56.dp)
-                                        .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, headerBackdrop),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    shadowElevation = 6.dp,
+                                    modifier = Modifier.size(56.dp),
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(
                                             if (isArtistPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                             contentDescription = "Play Artist",
-                                            tint = if (LocalLiquidGlass.current) MaterialTheme.colorScheme.primary
-                                                else MaterialTheme.colorScheme.onPrimary,
+                                            tint = MaterialTheme.colorScheme.onPrimary,
                                             modifier = Modifier.size(30.dp),
                                         )
                                     }
@@ -750,18 +727,14 @@ fun ArtistDetailScreen(
             }
         }
 
-        }
-
-        // Native Top Bar with Back Navigation & Fade Header
         Surface(
-            color = liquidGlassContainerColor(if (showScrolledHeader) MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.98f) else Color.Transparent, backdrop = headerBackdrop),
+            color = if (showScrolledHeader) MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.98f) else Color.Transparent,
             tonalElevation = if (showScrolledHeader) 4.dp else 0.dp,
-            shadowElevation = if (showScrolledHeader && !LocalLiquidGlass.current) 6.dp else 0.dp,
+            shadowElevation = if (showScrolledHeader) 6.dp else 0.dp,
             modifier = Modifier
                 .fillMaxWidth()
                 .zIndex(10f)
-                .align(Alignment.TopCenter)
-                .liquidGlassChrome(RectangleShape, LocalLiquidGlass.current && showScrolledHeader, LiquidGlassPreset.Overlay, headerBackdrop),
+                .align(Alignment.TopCenter),
         ) {
             Row(
                 modifier = Modifier
@@ -815,13 +788,9 @@ fun ArtistDetailScreen(
                             viewModel.playAll()
                         },
                         colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = liquidGlassContainerColor(
-                                MaterialTheme.colorScheme.secondaryContainer,
-                                backdrop = headerBackdrop,
-                            ),
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
                         ),
-                        modifier = Modifier.size(38.dp)
-                            .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, headerBackdrop),
+                        modifier = Modifier.size(38.dp),
                     ) {
                         Icon(Icons.Filled.PlayArrow, contentDescription = "Play", modifier = Modifier.size(22.dp))
                     }

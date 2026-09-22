@@ -125,11 +125,7 @@ import com.lastwave.app.ui.navigation.ArtistAlbumNavigator
 import com.lastwave.app.ui.player.LocalMusicPlayer
 import com.lastwave.app.ui.player.PlayingWaveBars
 import com.lastwave.app.ui.shell.FloatingNavDefaults
-import com.lastwave.app.ui.theme.LocalLiquidGlass
-import com.lastwave.app.ui.theme.LiquidGlassSurface
-import com.lastwave.app.ui.theme.liquidGlassChrome
-import com.lastwave.app.ui.theme.LiquidGlassPreset
-import com.lastwave.app.ui.theme.liquidGlassContainerColor
+
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -811,18 +807,16 @@ private fun InfiniteRadioHero(
     quickPicks: List<YouTubeMusicTrack>,
     onPlay: () -> Unit,
 ) {
-    val liquidGlass = LocalLiquidGlass.current
     val haptics = LocalHapticFeedback.current
     val heroArt = quickPicks.firstOrNull { !it.artworkUrl.isNullOrBlank() }?.artworkUrl
     val heroShape = RoundedCornerShape(28.dp)
     Surface(
         shape = heroShape,
-        color = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainer),
+        color = MaterialTheme.colorScheme.surfaceContainer,
         tonalElevation = 2.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .liquidGlassChrome(heroShape, liquidGlass),
+            .padding(horizontal = 16.dp),
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             if (!heroArt.isNullOrBlank()) {
@@ -948,11 +942,10 @@ private fun TasteStrip(
         ) {
             items(tags, key = { it }) { tag ->
                 val isLoading = launching?.equals(tag.displayName(), ignoreCase = true) == true
-                LiquidGlassSurface(
-                    glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current),
+                Surface(
                     onClick = { onTagClick(tag) },
                     shape = CircleShape,
-                    color = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f)),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f),
                     modifier = Modifier,
                     border = androidx.compose.foundation.BorderStroke(
                         1.dp,
@@ -1131,7 +1124,6 @@ private fun QuickTileCard(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    val liquidGlass = LocalLiquidGlass.current
     val tileShape = RoundedCornerShape(18.dp)
 
     // Per-type vibrant gradient pairs for the artwork/icon box matching modern expressive designs
@@ -1159,18 +1151,15 @@ private fun QuickTileCard(
         )
     }
 
-    LiquidGlassSurface(
-        glassModifier = Modifier.liquidGlassChrome(tileShape, liquidGlass),
+    Surface(
         onClick = onClick,
         shape = tileShape,
-        color = liquidGlassContainerColor(
-            when {
-                isLikedTile -> MaterialTheme.colorScheme.primaryContainer
-                isMixTile -> MaterialTheme.colorScheme.secondaryContainer
-                isNewReleasesTile -> MaterialTheme.colorScheme.tertiaryContainer
-                else -> MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f)
-            },
-        ),
+        color = when {
+            isLikedTile -> MaterialTheme.colorScheme.primaryContainer
+            isMixTile -> MaterialTheme.colorScheme.secondaryContainer
+            isNewReleasesTile -> MaterialTheme.colorScheme.tertiaryContainer
+            else -> MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f)
+        },
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.10f),
@@ -1671,7 +1660,6 @@ private fun SpotlightHeroCard(
     onPlayRadio: () -> Unit,
     onOpenArtist: () -> Unit,
 ) {
-    val liquidGlass = LocalLiquidGlass.current
     val primaryArtistName = remember(spotlight.artistName) { ArtistHelper.primaryArtist(spotlight.artistName) }
     val gradientBrush = Brush.linearGradient(
         colors = listOf(
@@ -1684,12 +1672,11 @@ private fun SpotlightHeroCard(
     )
     Surface(
         shape = RoundedCornerShape(28.dp),
-        color = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainer),
+        color = MaterialTheme.colorScheme.surfaceContainer,
         tonalElevation = 2.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .liquidGlassChrome(RoundedCornerShape(28.dp), liquidGlass),
+            .padding(horizontal = 16.dp),
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             if (!spotlight.artworkUrl.isNullOrBlank()) {
@@ -1817,11 +1804,10 @@ private fun SpotlightHeroCard(
                         Spacer(Modifier.width(6.dp))
                         Text("Artist radio", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                     }
-                    LiquidGlassSurface(
-                        glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current),
+                    Surface(
                         onClick = onOpenArtist,
                         shape = CircleShape,
-                        color = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f)),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
                         modifier = Modifier.weight(1f).height(42.dp),
                     ) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -2034,14 +2020,13 @@ private fun FeedSectionHeader(
             }
         }
         if (onShuffleClick != null) {
-            LiquidGlassSurface(
-                glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls),
+            Surface(
                 onClick = {
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     onShuffleClick()
                 },
                 shape = CircleShape,
-                color = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f)),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f),
             ) {
                 Box(
                     modifier = Modifier.padding(8.dp),
@@ -2057,15 +2042,13 @@ private fun FeedSectionHeader(
             }
         }
         if (actionText != null && onActionClick != null) {
-            val liquidGlass = LocalLiquidGlass.current
-            LiquidGlassSurface(
-                glassModifier = Modifier.liquidGlassChrome(CircleShape, liquidGlass, LiquidGlassPreset.FloatingControls),
+            Surface(
                 onClick = {
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     onActionClick()
                 },
                 shape = CircleShape,
-                color = liquidGlassContainerColor(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp),
@@ -2152,11 +2135,10 @@ private fun FeedEmptyState(
                 Spacer(Modifier.width(6.dp))
                 Text("Search music", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
             }
-            LiquidGlassSurface(
-                glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current),
+            Surface(
                 onClick = onRetry,
                 shape = CircleShape,
-                color = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f)),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f),
                 modifier = Modifier,
             ) {
                 Row(

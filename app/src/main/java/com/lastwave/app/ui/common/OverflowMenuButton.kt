@@ -15,9 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.dp
-import com.lastwave.app.ui.theme.LocalLiquidGlass
-import com.lastwave.app.ui.theme.liquidGlassChrome
-import com.lastwave.app.ui.theme.liquidGlassContainerColor
+
 
 /**
  * The one overflow ("more options") trigger used across every song list in
@@ -45,14 +43,13 @@ fun OverflowMenuButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
         colors = IconButtonDefaults.filledTonalIconButtonColors(
-            containerColor = liquidGlassContainerColor(darkThemeTone),
+            containerColor = darkThemeTone,
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
         ),
         modifier = modifier
             .padding(start = 10.dp)
             .width(26.dp)
-            .height(32.dp)
-            .liquidGlassChrome(RoundedCornerShape(12.dp), LocalLiquidGlass.current),
+            .height(32.dp),
     ) {
         Icon(Icons.Filled.MoreVert, contentDescription = "More options", modifier = Modifier.size(18.dp))
     }

@@ -76,11 +76,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.lastwave.app.ui.theme.LocalLiquidGlass
-import com.lastwave.app.ui.theme.LocalLiquidGlassOverlayBackdrop
-import com.lastwave.app.ui.theme.LiquidGlassPreset
-import com.lastwave.app.ui.theme.liquidGlassChrome
-import com.lastwave.app.ui.theme.liquidGlassContainerColor
+
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -381,16 +377,7 @@ fun TrackContextMenuSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        modifier = Modifier.liquidGlassChrome(
-            RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            LocalLiquidGlass.current,
-            LiquidGlassPreset.ContextMenu,
-            LocalLiquidGlassOverlayBackdrop.current,
-        ),
-        containerColor = liquidGlassContainerColor(
-            MaterialTheme.colorScheme.surfaceContainerLow,
-            backdrop = LocalLiquidGlassOverlayBackdrop.current,
-        ),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
         dragHandle = {
             Surface(

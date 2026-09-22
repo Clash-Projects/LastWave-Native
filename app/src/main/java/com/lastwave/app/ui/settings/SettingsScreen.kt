@@ -151,12 +151,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
-import com.lastwave.app.ui.theme.LocalLiquidGlass
-import com.lastwave.app.ui.theme.LocalLiquidGlassOverlayBackdrop
-import com.lastwave.app.ui.theme.LiquidGlassPreset
-import com.lastwave.app.ui.theme.liquidGlassContainerColor
-import com.lastwave.app.ui.theme.LiquidGlassSurface
-import com.lastwave.app.ui.theme.liquidGlassChrome
+
 import com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance
 import com.lastwave.app.R
 import com.lastwave.app.data.local.AccentMode
@@ -2046,15 +2041,12 @@ private fun ThemeModeSelectorCard(
     position: GroupPosition = GroupPosition.SINGLE,
 ) {
     val shape = groupShape(position)
-    val liquidGlass = LocalLiquidGlass.current
 
     Card(
         shape = shape,
-        colors = CardDefaults.cardColors(containerColor = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHigh)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .liquidGlassChrome(shape, liquidGlass),
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
@@ -2121,22 +2113,20 @@ private fun SettingsToggleCard(
     val interactionSource = remember { MutableInteractionSource() }
     val scale = rememberPressScale(interactionSource)
     val shape = groupShape(position)
-    val liquidGlass = LocalLiquidGlass.current
 
     Card(
         onClick = { if (enabled) onCheckedChange(!checked) },
         shape = shape,
         enabled = enabled,
         colors = CardDefaults.cardColors(
-            containerColor = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHigh),
-            disabledContainerColor = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
-            .scale(if (enabled) scale else 1f)
-            .liquidGlassChrome(shape, liquidGlass, interactionSource = interactionSource),
+            .scale(if (enabled) scale else 1f),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
@@ -2192,14 +2182,11 @@ private fun SettingsToggleCard(
 private fun ScrobbleThresholdRow(percent: Int, onPercentChange: (Int) -> Unit, position: GroupPosition = GroupPosition.SINGLE) {
     var sliderValue by remember(percent) { mutableStateOf(percent.coerceIn(25, 90).toFloat()) }
     val shape = groupShape(position)
-    val liquidGlass = LocalLiquidGlass.current
     Card(
         shape = shape,
-        colors = CardDefaults.cardColors(containerColor = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHigh)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .liquidGlassChrome(shape, liquidGlass),
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2239,7 +2226,6 @@ private fun CrossfadeDurationRow(
         if (!isDragging) sliderValue = seconds.coerceIn(1, 12).toFloat()
     }
     val shape = groupShape(position)
-    val liquidGlass = LocalLiquidGlass.current
 
     val blendStyle = when (sliderValue.roundToInt()) {
         in 1..2 -> "Quick DJ overlap"
@@ -2250,11 +2236,9 @@ private fun CrossfadeDurationRow(
 
     Card(
         shape = shape,
-        colors = CardDefaults.cardColors(containerColor = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHigh)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .liquidGlassChrome(shape, liquidGlass),
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2332,18 +2316,16 @@ private fun SettingsActionCard(
     val scale = rememberPressScale(interactionSource)
     val titleColor = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
     val shape = groupShape(position)
-    val liquidGlass = LocalLiquidGlass.current
 
     Card(
         onClick = onClick,
         shape = shape,
-        colors = CardDefaults.cardColors(containerColor = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHigh)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
-            .scale(scale)
-            .liquidGlassChrome(shape, liquidGlass, interactionSource = interactionSource),
+            .scale(scale),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
@@ -2372,15 +2354,13 @@ private fun YouTubeAccountRow(
     position: GroupPosition,
 ) {
     val shape = groupShape(position)
-    val liquidGlass = LocalLiquidGlass.current
     Card(
         shape = shape,
-        colors = CardDefaults.cardColors(containerColor = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHigh)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .animateContentSize()
-            .liquidGlassChrome(shape, liquidGlass),
+            .animateContentSize(),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
@@ -4275,21 +4255,11 @@ private fun LyricsAnimationSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
-    val liquidGlass = LocalLiquidGlass.current
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        modifier = Modifier.liquidGlassChrome(
-            RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            liquidGlass,
-            LiquidGlassPreset.ModalSheet,
-            LocalLiquidGlassOverlayBackdrop.current,
-        ),
-        containerColor = liquidGlassContainerColor(
-            MaterialTheme.colorScheme.surfaceContainer,
-            backdrop = LocalLiquidGlassOverlayBackdrop.current,
-        ),
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
     ) {
         Column(
@@ -4355,20 +4325,13 @@ private fun LyricsAnimationSheet(
                 versions.forEach { (ver, label) ->
                     val isVerSelected = ver == version
                     val chipShape = RoundedCornerShape(14.dp)
-                    LiquidGlassSurface(
-                        glassModifier = Modifier.liquidGlassChrome(chipShape, liquidGlass),
+                    Surface(
                         onClick = {
                             haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                             onSelectVersion(ver)
                         },
                         shape = chipShape,
-                        color = liquidGlassContainerColor(if (isVerSelected) {
-                            if (liquidGlass) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f)
-                            else MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            if (liquidGlass) MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.60f)
-                            else MaterialTheme.colorScheme.surfaceContainerHigh
-                        }),
+                        color = if (isVerSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
                         modifier = Modifier
                             .weight(1f)
                             .clip(chipShape),
@@ -4405,17 +4368,14 @@ private fun LyricsAnimationSheet(
 
                         Surface(
                             shape = cardShape,
-                            color = liquidGlassContainerColor(if (isSelected) {
-                                if (liquidGlass) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f)
-                                else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.70f)
+                            color = if (isSelected) {
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.70f)
                             } else {
-                                if (liquidGlass) MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.90f)
-                                else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.50f)
-                            }),
+                                MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.50f)
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(cardShape)
-                                .liquidGlassChrome(cardShape, liquidGlass)
                                 .clickable {
                                     haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                                     onSelect(anim)
@@ -4451,18 +4411,13 @@ private fun LyricsAnimationSheet(
                                         text = anim.title,
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                                        color = if (isSelected && liquidGlass) MaterialTheme.colorScheme.onPrimaryContainer
-                                        else if (isSelected) MaterialTheme.colorScheme.primary
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary
                                         else MaterialTheme.colorScheme.onSurface,
                                     )
                                     Text(
                                         text = anim.description,
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = if (isSelected && liquidGlass) {
-                                            MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f)
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurfaceVariant
-                                        },
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
                             }
@@ -4472,9 +4427,8 @@ private fun LyricsAnimationSheet(
             } else {
                 Surface(
                     shape = RoundedCornerShape(18.dp),
-                    color = liquidGlassContainerColor(if (liquidGlass) MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.70f)
-                    else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.40f)),
-                    modifier = Modifier.fillMaxWidth().liquidGlassChrome(RoundedCornerShape(18.dp), liquidGlass),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.40f),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(
                         modifier = Modifier.padding(20.dp),

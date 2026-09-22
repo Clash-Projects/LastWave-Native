@@ -14,10 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.lastwave.app.ui.theme.LiquidGlassPreset
-import com.lastwave.app.ui.theme.LocalLiquidGlass
-import com.lastwave.app.ui.theme.liquidGlassChrome
-import com.lastwave.app.ui.theme.liquidGlassContainerColor
+
 
 /**
  * Material 3 Expressive Floating Toolbar.
@@ -29,18 +26,12 @@ fun FloatingToolbar(
     elevation: Dp = 6.dp,
     content: @Composable RowScope.() -> Unit,
 ) {
-    val glass = LocalLiquidGlass.current
     Surface(
-        modifier = modifier
-            .clip(CircleShape)
-            .liquidGlassChrome(CircleShape, glass, LiquidGlassPreset.FloatingControls),
+        modifier = modifier.clip(CircleShape),
         shape = CircleShape,
-        color = liquidGlassContainerColor(
-            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
-            enabled = glass,
-        ),
-        tonalElevation = if (glass) 0.dp else elevation,
-        shadowElevation = if (glass) 0.dp else elevation,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = elevation,
+        shadowElevation = elevation,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),

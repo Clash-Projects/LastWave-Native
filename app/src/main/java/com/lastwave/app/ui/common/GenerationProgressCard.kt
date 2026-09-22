@@ -30,9 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.lastwave.app.ui.theme.LocalLiquidGlass
-import com.lastwave.app.ui.theme.liquidGlassChrome
-import com.lastwave.app.ui.theme.liquidGlassContainerColor
+
 
 /**
  * The single "a playlist is generating" card, shared verbatim between the
@@ -61,27 +59,14 @@ fun GenerationProgressCard(message: String, modifier: Modifier = Modifier) {
         label = "genBreathe",
     )
 
-    val glass = LocalLiquidGlass.current
     Surface(
         shape = RoundedCornerShape(24.dp),
-        color = liquidGlassContainerColor(
-            MaterialTheme.colorScheme.surfaceContainerHigh,
-            enabled = glass,
-        ),
-        // 0dp deliberately: Surface/Card blend a primary-tinted alpha layer
-        // on top of `color` whenever tonalElevation is above 0dp — see the
-        // ModeCard/SettingsToggleCard fixes for the full explanation. The
-        // shadow below still gives real depth without that color shift.
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 0.dp,
-        shadowElevation = if (glass) 0.dp else 8.dp,
+        shadowElevation = 8.dp,
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 12.dp)
-            .liquidGlassChrome(
-                RoundedCornerShape(24.dp),
-                glass,
-                com.lastwave.app.ui.theme.LiquidGlassPreset.Card,
-            ),
+            .padding(vertical = 12.dp),
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,

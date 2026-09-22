@@ -79,11 +79,7 @@ import com.lastwave.app.data.network.LastFmApiService
 import com.lastwave.app.data.plugin.ModulePlaybackResolver
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
-import com.lastwave.app.ui.theme.LiquidGlassPreset
-import com.lastwave.app.ui.theme.LocalLiquidGlass
-import com.lastwave.app.ui.theme.LocalLiquidGlassOverlayBackdrop
-import com.lastwave.app.ui.theme.liquidGlassChrome
-import com.lastwave.app.ui.theme.liquidGlassContainerColor
+
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -505,16 +501,7 @@ fun TrackDetailsSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        modifier = Modifier.liquidGlassChrome(
-            RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            LocalLiquidGlass.current,
-            LiquidGlassPreset.ModalSheet,
-            LocalLiquidGlassOverlayBackdrop.current,
-        ),
-        containerColor = liquidGlassContainerColor(
-            MaterialTheme.colorScheme.surfaceContainerLow,
-            backdrop = LocalLiquidGlassOverlayBackdrop.current,
-        ),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
         dragHandle = {
             Surface(

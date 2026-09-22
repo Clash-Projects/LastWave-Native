@@ -36,9 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import com.lastwave.app.ui.theme.LocalLiquidGlass
-import com.lastwave.app.ui.theme.liquidGlassContainerColor
-import com.lastwave.app.ui.theme.liquidGlassChrome
+
 
 /** Only the bottom corners are rounded, and a modest 24dp at that (not
  *  36dp) — a short header (just a title row, no back button, minimal
@@ -79,21 +77,12 @@ fun ExpressiveHeader(
 ) {
     val glow = MaterialTheme.colorScheme.primary
     val secondaryGlow = MaterialTheme.colorScheme.tertiary
-    // Liquid Glass: the header surface turns translucent via the scheme and
-    // the AGSL lens supplies rim/specular from bevel lighting. No-op when
-    // the setting is off.
-    val liquidGlass = LocalLiquidGlass.current
     Box(modifier.fillMaxWidth().zIndex(1f)) {
         Surface(
             shape = HeaderShape,
-            color = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainer),
+            color = MaterialTheme.colorScheme.surfaceContainer,
             tonalElevation = 2.dp,
-            // No shadowElevation: a drop shadow under a shape with two
-            // sharp top corners and two large rounded bottom ones reads as
-            // an odd, hard-edged band right under the header rather than a
-            // soft shadow — the gradient glow above already gives the
-            // header depth without it.
-            modifier = Modifier.fillMaxWidth().liquidGlassChrome(HeaderShape, liquidGlass),
+            modifier = Modifier.fillMaxWidth(),
         ) {
             Column(
                 Modifier
@@ -113,9 +102,8 @@ fun ExpressiveHeader(
                         FilledTonalIconButton(
                             onClick = onBack,
                             colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                containerColor = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHighest),
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                             ),
-                            modifier = Modifier.liquidGlassChrome(CircleShape, liquidGlass),
                         ) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
@@ -198,9 +186,8 @@ fun HeaderActionIcon(
     FilledTonalIconButton(
         onClick = onClick,
         colors = IconButtonDefaults.filledTonalIconButtonColors(
-            containerColor = liquidGlassContainerColor(MaterialTheme.colorScheme.surfaceContainerHighest),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
         ),
-        modifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current),
     ) {
         Icon(icon, contentDescription = contentDescription)
     }

@@ -59,9 +59,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import com.lastwave.app.ui.theme.LocalLiquidGlass
-import com.lastwave.app.ui.theme.liquidGlassChrome
-import com.lastwave.app.ui.theme.liquidGlassContainerColor
+
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -689,9 +687,9 @@ private fun FriendStatsCard(
 @Composable
 private fun FriendStatPill(label: String, value: Long, modifier: Modifier = Modifier) {
     Surface(
-        modifier = modifier.liquidGlassChrome(StatPillShape, LocalLiquidGlass.current),
+        modifier = modifier,
         shape = StatPillShape,
-        color = liquidGlassContainerColor(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f)),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
     ) {
         Column(
             Modifier.padding(vertical = 10.dp),

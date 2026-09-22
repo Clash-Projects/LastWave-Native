@@ -92,14 +92,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import com.lastwave.app.ui.theme.LocalLiquidGlass
-import com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported
-import com.lastwave.app.ui.theme.liquidGlassSource
-import com.lastwave.app.ui.theme.LiquidGlassSurface
-import com.lastwave.app.ui.theme.liquidGlassChrome
-import com.lastwave.app.ui.theme.liquidGlassContainerColor
-import com.lastwave.app.ui.theme.LiquidGlassPreset
-import com.lastwave.app.ui.theme.rememberLayerBackdrop
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -247,13 +239,11 @@ fun PlaylistDetailScreen(
         }
     }
 
-    val headerBackdrop = if (isLiquidGlassBackdropSupported()) rememberLayerBackdrop() else null
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-        Box(Modifier.fillMaxSize().liquidGlassSource(headerBackdrop)) {
         // 1. Full-Bleed Cover Art Background at Top with smooth parallax physics
         Box(
             modifier = Modifier
@@ -361,13 +351,9 @@ fun PlaylistDetailScreen(
                             },
                             shape = CircleShape,
                             colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                containerColor = liquidGlassContainerColor(
-                                    MaterialTheme.colorScheme.secondaryContainer,
-                                    backdrop = headerBackdrop,
-                                ),
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
                             ),
-                            modifier = Modifier.size(50.dp)
-                                .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, headerBackdrop),
+                            modifier = Modifier.size(50.dp),
                         ) {
                             Icon(Icons.Filled.Shuffle, contentDescription = "Shuffle", modifier = Modifier.size(22.dp))
                         }
@@ -426,13 +412,9 @@ fun PlaylistDetailScreen(
                             },
                             shape = CircleShape,
                             colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                containerColor = liquidGlassContainerColor(
-                                    MaterialTheme.colorScheme.secondaryContainer,
-                                    backdrop = headerBackdrop,
-                                ),
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
                             ),
-                            modifier = Modifier.size(50.dp)
-                                .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, headerBackdrop),
+                            modifier = Modifier.size(50.dp),
                         ) {
                             Icon(Icons.Filled.Download, contentDescription = "Download all songs", modifier = Modifier.size(22.dp))
                         }
@@ -449,24 +431,15 @@ fun PlaylistDetailScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box {
-                            val sortGlass = LocalLiquidGlass.current
                             Surface(
                                 onClick = {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     sortMenuOpen = true
                                 },
                                 shape = RoundedCornerShape(50),
-                                color = liquidGlassContainerColor(
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
-                                    enabled = sortGlass,
-                                ),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
                                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                tonalElevation = if (sortGlass) 0.dp else 2.dp,
-                                modifier = Modifier.liquidGlassChrome(
-                                    RoundedCornerShape(50),
-                                    sortGlass,
-                                    LiquidGlassPreset.FloatingControls,
-                                ),
+                                tonalElevation = 2.dp,
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
@@ -490,19 +463,10 @@ fun PlaylistDetailScreen(
                                 expanded = sortMenuOpen,
                                 onDismissRequest = { sortMenuOpen = false },
                                 shape = RoundedCornerShape(20.dp),
-                                containerColor = liquidGlassContainerColor(
-                                    MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    enabled = sortGlass,
-                                ),
-                                tonalElevation = if (sortGlass) 0.dp else 6.dp,
-                                shadowElevation = if (sortGlass) 0.dp else 10.dp,
-                                modifier = Modifier
-                                    .widthIn(min = 210.dp)
-                                    .liquidGlassChrome(
-                                        RoundedCornerShape(20.dp),
-                                        sortGlass,
-                                        LiquidGlassPreset.ContextMenu,
-                                    ),
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                tonalElevation = 6.dp,
+                                shadowElevation = 10.dp,
+                                modifier = Modifier.widthIn(min = 210.dp),
                             ) {
                                 PlaylistTrackSort.entries.forEach { option ->
                                     val isSelected = currentSort == option
@@ -639,8 +603,6 @@ fun PlaylistDetailScreen(
             }
         }
 
-        }
-
         // 2. Floating Top Bar with Frosted Glass styling & Smooth Scrolled Header
         val topBarBg by animateColorAsState(
             targetValue = if (showScrolledHeader) MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.98f) else Color.Transparent,
@@ -654,13 +616,12 @@ fun PlaylistDetailScreen(
         )
 
         Surface(
-            color = liquidGlassContainerColor(topBarBg, backdrop = headerBackdrop),
+            color = topBarBg,
             tonalElevation = topBarElevation,
-            shadowElevation = if (LocalLiquidGlass.current && showScrolledHeader) 0.dp else topBarElevation,
+            shadowElevation = topBarElevation,
             modifier = Modifier
                 .fillMaxWidth()
-                .align(Alignment.TopCenter)
-                .liquidGlassChrome(RectangleShape, LocalLiquidGlass.current && showScrolledHeader, LiquidGlassPreset.Overlay, headerBackdrop),
+                .align(Alignment.TopCenter),
         ) {
             Row(
                 modifier = Modifier
@@ -671,25 +632,22 @@ fun PlaylistDetailScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Frosted glass circular back button
-                LiquidGlassSurface(
-                    glassModifier = Modifier.liquidGlassChrome(
-                        CircleShape, LocalLiquidGlass.current && !showScrolledHeader,
-                        LiquidGlassPreset.FloatingControls, headerBackdrop,
-                    ),
+                // Circular back button
+                IconButton(
                     onClick = onBack,
-                    shape = CircleShape,
-                    color = liquidGlassContainerColor(if (showScrolledHeader) Color.Transparent else Color.Black.copy(alpha = 0.38f), backdrop = headerBackdrop),
-                    modifier = Modifier.size(42.dp),
+                    modifier = Modifier
+                        .size(42.dp)
+                        .background(
+                            if (showScrolledHeader) Color.Transparent else Color.Black.copy(alpha = 0.38f),
+                            CircleShape,
+                        ),
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = if (showScrolledHeader) MaterialTheme.colorScheme.onSurface else Color.White,
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = if (showScrolledHeader) MaterialTheme.colorScheme.onSurface else Color.White,
+                        modifier = Modifier.size(22.dp),
+                    )
                 }
 
                 Row(
@@ -739,13 +697,9 @@ fun PlaylistDetailScreen(
                             )
                         },
                         colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = liquidGlassContainerColor(
-                                MaterialTheme.colorScheme.secondaryContainer,
-                                backdrop = headerBackdrop,
-                            ),
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
                         ),
-                        modifier = Modifier.size(38.dp)
-                            .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, headerBackdrop),
+                        modifier = Modifier.size(38.dp),
                     ) {
                         Icon(
                             if (isThisPlaylistPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
@@ -760,11 +714,7 @@ fun PlaylistDetailScreen(
                 // Translucent Actions Pill (Search / More Menu)
                 Surface(
                     shape = RoundedCornerShape(50),
-                    color = liquidGlassContainerColor(if (showScrolledHeader) Color.Transparent else Color.Black.copy(alpha = 0.38f), backdrop = headerBackdrop),
-                    modifier = Modifier.liquidGlassChrome(
-                        RoundedCornerShape(50), LocalLiquidGlass.current && !showScrolledHeader,
-                        LiquidGlassPreset.FloatingControls, headerBackdrop,
-                    ),
+                    color = if (showScrolledHeader) Color.Transparent else Color.Black.copy(alpha = 0.38f),
                 ) {
                     Box {
                         IconButton(

@@ -82,8 +82,26 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
-import androidx.compose.ui.draw.shadow
-import com.lastwave.app.ui.theme.SquircleShape
+import android.view.HapticFeedbackConstants
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.platform.LocalView
+import android.graphics.Bitmap
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.toImageBitmap
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.core.graphics.scale
+import com.lastwave.app.ui.theme.drawInteractiveGlass
+import com.lastwave.app.ui.theme.liquidGlass
+import com.lastwave.app.ui.theme.rememberGlassInteraction
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
+import java.nio.IntBuffer
+import kotlin.time.Duration.Companion.seconds
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -95,15 +113,19 @@ import com.lastwave.app.ui.home.HomeScreen
 import com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance
 import com.lastwave.app.ui.playlist.PlaylistScreen
 import androidx.compose.foundation.shape.CornerBasedShape
-import com.lastwave.app.ui.theme.LiquidGlassPreset
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.colorControls
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.Shadow
+import kotlin.math.sign
 import com.lastwave.app.ui.theme.LocalIsDarkTheme
 import com.lastwave.app.ui.theme.LocalLiquidGlass
-import com.lastwave.app.ui.theme.LocalLiquidGlassOverlayBackdrop
 import com.lastwave.app.ui.theme.LayerBackdrop
+import com.lastwave.app.ui.theme.SquircleShape
 import com.lastwave.app.ui.theme.rememberLayerBackdrop
 import com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported
-import com.lastwave.app.ui.theme.liquidGlassChrome
-import com.lastwave.app.ui.theme.liquidGlassContainerColor
 import com.lastwave.app.ui.theme.liquidGlassSource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
@@ -178,19 +200,19 @@ fun MainShell(
     val updateInfo by mainShellViewModel.updateInfo.collectAsStateWithLifecycle()
     val showUpdateBanner = updateInfo.isUpdateAvailable && !updateInfo.isDismissed
     val backgroundColor = MaterialTheme.colorScheme.background
-    val navigationBackdrop = if (isLiquidGlassBackdropSupported()) {
-        rememberLayerBackdrop {
-            drawRect(backgroundColor)
-            drawContent()
-        }
-    } else null
+    // Unconditional remember keeps composition stable; usage gated below.
+    val navigationBackdrop = rememberLayerBackdrop {
+        drawRect(backgroundColor)
+        drawContent()
+    }
+    val navGlass = isLiquidGlassBackdropSupported()
 
     Box(Modifier.fillMaxSize()) {
         val feedIndex = tabs.indexOf(MainTab.FEED)
         HorizontalPager(
             state = pagerState,
             beyondViewportPageCount = 0,
-            modifier = Modifier.fillMaxSize().liquidGlassSource(navigationBackdrop),
+            modifier = Modifier.fillMaxSize().liquidGlassSource(if (navGlass) navigationBackdrop else null),
         ) { page ->
             val isCurrent = page == pagerState.currentPage
             PredictiveBackScreen(
@@ -257,24 +279,12 @@ private fun UpdatePromptCard(
     onUpdate: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val glass = LocalLiquidGlass.current
     Surface(
         shape = RoundedCornerShape(20.dp),
-        color = liquidGlassContainerColor(
-            MaterialTheme.colorScheme.primaryContainer,
-            enabled = glass,
-            backdrop = LocalLiquidGlassOverlayBackdrop.current,
-        ),
-        shadowElevation = if (glass) 0.dp else 8.dp,
-        tonalElevation = if (glass) 0.dp else 6.dp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .liquidGlassChrome(
-                RoundedCornerShape(20.dp),
-                glass,
-                LiquidGlassPreset.Card,
-                LocalLiquidGlassOverlayBackdrop.current,
-            ),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        shadowElevation = 8.dp,
+        tonalElevation = 6.dp,
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier.padding(start = 16.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
@@ -339,14 +349,46 @@ private fun FloatingNavBar(
     onOpenGenerator: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val liquidGlass = LocalLiquidGlass.current
-    val isGlass = liquidGlass && isLiquidGlassBackdropSupported() && backdrop != null
+    // SimpMusic-faithful nav: capsule + sliding frosted blob + crisp icons.
+    // No custom RuntimeShader, no ambient drift, no haptics, no always-on chromatic aberration.
+    val isGlass = LocalLiquidGlass.current && isLiquidGlassBackdropSupported() && backdrop != null
     val isDark = LocalIsDarkTheme.current
-    val density = LocalDensity.current
-    val glassHoverIndex = remember(liquidGlass) { mutableStateOf<Int?>(null) }
-    val glassNavBounds = remember { mutableStateMapOf<Int, Rect>() }
-    val dockInteraction = remember { MutableInteractionSource() }
-    val fabInteraction = remember { MutableInteractionSource() }
+    val layer = rememberGraphicsLayer()
+    val luminance = remember { Animatable(0.5f) }
+    val barInteraction = rememberGlassInteraction()
+    val fabInteraction = rememberGlassInteraction()
+
+    // 1s luminance sampling loop, verbatim SimpMusic (5x5 avg, 0.3..0.8, tween 500).
+    LaunchedEffect(layer, isGlass) {
+        if (!isGlass) {
+            luminance.snapTo(0.5f)
+            return@LaunchedEffect
+        }
+        val buffer = IntBuffer.allocate(25)
+        while (isActive) {
+            try {
+                withContext(Dispatchers.IO) {
+                    val thumbnail = layer.toImageBitmap()
+                        .asAndroidBitmap()
+                        .scale(5, 5, false)
+                        .copy(Bitmap.Config.ARGB_8888, false)
+                    buffer.rewind()
+                    thumbnail.copyPixelsToBuffer(buffer)
+                }
+            } catch (_: Exception) {
+            }
+            val avg = (0 until 25).sumOf { i ->
+                val c = buffer.get(i)
+                val r = (c shr 16 and 0xFF) / 255f
+                val g = (c shr 8 and 0xFF) / 255f
+                val b = (c and 0xFF) / 255f
+                0.2126 * r + 0.7152 * g + 0.0722 * b
+            } / 25
+            luminance.animateTo(avg.coerceIn(0.3, 0.8).toFloat(), tween(500))
+            delay(1.seconds)
+        }
+    }
+
     Box(
         modifier = modifier
             .windowInsetsPadding(
@@ -360,35 +402,98 @@ private fun FloatingNavBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
-            Surface(
-                shape = DockShape,
-                color = Color.Transparent,
-                tonalElevation = 0.dp,
-                shadowElevation = if (isGlass) 0.dp else 12.dp,
-                modifier = Modifier.liquidGlassChrome(
-                    shape = DockShape,
-                    enabled = isGlass,
-                    preset = LiquidGlassPreset.BottomNavigation,
+            // SimpMusic metrics: fixed tab width, capsule 64dp, blob 56dp, 6dp inset.
+            val tabWidth = 84.dp
+            val density = LocalDensity.current
+            val tabWidthPx = with(density) { tabWidth.toPx() }
+            val barInsetPx = with(density) { 6.dp.toPx() }
+            val blobOffset by animateFloatAsState(
+                targetValue = selectedIndex.coerceIn(0, tabs.size - 1) * tabWidthPx,
+                animationSpec = spring(dampingRatio = 0.8f, stiffness = 500f),
+                label = "navBlob",
+            )
+            // Capsule uses the shared interaction (press scale + touch glow), exactly like
+            // SimpMusic's capsule: drawInteractiveGlass reads barInteraction, the outer Box
+            // observes the press on the Initial pass before children.
+            val capsuleGlass = if (isGlass && backdrop != null) {
+                Modifier.drawInteractiveGlass(
+                    isDark = isDark,
                     backdrop = backdrop,
-                    interactionSource = dockInteraction,
-                    onPointerPosition = { pos ->
-                        if (pos != null) {
-                            val padX = density.run { 8.dp.toPx() }
-                            val padY = density.run { 6.dp.toPx() }
-                            val rowPos = Offset(pos.x - padX, pos.y - padY)
-                            val bridge = density.run { 6.dp.toPx() }
-                            glassHoverIndex.value = glassNavBounds.entries
-                                .firstOrNull { it.value.inflate(bridge).contains(rowPos) }
-                                ?.key
-                        } else {
-                            glassHoverIndex.value = null
-                        }
-                    },
-                ),
+                    layer = layer,
+                    luminanceAnimation = luminance.value,
+                    shape = DockShape,
+                    interaction = barInteraction,
+                )
+            } else {
+                Modifier
+                    .background(
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shape = DockShape,
+                    )
+                    .clip(DockShape)
+            }
+
+            // Capsule: dark frosted glass, same material as MiniPlayer (SimpMusic).
+            // barInteraction observes press (scale + touch glow), tabs keep their own clicks.
+            Box(
+                modifier = Modifier
+                    .height(64.dp)
+                    .width(tabWidth * tabs.size + 12.dp)
+                    .then(capsuleGlass)
+                    .pointerInput(barInteraction) { barInteraction.detectPress(this) },
+                contentAlignment = Alignment.CenterStart,
             ) {
+                // Frosted blob selection indicator behind icons, verbatim SimpMusic
+                // LiquidGlassTabBar recipe: luminance-driven blur +20dp so the active pill
+                // reads clearly frosted, directional highlight at 0.6, soft shadow, and the
+                // blob's own dark-adaptive scrim. Static at rest (no drag); unlike the
+                // capsule it records nothing into the luminance layer.
+                if (isGlass && backdrop != null) {
+                    Box(
+                        Modifier
+                            .graphicsLayer { translationX = blobOffset + barInsetPx }
+                            .drawBackdrop(
+                                backdrop = backdrop,
+                                shape = { DockShape },
+                                effects = {
+                                    val l = (luminance.value * 2f - 1f).let { sign(it) * it * it }
+                                    vibrancy()
+                                    colorControls(
+                                        brightness = 0.05f,
+                                        contrast = 1f,
+                                        saturation = 1.5f,
+                                    )
+                                    blur(
+                                        (if (l > 0f) lerp(8f.dp.toPx(), 16f.dp.toPx(), l)
+                                        else lerp(8f.dp.toPx(), 2f.dp.toPx(), -l)) + 20f.dp.toPx(),
+                                    )
+                                },
+                                highlight = { Highlight.Default.copy(alpha = 0.6f) },
+                                shadow = { Shadow(radius = 4.dp, alpha = 0.4f) },
+                                onDrawSurface = {
+                                    val lumNorm = ((luminance.value - 0.3f) / 0.5f).coerceIn(0f, 1f)
+                                    val darken = if (isDark) lerp(0.22f, 0.55f, lumNorm)
+                                    else lerp(0.06f, 0.14f, lumNorm)
+                                    drawRect(Color.Black.copy(alpha = darken))
+                                },
+                            )
+                            .width(tabWidth)
+                            .height(56.dp),
+                    )
+                } else {
+                    Box(
+                        Modifier
+                            .graphicsLayer { translationX = blobOffset + barInsetPx }
+                            .width(tabWidth)
+                            .height(56.dp)
+                            .background(MaterialTheme.colorScheme.primaryContainer, DockShape)
+                            .clip(DockShape),
+                    )
+                }
                 Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier
+                        .matchParentSize()
+                        .padding(horizontal = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     tabs.forEachIndexed { index, tab ->
@@ -397,18 +502,14 @@ private fun FloatingNavBar(
                             label = androidx.compose.ui.res.stringResource(tab.labelRes),
                             icon = tab.icon(),
                             selected = selectedIndex == index,
-                            glassHovered = liquidGlass && glassHoverIndex.value == index,
-                            onGlassBounds = { rect ->
-                                if (glassNavBounds[index] != rect) glassNavBounds[index] = rect
-                            },
                             onClick = onClick,
-                            interactionSource = dockInteraction,
                         )
                     }
                 }
             }
 
             // Satellite Companion Generator Button (only visible on Playlists tab)
+            // SimpMusic search-FAB pattern: separate 56dp Circle glass, narrow highlight.
             AnimatedVisibility(
                 visible = selectedIndex == tabs.indexOf(MainTab.PLAYLISTS),
                 enter = fadeIn(animationSpec = tween(180)) +
@@ -420,21 +521,26 @@ private fun FloatingNavBar(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.width(10.dp))
+                    val fabGlass = if (isGlass && backdrop != null) {
+                        Modifier.liquidGlass(
+                            backdrop = backdrop,
+                            shape = CircleShape,
+                            interactive = true,
+                            highlight = Highlight(width = 1.dp),
+                        )
+                    } else {
+                        Modifier.background(MaterialTheme.colorScheme.primaryContainer, CircleShape).clip(CircleShape)
+                    }
                     Surface(
-                        shape = SquircleShape(percent = 50),
+                        shape = CircleShape,
                         color = if (isGlass) Color.Transparent else MaterialTheme.colorScheme.primaryContainer,
                         shadowElevation = if (isGlass) 0.dp else 10.dp,
                         tonalElevation = if (isGlass) 0.dp else 4.dp,
                         modifier = Modifier
                             .size(56.dp)
-                            .liquidGlassChrome(
-                                shape = SquircleShape(percent = 50),
-                                enabled = isGlass,
-                                preset = LiquidGlassPreset.FloatingControls,
-                                backdrop = backdrop,
-                                interactionSource = fabInteraction,
-                            )
-                            .clickable(interactionSource = fabInteraction, indication = null, onClick = onOpenGenerator),
+                            .then(fabGlass)
+                            .pointerInput(fabInteraction) { fabInteraction.detectPress(this) }
+                            .clickable(onClick = onOpenGenerator),
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                             Icon(
@@ -456,23 +562,12 @@ private fun FloatingNavItem(
     label: String,
     icon: ImageVector,
     selected: Boolean,
-    glassHovered: Boolean,
-    onGlassBounds: (Rect) -> Unit,
     onClick: () -> Unit,
-    interactionSource: MutableInteractionSource? = null,
 ) {
+    // SimpMusic: crisp icons + labels on top of blob, never blurred.
     val isDark = LocalIsDarkTheme.current
     val liquidGlass = LocalLiquidGlass.current
 
-    val backgroundColor by animateColorAsState(
-        targetValue = when {
-            selected && liquidGlass -> if (isDark) Color.White.copy(alpha = 0.18f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-            selected -> MaterialTheme.colorScheme.primaryContainer
-            else -> Color.Transparent
-        },
-        animationSpec = navSpring(),
-        label = "navItemBackground",
-    )
     val contentColor by animateColorAsState(
         targetValue = when {
             selected && liquidGlass -> if (isDark) Color.White else MaterialTheme.colorScheme.primary
@@ -482,21 +577,15 @@ private fun FloatingNavItem(
         animationSpec = navSpring(),
         label = "navItemContent",
     )
-    val glassIconScale by animateFloatAsState(
-        targetValue = if (glassHovered) 1.25f else 1f,
-        animationSpec = navSpring(),
-        label = "navGlassIconScale",
-    )
 
     Surface(
         onClick = onClick,
         shape = PillShape,
-        color = backgroundColor,
-        interactionSource = interactionSource,
+        color = Color.Transparent,
         modifier = Modifier
             .height(48.dp)
-            .animateContentSize(animationSpec = navSpring())
-            .onGloballyPositioned { onGlassBounds(it.boundsInParent()) },
+            .width(84.dp)
+            .animateContentSize(animationSpec = navSpring()),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -509,7 +598,7 @@ private fun FloatingNavItem(
                 imageVector = icon,
                 contentDescription = label,
                 tint = contentColor,
-                modifier = Modifier.size(24.dp).scale(glassIconScale),
+                modifier = Modifier.size(24.dp),
             )
             AnimatedVisibility(
                 visible = selected,
