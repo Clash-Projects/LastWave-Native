@@ -208,9 +208,8 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
-    // True liquid glass (AGSL refraction + RenderThread). Replaces Liquify/Kyant.
-    // No per-view EGL, no bitmap capture, no GLSurfaceView — system compositor only.
-    implementation(project(":trueglass"))
+    implementation(libs.kyant.backdrop)
+    implementation(libs.kyant.shapes)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)

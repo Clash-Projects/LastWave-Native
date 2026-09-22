@@ -1,9 +1,12 @@
 package com.lastwave.app.ui.shell
 
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -13,6 +16,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -63,6 +67,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.isSpecified
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -70,10 +76,14 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.draw.shadow
+import com.lastwave.app.ui.theme.SquircleShape
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -84,7 +94,9 @@ import com.lastwave.app.ui.feed.FeedScreen
 import com.lastwave.app.ui.home.HomeScreen
 import com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance
 import com.lastwave.app.ui.playlist.PlaylistScreen
+import androidx.compose.foundation.shape.CornerBasedShape
 import com.lastwave.app.ui.theme.LiquidGlassPreset
+import com.lastwave.app.ui.theme.LocalIsDarkTheme
 import com.lastwave.app.ui.theme.LocalLiquidGlass
 import com.lastwave.app.ui.theme.LocalLiquidGlassOverlayBackdrop
 import com.lastwave.app.ui.theme.LayerBackdrop
@@ -140,8 +152,8 @@ object FloatingNavDefaults {
             WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding()
 }
 
-private val DockShape: Shape = RoundedCornerShape(32.dp)
-private val PillShape: Shape = CircleShape
+private val DockShape: CornerBasedShape = SquircleShape(percent = 50)
+private val PillShape: CornerBasedShape = SquircleShape(percent = 50)
 
 private fun <T> navSpring() = ExpressiveMotion.spatialSpring<T>()
 
@@ -165,7 +177,13 @@ fun MainShell(
     val context = LocalContext.current
     val updateInfo by mainShellViewModel.updateInfo.collectAsStateWithLifecycle()
     val showUpdateBanner = updateInfo.isUpdateAvailable && !updateInfo.isDismissed
-    val navigationBackdrop = if (isLiquidGlassBackdropSupported()) rememberLayerBackdrop() else null
+    val backgroundColor = MaterialTheme.colorScheme.background
+    val navigationBackdrop = if (isLiquidGlassBackdropSupported()) {
+        rememberLayerBackdrop {
+            drawRect(backgroundColor)
+            drawContent()
+        }
+    } else null
 
     Box(Modifier.fillMaxSize()) {
         val feedIndex = tabs.indexOf(MainTab.FEED)
@@ -322,6 +340,9 @@ private fun FloatingNavBar(
     modifier: Modifier = Modifier,
 ) {
     val liquidGlass = LocalLiquidGlass.current
+    val isGlass = liquidGlass && isLiquidGlassBackdropSupported() && backdrop != null
+    val isDark = LocalIsDarkTheme.current
+    val density = LocalDensity.current
     val glassHoverIndex = remember(liquidGlass) { mutableStateOf<Int?>(null) }
     val glassNavBounds = remember { mutableStateMapOf<Int, Rect>() }
     val dockInteraction = remember { MutableInteractionSource() }
@@ -341,45 +362,32 @@ private fun FloatingNavBar(
         ) {
             Surface(
                 shape = DockShape,
-                color = liquidGlassContainerColor(
-                    MaterialTheme.colorScheme.surfaceContainerHigh,
-                    enabled = liquidGlass,
+                color = Color.Transparent,
+                tonalElevation = 0.dp,
+                shadowElevation = if (isGlass) 0.dp else 12.dp,
+                modifier = Modifier.liquidGlassChrome(
+                    shape = DockShape,
+                    enabled = isGlass,
+                    preset = LiquidGlassPreset.BottomNavigation,
                     backdrop = backdrop,
+                    interactionSource = dockInteraction,
+                    onPointerPosition = { pos ->
+                        if (pos != null) {
+                            val padX = density.run { 8.dp.toPx() }
+                            val padY = density.run { 6.dp.toPx() }
+                            val rowPos = Offset(pos.x - padX, pos.y - padY)
+                            val bridge = density.run { 6.dp.toPx() }
+                            glassHoverIndex.value = glassNavBounds.entries
+                                .firstOrNull { it.value.inflate(bridge).contains(rowPos) }
+                                ?.key
+                        } else {
+                            glassHoverIndex.value = null
+                        }
+                    },
                 ),
-                tonalElevation = if (liquidGlass) 0.dp else 6.dp,
-                shadowElevation = if (liquidGlass) 0.dp else 12.dp,
-                modifier = Modifier.liquidGlassChrome(DockShape, liquidGlass, LiquidGlassPreset.BottomNavigation, backdrop, interactionSource = dockInteraction),
             ) {
                 Row(
-                    modifier = Modifier
-                        .then(
-                            if (liquidGlass) {
-                                Modifier.pointerInput(Unit) {
-                                    val bridge = 6.dp.toPx()
-                                    val hitIndex: (Offset) -> Int? = { pos ->
-                                        glassNavBounds.entries
-                                            .firstOrNull { it.value.inflate(bridge).contains(pos) }
-                                            ?.key
-                                    }
-                                    awaitEachGesture {
-                                        val down = awaitFirstDown(requireUnconsumed = false)
-                                        glassHoverIndex.value = hitIndex(down.position)
-                                        while (true) {
-                                            val event = awaitPointerEvent()
-                                            val change = event.changes.firstOrNull { it.id == down.id }
-                                            if (change == null || !change.pressed) {
-                                                glassHoverIndex.value = null
-                                                break
-                                            }
-                                            glassHoverIndex.value = hitIndex(change.position)
-                                        }
-                                    }
-                                }
-                            } else {
-                                Modifier
-                            },
-                        )
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -413,20 +421,26 @@ private fun FloatingNavBar(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.width(10.dp))
                     Surface(
-                        shape = CircleShape,
-                        color = liquidGlassContainerColor(MaterialTheme.colorScheme.primaryContainer, backdrop = backdrop),
-                        shadowElevation = if (liquidGlass) 0.dp else 10.dp,
-                        tonalElevation = if (liquidGlass) 0.dp else 4.dp,
+                        shape = SquircleShape(percent = 50),
+                        color = if (isGlass) Color.Transparent else MaterialTheme.colorScheme.primaryContainer,
+                        shadowElevation = if (isGlass) 0.dp else 10.dp,
+                        tonalElevation = if (isGlass) 0.dp else 4.dp,
                         modifier = Modifier
                             .size(56.dp)
-                            .liquidGlassChrome(CircleShape, liquidGlass, LiquidGlassPreset.FloatingControls, backdrop, interactionSource = fabInteraction)
+                            .liquidGlassChrome(
+                                shape = SquircleShape(percent = 50),
+                                enabled = isGlass,
+                                preset = LiquidGlassPreset.FloatingControls,
+                                backdrop = backdrop,
+                                interactionSource = fabInteraction,
+                            )
                             .clickable(interactionSource = fabInteraction, indication = null, onClick = onOpenGenerator),
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                             Icon(
                                 imageVector = Icons.Filled.AutoAwesome,
                                 contentDescription = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.nav_create_playlist),
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                tint = if (isGlass && isDark) Color.White else MaterialTheme.colorScheme.onPrimaryContainer,
                                 modifier = Modifier.size(24.dp),
                             )
                         }
@@ -447,20 +461,29 @@ private fun FloatingNavItem(
     onClick: () -> Unit,
     interactionSource: MutableInteractionSource? = null,
 ) {
+    val isDark = LocalIsDarkTheme.current
+    val liquidGlass = LocalLiquidGlass.current
+
     val backgroundColor by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(
-            alpha = if (LocalLiquidGlass.current) 0.28f else 1f,
-        ) else Color.Transparent,
+        targetValue = when {
+            selected && liquidGlass -> if (isDark) Color.White.copy(alpha = 0.18f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+            selected -> MaterialTheme.colorScheme.primaryContainer
+            else -> Color.Transparent
+        },
         animationSpec = navSpring(),
         label = "navItemBackground",
     )
     val contentColor by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        targetValue = when {
+            selected && liquidGlass -> if (isDark) Color.White else MaterialTheme.colorScheme.primary
+            selected -> MaterialTheme.colorScheme.onPrimaryContainer
+            else -> if (isDark) Color.White.copy(alpha = 0.70f) else MaterialTheme.colorScheme.onSurfaceVariant
+        },
         animationSpec = navSpring(),
         label = "navItemContent",
     )
     val glassIconScale by animateFloatAsState(
-        targetValue = if (glassHovered) 1.4f else 1f,
+        targetValue = if (glassHovered) 1.25f else 1f,
         animationSpec = navSpring(),
         label = "navGlassIconScale",
     )

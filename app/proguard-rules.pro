@@ -60,10 +60,10 @@
 -keep class io.ktor.client.HttpClientKt { *; }
 -keep class io.ktor.client.engine.cio.** { *; }
 
-# TrueGlass (standalone AGSL lens + RenderThread): RuntimeShader strings and
-# graphicsLayer RenderEffect bridges are reached via Compose runtime, not
-# direct calls R8 can trace — keep the engine airtight in release builds.
--keep class com.lastwave.trueglass.** { *; }
+# Kyant Backdrop (AndroidLiquidGlass): AGSL RuntimeShader strings and
+# RenderEffect bridges are reached via Compose runtime — keep in release builds.
+-keep class com.kyant.backdrop.** { *; }
+-keep class com.kyant.shapes.** { *; }
 
 # Silence R8 missing-class warnings for Kotlin 2.x standard library and IO additions
 # referenced by the InnerTubeX runtime jar.
