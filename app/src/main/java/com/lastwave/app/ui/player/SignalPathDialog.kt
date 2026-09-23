@@ -37,7 +37,6 @@ import com.lastwave.app.ui.theme.LiquidGlassPreset
 import com.lastwave.app.ui.theme.LocalLiquidGlass
 import com.lastwave.app.ui.theme.LocalLiquidGlassOverlayBackdrop
 import com.lastwave.app.ui.theme.liquidGlassChrome
-import com.lastwave.app.ui.theme.liquidGlassContainerColor
 import java.util.Locale
 
 /**
@@ -56,11 +55,12 @@ fun SignalPathDialog(
         val glass = LocalLiquidGlass.current
         Surface(
             shape = RoundedCornerShape(24.dp),
-            color = liquidGlassContainerColor(
-                MaterialTheme.colorScheme.surfaceContainerHigh,
-                enabled = glass,
-                backdrop = LocalLiquidGlassOverlayBackdrop.current,
-            ),
+            // Dense diagnostic text: keep this dialog opaque even when liquid
+            // glass is on. liquidGlassContainerColor goes fully transparent
+            // under glass (ModalSheet chrome is a no-op), which lets the
+            // player artwork/title bleed through the rows and makes them
+            // unreadable.
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
             contentColor = MaterialTheme.colorScheme.onSurface,
             tonalElevation = if (glass) 0.dp else 6.dp,
             modifier = Modifier.liquidGlassChrome(

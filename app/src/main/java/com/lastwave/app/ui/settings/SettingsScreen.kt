@@ -445,7 +445,8 @@ fun SettingsScreen(
                     // the channel list was loaded, otherwise the stored name.
                     val currentChannelName = ytChannels.firstOrNull {
                         it.channelId == ytConnection.onBehalfOfUser &&
-                            it.authUserIndex == ytConnection.authUserIndex
+                            it.authUserIndex == ytConnection.authUserIndex &&
+                            it.pageId == ytConnection.pageId
                     }?.accountName ?: ytConnection.accountName
                     val ytRowCount = if (ytConnected) 7 else 2
                     SettingsGroup(rowCount = ytRowCount) { index, position ->
@@ -1661,6 +1662,7 @@ fun SettingsScreen(
             isLoading = ytChannelsLoading,
             selectedChannelId = ytConnection.onBehalfOfUser,
             selectedAuthUser = ytConnection.authUserIndex,
+            selectedPageId = ytConnection.pageId,
             onReload = viewModel::loadYtChannels,
             onSelect = {
                 viewModel.selectYtChannel(it)
@@ -3644,6 +3646,7 @@ private fun YouTubeChannelSheet(
     isLoading: Boolean,
     selectedChannelId: String?,
     selectedAuthUser: Int?,
+    selectedPageId: String = "",
     onReload: () -> Unit,
     onSelect: (com.lastwave.app.data.music.YtChannelOption) -> Unit,
     onDismiss: () -> Unit,
@@ -3738,11 +3741,12 @@ private fun YouTubeChannelSheet(
                     ) {
                         items(channels.size, key = { index ->
                             val c = channels[index]
-                            "${c.channelId}|${c.authUserIndex}|${c.accountName}"
+                            "${c.channelId}|${c.authUserIndex}|${c.pageId}|${c.accountName}"
                         }) { index ->
                             val channel = channels[index]
                             val isSelected = channel.channelId == selectedChannelId &&
-                                channel.authUserIndex == selectedAuthUser
+                                channel.authUserIndex == selectedAuthUser &&
+                                channel.pageId == selectedPageId
                             Surface(
                                 onClick = {
                                     haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)

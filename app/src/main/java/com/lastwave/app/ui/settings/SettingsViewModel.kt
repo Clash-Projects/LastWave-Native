@@ -916,6 +916,7 @@ class SettingsViewModel @Inject constructor(
                 channel.accountName,
                 channel.channelHandle,
                 channel.photoUrl,
+                channel.pageId,
             )
             _uiState.update { it.copy(toastMessage = "Switched to ${channel.accountName} — refreshing library…") }
             runCatching { ytMusicLibraryManager.refresh() }
