@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.QueuePlayNext
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,8 +58,8 @@ import com.lastwave.app.util.ArtistHelper
  * Mini tray opened on long-press (deep press) of a track row on
  * Home / Feed, Search (TRACKS tab) and single track-list screens.
  *
- * Deliberately small: exactly the six requested actions —
- * Play, Add to queue, Download, Add to playlist, Go to album, Go to artist.
+ * Deliberately small: exactly the requested actions —
+ * Play, Play next, Add to queue, Download, Add to playlist, Go to album, Go to artist.
  * Anything richer (mix, timer, cast, Last.fm, details…) stays in the full
  * [TrackContextMenuSheet] behind the overflow (3-dot) button.
  *
@@ -192,14 +193,21 @@ fun TrackMiniTraySheet(
             val rows = buildList<@Composable (GroupPosition) -> Unit> {
                 // 1. Play
                 add { pos -> MiniTrayRow(Icons.Filled.PlayArrow, "Play", position = pos, onClick = ::play) }
-                // 2. Add to queue
+                // 2. Play next — inserts right after current, current song keeps playing
+                add { pos ->
+                    MiniTrayRow(Icons.Filled.QueuePlayNext, "Play next", position = pos) {
+                        musicPlayer.playNext(playable)
+                        onDismiss()
+                    }
+                }
+                // 3. Add to queue
                 add { pos ->
                     MiniTrayRow(Icons.Filled.QueueMusic, "Add to queue", position = pos) {
                         musicPlayer.addToQueue(playable)
                         onDismiss()
                     }
                 }
-                // 3. Download (status-aware label, same tiers as the full sheet)
+                // 4. Download (status-aware label, same tiers as the full sheet)
                 add { pos ->
                     when {
                         isDownloaded -> {
@@ -230,14 +238,14 @@ fun TrackMiniTraySheet(
                         }
                     }
                 }
-                // 4. Add to playlist
+                // 5. Add to playlist
                 add { pos ->
                     MiniTrayRow(Icons.Filled.PlaylistAdd, "Add to playlist", position = pos) {
                         addToPlaylist(playable)
                         onDismiss()
                     }
                 }
-                // 5. Go to album (only when we know the album)
+                // 6. Go to album (only when we know the album)
                 if (!data.album.isNullOrBlank()) {
                     add { pos ->
                         val album = data.album
@@ -247,7 +255,7 @@ fun TrackMiniTraySheet(
                         }
                     }
                 }
-                // 6. Go to artist (one row per artist, like the full sheet)
+                // 7. Go to artist (one row per artist, like the full sheet)
                 for (art in splitArtists) {
                     add { pos ->
                         MiniTrayRow(Icons.Filled.Person, "Go to artist ($art)", position = pos) {
