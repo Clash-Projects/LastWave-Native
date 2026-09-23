@@ -404,7 +404,7 @@ class NativeProcessingAudioSink(
     ): Boolean {
         maybeAdoptExclusiveUsb()
         if (usbExclusive) {
-            if (exclusiveUsb?.isPaused() == true || !playing) {
+            if (exclusiveUsb?.isPaused() == true) {
                 return false
             }
             if (isExclusiveConverting()) {
@@ -1119,7 +1119,11 @@ class NativeProcessingAudioSink(
     override fun pause() {
         playing = false
         if (usbExclusive) {
-            exclusiveUsb?.setPaused(true)
+            // Media3 calls audioSink.pause() whenever the renderer stops for
+            // STATE_BUFFERING (e.g. refilling SampleQueue right after a
+            // forward seek). Setting exclusiveUsb.setPaused(true) here locks
+            // out handleBuffer() pre-fill and cuts off queued post-seek audio.
+            // User/focus pause state is driven by playWhenReady in MusicPlayer.
             return
         }
         activeDelegate.pause()

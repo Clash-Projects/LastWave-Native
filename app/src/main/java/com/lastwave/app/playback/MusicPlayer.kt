@@ -1047,7 +1047,7 @@ class MusicPlayer @Inject constructor(
                 // below, including crossfade handoffs and track mismatches.
                 var cadenceMs = 500L
                 try {
-                    val usbAlive = !exclusiveUsbOutput.isActive() || exclusiveUsbOutput.isStreamAlive()
+                    val usbAlive = !exclusiveUsbOutput.isActive() || exclusiveUsbOutput.isStreamingAudio()
                     val playingNow = _state.value.isPlaying &&
                         !_state.value.isBuffering &&
                         !exclusiveUsbOutput.isPaused() &&
@@ -1752,14 +1752,32 @@ class MusicPlayer @Inject constructor(
                 playheadPosMs += (now - playheadWallMs).coerceAtLeast(0L)
                 playheadMoving = false
             }
+            if (exclusiveUsbOutput.isActive()) {
+                val usbPosUs = exclusiveUsbOutput.getCurrentPositionUs()
+                if (usbPosUs != androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET && usbPosUs >= 0L) {
+                    playheadPosMs = usbPosUs / 1_000L
+                }
+            }
             playheadWallMs = now
-            return playheadPosMs
+            val dur = _state.value.durationMs
+            return if (dur > 0L) playheadPosMs.coerceAtMost(dur) else playheadPosMs
         }
         if (!playheadMoving) {
             playheadWallMs = now
             playheadMoving = true
         }
-        val pos = playheadPosMs + (now - playheadWallMs).coerceAtLeast(0L)
+        var pos = playheadPosMs + (now - playheadWallMs).coerceAtLeast(0L)
+        if (exclusiveUsbOutput.isActive()) {
+            val usbPosUs = exclusiveUsbOutput.getCurrentPositionUs()
+            if (usbPosUs != androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET && usbPosUs >= 0L) {
+                val hwPosMs = usbPosUs / 1_000L
+                if (pos > hwPosMs + 200L || pos + 250L < hwPosMs) {
+                    pos = hwPosMs
+                    playheadPosMs = hwPosMs
+                    playheadWallMs = now
+                }
+            }
+        }
         val dur = _state.value.durationMs
         return if (dur > 0L) pos.coerceAtMost(dur) else pos
     }
@@ -4755,18 +4773,23 @@ class MusicPlayer @Inject constructor(
             // transport controls until the new timeline is installed.
             return
         }
+        if (exclusiveUsbOutput.isActive()) {
+            exclusiveUsbOutput.setPaused(!player.playWhenReady)
+        }
         val sameTrack = current?.let { it.title == previous.current?.title && it.artist == previous.current?.artist } == true ||
             (current?.videoId != null && current.videoId == previous.current?.videoId)
-        val rawBuffering = player.playbackState == Player.STATE_BUFFERING ||
-            (player.playWhenReady && player.playbackState == Player.STATE_IDLE && player.mediaItemCount > 0)
+        val rawBuffering = player.playWhenReady && (
+            player.playbackState == Player.STATE_BUFFERING ||
+                (player.playbackState == Player.STATE_IDLE && player.mediaItemCount > 0)
+            )
         // Screen-off continuity: while the selected track is under explicit
         // lossless-first resolution, ExoPlayer reports not-playing (loader
         // blocked in runBlocking) and refresh() would downgrade the state —
         // releasing the service wake/wifi locks mid-resolve so a locked
         // screen stalls until unlock. Preserve the intended playing state.
         val rawPlaying = player.isPlaying
-        val isBuffering = rawBuffering || (selectionIsResolving && previous.isBuffering)
-        val isPlayingState = rawPlaying || (selectionIsResolving && previous.isPlaying)
+        val isBuffering = player.playWhenReady && (rawBuffering || (selectionIsResolving && previous.isBuffering))
+        val isPlayingState = rawPlaying || (player.playWhenReady && selectionIsResolving && previous.isPlaying)
         // Never zero out a known duration when ExoPlayer briefly reports
         // TIME_UNSET (buffering / container not parsed yet): that reset froze
         // the bar at 0:00 and disabled seeking until the next event.

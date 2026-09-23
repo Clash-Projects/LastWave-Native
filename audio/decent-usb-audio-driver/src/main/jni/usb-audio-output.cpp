@@ -383,6 +383,9 @@ static int drainAllUrbs(UsbAudioContext *ctx) {
     ctx->urbsInFlight = 0;
     ctx->submitIdx = 0;
     ctx->reapIdx = 0;
+    if (ctx->running.load() && ctx->endpointFeedback > 0 && !ctx->feedbackInFlight) {
+        submitFeedbackUrb(ctx);
+    }
 
     LOGI("drainAllUrbs: drained %d/%d, ring reset", drained, initialCount);
     return drained;
@@ -583,7 +586,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativePump(
     if (!ctx || !ctx->running.load()) return;
     // Reap completions while ExoPlayer is fetching the next bytes. If nobody
     // reaps during that gap, the ring stays full and the next write times out.
-    for (int i = 0; i < 32 && ctx->urbsInFlight > 0; i++) {
+    for (int i = 0; i < 32 && (ctx->urbsInFlight > 0 || ctx->feedbackInFlight); i++) {
         struct usbdevfs_urb *c = nullptr;
         int ret = ioctl(ctx->fd, USBDEVFS_REAPURBNDELAY, &c);
         if (ret == 0 && c != nullptr) {
@@ -592,7 +595,9 @@ Java_com_decent_usbaudio_UsbAudioStream_nativePump(
                 continue;
             }
             ctx->reapIdx = (ctx->reapIdx + 1) % USB_AUDIO_NUM_URBS;
-            ctx->urbsInFlight--;
+            if (ctx->urbsInFlight > 0) {
+                ctx->urbsInFlight--;
+            }
             continue;
         }
         break;
@@ -606,8 +611,8 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeFlush(
     if (!ctx) return;
     ctx->frameAccumulator = 0.0;
     ctx->residualBytes = 0;
-    ctx->framesWritten = 0;
-    LOGI("Flush: frameAccumulator, residual, and framesWritten reset");
+    LOGI("Flush: frameAccumulator and residual reset (framesWritten=%lld)",
+         (long long)ctx->framesWritten);
 }
 
 JNIEXPORT jint JNICALL
