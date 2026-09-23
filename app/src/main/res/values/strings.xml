@@ -279,6 +279,7 @@
     <string name="signal_detail_usb_hw_vol">UAC Feature Unit volume — PCM unscaled</string>
     <string name="signal_detail_usb_sysvol_unused">USB exclusive — Android mixer volume unused</string>
     <string name="signal_detail_route_unverified">DAC routing requested; actual output route is not verified</string>
+    <string name="signal_detail_exclusive_failed">Exclusive failed: %1$s — using shared mixer</string>
     <string name="settings_bit_perfect_on_detail">DSP bypassed; USB DACs use exclusive usbdevfs (gold badge only when the DAC clock matches)</string>
     <string name="settings_bit_perfect_off_detail">Bypass DSP and, with a USB DAC, stream exclusive usbdevfs to the device</string>
     <string name="signal_detail_mixer_src">Resamples %1$d Hz → %2$d Hz</string>

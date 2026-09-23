@@ -66,6 +66,10 @@ class ExclusiveUsbOutput @Inject constructor(
     private var featureVolume: UacFeatureVolume? = null
     private var clockRechecked = false
     private var volumeReceiverRegistered = false
+    /** Last exclusive open failure, for the signal-path dialog. Cleared on
+     *  the next successful start so a stale reason never shows. */
+    @Volatile var lastFailureReason: String? = null
+        private set
     @Volatile private var lastAppliedCombined = Float.NaN
     private var volumeProbed = false
     @Volatile private var lastNonMaxListeningGain = Float.NaN
@@ -415,6 +419,7 @@ class ExclusiveUsbOutput @Inject constructor(
         useFloatWrite = floatSource
         configuredRateHz = sampleRate
         active = true
+        lastFailureReason = null
         paused = false
         startMediaTimeNeedsInit = true
         startMediaTimeUs = 0L
@@ -623,6 +628,7 @@ class ExclusiveUsbOutput @Inject constructor(
 
     private fun failLocked(reason: String): Boolean {
         Log.w(TAG, "Exclusive USB fail-open: $reason")
+        lastFailureReason = reason
         teardownLocked(closeDevice = true)
         return false
     }

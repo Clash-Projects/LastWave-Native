@@ -60,6 +60,8 @@ data class SignalPathInput(
     val exclusiveClockMatched: Boolean = false,
     /** UAC Feature Unit volume is in use (PCM payload unscaled). */
     val exclusiveHardwareVolume: Boolean = false,
+    /** Last exclusive open failure, if any (openDevice/alt-setting/etc). */
+    val exclusiveFailureReason: String? = null,
 )
 
 /**
@@ -347,7 +349,16 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
     }
 
     // 9 — Exclusive clock verification. Mixer routing is never gold.
+    // When exclusive failed to start, name the reason (device/permission/
+    // alt-setting/stream start) instead of the generic unverified line so
+    // the failure is diagnosable from the dialog alone.
     when {
+        !i.usbExclusiveActive && i.exclusiveFailureReason != null -> checks += PathCheck(
+            R.string.signal_label_output,
+            R.string.signal_detail_exclusive_failed,
+            listOf(i.exclusiveFailureReason),
+            passed = false,
+        )
         !i.usbExclusiveActive -> checks += PathCheck(
             R.string.signal_label_output,
             R.string.signal_detail_route_unverified,
