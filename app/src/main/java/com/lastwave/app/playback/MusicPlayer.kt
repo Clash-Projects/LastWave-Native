@@ -1033,7 +1033,10 @@ class MusicPlayer @Inject constructor(
                 var cadenceMs = 500L
                 try {
                     val usbAlive = !exclusiveUsbOutput.isActive() || exclusiveUsbOutput.isStreamAlive()
-                    val playingNow = _state.value.isPlaying && !exclusiveUsbOutput.isPaused() && usbAlive
+                    val playingNow = _state.value.isPlaying &&
+                        !_state.value.isBuffering &&
+                        !exclusiveUsbOutput.isPaused() &&
+                        usbAlive
                     val playhead = advancePlayhead(playingNow)
                     if (playhead != _state.value.positionMs) {
                         _state.update { it.copy(positionMs = playhead) }

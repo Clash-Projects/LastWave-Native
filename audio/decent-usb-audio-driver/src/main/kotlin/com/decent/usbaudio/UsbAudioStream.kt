@@ -159,6 +159,12 @@ class UsbAudioStream(
         nativeFlush(nativeHandle)
     }
 
+    /** Reap finished transfers while the player is loading the next audio. */
+    fun pump() {
+        if (nativeHandle == 0L) return
+        nativePump(nativeHandle)
+    }
+
     /**
      * Drain all in-flight URBs. Blocks until every URB is reaped.
      *
@@ -198,6 +204,7 @@ class UsbAudioStream(
     private external fun nativeUsbAudioWriteRaw(handle: Long, pcmBuffer: ByteArray, inputBitDepth: Int)
     private external fun nativeUsbAudioStop(handle: Long)
     private external fun nativeFlush(handle: Long)
+    private external fun nativePump(handle: Long)
     private external fun nativeDrainUrbs(handle: Long): Int
     private external fun nativeUsbAudioDestroy(handle: Long)
     private external fun nativeIsRunning(handle: Long): Boolean

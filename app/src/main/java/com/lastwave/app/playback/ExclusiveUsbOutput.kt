@@ -558,8 +558,8 @@ class ExclusiveUsbOutput @Inject constructor(
     private fun writeLoop(target: UsbAudioStream) {
         while (!writerStop) {
             val next = synchronized(pcmLock) {
-                while (!writerStop && !flushRequested && (paused || pcmQueue.isEmpty())) {
-                    pcmLock.wait()
+                if (!writerStop && !flushRequested && (paused || pcmQueue.isEmpty())) {
+                    pcmLock.wait(20)
                 }
                 if (writerStop) return@synchronized null
                 if (flushRequested) {
@@ -568,12 +568,20 @@ class ExclusiveUsbOutput @Inject constructor(
                     queuedBytes = 0
                     return@synchronized FLUSH_MARKER
                 }
+                if (paused || pcmQueue.isEmpty()) return@synchronized IDLE_MARKER
                 val chunk = pcmQueue.removeFirst()
                 queuedBytes = (queuedBytes - chunk.byteSize).coerceAtLeast(0)
                 chunk
             } ?: break
             if (next === FLUSH_MARKER) {
                 runCatching { target.flush() }
+                // Native flush zeroes the frame counter. Rebase or ExoPlayer's
+                // clock stays at the seek point and the loader stops fetching.
+                mediaTimeBaseFrames = target.framesWritten
+                continue
+            }
+            if (next === IDLE_MARKER) {
+                runCatching { target.pump() }
                 continue
             }
             if (!target.isAlive) break
@@ -640,6 +648,7 @@ class ExclusiveUsbOutput @Inject constructor(
         const val RAW_PCM32 = 0x16
         const val MAX_QUEUED_BYTES = 512 * 1024
         val FLUSH_MARKER = QueuedPcm(null, null, -1, 0)
+        val IDLE_MARKER = QueuedPcm(null, null, -2, 0)
 
         fun isoPacketBytes(raw: Int): Int {
             if (raw <= 0) return 0

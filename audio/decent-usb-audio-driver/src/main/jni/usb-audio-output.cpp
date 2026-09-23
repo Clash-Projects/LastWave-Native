@@ -577,6 +577,29 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioStop(
 }
 
 JNIEXPORT void JNICALL
+Java_com_decent_usbaudio_UsbAudioStream_nativePump(
+        JNIEnv *, jobject, jlong h) {
+    auto *ctx = reinterpret_cast<UsbAudioContext *>(h);
+    if (!ctx || !ctx->running.load()) return;
+    // Reap completions while ExoPlayer is fetching the next bytes. If nobody
+    // reaps during that gap, the ring stays full and the next write times out.
+    for (int i = 0; i < 32 && ctx->urbsInFlight > 0; i++) {
+        struct usbdevfs_urb *c = nullptr;
+        int ret = ioctl(ctx->fd, USBDEVFS_REAPURBNDELAY, &c);
+        if (ret == 0 && c != nullptr) {
+            if (c == ctx->feedbackUrb) {
+                handleFeedbackCompletion(ctx);
+                continue;
+            }
+            ctx->reapIdx = (ctx->reapIdx + 1) % USB_AUDIO_NUM_URBS;
+            ctx->urbsInFlight--;
+            continue;
+        }
+        break;
+    }
+}
+
+JNIEXPORT void JNICALL
 Java_com_decent_usbaudio_UsbAudioStream_nativeFlush(
         JNIEnv *, jobject, jlong h) {
     auto *ctx = reinterpret_cast<UsbAudioContext *>(h);
@@ -748,11 +771,13 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
         if (ctx->urbsInFlight >= USB_AUDIO_NUM_URBS) {
             int result = reapOldestUrb(ctx, 200);
             if (result == -2) {
-                LOGE("submitPcmToUrbs: reap timeout, inflight=%d", ctx->urbsInFlight);
+                // A forward seek leaves the ring full while the next network
+                // bytes are still downloading. Killing the stream here is what
+                // stops audio after ~2s and sticks ExoPlayer on BUFFERING.
+                LOGW("submitPcmToUrbs: reap timeout, inflight=%d — drain and continue",
+                     ctx->urbsInFlight);
                 drainAllUrbs(ctx);
-                ctx->running.store(false);
-                free(mergedBuf);
-                return;
+                continue;
             } else if (result < 0) {
                 ctx->running.store(false);
                 free(mergedBuf);
