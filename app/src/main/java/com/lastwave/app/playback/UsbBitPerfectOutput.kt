@@ -84,8 +84,12 @@ class UsbBitPerfectOutput(private val manager: AudioManager?) {
                 android.util.Log.w(
                     TAG,
                     "BIT-PERFECT unsupported by DAC ${target.productName}: " +
-                        "no BIT_PERFECT mixer mode advertised",
+                        "no BIT_PERFECT mixer mode advertised — clearing any stale preference",
                 )
+                // Must clear before returning: a previously-granted preference for this
+                // device would otherwise persist, routing PCM through the BIT_PERFECT
+                // path even though the device can't honour it (→ buzzing noise).
+                clear()
                 return
             }
             val supported = bitPerfectModes.firstOrNull { sameFormat(it.format, pcm) }
@@ -95,8 +99,13 @@ class UsbBitPerfectOutput(private val manager: AudioManager?) {
                     .joinToString { "${it.encoding}/${it.sampleRate}Hz/mask=${it.channelMask}" }
                 android.util.Log.w(
                     TAG,
-                    "BIT-PERFECT format mismatch: want $want; DAC offers [$have]",
+                    "BIT-PERFECT format mismatch: want $want; DAC offers [$have] — " +
+                        "clearing stale preference to prevent mis-routed PCM (buzzing)",
                 )
+                // Must clear: the previous configure may have set a BIT_PERFECT preference
+                // for a different format (e.g. 48 kHz on EarPods). Leaving it active while
+                // feeding 44.1 kHz samples produces the exact buzzing symptom reported.
+                clear()
                 return
             }
             if (manager?.setPreferredMixerAttributes(attributes, target, supported) == true) {

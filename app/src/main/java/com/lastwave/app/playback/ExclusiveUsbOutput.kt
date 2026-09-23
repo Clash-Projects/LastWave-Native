@@ -395,6 +395,23 @@ class ExclusiveUsbOutput @Inject constructor(
         usbAudio.closeDevice()
         connection = null
         val info = usbAudio.openDevice(usbDevice) ?: return failLocked("openDevice failed")
+
+        // The exclusive isochronous URB pipeline requires UAC 2.0 features:
+        // Clock Source SET_CUR for sample-rate switching, async feedback for clock
+        // calibration, and proper alternate-setting bandwidth negotiation.
+        // UAC 1.0 devices (e.g. Apple EarPods USB-C, bcdADC=0x0100) implement none
+        // of these — attempting the exclusive path produces buzzing / distortion.
+        // Fall back to the standard Android AudioTrack shared-mixer path for them.
+        if (info.uacVersion == 100) {
+            Log.w(
+                TAG,
+                "Exclusive USB: ${usbDevice.productName} is UAC 1.0 (bcdADC=0x0100) — " +
+                    "exclusive isochronous mode requires UAC 2.0; falling back to AudioTrack",
+            )
+            usbAudio.closeDevice()
+            return false
+        }
+
         val (alt, wireBits) = usbAudio.findAltSettingForBitDepth(bits)
         usbAudio.setSampleRate(sampleRate)
         if (!usbAudio.setAltSetting(alt)) return failLocked("setAltSetting $alt failed")
