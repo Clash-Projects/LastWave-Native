@@ -1984,15 +1984,31 @@ class MusicPlayer @Inject constructor(
             null
         }
         routedDacDeviceId = device?.id
+        // Mixer-rate match: exclusive is out but bit-perfect is requested
+        // and the platform mixer rate is known and differs from the source.
+        // Convert in-app (soxr HQ) to the mixer rate so the mixer becomes a
+        // passthrough instead of fast-SRCing source -> mixer. Gated on
+        // bit-perfect so default playback is untouched; the verdict stays
+        // honest (resampler active => never gold).
+        val mixerRateHz = runCatching { audioManager?.mixerRateHz() }.getOrNull() ?: 0
+        val mixerMatchHz = if (bitPerfectEnabled && !exclusive && mixerRateHz > 0 &&
+            (sourceRateHz ?: 0) > 0 && mixerRateHz != sourceRateHz
+        ) {
+            mixerRateHz
+        } else {
+            null
+        }
         audioSinks.forEach { sink ->
             runCatching { sink.setPreferredDevice(if (exclusive) null else device) }
-            runCatching { sink.setOutputSampleRateOverride(sourceRateHz) }
+            runCatching { sink.setOutputSampleRateOverride(mixerMatchHz ?: sourceRateHz) }
+            runCatching { sink.setMixerMatchRateHz(mixerMatchHz) }
         }
         android.util.Log.i(
             "MusicPlayer",
             "BIT-PERFECT OUTPUT REQUEST srcRate=$sourceRateHz " +
                 "dac=${dac?.name} routed=${device != null} exclusive=$exclusive " +
-                "wanted=$exclusiveWanted bitPerfect=$bitPerfectEnabled",
+                "wanted=$exclusiveWanted bitPerfect=$bitPerfectEnabled " +
+                "mixerMatch=${mixerMatchHz?.let { "$sourceRateHz->$it" } ?: "none"}",
         )
         usbDacMonitor.setRouteRequested(exclusive || device != null)
         exclusiveUsbOutput.syncListeningGain()

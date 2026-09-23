@@ -57,6 +57,15 @@ class NativeProcessingAudioSink(
     @Volatile private var usbExclusive = false
     @Volatile private var exclusiveStartFailed = false
     @Volatile private var exclusiveEnded = false
+    /**
+     * Mixer rate to convert to (native soxr HQ) when exclusive USB is out
+     * but bit-perfect is requested. Opening the track at the source rate
+     * would hand SRC to Android's fast mixer (44.1 -> 48 kHz); converting
+     * in-app to the mixer rate makes the mixer a passthrough instead.
+     * Null = today's behavior. Pushed per track from routing; read on the
+     * renderer thread like the rest of the exclusive state.
+     */
+    @Volatile private var mixerMatchRateHz: Int? = null
 
     private var configuredFormat: Format? = null
     private var configuredBufferSize = 0
@@ -134,7 +143,21 @@ class NativeProcessingAudioSink(
             return
         }
 
-        if (bitPerfectRequested) {
+        // Mixer-rate match: exclusive is out but the mixer rate is known —
+        // skip the direct path (it would open at source rate and hand SRC
+        // to the fast mixer) so the native path below converts in-app with
+        // soxr HQ to the mixer rate instead. The verdict stays honest: the
+        // resampler check fails, so this can never report gold.
+        val mixerMatchHz = mixerMatchRateHz
+            ?.takeIf { bitPerfectRequested && !usbExclusive && it > 0 && it != format.sampleRate }
+        if (mixerMatchHz != null) {
+            bitPerfectAtConfigure = false
+            Log.i(
+                TAG,
+                "MIXER-RATE MATCH ${format.sampleRate} -> $mixerMatchHz Hz " +
+                    "(exclusive out; in-app HQ SRC instead of fast mixer SRC)",
+            )
+        } else if (bitPerfectRequested) {
             Log.i(
                 TAG,
                 "BIT-PERFECT REQUEST srcRate=${format.sampleRate} " +
@@ -687,6 +710,15 @@ class NativeProcessingAudioSink(
      */
     fun setOutputSampleRateOverride(sampleRateHz: Int?) {
         runCatching { processor.setOutputSampleRateOverride(sampleRateHz) }
+    }
+
+    /**
+     * Mixer rate for the match described above (null = off). Pushed per
+     * track from routing alongside the output override, which carries the
+     * same rate when matching so the native path converts to it.
+     */
+    fun setMixerMatchRateHz(sampleRateHz: Int?) {
+        mixerMatchRateHz = sampleRateHz?.takeIf { it > 0 }
     }
 
     /** Actual rate the sink configured, 0 when unresolved. */
