@@ -57,6 +57,21 @@ class NativeProcessingAudioSink(
     @Volatile private var usbExclusive = false
     @Volatile private var exclusiveStartFailed = false
     @Volatile private var exclusiveEnded = false
+    /**
+     * Same-family fallback target for exclusive USB (e.g. 44.1 kHz for an
+     * 88.2 kHz source whose rate the DAC descriptor lacks), pushed per
+     * track from routing. Null = native source rate (today's behavior).
+     * Renderer thread only, like the rest of the exclusive state.
+     */
+    private var exclusiveFallbackRateHz: Int? = null
+    /** Source rate the exclusive converter is currently built for (0 = none). */
+    private var exclusiveConvertSourceHz = 0
+    /** Converted Float32 output awaiting USB queue space across calls. */
+    private var pendingUsbFloat: ByteBuffer? = null
+    private var pendingUsbPtsUs = 0L
+    /** Last output-rate override pushed for the AudioTrack path, restored
+     *  after the exclusive converter borrows the processor. */
+    private var requestedOutputOverrideHz: Int? = null
 
     private var configuredFormat: Format? = null
     private var configuredBufferSize = 0
@@ -392,6 +407,9 @@ class NativeProcessingAudioSink(
             if (exclusiveUsb?.isPaused() == true || !playing) {
                 return false
             }
+            if (isExclusiveConverting()) {
+                return handleExclusiveConvertedBuffer(buffer, presentationTimeUs)
+            }
             val fmt = configuredFormat
             val gain = exclusiveUsb?.softwareGain() ?: lastVolume
             val needsGain = gain < 1f - 1e-6f && gain >= 0f && buffer.hasRemaining() &&
@@ -581,6 +599,7 @@ class NativeProcessingAudioSink(
 
     override fun playToEndOfStream() {
         if (usbExclusive) {
+            if (exclusiveConvertSourceHz > 0) drainExclusiveConverterTail()
             exclusiveEnded = true
             return
         }
@@ -620,7 +639,8 @@ class NativeProcessingAudioSink(
 
     override fun hasPendingData(): Boolean =
         if (usbExclusive) {
-            !exclusiveEnded && (exclusiveUsb?.hasPendingData() == true)
+            !exclusiveEnded && (exclusiveUsb?.hasPendingData() == true ||
+                pendingUsbFloat?.hasRemaining() == true)
         } else {
             pendingOutput?.hasRemaining() == true ||
                 endOfStreamOutput?.hasRemaining() == true ||
@@ -686,7 +706,18 @@ class NativeProcessingAudioSink(
      * behavior. Takes effect when the sink next configures (next track).
      */
     fun setOutputSampleRateOverride(sampleRateHz: Int?) {
+        requestedOutputOverrideHz = sampleRateHz
         runCatching { processor.setOutputSampleRateOverride(sampleRateHz) }
+    }
+
+    /**
+     * Same-family fallback target the exclusive stream should open at when
+     * the DAC lacks the source rate (null = native). Takes effect on the
+     * next exclusive configure; cleared automatically when routing pushes
+     * null (DAC removed, exclusive off, or rate natively supported).
+     */
+    fun setExclusiveFallbackRateHz(sampleRateHz: Int?) {
+        exclusiveFallbackRateHz = sampleRateHz?.takeIf { it > 0 }
     }
 
     /** Actual rate the sink configured, 0 when unresolved. */
@@ -766,14 +797,46 @@ class NativeProcessingAudioSink(
         runCatching { fallbackDelegate.pause() }
         runCatching { enhancedDelegate.flush() }
         runCatching { fallbackDelegate.flush() }
-        val started = runCatching { session.configure(format) }.getOrDefault(false)
+        // Same-family fallback: when the DAC descriptor lacks the source
+        // rate, open the stream at the supported family rate and convert
+        // below (88.2 -> 44.1). Strictly below the source rate — never
+        // upsample, never touch natively-supported rates.
+        val fallbackTarget = exclusiveFallbackRateHz
+            ?.takeIf { it in 1 until format.sampleRate }
+        val started = runCatching { session.configure(format, fallbackTarget) }.getOrDefault(false)
         if (!started) {
             exclusiveStartFailed = true
             usbExclusive = false
+            clearExclusiveConverter()
             if (playing) {
                 runCatching { activeDelegate.play() }
             }
             return false
+        }
+        if (fallbackTarget != null) {
+            // Fail closed like a failed exclusive start below: an open
+            // 44.1 kHz stream fed raw 88.2 kHz bytes is garbage, so tear the
+            // half-opened session down and let the flow continue onto the
+            // mixer path. Never stall here — the render watchdog would sit
+            // on silence.
+            if (!setupExclusiveConverter(format, fallbackTarget)) {
+                Log.w(TAG, "Exclusive rate fallback conversion unavailable; leaving exclusive USB")
+                runCatching { exclusiveUsb?.reset() }
+                exclusiveStartFailed = true
+                usbExclusive = false
+                clearExclusiveConverter()
+                if (playing) {
+                    runCatching { activeDelegate.play() }
+                }
+                return false
+            }
+            Log.i(
+                TAG,
+                "EXCLUSIVE USB RATE FALLBACK ${format.sampleRate} -> $fallbackTarget Hz " +
+                    "(DAC lacks source rate; native soxr conversion, no gold)",
+            )
+        } else {
+            clearExclusiveConverter()
         }
         enterExclusiveUsb()
         processingActive = false
@@ -809,6 +872,7 @@ class NativeProcessingAudioSink(
     private fun leaveExclusiveUsb(configureAndroid: Boolean) {
         usbExclusive = false
         exclusiveEnded = false
+        clearExclusiveConverter()
         runCatching { exclusiveUsb?.reset() }
         if (!configureAndroid) return
         val format = configuredFormat ?: return
@@ -820,6 +884,128 @@ class NativeProcessingAudioSink(
         }
         configureFallback(format, configuredBufferSize, configuredOutputChannels)
         bitPerfectAtConfigure = false
+    }
+
+    /**
+     * Builds the native soxr conversion for exclusive rate fallback
+     * (source -> target, e.g. 88.2 -> 44.1 kHz). Borrows the shared
+     * processor the same way the AudioTrack native path does, then restores
+     * that path's output override — the instance keeps the conversion until
+     * its next reset/configure, and every path entry rebuilds it anyway.
+     */
+    private fun setupExclusiveConverter(source: Format, targetHz: Int): Boolean {
+        clearExclusiveConverter()
+        if (!processor.isAvailable) return false
+        return try {
+            processor.reset()
+            processor.setOutputSampleRateOverride(targetHz)
+            val out = processor.configure(AudioProcessor.AudioFormat(source))
+            processor.setOutputSampleRateOverride(requestedOutputOverrideHz)
+            if (out == AudioProcessor.AudioFormat.NOT_SET || out.sampleRate != targetHz) {
+                runCatching { processor.reset() }
+                false
+            } else {
+                exclusiveConvertSourceHz = source.sampleRate
+                true
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Exclusive converter setup failed", error)
+            runCatching { processor.reset() }
+            runCatching { processor.setOutputSampleRateOverride(requestedOutputOverrideHz) }
+            false
+        } catch (error: LinkageError) {
+            Log.w(TAG, "Exclusive converter setup linkage failed", error)
+            runCatching { processor.reset() }
+            runCatching { processor.setOutputSampleRateOverride(requestedOutputOverrideHz) }
+            false
+        }
+    }
+
+    private fun clearExclusiveConverter() {
+        exclusiveConvertSourceHz = 0
+        pendingUsbFloat = null
+    }
+
+    private fun isExclusiveConverting(): Boolean {
+        val source = configuredFormat ?: return false
+        return usbExclusive && exclusiveConvertSourceHz == source.sampleRate &&
+            exclusiveConvertSourceHz > 0 &&
+            (exclusiveFallbackRateHz ?: 0) > 0
+    }
+
+    /**
+     * Converted exclusive write: source PCM through native soxr at the
+     * fallback rate, straight into the USB queue (Float32, same path float
+     * decoder output already takes). Mirrors the pending discipline of
+     * [handleProcessedBuffer]: leftovers drain first and new input is only
+     * consumed once its output is fully written or stashed — never
+     * double-fed on retry.
+     */
+    private fun handleExclusiveConvertedBuffer(buffer: ByteBuffer, presentationTimeUs: Long): Boolean {
+        pendingUsbFloat?.let { pending ->
+            if (pending.hasRemaining()) {
+                if (!writeConvertedToUsb(pending, pendingUsbPtsUs)) return false
+                pendingUsbFloat = null
+            }
+        }
+        if (!buffer.hasRemaining()) return true
+        val source = configuredFormat
+        if (source == null || exclusiveConvertSourceHz != source.sampleRate) {
+            // Seek/flush raced the converter; rebuild cheaply inline.
+            // Failing closed here returns false and the render watchdog
+            // owns the worst case — never feed unconverted bytes.
+            val target = source?.let {
+                exclusiveFallbackRateHz?.takeIf { hz -> hz in 1 until it.sampleRate }
+            } ?: return false
+            if (!setupExclusiveConverter(source, target)) return false
+        }
+        // Volume parity with the raw exclusive path (keys must work here
+        // too); unity otherwise. Scaled once per fresh chunk — stashed
+        // chunks are never re-scaled on retry.
+        val session = exclusiveUsb
+        val gain = session?.softwareGain() ?: lastVolume
+        processor.queueInput(buffer.duplicate())
+        buffer.position(buffer.limit())
+        var guard = 0
+        while (guard++ < 32) {
+            val out = processor.getOutput()
+            if (out === AudioProcessor.EMPTY_BUFFER || !out.hasRemaining()) break
+            if (gain < 1f - 1e-6f && gain >= 0f) {
+                scalePcmInPlace(out, out.position(), out.limit(), C.ENCODING_PCM_FLOAT, gain)
+            }
+            if (!writeConvertedToUsb(out, presentationTimeUs)) {
+                pendingUsbFloat = out
+                pendingUsbPtsUs = presentationTimeUs
+                return false
+            }
+        }
+        return true
+    }
+
+    private fun writeConvertedToUsb(output: ByteBuffer, presentationTimeUs: Long): Boolean {
+        val session = exclusiveUsb ?: return false
+        return session.write(output, presentationTimeUs)
+    }
+
+    /** Best-effort soxr tail at end-of-stream: dropping it would audibly cut
+     *  reverb tails on every fallback track. Never blocks — leftovers drop
+     *  like the raw path already does today. */
+    private fun drainExclusiveConverterTail() {
+        val session = exclusiveUsb ?: return
+        pendingUsbFloat?.let { pending ->
+            if (pending.hasRemaining()) runCatching { session.write(pending, pendingUsbPtsUs) }
+            pendingUsbFloat = null
+        }
+        if (exclusiveConvertSourceHz <= 0) return
+        runCatching {
+            processor.queueEndOfStream()
+            var guard = 0
+            while (guard++ < 16) {
+                val out = processor.getOutput()
+                if (out === AudioProcessor.EMPTY_BUFFER || !out.hasRemaining()) break
+                if (!session.write(out, pendingUsbPtsUs)) break
+            }
+        }
     }
 
     private fun configureUsbOutput(format: Format, media3Encoding: Int, channels: IntArray?) {
@@ -945,6 +1131,14 @@ class NativeProcessingAudioSink(
         exclusiveEnded = false
         if (usbExclusive) {
             exclusiveUsb?.flush()
+            // Drop converter state on seek: stale soxr delay would smear
+            // pre-seek audio into the new position. Rebuilt lazily on the
+            // next converted buffer.
+            pendingUsbFloat = null
+            if (exclusiveConvertSourceHz > 0) {
+                runCatching { processor.flush() }
+                exclusiveConvertSourceHz = 0
+            }
             return
         }
         if (processingActive) {
@@ -982,6 +1176,7 @@ class NativeProcessingAudioSink(
         playing = false
         hasConfigured = false
         bitPerfectAtConfigure = usbExclusive
+        clearExclusiveConverter()
         notifyPlatformEffectsRequired(false)
         safeResetProcessor()
         safeReset(enhancedDelegate)

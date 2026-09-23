@@ -180,7 +180,15 @@ class ExclusiveUsbOutput @Inject constructor(
         }
     }
 
-    fun configure(format: Format): Boolean {
+    /**
+     * Opens the exclusive stream. [rateOverrideHz] carries a same-family
+     * fallback rate (e.g. 44.1 kHz for an 88.2 kHz source) when the DAC
+     * descriptor lacks the source rate: the stream opens at the supported
+     * rate and the caller feeds already-converted PCM. Null keeps the
+     * native source-rate behavior. The clock check below compares against
+     * the actually-requested rate either way.
+     */
+    fun configure(format: Format, rateOverrideHz: Int? = null): Boolean {
         if (!wanted) return false
         if (format.sampleMimeType != MimeTypes.AUDIO_RAW ||
             format.sampleRate <= 0 ||
@@ -188,13 +196,23 @@ class ExclusiveUsbOutput @Inject constructor(
         ) {
             return false
         }
-        val floatSource = format.pcmEncoding == C.ENCODING_PCM_FLOAT
+        val targetRate = rateOverrideHz?.takeIf { it > 0 } ?: format.sampleRate
+        val floatSource = format.pcmEncoding == C.ENCODING_PCM_FLOAT || rateOverrideHz != null
         val sourceBits = sourceBitDepth(format.pcmEncoding)
         if (!floatSource && sourceBits == 0) return false
         synchronized(lock) {
             if (!wanted) return false
             return runCatching {
-                configureLocked(format.sampleRate, format.channelCount, sourceBits, floatSource, format.pcmEncoding)
+                // Converted fallback PCM always arrives as Float32 from the
+                // app resampler (same rule as float decoder output: 24-bit
+                // alt). Native sources keep their own packing.
+                configureLocked(
+                    targetRate,
+                    format.channelCount,
+                    if (rateOverrideHz != null) 24 else sourceBits,
+                    floatSource,
+                    if (rateOverrideHz != null) C.ENCODING_PCM_FLOAT else format.pcmEncoding,
+                )
             }.onFailure { error ->
                 Log.w(TAG, "Exclusive USB configure failed", error)
                 teardownLocked(closeDevice = true)

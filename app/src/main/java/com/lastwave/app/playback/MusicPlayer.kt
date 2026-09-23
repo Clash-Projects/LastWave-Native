@@ -1978,6 +1978,17 @@ class MusicPlayer @Inject constructor(
         usbExclusiveSinkActive = exclusive
         runCatching { audioEffectsEngine.setUsbExclusiveActive(exclusive) }
         runCatching { secondaryEffects?.setUsbExclusiveActive(exclusive) }
+        // Same-family fallback for DACs lacking the source rate (88.2 ->
+        // 44.1 kHz): the exclusive stream opens at the supported rate with
+        // native soxr conversion instead of failing onto the mixer. Null =
+        // native rate (or no DAC / not exclusive): today's behavior.
+        // The signal path stays honest automatically — the resampler check
+        // fails, so a converted track can never report gold.
+        val fallbackHz = if (exclusiveWanted && dac != null) {
+            selectExclusiveRateFallback(sourceRateHz, dac.sampleRatesHz)
+        } else {
+            null
+        }
         val device = if (!exclusive && dac != null && dac.deviceId > 0 && (sourceRateHz ?: 0) > 0) {
             findOutputDevice(dac.deviceId)
         } else {
@@ -1987,12 +1998,14 @@ class MusicPlayer @Inject constructor(
         audioSinks.forEach { sink ->
             runCatching { sink.setPreferredDevice(if (exclusive) null else device) }
             runCatching { sink.setOutputSampleRateOverride(sourceRateHz) }
+            runCatching { sink.setExclusiveFallbackRateHz(fallbackHz) }
         }
         android.util.Log.i(
             "MusicPlayer",
             "BIT-PERFECT OUTPUT REQUEST srcRate=$sourceRateHz " +
                 "dac=${dac?.name} routed=${device != null} exclusive=$exclusive " +
-                "wanted=$exclusiveWanted bitPerfect=$bitPerfectEnabled",
+                "wanted=$exclusiveWanted bitPerfect=$bitPerfectEnabled " +
+                "rateFallback=${fallbackHz?.let { "$sourceRateHz->$it" } ?: "none"}",
         )
         usbDacMonitor.setRouteRequested(exclusive || device != null)
         exclusiveUsbOutput.syncListeningGain()
@@ -4783,6 +4796,23 @@ class MusicPlayer @Inject constructor(
     }
 
     private companion object {
+        /**
+         * Same-family fallback target when the DAC descriptor lacks the
+         * source rate. Integer-divide family first (88.2 -> 44.1 is exact,
+         * keeping conversion clean), else the highest supported rate below
+         * the source. Null = attempt native (supported, undisclosed, or
+         * unknown source): today's fail-onto-mixer behavior. Never
+         * upsample.
+         */
+        fun selectExclusiveRateFallback(sourceHz: Int?, supportedHz: List<Int>): Int? {
+            val src = sourceHz?.takeIf { it > 0 } ?: return null
+            val supported = supportedHz.filter { it > 0 }.toSet()
+            if (supported.isEmpty() || src in supported) return null
+            val below = supported.filter { it < src }
+            below.filter { src % it == 0 }.maxOrNull()?.let { return it }
+            return below.maxOrNull()
+        }
+
         const val YOUTUBE_PROMOTE_BUDGET_MS = 12_000L
         /** Total cap for one YouTube fallback chain from fork, covering the
          *  promote wait plus every stacked re-resolve. Normal resolves take
