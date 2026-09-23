@@ -509,59 +509,65 @@ class NativeProcessingAudioSink(
         media3Encoding: Int,
         gain: Float,
     ) {
-        if (gain <= 0f) {
-            var pos = startPos
-            while (pos < endPos) {
-                buffer.put(pos, 0.toByte())
-                pos++
-            }
-            return
-        }
-        when (media3Encoding) {
-            C.ENCODING_PCM_16BIT -> {
+        val originalOrder = buffer.order()
+        try {
+            buffer.order(ByteOrder.LITTLE_ENDIAN)
+            if (gain <= 0f) {
                 var pos = startPos
-                while (pos + 1 < endPos) {
-                    val sample = buffer.getShort(pos).toInt()
-                    val scaled = (sample * gain + if (sample >= 0) 0.5f else -0.5f).toInt()
-                        .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-                    buffer.putShort(pos, scaled.toShort())
-                    pos += 2
+                while (pos < endPos) {
+                    buffer.put(pos, 0.toByte())
+                    pos++
                 }
+                return
             }
-            C.ENCODING_PCM_24BIT -> {
-                var pos = startPos
-                while (pos + 2 < endPos) {
-                    val b0 = buffer.get(pos).toInt() and 0xFF
-                    val b1 = buffer.get(pos + 1).toInt() and 0xFF
-                    val b2 = buffer.get(pos + 2).toInt()
-                    var sample = (b2 shl 16) or (b1 shl 8) or b0
-                    if (sample and 0x800000 != 0) sample -= 0x1000000
-                    val scaled = (sample * gain + if (sample >= 0) 0.5f else -0.5f).toInt()
-                        .coerceIn(-0x800000, 0x7FFFFF)
-                    buffer.put(pos, (scaled and 0xFF).toByte())
-                    buffer.put(pos + 1, ((scaled shr 8) and 0xFF).toByte())
-                    buffer.put(pos + 2, ((scaled shr 16) and 0xFF).toByte())
-                    pos += 3
+
+            when (media3Encoding) {
+                C.ENCODING_PCM_16BIT -> {
+                    var pos = startPos
+                    while (pos + 1 < endPos) {
+                        val sample = buffer.getShort(pos).toInt()
+                        val scaled = (sample * gain + if (sample >= 0) 0.5f else -0.5f).toInt()
+                            .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                        buffer.putShort(pos, scaled.toShort())
+                        pos += 2
+                    }
                 }
-            }
-            C.ENCODING_PCM_32BIT -> {
-                var pos = startPos
-                while (pos + 3 < endPos) {
-                    val sample = buffer.getInt(pos)
-                    val scaled = (sample * gain.toDouble()).toLong()
-                        .coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong())
-                    buffer.putInt(pos, scaled.toInt())
-                    pos += 4
+                C.ENCODING_PCM_24BIT -> {
+                    var pos = startPos
+                    while (pos + 2 < endPos) {
+                        val b1 = buffer.get(pos).toInt() and 0xFF
+                        val b2 = buffer.get(pos + 1).toInt() and 0xFF
+                        val b3 = buffer.get(pos + 2).toInt()
+                        val sample = (b1 or (b2 shl 8) or (b3 shl 16))
+                        val scaled = (sample * gain.toDouble()).toLong()
+                            .coerceIn(-8388608L, 8388607L).toInt()
+                        buffer.put(pos, scaled.toByte())
+                        buffer.put(pos + 1, (scaled shr 8).toByte())
+                        buffer.put(pos + 2, (scaled shr 16).toByte())
+                        pos += 3
+                    }
                 }
-            }
-            C.ENCODING_PCM_FLOAT -> {
-                var pos = startPos
-                while (pos + 3 < endPos) {
-                    buffer.putFloat(pos, (buffer.getFloat(pos) * gain).coerceIn(-1f, 1f))
-                    pos += 4
+                C.ENCODING_PCM_32BIT -> {
+                    var pos = startPos
+                    while (pos + 3 < endPos) {
+                        val sample = buffer.getInt(pos)
+                        val scaled = (sample * gain.toDouble()).toLong()
+                            .coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong())
+                        buffer.putInt(pos, scaled.toInt())
+                        pos += 4
+                    }
                 }
+                C.ENCODING_PCM_FLOAT -> {
+                    var pos = startPos
+                    while (pos + 3 < endPos) {
+                        buffer.putFloat(pos, (buffer.getFloat(pos) * gain).coerceIn(-1f, 1f))
+                        pos += 4
+                    }
+                }
+                else -> Unit
             }
-            else -> Unit
+        } finally {
+            buffer.order(originalOrder)
         }
     }
 
