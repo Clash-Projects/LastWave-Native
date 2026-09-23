@@ -1692,8 +1692,11 @@ class MusicPlayer @Inject constructor(
         }
         cancelCrossfade()
         val target = positionMs.coerceAtLeast(0)
+        val now = SystemClock.elapsedRealtime()
         lastSeekTargetMs = target
-        lastSeekAtElapsedMs = SystemClock.elapsedRealtime()
+        lastSeekAtElapsedMs = now
+        playheadPosMs = target
+        playheadWallMs = now
         exclusiveUsbOutput.noteSeek(target * 1_000L)
         player.seekTo(target)
         _state.update { it.copy(positionMs = target) }
@@ -1717,15 +1720,15 @@ class MusicPlayer @Inject constructor(
 
     private fun exclusiveAwarePositionMs(fallbackMs: Long): Long {
         if (!exclusiveUsbOutput.isActive()) return fallbackMs
-        val us = exclusiveUsbOutput.getCurrentPositionUs()
-        if (us == androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET) return fallbackMs
-        return (us / 1_000L).coerceAtLeast(0L)
+        return playheadPosMs.coerceAtLeast(0L)
     }
 
     /**
      * Seek bar clock. ExoPlayer's position stays at 0 in normal playback and
-     * at the end in bit-perfect playback, so the bar follows wall time while
-     * the track is actually playing, and a seek target when the user scrubs.
+     * at the end in bit-perfect playback (because AudioSink presentationTimeUs
+     * includes Media3's 1_000_000_000_000 us renderer offset), so the bar
+     * follows wall time while the track is actively streaming audio, and
+     * re-anchors at the seek target when the user scrubs.
      */
     private fun advancePlayhead(playing: Boolean): Long {
         val now = SystemClock.elapsedRealtime()
@@ -1738,6 +1741,9 @@ class MusicPlayer @Inject constructor(
             playheadWallMs = now
             playheadKey = key
             playheadMoving = playing
+            if (playing) {
+                lastSeekTargetMs = -1L
+            }
             return playheadPosMs
         }
         if (key != playheadKey) {
@@ -1752,12 +1758,6 @@ class MusicPlayer @Inject constructor(
                 playheadPosMs += (now - playheadWallMs).coerceAtLeast(0L)
                 playheadMoving = false
             }
-            if (exclusiveUsbOutput.isActive()) {
-                val usbPosUs = exclusiveUsbOutput.getCurrentPositionUs()
-                if (usbPosUs != androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET && usbPosUs >= 0L) {
-                    playheadPosMs = usbPosUs / 1_000L
-                }
-            }
             playheadWallMs = now
             val dur = _state.value.durationMs
             return if (dur > 0L) playheadPosMs.coerceAtMost(dur) else playheadPosMs
@@ -1766,18 +1766,7 @@ class MusicPlayer @Inject constructor(
             playheadWallMs = now
             playheadMoving = true
         }
-        var pos = playheadPosMs + (now - playheadWallMs).coerceAtLeast(0L)
-        if (exclusiveUsbOutput.isActive()) {
-            val usbPosUs = exclusiveUsbOutput.getCurrentPositionUs()
-            if (usbPosUs != androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET && usbPosUs >= 0L) {
-                val hwPosMs = usbPosUs / 1_000L
-                if (pos > hwPosMs + 200L || pos + 250L < hwPosMs) {
-                    pos = hwPosMs
-                    playheadPosMs = hwPosMs
-                    playheadWallMs = now
-                }
-            }
-        }
+        val pos = playheadPosMs + (now - playheadWallMs).coerceAtLeast(0L)
         val dur = _state.value.durationMs
         return if (dur > 0L) pos.coerceAtMost(dur) else pos
     }

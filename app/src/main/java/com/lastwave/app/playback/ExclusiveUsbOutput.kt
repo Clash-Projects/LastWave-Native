@@ -63,6 +63,7 @@ class ExclusiveUsbOutput @Inject constructor(
     @Volatile private var startMediaTimeNeedsInit = true
     @Volatile private var mediaTimeBaseFrames = 0L
     @Volatile private var lastWriteElapsedMs = 0L
+    @Volatile private var writingInProgress = false
     @Volatile private var paused = false
     private var pendingVolume = 1f
     private var featureVolume: UacFeatureVolume? = null
@@ -150,17 +151,15 @@ class ExclusiveUsbOutput @Inject constructor(
     fun isStreamAlive(): Boolean = active && stream?.isAlive == true
 
     /**
-     * True while PCM is actively queued for the DAC or a USB write completed
-     * within the last 250 ms. Prevents the UI seekbar from advancing on
-     * wall-clock time when the USB pipeline is starved.
+     * True while PCM is actively queued/writing to the DAC or a USB write
+     * completed within the last 750 ms. Prevents the UI seekbar from advancing
+     * on wall-clock time when the USB pipeline is starved.
      */
     fun isStreamingAudio(): Boolean {
         if (!active || paused || stream?.isAlive != true) return false
-        synchronized(pcmLock) {
-            if (queuedBytes > 0) return true
-        }
+        if (writingInProgress || queuedBytes > 0) return true
         val last = lastWriteElapsedMs
-        return last > 0L && (SystemClock.elapsedRealtime() - last) in 0L..250L
+        return last > 0L && (SystemClock.elapsedRealtime() - last) in 0L..750L
     }
 
     /** Re-anchor the Media3 clock after an explicit seek. */
@@ -175,7 +174,6 @@ class ExclusiveUsbOutput @Inject constructor(
         )
         synchronized(pcmLock) {
             mediaTimeBaseFrames = stream?.framesWritten ?: 0L
-            startMediaTimeUs = timeUs
             startMediaTimeNeedsInit = true
             lastWriteElapsedMs = 0L
         }
@@ -280,15 +278,8 @@ class ExclusiveUsbOutput @Inject constructor(
 
     fun getCurrentPositionUs(): Long {
         val running = stream ?: return androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET
-        if (!active || configuredRateHz <= 0) {
+        if (!active || configuredRateHz <= 0 || startMediaTimeNeedsInit) {
             return androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET
-        }
-        if (startMediaTimeNeedsInit) {
-            return if (startMediaTimeUs > 0L) {
-                startMediaTimeUs
-            } else {
-                androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET
-            }
         }
         val frames = (running.framesWritten - mediaTimeBaseFrames).coerceAtLeast(0L)
         return startMediaTimeUs + frames * C.MICROS_PER_SECOND / configuredRateHz
@@ -624,10 +615,15 @@ class ExclusiveUsbOutput @Inject constructor(
                 continue
             }
             if (!target.isAlive) break
+            writingInProgress = true
             lastWriteElapsedMs = SystemClock.elapsedRealtime()
-            if (next.floats != null) target.write(next.floats)
-            else if (next.raw != null) target.writeRaw(next.raw, next.encoding)
-            lastWriteElapsedMs = SystemClock.elapsedRealtime()
+            try {
+                if (next.floats != null) target.write(next.floats)
+                else if (next.raw != null) target.writeRaw(next.raw, next.encoding)
+            } finally {
+                writingInProgress = false
+                lastWriteElapsedMs = SystemClock.elapsedRealtime()
+            }
         }
     }
 
