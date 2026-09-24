@@ -57,6 +57,7 @@ class ExclusiveUsbOutput @Inject constructor(
     private var writer: Thread? = null
     private var connection: UsbDeviceConnection? = null
     private var sourceEncoding = 0
+    private var activeWireBits = 0
     private var useFloatWrite = false
     @Volatile private var startMediaTimeUs = 0L
     @Volatile private var startMediaTimeNeedsInit = true
@@ -245,11 +246,30 @@ class ExclusiveUsbOutput @Inject constructor(
             buffer.position(buffer.limit())
             QueuedPcm(floats, null, 0, size)
         } else {
-            val encoding = writeRawEncoding(sourceEncoding)
-            if (encoding < 0) return false
-            val bytes = ByteArray(size)
-            buffer.get(bytes)
-            QueuedPcm(null, bytes, encoding, size)
+            val wireBits = activeWireBits
+            val sourceBits = sourceBitDepth(sourceEncoding)
+
+            if (sourceBits == 16 && wireBits == 24) {
+                // Upconvert 16-bit to 24-bit (zero-padded)
+                val frames = size / 2
+                val bytes = ByteArray(frames * 3)
+                buffer.order(ByteOrder.LITTLE_ENDIAN)
+                var destPos = 0
+                for (i in 0 until frames) {
+                    val sample = buffer.getShort()
+                    // 24-bit little endian: low byte 0, mid byte = low 16, high byte = high 16
+                    bytes[destPos++] = 0
+                    bytes[destPos++] = (sample.toInt() and 0xFF).toByte()
+                    bytes[destPos++] = ((sample.toInt() shr 8) and 0xFF).toByte()
+                }
+                QueuedPcm(null, bytes, RAW_PCM24, frames * 3)
+            } else {
+                val encoding = writeRawEncoding(sourceEncoding)
+                if (encoding < 0) return false
+                val bytes = ByteArray(size)
+                buffer.get(bytes)
+                QueuedPcm(null, bytes, encoding, size)
+            }
         }
         synchronized(pcmLock) {
             if (paused || writerStop) return false
@@ -396,22 +416,6 @@ class ExclusiveUsbOutput @Inject constructor(
         connection = null
         val info = usbAudio.openDevice(usbDevice) ?: return failLocked("openDevice failed")
 
-        // The exclusive isochronous URB pipeline requires UAC 2.0 features:
-        // Clock Source SET_CUR for sample-rate switching, async feedback for clock
-        // calibration, and proper alternate-setting bandwidth negotiation.
-        // UAC 1.0 devices (e.g. Apple EarPods USB-C, bcdADC=0x0100) implement none
-        // of these — attempting the exclusive path produces buzzing / distortion.
-        // Fall back to the standard Android AudioTrack shared-mixer path for them.
-        if (info.uacVersion == 100) {
-            Log.w(
-                TAG,
-                "Exclusive USB: ${usbDevice.productName} is UAC 1.0 (bcdADC=0x0100) — " +
-                    "exclusive isochronous mode requires UAC 2.0; falling back to AudioTrack",
-            )
-            usbAudio.closeDevice()
-            return false
-        }
-
         val (alt, wireBits) = usbAudio.findAltSettingForBitDepth(bits)
         usbAudio.setSampleRate(sampleRate)
         if (!usbAudio.setAltSetting(alt)) return failLocked("setAltSetting $alt failed")
@@ -423,22 +427,38 @@ class ExclusiveUsbOutput @Inject constructor(
                     it.alternateSetting == alt &&
                     it.endpointCount > 0
             }
-        val maxPacket = selected?.let { iface ->
+        val selectedOut = selected?.let { iface ->
             (0 until iface.endpointCount).map { iface.getEndpoint(it) }
                 .firstOrNull {
                     it.type == UsbConstants.USB_ENDPOINT_XFER_ISOC &&
                         it.direction == UsbConstants.USB_DIR_OUT
-                }?.maxPacketSize
-        } ?: info.maxPacketSize
+                }
+        }
+        if (selectedOut == null) return failLocked("alt $alt has no isochronous OUT endpoint")
+        val selectedFeedback = selected?.let { iface ->
+            (0 until iface.endpointCount).map { iface.getEndpoint(it) }
+                .firstOrNull {
+                    it.type == UsbConstants.USB_ENDPOINT_XFER_ISOC &&
+                        it.direction == UsbConstants.USB_DIR_IN
+                }
+        }
+        val maxPacket = isoPacketBytes(selectedOut.maxPacketSize)
+        val dataInterval = selectedOut.interval.coerceAtLeast(1)
+        val feedbackPacketSize = selectedFeedback?.maxPacketSize?.let { isoPacketBytes(it) }
+            ?: info.feedbackPacketSize
+        val feedbackInterval = selectedFeedback?.interval?.coerceAtLeast(1) ?: dataInterval
         val created = UsbAudioStream(
             info.fd,
             info.interfaceId,
-            info.endpointOutAddress,
-            info.endpointFeedbackAddress,
+            selectedOut.address,
+            selectedFeedback?.address ?: 0,
             sampleRate,
             channelCount,
             wireBits,
             maxPacket,
+            dataInterval,
+            feedbackPacketSize,
+            feedbackInterval,
         )
         if (!created.isReady || !created.start()) {
             created.release()
@@ -447,6 +467,7 @@ class ExclusiveUsbOutput @Inject constructor(
         connection = info.connection
         stream = created
         sourceEncoding = pcmEncoding
+        activeWireBits = wireBits
         useFloatWrite = floatSource
         configuredRateHz = sampleRate
         active = true

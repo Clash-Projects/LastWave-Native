@@ -18,6 +18,7 @@ import androidx.media3.exoplayer.audio.AudioOffloadSupport
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 /**
  * Runs the optional native Float32 DSP in front of Media3 while keeping an

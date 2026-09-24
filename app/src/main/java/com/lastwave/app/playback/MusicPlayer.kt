@@ -960,14 +960,16 @@ class MusicPlayer @Inject constructor(
                             }
                             if (isSpatialAudioCodec(detectedCodec)) {
                                 updated = updated.copy(audioCodec = detectedCodec, isLossless = false)
-                            } else if (!isSpatialAudioCodec(updated.audioCodec) &&
-                                (updated.audioCodec == null || updated.audioCodec == "AUDIO") &&
-                                detectedCodec != null
-                            ) {
+                            } else if (!isSpatialAudioCodec(updated.audioCodec) && detectedCodec != null) {
+                                val detectedBadge = when {
+                                    detectedCodec == "FLAC" &&
+                                        ((updated.bitDepth ?: 0) > 16 || rateHz > 48_000) -> "HI-RES FLAC"
+                                    else -> detectedCodec
+                                }
                                 updated = updated.copy(
-                                    audioCodec = detectedCodec,
+                                    audioCodec = detectedBadge,
                                     bitrateKbps = updated.bitrateKbps ?: bitrate ?: if (detectedCodec == "OPUS") 160 else null,
-                                    isLossless = updated.isLossless || detectedCodec == "FLAC",
+                                    isLossless = detectedCodec == "FLAC",
                                 )
                             }
                             android.util.Log.i("MusicPlayer", "AudioInputFormatChanged: mime=${format.sampleMimeType}, rate=${rateHz}Hz, bitrate=${format.bitrate}, detectedCodec=$detectedCodec -> qualityPill=[codec=${updated.audioCodec}, bitrate=${updated.bitrateKbps}kbps, rate=${updated.samplingRateKHz}kHz]")
@@ -4007,9 +4009,7 @@ class MusicPlayer @Inject constructor(
             resolveYoutubeTrackAudioStream(track, videoId)
         }
 
-        if (!wantLossless || (!videoId.isNullOrBlank() &&
-                (track.artist.isBlank() || track.artist.equals("Unknown artist", ignoreCase = true)))
-        ) {
+        if (!wantLossless) {
             return try {
                 localDeferred.await()?.also {
                     android.util.Log.i("MusicPlayer", "[PLAYBACK] local-download hit for '${track.title}' key=${it.cacheKey}")
@@ -4030,11 +4030,58 @@ class MusicPlayer @Inject constructor(
         // and fall back anyway). Deliberately NOT gated on isConfigured:
         // that is false on cold start before JNI loads and gating on it
         // skipped lossless entirely (d625587).
-        val losslessAttempt = wantLossless && !losslessMusicApi.isCoolingDown
+        val normalizedArtist = track.artist.trim()
+        val artistKnown = normalizedArtist.isNotBlank() &&
+            !normalizedArtist.equals("Unknown artist", ignoreCase = true) &&
+            !normalizedArtist.equals("YouTube Music", ignoreCase = true) &&
+            !normalizedArtist.equals("Spotify", ignoreCase = true)
+        val losslessAttempt = wantLossless && !losslessMusicApi.isCoolingDown &&
+            (artistKnown || !videoId.isNullOrBlank())
         // Direct backend resolution using APK embedded secrets / native secrets
         val losslessDeferred = applicationScope.async(Dispatchers.IO) {
-            if (!losslessAttempt) null
-            else runCatching { resolveLosslessTrackAudioStream(track, misc, excludedLosslessUrls) }.getOrNull()
+            if (!losslessAttempt) {
+                null
+            } else {
+                runCatching {
+                    var lookupTrack = track
+                    var expectedDurationSeconds: Int? = null
+                    if (!artistKnown && !videoId.isNullOrBlank()) {
+                        val details = withTimeoutOrNull(MISSING_ARTIST_METADATA_TIMEOUT_MS) {
+                            innerTube.fetchSongDetails(videoId)
+                        }
+                        val recoveredArtist = details?.artist?.takeIf {
+                            it.isNotBlank() && !it.equals("Unknown artist", ignoreCase = true)
+                        }
+                        if (details == null || recoveredArtist == null) {
+                            android.util.Log.w(
+                                "MusicPlayer",
+                                "[LOSSLESS] skip: missing artist metadata for videoId=$videoId title='${track.title}'",
+                            )
+                            return@runCatching null
+                        }
+                        lookupTrack = track.copy(
+                            title = track.title.takeIf {
+                                it.isNotBlank() && !it.equals("Unknown track", ignoreCase = true)
+                            } ?: details.title,
+                            artist = recoveredArtist,
+                            album = track.album ?: details.album,
+                        )
+                        expectedDurationSeconds = details.durationSeconds
+                        android.util.Log.i(
+                            "MusicPlayer",
+                            "[LOSSLESS] recovered metadata from videoId=$videoId " +
+                                "artist='$recoveredArtist' album='${lookupTrack.album}' " +
+                                "durationSeconds=$expectedDurationSeconds",
+                        )
+                    }
+                    resolveLosslessTrackAudioStream(
+                        lookupTrack,
+                        misc,
+                        excludedLosslessUrls,
+                        expectedDurationSeconds,
+                    )
+                }.getOrNull()
+            }
         }
         return try {
             val localStream = localDeferred.await()
@@ -4044,9 +4091,14 @@ class MusicPlayer @Inject constructor(
             } else {
                 val isDolbyPreferred = misc.dolbyAtmosEnabled || misc.losslessQuality == LosslessMusicApi.QUALITY_DOLBY_ATMOS
                 val losslessTimeoutMs = if (isDolbyPreferred) {
-                    if (!videoId.isNullOrBlank()) 6_500L else 7_500L
+                    if (!videoId.isNullOrBlank()) 15_000L else 18_000L
                 } else {
-                    if (!videoId.isNullOrBlank()) 3_500L else 4_500L
+                    // A backend lookup can involve candidate search + a
+                    // manifest request (each with its own 4s call timeout).
+                    // Leave room for the optional exact-video metadata lookup
+                    // instead of promoting the staged YouTube Opus stream too
+                    // early for a valid FLAC result to arrive.
+                    if (!videoId.isNullOrBlank()) 12_000L else 15_000L
                 }
                 val losslessBudgetMs = losslessTimeoutMs - (SystemClock.elapsedRealtime() - forkStart)
                 val losslessStream: ResolvedStream? = if (!losslessAttempt) {
@@ -4124,11 +4176,13 @@ class MusicPlayer @Inject constructor(
         track: PlayableTrack,
         misc: MiscSettings,
         excludedLosslessUrls: Set<String> = emptySet(),
+        expectedDurationSeconds: Int? = null,
     ): ResolvedStream? {
         val effectiveQuality = if (misc.dolbyAtmosEnabled) LosslessMusicApi.QUALITY_DOLBY_ATMOS else misc.losslessQuality
         val stream = losslessMusicApi.resolveStream(
             title = track.title,
             artist = track.artist,
+            expectedDurationSeconds = expectedDurationSeconds,
             expectedAlbum = track.album,
             preferredQuality = effectiveQuality,
             excludedUrls = excludedLosslessUrls,
@@ -4136,12 +4190,29 @@ class MusicPlayer @Inject constructor(
 
         if (stream.url.isBlank() || stream.url in excludedLosslessUrls) return null
 
-        val isLossless = stream.formatId != LosslessMusicApi.QUALITY_MP3_320 &&
+        val manifestCodec = LosslessMusicApi.manifestCodecOf(stream.url)?.lowercase()
+        val manifestIsLossy = manifestCodec?.let {
+            it.contains("opus") || it.contains("mp4a") || it.contains("aac") || it.contains("mp3")
+        } == true
+        val isLossless = !manifestIsLossy &&
+            stream.formatId != LosslessMusicApi.QUALITY_MP3_320 &&
             stream.formatId != LosslessMusicApi.QUALITY_DATA_SAVER &&
             !stream.mimeType.contains("mp3", ignoreCase = true) &&
             !stream.mimeType.contains("aac", ignoreCase = true)
 
+        val manifestCodecBadge = when {
+            manifestCodec?.contains("ec-3") == true || manifestCodec?.contains("eac3") == true ||
+                manifestCodec?.contains("ac-3") == true -> "DOLBY ATMOS"
+            manifestCodec?.contains("mha1") == true || manifestCodec?.contains("mhm1") == true -> "SPATIAL AUDIO"
+            manifestCodec?.contains("flac") == true ->
+                if (stream.bitDepth > 16 || stream.samplingRate > 48.0) "HI-RES FLAC" else "FLAC"
+            manifestCodec?.contains("opus") == true -> "OPUS"
+            manifestCodec?.contains("mp4a") == true || manifestCodec?.contains("aac") == true -> "AAC"
+            manifestCodec?.contains("mp3") == true -> "MP3"
+            else -> null
+        }
         val badge = when {
+            manifestCodecBadge != null -> manifestCodecBadge
             stream.audioCodecOverride != null -> stream.audioCodecOverride
             stream.formatId == LosslessMusicApi.QUALITY_DOLBY_ATMOS -> "DOLBY ATMOS"
             stream.bitDepth > 16 || stream.samplingRate > 48.0 -> "HI-RES FLAC"
@@ -4817,6 +4888,7 @@ class MusicPlayer @Inject constructor(
         }
 
         const val YOUTUBE_PROMOTE_BUDGET_MS = 12_000L
+        const val MISSING_ARTIST_METADATA_TIMEOUT_MS = 1_200L
         /** Total cap for one YouTube fallback chain from fork, covering the
          *  promote wait plus every stacked re-resolve. Normal resolves take
          *  seconds; past this the track fails fast instead of spinning. */

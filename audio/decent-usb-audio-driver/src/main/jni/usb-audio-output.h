@@ -21,6 +21,10 @@
  */
 #define USB_AUDIO_PACKETS_PER_URB 8
 
+/** Keep feedback out of the shared audio submit/reap queue until its
+ * descriptor format has been verified on the connected device. */
+#define USB_AUDIO_ENABLE_CONTINUOUS_FEEDBACK 0
+
 /**
  * Number of URBs in the ring buffer.
  * 80 URBs ≈ 80 ms of in-flight audio at 44.1 kHz, which empirically gives
@@ -73,6 +77,10 @@ struct UsbAudioContext {
     int32_t bytesPerSample;
     int32_t bytesPerFrame;
     int32_t maxPacketSize;
+    int32_t dataInterval;
+    int32_t feedbackPacketSize;
+    int32_t feedbackInterval;
+    int32_t usbSpeed;
 
     std::atomic<bool> running;
 

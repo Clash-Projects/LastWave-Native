@@ -415,6 +415,7 @@ class StreamHealthTracker {
     fun sample(positionMs: Long, wallMs: Long, playing: Boolean): Double? {
         if (!playing || positionMs < 0) {
             lastPositionMs = -1L
+            if (!playing) driftPpm = null
             return driftPpm
         }
         if (lastPositionMs < 0) {
@@ -450,7 +451,12 @@ class StreamHealthTracker {
      * on "measuring…". Compare cumulative frames to wall from a baseline.
      */
     fun sampleExclusive(framesWritten: Long, rateHz: Int, wallMs: Long, playing: Boolean): Double? {
-        if (!playing || rateHz <= 0 || framesWritten < 0L) {
+        if (!playing) {
+            exclusiveOriginFrames = -1L
+            driftPpm = null
+            return null
+        }
+        if (rateHz <= 0 || framesWritten < 0L) {
             exclusiveOriginFrames = -1L
             return driftPpm
         }
