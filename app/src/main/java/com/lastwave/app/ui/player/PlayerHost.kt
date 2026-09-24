@@ -811,11 +811,7 @@ private fun MiniPlayer(
     val shownY by animateFloatAsState(dragY, ExpressiveMotion.spatialSpring(), label = "miniPlayerY")
     val threshold = with(LocalDensity.current) { 72.dp.toPx() }
     val isTablet = isTabletOrWideScreen()
-    val shape = if (edgeToEdge && !isTablet) {
-        RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
-    } else {
-        RoundedCornerShape(32.dp)
-    }
+    val shape = if (edgeToEdge && !isTablet) RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp) else RoundedCornerShape(100)
     val positionedModifier = if (edgeToEdge && !isTablet) {
         modifier.fillMaxWidth()
     } else {
@@ -859,8 +855,8 @@ private fun MiniPlayer(
     ) {
         Surface(
             shape = shape,
-            // Transparent card when glass (glass draws scrim), 85% surface otherwise.
-            color = if (isGlass) Color.Transparent else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.85f),
+            // Transparent card when glass (glass draws scrim), 95% primaryContainer otherwise to match theme color.
+            color = if (isGlass) Color.Transparent else MaterialTheme.colorScheme.primaryContainer,
             tonalElevation = if (edgeToEdge || isGlass) 0.dp else 6.dp,
             shadowElevation = if (edgeToEdge || isGlass) 0.dp else 12.dp,
             modifier = Modifier.fillMaxWidth().then(
@@ -896,11 +892,11 @@ private fun MiniPlayer(
                     // in light, white text in dark); opaque card keeps theme tokens.
                     val miniTitleColor = if (isGlass) {
                         if (LocalIsDarkTheme.current) Color.White else Color.Black
-                    } else MaterialTheme.colorScheme.onSurface
+                    } else MaterialTheme.colorScheme.onPrimaryContainer
                     val miniArtistColor = if (isGlass) {
                         if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.7f)
                         else Color.Black.copy(alpha = 0.7f)
-                    } else MaterialTheme.colorScheme.onSurfaceVariant
+                    } else MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                     Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
                         Text(
                             track.title,
@@ -1658,77 +1654,66 @@ private fun FullPlayer(
             val bgMaxDimension = maxOf(bgWidth, bgHeight, 1f)
 
             Box(Modifier.matchParentSize().liquidGlassSource(if (fullGlass) playerBackdrop else null)) {
-            // Full-bleed scaled artwork + dark scrims form the glass source.
-            // No nested BackdropBlur: the old 36dp inner capture caused the self-capture SIGSEGV.
-            PlayerArtwork(
+            FluidArtworkBackground(
                 track = track,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        scaleX = 1.35f
-                        scaleY = 1.35f
-                        alpha = 0.9f
-                    },
-                corner = 0.dp,
-                decodeSizePx = 200,
+                modifier = Modifier.fillMaxSize(),
+                extraBlur = false,
+                fallback = {
+                    PlayerArtwork(
+                        track = track,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                scaleX = 1.35f
+                                scaleY = 1.35f
+                                alpha = 0.9f
+                            },
+                        corner = 0.dp,
+                        decodeSizePx = 200,
+                    )
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.52f)))
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.radialGradient(
+                                    0f to ambientColor.copy(alpha = 0.58f),
+                                    0.45f to ambientColor.copy(alpha = 0.22f),
+                                    1f to Color.Transparent,
+                                    center = androidx.compose.ui.geometry.Offset(bgWidth * 0.25f, bgHeight * 0.20f),
+                                    radius = bgMaxDimension * 0.85f,
+                                )
+                            )
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.radialGradient(
+                                    0f to ambientCompanion.copy(alpha = 0.52f),
+                                    0.50f to ambientCompanion.copy(alpha = 0.20f),
+                                    1f to Color.Transparent,
+                                    center = androidx.compose.ui.geometry.Offset(bgWidth * 0.88f, bgHeight * 0.65f),
+                                    radius = bgMaxDimension * 0.78f,
+                                )
+                            )
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.radialGradient(
+                                    0f to ambientDeep.copy(alpha = 0.42f),
+                                    0.55f to ambientDeep.copy(alpha = 0.14f),
+                                    1f to Color.Transparent,
+                                    center = androidx.compose.ui.geometry.Offset(bgWidth * 0.15f, bgHeight * 0.82f),
+                                    radius = bgMaxDimension * 0.70f,
+                                )
+                            )
+                    )
+                }
             )
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.52f)),
-            )
-
-            // Apple Music: Vibrant chromatic ambient mesh blobs
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.radialGradient(
-                            0f to ambientColor.copy(alpha = 0.58f),
-                            0.45f to ambientColor.copy(alpha = 0.22f),
-                            1f to Color.Transparent,
-                            center = androidx.compose.ui.geometry.Offset(
-                                bgWidth * 0.25f,
-                                bgHeight * 0.20f,
-                            ),
-                            radius = bgMaxDimension * 0.85f,
-                        ),
-                    ),
-            )
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.radialGradient(
-                            0f to ambientCompanion.copy(alpha = 0.52f),
-                            0.50f to ambientCompanion.copy(alpha = 0.20f),
-                            1f to Color.Transparent,
-                            center = androidx.compose.ui.geometry.Offset(
-                                bgWidth * 0.88f,
-                                bgHeight * 0.65f,
-                            ),
-                            radius = bgMaxDimension * 0.78f,
-                        ),
-                    ),
-            )
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.radialGradient(
-                            0f to ambientDeep.copy(alpha = 0.42f),
-                            0.55f to ambientDeep.copy(alpha = 0.14f),
-                            1f to Color.Transparent,
-                            center = androidx.compose.ui.geometry.Offset(
-                                bgWidth * 0.15f,
-                                bgHeight * 0.82f,
-                            ),
-                            radius = bgMaxDimension * 0.70f,
-                        ),
-                    ),
-            )
-
-            // Apple Music: Contrast scrim gradient (ensures text & controls are clear while preserving vibrant colors)
+            // Contrast scrim gradient (ensures text & controls are clear while preserving vibrant colors)
             Box(
                 Modifier
                     .fillMaxSize()
@@ -1738,8 +1723,8 @@ private fun FullPlayer(
                             0.28f to Color.Black.copy(alpha = 0.15f),
                             0.65f to Color.Black.copy(alpha = 0.40f),
                             1.00f to Color.Black.copy(alpha = 0.72f),
-                        ),
-                    ),
+                        )
+                    )
             )
             // Subtle edge vignette
             Box(
@@ -2699,11 +2684,12 @@ private fun MainControls(state: MusicPlayerState, player: MusicPlayer, isTranslu
                 Icon(Icons.Filled.SkipPrevious, "Previous", Modifier.size(if (isTranslucent) 28.dp else 31.dp))
             }
         }
+        val pillShape = RoundedCornerShape(100)
         LiquidGlassSurface(
-            glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = playInteraction),
+            glassModifier = Modifier.liquidGlassChrome(pillShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = playInteraction),
             onClick = player::togglePlayPause,
             interactionSource = playInteraction,
-            shape = CircleShape,
+            shape = pillShape,
             color = liquidGlassContainerColor(if (isTranslucent) Color.White else MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)),
             contentColor = if (LocalLiquidGlass.current) {
                 if (isTranslucent) Color.White else MaterialTheme.colorScheme.primary
@@ -2711,13 +2697,18 @@ private fun MainControls(state: MusicPlayerState, player: MusicPlayer, isTranslu
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,
             modifier = Modifier
-                .size(if (isTranslucent) 72.dp else 76.dp)
+                .width(if (isTranslucent) 180.dp else 188.dp)
+                .height(if (isTranslucent) 56.dp else 60.dp)
                 .graphicsLayer {
                     scaleX = playScale
                     scaleY = playScale
                 },
         ) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
                 if (state.isBuffering) {
                     ExpressiveInlineLoadingIndicator(
                         size = if (isTranslucent) 28.dp else 30.dp,
@@ -2725,7 +2716,14 @@ private fun MainControls(state: MusicPlayerState, player: MusicPlayer, isTranslu
                         strokeWidth = 3.dp,
                     )
                 } else {
-                    AnimatedPlayPauseIcon(state.isPlaying, Modifier.size(if (isTranslucent) 36.dp else 39.dp))
+                    AnimatedPlayPauseIcon(state.isPlaying, Modifier.size(if (isTranslucent) 28.dp else 30.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = if (state.isPlaying) "Pause" else "Play",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = androidx.compose.material3.LocalContentColor.current
+                    )
                 }
             }
         }
@@ -3152,7 +3150,7 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
                     shape = RoundedCornerShape(20.dp),
                     color = liquidGlassContainerColor(
                         if (isCurrent) MaterialTheme.colorScheme.primaryContainer
-                        else MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.86f),
+                        else MaterialTheme.colorScheme.surfaceContainerHighest,
                     ),
                     contentColor = if (isCurrent) MaterialTheme.colorScheme.onPrimaryContainer
                     else MaterialTheme.colorScheme.onSurface,

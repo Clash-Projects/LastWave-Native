@@ -197,7 +197,7 @@
             </intent-filter>
         </receiver>
 
-        <!-- Now playing widget -->
+        <!-- Now playing widgets -->
         <receiver
             android:name=".widget.NowPlayingWidgetReceiver"
             android:exported="false"
@@ -208,6 +208,18 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/now_playing_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.LargeNowPlayingWidgetReceiver"
+            android:exported="false"
+            android:label="Large Now Playing">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/large_now_playing_widget_info" />
         </receiver>
 
         <!-- Receiver for cancel/reconnect actions on background-download notifications -->
