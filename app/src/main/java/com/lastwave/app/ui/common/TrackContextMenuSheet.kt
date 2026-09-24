@@ -84,6 +84,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lastwave.app.ui.generate.MixLauncher
 import com.lastwave.app.ui.theme.LocalLiquidGlass
+import com.lastwave.app.ui.theme.liquidGlassChrome
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.ui.navigation.ArtistAlbumNavigator
 import com.lastwave.app.ui.player.LocalMusicPlayer
@@ -379,6 +380,7 @@ fun TrackContextMenuSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        modifier = if (LocalLiquidGlass.current) Modifier.liquidGlassChrome(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), true) else Modifier,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         // Liquid-glass sheet: the window behind is already blurred by
         // EdgeToEdgeDialogWindow (blur-behind, API 31+), so the solid panel

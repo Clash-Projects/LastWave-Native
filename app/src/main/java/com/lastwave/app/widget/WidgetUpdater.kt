@@ -130,7 +130,9 @@ object WidgetUpdater {
 
     private suspend fun updateAll(context: Context): Boolean = runCatching {
             val manager = GlanceAppWidgetManager(context)
-            updateWidget(context, manager, NowPlayingWidget::class.java, NowPlayingWidget())
+            val updatedSmall = updateWidget(context, manager, NowPlayingWidget::class.java, NowPlayingWidget())
+            val updatedLarge = updateWidget(context, manager, LargeNowPlayingWidget::class.java, LargeNowPlayingWidget())
+            updatedSmall || updatedLarge
         }.onFailure { Log.w(TAG, "widget update failed", it) }.getOrDefault(false)
 
     private suspend fun <T : GlanceAppWidget> updateWidget(
