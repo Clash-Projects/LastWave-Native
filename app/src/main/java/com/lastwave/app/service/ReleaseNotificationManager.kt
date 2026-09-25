@@ -41,7 +41,7 @@ class ReleaseNotificationManager @Inject constructor(
 
     fun showNewReleaseNotification(songTitle: String, artistName: String) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_music_note) // using an existing icon, hopefully
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("New Release: $songTitle")
             .setContentText("$artistName just dropped a new track. Listen now!")
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)

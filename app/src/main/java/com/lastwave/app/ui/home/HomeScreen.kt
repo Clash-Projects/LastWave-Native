@@ -191,9 +191,9 @@ fun HomeScreen(
                         IconButton(onClick = onOpenSettings) {
                             ProfileAvatar(
                                 avatarUrl = uiState.stats?.avatarUrl,
-                                modifier = androidx.compose.ui.Modifier
+                                modifier = Modifier
                                     .size(36.dp)
-                                    .androidx.compose.foundation.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                                    .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
                             )
                         }
                     },
