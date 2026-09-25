@@ -65,6 +65,8 @@ class NativeProcessingAudioSink(
      * Renderer thread only, like the rest of the exclusive state.
      */
     private var exclusiveFallbackRateHz: Int? = null
+    /** Source sample rate for which [exclusiveFallbackRateHz] was intended. */
+    private var exclusiveFallbackSourceRateHz: Int? = null
     /** Source rate the exclusive converter is currently built for (0 = none). */
     private var exclusiveConvertSourceHz = 0
     /** Converted Float32 output awaiting USB queue space across calls. */
@@ -147,6 +149,11 @@ class NativeProcessingAudioSink(
         hasConfigured = true
         exclusiveStartFailed = false
         exclusiveEnded = false
+        // A fallback target calculated for a previous track (e.g. 176.4 -> 192 kHz)
+        // must never leak into a subsequent track with a different native rate (e.g. 44.1 kHz).
+        if (exclusiveFallbackSourceRateHz != null && exclusiveFallbackSourceRateHz != format.sampleRate) {
+            clearExclusiveConverter()
+        }
 
         if (format.sampleRate > 0) {
             onConfiguredFormat?.invoke(format.sampleRate, format.pcmEncoding, format.channelCount)
@@ -734,8 +741,9 @@ class NativeProcessingAudioSink(
      * next exclusive configure; cleared automatically when routing pushes
      * null (DAC removed, exclusive off, or rate natively supported).
      */
-    fun setExclusiveFallbackRateHz(sampleRateHz: Int?) {
+    fun setExclusiveFallbackRateHz(sampleRateHz: Int?, forSourceHz: Int? = null) {
         exclusiveFallbackRateHz = sampleRateHz?.takeIf { it > 0 }
+        exclusiveFallbackSourceRateHz = forSourceHz?.takeIf { it > 0 }
     }
 
     /** Actual rate the sink configured, 0 when unresolved. */
@@ -819,7 +827,7 @@ class NativeProcessingAudioSink(
         // open the stream at the supported rate (e.g. 88.2 -> 44.1, 44.1 -> 48 kHz)
         // and convert through native soxr so the DAC receives a supported clock rate.
         val fallbackTarget = exclusiveFallbackRateHz
-            ?.takeIf { it > 0 && it != format.sampleRate }
+            ?.takeIf { it > 0 && it != format.sampleRate && (exclusiveFallbackSourceRateHz == null || exclusiveFallbackSourceRateHz == format.sampleRate) }
         val started = runCatching {
             session.configure(format, fallbackTarget, bitDepthHintProvider?.invoke())
         }.getOrDefault(false)
@@ -836,6 +844,7 @@ class NativeProcessingAudioSink(
             ?: fallbackTarget
         if (negotiatedRate != null) {
             exclusiveFallbackRateHz = negotiatedRate
+            exclusiveFallbackSourceRateHz = format.sampleRate
             // Fail closed like a failed exclusive start below: an open
             // 44.1 kHz stream fed raw 88.2 kHz bytes is garbage, so tear the
             // half-opened session down and let the flow continue onto the
@@ -946,6 +955,8 @@ class NativeProcessingAudioSink(
     }
 
     private fun clearExclusiveConverter() {
+        exclusiveFallbackRateHz = null
+        exclusiveFallbackSourceRateHz = null
         exclusiveConvertSourceHz = 0
         pendingUsbFloat = null
     }
@@ -956,7 +967,9 @@ class NativeProcessingAudioSink(
         val activeUsbRate = exclusiveUsb?.currentRateHz() ?: 0
         if (activeUsbRate > 0 && activeUsbRate != source.sampleRate) return true
         val fallback = exclusiveFallbackRateHz ?: 0
-        return fallback > 0 && fallback != source.sampleRate
+        val fallbackSource = exclusiveFallbackSourceRateHz
+        return fallback > 0 && fallback != source.sampleRate &&
+            (fallbackSource == null || fallbackSource == source.sampleRate)
     }
 
     fun exclusiveSourceSampleRateHz(): Int = configuredFormat?.sampleRate ?: 0
@@ -980,7 +993,10 @@ class NativeProcessingAudioSink(
         val source = configuredFormat ?: return false
         val activeUsbRate = exclusiveUsb?.currentRateHz()?.takeIf { it > 0 && it != source.sampleRate }
         val target = activeUsbRate
-            ?: exclusiveFallbackRateHz?.takeIf { hz -> hz > 0 && hz != source.sampleRate }
+            ?: exclusiveFallbackRateHz?.takeIf { hz ->
+                hz > 0 && hz != source.sampleRate &&
+                    (exclusiveFallbackSourceRateHz == null || exclusiveFallbackSourceRateHz == source.sampleRate)
+            }
             ?: return false
         if (exclusiveConvertSourceHz != source.sampleRate || processor.nativeOutputSampleRate != target) {
             // Seek/flush raced the converter; rebuild cheaply inline.

@@ -409,6 +409,7 @@ class ExclusiveUsbOutput @Inject constructor(
         }
         startMediaTimeNeedsInit = true
         startMediaTimeUs = 0L
+        currentFallbackNegotiated = false
         mediaTimeBaseFrames = stream?.framesWritten ?: 0L
     }
 
@@ -458,6 +459,7 @@ class ExclusiveUsbOutput @Inject constructor(
             sourceEncoding == pcmEncoding &&
             useFloatWrite == floatSource
         ) {
+            currentFallbackNegotiated = rateOverrideHz != null
             paused = false
             startMediaTimeNeedsInit = true
             mediaTimeBaseFrames = reuse.framesWritten

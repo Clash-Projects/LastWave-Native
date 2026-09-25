@@ -609,6 +609,7 @@ class MusicPlayer @Inject constructor(
                     ?.let(preparedStreams::get)
                     ?.let { stream ->
                         publishResolvedQuality(stream)
+                        applyDacRoutingFor(dacRateFor(stream), stream.audioCodec)
                         if (!stream.isLossless && stream.audioCodec != "DOLBY ATMOS") {
                             scheduleQualityUpgrade(
                                 track = currentTrack,
@@ -617,6 +618,8 @@ class MusicPlayer @Inject constructor(
                                 currentStream = stream,
                             )
                         }
+                    } ?: run {
+                        applyDacRoutingFor(currentSourceRateHz())
                     }
                 if (outgoingPlayer == null) cancelCrossfade()
                 // Queue placeholders are intentionally non-playable until
@@ -2366,7 +2369,7 @@ class MusicPlayer @Inject constructor(
         audioSinks.forEach { sink ->
             runCatching { sink.setPreferredDevice(if (exclusive) null else device) }
             runCatching { sink.setOutputSampleRateOverride(if (isSpatial) null else effectiveRateHz) }
-            runCatching { sink.setExclusiveFallbackRateHz(fallbackHz) }
+            runCatching { sink.setExclusiveFallbackRateHz(fallbackHz, effectiveRateHz) }
         }
         android.util.Log.i(
             "MusicPlayer",
@@ -5342,6 +5345,9 @@ class MusicPlayer @Inject constructor(
                     isLossless = isFlac,
                 )
             }
+            onMain {
+                applyDacRoutingFor(currentSourceRateHz())
+            }
             updateBitPerfectState()
         } catch (_: Exception) {
             val isFlac = url.endsWith(".flac", ignoreCase = true)
@@ -5352,6 +5358,9 @@ class MusicPlayer @Inject constructor(
                     samplingRateKHz = if (isFlac) 44.1 else null,
                     isLossless = isFlac,
                 )
+            }
+            onMain {
+                applyDacRoutingFor(currentSourceRateHz())
             }
             updateBitPerfectState()
         } finally {
@@ -5566,7 +5575,7 @@ class MusicPlayer @Inject constructor(
         updateSignalPath()
     }
 
-    private companion object {
+    companion object {
         /**
          * Fallback target when the DAC descriptor lacks the source rate.
          * Resamples to a clock rate supported by the DAC (including 48kHz, 96kHz, etc.)
