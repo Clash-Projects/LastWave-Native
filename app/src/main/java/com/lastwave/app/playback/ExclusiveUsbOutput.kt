@@ -246,7 +246,11 @@ class ExclusiveUsbOutput @Inject constructor(
      * native source-rate behavior. The clock check below compares against
      * the actually-requested rate either way.
      */
-    fun configure(format: Format, rateOverrideHz: Int? = null): Boolean {
+    fun configure(
+        format: Format,
+        rateOverrideHz: Int? = null,
+        bitDepthHint: Int? = null,
+    ): Boolean {
         if (!wanted) return false
         if (format.sampleMimeType != MimeTypes.AUDIO_RAW ||
             format.sampleRate <= 0 ||
@@ -258,6 +262,12 @@ class ExclusiveUsbOutput @Inject constructor(
         val floatSource = format.pcmEncoding == C.ENCODING_PCM_FLOAT || rateOverrideHz != null
         val sourceBits = sourceBitDepth(format.pcmEncoding)
         if (!floatSource && sourceBits == 0) return false
+        val resolvedBits = when {
+            sourceBits > 0 -> sourceBits
+            bitDepthHint != null && bitDepthHint > 0 -> bitDepthHint
+            rateOverrideHz != null -> 24
+            else -> 16
+        }
         synchronized(lock) {
             if (!wanted) return false
             return runCatching {
@@ -267,7 +277,7 @@ class ExclusiveUsbOutput @Inject constructor(
                 configureLocked(
                     targetRate,
                     format.channelCount,
-                    if (rateOverrideHz != null) 24 else sourceBits,
+                    resolvedBits,
                     floatSource,
                     if (rateOverrideHz != null) C.ENCODING_PCM_FLOAT else format.pcmEncoding,
                     rateOverrideHz,
@@ -439,7 +449,7 @@ class ExclusiveUsbOutput @Inject constructor(
         } ?: return failLocked("no USB audio device")
         if (!manager.hasPermission(usbDevice)) return failLocked("USB permission missing")
 
-        val bits = if (floatSource || sourceBits == 0) 24 else sourceBits
+        val bits = if (sourceBits > 0) sourceBits else (if (floatSource) 24 else 16)
         val reuse = stream
         if (reuse != null &&
             reuse.isAlive &&

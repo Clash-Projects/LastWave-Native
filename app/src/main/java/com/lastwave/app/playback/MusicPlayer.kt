@@ -944,6 +944,12 @@ class MusicPlayer @Inject constructor(
                     sink.onConfiguredFormat = { rateHz, encoding, _ ->
                         onDecodedPcmFormatConfigured(rateHz, encoding)
                     }
+                    sink.bitDepthHintProvider = {
+                        val s = _state.value
+                        parseQualityFromCodec(s.audioCodec)?.substringBefore('/')?.toIntOrNull()
+                            ?: s.bitDepth
+                            ?: inferBitDepth(s)
+                    }
                     val isSpatial = isSpatialAudioCodec(_state.value.audioCodec)
                     sink.setBitPerfectRequested(!isSpatial && (bitPerfectEnabled || usbExclusivePrefEnabled))
                     sink.syncExclusiveUsb(handleAudioFocus && exclusiveUsbWanted())
@@ -1060,7 +1066,8 @@ class MusicPlayer @Inject constructor(
                             C.ENCODING_PCM_8BIT -> 8
                             C.ENCODING_PCM_16BIT -> 16
                             C.ENCODING_PCM_24BIT -> 24
-                            C.ENCODING_PCM_32BIT, C.ENCODING_PCM_FLOAT -> 32
+                            C.ENCODING_PCM_32BIT -> 32
+                            // Note: C.ENCODING_PCM_FLOAT is internal decoder float representation, NOT source bit depth
                             else -> null
                         }
                         _state.update { snapshot ->
@@ -1074,10 +1081,12 @@ class MusicPlayer @Inject constructor(
                                 val kHz = rateHz / 1000.0
                                 if (updated.samplingRateKHz != kHz) updated = updated.copy(samplingRateKHz = kHz)
                             }
-                            if (depth != null && (updated.bitDepth == null || depth > (updated.bitDepth ?: 0))) {
+                            if (depth != null && updated.bitDepth == null) {
                                 updated = updated.copy(bitDepth = depth)
                             } else if (updated.bitDepth == null && (updated.samplingRateKHz ?: 0.0) > 48.0) {
                                 updated = updated.copy(bitDepth = 24)
+                            } else if (updated.bitDepth == null && (detectedCodec == "FLAC" || isFlacLikeCodec(updated.audioCodec))) {
+                                updated = updated.copy(bitDepth = 16)
                             }
                             if (isSpatialAudioCodec(detectedCodec)) {
                                 updated = updated.copy(audioCodec = detectedCodec, isLossless = false)
@@ -1132,9 +1141,9 @@ class MusicPlayer @Inject constructor(
     private fun onDecodedPcmFormatConfigured(rateHz: Int, encoding: Int) {
         if (rateHz <= 0) return
         val depth = when (encoding) {
-            C.ENCODING_PCM_24BIT -> 24
-            C.ENCODING_PCM_32BIT, C.ENCODING_PCM_FLOAT -> 32
             C.ENCODING_PCM_16BIT -> 16
+            C.ENCODING_PCM_24BIT -> 24
+            C.ENCODING_PCM_32BIT -> 32
             else -> null
         }
         decodedSampleRateHz = rateHz
@@ -1142,7 +1151,7 @@ class MusicPlayer @Inject constructor(
         _state.update { current ->
             val isSpatial = isSpatialAudioCodec(current.audioCodec)
             if (isSpatial) return@update current
-            val effectiveDepth = current.bitDepth ?: depth ?: (if (rateHz > 48000) 24 else 16)
+            val effectiveDepth = current.bitDepth ?: depth ?: inferBitDepth(current) ?: (if (rateHz > 48000) 24 else 16)
             val isFlac = isFlacLikeCodec(current.audioCodec) || current.isLossless
             val hasExplicit = isExplicitQuality(current.audioCodec, current.bitDepth, current.samplingRateKHz)
             val updatedCodec = if (isFlac && (!hasExplicit || current.audioCodec == "FLAC" || current.audioCodec == "HI-RES FLAC" || current.audioCodec == "LOSSLESS")) {
@@ -2512,7 +2521,10 @@ class MusicPlayer @Inject constructor(
             SignalPathInput(
                 sourceLabel = srcLabel,
                 sourceRateHz = sourceRateHz,
-                sourceBitDepth = snapshot.bitDepth?.takeIf { it > 0 },
+                sourceBitDepth = parseQualityFromCodec(srcLabel)?.substringBefore('/')?.toIntOrNull()
+                    ?: parseQualityFromCodec(snapshot.audioCodec)?.substringBefore('/')?.toIntOrNull()
+                    ?: snapshot.bitDepth?.takeIf { it > 0 }
+                    ?: inferBitDepth(snapshot),
                 isLossless = snapshot.isLossless,
                 appOutputRateHz = appRateHz,
                 platformMixerRateHz = platformRateHz,

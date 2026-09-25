@@ -130,6 +130,22 @@ class ExclusiveUsbSignalPathTest {
     }
 
     @Test
+    fun sourceBitDepthMatchesLabelAndNeverForcedTo32Bit() {
+        val report = evaluateSignalPath(
+            exclusiveInput().copy(
+                sourceLabel = "16/48kHz",
+                sourceRateHz = 48000,
+                sourceBitDepth = 32, // Even if an upstream component erroneously reported 32
+                appOutputRateHz = 48000,
+            ),
+        )
+        assertThat(report.bitPerfect).isTrue()
+        val srcCheck = report.checks.first { it.labelRes == com.lastwave.app.R.string.signal_label_source }
+        assertThat(srcCheck.passed).isTrue()
+        assertThat(srcCheck.detailArgs).containsExactly("16/48kHz", 16, 48000).inOrder()
+    }
+
+    @Test
     fun exclusiveClockDriftUsesFrameClockNotExoPosition() {
         val tracker = StreamHealthTracker()
         val rate = 176_400

@@ -96,6 +96,7 @@ class NativeProcessingAudioSink(
     private var endOfStreamOutput: ByteBuffer? = null
 
     var onConfiguredFormat: ((sampleRateHz: Int, pcmEncoding: Int, channelCount: Int) -> Unit)? = null
+    var bitDepthHintProvider: (() -> Int?)? = null
 
     override fun setListener(listener: AudioSink.Listener) {
         enhancedDelegate.setListener(listener)
@@ -819,7 +820,9 @@ class NativeProcessingAudioSink(
         // and convert through native soxr so the DAC receives a supported clock rate.
         val fallbackTarget = exclusiveFallbackRateHz
             ?.takeIf { it > 0 && it != format.sampleRate }
-        val started = runCatching { session.configure(format, fallbackTarget) }.getOrDefault(false)
+        val started = runCatching {
+            session.configure(format, fallbackTarget, bitDepthHintProvider?.invoke())
+        }.getOrDefault(false)
         if (!started) {
             exclusiveStartFailed = true
             usbExclusive = false
