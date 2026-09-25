@@ -558,13 +558,13 @@ class ExclusiveUsbOutput @Inject constructor(
                 val applied = featureVolume?.setNormalized(combined) == true
                 if (!applied) {
                     hardwareVolume = false
-                    softwareGainValue = combined
-                    Log.w(TAG, "Feature Unit SET_CUR failed; falling back to software gain")
+                    softwareGainValue = UacFeatureVolume.perceptualLinearGain(combined)
+                    Log.w(TAG, "Feature Unit SET_CUR failed; falling back to perceptual software gain")
                 }
                 lastAppliedCombined = combined
             }
         } else {
-            softwareGainValue = combined
+            softwareGainValue = UacFeatureVolume.perceptualLinearGain(combined)
             lastAppliedCombined = combined
         }
     }
