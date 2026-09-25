@@ -21,9 +21,9 @@
  */
 #define USB_AUDIO_PACKETS_PER_URB 8
 
-/** Keep feedback out of the shared audio submit/reap queue until its
- * descriptor format has been verified on the connected device. */
-#define USB_AUDIO_ENABLE_CONTINUOUS_FEEDBACK 0
+/** Enable async feedback calibration from the DAC's ISO IN feedback endpoint
+ *  (bounded within ±2% of nominal rate) so the DAC's internal crystal clock paces URBs. */
+#define USB_AUDIO_ENABLE_CONTINUOUS_FEEDBACK 1
 
 /**
  * Number of URBs in the ring buffer.
@@ -37,10 +37,10 @@
 
 /**
  * Max bytes per URB data buffer.
- * Worst case: 384kHz * 4 bytes * 2 channels / 8000 microframes * 8 packets
- *           = 384 * 8 = 3072 bytes per URB. Round up generously.
+ * Generously sized (16 KB) for 352.8/384/768 kHz 32-bit stereo and bInterval > 1
+ * endpoints so residual buffers and URB slots never overflow or drop frames.
  */
-#define USB_AUDIO_URB_BUFFER_SIZE 4096
+#define USB_AUDIO_URB_BUFFER_SIZE 16384
 
 /**
  * One slot in the pre-allocated URB ring buffer.

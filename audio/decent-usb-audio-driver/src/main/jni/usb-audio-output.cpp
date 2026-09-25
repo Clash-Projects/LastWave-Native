@@ -51,17 +51,18 @@ static void convertFloatToInt16(const float *src, uint8_t *dst, int n) {
     auto *out = reinterpret_cast<int16_t *>(dst);
     for (int i = 0; i < n; i++) {
         float s = clampf(src[i]) * 32768.0f;
-        if (s > 32767.0f) s = 32767.0f;
-        if (s < -32768.0f) s = -32768.0f;
-        out[i] = (int16_t)s;
+        long v = std::lrintf(s);
+        if (v > 32767L) v = 32767L;
+        if (v < -32768L) v = -32768L;
+        out[i] = static_cast<int16_t>(v);
     }
 }
 static void convertFloatToInt24(const float *src, uint8_t *dst, int n) {
     for (int i = 0; i < n; i++) {
         float s = clampf(src[i]) * 8388608.0f;
-        if (s > 8388607.0f) s = 8388607.0f;
-        if (s < -8388608.0f) s = -8388608.0f;
-        int32_t v = (int32_t)s;
+        long v = std::lrintf(s);
+        if (v > 8388607L) v = 8388607L;
+        if (v < -8388608L) v = -8388608L;
         dst[i*3] = v & 0xFF; dst[i*3+1] = (v>>8) & 0xFF; dst[i*3+2] = (v>>16) & 0xFF;
     }
 }
@@ -71,9 +72,10 @@ static void convertFloatToInt32(const float *src, uint8_t *dst, int n) {
         // Use double: float32 can't represent 2147483648.0 exactly (needs 31 bits,
         // float32 has 24-bit mantissa). Double has 53-bit mantissa — sufficient.
         double s = (double)clampf(src[i]) * 2147483648.0;
-        if (s > 2147483647.0) s = 2147483647.0;
-        if (s < -2147483648.0) s = -2147483648.0;
-        out[i] = (int32_t)s;
+        long long v = std::llround(s);
+        if (v > 2147483647LL) v = 2147483647LL;
+        if (v < -2147483648LL) v = -2147483648LL;
+        out[i] = static_cast<int32_t>(v);
     }
 }
 
@@ -531,9 +533,15 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioStart(
         if (fb > 0) {
             const double period = ctx->usbSpeed == USB_SPEED_FULL
                     ? static_cast<double>(ctx->dataInterval) : packetPeriod;
-            ctx->calibratedFpmf = fb * period;
-            LOGI("Start: initial feedback=%.4f fpmf (%.1f Hz), nominal=%.4f (%.1f Hz)",
-                 fb, fb * 8000.0, nominalFpmf, nominalFpmf * 8000.0);
+            const double candidate = fb * period;
+            if (candidate >= nominalFpmf * 0.98 && candidate <= nominalFpmf * 1.02) {
+                ctx->calibratedFpmf = candidate;
+                LOGI("Start: initial feedback=%.4f fpmf (%.1f Hz), nominal=%.4f (%.1f Hz)",
+                     fb, fb * 8000.0, nominalFpmf, nominalFpmf * 8000.0);
+            } else {
+                LOGW("Start: feedback %.4f outside ±2%% of nominal %.4f; keeping nominal",
+                     candidate, nominalFpmf);
+            }
         } else {
             LOGW("Start: feedback not responding, using nominal %.4f fpmf", nominalFpmf);
         }
@@ -720,6 +728,15 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbReset(
 
 // ── Integer padding (lossless, zero float) ──────────────────────────
 
+// 16-bit → 24-bit packed: zero-fill LSB byte, copy 2 bytes
+void padInt16ToInt24(const uint8_t *src, uint8_t *dst, int numSamples) {
+    for (int i = 0; i < numSamples; i++) {
+        dst[i * 3]     = 0;
+        dst[i * 3 + 1] = src[i * 2];
+        dst[i * 3 + 2] = src[i * 2 + 1];
+    }
+}
+
 // 16-bit → 32-bit: shift left 16
 void padInt16ToInt32(const uint8_t *src, uint8_t *dst, int numSamples) {
     auto *out = reinterpret_cast<int32_t *>(dst);
@@ -741,6 +758,50 @@ void padInt24ToInt32(const uint8_t *src, uint8_t *dst, int numSamples) {
         int32_t s = src[i*3] | (src[i*3+1] << 8) | (src[i*3+2] << 16);
         if (s & 0x800000) s |= 0xFF000000;  // sign-extend from 24 to 32 bits
         out[i] = s << 8;  // shift to fill 32-bit range
+    }
+}
+
+// 32-bit → 24-bit packed (3 bytes/sample)
+void packInt32ToInt24(const uint8_t *src, uint8_t *dst, int numSamples) {
+    auto *in32 = reinterpret_cast<const int32_t *>(src);
+    bool isRightAligned24 = true;
+    bool hasNonZero = false;
+    int checkCount = std::min(numSamples, 64);
+    for (int i = 0; i < checkCount; i++) {
+        int32_t v = in32[i];
+        if (v != 0) hasNonZero = true;
+        int32_t signExt = (v << 8) >> 8;
+        if (v != signExt) {
+            isRightAligned24 = false;
+            break;
+        }
+    }
+    for (int i = 0; i < numSamples; i++) {
+        if (hasNonZero && isRightAligned24) {
+            dst[i * 3]     = src[i * 4];
+            dst[i * 3 + 1] = src[i * 4 + 1];
+            dst[i * 3 + 2] = src[i * 4 + 2];
+        } else {
+            dst[i * 3]     = src[i * 4 + 1];
+            dst[i * 3 + 1] = src[i * 4 + 2];
+            dst[i * 3 + 2] = src[i * 4 + 3];
+        }
+    }
+}
+
+// 24-bit packed → 16-bit (for 16-bit-only DACs)
+void packInt24ToInt16(const uint8_t *src, uint8_t *dst, int numSamples) {
+    for (int i = 0; i < numSamples; i++) {
+        dst[i * 2]     = src[i * 3 + 1];
+        dst[i * 2 + 1] = src[i * 3 + 2];
+    }
+}
+
+// 32-bit → 16-bit (for 16-bit-only DACs)
+void packInt32ToInt16(const uint8_t *src, uint8_t *dst, int numSamples) {
+    for (int i = 0; i < numSamples; i++) {
+        dst[i * 2]     = src[i * 4 + 2];
+        dst[i * 2 + 1] = src[i * 4 + 3];
     }
 }
 
@@ -777,6 +838,7 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
         int pktSizes[USB_AUDIO_PACKETS_PER_URB];
         int numPackets = 0;
         int urbBytes = 0;
+        const double savedAccumulator = ctx->frameAccumulator;
 
         for (int p = 0; p < USB_AUDIO_PACKETS_PER_URB; p++) {
             int remaining = dataLen - offset - urbBytes;
@@ -794,6 +856,10 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
                 break;
             }
 
+            if (urbBytes + b > USB_AUDIO_URB_BUFFER_SIZE) {
+                break;
+            }
+
             if (b > remaining) {
                 // Not enough data for a full packet — don't truncate.
                 // Save remaining data for next call to avoid short ISO packets
@@ -805,15 +871,19 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
             urbBytes += b;
             numPackets++;
         }
-        if (numPackets <= 0 || urbBytes <= 0) break;
+        if (numPackets <= 0 || urbBytes <= 0) {
+            ctx->frameAccumulator = savedAccumulator;
+            break;
+        }
 
         // Never submit short URBs (< full packet count). Short URBs create
         // empty ISO microframes in the xHCI schedule — the DAC receives
         // silence for those microframes → audible click/pop.
-        // Instead, save leftover data for the next write() call.
+        // Instead, roll back frameAccumulator and save leftover data for the next write() call.
         if (numPackets < USB_AUDIO_PACKETS_PER_URB) {
+            ctx->frameAccumulator = savedAccumulator;
             int leftover = dataLen - offset;
-            if (leftover > 0 && leftover < (int)sizeof(ctx->residualBuffer)) {
+            if (leftover > 0 && leftover <= (int)sizeof(ctx->residualBuffer)) {
                 memcpy(ctx->residualBuffer, data + offset, leftover);
                 ctx->residualBytes = leftover;
             }
@@ -852,7 +922,7 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
     // Save any leftover bytes for the next call.
     // This catches sub-frame leftovers (the short-URB case is handled above).
     int leftover = dataLen - offset;
-    if (leftover > 0 && leftover < (int)sizeof(ctx->residualBuffer) && ctx->residualBytes == 0) {
+    if (leftover > 0 && leftover <= (int)sizeof(ctx->residualBuffer) && ctx->residualBytes == 0) {
         memcpy(ctx->residualBuffer, data + offset, leftover);
         ctx->residualBytes = leftover;
     }
@@ -888,18 +958,41 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioWriteRaw(
     jbyte *rawData = env->GetByteArrayElements(pcm, nullptr);
     if (!rawData) return;
 
-    // Bit-depth matching: pad input to DAC's bit depth (lossless integer ops)
-    if (inputBitDepth == ctx->bitDepth) {
-        // Same bit depth: zero-copy
+    // Bit-depth matching: pad/pack input to DAC's bit depth (lossless integer ops)
+    if (inputBitDepth == 32 && ctx->bitDepth == 32) {
+        auto *in32 = reinterpret_cast<const int32_t *>(rawData);
+        bool isRightAligned24 = true;
+        bool hasLowByteData = false;
+        int checkCount = std::min(totalSamples, 64);
+        for (int i = 0; i < checkCount; i++) {
+            int32_t v = in32[i];
+            if ((v & 0xFF) != 0) hasLowByteData = true;
+            if (v != ((v << 8) >> 8)) {
+                isRightAligned24 = false;
+                break;
+            }
+        }
+        if (hasLowByteData && isRightAligned24) {
+            shiftInt32From24((uint8_t *)rawData, ctx->transferBuffer, totalSamples);
+        } else {
+            memcpy(ctx->transferBuffer, rawData, inputBytes);
+        }
+    } else if (inputBitDepth == ctx->bitDepth) {
+        // Same bit depth (16->16 or 24->24): zero-copy
         memcpy(ctx->transferBuffer, rawData, inputBytes);
+    } else if (inputBitDepth == 16 && ctx->bitDepth == 24) {
+        padInt16ToInt24((uint8_t *)rawData, ctx->transferBuffer, totalSamples);
     } else if (inputBitDepth == 16 && ctx->bitDepth == 32) {
         padInt16ToInt32((uint8_t *)rawData, ctx->transferBuffer, totalSamples);
     } else if (inputBitDepth == 24 && ctx->bitDepth == 32) {
         // 24-bit packed (3 bytes/sample) → 32-bit: sign-extend + shift left 8
         padInt24ToInt32((uint8_t *)rawData, ctx->transferBuffer, totalSamples);
-    } else if (inputBitDepth == 32 && ctx->bitDepth == 32) {
-        // libFLAC 24-bit → PCM_32BIT (sign-extended): shift left 8 to fill 32-bit range
-        shiftInt32From24((uint8_t *)rawData, ctx->transferBuffer, totalSamples);
+    } else if (inputBitDepth == 32 && ctx->bitDepth == 24) {
+        packInt32ToInt24((uint8_t *)rawData, ctx->transferBuffer, totalSamples);
+    } else if (inputBitDepth == 24 && ctx->bitDepth == 16) {
+        packInt24ToInt16((uint8_t *)rawData, ctx->transferBuffer, totalSamples);
+    } else if (inputBitDepth == 32 && ctx->bitDepth == 16) {
+        packInt32ToInt16((uint8_t *)rawData, ctx->transferBuffer, totalSamples);
     } else {
         LOGE("WriteRaw: unsupported bit-depth conversion %d → %d", inputBitDepth, ctx->bitDepth);
         env->ReleaseByteArrayElements(pcm, rawData, JNI_ABORT);

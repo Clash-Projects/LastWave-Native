@@ -2287,11 +2287,14 @@ class MusicPlayer @Inject constructor(
         // native rate (or no DAC / not exclusive): today's behavior.
         // The signal path stays honest automatically — the resampler check
         // fails, so a converted track can never report gold.
-        val dacRates = if (dac != null && dac.sampleRatesHz.isNotEmpty()) {
-            dac.sampleRatesHz
-        } else {
-            val known = exclusiveUsbOutput.lastHardwareRateHz()
-            if (known > 0) listOf(known) else emptyList()
+        val usbRates = exclusiveUsbOutput.supportedHardwareRatesHz()
+        val dacRates = when {
+            usbRates.isNotEmpty() -> usbRates
+            dac != null && dac.sampleRatesHz.isNotEmpty() -> dac.sampleRatesHz
+            else -> {
+                val known = exclusiveUsbOutput.lastHardwareRateHz()
+                if (known > 0) listOf(known) else emptyList()
+            }
         }
         val fallbackHz = if (exclusiveWanted && dac != null) {
             selectExclusiveRateFallback(effectiveRateHz, dacRates)

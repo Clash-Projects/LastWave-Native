@@ -819,13 +819,16 @@ class NativeProcessingAudioSink(
             }
             return false
         }
-        if (fallbackTarget != null) {
+        val negotiatedRate = session.currentRateHz().takeIf { it > 0 && it != format.sampleRate }
+            ?: fallbackTarget
+        if (negotiatedRate != null) {
+            exclusiveFallbackRateHz = negotiatedRate
             // Fail closed like a failed exclusive start below: an open
             // 44.1 kHz stream fed raw 88.2 kHz bytes is garbage, so tear the
             // half-opened session down and let the flow continue onto the
             // mixer path. Never stall here — the render watchdog would sit
             // on silence.
-            if (!setupExclusiveConverter(format, fallbackTarget)) {
+            if (!setupExclusiveConverter(format, negotiatedRate)) {
                 Log.w(TAG, "Exclusive rate fallback conversion unavailable; leaving exclusive USB")
                 runCatching { exclusiveUsb?.reset() }
                 exclusiveStartFailed = true
@@ -838,7 +841,7 @@ class NativeProcessingAudioSink(
             }
             Log.i(
                 TAG,
-                "EXCLUSIVE USB RATE FALLBACK ${format.sampleRate} -> $fallbackTarget Hz " +
+                "EXCLUSIVE USB RATE FALLBACK ${format.sampleRate} -> $negotiatedRate Hz " +
                     "(DAC lacks source rate; native soxr conversion, no gold)",
             )
         } else {
