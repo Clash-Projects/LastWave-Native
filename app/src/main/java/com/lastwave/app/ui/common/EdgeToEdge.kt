@@ -39,7 +39,8 @@ fun safeDrawingBottomPadding(): Dp =
 @Composable
 fun EdgeToEdgeDialogWindow() {
     val view = LocalView.current
-    DisposableEffect(view) {
+    val liquidGlass = com.lastwave.app.ui.theme.LocalLiquidGlass.current
+    DisposableEffect(view, liquidGlass) {
         var current: ViewParent? = view.parent
         var window: Window? = null
         var isDialog = false
@@ -71,13 +72,21 @@ fun EdgeToEdgeDialogWindow() {
             }
             if (isDialog) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    w.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                    val lp = w.attributes
-                    lp.setBlurBehindRadius(150)
-                    w.attributes = lp
-                    runCatching { w.setBackgroundBlurRadius(150) }
+                    if (liquidGlass) {
+                        w.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                        val lp = w.attributes
+                        lp.setBlurBehindRadius(150)
+                        w.attributes = lp
+                        runCatching { w.setBackgroundBlurRadius(150) }
+                    } else {
+                        w.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                        val lp = w.attributes
+                        lp.setBlurBehindRadius(0)
+                        w.attributes = lp
+                        runCatching { w.setBackgroundBlurRadius(0) }
+                    }
                 }
-                w.setDimAmount(0.18f)
+                w.setDimAmount(if (liquidGlass) 0.18f else 0.5f)
             }
         }
         onDispose {}

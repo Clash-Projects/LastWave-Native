@@ -55,6 +55,7 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DragHandle
@@ -440,11 +441,21 @@ fun PlaylistDetailScreen(
                                 fontWeight = FontWeight.Bold,
                             )
                         }
-                        // Download all songs not yet saved in Music/LastWave
+                        // Locate currently playing song
                         FilledTonalIconButton(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                viewModel.downloadPlaylist(playlistId)
+                                val playingIndex = displayTracks.indexOfFirst { track ->
+                                    playbackState.isPlaying &&
+                                    playbackState.current?.title.equals(track.name, ignoreCase = true) &&
+                                    playbackState.current?.artist.equals(track.artist, ignoreCase = true)
+                                }
+                                if (playingIndex != -1) {
+                                    val offset = 1 + (if (!isReorderLocked && !reorderEnabled && !playlist.isYouTubeOnly && displayTracks.size > 1) 1 else 0)
+                                    dragScope.launch {
+                                        listState.animateScrollToItem(playingIndex + offset)
+                                    }
+                                }
                             },
                             shape = CircleShape,
                             colors = IconButtonDefaults.filledTonalIconButtonColors(
@@ -452,7 +463,7 @@ fun PlaylistDetailScreen(
                             ),
                             modifier = Modifier.size(50.dp),
                         ) {
-                            Icon(Icons.Filled.Download, contentDescription = "Download all songs", modifier = Modifier.size(22.dp))
+                            Icon(Icons.Filled.MyLocation, contentDescription = "Locate playing song", modifier = Modifier.size(22.dp))
                         }
                     }
 

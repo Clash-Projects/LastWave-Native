@@ -246,30 +246,21 @@ private fun EmptyWidget(hasNotificationAccess: Boolean) {
 
 @Composable
 private fun PlayerWidget(state: LargeWidgetUiState) {
-    Column(
+    Row(
         modifier = playerSurface(GlanceModifier)
             .clickable(actionRunCallback<OpenLastWaveAction>())
-            .padding(20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        MiniArtwork(state.art, 140, state.isPlaying, state.animationFrame)
-        Spacer(GlanceModifier.height(16.dp))
-        TrackTitle(state.title, size = 18)
-        Spacer(GlanceModifier.height(4.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TrackArtist(state.artist, size = 14)
-            Spacer(GlanceModifier.width(6.dp))
-            Text(
-                text = if (state.isPlaying) "• Playing" else "• Paused",
-                style = TextStyle(
-                    color = if (state.isPlaying) GlanceTheme.colors.primary else GlanceTheme.colors.onSurfaceVariant,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                ),
-            )
+        MiniArtwork(state.art, 84, state.isPlaying, state.animationFrame)
+        Spacer(GlanceModifier.width(16.dp))
+        Column(modifier = GlanceModifier.defaultWeight()) {
+            TrackTitle(state.title, size = 16)
+            Spacer(GlanceModifier.height(2.dp))
+            TrackArtist(state.artist, size = 13)
+            Spacer(GlanceModifier.height(12.dp))
+            PlaybackControls(state.isPlaying)
         }
-        Spacer(GlanceModifier.height(16.dp))
-        PlaybackControls(state.isPlaying)
     }
 }
 

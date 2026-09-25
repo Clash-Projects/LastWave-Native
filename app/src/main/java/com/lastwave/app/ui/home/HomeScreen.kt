@@ -189,7 +189,12 @@ fun HomeScreen(
                         HeaderActionIcon(Icons.Filled.Explore, "Discover", onOpenDiscover)
                         HeaderActionIcon(Icons.Filled.Search, "Search", onOpenSearch)
                         IconButton(onClick = onOpenSettings) {
-                            ProfileAvatar(avatarUrl = uiState.stats?.avatarUrl, modifier = Modifier.size(30.dp))
+                            ProfileAvatar(
+                                avatarUrl = uiState.stats?.avatarUrl,
+                                modifier = androidx.compose.ui.Modifier
+                                    .size(36.dp)
+                                    .androidx.compose.foundation.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                            )
                         }
                     },
                 )

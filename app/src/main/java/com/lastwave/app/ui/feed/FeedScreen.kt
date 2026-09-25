@@ -292,13 +292,32 @@ fun FeedScreen(
                     }
                     }
 
-                    val quickTiles = if (state.feedData.isYtConnected) {
+                    val baseQuickTiles = if (state.feedData.isYtConnected) {
                         state.feedData.quickTiles
                     } else {
                         state.feedData.quickTiles.filter {
                             it.collection != "yt_liked" && it.collection != "yt_recent" &&
                                 it.playlistId != "yt_liked" && it.playlistId != "yt_recent"
                         }
+                    }
+
+                    val quickTiles = baseQuickTiles.map { tile ->
+                        if (tile.title.equals("Release Mix", ignoreCase = true) || tile.collection == "new_releases") {
+                            tile.copy(title = "New Release Mix", collection = "new_releases")
+                        } else {
+                            tile
+                        }
+                    }.toMutableList()
+
+                    if (quickTiles.none { it.title.equals("Discover Mix", ignoreCase = true) || it.collection == "discover_mix" }) {
+                        quickTiles.add(
+                            0,
+                            com.lastwave.app.data.feed.FeedQuickTile(
+                                title = "Discover Mix",
+                                subtitle = "Updated today",
+                                collection = "discover_mix"
+                            )
+                        )
                     }
                     if (isSectionVisible(HomeSection.QUICK_TILES) && quickTiles.isNotEmpty()) {
                         item(key = "quick_tiles") {
@@ -1202,18 +1221,22 @@ private fun QuickTileCard(
     val isYtLikedTile = tile.collection == "yt_liked" || tile.playlistId == "yt_liked"
     val isLocalLikedTile = tile.isLiked && !isYtLikedTile
     val isLikedTile = isYtLikedTile || isLocalLikedTile
-    val isMixTile = tile.collection == "radio" || tile.title.contains("Mix", ignoreCase = true)
     val isNewReleasesTile = tile.collection == "new_releases"
+    val isDiscoverMixTile = tile.collection == "discover_mix"
+    val isMixTile = tile.collection == "radio" || tile.title.contains("Mix", ignoreCase = true) && !isNewReleasesTile && !isDiscoverMixTile
 
     val iconGradient = when {
         isLikedTile -> Brush.linearGradient(
             colors = listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.primary),
         )
-        isMixTile -> Brush.linearGradient(
-            colors = listOf(MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.secondary),
-        )
         isNewReleasesTile -> Brush.linearGradient(
             colors = listOf(MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.tertiary),
+        )
+        isDiscoverMixTile -> Brush.linearGradient(
+            colors = listOf(MaterialTheme.colorScheme.secondary, MaterialTheme.colorScheme.primary),
+        )
+        isMixTile -> Brush.linearGradient(
+            colors = listOf(MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.secondary),
         )
         else -> Brush.linearGradient(
             colors = listOf(
@@ -1228,8 +1251,9 @@ private fun QuickTileCard(
         shape = tileShape,
         color = when {
             isLikedTile -> MaterialTheme.colorScheme.primaryContainer
-            isMixTile -> MaterialTheme.colorScheme.secondaryContainer
             isNewReleasesTile -> MaterialTheme.colorScheme.tertiaryContainer
+            isDiscoverMixTile -> MaterialTheme.colorScheme.secondaryContainer
+            isMixTile -> MaterialTheme.colorScheme.secondaryContainer
             else -> MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f)
         },
         border = androidx.compose.foundation.BorderStroke(
