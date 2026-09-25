@@ -200,7 +200,7 @@
         <!-- Now playing widgets -->
         <receiver
             android:name=".widget.NowPlayingWidgetReceiver"
-            android:exported="false"
+            android:exported="true"
             android:label="@string/widget_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -212,7 +212,7 @@
 
         <receiver
             android:name=".widget.LargeNowPlayingWidgetReceiver"
-            android:exported="false"
+            android:exported="true"
             android:label="Large Now Playing">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />

@@ -118,8 +118,8 @@ fun WavySeekBar(
 
     // 100% Material Design 3 Harmonized Theme Colors
     val primaryColor = if (isTranslucent) Color.White else MaterialTheme.colorScheme.primary
-    val secondaryColor = if (isTranslucent) Color.White else MaterialTheme.colorScheme.secondary
-    val tertiaryColor = if (isTranslucent) Color.White else MaterialTheme.colorScheme.tertiary
+    val secondaryColor = if (isTranslucent) Color.White else MaterialTheme.colorScheme.primary
+    val tertiaryColor = if (isTranslucent) Color.White else MaterialTheme.colorScheme.primary
 
     val inactiveColor = if (isTranslucent) {
         Color.White.copy(alpha = 0.22f)

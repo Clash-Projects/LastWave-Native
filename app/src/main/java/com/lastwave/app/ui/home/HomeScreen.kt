@@ -8,6 +8,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
@@ -189,7 +190,12 @@ fun HomeScreen(
                         HeaderActionIcon(Icons.Filled.Explore, "Discover", onOpenDiscover)
                         HeaderActionIcon(Icons.Filled.Search, "Search", onOpenSearch)
                         IconButton(onClick = onOpenSettings) {
-                            ProfileAvatar(avatarUrl = uiState.stats?.avatarUrl, modifier = Modifier.size(30.dp))
+                            ProfileAvatar(
+                                avatarUrl = uiState.stats?.avatarUrl,
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                            )
                         }
                     },
                 )

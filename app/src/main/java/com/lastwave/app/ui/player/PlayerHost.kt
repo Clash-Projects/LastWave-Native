@@ -599,7 +599,18 @@ fun PlayerHost(
             Box(Modifier.fillMaxSize().liquidGlassSource(if (miniGlass) miniBackdrop else null)) {
                 content()
             }
-            if (miniPlayerVisible) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = miniPlayerVisible,
+                enter = androidx.compose.animation.slideInVertically(
+                    animationSpec = ExpressiveMotion.smoothSpring(),
+                    initialOffsetY = { it },
+                ) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180)),
+                exit = androidx.compose.animation.slideOutVertically(
+                    animationSpec = ExpressiveMotion.smoothSpring(),
+                    targetOffsetY = { it },
+                ) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(150)),
+                modifier = Modifier.align(Alignment.BottomCenter)
+            ) {
                 MiniPlayer(
                     state = state,
                     progressState = viewModel.progressState,
@@ -611,7 +622,6 @@ fun PlayerHost(
                     bottomPadding = if (hasBottomNavigation) 92.dp else 12.dp,
                     edgeToEdge = !hasBottomNavigation,
                     backdrop = if (miniGlass) miniBackdrop else null,
-                    modifier = Modifier.align(Alignment.BottomCenter),
                 )
             }
             if (activeDownloads.isNotEmpty() && !expanded) {
@@ -1090,6 +1100,7 @@ private fun AddToPlaylistDialog(
 ) {
     val sanitizedPlaylists = remember(playlists) { playlists.distinctBy { it.id } }
     var newPlaylistName by remember(track) { mutableStateOf("") }
+    var showNewPlaylistDialog by remember(track) { mutableStateOf(false) }
     var selectedPlaylistIds by remember(track) { mutableStateOf(emptySet<Long>()) }
     var duplicateConfirmation by remember(track) { mutableStateOf<Set<Long>?>(null) }
     var duplicatePlaylistIds by remember(track) { mutableStateOf(emptySet<Long>()) }
@@ -1320,6 +1331,17 @@ private fun AddToPlaylistDialog(
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
+                Surface(
+                    onClick = { showNewPlaylistDialog = true },
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(44.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.Add, contentDescription = "Create playlist")
+                    }
+                }
             }
 
             Surface(
@@ -1434,32 +1456,47 @@ private fun AddToPlaylistDialog(
                 }
             }
 
-            OutlinedTextField(
-                value = newPlaylistName,
-                onValueChange = { newPlaylistName = it },
-                label = { Text("New playlist name") },
-                singleLine = true,
-                trailingIcon = {
-                    IconButton(
-                        enabled = newPlaylistName.isNotBlank(),
-                        onClick = {
-                            val cleanName = newPlaylistName.trim()
-                            val existingPlaylist = sanitizedPlaylists.firstOrNull {
-                                it.mode == "custom" && it.title.equals(cleanName, ignoreCase = true)
+            if (showNewPlaylistDialog) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { showNewPlaylistDialog = false },
+                    title = { Text("New playlist") },
+                    text = {
+                        OutlinedTextField(
+                            value = newPlaylistName,
+                            onValueChange = { newPlaylistName = it },
+                            label = { Text("Name") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            enabled = newPlaylistName.isNotBlank(),
+                            onClick = {
+                                val cleanName = newPlaylistName.trim()
+                                val existingPlaylist = sanitizedPlaylists.firstOrNull {
+                                    it.mode == "custom" && it.title.equals(cleanName, ignoreCase = true)
+                                }
+                                if (existingPlaylist == null) {
+                                    onCreate(cleanName)
+                                } else {
+                                    selectedPlaylistIds = setOf(existingPlaylist.id)
+                                    requestAdd(setOf(existingPlaylist.id))
+                                }
+                                showNewPlaylistDialog = false
+                                newPlaylistName = ""
                             }
-                            if (existingPlaylist == null) {
-                                onCreate(cleanName)
-                            } else {
-                                selectedPlaylistIds = setOf(existingPlaylist.id)
-                                requestAdd(setOf(existingPlaylist.id))
-                            }
-                        },
-                    ) {
-                        Icon(Icons.Filled.Add, contentDescription = "Create playlist and add track")
+                        ) {
+                            Text("Create")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showNewPlaylistDialog = false }) {
+                            Text("Cancel")
+                        }
                     }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
+                )
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -2395,9 +2432,10 @@ internal fun PlayerProgressSlider(
     modifier: Modifier = Modifier,
     interactionSource: MutableInteractionSource,
 ) {
-    val primary = MaterialTheme.colorScheme.primary
-    val tertiary = MaterialTheme.colorScheme.tertiary
-    val inactive = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.20f else 0.12f)
+    val liquidGlass = com.lastwave.app.ui.theme.LocalLiquidGlass.current
+    val primary = if (liquidGlass) Color.White else MaterialTheme.colorScheme.primary
+    val activeTrackEndColor = if (liquidGlass) Color.White else MaterialTheme.colorScheme.primary
+    val inactive = if (liquidGlass) Color.White.copy(alpha = 0.25f) else MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.20f else 0.12f)
     val range = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.0001f)
     val fraction = ((value - valueRange.start) / range).coerceIn(0f, 1f)
 
@@ -2422,7 +2460,7 @@ internal fun PlayerProgressSlider(
                 color = inactive,
                 start = androidx.compose.ui.geometry.Offset(startX, centerY),
                 end = androidx.compose.ui.geometry.Offset(endX, centerY),
-                strokeWidth = 3.dp.toPx(),
+                strokeWidth = if (liquidGlass) 4.dp.toPx() else 3.dp.toPx(),
                 cap = StrokeCap.Round,
             )
             if (activeEndX > startX) {
@@ -2430,14 +2468,14 @@ internal fun PlayerProgressSlider(
                     brush = Brush.horizontalGradient(
                         colors = listOf(
                             primary.copy(alpha = if (enabled) 1f else 0.42f),
-                            tertiary.copy(alpha = if (enabled) 0.92f else 0.36f),
+                            activeTrackEndColor.copy(alpha = if (enabled) 0.92f else 0.36f),
                         ),
                         startX = startX,
                         endX = activeEndX,
                     ),
                     start = androidx.compose.ui.geometry.Offset(startX, centerY),
                     end = androidx.compose.ui.geometry.Offset(activeEndX, centerY),
-                    strokeWidth = 4.dp.toPx(),
+                    strokeWidth = if (liquidGlass) 5.dp.toPx() else 4.dp.toPx(),
                     cap = StrokeCap.Round,
                 )
             }
@@ -2448,7 +2486,7 @@ internal fun PlayerProgressSlider(
             inactiveTrackColor = Color.Transparent,
             activeTickColor = Color.Transparent,
             inactiveTickColor = Color.Transparent,
-            disabledThumbColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.34f),
+            disabledThumbColor = (if (liquidGlass) Color.White else MaterialTheme.colorScheme.onSurface).copy(alpha = 0.34f),
             disabledActiveTrackColor = Color.Transparent,
             disabledInactiveTrackColor = Color.Transparent,
             disabledActiveTickColor = Color.Transparent,
@@ -3148,10 +3186,11 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
                     glassModifier = Modifier.liquidGlassChrome(RoundedCornerShape(20.dp), LocalLiquidGlass.current),
                     onClick = { player.seekToQueueItem(index) },
                     shape = RoundedCornerShape(20.dp),
-                    color = liquidGlassContainerColor(
-                        if (isCurrent) MaterialTheme.colorScheme.primaryContainer
-                        else MaterialTheme.colorScheme.surfaceContainerHighest,
-                    ),
+                    color = if (LocalLiquidGlass.current) {
+                        (if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh).copy(alpha = 0.4f)
+                    } else {
+                        if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest
+                    },
                     contentColor = if (isCurrent) MaterialTheme.colorScheme.onPrimaryContainer
                     else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier
