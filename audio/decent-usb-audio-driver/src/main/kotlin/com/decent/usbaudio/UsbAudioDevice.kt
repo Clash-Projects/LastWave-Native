@@ -656,9 +656,19 @@ class UsbAudioDevice private constructor(private val context: Context) {
                     if (dMin in 8000..1536000 && dMax >= dMin) {
                         if (dMin == dMax || dRes <= 0) {
                             csRates += dMin
-                        } else {
+                        } else if (dRes == 44100 || (dMin % 44100 == 0 && dMax % 44100 == 0)) {
                             for (std in standardRates) {
-                                if (std in dMin..dMax && ((std - dMin) % dRes == 0)) {
+                                if (std % 44100 == 0 && std in dMin..dMax) csRates += std
+                            }
+                        } else if (dRes == 48000 || (dMin % 48000 == 0 && dMax % 48000 == 0)) {
+                            for (std in standardRates) {
+                                if (std % 48000 == 0 && std in dMin..dMax) csRates += std
+                            }
+                        } else {
+                            csRates += dMin
+                            csRates += dMax
+                            for (std in standardRates) {
+                                if (std % 48000 == 0 && std in dMin..dMax && ((std - dMin) % dRes == 0)) {
                                     csRates += std
                                 }
                             }
@@ -693,8 +703,10 @@ class UsbAudioDevice private constructor(private val context: Context) {
                         if (samFreqType == 0 && bLength >= 14) {
                             val lower = readLeInt24(raw, i + 8)
                             val upper = readLeInt24(raw, i + 11)
+                            if (lower in 8000..1536000) rates += lower
+                            if (upper in 8000..1536000) rates += upper
                             for (std in standardRates) {
-                                if (std in lower..upper) rates += std
+                                if (std % 48000 == 0 && std in lower..upper) rates += std
                             }
                         } else if (samFreqType > 0) {
                             for (k in 0 until samFreqType) {
@@ -708,6 +720,30 @@ class UsbAudioDevice private constructor(private val context: Context) {
                     }
                 }
                 i += bLength
+            }
+        }
+
+        // Single-crystal DACs (only 1 Clock Source and no Clock Selector) derive high-speed
+        // clocks from a 48 kHz-family crystal (12 / 24.576 MHz) where 48/96/192/384 kHz have
+        // exact integer frames per 125us USB microframe (6/12/24/48). High-rate 44.1 kHz
+        // multiples (88.2/176.4/352.8/705.6 kHz -> 11.025/22.05/44.1 frames/microframe) require
+        // a dedicated dual-crystal 22.5792/45.1584 MHz oscillator (multiple CLOCK_SOURCEs or
+        // CLOCK_SELECTOR 0x0B). Exclude those fractional high-rate 44.1k multiples on single-clock
+        // DACs so they cleanly resample via 64-bit libsoxr to 96/192/384/48 kHz.
+        val hasDedicated441Crystal = parsedClockSelectorId > 0 ||
+            parsedClockSourceIds.size >= 2 ||
+            clockSourceRateMap.size >= 2 ||
+            rates.none { it % 48000 == 0 }
+        if (!hasDedicated441Crystal) {
+            val removed = rates.filter { it > 44100 && it % 44100 == 0 }
+            if (removed.isNotEmpty()) {
+                rates.removeAll(removed.toSet())
+                Log.i(
+                    TAG,
+                    "querySupportedSampleRates: single-clock DAC lacks dedicated 44.1k crystal " +
+                        "(sources=${parsedClockSourceIds.size}, selector=$parsedClockSelectorId); " +
+                        "routing $removed to 48k-family hardware clock via soxr",
+                )
             }
         }
 

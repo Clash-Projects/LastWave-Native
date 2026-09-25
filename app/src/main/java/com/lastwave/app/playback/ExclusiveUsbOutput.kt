@@ -142,7 +142,18 @@ class ExclusiveUsbOutput @Inject constructor(
         val supported = supportedHz.filter { it > 0 }.toSet()
         if (supported.isEmpty()) return null
         if (sourceHz in supported) return sourceHz
-        // 1. Highest supported integer divisor in the same clock family (e.g. 352.8 -> 176.4 -> 88.2 -> 44.1 kHz)
+        // When a DAC lacks a high-rate 44.1 kHz crystal (88.2 / 176.4 / 352.8 / 705.6 kHz),
+        // prefer its native 48 kHz-family hardware crystal (96 / 192 / 384 / 48 kHz) where
+        // USB High-Speed 125us microframes have exact integer frame counts (12 / 24 / 48 / 6).
+        if (sourceHz > 44100 && sourceHz % 44100 == 0) {
+            val family48 = supported.filter { it % 48000 == 0 }
+            if (family48.isNotEmpty()) {
+                val hiRes48 = family48.filter { it >= sourceHz }.minOrNull()
+                    ?: family48.maxOrNull()
+                if (hiRes48 != null) return hiRes48
+            }
+        }
+        // 1. Highest supported integer divisor in the same clock family (e.g. 192 -> 96 -> 48 kHz)
         val divisors = supported.filter { it < sourceHz && sourceHz % it == 0 }
         divisors.maxOrNull()?.let { return it }
         // 2. Lowest supported integer multiple in the same clock family (e.g. 44.1 -> 88.2 kHz)
@@ -153,7 +164,7 @@ class ExclusiveUsbOutput @Inject constructor(
         val is48 = sourceHz % 48000 == 0
         val sameFamily = supported.filter { (is441 && it % 44100 == 0) || (is48 && it % 48000 == 0) }
         sameFamily.minByOrNull { kotlin.math.abs(it - sourceHz) }?.let { return it }
-        // 4. Highest high-res rate <= sourceHz (e.g. 96 kHz or 48 kHz for 88.2/176.4 kHz on 48k-only DACs)
+        // 4. Highest high-res rate <= sourceHz (e.g. 96 kHz or 48 kHz)
         val belowOrEqual = supported.filter { it <= sourceHz }
         belowOrEqual.maxOrNull()?.let { return it }
         return supported.minByOrNull { kotlin.math.abs(it - sourceHz) }
@@ -266,7 +277,11 @@ class ExclusiveUsbOutput @Inject constructor(
         }
     }
 
-    fun write(buffer: ByteBuffer, presentationTimeUs: Long): Boolean {
+    fun write(
+        buffer: ByteBuffer,
+        presentationTimeUs: Long,
+        isFloatBuffer: Boolean = useFloatWrite,
+    ): Boolean {
         if (!buffer.hasRemaining()) return true
         if (paused) return false
         val running = stream
@@ -285,7 +300,7 @@ class ExclusiveUsbOutput @Inject constructor(
             startMediaTimeNeedsInit = false
         }
         recheckClockLocked()
-        val chunk = if (useFloatWrite) {
+        val chunk = if (isFloatBuffer) {
             val floats = FloatArray(size / Float.SIZE_BYTES)
             buffer.order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(floats)
             buffer.position(buffer.limit())

@@ -21,9 +21,9 @@
  */
 #define USB_AUDIO_PACKETS_PER_URB 8
 
-/** Enable async feedback calibration from the DAC's ISO IN feedback endpoint
- *  (bounded within ±2% of nominal rate) so the DAC's internal crystal clock paces URBs. */
-#define USB_AUDIO_ENABLE_CONTINUOUS_FEEDBACK 1
+/** Keep feedback out of the shared audio submit/reap queue because concurrent
+ *  ISO IN feedback URBs on the same usbdevfs fd disrupt ISO OUT timing on Android xHCI. */
+#define USB_AUDIO_ENABLE_CONTINUOUS_FEEDBACK 0
 
 /**
  * Number of URBs in the ring buffer.

@@ -2288,9 +2288,12 @@ class MusicPlayer @Inject constructor(
         // The signal path stays honest automatically — the resampler check
         // fails, so a converted track can never report gold.
         val usbRates = exclusiveUsbOutput.supportedHardwareRatesHz()
+        val platformRates = dac?.sampleRatesHz.orEmpty()
         val dacRates = when {
+            usbRates.isNotEmpty() && platformRates.isNotEmpty() ->
+                usbRates.filter { it in platformRates }.ifEmpty { usbRates }
             usbRates.isNotEmpty() -> usbRates
-            dac != null && dac.sampleRatesHz.isNotEmpty() -> dac.sampleRatesHz
+            platformRates.isNotEmpty() -> platformRates
             else -> {
                 val known = exclusiveUsbOutput.lastHardwareRateHz()
                 if (known > 0) listOf(known) else emptyList()
@@ -5515,7 +5518,19 @@ class MusicPlayer @Inject constructor(
             val supported = supportedHz.filter { it > 0 }.toSet()
             if (supported.isEmpty() || src in supported) return null
 
-            // 1. Same-family integer divisor (e.g. 88.2 -> 44.1, 192 -> 96 or 48)
+            // When a DAC lacks a high-rate 44.1 kHz crystal (88.2 / 176.4 / 352.8 / 705.6 kHz),
+            // prefer its native 48 kHz-family hardware crystal (96 / 192 / 384 / 48 kHz) where
+            // USB High-Speed 125us microframes have exact integer frame counts (12 / 24 / 48 / 6).
+            if (src > 44100 && src % 44100 == 0) {
+                val family48 = supported.filter { it % 48000 == 0 }
+                if (family48.isNotEmpty()) {
+                    val hiRes48 = family48.filter { it >= src }.minOrNull()
+                        ?: family48.maxOrNull()
+                    if (hiRes48 != null) return hiRes48
+                }
+            }
+
+            // 1. Same-family integer divisor (e.g. 192 -> 96 or 48)
             val divisors = supported.filter { it < src && src % it == 0 }
             divisors.maxOrNull()?.let { return it }
 
