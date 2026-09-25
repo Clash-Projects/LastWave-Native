@@ -95,6 +95,8 @@ class NativeProcessingAudioSink(
     private var endOfStreamQueued = false
     private var endOfStreamOutput: ByteBuffer? = null
 
+    var onConfiguredFormat: ((sampleRateHz: Int, pcmEncoding: Int, channelCount: Int) -> Unit)? = null
+
     override fun setListener(listener: AudioSink.Listener) {
         enhancedDelegate.setListener(listener)
         fallbackDelegate.setListener(listener)
@@ -144,6 +146,10 @@ class NativeProcessingAudioSink(
         hasConfigured = true
         exclusiveStartFailed = false
         exclusiveEnded = false
+
+        if (format.sampleRate > 0) {
+            onConfiguredFormat?.invoke(format.sampleRate, format.pcmEncoding, format.channelCount)
+        }
 
         if (tryConfigureExclusiveUsb(format)) {
             bitPerfectAtConfigure = true
@@ -941,7 +947,7 @@ class NativeProcessingAudioSink(
         pendingUsbFloat = null
     }
 
-    private fun isExclusiveConverting(): Boolean {
+    fun isExclusiveConverting(): Boolean {
         val source = configuredFormat ?: return false
         if (!usbExclusive) return false
         val activeUsbRate = exclusiveUsb?.currentRateHz() ?: 0
@@ -949,6 +955,8 @@ class NativeProcessingAudioSink(
         val fallback = exclusiveFallbackRateHz ?: 0
         return fallback > 0 && fallback != source.sampleRate
     }
+
+    fun exclusiveSourceSampleRateHz(): Int = configuredFormat?.sampleRate ?: 0
 
     /**
      * Converted exclusive write: source PCM through native soxr at the

@@ -110,6 +110,26 @@ class ExclusiveUsbSignalPathTest {
     }
 
     @Test
+    fun clockFallbackResampledFailsGoldWithDacUnsupportedDetail() {
+        val report = evaluateSignalPath(
+            exclusiveInput().copy(
+                sourceRateHz = 88200,
+                appOutputRateHz = 96000,
+                clockFallbackResampled = true,
+                exclusiveClockMatched = false,
+            ),
+        )
+        assertThat(report.bitPerfect).isFalse()
+        assertThat(report.clockFallbackResampled).isTrue()
+        val resamplerCheck = report.checks.first { it.labelRes == com.lastwave.app.R.string.signal_label_resampler }
+        assertThat(resamplerCheck.passed).isFalse()
+        assertThat(resamplerCheck.detailRes).isEqualTo(com.lastwave.app.R.string.signal_detail_resample_dac_unsupported)
+        val outputCheck = report.checks.last { it.labelRes == com.lastwave.app.R.string.signal_label_output }
+        assertThat(outputCheck.passed).isFalse()
+        assertThat(outputCheck.detailRes).isEqualTo(com.lastwave.app.R.string.signal_detail_usb_clock_fallback)
+    }
+
+    @Test
     fun exclusiveClockDriftUsesFrameClockNotExoPosition() {
         val tracker = StreamHealthTracker()
         val rate = 176_400

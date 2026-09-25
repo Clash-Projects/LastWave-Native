@@ -124,6 +124,8 @@ class ExclusiveUsbOutput @Inject constructor(
 
     fun isClockMatched(): Boolean = active && clockMatched
 
+    fun isClockFallbackActive(): Boolean = active && currentFallbackNegotiated
+
     fun usesHardwareVolume(): Boolean = active && hardwareVolume
 
     /**
@@ -780,6 +782,7 @@ class ExclusiveUsbOutput @Inject constructor(
         ignoreStreamMusicMax = false
         hardwareVolume = false
         clockMatched = false
+        currentFallbackNegotiated = false
         configuredRateHz = 0
         active = false
         softwareGainValue = 1f

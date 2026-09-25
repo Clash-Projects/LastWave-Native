@@ -208,6 +208,7 @@ import com.lastwave.app.data.local.LyricsUiVersion
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.MusicPlayerState
 import com.lastwave.app.playback.PlaybackChromeState
+import com.lastwave.app.playback.formatSampleRateKHz
 import com.lastwave.app.playback.isSpatialAudioCodec
 import com.lastwave.app.playback.qualityBadgeLabel
 import com.lastwave.app.playback.PlaybackProgressState
@@ -2871,8 +2872,21 @@ private fun PlayerUtilityControls(state: MusicPlayerState, player: MusicPlayer, 
             iconSize = if (isTranslucent) 19.dp else 20.dp,
             modifier = Modifier.weight(1f).height(if (isTranslucent) 44.dp else 48.dp),
         )
-        val pillLabel = remember(state.audioCodec, state.bitrateKbps, state.samplingRateKHz, state.bitDepth, state.isLossless) {
-            qualityBadgeLabel(state)
+        val pillLabel = remember(
+            state.audioCodec,
+            state.bitrateKbps,
+            state.samplingRateKHz,
+            state.bitDepth,
+            state.isLossless,
+            signalPath.clockFallbackResampled,
+            signalPath.appRateHz,
+        ) {
+            val base = qualityBadgeLabel(state)
+            if (signalPath.clockFallbackResampled && signalPath.appRateHz > 0) {
+                "$base → ${formatSampleRateKHz(signalPath.appRateHz.toDouble())}k"
+            } else {
+                base
+            }
         }
         val isSpatialPill = remember(state.audioCodec) { isSpatialAudioCodec(state.audioCodec) }
         // Atmos gets its own spatial logo — HQ badge is only for lossless, never for spatial.
@@ -2906,6 +2920,8 @@ private fun PlayerUtilityControls(state: MusicPlayerState, player: MusicPlayer, 
                     pillIconDesc,
                     tint = if (isSpatialPill) {
                         if (isTranslucent) Color.White.copy(alpha = 0.95f) else MaterialTheme.colorScheme.onPrimaryContainer
+                    } else if (signalPath.clockFallbackResampled) {
+                        Color(0xFFFFB74D)
                     } else if (isTranslucent) {
                         Color.White.copy(alpha = 0.92f)
                     } else {
@@ -2930,6 +2946,7 @@ private fun PlayerUtilityControls(state: MusicPlayerState, player: MusicPlayer, 
                     textAlign = TextAlign.Center,
                     color = when {
                         signalPath.bitPerfect -> Color(0xFFE6C15A)
+                        signalPath.clockFallbackResampled -> Color(0xFFFFB74D)
                         isTranslucent -> Color.White.copy(alpha = 0.95f)
                         else -> Color.Unspecified
                     },

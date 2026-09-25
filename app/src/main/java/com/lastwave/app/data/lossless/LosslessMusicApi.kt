@@ -142,6 +142,7 @@ class LosslessMusicApi @Inject constructor(
         }
 
         private val MANIFEST_CODECS = Regex("""codecs="([^"]+)"""")
+        private val MANIFEST_SAMPLE_RATE = Regex("""audioSamplingRate="(\d+)"""", RegexOption.IGNORE_CASE)
 
         /**
          * True when DASH manifest XML carries E-AC-3 / Dolby Atmos (or JOC).
@@ -174,6 +175,20 @@ class LosslessMusicApi @Inject constructor(
                 ).lowercase()
                 MANIFEST_CODECS.find(xml)?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }
             }.getOrNull()
+        }
+
+        /** Extract audioSamplingRate from base64 DASH data URL or XML. */
+        fun manifestSampleRateOf(dataUrl: String): Int? {
+            val b64 = dataUrl.substringAfter("base64,", "").trim()
+            val xml = if (b64.isNotEmpty() && dataUrl.startsWith("data:application/dash+xml")) {
+                runCatching {
+                    String(android.util.Base64.decode(b64, android.util.Base64.DEFAULT), Charsets.UTF_8)
+                }.getOrNull()
+            } else if (dataUrl.trimStart().startsWith("<")) {
+                dataUrl
+            } else null
+            if (xml.isNullOrBlank()) return null
+            return MANIFEST_SAMPLE_RATE.find(xml)?.groupValues?.getOrNull(1)?.toIntOrNull()?.takeIf { it > 0 }
         }
 
         /** True for E-AC-3 spatial codec labels. Pure; safe to unit-test on JVM. */
@@ -470,23 +485,29 @@ class LosslessMusicApi @Inject constructor(
                 if (!wantAtmos && isAtmosStreamUrl(rawUrl)) continue
 
                 val isStreamAtmos = wantAtmos || (stream.audioMode?.contains("ATMOS", ignoreCase = true) == true) || isAtmosStreamUrl(rawUrl)
+                val manifestSampleRate = manifestSampleRateOf(rawUrl)
+                val rawSampleRate = if (stream.sampleRate > 1000) stream.sampleRate else stream.sampleRate * 1000.0
+                val effectiveSampleRate = manifestSampleRate?.toDouble() ?: rawSampleRate
+                val effectiveBitDepth = if (stream.bitDepth > 16) stream.bitDepth
+                    else if (effectiveSampleRate > 48000.0) 24
+                    else stream.bitDepth
                 val formatId = when {
                     isStreamAtmos -> QUALITY_DOLBY_ATMOS
-                    stream.bitDepth > 16 || stream.sampleRate > 48000 -> QUALITY_MAX_HI_RES
-                    stream.codec.equals("flac", ignoreCase = true) || stream.bitDepth == 16 -> QUALITY_CD_LOSSLESS
+                    effectiveBitDepth > 16 || effectiveSampleRate > 48000.0 -> QUALITY_MAX_HI_RES
+                    stream.codec.equals("flac", ignoreCase = true) || effectiveBitDepth == 16 -> QUALITY_CD_LOSSLESS
                     stream.quality.equals("high", ignoreCase = true) -> QUALITY_MP3_320
                     else -> QUALITY_CD_LOSSLESS
                 }
 
-                Log.i(TAG, "resolveFromAddon: Acquired stream for track $trackId: formatId=$formatId, bitDepth=${stream.bitDepth}, sampleRate=${stream.sampleRate}Hz, codec=${stream.codec}")
+                Log.i(TAG, "resolveFromAddon: Acquired stream for track $trackId: formatId=$formatId, bitDepth=$effectiveBitDepth, sampleRate=${effectiveSampleRate}Hz, codec=${stream.codec}")
                 consecutiveFailures = 0
                 failureCooldownUntilMs = 0L
 
                 return LosslessAudioStream(
                     url = rawUrl,
                     mimeType = "application/dash+xml",
-                    bitDepth = stream.bitDepth,
-                    samplingRate = if (stream.sampleRate > 1000) stream.sampleRate / 1000.0 else stream.sampleRate,
+                    bitDepth = effectiveBitDepth,
+                    samplingRate = effectiveSampleRate / 1000.0,
                     formatId = formatId,
                     bitrateKbps = stream.bitrate?.let { if (it > 10_000) it / 1000 else it },
                     trackId = candidate.id,

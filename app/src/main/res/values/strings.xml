@@ -239,6 +239,7 @@
     <string name="signal_grant_usb">Grant USB access</string>
     <string name="signal_bit_perfect">BIT-PERFECT</string>
     <string name="signal_check_path">CHECK PATH</string>
+    <string name="signal_resampled_dac">DAC RESAMPLED</string>
     <string name="signal_shared_track">Shared AudioTrack</string>
     <string name="signal_direct_track">Direct USB output</string>
     <string name="signal_verdict_ok">Bit-perfect path verified — PCM untouched to the DAC</string>
@@ -256,6 +257,7 @@
     <string name="signal_detail_src_unknown">Unknown source sample rate</string>
     <string name="signal_detail_resample_bypass">Bypassed — %1$d Hz in / out</string>
     <string name="signal_detail_resample_active">Active — %1$d Hz → %2$d Hz</string>
+    <string name="signal_detail_resample_dac_unsupported">DAC unsupported (%1$d Hz) → Resampled to %2$d Hz (libsoxr)</string>
     <string name="signal_detail_resample_unresolved">Output rate unresolved</string>
     <string name="signal_detail_dsp_off">Bit-Perfect off — enable it in Settings</string>
     <string name="signal_detail_dsp_crossfade">Crossfade is mixing two streams</string>
@@ -275,6 +277,7 @@
     <string name="signal_detail_mixer_not_exclusive">Android mixer path — not exclusive usbdevfs</string>
     <string name="signal_detail_usb_exclusive_route">Exclusive usbdevfs — %1$s</string>
     <string name="signal_detail_usb_clock_ok">DAC clock matches the source rate (GET_CUR)</string>
+    <string name="signal_detail_usb_clock_fallback">DAC clock fallback (%1$d Hz unsupported → %2$d Hz)</string>
     <string name="signal_detail_usb_clock_mismatch">DAC clock did not confirm the source rate</string>
     <string name="signal_detail_usb_hw_vol">UAC Feature Unit volume — PCM unscaled</string>
     <string name="signal_detail_usb_sysvol_unused">USB exclusive — Android mixer volume unused</string>

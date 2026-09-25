@@ -62,6 +62,8 @@ data class SignalPathInput(
     val exclusiveHardwareVolume: Boolean = false,
     /** Last exclusive open failure, if any (openDevice/alt-setting/etc). */
     val exclusiveFailureReason: String? = null,
+    /** True when exclusive USB resampled through soxr because DAC clock unsupported. */
+    val clockFallbackResampled: Boolean = false,
 )
 
 /**
@@ -88,6 +90,7 @@ data class SignalPathReport(
     val glitchCount: Long,
     val isPlaying: Boolean,
     val usbExclusiveActive: Boolean = false,
+    val clockFallbackResampled: Boolean = false,
 ) {
     companion object {
         fun initial() = SignalPathReport(
@@ -104,6 +107,7 @@ data class SignalPathReport(
             glitchCount = 0L,
             isPlaying = false,
             usbExclusiveActive = false,
+            clockFallbackResampled = false,
         )
     }
 }
@@ -155,6 +159,13 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
                 R.string.signal_detail_resample_bypass,
                 listOf(src),
                 passed = true,
+            )
+        } else if (i.usbExclusiveActive && i.clockFallbackResampled) {
+            checks += PathCheck(
+                R.string.signal_label_resampler,
+                R.string.signal_detail_resample_dac_unsupported,
+                listOf(src, app),
+                passed = false,
             )
         } else {
             checks += PathCheck(
@@ -364,6 +375,12 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
             R.string.signal_detail_route_unverified,
             passed = false,
         )
+        i.clockFallbackResampled -> checks += PathCheck(
+            R.string.signal_label_output,
+            R.string.signal_detail_usb_clock_fallback,
+            listOf(src ?: 0, app ?: 0),
+            passed = false,
+        )
         i.exclusiveClockMatched || i.routeVerified -> checks += PathCheck(
             R.string.signal_label_output,
             R.string.signal_detail_usb_clock_ok,
@@ -379,6 +396,7 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
     return SignalPathReport(
         checks = checks,
         bitPerfect = i.usbExclusiveActive &&
+            !i.clockFallbackResampled &&
             (i.exclusiveClockMatched || i.routeVerified) &&
             checks.all { it.passed },
         sourceLabel = i.sourceLabel,
@@ -390,6 +408,7 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
         glitchCount = i.glitchCount,
         isPlaying = i.isPlaying,
         usbExclusiveActive = i.usbExclusiveActive,
+        clockFallbackResampled = i.clockFallbackResampled,
     )
 }
 
