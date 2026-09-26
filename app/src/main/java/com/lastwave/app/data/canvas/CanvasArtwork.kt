@@ -24,6 +24,7 @@ enum class CanvasSource {
 data class CanvasArtwork(
     val url: String,
     val fallbackUrl: String? = null,
+    val tallUrl: String? = null,
     val title: String? = null,
     val artist: String? = null,
     val album: String? = null,
