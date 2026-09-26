@@ -505,6 +505,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             }.setSmallIcon(R.drawable.ic_launcher_logo)
              .setContentTitle(musicPlayer.state.value.current?.title ?: "LastWave")
              .setContentText(musicPlayer.state.value.current?.artist ?: "Music player")
+             .setOnlyAlertOnce(true)
              .build()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
@@ -1336,13 +1337,16 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         runCatching {
             val nm = getSystemService(NotificationManager::class.java) ?: return
             // Lockscreen media cards on Vivo/Chinese ROMs are suppressed on
-            // LOW importance. Importance is immutable once created, so v2
-            // (DEFAULT) replaces the legacy LOW channel outright.
+            // LOW importance. Importance is immutable once created, so v3
+            // (DEFAULT without sound/vibration) replaces earlier channels outright.
             runCatching { nm.deleteNotificationChannel(LEGACY_CHANNEL_ID) }
+            runCatching { nm.deleteNotificationChannel(LEGACY_CHANNEL_ID_V1) }
             nm.createNotificationChannel(
                 NotificationChannel(CHANNEL_ID, "Music playback", NotificationManager.IMPORTANCE_DEFAULT).apply {
                     description = "Native LastWave playback controls"
                     setShowBadge(false)
+                    setSound(null, null)
+                    enableVibration(false)
                 },
             )
         }.onFailure { error ->
@@ -1360,8 +1364,9 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         const val CONTENT_STYLE_LIST = 1
         const val MAX_CAR_QUEUE_ITEMS = 100
         const val MAX_CAR_QUEUE_BEFORE_CURRENT = 50
-        const val CHANNEL_ID = "lastwave_playback_v2"
-        const val LEGACY_CHANNEL_ID = "lastwave_playback"
+        const val CHANNEL_ID = "lastwave_playback_v3"
+        const val LEGACY_CHANNEL_ID = "lastwave_playback_v2"
+        const val LEGACY_CHANNEL_ID_V1 = "lastwave_playback"
         const val NOTIFICATION_ID = 4102
         const val ACTION_PREVIOUS = "com.lastwave.app.playback.PREVIOUS"
         const val ACTION_TOGGLE = "com.lastwave.app.playback.TOGGLE"
