@@ -79,6 +79,12 @@
     <string name="settings_studio_clarity">Studio Master Clarity</string>
     <string name="settings_studio_clarity_on">Crystal-clear open sound • airy detail • deep clean separation</string>
     <string name="settings_studio_clarity_off">Original unshaped output</string>
+    <string name="settings_canvas_enabled">Animated Album Canvas</string>
+    <string name="settings_canvas_enabled_sub">Stream motion artwork loops from Apple Music, Tidal and community</string>
+    <string name="settings_canvas_full_bleed">Edge-to-Edge Canvas Background</string>
+    <string name="settings_canvas_full_bleed_sub">Display vertical motion art behind player controls</string>
+    <string name="settings_canvas_cellular">Canvas Over Cellular</string>
+    <string name="settings_canvas_cellular_sub">Download motion artwork over mobile data (cached after first loop)</string>
 
     <string name="settings_section_audio">Audio &amp; Streaming</string>
     <string name="settings_streaming_quality">Streaming Quality</string>

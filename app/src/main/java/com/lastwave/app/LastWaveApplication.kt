@@ -51,6 +51,7 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
         runCatching { appLocaleManager.get().start() }
         runCatching { com.lastwave.app.playback.PlaybackDiagnostics.install(this) }
         runCatching { com.lastwave.app.data.music.potoken.BotGuardTokenGenerator.initialize(this) }
+        runCatching { com.lastwave.app.data.canvas.CanvasCache.init(this) }
         applicationScope.launch(Dispatchers.IO) {
             delay(OPTIONAL_STARTUP_DELAY_MS)
             // A process kill can bypass TrackDownloadManager's finally block

@@ -484,6 +484,15 @@ class SettingsViewModel @Inject constructor(
     fun setWavySeekbarEnabled(enabled: Boolean) = launchSettingsAction("update seekbar style") {
         settingsPreferences.setWavySeekbarEnabled(enabled)
     }
+    fun setCanvasEnabled(enabled: Boolean) = launchSettingsAction("update canvas enabled setting") {
+        settingsPreferences.setCanvasEnabled(enabled)
+    }
+    fun setCanvasFullBleed(enabled: Boolean) = launchSettingsAction("update canvas full-bleed setting") {
+        settingsPreferences.setCanvasFullBleed(enabled)
+    }
+    fun setCanvasOverCellular(enabled: Boolean) = launchSettingsAction("update canvas cellular setting") {
+        settingsPreferences.setCanvasOverCellular(enabled)
+    }
     fun setDownloadLyrics(enabled: Boolean) = launchSettingsAction("update download lyrics setting") {
         settingsPreferences.setDownloadLyrics(enabled)
     }

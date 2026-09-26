@@ -38,6 +38,16 @@ class NetworkMonitor @Inject constructor(
     }.getOrDefault(false)
 
     /**
+     * Synchronous check on whether the active network is cellular/metered mobile data.
+     */
+    fun isOnCellular(): Boolean = runCatching {
+        val cm = connectivityManager ?: return@runCatching false
+        val activeNetwork = cm.activeNetwork ?: return@runCatching false
+        val capabilities = cm.getNetworkCapabilities(activeNetwork) ?: return@runCatching false
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+    }.getOrDefault(false)
+
+    /**
      * Hot reactive state flow emitting true when online and false when offline.
      */
     val isOnline: StateFlow<Boolean> = callbackFlow {
