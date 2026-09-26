@@ -105,6 +105,9 @@ fun ModernLyricsPanel(
     isFullscreen: Boolean = false,
     onRetry: () -> Unit = {},
     modifier: Modifier = Modifier,
+    /** Manual sync correction (ms, + = lyrics later). Applies to lyric
+     *  focus/highlight only — the seekbar below keeps true position. */
+    lyricsOffsetMs: Long = 0L,
 ) {
     val track = state.current ?: return
 
@@ -212,12 +215,13 @@ fun ModernLyricsPanel(
                             if (meaningful.isEmpty()) false
                             else meaningful.count { it.isRtl } > meaningful.size / 2
                         }
-                        // Apple Music word-sync rows run full-sentence wide, so at
-                        // large sizes they sit on the screen edge even at rest.
-                        // They get a compact type size; other providers keep
-                        // their larger sizes. All three tiers are ~150% of the
-                        // previous scale; the wrap budget below is measured in
-                        // these same styles so rows still clear the edges.
+                        // Apple Music word-sync rows run full-sentence wide, so
+                        // they keep a compact size while other providers use
+                        // the standard tier. Sizes are deliberately moderate:
+                        // oversized type was the gap driver (fewer words fit,
+                        // the splitter chopped rows, multiplied spacing).
+                        // The wrap budget below is measured in these same
+                        // styles so rows still clear the edges.
                         val isAppleMusic = remember(targetState.source) {
                             targetState.source?.contains("Apple Music", ignoreCase = true) == true
                         }
@@ -225,12 +229,12 @@ fun ModernLyricsPanel(
                         // with exactly this style, so its fit verdict matches
                         // what the canvas will draw.
                         val karaokeNormalStyle = LocalTextStyle.current.copy(
-                            fontSize = if (isAppleMusic) 33.sp else if (isWordSynced) 42.sp else 36.sp,
+                            fontSize = if (isAppleMusic) 28.sp else if (isWordSynced) 32.sp else 30.sp,
                             fontWeight = FontWeight.Bold,
                             textMotion = TextMotion.Animated,
                         )
                         val karaokeAccompanimentStyle = LocalTextStyle.current.copy(
-                            fontSize = if (isAppleMusic) 26.sp else if (isWordSynced) 30.sp else 27.sp,
+                            fontSize = if (isAppleMusic) 22.sp else if (isWordSynced) 24.sp else 22.sp,
                             fontWeight = FontWeight.Bold,
                             textMotion = TextMotion.Animated,
                         )
@@ -278,8 +282,9 @@ fun ModernLyricsPanel(
                                     trackArtist = track.artist,
                                     normalStyle = karaokeNormalStyle,
                                     accompanimentStyle = karaokeAccompanimentStyle,
-                                    currentPosition = { smoothedPositionMs.toInt() },
+                                    currentPosition = { (smoothedPositionMs + lyricsOffsetMs).toInt() },
                                     player = player,
+                                    lyricsOffsetMs = lyricsOffsetMs,
                                     modifier = Modifier
                                         .weight(1f)
                                         .fillMaxWidth(),
@@ -323,26 +328,21 @@ fun ModernLyricsPanel(
 
 /**
  * Horizontal chrome around karaoke glyphs, both sides combined: 12dp view
- * padding (Modifier.padding on the list below) + the library's own padding
- * on both its outer scrim Box and its inner list (assumed 24dp each, kept
- * from the original conservative estimate) + 16dp line padding inside each
- * karaoke row, plus a safety margin for font-scale and locale variance.
- * The 0.80 zoom headroom in the budget below sits on top of this, so
- * wrapped rows stay clear of the edge in every focus state — including
- * long word-sync rows at the large scale.
+ * padding (Modifier.padding on the list below) + 16dp line padding inside
+ * each karaoke row. Measured, not guessed: the old 128dp estimate plus a
+ * 0.80 panic factor shrank the budget to ~185dp on a 360dp phone, chopping
+ * nearly every line into 2-word rows.
  */
-private val KaraokeHorizontalChrome = 128.dp
+private val KaraokeHorizontalChrome = 56.dp
 
 /**
- * Measures lines against the settled list width and pre-splits overlong
- * ones into balanced sub-lines ([splitKaraokeToFit] for word-sync rows,
- * [splitLineSyncToFit] for line-sync rows) before the karaoke canvas ever
- * measures them. The budget reserves headroom for the canvas's
- * focused-line emphasis (~1.1x zoom on the active row): without it a line
- * that exactly fits while idle overflows past the screen edge the moment
- * it becomes active — large word-sync lines are the usual victims since
- * they routinely span the full width. At the current large type scale the
- * reserve is set to 0.80 so zoomed rows still clear the edges.
+ * Measures lines against the settled list width and pre-splits only
+ * genuinely overlong ones into balanced sub-lines ([splitKaraokeToFit] for
+ * word-sync rows, [splitLineSyncToFit] for line-sync rows) before the
+ * karaoke canvas ever measures them. The budget keeps a small 0.95 reserve
+ * for the canvas's focused-line emphasis (~1.1x zoom on the active row);
+ * normal lines pass through untouched with their authored timing, so focus
+ * and auto-scroll follow lyric lines instead of fabricated chunks.
  */
 @Composable
 private fun KaraokeLineWrapScope(
@@ -355,21 +355,17 @@ private fun KaraokeLineWrapScope(
     currentPosition: () -> Int,
     player: MusicPlayer,
     modifier: Modifier = Modifier,
+    lyricsOffsetMs: Long = 0L,
 ) {
     BoxWithConstraints(modifier) {
         val density = LocalDensity.current
         val textMeasurer = rememberTextMeasurer()
         val wrapBudgetPx = remember(maxWidth, density) {
-            // Conservative on purpose, two compounding reasons:
-            // 1. The splitter measures word-by-word while the canvas draws
-            //    continuous text, so cross-word kerning can add a pixel or
-            //    two beyond the summed word widths.
-            // 2. The canvas enlarges the focused line (~1.1x). A row that
-            //    exactly fits while idle would spill past the screen edge
-            //    once active — 0.80 reserves that zoom room (plus margin for
-            //    the large type scale) so wrapped rows stay clear of the edge
-            //    in every focus state.
-            with(density) { (maxWidth - KaraokeHorizontalChrome).toPx().coerceAtLeast(0f) } * 0.80f
+            // Tight on purpose: the splitter measures word-by-word while the
+            // canvas draws continuous text (kerning can add a pixel or two),
+            // and the focused line zooms ~1.1x — 0.95 covers both without
+            // chopping lines that fit. Only true overflow splits.
+            with(density) { (maxWidth - KaraokeHorizontalChrome).toPx().coerceAtLeast(0f) } * 0.95f
         }
         val displayLines = remember(lines, wrapBudgetPx, normalStyle) {
             // Word-sync rows split on syllable timing, line-sync rows on
@@ -408,7 +404,8 @@ private fun KaraokeLineWrapScope(
             showPhonetic = true,
             currentPosition = currentPosition,
             onLineClicked = { line ->
-                player.seekTo(line.start.toLong())
+                // Inverse of the highlight shift: tap targets audio time.
+                player.seekTo((line.start - lyricsOffsetMs).coerceAtLeast(0).toLong())
             },
             onLinePressed = {},
             modifier = Modifier

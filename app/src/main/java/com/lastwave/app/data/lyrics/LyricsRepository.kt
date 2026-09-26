@@ -116,6 +116,12 @@ class LyricsRepository @Inject constructor(
         }.getOrDefault(com.lastwave.app.data.local.LyricsProvider.AUTO)
         val effectiveVideoId = videoId?.trim()?.takeIf { it.isNotBlank() }
         val cacheKey = "${effectiveVideoId ?: ""}|${artist.trim().lowercase()}|${title.trim().lowercase()}|${album?.trim()?.lowercase()}|$durationSeconds|$wordByWord|${preferred.id}"
+        // Bounded: a long session must not grow this map without limit.
+        // Eviction is coarse (oldest-first is untracked); a miss re-fetches
+        // in milliseconds, so dropping hot entries only costs one fetch.
+        if (cache.size > 320) {
+            runCatching { cache.keys.take(64).forEach { cache.remove(it) } }
+        }
         if (!forceRefresh) {
             cache[cacheKey]?.takeIf {
                 !wordByWord || (it is LyricsResult.Success && (it.isWordSynced || it.isInstrumental))
@@ -256,8 +262,13 @@ class LyricsRepository @Inject constructor(
                     onPartialResult(single)
                 }
             }
-            val wordResult = coroutineScope {
-                val requests = mutableListOf(
+            // Bounded end-to-end: one slow-drip provider must never hold the
+            // panel hostage. Whatever validated fallback exists at the
+            // deadline still flows through the normal fallback chain below.
+            var lineFallback: LyricsResult.Success? = null
+            val wordResult = withTimeoutOrNull(RACE_TOTAL_MS) {
+                coroutineScope {
+                    val requests = mutableListOf(
                     async<LyricsResult.Success?> {
                         fetchWordFromAppleMusic(title, artist, album, durationSeconds)
                     },
@@ -277,7 +288,6 @@ class LyricsRepository @Inject constructor(
                         fetchWordFromSimpMusic(effectiveVideoId, durationSeconds)
                     },
                 )
-                var lineFallback: LyricsResult.Success? = null
                 try {
                     while (requests.isNotEmpty()) {
                         val (request, result) = select {
@@ -286,8 +296,21 @@ class LyricsRepository @Inject constructor(
                             }
                         }
                         requests.remove(request)
-                        if (result?.isWordSynced == true) return@coroutineScope result
-                        if (result != null && lineFallback == null) {
+                        if (result?.isWordSynced == true) {
+                            // Fastest word-sync wins — but only if its
+                            // timeline plausibly fits this recording. A
+                            // wrong-cut hit keeps racing as a line fallback
+                            // instead of locking in broken sync.
+                            if (result.isInstrumental || plausibleDuration(result.lines, durationSeconds)) {
+                                return@coroutineScope result
+                            }
+                        }
+                        // Line-sync fallback must also fit the recording: an
+                        // unchecked wrong-cut timeline is exactly how plain
+                        // line-by-line sync breaks.
+                        if (result != null && lineFallback == null &&
+                            (result.isInstrumental || plausibleDuration(result.lines, durationSeconds))
+                        ) {
                             lineFallback = result
                             onPartialResult(result)
                         }
@@ -296,6 +319,7 @@ class LyricsRepository @Inject constructor(
                 } finally {
                     requests.forEach { it.cancel() }
                 }
+            }
             }
             if (wordResult?.isWordSynced == true) {
                 cache[cacheKey] = wordResult
@@ -306,9 +330,12 @@ class LyricsRepository @Inject constructor(
                 cache[cacheKey] = it
                 return@withContext it
             }
-            if (wordResult != null) {
-                cache[cacheKey] = wordResult
-                return@withContext wordResult
+            // Full completion returns the fallback through wordResult; a
+            // timed-out race leaves it in the outer var — either way the
+            // validated partial still counts instead of dropping to Empty.
+            (wordResult ?: lineFallback)?.let { settled ->
+                cache[cacheKey] = settled
+                return@withContext settled
             }
             // Extra line-sync catalogue: biggest database, tried after the
             // word race so a timed hit from anywhere above still wins.
@@ -448,6 +475,9 @@ class LyricsRepository @Inject constructor(
     ): LyricsResult.Success? {
         return try {
             appleMusicApi.fetchLyrics(title, artist, album, durationSeconds)
+                // Like every other fuzzy provider: a same-title wrong-cut
+                // timeline must not win the race on speed alone.
+                ?.takeIf { it.isInstrumental || plausibleDuration(it.lines, durationSeconds) }
         } catch (cancellation: kotlinx.coroutines.CancellationException) {
             throw cancellation
         } catch (_: Exception) {
@@ -521,6 +551,9 @@ class LyricsRepository @Inject constructor(
         try {
             val lines = musixmatchApi.fetchLyrics(title, artist, durationSeconds)
             if (!lines.isNullOrEmpty()) {
+                // Server fuzzy-matches with no usable candidate identity:
+                // reject wrong-cut timelines before they poison line-sync.
+                if (!plausibleDuration(lines, durationSeconds)) return null
                 return LyricsResult.Success(
                     lines = lines,
                     isSynced = true,
@@ -643,6 +676,7 @@ class LyricsRepository @Inject constructor(
         try {
             val kugouLines = kugouApi.fetchWordLyrics(title, artist, durationSeconds)
             if (!kugouLines.isNullOrEmpty()) {
+                if (!plausibleDuration(kugouLines, durationSeconds)) return null
                 val hasWordTiming = kugouLines.any { it.hasSyllables }
                 return LyricsResult.Success(
                     lines = kugouLines,
@@ -751,6 +785,10 @@ class LyricsRepository @Inject constructor(
         /** Head start for the preferred provider before the automatic race
          *  takes over: bounds hangs, typical hits resolve well inside it. */
         private const val PREFERRED_HEAD_START_MS = 4_000L
+        /** Hard ceiling for the whole provider race: slower than any single
+         *  healthy round-trip, faster than socket worst cases. A slow-drip
+         *  provider can delay the final fallback, never deny it. */
+        private const val RACE_TOTAL_MS = 12_000L
         private const val IDENTIFY_TIMEOUT_MS = 2_500L
 
         private val SEARCH_WHITESPACE = Regex("""\s+""")

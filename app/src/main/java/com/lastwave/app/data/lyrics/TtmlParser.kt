@@ -30,11 +30,15 @@ object TtmlParser {
                 runCatching { isExpandEntityReferences = false }
             }
             val document = factory.newDocumentBuilder().parse(InputSource(StringReader(ttml)))
+            // Global clock correction (Metrolist parity): Apple TTML exports
+            // carry <head><metadata><audio lyricOffset="…"/> shifting every
+            // timestamp. Ignoring it offsets the whole song's sync.
+            val offsetMs = readLyricOffset(document)
             val paragraphs = document.getElementsByTagName("p")
             val sung = ArrayList<LyricLine>(paragraphs.length)
             for (i in 0 until paragraphs.length) {
                 val paragraph = paragraphs.item(i) as? Element ?: continue
-                lineFrom(paragraph)?.let { sung += it }
+                lineFrom(paragraph)?.let { sung += it.shiftTimes(offsetMs) }
             }
             sung.sortedBy { it.timeMs }
         }.getOrDefault(emptyList())
@@ -56,6 +60,42 @@ object TtmlParser {
             else -> null
         } ?: return null
         return (seconds * 1000).toLong()
+    }
+
+    private fun readLyricOffset(document: org.w3c.dom.Document): Long {
+        return runCatching {
+            val candidates = ArrayList<Element>()
+            for (tag in listOf("audio", "*")) {
+                val nodes = document.getElementsByTagName(tag)
+                for (i in 0 until nodes.length) {
+                    val el = nodes.item(i) as? Element ?: continue
+                    if (tag == "*" && el.tagName.substringAfter(':') != "audio") continue
+                    candidates += el
+                }
+                if (candidates.isNotEmpty()) break
+            }
+            for (el in candidates) {
+                val attrs = el.attributes ?: continue
+                for (i in 0 until attrs.length) {
+                    val attr = attrs.item(i) ?: continue
+                    if (attr.nodeName.substringAfter(':') == "lyricOffset") {
+                        val seconds = attr.nodeValue?.toDoubleOrNull()
+                        if (seconds != null && seconds.isFinite()) {
+                            return (seconds * 1000).toLong()
+                        }
+                    }
+                }
+            }
+            0L
+        }.getOrDefault(0L)
+    }
+
+    private fun LyricLine.shiftTimes(offsetMs: Long): LyricLine {
+        if (offsetMs == 0L) return this
+        return copy(
+            timeMs = (timeMs + offsetMs).coerceAtLeast(0L),
+            syllables = syllables.map { it.copy(timeMs = (it.timeMs + offsetMs).coerceAtLeast(0L)) },
+        )
     }
 
     private fun lineFrom(paragraph: Element): LyricLine? {

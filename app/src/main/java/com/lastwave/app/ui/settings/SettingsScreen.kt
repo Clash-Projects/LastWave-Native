@@ -111,6 +111,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -175,6 +176,7 @@ import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.DarkMode
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 private data class AccentPreset(val name: String, val hex: String)
 private val ACCENT_PRESETS = listOf(
@@ -307,6 +309,7 @@ fun SettingsScreen(
     var showEqSheet by remember { mutableStateOf(false) }
     var showLyricsAnimationSheet by remember { mutableStateOf(false) }
     var showLyricsProviderDialog by remember { mutableStateOf(false) }
+    var showLyricsOffsetDialog by remember { mutableStateOf(false) }
     var showLoudnessDialog by remember { mutableStateOf(false) }
     var showClarityPresetDialog by remember { mutableStateOf(false) }
     var showSyncPlaylistsSheet by remember { mutableStateOf(false) }
@@ -817,7 +820,7 @@ fun SettingsScreen(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_experimental))
-                    SettingsGroup(rowCount = 6) { index, position ->
+                    SettingsGroup(rowCount = 7) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.BubbleChart,
@@ -892,6 +895,19 @@ fun SettingsScreen(
                                 title = stringResource(R.string.settings_lyrics_provider),
                                 subtitle = "${misc.lyricsProvider.title} \u2022 ${misc.lyricsProvider.subtitle}",
                                 onClick = { showLyricsProviderDialog = true },
+                                position = position,
+                            )
+                            6 -> SettingsActionCard(
+                                icon = Icons.Filled.Timer,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = "Lyrics sync offset",
+                                subtitle = if (misc.lyricsOffsetMs == 0L) {
+                                    "Off \u2022 highlight follows the audio exactly"
+                                } else {
+                                    "${if (misc.lyricsOffsetMs > 0) "+" else ""}${misc.lyricsOffsetMs} ms \u2022 + delays lyrics, − shows them early"
+                                },
+                                onClick = { showLyricsOffsetDialog = true },
                                 position = position,
                             )
                         }
@@ -1650,6 +1666,15 @@ fun SettingsScreen(
                 showLyricsProviderDialog = false
             },
             onDismiss = { showLyricsProviderDialog = false },
+        )
+    }
+
+    // -- Lyrics sync offset stepper: shifts highlight/focus only --
+    if (showLyricsOffsetDialog) {
+        LyricsOffsetDialog(
+            currentMs = misc.lyricsOffsetMs,
+            onSelect = { viewModel.setLyricsOffsetMs(it) },
+            onDismiss = { showLyricsOffsetDialog = false },
         )
     }
 
@@ -4172,6 +4197,57 @@ private fun LyricsProviderDialog(
                             )
                         }
                     }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_done)) }
+        },
+    )
+}
+
+@Composable
+private fun LyricsOffsetDialog(
+    currentMs: Long,
+    onSelect: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var draftMs by remember(currentMs) { mutableLongStateOf(currentMs) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Lyrics sync offset") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Nudges the highlight when a provider's timestamps run early or late. + delays lyrics, − shows them early. Seekbar is unaffected.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    if (draftMs == 0L) "0 ms (off)" else "${if (draftMs > 0) "+" else ""}$draftMs ms",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                Slider(
+                    value = draftMs.toFloat(),
+                    onValueChange = { draftMs = it.roundToLong() },
+                    onValueChangeFinished = { onSelect(draftMs) },
+                    valueRange = -1000f..1000f,
+                    steps = 39,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        draftMs = (draftMs - 100).coerceIn(-3000L, 3000L)
+                        onSelect(draftMs)
+                    }) { Text("−100") }
+                    OutlinedButton(onClick = {
+                        draftMs = (draftMs + 100).coerceIn(-3000L, 3000L)
+                        onSelect(draftMs)
+                    }) { Text("+100") }
+                    FilledTonalButton(onClick = {
+                        draftMs = 0L
+                        onSelect(0L)
+                    }) { Text("Reset") }
                 }
             }
         },

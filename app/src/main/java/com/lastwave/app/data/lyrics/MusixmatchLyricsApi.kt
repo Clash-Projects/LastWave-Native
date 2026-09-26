@@ -104,7 +104,16 @@ class MusixmatchLyricsApi @Inject constructor(
     private suspend fun bestTrack(title: String, artist: String, seconds: Int): MxmTrack? {
         val tracks = searchTrack(title, artist) ?: return null
         if (tracks.isEmpty()) return null
+        // Both sides must agree: title-exact homonyms and same-singer wrong
+        // songs otherwise win on a high partial score with wrong timing.
+        // 80 = exact title + artist, or contains-title + artist — and the
+        // artist side is mandatory whenever the request names one.
         return tracks.maxByOrNull { score(it, title, artist, seconds) }
+            ?.takeIf { track ->
+                val artistOk = artist.isBlank() || track.artistName.trim().lowercase(Locale.ROOT)
+                    .contains(artist.trim().lowercase(Locale.ROOT))
+                artistOk && score(track, title, artist, seconds) >= 80.0
+            }
     }
 
     private fun score(track: MxmTrack, title: String, artist: String, seconds: Int): Double {

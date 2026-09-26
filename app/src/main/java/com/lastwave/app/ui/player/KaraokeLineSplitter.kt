@@ -196,6 +196,180 @@ fun LyricLine.splitKaraokeToFit(
 }
 
 /**
+ * Word-merge normalization (Metrolist rule): providers emit fragments at
+ * wildly different granularities — Apple/Paxsenix words, BetterLyrics
+ * spans, Kugou KRC characters, lone punctuation tokens — and every
+ * renderer inserts a display space after each syllable. Without merging,
+ * `hello`+`,` renders as `hello ,` and Kugou `Hel`+`lo` as `Hel lo`.
+ *
+ * The authored line text is the ground truth: fragments whose characters
+ * (whitespace stripped) equal the line's characters are consumed per word
+ * length, so Kugou `Hel`+`lo` becomes `Hello` and lone `,` glues to its
+ * neighbor (`, world` stays far, `hello,` stays close); hyphen compounds
+ * stay whole. Spaceless (CJK) rows are untouched so per-character timing
+ * survives. Leads and background vocals normalize separately and rejoin
+ * by time. Idempotent: merged words re-align to themselves.
+ */
+fun normalizeWordSpacing(lines: List<LyricLine>): List<LyricLine> {
+    if (lines.isEmpty()) return lines
+    return lines.map { it.normalizedSpacing() }
+}
+
+private fun LyricLine.normalizedSpacing(): LyricLine {
+    if (!hasSyllables || syllables.size < 2) return this
+    // Spaceless scripts (CJK/Thai): spaces would destroy per-char timing.
+    if (!text.contains(' ') && !text.contains('\u00A0')) return this
+    val leads = syllables.filter { !it.isBackground }
+    val backs = syllables.filter { it.isBackground }
+    val normLeads = mergeFragmentsIntoWords(text, leads)
+    val normBacks = mergeFragmentsIntoWords(text, backs)
+    val visible = if (leads.isNotEmpty()) normLeads else normBacks
+    if (visible.isEmpty()) return this
+    val newText = visible.joinToString(" ") { it.text }
+    if (newText == text && normLeads.map { it.text } == leads.map { it.text } &&
+        normBacks.map { it.text } == backs.map { it.text }
+    ) {
+        return this
+    }
+    return copy(text = newText, syllables = (normLeads + normBacks).sortedBy { it.timeMs })
+}
+
+/**
+ * Reconciles provider fragments with the authored line text. Providers emit
+ * at wildly different granularities — whole words (Apple, BetterLyrics
+ * spans), characters (Kugou KRC), lone punctuation — so fragment count
+ * alone says nothing. The authored [lineText] is the ground truth: when the
+ * fragments' characters (whitespace stripped) equal the line's characters,
+ * fragments are consumed per word length; otherwise each fragment is
+ * already a word. Either way punctuation glues to its neighbor last.
+ */
+private fun mergeFragmentsIntoWords(lineText: String, units: List<LyricSyllable>): List<LyricSyllable> {
+    if (units.isEmpty()) return units
+    // Phase A: explicit continuations (Apple `part` like "with"+"drawals")
+    // glue to the previous token regardless of spacing.
+    val glued = mutableListOf<LyricSyllable>()
+    for (syl in units) {
+        val last = glued.lastOrNull()
+        if (syl.appendToPrevious && last != null) {
+            glued[glued.lastIndex] = last.copy(
+                text = last.text + syl.text.trimStart(),
+                durationMs = maxOf(last.timeMs + last.durationMs, syl.timeMs + syl.durationMs) - last.timeMs,
+            )
+        } else {
+            glued += syl
+        }
+    }
+    val targetWords = lineText.split(Regex("""\s+""")).filter { it.isNotEmpty() }
+    if (targetWords.isEmpty()) return glued
+    val aligned = alignFragmentsToWords(targetWords, glued) ?: glued.map { piece ->
+        // Fallback: each fragment is already a word; trim only.
+        val text = piece.text.trim()
+        if (text == piece.text) piece else piece.copy(text = text)
+    }.filter { it.text.isNotEmpty() }
+    return gluePunctuation(aligned)
+}
+
+private fun alignFragmentsToWords(
+    targetWords: List<String>,
+    pieces: List<LyricSyllable>,
+): List<LyricSyllable>? {
+    val strippedTargets = targetWords.map { it.filterNot { c -> c.isWhitespace() } }
+    if (strippedTargets.any { it.isEmpty() }) return null
+    // A piece holding several words ("New York" as one span) splits first,
+    // slicing its timing proportionally across the words it covers.
+    val atoms = mutableListOf<LyricSyllable>()
+    for (piece in pieces) {
+        val parts = piece.text.split(Regex("""\s+""")).filter { it.isNotEmpty() }
+        if (parts.size <= 1) {
+            atoms += piece
+        } else {
+            val span = (piece.timeMs + piece.durationMs - piece.timeMs).coerceAtLeast(0L)
+            val totalChars = parts.sumOf { it.length }.coerceAtLeast(1)
+            var cursor = piece.timeMs
+            parts.forEachIndexed { index, part ->
+                val share = ((span * part.length) / totalChars).coerceAtLeast(0L)
+                val start = cursor
+                val end = if (index == parts.lastIndex) piece.timeMs + piece.durationMs else cursor + share
+                atoms += piece.copy(text = part, timeMs = start, durationMs = (end - start).coerceAtLeast(0L))
+                cursor = end
+            }
+        }
+    }
+    val strippedAtoms = atoms.map { it.text.filterNot { c -> c.isWhitespace() } }
+    if (strippedAtoms.any { it.isEmpty() }) return null
+    if (strippedAtoms.sumOf { it.length } != strippedTargets.sumOf { it.length }) return null
+    if (strippedAtoms.joinToString("") != strippedTargets.joinToString("")) return null
+    // Same character stream: consume atoms per target word length.
+    val out = mutableListOf<LyricSyllable>()
+    var atomIndex = 0
+    var charOffset = 0
+    for (target in strippedTargets) {
+        var remaining = target.length
+        val group = mutableListOf<LyricSyllable>()
+        while (remaining > 0 && atomIndex < atoms.size) {
+            val atom = atoms[atomIndex]
+            val atomText = strippedAtoms[atomIndex]
+            val take = minOf(remaining, atomText.length - charOffset)
+            if (take <= 0) {
+                atomIndex++
+                charOffset = 0
+                continue
+            }
+            group += atom
+            charOffset += take
+            remaining -= take
+            if (charOffset >= atomText.length) {
+                atomIndex++
+                charOffset = 0
+            }
+        }
+        if (group.isEmpty()) return null
+        val start = group.minOf { it.timeMs }
+        val end = group.maxOf { it.timeMs + it.durationMs }
+        out += LyricSyllable(
+            timeMs = start,
+            durationMs = (end - start).coerceAtLeast(0L),
+            text = target,
+            isBackground = group.first().isBackground,
+            appendToPrevious = group.first().appendToPrevious,
+        )
+    }
+    return out
+}
+
+/** Punctuation that must sit close to the previous token (`, world`→ far side only). */
+private val NoSpaceBefore = setOf(
+    ',', '.', '!', '?', ';', ':', '%', '‰', '…', '›', '»', ')', ']', '}', '’', '”', '"', '\'',
+    '、', '，', '。', '！', '？', '；', '：', '）', '】', '〉', '-', '–', '—', '/', '&', '~',
+)
+
+/** Punctuation that must sit close to the next token (`(hello`, `mother-`). */
+private val NoSpaceAfter = setOf(
+    '(', '[', '{', '«', '‹', '“', '‘', '"', '\'', '#', '$', '-', '–', '—', '/', '&', '@',
+)
+
+private fun gluePunctuation(words: List<LyricSyllable>): List<LyricSyllable> {
+    if (words.size < 2) return words
+    val out = mutableListOf<LyricSyllable>()
+    for (word in words) {
+        val last = out.lastOrNull()
+        val firstChar = word.text.firstOrNull()
+        val lastEnd = last?.text?.lastOrNull()
+        if (last != null && firstChar != null &&
+            ((lastEnd != null && lastEnd in NoSpaceAfter) || firstChar in NoSpaceBefore)
+        ) {
+            out[out.lastIndex] = last.copy(
+                text = last.text + word.text,
+                durationMs = maxOf(last.timeMs + last.durationMs, word.timeMs + word.durationMs) - last.timeMs,
+            )
+        } else {
+            out += word
+        }
+    }
+    return out
+}
+
+/**
  * Gives every line-sync row (no syllables) an explicit duration reaching the
  * next row's start, so downstream wrapping and focus math never divide an
  * unknown span. Word-sync rows are untouched — their timing is exact.

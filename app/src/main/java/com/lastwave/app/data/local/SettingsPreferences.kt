@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -69,7 +70,7 @@ enum class LyricsProvider(val id: String, val title: String, val subtitle: Strin
 
     companion object {
         fun fromId(id: String?): LyricsProvider =
-            entries.firstOrNull { it.id == id } ?: APPLE_MUSIC
+            entries.firstOrNull { it.id == id } ?: AUTO
     }
 }
 
@@ -116,8 +117,13 @@ data class MiscSettings(
     /** Experimental lyrics animation style (Settings -> Experimental -> Lyrics Animation). */
     val lyricsAnimation: LyricsAnimation = LyricsAnimation.APPLE_FLUID,
     /** Preferred lyrics source (Settings -> Experimental -> Lyrics Provider).
-     *  Apple Music syllable-sync is the default; AUTO races all providers. */
-    val lyricsProvider: LyricsProvider = LyricsProvider.APPLE_MUSIC,
+     *  AUTO races all providers (fastest valid word-sync wins); an explicit
+     *  pick is tried first with the rest as fallback. */
+    val lyricsProvider: LyricsProvider = LyricsProvider.AUTO,
+    /** Manual sync offset applied to lyric focus/highlight only (ms).
+     *  Positive shifts lyrics later (highlights lag the audio less when the
+     *  provider timestamps run early). Clamped to ±3s. */
+    val lyricsOffsetMs: Long = 0L,
     /** Blend the end of one queued track into the beginning of the next. */
     val crossfadeEnabled: Boolean = false,
     /** Crossfade length in seconds; kept within the native settings slider range. */
@@ -241,6 +247,7 @@ class SettingsPreferences @Inject constructor(
         val WORD_BY_WORD_LYRICS = booleanPreferencesKey("lw_word_by_word_lyrics")
         val LYRICS_ANIMATION = stringPreferencesKey("lw_lyrics_animation")
         val LYRICS_PROVIDER = stringPreferencesKey("lw_lyrics_provider")
+        val LYRICS_OFFSET_MS = longPreferencesKey("lw_lyrics_offset_ms")
         val CROSSFADE_ENABLED = booleanPreferencesKey("lw_crossfade_enabled")
         val CROSSFADE_SECONDS = intPreferencesKey("lw_crossfade_seconds")
         val WAVY_SEEKBAR_ENABLED = booleanPreferencesKey("lw_wavy_seekbar_enabled")
@@ -281,6 +288,7 @@ class SettingsPreferences @Inject constructor(
                 wordByWordLyrics = p.readSafely(Keys.WORD_BY_WORD_LYRICS) ?: true,
                 lyricsAnimation = LyricsAnimation.fromId(p.readSafely(Keys.LYRICS_ANIMATION)),
                 lyricsProvider = LyricsProvider.fromId(p.readSafely(Keys.LYRICS_PROVIDER)),
+                lyricsOffsetMs = (p.readSafely(Keys.LYRICS_OFFSET_MS) ?: 0L).coerceIn(-3000L, 3000L),
                 crossfadeEnabled = p.readSafely(Keys.CROSSFADE_ENABLED) ?: false,
                 crossfadeSeconds = (p.readSafely(Keys.CROSSFADE_SECONDS) ?: 5).coerceIn(1, 12),
                 wavySeekbarEnabled = p.readSafely(Keys.WAVY_SEEKBAR_ENABLED) ?: true,
@@ -401,6 +409,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setLyricsProvider(provider: LyricsProvider) {
         dataStore.edit { it[Keys.LYRICS_PROVIDER] = provider.id }
+    }
+
+    suspend fun setLyricsOffsetMs(offsetMs: Long) {
+        dataStore.edit { it[Keys.LYRICS_OFFSET_MS] = offsetMs.coerceIn(-3000L, 3000L) }
     }
 
     suspend fun setCrossfadeEnabled(enabled: Boolean) {

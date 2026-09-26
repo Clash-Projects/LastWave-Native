@@ -123,6 +123,9 @@ fun LyricsPanel(
     onToggleFullscreen: (() -> Unit)? = null,
     isFullscreen: Boolean = false,
     modifier: Modifier = Modifier,
+    /** Manual sync correction (ms, + = lyrics later). Applies to lyric
+     *  focus/highlight only — the seekbar below keeps true position. */
+    lyricsOffsetMs: Long = 0L,
 ) {
     val track = state.current ?: return
     val liquidGlass = LocalLiquidGlass.current
@@ -224,7 +227,8 @@ fun LyricsPanel(
                         } else if (targetState.isSynced && targetState.lines.isNotEmpty()) {
                             SyncedLyricsList(
                                 lines = targetState.lines,
-                                currentPositionMs = smoothedPositionMs,
+                                currentPositionMs = smoothedPositionMs + lyricsOffsetMs,
+                                lyricsOffsetMs = lyricsOffsetMs,
                                 isPlaying = state.isPlaying,
                                 onSeek = player::seekTo,
                                 animationStyle = lyricsAnimation,
@@ -276,6 +280,7 @@ private fun SyncedLyricsList(
     animationStyle: LyricsAnimation,
     liquidGlass: Boolean,
     modifier: Modifier = Modifier,
+    lyricsOffsetMs: Long = 0L,
 ) {
     val listState = rememberLazyListState()
     var userScrolledTime by remember { mutableLongStateOf(0L) }
@@ -577,23 +582,25 @@ private fun SyncedLyricsList(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                         ) {
-                            onSeek(line.timeMs)
+                            // Inverse of the highlight shift: tap targets audio time.
+                            onSeek((line.timeMs - lyricsOffsetMs).coerceAtLeast(0L))
                         }
                         .padding(
                             horizontal = if (animationStyle == LyricsAnimation.CARD_POP) 16.dp else 12.dp,
-                            vertical = if (isActive) 10.dp else 8.dp,
+                            vertical = if (isActive) 8.dp else 6.dp,
                         ),
                 ) {
-                    // Large type (~150% of titleLarge): lineHeight leaves room
-                    // for the focus zoom (up to 1.18x) so scaled rows neither
-                    // overlap neighbours nor clip at the list edges.
+                    // Compact type: lineHeight leaves room for the focus zoom
+                    // (up to 1.18x) so scaled rows neither overlap neighbours
+                    // nor clip at the list edges — without the old oversized
+                    // leading that stretched the gaps between rows.
                     val fontStyle = MaterialTheme.typography.titleLarge.copy(
-                        fontSize = 33.sp,
+                        fontSize = 28.sp,
                         fontWeight = if (isActive) {
                             if (animationStyle == LyricsAnimation.APPLE_ZOOM) FontWeight.Black else FontWeight.ExtraBold
                         } else FontWeight.SemiBold,
                         letterSpacing = (-0.2).sp,
-                        lineHeight = 48.sp,
+                        lineHeight = 40.sp,
                     )
 
                     WordByWordLyricLine(
@@ -656,8 +663,8 @@ private fun WordByWordLyricLine(
                         Text(
                             text = line.transliteration,
                             style = MaterialTheme.typography.titleMedium.copy(
-                                fontSize = 22.sp,
-                                lineHeight = 32.sp,
+                                fontSize = 18.sp,
+                                lineHeight = 26.sp,
                                 fontWeight = FontWeight.Medium,
                                 letterSpacing = 0.2.sp,
                             ),
@@ -859,8 +866,8 @@ private fun PlainLyricsView(
             Text(
                 text = plainLyrics,
                 style = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = 28.sp,
-                    lineHeight = 46.sp,
+                    fontSize = 22.sp,
+                    lineHeight = 36.sp,
                     fontWeight = FontWeight.Medium,
                     letterSpacing = 0.1.sp,
                 ),

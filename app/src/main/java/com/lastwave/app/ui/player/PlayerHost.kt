@@ -431,7 +431,7 @@ class PlayerViewModel @Inject constructor(
                         onPartialResult = { partial ->
                             withContext(Dispatchers.Main.immediate) {
                                 coroutineContext.ensureActive()
-                                publishLyrics(partial)
+                                publishLyrics(partial, wanted = track)
                             }
                         },
                     )
@@ -442,7 +442,7 @@ class PlayerViewModel @Inject constructor(
                 }
                 coroutineContext.ensureActive()
                 if (result is LyricsResult.Success || _lyricsState.value !is LyricsUiState.Success) {
-                    publishLyrics(result)
+                    publishLyrics(result, wanted = track)
                 }
             } finally {
                 loadingIndicator.cancel()
@@ -450,16 +450,33 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    private fun publishLyrics(result: LyricsResult) {
+    private fun publishLyrics(result: LyricsResult, wanted: PlayableTrack? = null) {
+        // A superseded fetch (user skipped while it was in flight) must
+        // never paint the previous song's lyrics over the new one. The job
+        // cancel covers most of it; this covers the already-posted tail.
+        if (wanted != null) {
+            val current = player.state.value.current
+            val same = if (!wanted.videoId.isNullOrBlank() || !current?.videoId.isNullOrBlank()) {
+                !wanted.videoId.isNullOrBlank() && wanted.videoId == current?.videoId
+            } else {
+                current != null && current.title.equals(wanted.title, ignoreCase = true) &&
+                    current.artist.equals(wanted.artist, ignoreCase = true)
+            }
+            if (!same) return
+        }
         when (result) {
             is LyricsResult.Success -> {
                 // Single funnel for everything the views draw: de-overlap the
                 // timeline once so word fill, line focus and auto-scroll all
-                // read the same edge-to-edge clock. Word-sync rows render
+                // read the same edge-to-edge clock, then merge provider
+                // fragments into whitespace-true words so spacing and
+                // punctuation render as authored. Word-sync rows render
                 // word-by-word; rows without syllables fall back to
                 // line-by-line focus on the same clock.
                 val lines = if (result.isSynced && result.lines.isNotEmpty() && !result.isInstrumental) {
-                    com.lastwave.app.data.lyrics.LyricsRepository.normalizeLyricTiming(result.lines)
+                    com.lastwave.app.ui.player.normalizeWordSpacing(
+                        com.lastwave.app.data.lyrics.LyricsRepository.normalizeLyricTiming(result.lines),
+                    )
                 } else result.lines
                 _lyricsState.value = LyricsUiState.Success(
                     lines = lines,
@@ -742,6 +759,7 @@ private fun ExpandedPlayer(
         lyricsUiVersion = settings.lyricsUiVersion,
         lyricsAnimation = settings.lyricsAnimation,
         wavySeekbarEnabled = settings.wavySeekbarEnabled,
+        lyricsOffsetMs = settings.lyricsOffsetMs,
         canvas = canvas,
         canvasEnabled = settings.canvasEnabled,
         canvasFullBleedEnabled = settings.canvasFullBleed,
@@ -1552,6 +1570,7 @@ private fun FullPlayer(
     lyricsUiVersion: LyricsUiVersion = LyricsUiVersion.MODERN,
     lyricsAnimation: LyricsAnimation = LyricsAnimation.APPLE_FLUID,
     wavySeekbarEnabled: Boolean = true,
+    lyricsOffsetMs: Long = 0L,
     canvas: com.lastwave.app.data.canvas.CanvasArtwork? = null,
     canvasEnabled: Boolean = true,
     canvasFullBleedEnabled: Boolean = true,
@@ -1940,6 +1959,7 @@ private fun FullPlayer(
                                         lyricsState = lyricsState,
                                         progressState = progressState,
                                         wavySeekbarEnabled = wavySeekbarEnabled,
+                                        lyricsOffsetMs = lyricsOffsetMs,
                                         onRetry = onRetryLyrics,
                                         onToggleFullscreen = { lyricsFullscreen = !lyricsFullscreen },
                                         isFullscreen = lyricsFullscreen,
@@ -1955,6 +1975,7 @@ private fun FullPlayer(
                                         lyricsState = lyricsState,
                                         lyricsAnimation = lyricsAnimation,
                                         wavySeekbarEnabled = wavySeekbarEnabled,
+                                        lyricsOffsetMs = lyricsOffsetMs,
                                         onRetry = onRetryLyrics,
                                         onToggleFullscreen = { lyricsFullscreen = !lyricsFullscreen },
                                         isFullscreen = lyricsFullscreen,

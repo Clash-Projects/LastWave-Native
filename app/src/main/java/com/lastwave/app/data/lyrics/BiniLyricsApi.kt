@@ -55,34 +55,88 @@ class BiniLyricsApi @Inject constructor(
         album: String? = null,
         isrc: String? = null,
     ): BiniHit? = withContext(Dispatchers.IO) {
-        val builder = "https://lyrics-api.binimum.org/".toHttpUrlOrNull()?.newBuilder() ?: return@withContext null
         if (!isrc.isNullOrBlank()) {
-            builder.addQueryParameter("isrc", isrc.trim())
-        } else {
-            if (title.isBlank()) return@withContext null
-            builder.addQueryParameter("track", title.trim())
-            builder.addQueryParameter("artist", artist.trim())
-            if (!album.isNullOrBlank()) builder.addQueryParameter("album", album.trim())
+            // ISRC names the recording exactly: take it, preferring a
+            // word-timed file when the catalogue holds several.
+            return@withContext query(listOf("isrc" to isrc.trim()))
+                .sortedByDescending { it.timingType.equals("word", ignoreCase = true) }
+                .firstOrNull()
+        }
+        if (title.isBlank()) return@withContext null
+        val shaped = buildList {
+            add("track" to title.trim())
+            add("artist" to artist.trim())
+            if (!album.isNullOrBlank()) add("album" to album.trim())
             if (durationSeconds != null && durationSeconds > 0) {
-                builder.addQueryParameter("duration", durationSeconds.toString())
+                add("duration" to durationSeconds.toString())
             }
         }
+        // Free-text fallback: the shaped query can miss while `q` hits
+        // (and vice versa), so try both before giving up.
+        selectBest(query(shaped), title, artist, durationSeconds)
+            ?: selectBest(
+                query(
+                    listOf(
+                        "q" to if (artist.isBlank()) title.trim()
+                        else "$artist - $title".trim(),
+                    ),
+                ),
+                title,
+                artist,
+                durationSeconds,
+            )
+    }
+
+    private suspend fun query(params: List<Pair<String, String>>): List<BiniHit> {
+        val builder = "https://lyrics-api.binimum.org/".toHttpUrlOrNull()?.newBuilder()
+            ?: return emptyList()
+        params.forEach { (key, value) -> builder.addQueryParameter(key, value) }
         val request = Request.Builder()
             .url(builder.build())
             .header("User-Agent", "LastWave-Android/1.0 (https://github.com/clash-projects/lastwave)")
             .header("Accept", "application/json")
             .get()
             .build()
-        try {
-            val body = okHttpClient.newCall(request).awaitSuccessfulBodyOrNull() ?: return@withContext null
-            json.decodeFromString<BiniSearchResponse>(body).results.firstOrNull()
+        return try {
+            val body = okHttpClient.newCall(request).awaitSuccessfulBodyOrNull() ?: return emptyList()
+            json.decodeFromString<BiniSearchResponse>(body).results
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: IOException) {
-            null
+            emptyList()
         } catch (_: Exception) {
-            null
+            emptyList()
         }
+    }
+
+    /**
+     * The catalogue may return multiple versions of a match (live, remix,
+     * cover): same recording only, both sides agreeing (title + artist),
+     * word-timed files first, duration closest. Anything below the floor
+     * is rejected so the race falls through to other providers.
+     */
+    private fun selectBest(
+        hits: List<BiniHit>,
+        title: String,
+        artist: String,
+        durationSeconds: Int?,
+    ): BiniHit? {
+        if (hits.isEmpty()) return null
+        return hits
+            .filter { LrclibLyricsApi.sameVersion(title, it.trackName.orEmpty()) }
+            .map { it to scoreHit(it, title, artist, durationSeconds) }
+            .filter { (_, score) -> score >= MIN_HIT_SCORE }
+            .sortedWith(
+                compareByDescending<Pair<BiniHit, Int>> { (_, score) -> score }
+                    .thenByDescending { (hit, _) -> hit.timingType.equals("word", ignoreCase = true) }
+                    .thenBy { (hit, _) -> durationDelta(hit, durationSeconds) },
+            )
+            .firstOrNull()?.first
+    }
+
+    private fun durationDelta(hit: BiniHit, durationSeconds: Int?): Long {
+        if (durationSeconds == null || durationSeconds <= 0 || (hit.duration ?: 0) <= 0) return 0L
+        return abs((hit.duration ?: 0) - durationSeconds).toLong()
     }
 
     suspend fun fetchLinesFor(hit: BiniHit): Pair<String?, List<LyricLine>>? = withContext(Dispatchers.IO) {
@@ -121,6 +175,10 @@ class BiniLyricsApi @Inject constructor(
     }
 
     companion object {
+        /** Floor: exact title + artist agreement (3 + 2). Fuzzy-title hits
+         *  (1 + 2) never pass on their own — homonyms stay out. */
+        private const val MIN_HIT_SCORE = 5
+
         fun scoreHit(hit: BiniHit, title: String, artist: String, durationSeconds: Int?): Int {
             var score = 0
             val candTitle = LrclibLyricsApi.cleanTrackTitle(hit.trackName.orEmpty())
