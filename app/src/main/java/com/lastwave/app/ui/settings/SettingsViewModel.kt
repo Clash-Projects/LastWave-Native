@@ -763,13 +763,9 @@ class SettingsViewModel @Inject constructor(
         }
         val placedWidgets = runCatching {
             val manager = android.appwidget.AppWidgetManager.getInstance(context)
-            val small = manager.getAppWidgetIds(
+            manager.getAppWidgetIds(
                 android.content.ComponentName(context, com.lastwave.app.widget.NowPlayingWidgetReceiver::class.java),
             ).size
-            val large = manager.getAppWidgetIds(
-                android.content.ComponentName(context, com.lastwave.app.widget.LargeNowPlayingWidgetReceiver::class.java),
-            ).size
-            small + large
         }.getOrNull()
         sb.appendLine("placedWidgets=${placedWidgets ?: "<lookup failed>"}")
         sb.appendLine("---- logcat (this process) ----")

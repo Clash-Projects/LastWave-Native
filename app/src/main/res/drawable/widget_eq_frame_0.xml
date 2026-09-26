@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Equalizer frame 0 of 3. Bars use the neutral EQ tone (never the accent:
+     one accent color only — play button + progress fill). Cycled by the
+     widget ticker while playing; frame 0 doubles as the paused glyph. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="18dp"
+    android:height="18dp"
+    android:viewportWidth="18"
+    android:viewportHeight="18">
+    <path
+        android:fillColor="@color/widget_eq_bar"
+        android:pathData="M2,12h3v4H2z" />
+    <path
+        android:fillColor="@color/widget_eq_bar"
+        android:pathData="M7.5,4h3v12h-3z" />
+    <path
+        android:fillColor="@color/widget_eq_bar"
+        android:pathData="M13,8h3v8h-3z" />
+</vector>

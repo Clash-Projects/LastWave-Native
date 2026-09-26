@@ -16,4 +16,8 @@
     <color name="widget_accent">#FF9A7B3F</color>
     <!-- Hairline card border, barely-there bronze. -->
     <color name="widget_hairline">#339A7B3F</color>
+    <!-- Progress track + equalizer bars: neutral warm gray. The accent
+         stays reserved for the play button + progress fill only. -->
+    <color name="widget_track">#FFE0D5C2</color>
+    <color name="widget_eq_bar">#FF8A8478</color>
 </resources>

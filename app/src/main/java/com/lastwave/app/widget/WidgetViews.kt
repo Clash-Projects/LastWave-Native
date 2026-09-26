@@ -17,12 +17,29 @@ import com.lastwave.app.R
 import java.io.File
 
 /**
- * From-scratch RemoteViews factory. One rule: this NEVER throws.
+ * Single-widget RemoteViews factory. One rule: this NEVER throws.
  * Every decode / lookup is guarded and falls back to placeholders, so
- * onUpdate always pushes valid content — the exact opposite of the old
- * Glance path, where one throw meant a permanent loading spinner.
+ * onUpdate always pushes valid content.
+ *
+ * One layout ([R.layout.widget_now_playing]) serves every size. The
+ * launcher's measured width picks the breakpoint and the binder only
+ * toggles visibility — elements are cut at small sizes, never shrunk:
+ * - Compact  (<280dp): art + title + play. Artist, prev/next, EQ status
+ *   and progress are hidden entirely.
+ * - Standard (280–420dp): + artist, prev/next. EQ status + progress hidden.
+ * - Expanded (>420dp): everything, incl. animated EQ + progress bar.
  */
 internal object WidgetViews {
+
+    private const val COMPACT_MAX_DP = 280
+    private const val STANDARD_MAX_DP = 420
+    private const val PROGRESS_MAX = 1000
+
+    private val eqFrames = intArrayOf(
+        R.drawable.widget_eq_frame_0,
+        R.drawable.widget_eq_frame_1,
+        R.drawable.widget_eq_frame_2,
+    )
 
     internal data class Resolved(
         val snapshot: WidgetSnapshot,
@@ -41,50 +58,31 @@ internal object WidgetViews {
         return Resolved(snapshot, hasAccess, usable)
     }
 
-    // Height breakpoints (dp, from the launcher's own measurement). Below
-    // the line the full two-row / showcase layout would clip, so the
-    // compact single row (60dp tall) is used instead. Nothing overlaps,
-    // nothing clips, on any grid, foldable, or landscape size.
-    private const val SMALL_TALL_MIN_DP = 110
-    private const val LARGE_TALL_MIN_DP = 340
-
-    /** Reads the launcher's measured allocation for this exact widget id. */
-    private fun minHeightDp(context: Context, appWidgetId: Int): Int = runCatching {
+    /** Reads the launcher's measured width for this exact widget id. */
+    private fun minWidthDp(context: Context, appWidgetId: Int): Int = runCatching {
         val options = AppWidgetManager.getInstance(context).getAppWidgetOptions(appWidgetId)
-        options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT)
+        options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)
     }.getOrDefault(0)
 
-    fun buildSmall(context: Context, receiver: Class<*>, appWidgetId: Int): RemoteViews {
+    fun build(
+        context: Context,
+        appWidgetId: Int,
+        eqFrame: Int? = null,
+        progressOverride: Float? = null,
+    ): RemoteViews {
         val resolved = resolve(context)
-        val layout = if (minHeightDp(context, appWidgetId) in 1 until SMALL_TALL_MIN_DP) {
-            R.layout.widget_now_playing_compact
-        } else {
-            R.layout.widget_now_playing
-        }
-        val views = RemoteViews(context.packageName, layout)
-        bindCommon(context, views, receiver, resolved)
+        val views = RemoteViews(context.packageName, R.layout.widget_now_playing)
+        bind(context, views, resolved, appWidgetId, eqFrame, progressOverride)
         return views
     }
 
-    fun buildLarge(context: Context, receiver: Class<*>, appWidgetId: Int): RemoteViews {
-        val resolved = resolve(context)
-        // A short large widget gets the horizontal player (same binder, same
-        // IDs); only tall placements get the vertical showcase.
-        val layout = if (minHeightDp(context, appWidgetId) in 1 until LARGE_TALL_MIN_DP) {
-            R.layout.widget_now_playing
-        } else {
-            R.layout.widget_now_playing_large
-        }
-        val views = RemoteViews(context.packageName, layout)
-        bindCommon(context, views, receiver, resolved)
-        return views
-    }
-
-    private fun bindCommon(
+    private fun bind(
         context: Context,
         views: RemoteViews,
-        receiver: Class<*>,
         resolved: Resolved,
+        appWidgetId: Int,
+        eqFrame: Int?,
+        progressOverride: Float?,
     ) {
         val snapshot = resolved.snapshot
         if (!resolved.usableSession) {
@@ -105,6 +103,18 @@ internal object WidgetViews {
         views.setViewVisibility(R.id.widget_empty_group, View.GONE)
         views.setViewVisibility(R.id.widget_content_group, View.VISIBLE)
 
+        // Breakpoint by measured width; unknown (0) degrades to standard —
+        // the safe middle that never clips and never hides essentials.
+        val width = minWidthDp(context, appWidgetId)
+        val compact = width in 1 until COMPACT_MAX_DP
+        val expanded = width > STANDARD_MAX_DP
+
+        views.setViewVisibility(R.id.widget_subtitle, if (compact) View.GONE else View.VISIBLE)
+        views.setViewVisibility(R.id.widget_prev, if (compact) View.GONE else View.VISIBLE)
+        views.setViewVisibility(R.id.widget_next, if (compact) View.GONE else View.VISIBLE)
+        views.setViewVisibility(R.id.widget_eq_group, if (expanded) View.VISIBLE else View.GONE)
+        views.setViewVisibility(R.id.widget_progress_row, if (expanded) View.VISIBLE else View.GONE)
+
         views.setTextViewText(
             R.id.widget_title,
             snapshot.title.ifBlank { "Unknown track" },
@@ -114,26 +124,32 @@ internal object WidgetViews {
             snapshot.artist.ifBlank { "Unknown artist" },
         )
         val playing = snapshot.isPlaying
-        // Layout applies allCaps + letterSpacing; champagne gold while
-        // playing, quiet gray while paused.
         views.setTextViewText(
             R.id.widget_state,
             if (playing) "Playing" else "Paused",
         )
-        runCatching {
-            val stateColor = ContextCompat.getColor(
-                context,
-                if (playing) R.color.widget_accent else R.color.widget_on_surface_variant,
-            )
-            views.setTextColor(R.id.widget_state, stateColor)
-        }
         views.setImageViewResource(
             R.id.widget_play_pause,
             if (playing) R.drawable.ic_widget_pause else R.drawable.ic_widget_play,
         )
+        // Animated EQ while playing (ticker cycles frames); frozen first
+        // frame while paused. Neutral bars — the accent stays reserved for
+        // the play button + progress fill.
+        runCatching {
+            val frame = if (playing) eqFrames[(eqFrame ?: 0).mod(eqFrames.size)]
+            else eqFrames[0]
+            views.setImageViewResource(R.id.widget_eq_icon, frame)
+        }
 
-        // Prev/next vectors are white (drawn for the red pill); tint them to
-        // on-surface-variant so they stay visible on the light circle.
+        // Progress: live ticker override wins, else last persisted fraction.
+        runCatching {
+            val fraction = (progressOverride ?: snapshot.progress).coerceIn(0f, 1f)
+            views.setProgressBar(R.id.widget_progress, PROGRESS_MAX, (fraction * PROGRESS_MAX).toInt(), false)
+        }
+
+        // Prev/next vectors are drawn white (for the red pill); tint them to
+        // on-surface-variant so they read as light gray on either theme —
+        // never near-black-on-black.
         runCatching {
             val tint = ContextCompat.getColor(context, R.color.widget_on_surface_variant)
             views.setInt(R.id.widget_prev, "setColorFilter", tint)
@@ -161,9 +177,18 @@ internal object WidgetViews {
         }
 
         views.setOnClickPendingIntent(R.id.widget_root, WidgetActions.openAppPending(context))
-        views.setOnClickPendingIntent(R.id.widget_play_pause, WidgetActions.togglePending(context, receiver))
-        views.setOnClickPendingIntent(R.id.widget_prev, WidgetActions.prevPending(context, receiver))
-        views.setOnClickPendingIntent(R.id.widget_next, WidgetActions.nextPending(context, receiver))
+        views.setOnClickPendingIntent(
+            R.id.widget_play_pause,
+            WidgetActions.togglePending(context, NowPlayingWidgetReceiver::class.java),
+        )
+        views.setOnClickPendingIntent(
+            R.id.widget_prev,
+            WidgetActions.prevPending(context, NowPlayingWidgetReceiver::class.java),
+        )
+        views.setOnClickPendingIntent(
+            R.id.widget_next,
+            WidgetActions.nextPending(context, NowPlayingWidgetReceiver::class.java),
+        )
     }
 
     /**

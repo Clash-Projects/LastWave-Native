@@ -14,38 +14,39 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * From-scratch widget, classic AppWidgetProvider + static RemoteViews.
+ * The one now-playing widget: classic AppWidgetProvider + a single adaptive
+ * RemoteViews layout. The binder hides elements per measured width
+ * (compact / standard / expanded) — there is exactly one provider, one
+ * layout, one snapshot, so a duplicate can never render.
  *
- * Why this fixes "widget not loading": the old Glance widget built its UI
- * inside provideGlance() behind Hilt + theme-repo lookups, and its
- * initialLayout was glance_default_loading_layout. Any throw before
- * provideContent left the spinner on screen forever. Here onUpdate always
- * pushes a fully-built RemoteViews (or the empty state) with every call
- * guarded — there is no code path that leaves the widget without content.
+ * onUpdate always pushes fully-built content (or the empty state) with
+ * every call guarded — no code path leaves the widget without content.
  */
-abstract class BaseNowPlayingWidgetProvider : AppWidgetProvider() {
-
-    protected abstract val small: Boolean
-    protected abstract val receiverClass: Class<*>
+class NowPlayingWidgetReceiver : AppWidgetProvider() {
 
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         for (appWidgetId in ids) {
             runCatching {
-                val views = if (small) {
-                    WidgetViews.buildSmall(context, receiverClass, appWidgetId)
-                } else {
-                    WidgetViews.buildLarge(context, receiverClass, appWidgetId)
+                manager.updateAppWidget(appWidgetId, WidgetViews.build(context, appWidgetId))
+            }
+        }
+        // Restart the EQ/progress ticker after process death when the
+        // persisted snapshot says something is still playing.
+        ioScope.launch {
+            runCatching {
+                val snapshot = WidgetSnapshot.read(context)
+                if (snapshot.hasSession && snapshot.isPlaying) {
+                    WidgetUpdater.startWaveAnimation(context.applicationContext)
                 }
-                manager.updateAppWidget(appWidgetId, views)
             }
         }
     }
 
     /**
-     * The user resized the widget: re-pick compact vs full layout for the
-     * new allocation right away instead of waiting for the next track event.
+     * The user resized the widget: re-resolve the breakpoint for the new
+     * allocation right away instead of waiting for the next track event.
      */
     override fun onAppWidgetOptionsChanged(
         context: Context,
@@ -55,12 +56,7 @@ abstract class BaseNowPlayingWidgetProvider : AppWidgetProvider() {
     ) {
         super.onAppWidgetOptionsChanged(context, manager, appWidgetId, newOptions)
         runCatching {
-            val views = if (small) {
-                WidgetViews.buildSmall(context, receiverClass, appWidgetId)
-            } else {
-                WidgetViews.buildLarge(context, receiverClass, appWidgetId)
-            }
-            manager.updateAppWidget(appWidgetId, views)
+            manager.updateAppWidget(appWidgetId, WidgetViews.build(context, appWidgetId))
         }
     }
 
@@ -102,10 +98,4 @@ abstract class BaseNowPlayingWidgetProvider : AppWidgetProvider() {
         // even if the service hasn't published since boot.
         ioScope.launch { runCatching { WidgetUpdater.sync(context) } }
     }
-}
-
-/** Small (5x1) widget. Class name kept stable so placed widgets survive the update. */
-class NowPlayingWidgetReceiver : BaseNowPlayingWidgetProvider() {
-    override val small: Boolean = true
-    override val receiverClass: Class<*> = NowPlayingWidgetReceiver::class.java
 }

@@ -21,6 +21,9 @@ data class WidgetSnapshot(
     val artPath: String? = null,
     val isPlaying: Boolean = false,
     val hasSession: Boolean = false,
+    /** Last known playback position 0..1. Refreshed on every publish and
+     *  live-driven by the ticker while playing. */
+    val progress: Float = 0f,
 ) {
     companion object {
         internal const val STORE = "lastwave_widget_now_playing"
@@ -38,6 +41,7 @@ data class WidgetSnapshot(
                 artPath = prefs.getString("art_path", null),
                 isPlaying = prefs.getBoolean("is_playing", false),
                 hasSession = prefs.getBoolean("has_session", false),
+                progress = prefs.getFloat("progress", 0f).coerceIn(0f, 1f),
             )
         }
 
@@ -52,6 +56,7 @@ data class WidgetSnapshot(
                     .putString("art_path", value.artPath)
                     .putBoolean("is_playing", value.isPlaying)
                     .putBoolean("has_session", value.hasSession)
+                    .putFloat("progress", value.progress.coerceIn(0f, 1f))
                     .apply()
             }
         }
@@ -59,9 +64,7 @@ data class WidgetSnapshot(
 }
 
 /**
- * Compatibility names kept so existing callers
- * (SettingsViewModel diagnostics, services) compile unchanged.
- * Both sizes share one snapshot — they always showed the same track.
+ * Compatibility name kept so existing callers (SettingsViewModel
+ * diagnostics) compile unchanged. One widget, one snapshot.
  */
 typealias NowPlayingWidgetSnapshot = WidgetSnapshot
-typealias LargeNowPlayingWidgetSnapshot = WidgetSnapshot
