@@ -753,10 +753,16 @@ class SettingsViewModel @Inject constructor(
             sb.appendLine("  artPath=${snapshot.artPath} artExists=$artExists")
         }
         val placedWidgets = runCatching {
-            androidx.glance.appwidget.GlanceAppWidgetManager(context)
-                .getGlanceIds(com.lastwave.app.widget.NowPlayingWidget::class.java).size
+            val manager = android.appwidget.AppWidgetManager.getInstance(context)
+            val small = manager.getAppWidgetIds(
+                android.content.ComponentName(context, com.lastwave.app.widget.NowPlayingWidgetReceiver::class.java),
+            ).size
+            val large = manager.getAppWidgetIds(
+                android.content.ComponentName(context, com.lastwave.app.widget.LargeNowPlayingWidgetReceiver::class.java),
+            ).size
+            small + large
         }.getOrNull()
-        sb.appendLine("placedGlanceWidgets=${placedWidgets ?: "<lookup failed>"}")
+        sb.appendLine("placedWidgets=${placedWidgets ?: "<lookup failed>"}")
         sb.appendLine("---- logcat (this process) ----")
         sb.append(readOwnLogcat())
         sb.appendLine("---- end ----")

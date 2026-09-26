@@ -12,8 +12,8 @@ import android.media.session.MediaController
  * for the lifetime of the session it points to, so on process death this
  * naturally goes back to null until the service reconnects and rebinds a
  * live session. The widget's own displayed text/art/playing-state DOES
- * persist across process death (see [WidgetUpdater] / Glance's own
- * Preferences-backed widget state) — only the transport-control target
+ * persist across process death (see [WidgetUpdater] / [WidgetSnapshot],
+ * SharedPreferences-backed) — only the transport-control target
  * lives here.
  */
 object ActiveMediaSessionHolder {

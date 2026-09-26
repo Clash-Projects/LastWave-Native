@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Luxury light palette: warm ivory card, espresso ink, muted bronze.
+         The widget path stays dependency-free on purpose (no Hilt / dynamic
+         scheme in RemoteViews) — these static tones are the design. -->
+    <color name="widget_surface">#FFFAF7F1</color>
+    <color name="widget_surface_top">#FFFFFFFF</color>
+    <color name="widget_surface_variant">#FFECE4D4</color>
+    <color name="widget_on_surface">#FF1B1611</color>
+    <color name="widget_on_surface_variant">#FF7A7062</color>
+    <color name="widget_primary">#FFE03030</color>
+    <color name="widget_primary_deep">#FFC81E1E</color>
+    <color name="widget_primary_top">#FFF04444</color>
+    <color name="widget_on_primary">#FFFFFFFF</color>
+    <!-- Muted bronze: readable on ivory, quiet luxury, never gaudy. -->
+    <color name="widget_accent">#FF9A7B3F</color>
+    <!-- Hairline card border, barely-there bronze. -->
+    <color name="widget_hairline">#339A7B3F</color>
+</resources>

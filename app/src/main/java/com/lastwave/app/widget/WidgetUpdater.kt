@@ -1,72 +1,47 @@
 package com.lastwave.app.widget
 
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
-import androidx.glance.appwidget.GlanceAppWidget
-import androidx.glance.appwidget.GlanceAppWidgetManager
-import androidx.glance.appwidget.updateAll
 import java.io.File
 import java.io.FileOutputStream
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 private const val TAG = "WidgetUpdater"
 private const val ART_FILE_NAME = "widget_now_playing_art.png"
-private const val WAVE_FRAME_INTERVAL_MS = 550L
 
-/** Writes and refreshes the shared state of the now-playing widget. */
+/**
+ * From-scratch widget publisher: plain SharedPreferences + AppWidgetManager.
+ *
+ * Same public API as before (publish / clear / setPlaying / sync /
+ * refreshTheme) so MediaScrobbleListenerService, MusicPlaybackService,
+ * MusicPlayer and LastWaveApplication keep compiling unchanged — but the
+ * inside is dependency-free: no Glance, no Hilt, no theme repo. A push can
+ * therefore never fail the way provideGlance used to, and the widget's
+ * initialLayout is real content, so "stuck on loading" is impossible.
+ */
 object WidgetUpdater {
-    // Widgets are static RemoteViews, so the artwork's 3-frame equalizer
-    // waves are driven by a light ticker that re-publishes only while a
-    // session is actively playing (550ms per frame). It stops on pause,
-    // clear, or when no widget is placed anymore.
 
+    // Kept for source compatibility (old Glance widget read it for its
+    // equalizer ticker). The new static widget has no animation frames.
     @Volatile
-    internal var animationFrame: Int = 0
+    var animationFrame: Int = 0
         private set
 
-    private val animationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /** No-op kept for compatibility; the static widget needs no ticker. */
+    fun startWaveAnimation(context: Context) = Unit
 
-    // Snapshot write + Glance refresh must be atomic: the playback service
-    // (track transitions, artwork landing late) and the scrobble listener
-    // (external apps) publish from different threads, and interleaved
-    // write/write or write/refresh pairs could otherwise leave a stale
-    // snapshot on screen with no later event to repair it (issue #94).
-    // The 550ms wave ticker only re-composes and stays outside the mutex.
-    private val publishMutex = kotlinx.coroutines.sync.Mutex()
+    /** No-op kept for compatibility; the static widget needs no ticker. */
+    fun stopWaveAnimation() = Unit
 
-    @Volatile
-    private var waveAnimationJob: Job? = null
-
-    /** Starts the equalizer frame ticker for active playback (idempotent). */
-    internal fun startWaveAnimation(context: Context) {
-        synchronized(this) {
-            if (waveAnimationJob?.isActive == true) return
-            waveAnimationJob = animationScope.launch {
-                val appContext = context.applicationContext
-                while (isActive) {
-                    delay(WAVE_FRAME_INTERVAL_MS)
-                    animationFrame = (animationFrame + 1) % 3
-                    if (!updateAll(appContext)) break
-                }
-            }
-        }
-    }
-
-    /** Stops the equalizer frame ticker. */
-    internal fun stopWaveAnimation() {
-        synchronized(this) {
-            waveAnimationJob?.cancel()
-            waveAnimationJob = null
-        }
-    }
+    // Snapshot write + widget push stay atomic: the playback service and
+    // the scrobble listener publish from different threads, and an
+    // interleaved write/push pair could otherwise leave stale content on
+    // screen with no later event to repair it.
+    private val publishMutex = Mutex()
 
     suspend fun publish(
         context: Context,
@@ -79,9 +54,9 @@ object WidgetUpdater {
         isPlaying: Boolean,
     ) = publishMutex.withLock {
         val artPath = art?.let { bitmap -> writeArt(context, bitmap) }
-        NowPlayingWidgetSnapshot.write(
+        WidgetSnapshot.write(
             context,
-            NowPlayingWidgetSnapshot(
+            WidgetSnapshot(
                 title = title,
                 artist = artist,
                 album = album.orEmpty(),
@@ -92,58 +67,66 @@ object WidgetUpdater {
                 hasSession = true,
             ),
         )
-        updateAll(context)
-        if (isPlaying) startWaveAnimation(context) else stopWaveAnimation()
+        pushAll(context)
     }
 
     suspend fun clear(context: Context) = publishMutex.withLock {
-        stopWaveAnimation()
-        val current = NowPlayingWidgetSnapshot.read(context)
-        NowPlayingWidgetSnapshot.write(
+        val current = WidgetSnapshot.read(context)
+        WidgetSnapshot.write(
             context,
             current.copy(artPath = null, isPlaying = false, hasSession = false),
         )
-        updateAll(context)
+        pushAll(context)
     }
 
-    /** Immediately reflects widget-originated playback actions while the
-     * media-session callback catches up. Always writes and refreshes so a
+    /**
+     * Immediately reflects widget-originated playback actions while the
+     * media-session callback catches up. Always writes and pushes so a
      * stale persisted flag can never leave the play/pause glyph out of
-     * sync with the real session. */
+     * sync with the real session.
+     */
     suspend fun setPlaying(context: Context, isPlaying: Boolean) = publishMutex.withLock {
-        val current = NowPlayingWidgetSnapshot.read(context)
+        val current = WidgetSnapshot.read(context)
         if (!current.hasSession) return@withLock
-        NowPlayingWidgetSnapshot.write(context, current.copy(isPlaying = isPlaying))
-        updateAll(context)
-        if (isPlaying) startWaveAnimation(context) else stopWaveAnimation()
+        WidgetSnapshot.write(context, current.copy(isPlaying = isPlaying))
+        pushAll(context)
     }
 
-    /** Refreshes a freshly placed widget from persisted state. */
+    /** Refreshes freshly placed widgets from persisted state. */
     suspend fun sync(context: Context) {
-        updateAll(context)
+        pushAll(context)
     }
 
-    /** Recompose all placed widgets after the app's live color scheme changes. */
+    /** Re-pushes all widgets (theme change is handled by day/night resources). */
     suspend fun refreshTheme(context: Context) {
-        updateAll(context)
+        pushAll(context)
     }
 
-    private suspend fun updateAll(context: Context): Boolean = runCatching {
-            val manager = GlanceAppWidgetManager(context)
-            val updatedSmall = updateWidget(context, manager, NowPlayingWidget::class.java, NowPlayingWidget())
-            val updatedLarge = updateWidget(context, manager, LargeNowPlayingWidget::class.java, LargeNowPlayingWidget())
-            updatedSmall || updatedLarge
-        }.onFailure { Log.w(TAG, "widget update failed", it) }.getOrDefault(false)
+    private fun pushAll(context: Context) {
+        runCatching {
+            val manager = AppWidgetManager.getInstance(context)
+            pushOne(context, manager, NowPlayingWidgetReceiver::class.java, small = true)
+            pushOne(context, manager, LargeNowPlayingWidgetReceiver::class.java, small = false)
+        }.onFailure { Log.w(TAG, "widget push failed", it) }
+    }
 
-    private suspend fun <T : GlanceAppWidget> updateWidget(
+    private fun pushOne(
         context: Context,
-        manager: GlanceAppWidgetManager,
-        widgetClass: Class<T>,
-        widget: T,
-    ): Boolean {
-        val ids = manager.getGlanceIds(widgetClass)
-        if (ids.isNotEmpty()) widget.updateAll(context)
-        return ids.isNotEmpty()
+        manager: AppWidgetManager,
+        receiver: Class<*>,
+        small: Boolean,
+    ) {
+        runCatching {
+            val ids = manager.getAppWidgetIds(ComponentName(context, receiver))
+            for (appWidgetId in ids) {
+                val views = if (small) {
+                    WidgetViews.buildSmall(context, receiver, appWidgetId)
+                } else {
+                    WidgetViews.buildLarge(context, receiver, appWidgetId)
+                }
+                runCatching { manager.updateAppWidget(appWidgetId, views) }
+            }
+        }.onFailure { Log.w(TAG, "widget push failed for $receiver", it) }
     }
 
     @Synchronized

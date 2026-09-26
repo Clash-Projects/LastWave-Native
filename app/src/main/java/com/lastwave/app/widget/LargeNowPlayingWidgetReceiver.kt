@@ -1,7 +1,7 @@
 package com.lastwave.app.widget
 
-import androidx.glance.appwidget.GlanceAppWidget
-
-class LargeNowPlayingWidgetReceiver : LastWaveWidgetReceiver() {
-    override val glanceAppWidget: GlanceAppWidget = LargeNowPlayingWidget()
+/** Large widget. Class name kept stable so placed widgets survive the update. */
+class LargeNowPlayingWidgetReceiver : BaseNowPlayingWidgetProvider() {
+    override val small: Boolean = false
+    override val receiverClass: Class<*> = LargeNowPlayingWidgetReceiver::class.java
 }

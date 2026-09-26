@@ -10,7 +10,8 @@
     android:targetCellHeight="1"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
-    android:initialLayout="@layout/glance_default_loading_layout"
+    android:initialLayout="@layout/widget_now_playing"
+    android:previewLayout="@layout/widget_now_playing"
     android:previewImage="@mipmap/ic_launcher"
     android:description="@string/widget_description"
     android:updatePeriodMillis="0" />

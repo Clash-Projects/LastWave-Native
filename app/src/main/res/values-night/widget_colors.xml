@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Luxury dark palette: warm onyx card, champagne text + accents.
+         The launcher re-inflates RemoteViews on ui-mode change, so
+         day/night just works with zero widget code. -->
+    <color name="widget_surface">#FF141115</color>
+    <color name="widget_surface_top">#FF221C22</color>
+    <color name="widget_surface_variant">#FF2B2530</color>
+    <color name="widget_on_surface">#FFF5EEDF</color>
+    <color name="widget_on_surface_variant">#FFA79C8D</color>
+    <color name="widget_primary">#FFE03030</color>
+    <color name="widget_primary_deep">#FFC81E1E</color>
+    <color name="widget_primary_top">#FFF04444</color>
+    <color name="widget_on_primary">#FFFFFFFF</color>
+    <!-- Champagne gold: the luxury signature. Used sparingly —
+         playing state, divider rule, nothing else. -->
+    <color name="widget_accent">#FFC9A86A</color>
+    <!-- Hairline card border, faint champagne. -->
+    <color name="widget_hairline">#40C9A86A</color>
+</resources>
