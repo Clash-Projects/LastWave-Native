@@ -274,6 +274,7 @@ class PlayerViewModel @Inject constructor(
     val player: MusicPlayer,
     private val playlistRepository: PlaylistRepository,
     private val lyricsRepository: LyricsRepository,
+    private val canvasRepository: com.lastwave.app.data.canvas.CanvasRepository,
     private val settingsPreferences: com.lastwave.app.data.local.SettingsPreferences,
     val navigator: com.lastwave.app.ui.navigation.ArtistAlbumNavigator,
     val genreExplorer: com.lastwave.app.ui.genres.GenreExplorer,
@@ -320,6 +321,11 @@ class PlayerViewModel @Inject constructor(
     private var currentTrackLyricsKey: String? = null
     private var lyricsJob: Job? = null
 
+    private val _canvasState = MutableStateFlow<com.lastwave.app.data.canvas.CanvasArtwork?>(null)
+    val canvasState = _canvasState.asStateFlow()
+    private var currentCanvasTrackKey: String? = null
+    private var canvasJob: Job? = null
+
     private companion object {
         /** Spinner only appears when loading actually takes time; cache
          *  hits resolve well inside this window with no flash. */
@@ -350,6 +356,27 @@ class PlayerViewModel @Inject constructor(
                     } else {
                         lyricsJob?.cancel()
                         _lyricsState.value = LyricsUiState.Idle
+                    }
+                }
+            }
+        }
+        viewModelScope.launch {
+            combine(
+                player.chromeState.map { it.current }.distinctUntilChanged(),
+                settingsPreferences.settings.map { it.canvasEnabled to it.canvasOverCellular }.distinctUntilChanged(),
+            ) { track, (enabled, cellular) -> Triple(track, enabled, cellular) }.collect { (track, enabled, cellular) ->
+                val key = track?.let { "${it.videoId ?: ""}|${it.artist}|${it.title}|$enabled|$cellular" }
+                if (key != currentCanvasTrackKey) {
+                    currentCanvasTrackKey = key
+                    canvasJob?.cancel()
+                    if (track != null && enabled) {
+                        _canvasState.value = canvasRepository.cached(track)
+                        canvasJob = viewModelScope.launch {
+                            val result = canvasRepository.canvasFor(track, cellularAllowed = cellular)
+                            _canvasState.value = result
+                        }
+                    } else {
+                        _canvasState.value = null
                     }
                 }
             }
@@ -701,6 +728,7 @@ private fun ExpandedPlayer(
 ) {
     val state by viewModel.fullPlayerState.collectAsStateWithLifecycle()
     val lyricsState by viewModel.lyricsState.collectAsStateWithLifecycle()
+    val canvas by viewModel.canvasState.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val likedTrackKeys by viewModel.likedTrackKeys.collectAsStateWithLifecycle()
     val currentTrack = state.current
@@ -714,6 +742,9 @@ private fun ExpandedPlayer(
         lyricsUiVersion = settings.lyricsUiVersion,
         lyricsAnimation = settings.lyricsAnimation,
         wavySeekbarEnabled = settings.wavySeekbarEnabled,
+        canvas = canvas,
+        canvasEnabled = settings.canvasEnabled,
+        canvasFullBleedEnabled = settings.canvasFullBleed,
         currentTab = currentTab,
         onTabChange = onTabChange,
         onRetryLyrics = onRetryLyrics,
@@ -1521,6 +1552,9 @@ private fun FullPlayer(
     lyricsUiVersion: LyricsUiVersion = LyricsUiVersion.MODERN,
     lyricsAnimation: LyricsAnimation = LyricsAnimation.APPLE_FLUID,
     wavySeekbarEnabled: Boolean = true,
+    canvas: com.lastwave.app.data.canvas.CanvasArtwork? = null,
+    canvasEnabled: Boolean = true,
+    canvasFullBleedEnabled: Boolean = true,
     currentTab: FullPlayerTab,
     onTabChange: (FullPlayerTab) -> Unit,
     onRetryLyrics: () -> Unit,
@@ -1531,6 +1565,12 @@ private fun FullPlayer(
     onDoubleTapLike: () -> Unit = {},
 ) {
     val track = state.current ?: return
+    var canvasAspect by remember(canvas?.url) { mutableFloatStateOf(0f) }
+    var canvasRendered by remember(canvas?.url) { mutableStateOf(false) }
+    val isPortraitCanvas = canvasAspect in 0.01f..0.99f || canvas?.url?.contains("tall", ignoreCase = true) == true
+    val isCanvasActive = canvasEnabled && canvas != null
+    val showFullBleed = isCanvasActive && canvasFullBleedEnabled && isPortraitCanvas
+    val showSleeveCanvas = isCanvasActive && !showFullBleed
     var lyricsFullscreen by remember(currentTab) { mutableStateOf(false) }
     val view = LocalView.current
     DisposableEffect(view, lyricsFullscreen) {
@@ -1669,65 +1709,77 @@ private fun FullPlayer(
             val bgMaxDimension = maxOf(bgWidth, bgHeight, 1f)
 
             Box(Modifier.matchParentSize().liquidGlassSource(if (fullGlass) playerBackdrop else null)) {
-            FluidArtworkBackground(
-                track = track,
-                modifier = Modifier.fillMaxSize(),
-                extraBlur = false,
-                fallback = {
-                    PlayerArtwork(
-                        track = track,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                scaleX = 1.35f
-                                scaleY = 1.35f
-                                alpha = 0.9f
-                            },
-                        corner = 0.dp,
-                        decodeSizePx = 200,
-                    )
-                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.52f)))
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.radialGradient(
-                                    0f to ambientColor.copy(alpha = 0.58f),
-                                    0.45f to ambientColor.copy(alpha = 0.22f),
-                                    1f to Color.Transparent,
-                                    center = androidx.compose.ui.geometry.Offset(bgWidth * 0.25f, bgHeight * 0.20f),
-                                    radius = bgMaxDimension * 0.85f,
+            if (showFullBleed && canvas != null) {
+                CanvasArtworkPlayer(
+                    canvas = canvas,
+                    isPlaying = state.isPlaying,
+                    contentMode = CanvasContentMode.CROP,
+                    onAspectRatioChanged = { canvasAspect = it },
+                    onRenderedChanged = { canvasRendered = it },
+                    pausedForTransition = shownDismissY > 0f || currentTab != FullPlayerTab.NOW_PLAYING,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                FluidArtworkBackground(
+                    track = track,
+                    modifier = Modifier.fillMaxSize(),
+                    extraBlur = false,
+                    fallback = {
+                        PlayerArtwork(
+                            track = track,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    scaleX = 1.35f
+                                    scaleY = 1.35f
+                                    alpha = 0.9f
+                                },
+                            corner = 0.dp,
+                            decodeSizePx = 200,
+                        )
+                        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.52f)))
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.radialGradient(
+                                        0f to ambientColor.copy(alpha = 0.58f),
+                                        0.45f to ambientColor.copy(alpha = 0.22f),
+                                        1f to Color.Transparent,
+                                        center = androidx.compose.ui.geometry.Offset(bgWidth * 0.25f, bgHeight * 0.20f),
+                                        radius = bgMaxDimension * 0.85f,
+                                    )
                                 )
-                            )
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.radialGradient(
-                                    0f to ambientCompanion.copy(alpha = 0.52f),
-                                    0.50f to ambientCompanion.copy(alpha = 0.20f),
-                                    1f to Color.Transparent,
-                                    center = androidx.compose.ui.geometry.Offset(bgWidth * 0.88f, bgHeight * 0.65f),
-                                    radius = bgMaxDimension * 0.78f,
+                        )
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.radialGradient(
+                                        0f to ambientCompanion.copy(alpha = 0.52f),
+                                        0.50f to ambientCompanion.copy(alpha = 0.20f),
+                                        1f to Color.Transparent,
+                                        center = androidx.compose.ui.geometry.Offset(bgWidth * 0.88f, bgHeight * 0.65f),
+                                        radius = bgMaxDimension * 0.78f,
+                                    )
                                 )
-                            )
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.radialGradient(
-                                    0f to ambientDeep.copy(alpha = 0.42f),
-                                    0.55f to ambientDeep.copy(alpha = 0.14f),
-                                    1f to Color.Transparent,
-                                    center = androidx.compose.ui.geometry.Offset(bgWidth * 0.15f, bgHeight * 0.82f),
-                                    radius = bgMaxDimension * 0.70f,
+                        )
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.radialGradient(
+                                        0f to ambientDeep.copy(alpha = 0.42f),
+                                        0.55f to ambientDeep.copy(alpha = 0.14f),
+                                        1f to Color.Transparent,
+                                        center = androidx.compose.ui.geometry.Offset(bgWidth * 0.15f, bgHeight * 0.82f),
+                                        radius = bgMaxDimension * 0.70f,
+                                    )
                                 )
-                            )
-                    )
-                }
-            )
+                        )
+                    }
+                )
+            }
             // Contrast scrim gradient (ensures text & controls are clear while preserving vibrant colors)
             Box(
                 Modifier
@@ -2088,7 +2140,15 @@ private fun FullPlayer(
                                                 },
                                         ) {
                                             Box(Modifier.fillMaxSize()) {
-                                                PlayerArtwork(track, Modifier.fillMaxSize(), 32.dp)
+                                                PlayerArtwork(
+                                                    track = track,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    corner = 32.dp,
+                                                    canvas = if (showSleeveCanvas) canvas else null,
+                                                    isPlaying = state.isPlaying,
+                                                    pausedForTransition = shownDismissY > 0f || currentTab != FullPlayerTab.NOW_PLAYING,
+                                                    onAspectRatioChanged = { canvasAspect = it },
+                                                )
 
                                                 androidx.compose.animation.AnimatedVisibility(
                                                     visible = seekOverlayDirection == SeekDirection.REWIND,
@@ -3333,6 +3393,10 @@ private fun PlayerArtwork(
     modifier: Modifier,
     corner: androidx.compose.ui.unit.Dp,
     decodeSizePx: Int? = null,
+    canvas: com.lastwave.app.data.canvas.CanvasArtwork? = null,
+    isPlaying: Boolean = false,
+    pausedForTransition: Boolean = false,
+    onAspectRatioChanged: (Float) -> Unit = {},
 ) {
     Box(modifier.clip(RoundedCornerShape(corner)).background(MaterialTheme.colorScheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
         ArtworkImage(
@@ -3343,6 +3407,16 @@ private fun PlayerArtwork(
             modifier = Modifier.fillMaxSize(),
             decodeSizePx = decodeSizePx,
         )
+        if (canvas != null) {
+            CanvasArtworkPlayer(
+                canvas = canvas,
+                isPlaying = isPlaying,
+                pausedForTransition = pausedForTransition,
+                onAspectRatioChanged = onAspectRatioChanged,
+                contentMode = CanvasContentMode.CROP,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }
 

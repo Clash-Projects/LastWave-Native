@@ -894,7 +894,47 @@ fun SettingsScreen(
                                 onClick = { showLyricsProviderDialog = true },
                                 position = position,
                             )
-                                                    }
+                        }
+                    }
+                }
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SectionLabel(stringResource(R.string.settings_canvas_enabled))
+                    SettingsGroup(rowCount = if (misc.canvasEnabled) 3 else 1) { index, position ->
+                        when (index) {
+                            0 -> SettingsToggleCard(
+                                icon = Icons.Filled.SmartDisplay,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.settings_canvas_enabled),
+                                subtitle = stringResource(R.string.settings_canvas_enabled_sub),
+                                checked = misc.canvasEnabled,
+                                onCheckedChange = viewModel::setCanvasEnabled,
+                                position = position,
+                            )
+                            1 -> SettingsToggleCard(
+                                icon = Icons.Filled.Visibility,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_canvas_full_bleed),
+                                subtitle = stringResource(R.string.settings_canvas_full_bleed_sub),
+                                checked = misc.canvasFullBleed,
+                                onCheckedChange = viewModel::setCanvasFullBleed,
+                                position = position,
+                            )
+                            2 -> SettingsToggleCard(
+                                icon = Icons.Filled.CloudDownload,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = stringResource(R.string.settings_canvas_cellular),
+                                subtitle = stringResource(R.string.settings_canvas_cellular_sub),
+                                checked = misc.canvasOverCellular,
+                                onCheckedChange = viewModel::setCanvasOverCellular,
+                                position = position,
+                            )
+                        }
                     }
                 }
             }
