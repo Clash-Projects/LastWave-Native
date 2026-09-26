@@ -794,12 +794,15 @@ class MusicPlayer @Inject constructor(
                             return@withContext
                         }
                         _state.update { it.copy(error = error.message ?: "Playback error (${error.errorCodeName})", isBuffering = false) }
+                        val retryProvenUnplayable = retryResolutionFailure != null &&
+                            isExplicitlyUnplayableFailure(retryResolutionFailure)
                         scheduleUnavailableMediaSkip(
                             failedIndex = failedIndex,
                             failedMediaId = failedMediaId,
                             expectedGeneration = generation,
                             failure = retryResolutionFailure ?: error,
-                            allowAutoSkip = !playedAudibly,
+                            allowAutoSkip = retryProvenUnplayable ||
+                                shouldAutoSkipForPlaybackError(error, playedAudibly, confirmedUnplayable),
                         )
                     }
                 }
@@ -808,7 +811,7 @@ class MusicPlayer @Inject constructor(
             }
 
             _state.update { it.copy(error = error.message ?: "Playback error (${error.errorCodeName})", isBuffering = false) }
-            scheduleUnavailableMediaSkip(failedIndex, failedMediaId, failure = error, allowAutoSkip = !playedAudibly)
+            scheduleUnavailableMediaSkip(failedIndex, failedMediaId, failure = error, allowAutoSkip = shouldAutoSkipForPlaybackError(error, playedAudibly, confirmedUnplayable))
         }
     }
 
@@ -4084,6 +4087,10 @@ class MusicPlayer @Inject constructor(
         val durationMs: Long? = null,
         /** Provider chunk descriptor; when set, playback is DASH+Widevine. */
         val segmentedDrm: com.lastwave.app.data.plugin.SegmentedStreamDescriptor? = null,
+        /** Wall-clock ms when the minted URL dies (addon `exp`, YouTube
+         *  `expire`); null = unknown or never expires. Stale prefetches are
+         *  re-resolved instead of handed dead to ExoPlayer. */
+        val expiresAtEpochMs: Long? = null,
     )
 
     private fun isNetworkException(error: Throwable): Boolean {
@@ -4716,9 +4723,10 @@ class MusicPlayer @Inject constructor(
         }
         val badge = when {
             stream.audioCodecOverride != null -> stream.audioCodecOverride
-            stream.formatId == LosslessMusicApi.QUALITY_DOLBY_ATMOS ||
-                manifestCodecBadge == "DOLBY ATMOS" || manifestCodecBadge == "SPATIAL AUDIO" ->
-                manifestCodecBadge ?: "DOLBY ATMOS"
+            // Spatial badges only from manifest evidence: the request's
+            // preferred format must never dress a stereo fallback as Atmos.
+            manifestCodecBadge == "DOLBY ATMOS" || manifestCodecBadge == "SPATIAL AUDIO" ->
+                manifestCodecBadge
             stream.bitDepth > 0 && stream.samplingRate > 0.0 ->
                 "${stream.bitDepth}/${formatSampleRateKHz(stream.samplingRate)}kHz"
             manifestCodecBadge != null -> manifestCodecBadge
@@ -4781,6 +4789,7 @@ class MusicPlayer @Inject constructor(
             durationMs = stream.durationSeconds.takeIf { it > 0 }?.times(1_000L)
                 ?: track.durationMs
                 ?: findKnownDuration(track),
+            expiresAtEpochMs = addonUrlExpiryMs(playUrl),
         )
     }
 
@@ -5230,9 +5239,10 @@ class MusicPlayer @Inject constructor(
         error: Throwable? = null,
     ) {
         val candidate = stream.youtubeCandidate
+        val expiryMs = stream.expiresAtEpochMs ?: candidate?.expiresAtEpochMs
         val expiry = when {
-            candidate?.expiresAtEpochMs == null -> "unknown"
-            candidate.expiresAtEpochMs <= System.currentTimeMillis() -> "expired"
+            expiryMs == null -> "unknown"
+            expiryMs <= System.currentTimeMillis() -> "expired"
             else -> "fresh"
         }
         PlaybackDiagnostics.event(
@@ -5263,7 +5273,16 @@ class MusicPlayer @Inject constructor(
     }
 
     private fun ResolvedStream.isExpired(now: Long = System.currentTimeMillis()): Boolean =
-        youtubeCandidate?.expiresAtEpochMs?.let { it - now <= RESOLVED_URL_EXPIRY_MARGIN_MS } == true
+        expiresAtEpochMs?.let { it - now <= RESOLVED_URL_EXPIRY_MARGIN_MS }
+            ?: (youtubeCandidate?.expiresAtEpochMs?.let { it - now <= RESOLVED_URL_EXPIRY_MARGIN_MS } == true)
+
+    /** Addon media URLs carry `exp` (ms epoch; far-future = never expires).
+     *  Tolerates s-epoch in case a proxy ever rewrites the param. */
+    private fun addonUrlExpiryMs(url: String): Long? {
+        val raw = runCatching { Uri.parse(url).getQueryParameter("exp") }.getOrNull() ?: return null
+        val num = raw.toLongOrNull()?.takeIf { it > 0L } ?: return null
+        return if (num > 1_000_000_000_000L) num else num * 1_000L
+    }
 
     private fun Throwable.httpStatusCodeOrNull(): Int? = causeChain()
         .filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
@@ -5272,7 +5291,9 @@ class MusicPlayer @Inject constructor(
 
     private fun playbackRetryDelayMs(error: PlaybackException, retry: Int): Long {
         val status = error.httpStatusCodeOrNull()
-        val transientHttp = status == 408 || status == 429 || (status != null && status in 500..599)
+        // 403 (expired/throttled googlevideo URL) benefits from a short
+        // backoff so the fresh resolve + open isn't re-throttled instantly.
+        val transientHttp = status == 403 || status == 408 || status == 429 || (status != null && status in 500..599)
         val transientNetwork = error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
             error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
             error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
@@ -5292,6 +5313,38 @@ class MusicPlayer @Inject constructor(
             error.errorCode == PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE ||
             error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
             error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+    }
+
+    /**
+     * Auto-skip gate for playback errors. Mid-queue tracks that fail at
+     * position 0 with a transient HTTP status (401/403 throttled or expired
+     * signed URL, 408/429, 5xx) or a network/timeout blip must HOLD with
+     * tap-to-retry instead of auto-advancing: otherwise one bad stretch
+     * eats the queue 2-3s at a time ("buffers then skips"). Only
+     * confirmed-unplayable, permanent decode/format errors, or 404/410
+     * (gone) auto-skip — same as a track that already played audibly never
+     * skipping.
+     */
+    private fun shouldAutoSkipForPlaybackError(
+        error: PlaybackException,
+        playedAudibly: Boolean,
+        confirmedUnplayable: Boolean,
+    ): Boolean {
+        if (playedAudibly) return false
+        if (confirmedUnplayable || isUnsupportedMediaFailure(error)) return true
+        when (error.httpStatusCodeOrNull()) {
+            404, 410 -> return true
+            401, 403, 408, 429 -> return false
+            in 500..599 -> return false
+        }
+        return when (error.errorCode) {
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+            PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+            PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE -> false
+            else -> !isRetryablePlaybackFailure(error)
+        }
     }
 
     private fun publishLocalTrackQuality(track: PlayableTrack) {
