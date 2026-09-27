@@ -2488,14 +2488,14 @@ private fun FullPlayer(
                                         trackKey = track.videoId ?: "${track.artist}|${track.title}",
                                         wavyEnabled = wavySeekbarEnabled,
                                         onSeek = player::seekTo,
-                                        isTranslucent = isGlass,
+                                        isTranslucent = LocalLiquidGlass.current,
                                         fallbackDurationMs = track.durationMs ?: state.durationMs,
                                     )
                                     Spacer(Modifier.height(14.dp))
-                                    MainControls(state, player, isTranslucent = isGlass)
+                                    MainControls(state, player, isTranslucent = LocalLiquidGlass.current)
                                     }
                                     Spacer(Modifier.height(24.dp))
-                                    PlayerUtilityControls(state, player, isTranslucent = isGlass)
+                                    PlayerUtilityControls(state, player, isTranslucent = LocalLiquidGlass.current)
                                 }
                         }
                     }
