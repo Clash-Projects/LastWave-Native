@@ -106,11 +106,20 @@ typealias Backdrop = Backdrop
 @Composable
 fun rememberLayerBackdrop(
     onDraw: androidx.compose.ui.graphics.drawscope.ContentDrawScope.() -> Unit = { drawContent() },
-): LayerBackdrop? = runCatching {
-    com.kyant.backdrop.backdrops.rememberLayerBackdrop(onDraw = onDraw)
-}.onFailure {
-    android.util.Log.e("LiquidGlass", "Backdrop init failed; glass disabled for this surface", it)
-}.getOrNull()
+): LayerBackdrop? {
+    // Plain try/catch (runCatching lambdas reject @Composable invocations):
+    // a haunted first-frame GPU init returns null and the surface falls back
+    // to solid instead of killing the process.
+    return try {
+        com.kyant.backdrop.backdrops.rememberLayerBackdrop(onDraw = onDraw)
+    } catch (error: Exception) {
+        android.util.Log.e("LiquidGlass", "Backdrop init failed; glass disabled for this surface", error)
+        null
+    } catch (error: LinkageError) {
+        android.util.Log.e("LiquidGlass", "Backdrop unsupported; glass disabled for this surface", error)
+        null
+    }
+}
 
 /** Marks a composable as the source layer that sibling glass surfaces refract. */
 fun Modifier.layerBackdropCompat(backdrop: LayerBackdrop): Modifier = this.nativeBackdrop(backdrop)

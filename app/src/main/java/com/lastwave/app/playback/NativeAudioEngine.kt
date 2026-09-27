@@ -431,7 +431,7 @@ class NativeAudioEngine @Inject constructor(
     private external fun nativeStreamRestartCount(handle: Long): Long
     private external fun nativeRateAdaptationCount(handle: Long): Long
 
-    private companion object {
+    companion object {
         const val TAG = "NativeAudioEngine"
         const val EQUALIZER_BAND_COUNT = 15
         const val CLARITY_TRIM_MAX_DB = 12f
