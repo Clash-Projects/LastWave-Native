@@ -2758,6 +2758,17 @@ class MusicPlayer @Inject constructor(
     }
 
     /**
+     * Queue tracks plus history entries still present in the queue, for
+     * recently-played exclusion sets. History stores keys only; entries
+     * that left the queue can't be resolved back to tracks and are skipped.
+     */
+    private fun List<PlayableTrack>.withHistoryTracks(): List<PlayableTrack> {
+        if (playHistory.isEmpty()) return this
+        val byKey = associateBy { it.mediaIdKey() }
+        return this + playHistory.mapNotNull { byKey[it] }
+    }
+
+    /**
      * Newest history entry that still exists in [snapshot]'s queue and isn't
      * the current track, resolved to its present queue index (or null).
      */
@@ -3933,10 +3944,10 @@ class MusicPlayer @Inject constructor(
                 }
                 val existingVideoIds = existingTracks.mapNotNullTo(mutableSetOf()) { it.videoId }
                 val existingKeys = existingTracks.mapTo(mutableSetOf()) { it.queueKey() }
-                val knownCoreTitleArtists = (existingTracks + playHistory.map { it.track }).mapTo(mutableSetOf()) {
+                val knownCoreTitleArtists = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
                     "${cleanCoreTitle(it.title)}|${cleanCoreArtist(it.artist)}"
                 }
-                val knownCoreTitles = (existingTracks + playHistory.map { it.track }).mapTo(mutableSetOf()) {
+                val knownCoreTitles = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
                     cleanCoreTitle(it.title)
                 }
 
@@ -4009,10 +4020,10 @@ class MusicPlayer @Inject constructor(
 
                 val knownVideoIds = currentQueue.mapNotNullTo(mutableSetOf()) { it.videoId }
                 val knownKeys = currentQueue.mapTo(mutableSetOf()) { it.queueKey() }
-                val knownCoreTitleArtists = (currentQueue + playHistory.map { it.track }).mapTo(mutableSetOf()) {
+                val knownCoreTitleArtists = currentQueue.withHistoryTracks().mapTo(mutableSetOf()) {
                     "${cleanCoreTitle(it.title)}|${cleanCoreArtist(it.artist)}"
                 }
-                val knownCoreTitles = (currentQueue + playHistory.map { it.track }).mapTo(mutableSetOf()) {
+                val knownCoreTitles = currentQueue.withHistoryTracks().mapTo(mutableSetOf()) {
                     cleanCoreTitle(it.title)
                 }
 
