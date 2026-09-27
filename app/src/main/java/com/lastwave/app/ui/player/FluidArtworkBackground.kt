@@ -209,9 +209,9 @@ private suspend fun loadTexture(context: Context, url: String): Bitmap? = withCo
 }
 
 internal fun fluidBlurSigma(width: Float, height: Float, extraBlur: Boolean = false): Float =
-    (minOf(width, height) * (if (extraBlur) 0.28f else BLUR_FRACTION)).coerceIn(
-        if (extraBlur) 160f else BLUR_SIGMA_MIN,
-        if (extraBlur) 500f else BLUR_SIGMA_MAX
+    (minOf(width, height) * (if (extraBlur) 0.36f else BLUR_FRACTION)).coerceIn(
+        if (extraBlur) 200f else BLUR_SIGMA_MIN,
+        if (extraBlur) 560f else BLUR_SIGMA_MAX
     )
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -249,7 +249,7 @@ private class AgslFluidRenderer {
         shader.setFloatUniform("twistRadius", (maxOf(width, height) + minOf(width, height)) / 2f * TWIST_REACH)
         shader.setFloatUniform("twistAngle", TWIST_ANGLE)
         shader.setFloatUniform("saturation", SATURATION)
-        shader.setFloatUniform("brightness", if (extraBlur) 0.42f else BRIGHTNESS)
+        shader.setFloatUniform("brightness", if (extraBlur) 0.32f else BRIGHTNESS)
         shader.setFloatUniform("contrast", CONTRAST)
         paint.shader = shader
         canvas.drawRect(0f, 0f, width, height, paint)
@@ -341,9 +341,12 @@ fun FluidArtworkBackground(
                         alpha = appear.value
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                             val sigma = fluidBlurSigma(size.width, size.height, extraBlur)
-                            renderEffect = RenderEffect
-                                .createBlurEffect(sigma, sigma, Shader.TileMode.CLAMP)
-                                .asComposeRenderEffect()
+                            // A haunted GPU driver must cost us the blur, never the process.
+                            renderEffect = runCatching {
+                                RenderEffect
+                                    .createBlurEffect(sigma, sigma, Shader.TileMode.CLAMP)
+                                    .asComposeRenderEffect()
+                            }.getOrNull()
                         }
                     }
                     .then(

@@ -96,18 +96,28 @@ val LocalLiquidGlassContentBrightness = compositionLocalOf { 0f }
 typealias LayerBackdrop = LayerBackdrop
 typealias Backdrop = Backdrop
 
-/** Factory matching Kyant0 Backdrop's official API */
+/** Factory matching Kyant0 Backdrop's official API.
+ *
+ *  Null-safe: first-frame graphics-layer init is exactly where haunted OEM
+ *  drivers die (instant close with no stack). A null backdrop disables glass
+ *  for that surface via the existing `backdrop == null` fallbacks — the app
+ *  lives, minus refraction. Call sites stay unconditional so remember order
+ *  never shifts. */
 @Composable
 fun rememberLayerBackdrop(
     onDraw: androidx.compose.ui.graphics.drawscope.ContentDrawScope.() -> Unit = { drawContent() },
-): LayerBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop(onDraw = onDraw)
+): LayerBackdrop? = runCatching {
+    com.kyant.backdrop.backdrops.rememberLayerBackdrop(onDraw = onDraw)
+}.onFailure {
+    android.util.Log.e("LiquidGlass", "Backdrop init failed; glass disabled for this surface", it)
+}.getOrNull()
 
 /** Marks a composable as the source layer that sibling glass surfaces refract. */
 fun Modifier.layerBackdropCompat(backdrop: LayerBackdrop): Modifier = this.nativeBackdrop(backdrop)
 
-/** Remember a backdrop that draws a flat color + content. */
+/** Remember a backdrop that draws a flat color + content. Null when glass init fails. */
 @Composable
-fun rememberBackdrop(color: Color): LayerBackdrop =
+fun rememberBackdrop(color: Color): LayerBackdrop? =
     rememberLayerBackdrop {
         drawRect(color)
         drawContent()

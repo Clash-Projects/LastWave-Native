@@ -48,29 +48,34 @@ class NativeAudioEngine @Inject constructor(
     val isAvailable: Boolean
         get() = nativeHandle != 0L
 
+    /** System audio-effects mode: while true the engine holds a flat feed
+     *  and ignores pref-driven DSP pushes (they resume on restore). Set by
+     *  the player, which re-pushes user prefs when the mode ends. */
+    @Volatile var systemFlattened = false
+
     init {
         if (isAvailable) {
             applicationScope.launch(Dispatchers.Default) {
                 settingsPreferences.settings
                     .map { it.isStudioMasterClarityEnabled }
                     .distinctUntilChanged()
-                    .collect(::setStudioMasterClarity)
+                    .collect { if (!systemFlattened) setStudioMasterClarity(it) }
             }
             applicationScope.launch(Dispatchers.Default) {
                 settingsPreferences.settings
                     .map { it.clarityPreset }
                     .distinctUntilChanged()
-                    .collect { setClarityPreset(ClarityPresets.fromIndex(it)) }
+                    .collect { if (!systemFlattened) setClarityPreset(ClarityPresets.fromIndex(it)) }
             }
             applicationScope.launch(Dispatchers.Default) {
                 settingsPreferences.settings
                     .map { it.clarityAtmosBypass }
                     .distinctUntilChanged()
-                    .collect(::setClarityAtmosBypass)
+                    .collect { if (!systemFlattened) setClarityAtmosBypass(it) }
             }
             applicationScope.launch(Dispatchers.Default) {
                 equalizerPreferences.settings.collect { settings ->
-                    setEqualizer(settings.enabled, settings.gainsDb.toFloatArray())
+                    if (!systemFlattened) setEqualizer(settings.enabled, settings.gainsDb.toFloatArray())
                 }
             }
         }
@@ -105,8 +110,10 @@ class NativeAudioEngine @Inject constructor(
         withHandle(Unit) { nativeSetOutputVolume(it, volume.coerceIn(0f, 1f)) }
     }
 
-    /** Thread-safe; native DSP crossfades wet/dry over exactly 50 ms. */
+    /** Thread-safe; native DSP crossfades wet/dry over exactly 50 ms.
+     *  Dropped while [systemFlattened] — external effects own the feed. */
     fun setStudioMasterClarity(enabled: Boolean) {
+        if (systemFlattened) return
         withHandle(Unit) { nativeSetStudioMasterClarity(it, enabled) }
     }
 
@@ -123,8 +130,10 @@ class NativeAudioEngine @Inject constructor(
     fun isBitPerfectActive(): Boolean =
         withHandle(false, ::nativeIsBitPerfect)
 
-    /** Updates the native 15-band EQ; its gains are smoothed in C++. */
+    /** Updates the native 15-band EQ; its gains are smoothed in C++.
+     *  Dropped while [systemFlattened] — external effects own the feed. */
     fun setEqualizer(enabled: Boolean, gainsDb: FloatArray) {
+        if (systemFlattened) return
         require(gainsDb.size == EQUALIZER_BAND_COUNT) { "Expected 15 equalizer bands" }
         val safeGains = FloatArray(gainsDb.size) { index ->
             val gain = gainsDb[index]
@@ -139,11 +148,13 @@ class NativeAudioEngine @Inject constructor(
      * Thread-safe; smoothed on the native 50 ms ramp.
      */
     fun setClarityWet(wet: Float) {
+        if (systemFlattened) return
         withHandle(Unit) { nativeSetClarityWet(it, wet.coerceIn(0f, 1f)) }
     }
 
     /** Per-stage clarity trims in dB ([ClarityPresets.TRIM_COUNT] stages, +-12 dB). */
     fun setClarityTrims(trimsDb: FloatArray) {
+        if (systemFlattened) return
         require(trimsDb.size == ClarityPresets.TRIM_COUNT) { "Expected 8 clarity trims" }
         val safeTrims = FloatArray(trimsDb.size) { index ->
             val trim = trimsDb[index]
@@ -154,6 +165,7 @@ class NativeAudioEngine @Inject constructor(
 
     /** Applies a [ClarityPreset] by index; see [ClarityPresets] for the trim data. */
     fun setClarityPreset(preset: ClarityPreset) {
+        if (systemFlattened) return
         withHandle(Unit) { nativeSetClarityPreset(it, preset.index) }
     }
 
@@ -162,6 +174,7 @@ class NativeAudioEngine @Inject constructor(
      * (multichannel-safe), independent of the on/off toggle.
      */
     fun setClarityAtmosBypass(bypass: Boolean) {
+        if (systemFlattened) return
         withHandle(Unit) { nativeSetClarityAtmosBypass(it, bypass) }
     }
 

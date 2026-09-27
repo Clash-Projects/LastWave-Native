@@ -1741,7 +1741,9 @@ private fun FullPlayer(
                 FluidArtworkBackground(
                     track = track,
                     modifier = Modifier.fillMaxSize(),
-                    extraBlur = false,
+                    // Lyrics legibility lives or dies on background
+                    // suppression; the Now Playing tab keeps its light blur.
+                    extraBlur = currentTab == FullPlayerTab.LYRICS,
                     fallback = {
                         PlayerArtwork(
                             track = track,
@@ -1827,6 +1829,28 @@ private fun FullPlayer(
                             ),
                         ),
                 )
+                // Lyrics-only readability veil: heavy blur still can't tame a
+                // bright face behind small text, so fade in extra dim on the
+                // lyrics tab. Now Playing tab is untouched.
+                val lyricsVeil by animateFloatAsState(
+                    targetValue = if (currentTab == FullPlayerTab.LYRICS) 1f else 0f,
+                    animationSpec = tween(350),
+                    label = "lyricsVeil",
+                )
+                if (lyricsVeil > 0.01f) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    0.00f to Color.Black.copy(alpha = 0.50f * lyricsVeil),
+                                    0.35f to Color.Black.copy(alpha = 0.42f * lyricsVeil),
+                                    0.70f to Color.Black.copy(alpha = 0.52f * lyricsVeil),
+                                    1.00f to Color.Black.copy(alpha = 0.70f * lyricsVeil),
+                                )
+                            )
+                    )
+                }
 
                 if (showFullBleed && activeCanvas != null) {
                     val heroHeight = if (heroBottomPx > 0f) {

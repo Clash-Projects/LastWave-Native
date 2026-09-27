@@ -427,6 +427,14 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** System audio-effects mode (Settings -> Experimental, default OFF):
+     *  flattens in-app DSP on mixer routes and publishes the audio session
+     *  for external equalizer / OEM Dolby processing. Bypass routes suspend
+     *  it automatically in the player; no native call needed here. */
+    fun setSystemEffectsMode(enabled: Boolean) = launchSettingsAction("update system effects mode") {
+        settingsPreferences.setSystemEffectsMode(enabled)
+    }
+
     // ── USB exclusive output (direct DAC, default OFF) ──
 
     val usbExclusiveEnabled: StateFlow<Boolean> =
@@ -720,10 +728,11 @@ class SettingsViewModel @Inject constructor(
     // ── Diagnostics ──
 
     /** Builds a troubleshooting report (app/device info, notification-listener
-     *  grant, widget snapshot + placed-widget count, and this process's own
-     *  logcat — readable without any permission) and opens the system share
-     *  sheet for it via the existing FileProvider export path. Runs off the
-     *  main thread; failures surface as a toast through [launchSettingsAction]. */
+     *  grant, widget snapshot + placed-widget count, persisted crash-guard
+     *  log, and this process's own logcat — readable without any permission)
+     *  and opens the system share sheet for it via the existing FileProvider
+     *  export path. Runs off the main thread; failures surface as a toast
+     *  through [launchSettingsAction]. */
     fun exportDiagnostics() {
         launchSettingsAction("export diagnostics") {
             val report = withContext(Dispatchers.IO) { buildDiagnosticsReport() }
@@ -771,6 +780,10 @@ class SettingsViewModel @Inject constructor(
             ).size
         }.getOrNull()
         sb.appendLine("placedWidgets=${placedWidgets ?: "<lookup failed>"}")
+        sb.appendLine("---- crash guard log (persisted across restarts) ----")
+        sb.appendLine(readCrashGuardLog())
+        sb.appendLine("---- startup trail (how far the last launches got) ----")
+        sb.appendLine(runCatching { com.lastwave.app.StartupTrail.readTail(context) }.getOrDefault("(startup trail unavailable)"))
         sb.appendLine("---- logcat (this process) ----")
         sb.append(readOwnLogcat())
         sb.appendLine("---- end ----")
@@ -799,9 +812,21 @@ class SettingsViewModel @Inject constructor(
         lines.joinToString("\n").ifBlank { "(empty log buffer)" }
     }.getOrElse { "(logcat unavailable: ${it.message})" }
 
+    /** Tail of the persisted fatal-exception log. Logcat dies with the
+     *  crashed process, so a post-restart export would otherwise never show
+     *  the actual stack. Never throws. */
+    private fun readCrashGuardLog(): String = runCatching {
+        val file = java.io.File(context.applicationInfo.dataDir, "lastwave_crash_guard.log")
+        if (!file.exists()) return "(no recorded crashes)"
+        file.readLines(Charsets.UTF_8)
+            .takeLast(CRASH_LOG_MAX_LINES)
+            .joinToString("\n").ifBlank { "(empty crash log)" }
+    }.getOrElse { "(crash log unreadable: ${it.message})" }
+
     private companion object {
         const val LOGCAT_MAX_LINES = 3000
         const val LOGCAT_TIMEOUT_SEC = 8L
+        const val CRASH_LOG_MAX_LINES = 120
     }
 
     // ── Scrobbler ──

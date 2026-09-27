@@ -59,6 +59,7 @@ class AudioEffectsEngine @Inject constructor(
     @Volatile private var studioClarityEnabled = false
     @Volatile private var bitPerfectActive = false
     @Volatile private var usbExclusiveActive = false
+    @Volatile private var systemEffectsActive = false
     @Volatile private var loudnessMode: LoudnessMode = LoudnessMode.OFF
     @Volatile private var loudnessPreampDb = 0f
     @Volatile private var replayGainTags: ReplayGainTags? = null
@@ -116,6 +117,14 @@ class AudioEffectsEngine @Inject constructor(
         requestApply()
     }
 
+    /** System audio-effects mode: the session belongs to external EQ / OEM
+     *  Dolby, so the fallback tone effect stands down to a flat feed. */
+    fun setSystemEffectsActive(active: Boolean) {
+        if (systemEffectsActive == active) return
+        systemEffectsActive = active
+        requestApply()
+    }
+
     /** Suppresses all processing (including loudness gain) while the direct USB path owns output. */
     fun setUsbExclusiveActive(active: Boolean) {
         if (usbExclusiveActive == active) return
@@ -169,7 +178,7 @@ class AudioEffectsEngine @Inject constructor(
             releaseAllInternal()
             attachedSessionId = targetSessionId
         }
-        if (bitPerfectActive || usbExclusiveActive || !fallbackRequired || attachedSessionId == C.AUDIO_SESSION_ID_UNSET) {
+        if (bitPerfectActive || usbExclusiveActive || systemEffectsActive || !fallbackRequired || attachedSessionId == C.AUDIO_SESSION_ID_UNSET) {
             releaseAllInternal()
             return
         }

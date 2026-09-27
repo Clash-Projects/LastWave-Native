@@ -406,13 +406,16 @@ private fun TextureView.setBottomFade(fraction: Float, bounds: IntSize, endPx: F
         android.graphics.Color.TRANSPARENT,
         Shader.TileMode.CLAMP,
     )
-    setRenderEffect(
-        RenderEffect.createBlendModeEffect(
-            RenderEffect.createOffsetEffect(0f, 0f),
-            RenderEffect.createShaderEffect(gradient),
-            BlendMode.DST_IN,
-        ),
-    )
+    // A haunted GPU driver must cost us the fade, never the process.
+    runCatching {
+        setRenderEffect(
+            RenderEffect.createBlendModeEffect(
+                RenderEffect.createOffsetEffect(0f, 0f),
+                RenderEffect.createShaderEffect(gradient),
+                BlendMode.DST_IN,
+            ),
+        )
+    }
 }
 
 private class FadingBottomFrame(context: Context) : FrameLayout(context) {

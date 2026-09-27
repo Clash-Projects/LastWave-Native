@@ -111,6 +111,11 @@ data class MiscSettings(
     val clarityAtmosBypass: Boolean = false,
     /** When true, completely bypasses DSP, EQ, tone effects, and software volume ducking for bit-exact audio. */
     val isBitPerfectEnabled: Boolean = false,
+    /** System audio-effects mode (Settings -> Experimental). Off by default:
+     *  when on, the app flattens its own DSP on mixer routes and publishes
+     *  the audio session so external equalizer apps / OEM Dolby can process
+     *  playback. Bypass routes (USB exclusive, bit-perfect) suspend it. */
+    val systemEffectsMode: Boolean = false,
     /** Lyrics UI layout version (Classic or Modern). */
     val lyricsUiVersion: LyricsUiVersion = LyricsUiVersion.MODERN,
     val wordByWordLyrics: Boolean = true,
@@ -257,6 +262,7 @@ class SettingsPreferences @Inject constructor(
         val DOWNLOAD_TREE_URI = stringPreferencesKey("lw_download_tree_uri")
         val DOWNLOAD_STRUCTURE = stringPreferencesKey("lw_download_structure")
         val DOLBY_ATMOS_ENABLED = booleanPreferencesKey("lw_dolby_atmos_enabled")
+        val SYSTEM_EFFECTS_MODE = booleanPreferencesKey("lw_system_effects_mode")
         val USE_ALBUM_ARTIST_FOLDERS = booleanPreferencesKey("lw_use_album_artist_folders")
         val PRIMARY_ARTIST_ONLY = booleanPreferencesKey("lw_primary_artist_only")
         val HIDDEN_HOME_SECTIONS = stringSetPreferencesKey("lw_hidden_home_sections")
@@ -280,6 +286,7 @@ class SettingsPreferences @Inject constructor(
                 losslessQuality = p.readSafely(Keys.LOSSLESS_QUALITY)?.takeIf { it in LOSSLESS_QUALITIES } ?: 27,
                 downloadQuality = p.readSafely(Keys.DOWNLOAD_QUALITY)?.takeIf { it in DOWNLOAD_QUALITIES } ?: 27,
                 dolbyAtmosEnabled = p.readSafely(Keys.DOLBY_ATMOS_ENABLED) ?: false,
+                systemEffectsMode = p.readSafely(Keys.SYSTEM_EFFECTS_MODE) ?: false,
                 isStudioMasterClarityEnabled = p.readSafely(Keys.MUSIC_ENHANCER) ?: true,
                 clarityPreset = p.readSafely(Keys.CLARITY_PRESET)?.takeIf { it in 0..3 } ?: 0,
                 clarityAtmosBypass = p.readSafely(Keys.CLARITY_ATMOS_BYPASS) ?: false,
@@ -377,6 +384,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setDolbyAtmosEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.DOLBY_ATMOS_ENABLED] = enabled }
+    }
+
+    suspend fun setSystemEffectsMode(enabled: Boolean) {
+        dataStore.edit { it[Keys.SYSTEM_EFFECTS_MODE] = enabled }
     }
 
     suspend fun setStudioMasterClarity(enabled: Boolean) {

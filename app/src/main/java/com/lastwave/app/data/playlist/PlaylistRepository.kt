@@ -154,9 +154,21 @@ class PlaylistRepository @Inject constructor(
         }
             ?.let { return@withLock it }
 
+        // Same title+mode but different content (double-tap generate race,
+        // re-import, progressive album save): suffix instead of stacking an
+        // identical-titled sibling that reads as a duplication bug.
+        var finalTitle = title
+        if (existing.any { it.mode == mode && it.title.equals(finalTitle, ignoreCase = true) }) {
+            var counter = 2
+            while (existing.any { it.mode == mode && it.title.equals(finalTitle, ignoreCase = true) }) {
+                finalTitle = "$title $counter"
+                counter++
+            }
+        }
+
         val entity = SavedPlaylistEntity(
-            id = System.currentTimeMillis(),
-            title = title,
+            id = maxOf(System.currentTimeMillis(), (existing.maxOfOrNull { it.id } ?: 0L) + 1L),
+            title = finalTitle,
             subtitle = subtitle,
             mode = mode,
             tracksJson = json.encodeToString(playableTracks.map { it.toStored() }),
@@ -262,36 +274,45 @@ class PlaylistRepository @Inject constructor(
         return updated.toDomain()
     }
 
+    /**
+     * Appends a track, serialized through [saveMutex] like [moveTrack]: the
+     * duplicate check reads the just-written row, so a double-tap (or a
+     * confirm dialog tapped twice) can never stack the same track twice.
+     */
     suspend fun addTrack(
         id: Long,
         track: GeneratedTrack,
         allowDuplicate: Boolean = false,
     ): SavedPlaylist? {
         awaitStartupSync()
-        val entity = dao.getById(id) ?: return null
-        val playlist = entity.toDomain()
-        if (playlist.mode != "custom" && playlist.mode != LIKED_SONGS_MODE) return playlist
-        if ((playlist.mode == LIKED_SONGS_MODE || !allowDuplicate) && playlist.tracks.any { it.key == track.key }) return playlist
-        if (track.youtubeVideoIdOrNull() == null && !innerTube.isPlayable(track.name, track.artist)) return playlist
-        val updatedTracksJson = json.encodeToString((playlist.tracks + track).map { it.toStored() })
-        val updated = entity.copy(tracksJson = updatedTracksJson)
-        dao.upsert(updated)
-        syncPublicMirror()
-        _changes.tryEmit(Unit)
-        return updated.toDomain()
+        return saveMutex.withLock {
+            val entity = dao.getById(id) ?: return@withLock null
+            val playlist = entity.toDomain()
+            if (playlist.mode != "custom" && playlist.mode != LIKED_SONGS_MODE) return@withLock playlist
+            if ((playlist.mode == LIKED_SONGS_MODE || !allowDuplicate) && playlist.tracks.any { it.key == track.key }) return@withLock playlist
+            if (track.youtubeVideoIdOrNull() == null && !innerTube.isPlayable(track.name, track.artist)) return@withLock playlist
+            val updatedTracksJson = json.encodeToString((playlist.tracks + track).map { it.toStored() })
+            val updated = entity.copy(tracksJson = updatedTracksJson)
+            dao.upsert(updated)
+            syncPublicMirror()
+            _changes.tryEmit(Unit)
+            updated.toDomain()
+        }
     }
 
     suspend fun removeTrack(id: Long, index: Int): SavedPlaylist? {
         awaitStartupSync()
-        val entity = dao.getById(id) ?: return null
-        val playlist = entity.toDomain()
-        if (index !in playlist.tracks.indices) return playlist
-        val updatedTracks = playlist.tracks.toMutableList().apply { removeAt(index) }
-        val updated = entity.copy(tracksJson = json.encodeToString(updatedTracks.map { it.toStored() }))
-        dao.upsert(updated)
-        syncPublicMirror()
-        _changes.tryEmit(Unit)
-        return updated.toDomain()
+        return saveMutex.withLock {
+            val entity = dao.getById(id) ?: return@withLock null
+            val playlist = entity.toDomain()
+            if (index !in playlist.tracks.indices) return@withLock playlist
+            val updatedTracks = playlist.tracks.toMutableList().apply { removeAt(index) }
+            val updated = entity.copy(tracksJson = json.encodeToString(updatedTracks.map { it.toStored() }))
+            dao.upsert(updated)
+            syncPublicMirror()
+            _changes.tryEmit(Unit)
+            updated.toDomain()
+        }
     }
 
     /**

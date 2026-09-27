@@ -1,5 +1,12 @@
 package com.lastwave.app.ui.settings
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -247,6 +254,54 @@ private fun SettingsGroup(rowCount: Int, content: @Composable (index: Int, posit
  * press feedback). Every setting, callback, and piece of state below is
  * unchanged from the original implementation.
  */
+
+enum class SettingsTab(
+    val title: String,
+    val subtitle: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+) {
+    AUDIO(
+        title = "Audio & Playback",
+        subtitle = "Streaming quality, Audio engine, Equalizer, Output & Loudness",
+        icon = Icons.Filled.GraphicEq,
+    ),
+    APPEARANCE(
+        title = "Appearance & Visuals",
+        subtitle = "Themes, Accent colors, Fluid artwork, Canvas, Lyrics",
+        icon = Icons.Filled.Palette,
+    ),
+    YOUTUBE(
+        title = "YouTube & Sync",
+        subtitle = "Account connection, 24/7 Library sync, Channels, History",
+        icon = Icons.Filled.CloudSync,
+    ),
+    LAST_FM(
+        title = "Last.fm",
+        subtitle = "Account connection, Scrobbling sync & API credentials",
+        icon = Icons.Filled.Album,
+    ),
+    SCROBBLER(
+        title = "Notification Scrobbler",
+        subtitle = "Background scrobbler, Delay slider, App tracking",
+        icon = Icons.Filled.Group,
+    ),
+    LIBRARY(
+        title = "Library & Content",
+        subtitle = "Home layout, Playlist imports, Downloads, Exclusions",
+        icon = Icons.Filled.QueueMusic,
+    ),
+    DATA_BACKUP(
+        title = "Data & Storage",
+        subtitle = "Backup & Restore, Cache clearing, CSV history, Reset data",
+        icon = Icons.Filled.Backup,
+    ),
+    ABOUT(
+        title = "About & System",
+        subtitle = "App language, Updates, Community, Diagnostics, Source code",
+        icon = Icons.Filled.AutoAwesome,
+    ),
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -369,593 +424,170 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 760.dp),
         ) {
-        ExpressiveHeader(title = stringResource(R.string.settings), onBack = onBack)
+                var activeTab by remember { mutableStateOf<SettingsTab?>(null) }
 
-        LazyColumn(
-            contentPadding = PaddingValues(
-                start = 16.dp,
-                end = 16.dp,
-                top = 22.dp,
-                bottom = 32.dp + LocalMiniPlayerScrollClearance.current + safeDrawingBottomPadding()
-            ),
-            verticalArrangement = Arrangement.spacedBy(28.dp),
-            modifier = Modifier.safeHorizontalContentPadding(),
-        ) {
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SectionLabel("Integrations / Scrobbling")
-                    // Last.fm is optional here — never a gate. Connected:
-                    // global scrobbles + stats sync. Disconnected: Stats and
-                    // recommendations run local-first from Room.
-                    LastFmIntegrationCard(
-                        isConnected = isLastFmConnected,
-                        username = session.username,
-                        avatarUrl = avatarUrl,
-                        connecting = lastFmConnecting,
-                        awaitingApproval = lastFmAuthUrl != null,
-                        hasApiKey = hasApiKey,
-                        onConnect = { viewModel.beginLastFmConnect() },
-                        onCancel = viewModel::cancelLastFmConnect,
-                        onDisconnect = viewModel::disconnectLastFm,
-                        onSaveKeys = viewModel::saveApiCredentials,
-                        onRemoveKey = viewModel::clearApiKey,
-                        onOpenCreateKeyPage = {
-                            runCatching {
-                                androidx.browser.customtabs.CustomTabsIntent.Builder().build()
-                                    .launchUrl(context, android.net.Uri.parse(LAST_FM_CREATE_KEY_URL))
-                            }.onFailure {
-                                viewModel.showToast("No browser available to open Last.fm")
-                            }
-                        },
-                    )
-                }
-            }
+        BackHandler(enabled = activeTab != null) {
+            activeTab = null
+        }
 
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SectionLabel(stringResource(R.string.settings_section_language))
-                    SettingsGroup(rowCount = 1) { _, position ->
-                        SettingsActionCard(
-                            icon = Icons.Filled.Language,
-                            iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                            iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            title = stringResource(R.string.settings_language_title),
-                            subtitle = currentLanguage.nativeDisplayName(),
-                            onClick = { showLanguageDialog = true },
-                            position = position,
-                        )
-                    }
-                }
-            }
-
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SectionLabel(stringResource(R.string.settings_section_youtube))
-                    val ytConnected = ytConnection.isConnected
-                    val syncSubtitle = when (val sync = ytSyncState) {
-                        is com.lastwave.app.data.ytmusic.YtSyncState.Running ->
-                            "Syncing ${sync.current}/${sync.total} \u2022 ${sync.label}"
-                        is com.lastwave.app.data.ytmusic.YtSyncState.Completed ->
-                            "Playlists mirror to your account \u2022 synced ${relativeTime(sync.atMillis)}"
-                        is com.lastwave.app.data.ytmusic.YtSyncState.Failed ->
-                            "Last pass failed \u2014 will retry automatically"
-                        else ->
-                            if (!ytConnected) "Connect an account first"
-                            else if (ytSyncEnabled) "Selected playlists mirror to your account, 24/7" + lastSyncSuffix(ytLastSyncAt)
-                            else "Keep your YT Music library in sync with LastWave"
-                    }
-                    // Display name of the active channel: the picked entry when
-                    // the channel list was loaded, otherwise the stored name.
-                    val currentChannelName = ytChannels.firstOrNull {
-                        it.channelId == ytConnection.onBehalfOfUser &&
-                            it.authUserIndex == ytConnection.authUserIndex &&
-                            it.pageId == ytConnection.pageId
-                    }?.accountName ?: ytConnection.accountName
-                    val ytRowCount = if (ytConnected) 7 else 2
-                    SettingsGroup(rowCount = ytRowCount) { index, position ->
-                        when (index) {
-                            0 -> if (ytConnected) {
-                                YouTubeAccountRow(
-                                    accountName = ytConnection.accountName,
-                                    channelHandle = ytConnection.channelHandle,
-                                    onDisconnect = { showYtDisconnectConfirm = true },
-                                    position = position,
-                                )
-                            } else {
-                                SettingsActionCard(
-                                    icon = Icons.Filled.CloudSync,
-                                    iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                    iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    title = stringResource(R.string.settings_connect_yt),
-                                    subtitle = stringResource(R.string.settings_connect_yt_sub),
-                                    onClick = onOpenYouTubeLogin,
-                                    position = position,
-                                )
-                            }
-                            1 -> SettingsToggleCard(
-                                icon = Icons.Filled.CloudSync,
-                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                title = stringResource(R.string.settings_yt_sync),
-                                subtitle = syncSubtitle,
-                                checked = ytConnected && ytSyncEnabled,
-                                onCheckedChange = viewModel::setYtSyncEnabled,
-                                position = position,
-                            )
-                            2 -> if (ytConnected) {
-                                SettingsActionCard(
-                                    icon = Icons.Filled.SwitchAccount,
-                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    title = "YouTube channel",
-                                    subtitle = currentChannelName.ifBlank { "Default channel" },
-                                    onClick = {
-                                        viewModel.loadYtChannels()
-                                        showYtChannelSheet = true
-                                    },
-                                    position = position,
-                                )
-                            }
-                            3 -> if (ytConnected) {
-                                val selectedCount = syncedPlaylistIds?.size ?: allPlaylists.size
-                                val syncCountText = if (syncedPlaylistIds == null || selectedCount == allPlaylists.size) {
-                                    "All (${allPlaylists.size}) playlists syncing"
-                                } else {
-                                    "$selectedCount of ${allPlaylists.size} playlists selected"
-                                }
-                                SettingsActionCard(
-                                    icon = Icons.Filled.FormatListBulleted,
-                                    iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
-                                    iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                    title = stringResource(R.string.settings_select_playlists),
-                                    subtitle = syncCountText,
-                                    onClick = { showSyncPlaylistsSheet = true },
-                                    position = position,
-                                )
-                            } else {
-                                SettingsActionCard(
-                                    icon = Icons.Filled.QueueMusic,
-                                    iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
-                                    iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                    title = "Import from YouTube Music",
-                                    subtitle = "Search, browse, or paste playlist links & IDs",
-                                    onClick = onOpenYouTubeImport,
-                                    position = position,
-                                )
-                            }
-                            4 -> if (ytConnected) {
-                                val shownCount = ytAccountPlaylists.count { it.id !in hiddenYtLibraryPlaylistIds }
-                                val visibilitySubtitle = if (shownCount == ytAccountPlaylists.size) {
-                                    "All (${ytAccountPlaylists.size}) account playlists shown"
-                                } else {
-                                    "$shownCount of ${ytAccountPlaylists.size} account playlists shown"
-                                }
-                                SettingsActionCard(
-                                    icon = Icons.Filled.Visibility,
-                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    title = stringResource(R.string.settings_yt_shown),
-                                    subtitle = visibilitySubtitle,
-                                    onClick = { showYtLibraryVisibilitySheet = true },
-                                    position = position,
-                                )
-                            }
-                            5 -> SettingsActionCard(
-                                icon = Icons.Filled.QueueMusic,
-                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = stringResource(R.string.settings_make_local),
-                                subtitle = stringResource(R.string.settings_make_local_sub),
-                                onClick = onOpenYouTubeImport,
-                                position = position,
-                            )
-                            6 -> if (ytConnected) {
-                                SettingsToggleCard(
-                                    icon = Icons.Filled.History,
-                                    iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
-                                    iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                    title = stringResource(R.string.settings_yt_history),
-                                    subtitle = if (ytHistorySyncEnabled) {
-                                        "On • songs you listen to in LastWave, including lossless & downloads, appear in your YouTube Music history"
-                                    } else {
-                                        "Off • listening in LastWave stays out of your YouTube Music history"
-                                    },
-                                    checked = ytHistorySyncEnabled,
-                                    onCheckedChange = viewModel::setYtHistorySyncEnabled,
-                                    position = position,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            item {
-                val mb = (downloadTotalBytes ?: 0L).toDouble() / (1024 * 1024)
-                val formattedStorage = if (mb >= 1000) "%.1f GB".format(mb / 1024) else "%.1f MB".format(mb)
-                // Custom SAF location (SD card) replaces the Music/<folder>
-                // noun; a lost grant shows as unavailable until reselected.
-                val customDownloadLabel = androidx.compose.runtime.remember(context, misc.downloadTreeUri) {
-                    com.lastwave.app.data.download.SafTreeFiles.describeLocation(context, misc.downloadTreeUri)
-                }
-                val downloadLocationNoun = customDownloadLabel
-                    ?: if (misc.downloadTreeUri.isNotBlank()) {
-                        "Unavailable — reselect in Downloads"
-                    } else {
-                        "Music/${misc.downloadFolder}"
-                    }
-                val downloadsSubtitle = if (downloadCount > 0) {
-                    if (misc.downloadStructure == com.lastwave.app.data.local.DownloadFolderStructure.FLAT) {
-                        if (customDownloadLabel != null || misc.downloadTreeUri.isNotBlank()) {
-                            stringResource(
-                                R.string.settings_downloads_sub_custom,
-                                downloadCount,
-                                formattedStorage,
-                                downloadLocationNoun,
-                            )
-                        } else {
-                            stringResource(
-                                R.string.settings_downloads_sub,
-                                downloadCount,
-                                formattedStorage,
-                                misc.downloadFolder,
-                            )
-                        }
-                    } else {
-                        if (customDownloadLabel != null || misc.downloadTreeUri.isNotBlank()) {
-                            stringResource(
-                                R.string.settings_downloads_sub_structured_custom,
-                                downloadCount,
-                                formattedStorage,
-                                downloadLocationNoun,
-                                stringResource(misc.downloadStructure.shortLabelRes),
-                            )
-                        } else {
-                            stringResource(
-                                R.string.settings_downloads_sub_structured,
-                                downloadCount,
-                                formattedStorage,
-                                misc.downloadFolder,
-                                stringResource(misc.downloadStructure.shortLabelRes),
-                            )
-                        }
-                    }
+        ExpressiveHeader(
+            title = activeTab?.title ?: stringResource(R.string.settings),
+            onBack = {
+                if (activeTab != null) {
+                    activeTab = null
                 } else {
-                    stringResource(R.string.settings_downloads_empty)
+                    onBack()
                 }
+            },
+        )
 
-                Card(
-                    onClick = onOpenDownloads,
-                    shape = RoundedCornerShape(22.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp).fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                Icons.Filled.Download,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimary,
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
-                        Spacer(Modifier.width(16.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                stringResource(R.string.settings_downloads_title),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                downloadsSubtitle,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-                            )
-                        }
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowForwardIos,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f),
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
+        AnimatedContent(
+            targetState = activeTab,
+            transitionSpec = {
+                if (targetState != null && initialState == null) {
+                    (slideInHorizontally { width -> width / 4 } + fadeIn()).togetherWith(
+                        slideOutHorizontally { width -> -width / 4 } + fadeOut(),
+                    )
+                } else if (targetState == null && initialState != null) {
+                    (slideInHorizontally { width -> -width / 4 } + fadeIn()).togetherWith(
+                        slideOutHorizontally { width -> width / 4 } + fadeOut(),
+                    )
+                } else {
+                    fadeIn().togetherWith(fadeOut())
                 }
-            }
-
-            item {
-                Card(
-                    onClick = onOpenModules,
-                    shape = RoundedCornerShape(22.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp).fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.secondary),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                Icons.Filled.Extension,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSecondary,
-                                modifier = Modifier.size(22.dp),
-                            )
+            },
+            label = "SettingsTabTransition",
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        ) { tab ->
+            LazyColumn(
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 16.dp,
+                    bottom = 32.dp + LocalMiniPlayerScrollClearance.current + safeDrawingBottomPadding(),
+                ),
+                verticalArrangement = Arrangement.spacedBy(24.dp),
+                modifier = Modifier.fillMaxSize().safeHorizontalContentPadding(),
+            ) {
+                when (tab) {
+                    null -> {
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                SectionLabel("Services & Addons")
+                                SettingsGroup(rowCount = 3) { index, position ->
+                                    when (index) {
+                                        0 -> SettingsActionCard(
+                                            icon = Icons.Filled.Extension,
+                                            iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            title = "Modules & Addons",
+                                            subtitle = "Manage lossless streaming providers and remote addons",
+                                            onClick = onOpenModules,
+                                            position = position,
+                                        )
+                                        1 -> SettingsActionCard(
+                                            icon = Icons.Filled.Album,
+                                            iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            title = "Last.fm",
+                                            subtitle = if (isLastFmConnected) "Connected as ${session.username} \u2022 Scrobbling active" else "Connect account, scrobbles & statistics sync",
+                                            onClick = { activeTab = SettingsTab.LAST_FM },
+                                            position = position,
+                                        )
+                                        else -> SettingsActionCard(
+                                            icon = Icons.Filled.CloudSync,
+                                            iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            title = "YouTube & Sync",
+                                            subtitle = if (ytConnection.isConnected) "Connected as ${ytConnection.accountName} \u2022 24/7 sync" else "Connect account, 24/7 playlist sync, channels",
+                                            onClick = { activeTab = SettingsTab.YOUTUBE },
+                                            position = position,
+                                        )
+                                    }
+                                }
+                            }
                         }
-                        Spacer(Modifier.width(16.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                stringResource(R.string.settings_modules_title),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                stringResource(R.string.settings_modules_sub),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
-                            )
-                        }
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowForwardIos,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f),
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                }
-            }
 
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SectionLabel(stringResource(R.string.settings_section_appearance))
-                    SettingsGroup(rowCount = 6) { index, position ->
-                        when (index) {
-                            0 -> ThemeModeSelectorCard(
-                                currentThemeMode = theme?.themeMode ?: ThemeMode.SYSTEM,
-                                onSelectThemeMode = viewModel::setThemeMode,
-                                position = position,
-                            )
-                            1 -> SettingsToggleCard(
-                                icon = Icons.Filled.Contrast,
-                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                title = stringResource(R.string.settings_amoled),
-                                subtitle = stringResource(R.string.settings_amoled_sub),
-                                checked = theme?.amoled ?: false,
-                                enabled = theme?.themeMode != ThemeMode.LIGHT,
-                                onCheckedChange = viewModel::setAmoled,
-                                position = position,
-                            )
-                            2 -> SettingsToggleCard(
-                                icon = Icons.Filled.Palette,
-                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = stringResource(R.string.settings_dynamic_color),
-                                subtitle = stringResource(R.string.settings_dynamic_color_sub),
-                                checked = theme?.mode == AccentMode.DYNAMIC,
-                                onCheckedChange = { enabled ->
-                                    viewModel.setAccentMode(if (enabled) AccentMode.DYNAMIC else AccentMode.MANUAL)
-                                },
-                                position = position,
-                            )
-                            3 -> SettingsToggleCard(
-                                icon = Icons.Filled.Album,
-                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                title = stringResource(R.string.settings_dynamic_now_playing),
-                                subtitle = stringResource(R.string.settings_dynamic_now_playing_sub),
-                                checked = misc.dynamicNowPlayingEnabled,
-                                onCheckedChange = viewModel::setDynamicNowPlaying,
-                                position = position,
-                            )
-                            4 -> SettingsToggleCard(
-                                icon = Icons.Filled.TextFields,
-                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                title = stringResource(R.string.settings_app_font),
-                                subtitle = stringResource(R.string.settings_app_font_sub),
-                                checked = misc.useCustomFont,
-                                onCheckedChange = viewModel::setUseCustomFont,
-                                position = position,
-                            )
-                            5 -> SettingsActionCard(
-                                icon = Icons.Filled.Dashboard,
-                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = stringResource(R.string.settings_home_sections),
-                                subtitle = run {
-                                    val total = com.lastwave.app.data.local.HomeSection.entries.size
-                                    val visible = total - misc.hiddenHomeSections.size
-                                    stringResource(R.string.home_sections_visible, visible, total)
-                                },
-                                onClick = onOpenHomeSections,
-                                position = position,
-                            )
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                SectionLabel("Playback & UI")
+                                SettingsGroup(rowCount = 4) { index, position ->
+                                    when (index) {
+                                        0 -> SettingsActionCard(
+                                            icon = Icons.Filled.GraphicEq,
+                                            iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            title = "Audio & Playback",
+                                            subtitle = "Streaming quality, Audio engine, Equalizer, Output & Loudness",
+                                            onClick = { activeTab = SettingsTab.AUDIO },
+                                            position = position,
+                                        )
+                                        1 -> SettingsActionCard(
+                                            icon = Icons.Filled.Palette,
+                                            iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                            title = "Appearance & Visuals",
+                                            subtitle = "Themes, Accent colors, Fluid artwork, Canvas, Lyrics",
+                                            onClick = { activeTab = SettingsTab.APPEARANCE },
+                                            position = position,
+                                        )
+                                        2 -> SettingsActionCard(
+                                            icon = Icons.Filled.Group,
+                                            iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            title = "Notification Scrobbler",
+                                            subtitle = "Background scrobbler, Delay slider, App tracking",
+                                            onClick = { activeTab = SettingsTab.SCROBBLER },
+                                            position = position,
+                                        )
+                                        else -> SettingsActionCard(
+                                            icon = Icons.Filled.QueueMusic,
+                                            iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            title = "Library & Content",
+                                            subtitle = run {
+                                                val count = downloadCount
+                                                if (count > 0) "$count songs downloaded \u2022 Imports, Home layout" else "Home layout, Playlist imports, Downloads, Exclusions"
+                                            },
+                                            onClick = { activeTab = SettingsTab.LIBRARY },
+                                            position = position,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                SectionLabel("System & About")
+                                SettingsGroup(rowCount = 2) { index, position ->
+                                    when (index) {
+                                        0 -> SettingsActionCard(
+                                            icon = Icons.Filled.Backup,
+                                            iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                            title = "Data & Storage",
+                                            subtitle = "Backup & Restore, Cache clearing, CSV history, Reset data",
+                                            onClick = { activeTab = SettingsTab.DATA_BACKUP },
+                                            position = position,
+                                        )
+                                        else -> SettingsActionCard(
+                                            icon = Icons.Filled.AutoAwesome,
+                                            iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            title = "About & System",
+                                            subtitle = if (updateInfo.isUpdateAvailable) "Update Available (${updateInfo.latestVersion}) \u2022 v${appVersionName(context)}" else "v${appVersionName(context)} \u2022 Language, Community, Source code",
+                                            onClick = { activeTab = SettingsTab.ABOUT },
+                                            position = position,
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
-                }
-            }
 
-            item {
-                Column {
-                    SectionLabel(stringResource(R.string.settings_section_accent))
-                    Spacer(Modifier.height(10.dp))
-                    Card(
-                        shape = CardOuterShape,
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                    ) {
-                        Column(Modifier.padding(20.dp)) {
-                            AccentPresetGrid(
-                                currentMode = theme?.mode ?: AccentMode.MANUAL,
-                                selectedHex = theme?.accentColorHex,
-                                onPickPreset = { hex -> viewModel.setManualAccent(Color(android.graphics.Color.parseColor(hex))) },
-                                onPickMono = { viewModel.setAccentMode(AccentMode.MONOCHROME) },
-                                onPickCustom = viewModel::openColorWheel,
-                            )
-                        }
-                    }
-                }
-            }
-
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SectionLabel(stringResource(R.string.settings_section_experimental))
-                    SettingsGroup(rowCount = 7) { index, position ->
-                        when (index) {
-                            0 -> SettingsToggleCard(
-                                icon = Icons.Filled.BubbleChart,
-                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = stringResource(R.string.settings_liquid_glass),
-                                subtitle = stringResource(R.string.settings_liquid_glass_sub),
-                                checked = theme?.liquidGlass ?: false,
-                                onCheckedChange = viewModel::setLiquidGlass,
-                                position = position,
-                            )
-                            1 -> SettingsActionCard(
-                                icon = Icons.Filled.Lyrics,
-                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                title = stringResource(R.string.settings_lyrics_animation),
-                                subtitle = if (misc.lyricsUiVersion == LyricsUiVersion.MODERN) {
-                                    "New UI (Modern)"
-                                } else {
-                                    "${misc.lyricsAnimation.title} \u2022 ${misc.lyricsAnimation.description}"
-                                },
-                                onClick = { showLyricsAnimationSheet = true },
-                                position = position,
-                            )
-                            2 -> SettingsActionCard(
-                                icon = Icons.Filled.GraphicEq,
-                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                title = stringResource(R.string.settings_equalizer),
-                                subtitle = if (misc.isBitPerfectEnabled && eq.enabled) {
-                                    "On \u2022 ${eq.presetName} (Bypassed by Bit-Perfect Mode)"
-                                } else if (eq.enabled) {
-                                    "On \u2022 ${eq.presetName} \u2022 15-band"
-                                } else {
-                                    "Shape your sound across 15 frequencies"
-                                },
-                                onClick = { showEqSheet = true },
-                                position = position,
-                            )
-                            3 -> SettingsToggleCard(
-                                icon = Icons.Filled.Waves,
-                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                title = stringResource(R.string.settings_wavy_seekbar),
-                                subtitle = if (misc.wavySeekbarEnabled) {
-                                    "Multi-layer fluid wavy progress slider"
-                                } else {
-                                    "Classic standard progress slider"
-                                },
-                                checked = misc.wavySeekbarEnabled,
-                                onCheckedChange = viewModel::setWavySeekbarEnabled,
-                                position = position,
-                            )
-                            4 -> SettingsToggleCard(
-                                icon = Icons.Filled.AutoAwesome,
-                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = stringResource(R.string.settings_studio_clarity),
-                                subtitle = if (misc.isStudioMasterClarityEnabled) {
-                                    "Crystal-clear open sound \u2022 airy detail \u2022 deep clean separation"
-                                } else {
-                                    "Original unshaped output"
-                                },
-                                checked = misc.isStudioMasterClarityEnabled,
-                                onCheckedChange = viewModel::setStudioMasterClarity,
-                                position = position,
-                            )
-                            5 -> SettingsActionCard(
-                                icon = Icons.Filled.Lyrics,
-                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                title = stringResource(R.string.settings_lyrics_provider),
-                                subtitle = "${misc.lyricsProvider.title} \u2022 ${misc.lyricsProvider.subtitle}",
-                                onClick = { showLyricsProviderDialog = true },
-                                position = position,
-                            )
-                            6 -> SettingsActionCard(
-                                icon = Icons.Filled.Timer,
-                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                title = "Lyrics sync offset",
-                                subtitle = if (misc.lyricsOffsetMs == 0L) {
-                                    "Off \u2022 highlight follows the audio exactly"
-                                } else {
-                                    "${if (misc.lyricsOffsetMs > 0) "+" else ""}${misc.lyricsOffsetMs} ms \u2022 + shows lyrics early, \u2212 delays them"
-                                },
-                                onClick = { showLyricsOffsetDialog = true },
-                                position = position,
-                            )
-                        }
-                    }
-                }
-            }
-
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SectionLabel(stringResource(R.string.settings_canvas_enabled))
-                    SettingsGroup(rowCount = if (misc.canvasEnabled) 3 else 1) { index, position ->
-                        when (index) {
-                            0 -> SettingsToggleCard(
-                                icon = Icons.Filled.SmartDisplay,
-                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = stringResource(R.string.settings_canvas_enabled),
-                                subtitle = stringResource(R.string.settings_canvas_enabled_sub),
-                                checked = misc.canvasEnabled,
-                                onCheckedChange = viewModel::setCanvasEnabled,
-                                position = position,
-                            )
-                            1 -> SettingsToggleCard(
-                                icon = Icons.Filled.Visibility,
-                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                title = stringResource(R.string.settings_canvas_full_bleed),
-                                subtitle = stringResource(R.string.settings_canvas_full_bleed_sub),
-                                checked = misc.canvasFullBleed,
-                                onCheckedChange = viewModel::setCanvasFullBleed,
-                                position = position,
-                            )
-                            2 -> SettingsToggleCard(
-                                icon = Icons.Filled.CloudDownload,
-                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                title = stringResource(R.string.settings_canvas_cellular),
-                                subtitle = stringResource(R.string.settings_canvas_cellular_sub),
-                                checked = misc.canvasOverCellular,
-                                onCheckedChange = viewModel::setCanvasOverCellular,
-                                position = position,
-                            )
-                        }
-                    }
-                }
-            }
-
-            item {
+                    SettingsTab.AUDIO -> {
+                        item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_audio))
                     val qualitySubtitle = when (misc.losslessQuality) {
@@ -1113,8 +745,7 @@ fun SettingsScreen(
                 }
             }
 
-
-            item {
+                        item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel("Output & Loudness")
                     val clarityPreset = remember(misc.clarityPreset) { ClarityPresets.fromIndex(misc.clarityPreset) }
@@ -1123,7 +754,7 @@ fun SettingsScreen(
                         LoudnessMode.ALBUM -> "Album \u2022 Keep intentional album dynamics"
                         else -> "Off \u2022 Play tagged tracks at original level"
                     }
-                    SettingsGroup(rowCount = 4) { index, position ->
+                    SettingsGroup(rowCount = 6) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.Usb,
@@ -1151,6 +782,35 @@ fun SettingsScreen(
                                 position = position,
                             )
                             2 -> SettingsActionCard(
+                                icon = Icons.Filled.GraphicEq,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = stringResource(R.string.settings_equalizer),
+                                subtitle = if (misc.isBitPerfectEnabled && eq.enabled) {
+                                    "On • ${eq.presetName} (Bypassed by Bit-Perfect Mode)"
+                                } else if (eq.enabled) {
+                                    "On • ${eq.presetName} • 15-band"
+                                } else {
+                                    "Shape your sound across 15 frequencies"
+                                },
+                                onClick = { showEqSheet = true },
+                                position = position,
+                            )
+                            3 -> SettingsToggleCard(
+                                icon = Icons.Filled.Waves,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_studio_clarity),
+                                subtitle = if (misc.isStudioMasterClarityEnabled) {
+                                    "Crystal-clear open sound • airy detail • deep clean separation"
+                                } else {
+                                    "Original unshaped output"
+                                },
+                                checked = misc.isStudioMasterClarityEnabled,
+                                onCheckedChange = viewModel::setStudioMasterClarity,
+                                position = position,
+                            )
+                            4 -> SettingsActionCard(
                                 icon = Icons.Filled.Tune,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1159,7 +819,7 @@ fun SettingsScreen(
                                 onClick = { showClarityPresetDialog = true },
                                 position = position,
                             )
-                            else -> SettingsToggleCard(
+                            5 -> SettingsToggleCard(
                                 icon = Icons.Filled.GraphicEq,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1177,32 +837,83 @@ fun SettingsScreen(
                     }
                 }
             }
+                    }
 
-            item {
+                    SettingsTab.APPEARANCE -> {
+                        item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SectionLabel(stringResource(R.string.settings_section_imports))
-                    SettingsGroup(rowCount = 2) { index, position ->
+                    SectionLabel(stringResource(R.string.settings_section_appearance))
+                    SettingsGroup(rowCount = 7) { index, position ->
                         when (index) {
-                            0 -> SettingsActionCard(
-                                icon = Icons.Filled.QueueMusic,
-                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = "Import from Spotify / Apple Music",
-                                subtitle = "Paste a public playlist link",
-                                onClick = onOpenExternalImport,
+                            0 -> ThemeModeSelectorCard(
+                                currentThemeMode = theme?.themeMode ?: ThemeMode.SYSTEM,
+                                onSelectThemeMode = viewModel::setThemeMode,
                                 position = position,
                             )
-                            else -> SettingsActionCard(
-                                icon = Icons.Filled.FileDownload,
+                            1 -> SettingsToggleCard(
+                                icon = Icons.Filled.Contrast,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = stringResource(R.string.settings_amoled),
+                                subtitle = stringResource(R.string.settings_amoled_sub),
+                                checked = theme?.amoled ?: false,
+                                enabled = theme?.themeMode != ThemeMode.LIGHT,
+                                onCheckedChange = viewModel::setAmoled,
+                                position = position,
+                            )
+                            2 -> SettingsToggleCard(
+                                icon = Icons.Filled.Palette,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.settings_dynamic_color),
+                                subtitle = stringResource(R.string.settings_dynamic_color_sub),
+                                checked = theme?.mode == AccentMode.DYNAMIC,
+                                onCheckedChange = { enabled ->
+                                    viewModel.setAccentMode(if (enabled) AccentMode.DYNAMIC else AccentMode.MANUAL)
+                                },
+                                position = position,
+                            )
+                            3 -> SettingsToggleCard(
+                                icon = Icons.Filled.BubbleChart,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.settings_liquid_glass),
+                                subtitle = stringResource(R.string.settings_liquid_glass_sub),
+                                checked = theme?.liquidGlass ?: false,
+                                onCheckedChange = viewModel::setLiquidGlass,
+                                position = position,
+                            )
+                            4 -> SettingsToggleCard(
+                                icon = Icons.Filled.Album,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = stringResource(R.string.settings_dynamic_now_playing),
+                                subtitle = stringResource(R.string.settings_dynamic_now_playing_sub),
+                                checked = misc.dynamicNowPlayingEnabled,
+                                onCheckedChange = viewModel::setDynamicNowPlaying,
+                                position = position,
+                            )
+                            5 -> SettingsToggleCard(
+                                icon = Icons.Filled.TextFields,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                title = stringResource(R.string.settings_import_file),
-                                subtitle = stringResource(R.string.settings_import_file_sub),
-                                onClick = {
-                                    runCatching {
-                                        csvPickerLauncher.launch(arrayOf("text/*", "text/csv", "application/csv", "audio/x-mpegurl", "application/x-mpegurl", "application/vnd.apple.mpegurl", "*/*"))
-                                    }.onFailure { viewModel.showToast("No file picker is available") }
+                                title = stringResource(R.string.settings_app_font),
+                                subtitle = stringResource(R.string.settings_app_font_sub),
+                                checked = misc.useCustomFont,
+                                onCheckedChange = viewModel::setUseCustomFont,
+                                position = position,
+                            )
+                            6 -> SettingsActionCard(
+                                icon = Icons.Filled.Dashboard,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.settings_home_sections),
+                                subtitle = run {
+                                    val total = com.lastwave.app.data.local.HomeSection.entries.size
+                                    val visible = total - misc.hiddenHomeSections.size
+                                    stringResource(R.string.home_sections_visible, visible, total)
                                 },
+                                onClick = onOpenHomeSections,
                                 position = position,
                             )
                         }
@@ -1210,7 +921,319 @@ fun SettingsScreen(
                 }
             }
 
-            item {
+                        item {
+                Column {
+                    SectionLabel(stringResource(R.string.settings_section_accent))
+                    Spacer(Modifier.height(10.dp))
+                    Card(
+                        shape = CardOuterShape,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                    ) {
+                        Column(Modifier.padding(20.dp)) {
+                            AccentPresetGrid(
+                                currentMode = theme?.mode ?: AccentMode.MANUAL,
+                                selectedHex = theme?.accentColorHex,
+                                onPickPreset = { hex -> viewModel.setManualAccent(Color(android.graphics.Color.parseColor(hex))) },
+                                onPickMono = { viewModel.setAccentMode(AccentMode.MONOCHROME) },
+                                onPickCustom = viewModel::openColorWheel,
+                            )
+                        }
+                    }
+                }
+            }
+
+                        item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SectionLabel(stringResource(R.string.settings_section_experimental))
+                    SettingsGroup(rowCount = 5) { index, position ->
+                        when (index) {
+                            0 -> SettingsActionCard(
+                                icon = Icons.Filled.Lyrics,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = stringResource(R.string.settings_lyrics_animation),
+                                subtitle = if (misc.lyricsUiVersion == LyricsUiVersion.MODERN) {
+                                    "New UI (Modern)"
+                                } else {
+                                    "${misc.lyricsAnimation.title} \u2022 ${misc.lyricsAnimation.description}"
+                                },
+                                onClick = { showLyricsAnimationSheet = true },
+                                position = position,
+                            )
+                            1 -> SettingsToggleCard(
+                                icon = Icons.Filled.Waves,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_wavy_seekbar),
+                                subtitle = if (misc.wavySeekbarEnabled) {
+                                    "Multi-layer fluid wavy progress slider"
+                                } else {
+                                    "Classic standard progress slider"
+                                },
+                                checked = misc.wavySeekbarEnabled,
+                                onCheckedChange = viewModel::setWavySeekbarEnabled,
+                                position = position,
+                            )
+                            2 -> SettingsActionCard(
+                                icon = Icons.Filled.Lyrics,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = stringResource(R.string.settings_lyrics_provider),
+                                subtitle = "${misc.lyricsProvider.title} \u2022 ${misc.lyricsProvider.subtitle}",
+                                onClick = { showLyricsProviderDialog = true },
+                                position = position,
+                            )
+                            3 -> SettingsActionCard(
+                                icon = Icons.Filled.Timer,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = "Lyrics sync offset",
+                                subtitle = if (misc.lyricsOffsetMs == 0L) {
+                                    "Off \u2022 highlight follows the audio exactly"
+                                } else {
+                                    "${if (misc.lyricsOffsetMs > 0) "+" else ""}${misc.lyricsOffsetMs} ms \u2022 + shows lyrics early, \u2212 delays them"
+                                },
+                                onClick = { showLyricsOffsetDialog = true },
+                                position = position,
+                            )
+                            4 -> SettingsToggleCard(
+                                icon = Icons.Filled.Speaker,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = "System Audio Effects",
+                                subtitle = if (misc.systemEffectsMode) {
+                                    "External effects active • in-app EQ bypassed"
+                                } else {
+                                    "Let Dolby / equalizer apps process playback"
+                                },
+                                checked = misc.systemEffectsMode,
+                                onCheckedChange = viewModel::setSystemEffectsMode,
+                                position = position,
+                            )
+                        }
+                    }
+                }
+            }
+
+                        item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SectionLabel(stringResource(R.string.settings_canvas_enabled))
+                    SettingsGroup(rowCount = if (misc.canvasEnabled) 3 else 1) { index, position ->
+                        when (index) {
+                            0 -> SettingsToggleCard(
+                                icon = Icons.Filled.SmartDisplay,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.settings_canvas_enabled),
+                                subtitle = stringResource(R.string.settings_canvas_enabled_sub),
+                                checked = misc.canvasEnabled,
+                                onCheckedChange = viewModel::setCanvasEnabled,
+                                position = position,
+                            )
+                            1 -> SettingsToggleCard(
+                                icon = Icons.Filled.Visibility,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_canvas_full_bleed),
+                                subtitle = stringResource(R.string.settings_canvas_full_bleed_sub),
+                                checked = misc.canvasFullBleed,
+                                onCheckedChange = viewModel::setCanvasFullBleed,
+                                position = position,
+                            )
+                            2 -> SettingsToggleCard(
+                                icon = Icons.Filled.CloudDownload,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = stringResource(R.string.settings_canvas_cellular),
+                                subtitle = stringResource(R.string.settings_canvas_cellular_sub),
+                                checked = misc.canvasOverCellular,
+                                onCheckedChange = viewModel::setCanvasOverCellular,
+                                position = position,
+                            )
+                        }
+                    }
+                }
+            }
+                    }
+
+                    SettingsTab.YOUTUBE -> {
+                        item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SectionLabel(stringResource(R.string.settings_section_youtube))
+                    val ytConnected = ytConnection.isConnected
+                    val syncSubtitle = when (val sync = ytSyncState) {
+                        is com.lastwave.app.data.ytmusic.YtSyncState.Running ->
+                            "Syncing ${sync.current}/${sync.total} \u2022 ${sync.label}"
+                        is com.lastwave.app.data.ytmusic.YtSyncState.Completed ->
+                            "Playlists mirror to your account \u2022 synced ${relativeTime(sync.atMillis)}"
+                        is com.lastwave.app.data.ytmusic.YtSyncState.Failed ->
+                            "Last pass failed \u2014 will retry automatically"
+                        else ->
+                            if (!ytConnected) "Connect an account first"
+                            else if (ytSyncEnabled) "Selected playlists mirror to your account, 24/7" + lastSyncSuffix(ytLastSyncAt)
+                            else "Keep your YT Music library in sync with LastWave"
+                    }
+                    // Display name of the active channel: the picked entry when
+                    // the channel list was loaded, otherwise the stored name.
+                    val currentChannelName = ytChannels.firstOrNull {
+                        it.channelId == ytConnection.onBehalfOfUser &&
+                            it.authUserIndex == ytConnection.authUserIndex &&
+                            it.pageId == ytConnection.pageId
+                    }?.accountName ?: ytConnection.accountName
+                    val ytRowCount = if (ytConnected) 7 else 2
+                    SettingsGroup(rowCount = ytRowCount) { index, position ->
+                        when (index) {
+                            0 -> if (ytConnected) {
+                                YouTubeAccountRow(
+                                    accountName = ytConnection.accountName,
+                                    channelHandle = ytConnection.channelHandle,
+                                    onDisconnect = { showYtDisconnectConfirm = true },
+                                    position = position,
+                                )
+                            } else {
+                                SettingsActionCard(
+                                    icon = Icons.Filled.CloudSync,
+                                    iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                    iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    title = stringResource(R.string.settings_connect_yt),
+                                    subtitle = stringResource(R.string.settings_connect_yt_sub),
+                                    onClick = onOpenYouTubeLogin,
+                                    position = position,
+                                )
+                            }
+                            1 -> SettingsToggleCard(
+                                icon = Icons.Filled.CloudSync,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_yt_sync),
+                                subtitle = syncSubtitle,
+                                checked = ytConnected && ytSyncEnabled,
+                                onCheckedChange = viewModel::setYtSyncEnabled,
+                                position = position,
+                            )
+                            2 -> if (ytConnected) {
+                                SettingsActionCard(
+                                    icon = Icons.Filled.SwitchAccount,
+                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    title = "YouTube channel",
+                                    subtitle = currentChannelName.ifBlank { "Default channel" },
+                                    onClick = {
+                                        viewModel.loadYtChannels()
+                                        showYtChannelSheet = true
+                                    },
+                                    position = position,
+                                )
+                            }
+                            3 -> if (ytConnected) {
+                                val selectedCount = syncedPlaylistIds?.size ?: allPlaylists.size
+                                val syncCountText = if (syncedPlaylistIds == null || selectedCount == allPlaylists.size) {
+                                    "All (${allPlaylists.size}) playlists syncing"
+                                } else {
+                                    "$selectedCount of ${allPlaylists.size} playlists selected"
+                                }
+                                SettingsActionCard(
+                                    icon = Icons.Filled.FormatListBulleted,
+                                    iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                    iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    title = stringResource(R.string.settings_select_playlists),
+                                    subtitle = syncCountText,
+                                    onClick = { showSyncPlaylistsSheet = true },
+                                    position = position,
+                                )
+                            } else {
+                                SettingsActionCard(
+                                    icon = Icons.Filled.QueueMusic,
+                                    iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                    iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    title = "Import from YouTube Music",
+                                    subtitle = "Search, browse, or paste playlist links & IDs",
+                                    onClick = onOpenYouTubeImport,
+                                    position = position,
+                                )
+                            }
+                            4 -> if (ytConnected) {
+                                val shownCount = ytAccountPlaylists.count { it.id !in hiddenYtLibraryPlaylistIds }
+                                val visibilitySubtitle = if (shownCount == ytAccountPlaylists.size) {
+                                    "All (${ytAccountPlaylists.size}) account playlists shown"
+                                } else {
+                                    "$shownCount of ${ytAccountPlaylists.size} account playlists shown"
+                                }
+                                SettingsActionCard(
+                                    icon = Icons.Filled.Visibility,
+                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    title = stringResource(R.string.settings_yt_shown),
+                                    subtitle = visibilitySubtitle,
+                                    onClick = { showYtLibraryVisibilitySheet = true },
+                                    position = position,
+                                )
+                            }
+                            5 -> SettingsActionCard(
+                                icon = Icons.Filled.QueueMusic,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.settings_make_local),
+                                subtitle = stringResource(R.string.settings_make_local_sub),
+                                onClick = onOpenYouTubeImport,
+                                position = position,
+                            )
+                            6 -> if (ytConnected) {
+                                SettingsToggleCard(
+                                    icon = Icons.Filled.History,
+                                    iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                    iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    title = stringResource(R.string.settings_yt_history),
+                                    subtitle = if (ytHistorySyncEnabled) {
+                                        "On • songs you listen to in LastWave, including lossless & downloads, appear in your YouTube Music history"
+                                    } else {
+                                        "Off • listening in LastWave stays out of your YouTube Music history"
+                                    },
+                                    checked = ytHistorySyncEnabled,
+                                    onCheckedChange = viewModel::setYtHistorySyncEnabled,
+                                    position = position,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+                    }
+
+                    SettingsTab.LAST_FM -> {
+                        item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SectionLabel("Integrations / Scrobbling")
+                    // Last.fm is optional here — never a gate. Connected:
+                    // global scrobbles + stats sync. Disconnected: Stats and
+                    // recommendations run local-first from Room.
+                    LastFmIntegrationCard(
+                        isConnected = isLastFmConnected,
+                        username = session.username,
+                        avatarUrl = avatarUrl,
+                        connecting = lastFmConnecting,
+                        awaitingApproval = lastFmAuthUrl != null,
+                        hasApiKey = hasApiKey,
+                        onConnect = { viewModel.beginLastFmConnect() },
+                        onCancel = viewModel::cancelLastFmConnect,
+                        onDisconnect = viewModel::disconnectLastFm,
+                        onSaveKeys = viewModel::saveApiCredentials,
+                        onRemoveKey = viewModel::clearApiKey,
+                        onOpenCreateKeyPage = {
+                            runCatching {
+                                androidx.browser.customtabs.CustomTabsIntent.Builder().build()
+                                    .launchUrl(context, android.net.Uri.parse(LAST_FM_CREATE_KEY_URL))
+                            }.onFailure {
+                                viewModel.showToast("No browser available to open Last.fm")
+                            }
+                        },
+                    )
+                }
+            }
+                    }
+
+                    SettingsTab.SCROBBLER -> {
+                        item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_scrobbler))
                     SettingsGroup(rowCount = 4) { index, position ->
@@ -1256,37 +1279,240 @@ fun SettingsScreen(
                     }
                 }
             }
+                    }
 
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SectionLabel(stringResource(R.string.settings_section_data))
-                    SettingsGroup(rowCount = 2) { index, position ->
-                        when (index) {
-                            0 -> SettingsActionCard(
-                                icon = Icons.Filled.RestartAlt,
-                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                title = stringResource(R.string.settings_excluded_songs),
-                                subtitle = "${state.recommendationExclusionCount} songs excluded",
-                                onClick = onOpenExcludedSongs,
-                                position = position,
+                    SettingsTab.LIBRARY -> {
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                SectionLabel("Home & Organization")
+                                SettingsGroup(rowCount = 2) { index, position ->
+                                    when (index) {
+                                        0 -> SettingsActionCard(
+                                            icon = Icons.Filled.Dashboard,
+                                            iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            title = stringResource(R.string.settings_home_sections),
+                                            subtitle = run {
+                                                val total = com.lastwave.app.data.local.HomeSection.entries.size
+                                                val visible = total - misc.hiddenHomeSections.size
+                                                stringResource(R.string.home_sections_visible, visible, total)
+                                            },
+                                            onClick = onOpenHomeSections,
+                                            position = position,
+                                        )
+                                        else -> SettingsActionCard(
+                                            icon = Icons.Filled.RestartAlt,
+                                            iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            title = stringResource(R.string.settings_excluded_songs),
+                                            subtitle = "${state.recommendationExclusionCount} songs excluded",
+                                            onClick = onOpenExcludedSongs,
+                                            position = position,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                SectionLabel(stringResource(R.string.settings_section_imports))
+                                SettingsGroup(rowCount = 3) { index, position ->
+                                    when (index) {
+                                        0 -> SettingsActionCard(
+                                            icon = Icons.Filled.QueueMusic,
+                                            iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            title = "Import from YouTube Music",
+                                            subtitle = "Search, browse, or paste playlist links & IDs",
+                                            onClick = onOpenYouTubeImport,
+                                            position = position,
+                                        )
+                                        1 -> SettingsActionCard(
+                                            icon = Icons.Filled.QueueMusic,
+                                            iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            title = "Import from Spotify / Apple Music",
+                                            subtitle = "Paste a public playlist link",
+                                            onClick = onOpenExternalImport,
+                                            position = position,
+                                        )
+                                        else -> SettingsActionCard(
+                                            icon = Icons.Filled.FileDownload,
+                                            iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                            title = stringResource(R.string.settings_import_file),
+                                            subtitle = stringResource(R.string.settings_import_file_sub),
+                                            onClick = {
+                                                runCatching {
+                                                    csvPickerLauncher.launch(arrayOf("text/*", "text/csv", "application/csv", "audio/x-mpegurl", "application/x-mpegurl", "application/vnd.apple.mpegurl", "*/*"))
+                                                }.onFailure { viewModel.showToast("No file picker is available") }
+                                            },
+                                            position = position,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        item {
+                val mb = (downloadTotalBytes ?: 0L).toDouble() / (1024 * 1024)
+                val formattedStorage = if (mb >= 1000) "%.1f GB".format(mb / 1024) else "%.1f MB".format(mb)
+                // Custom SAF location (SD card) replaces the Music/<folder>
+                // noun; a lost grant shows as unavailable until reselected.
+                val customDownloadLabel = androidx.compose.runtime.remember(context, misc.downloadTreeUri) {
+                    com.lastwave.app.data.download.SafTreeFiles.describeLocation(context, misc.downloadTreeUri)
+                }
+                val downloadLocationNoun = customDownloadLabel
+                    ?: if (misc.downloadTreeUri.isNotBlank()) {
+                        "Unavailable — reselect in Downloads"
+                    } else {
+                        "Music/${misc.downloadFolder}"
+                    }
+                val downloadsSubtitle = if (downloadCount > 0) {
+                    if (misc.downloadStructure == com.lastwave.app.data.local.DownloadFolderStructure.FLAT) {
+                        if (customDownloadLabel != null || misc.downloadTreeUri.isNotBlank()) {
+                            stringResource(
+                                R.string.settings_downloads_sub_custom,
+                                downloadCount,
+                                formattedStorage,
+                                downloadLocationNoun,
                             )
-                            1 -> SettingsActionCard(
-                                icon = Icons.Filled.Delete,
-                                iconContainer = MaterialTheme.colorScheme.errorContainer,
-                                iconTint = MaterialTheme.colorScheme.onErrorContainer,
-                                title = stringResource(R.string.settings_clear_all),
-                                subtitle = stringResource(R.string.settings_clear_all_sub),
-                                danger = true,
-                                onClick = viewModel::requestClearAllData,
-                                position = position,
+                        } else {
+                            stringResource(
+                                R.string.settings_downloads_sub,
+                                downloadCount,
+                                formattedStorage,
+                                misc.downloadFolder,
                             )
                         }
+                    } else {
+                        if (customDownloadLabel != null || misc.downloadTreeUri.isNotBlank()) {
+                            stringResource(
+                                R.string.settings_downloads_sub_structured_custom,
+                                downloadCount,
+                                formattedStorage,
+                                downloadLocationNoun,
+                                stringResource(misc.downloadStructure.shortLabelRes),
+                            )
+                        } else {
+                            stringResource(
+                                R.string.settings_downloads_sub_structured,
+                                downloadCount,
+                                formattedStorage,
+                                misc.downloadFolder,
+                                stringResource(misc.downloadStructure.shortLabelRes),
+                            )
+                        }
+                    }
+                } else {
+                    stringResource(R.string.settings_downloads_empty)
+                }
+
+                Card(
+                    onClick = onOpenDownloads,
+                    shape = RoundedCornerShape(22.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.Download,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(16.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.settings_downloads_title),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                downloadsSubtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                            )
+                        }
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowForwardIos,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f),
+                            modifier = Modifier.size(16.dp),
+                        )
                     }
                 }
             }
 
-            item {
+                        item {
+                Card(
+                    onClick = onOpenModules,
+                    shape = RoundedCornerShape(22.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.secondary),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.Extension,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSecondary,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(16.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.settings_modules_title),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                stringResource(R.string.settings_modules_sub),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
+                            )
+                        }
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowForwardIos,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f),
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+            }
+                    }
+
+                    SettingsTab.DATA_BACKUP -> {
+                        item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_backup))
                     SettingsGroup(rowCount = 2) { index, position ->
@@ -1320,7 +1546,46 @@ fun SettingsScreen(
                 }
             }
 
-            item {
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                SectionLabel(stringResource(R.string.settings_section_data))
+                                SettingsGroup(rowCount = 1) { index, position ->
+                                    when (index) {
+                                        0 -> SettingsActionCard(
+                                            icon = Icons.Filled.Delete,
+                                            iconContainer = MaterialTheme.colorScheme.errorContainer,
+                                            iconTint = MaterialTheme.colorScheme.onErrorContainer,
+                                            title = stringResource(R.string.settings_clear_all),
+                                            subtitle = stringResource(R.string.settings_clear_all_sub),
+                                            danger = true,
+                                            onClick = viewModel::requestClearAllData,
+                                            position = position,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    SettingsTab.ABOUT -> {
+                        item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SectionLabel(stringResource(R.string.settings_section_language))
+                    SettingsGroup(rowCount = 1) { _, position ->
+                        SettingsActionCard(
+                            icon = Icons.Filled.Language,
+                            iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                            iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            title = stringResource(R.string.settings_language_title),
+                            subtitle = currentLanguage.nativeDisplayName(),
+                            onClick = { showLanguageDialog = true },
+                            position = position,
+                        )
+                    }
+                }
+            }
+
+                        item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_about))
                     SettingsGroup(rowCount = 4) { index, position ->
@@ -1474,6 +1739,9 @@ fun SettingsScreen(
                             }
                         },
                     )
+                }
+            }
+                    }
                 }
             }
         }

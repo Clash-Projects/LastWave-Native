@@ -182,11 +182,19 @@ class GenerateRepository @Inject constructor(
         if (lastFm.isEmpty()) return deduplicate(youtube)
         val seen = mutableSetOf<String>()
         val out = ArrayList<GeneratedTrack>(youtube.size + lastFm.size)
-        for (t in youtube) {
-            if (seen.add(t.key)) out.add(t)
-        }
-        for (t in lastFm) {
-            if (seen.add(t.key)) out.add(t)
+        var yIdx = 0
+        var lIdx = 0
+        while (yIdx < youtube.size || lIdx < lastFm.size) {
+            repeat(2) {
+                if (yIdx < youtube.size) {
+                    val t = youtube[yIdx++]
+                    if (seen.add(t.key)) out.add(t)
+                }
+            }
+            if (lIdx < lastFm.size) {
+                val t = lastFm[lIdx++]
+                if (seen.add(t.key)) out.add(t)
+            }
         }
         return out
     }
@@ -393,21 +401,36 @@ class GenerateRepository @Inject constructor(
     private suspend fun fetchYouTubeDiscovery(
         seeds: List<GeneratedTrack>,
         limit: Int,
-    ): List<GeneratedTrack> {
-        val seed = seeds.filter { it.name.isNotBlank() && it.artist.isNotBlank() }.shuffled().firstOrNull()
-        if (seed != null) {
-            val radio = try {
-                fetchYouTubeRadio(seed.name, seed.artist, seed.youtubeVideoIdOrNull(), limit)
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (_: Exception) {
-                emptyList()
+    ): List<GeneratedTrack> = kotlinx.coroutines.coroutineScope {
+        val validSeeds = seeds.filter { it.name.isNotBlank() && it.artist.isNotBlank() }
+            .distinctBy { it.artist.trim().lowercase() }
+            .shuffled()
+            .take(4)
+
+        if (validSeeds.isNotEmpty()) {
+            val perSeedLimit = maxOf(12, (limit / validSeeds.size) + 5)
+            val deferreds = validSeeds.map { seed ->
+                async(Dispatchers.IO) {
+                    try {
+                        fetchYouTubeRadio(seed.name, seed.artist, seed.youtubeVideoIdOrNull(), perSeedLimit)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                }
             }
-            if (radio.isNotEmpty()) return radio
+            val collected = deferreds.awaitAll().flatten()
+            val filtered = deduplicate(filterRecommendationExclusions(collected))
+            if (filtered.isNotEmpty()) return@coroutineScope filtered.take(limit)
+        }
+        val local = localSeedPool(limit = limit)
+        if (local.isNotEmpty()) {
+            return@coroutineScope deduplicate(filterRecommendationExclusions(local)).take(limit)
         }
         val home = innerTube.fetchHomeSongs()
         val fallback = if (home.isNotEmpty()) home else innerTube.fetchCharts()
-        return fallback.take(limit).map { it.toGeneratedTrack() }
+        fallback.take(limit).map { it.toGeneratedTrack() }
     }
 
 
@@ -1338,12 +1361,16 @@ class GenerateRepository @Inject constructor(
         val blended = if (lastFmAvailable) {
             youtubeFirstBlend(youtube = youtubeFresh, lastFm = recommended)
         } else {
-            val charts = publicChartsFallback(total).filterNot { it.key in blacklist }
-            deduplicate(youtubeFresh + charts)
+            val localEngine = LocalTasteSuggestionEngine(songPlayStatsDao, recommendationExclusionDao, playlistRepository, innerTube)
+            val tasteSuggestions = runCatching { localEngine.run(total) }.getOrDefault(emptyList()).filterNot { it.key in blacklist }
+            val fallback = if (youtubeFresh.size + tasteSuggestions.size < total) {
+                fetchLocalFallbackMix(total).filterNot { it.key in blacklist }
+            } else emptyList()
+            deduplicate(tasteSuggestions + youtubeFresh + fallback)
         }
         val result = filterPlayable(filterRecommendationExclusions(blended)).take(total)
         if (result.size < total) {
-            val pad = publicChartsFallback(total * 2)
+            val pad = fetchLocalFallbackMix(total * 2)
                 .filterNot { it.key in blacklist || result.any { r -> r.key == it.key } }
             (result + pad).take(total)
         } else result

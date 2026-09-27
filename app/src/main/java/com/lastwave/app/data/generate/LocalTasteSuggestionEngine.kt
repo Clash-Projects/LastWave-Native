@@ -82,13 +82,21 @@ class LocalTasteSuggestionEngine @Inject constructor(
         return score.coerceAtLeast(0f)
     }
 
+    private fun isJunkTitle(titleLower: String): Boolean {
+        val keywords = listOf(
+            "mashup", "mash up", "mash-up", "jukebox", "mega mix", "megamix",
+            "non stop", "nonstop", "audio jukebox", "full album", "full songs", "compilation",
+            "slowed + reverb", "slowed reverb", "slowed & reverb", "bass boosted", "8d audio",
+            "karaoke", "ringtone", "instrumental", "1 hour", "10 hour", "clean version", "sped up",
+        )
+        return keywords.any { titleLower.contains(it) }
+    }
+
     /**
-     * Build the local "For You" suggestion list. [total] caps the result
-     * (Nocturne's default is 50). Explicit "don't recommend again"
-     * exclusions are respected the same way RecommendationEngine honors
-     * them. Returns empty if there's no local play history yet (fresh
-     * install / cleared data) — callers should fall back to
-     * RecommendationEngine or chart seeding in that case.
+     * Build the local "For You" suggestion list. [total] caps the result.
+     * Scores tracks on real listening behavior (play duration, skips, liked,
+     * recency, time-of-day), seeded via YouTube Music related songs with
+     * fallback to liked and recently played songs.
      */
     suspend fun run(total: Int = MAX_SUGGESTIONS): List<GeneratedTrack> {
         val blacklist = recommendationExclusionDao.getAll().map { it.trackKey }.toSet()
@@ -97,8 +105,9 @@ class LocalTasteSuggestionEngine @Inject constructor(
         val recentStats = songPlayStatsDao.mostPlayedSince(
             sinceMillis = System.currentTimeMillis() - 30L * 86_400_000L,
             limit = 100,
-        )
-        if (recentStats.isEmpty()) return emptyList()
+        ).ifEmpty {
+            songPlayStatsDao.recentlyPlayed(50)
+        }
 
         val likedSongs = runCatching { playlistRepository.getLikedSongs()?.tracks.orEmpty() }
             .getOrDefault(emptyList())
@@ -106,42 +115,89 @@ class LocalTasteSuggestionEngine @Inject constructor(
         val recentKeys = songPlayStatsDao.recentlyPlayed(20).map { it.trackKey }.toSet()
 
         val scored = recentStats
-            .filter { it.trackKey !in blacklist }
+            .filter { it.trackKey !in blacklist && (it.skipCount < 2 || it.totalPlayTimeMs > 45_000L) }
             .sortedByDescending { scoreStats(it, likedKeys, recentKeys, timeOfDay) }
 
-        val seedVideoIds = scored.take(5).mapNotNull { it.videoId?.takeIf(String::isNotBlank) }
+        val seedVideoIds = mutableListOf<String>()
+        for (item in scored.take(8)) {
+            val vid = item.videoId?.takeIf(String::isNotBlank)
+                ?: innerTube.findBestMatchOrNull(item.title, item.artist, prefetchStreams = false)?.videoId
+            if (vid != null && vid !in seedVideoIds) {
+                seedVideoIds.add(vid)
+            }
+            if (seedVideoIds.size >= 5) break
+        }
+
+        if (seedVideoIds.isEmpty() && likedSongs.isNotEmpty()) {
+            for (liked in likedSongs.shuffled().take(5)) {
+                val vid = liked.youtubeVideoIdOrNull()
+                    ?: innerTube.findBestMatchOrNull(liked.name, liked.artist, prefetchStreams = false)?.videoId
+                if (vid != null && vid !in seedVideoIds) {
+                    seedVideoIds.add(vid)
+                }
+            }
+        }
+
+        if (seedVideoIds.isEmpty()) return emptyList()
 
         val suggestions = mutableListOf<GeneratedTrack>()
         val seenKeys = mutableSetOf<String>()
+        val artistCounts = mutableMapOf<String, Int>()
 
         for (seedVideoId in seedVideoIds) {
             if (suggestions.size >= total) break
             val related = runCatching {
-                innerTube.fetchRelatedSongs(seedVideoId, limit = 30, prefetchStreams = false)
+                innerTube.fetchRelatedSongs(seedVideoId, limit = 40, prefetchStreams = false)
             }.getOrDefault(emptyList())
             val filtered = related
                 .map { it.toGeneratedTrack() }
-                .filter { it.key !in blacklist && it.key !in seenKeys }
+                .filter { track ->
+                    val normArtist = track.artist.trim().lowercase()
+                    val count = artistCounts.getOrDefault(normArtist, 0)
+                    track.key !in blacklist &&
+                        track.key !in seenKeys &&
+                        count < 3 &&
+                        !isJunkTitle(track.name.lowercase())
+                }
                 .shuffled()
                 .take(10)
-            suggestions.addAll(filtered)
-            seenKeys.addAll(filtered.map { it.key })
+
+            for (track in filtered) {
+                suggestions.add(track)
+                seenKeys.add(track.key)
+                val normArtist = track.artist.trim().lowercase()
+                artistCounts[normArtist] = (artistCounts[normArtist] ?: 0) + 1
+            }
         }
 
-        // Fill remaining from a random liked song's related songs — same
-        // fallback Nocturne uses when seed-based results run short.
+        // Fill remaining from liked songs if needed
         if (suggestions.size < total && likedSongs.isNotEmpty()) {
-            val likedSeedVideoId = likedSongs.shuffled().firstNotNullOfOrNull { it.youtubeVideoIdOrNull() }
-            if (likedSeedVideoId != null) {
+            val remainingLiked = likedSongs.shuffled()
+            for (liked in remainingLiked) {
+                if (suggestions.size >= total) break
+                val likedVid = liked.youtubeVideoIdOrNull() ?: continue
                 val related = runCatching {
-                    innerTube.fetchRelatedSongs(likedSeedVideoId, limit = 30, prefetchStreams = false)
+                    innerTube.fetchRelatedSongs(likedVid, limit = 30, prefetchStreams = false)
                 }.getOrDefault(emptyList())
                 val filtered = related
                     .map { it.toGeneratedTrack() }
-                    .filter { it.key !in blacklist && it.key !in seenKeys }
+                    .filter { track ->
+                        val normArtist = track.artist.trim().lowercase()
+                        val count = artistCounts.getOrDefault(normArtist, 0)
+                        track.key !in blacklist &&
+                            track.key !in seenKeys &&
+                            count < 3 &&
+                            !isJunkTitle(track.name.lowercase())
+                    }
                     .shuffled()
                     .take(total - suggestions.size)
-                suggestions.addAll(filtered)
+
+                for (track in filtered) {
+                    suggestions.add(track)
+                    seenKeys.add(track.key)
+                    val normArtist = track.artist.trim().lowercase()
+                    artistCounts[normArtist] = (artistCounts[normArtist] ?: 0) + 1
+                }
             }
         }
 

@@ -58,6 +58,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        StartupTrail.mark("activity.onCreate.start")
         // Must be called before super.onCreate() and before setContent().
         val splashScreen = runCatching { installSplashScreen() }
             .onFailure { android.util.Log.e(STARTUP_TAG, "Splash compatibility layer unavailable", it) }
@@ -136,6 +137,23 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     LastWaveNavHost(navController)
                 }
             }
+        }
+        StartupTrail.mark("activity.content.set")
+        // First drawn frame: if the process dies between content.set and
+        // here, the killer lives in first composition (theme/backdrop/mini
+        // player init). Past this point the UI is alive.
+        runCatching {
+            window.decorView.viewTreeObserver.addOnPreDrawListener(
+                object : android.view.ViewTreeObserver.OnPreDrawListener {
+                    override fun onPreDraw(): Boolean {
+                        runCatching {
+                            window.decorView.viewTreeObserver.removeOnPreDrawListener(this)
+                        }
+                        StartupTrail.mark("activity.firstFrame")
+                        return true
+                    }
+                },
+            )
         }
     }
 

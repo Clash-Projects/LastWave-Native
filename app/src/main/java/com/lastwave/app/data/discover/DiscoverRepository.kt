@@ -72,6 +72,9 @@ class DiscoverRepository @Inject constructor(
         allowed
     }
 
+    suspend fun filterRecommendationExclusions(tracks: List<GeneratedTrack>): List<GeneratedTrack> =
+        generateRepository.filterRecommendationExclusions(tracks)
+
     private suspend fun refillQueue() = coroutineScope {
         val profile = runCatching { tasteProfileProvider.get() }.getOrNull()
         val jobs = mutableListOf<kotlinx.coroutines.Deferred<SourceBatch>>()
@@ -274,10 +277,9 @@ class DiscoverRepository @Inject constructor(
         if (queue.size < count) {
             try {
                 val queuedKeys = queue.mapTo(mutableSetOf(), GeneratedTrack::key)
-                val chartFallback = generateRepository.filterRecommendationExclusions(
-                    generateRepository.fetchChartTracks(count * 2),
-                ).filterNot { it.key in shownKeys || it.key in queuedKeys }
-                queue.addAll(chartFallback)
+                val fallbackMix = generateRepository.fetchLocalFallbackMix(count * 2)
+                    .filterNot { it.key in shownKeys || it.key in queuedKeys }
+                queue.addAll(fallbackMix)
             } catch (_: Exception) {}
         }
 
