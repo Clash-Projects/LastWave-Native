@@ -484,7 +484,7 @@ class LosslessMusicApi @Inject constructor(
 
         val qualitiesToTry = if (isAtmosPreferred) listOf("atmos", "lossless", "high") else listOf(qualityParam, "lossless", "high")
         for (q in qualitiesToTry) {
-            val wantAtmos = q == "atmos" || isAtmosPreferred
+            val wantAtmos = q == "atmos"
             val targetCandidates = if (wantAtmos) {
                 val atmosMatches = ordered.filter { it.isAtmos || it.isSpatial }
                 if (atmosMatches.isNotEmpty()) atmosMatches else listOf(ordered.first())
@@ -517,6 +517,15 @@ class LosslessMusicApi @Inject constructor(
                 // URL), never of the request: a stereo fallback for an Atmos
                 // preference must be labeled (and badged) as what it is.
                 val isStreamAtmos = (stream.audioMode?.contains("ATMOS", ignoreCase = true) == true) || isAtmosStreamUrl(rawUrl)
+
+                // Downloads never upscale to spatial: a hi-res/CD/320 request
+                // must not come home as Dolby (the URL check above misses
+                // manifests whose spatial-ness is only in the audioMode flag).
+                // Streaming is untouched — only downloads take this path.
+                if (isDownload && !isAtmosPreferred && isStreamAtmos) {
+                    Log.i(TAG, "resolveFromAddon: skipping spatial stream for track $trackId (download tier is stereo-only)")
+                    continue
+                }
                 val manifestSampleRate = manifestSampleRateOf(rawUrl)
                 val rawSampleRate = if (stream.sampleRate > 1000) stream.sampleRate else stream.sampleRate * 1000.0
                 val effectiveSampleRate = manifestSampleRate?.toDouble() ?: rawSampleRate

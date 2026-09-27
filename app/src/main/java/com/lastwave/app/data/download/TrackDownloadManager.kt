@@ -618,10 +618,10 @@ class TrackDownloadManager @Inject constructor(
                 // Dolby ON → request the Atmos mix (28); the Tidal DASH leg
                 // below already saves it as .m4a. Otherwise honor the
                 // download-quality setting (stereo tiers / YouTube).
-                val downloadQuality =
+                val requestedDownloadQuality =
                     if (misc.dolbyAtmosEnabled) LosslessMusicApi.QUALITY_DOLBY_ATMOS
                     else misc.downloadQuality
-                val isYouTubeRequested = downloadQuality == LosslessMusicApi.QUALITY_YOUTUBE
+                val isYouTubeRequested = requestedDownloadQuality == LosslessMusicApi.QUALITY_YOUTUBE
 
                 // 1. Provider module (.lwp engine): progressive clear FLAC/MP3 or segmented DASH (Dolby Atmos / Tidal Hi-Res)
                 var moduleDescriptor: SegmentedStreamDescriptor? = null
@@ -639,6 +639,36 @@ class TrackDownloadManager @Inject constructor(
                 var downloadSucceeded = false
 
                 if (!isYouTubeRequested) {
+                    // Tier cascade: an Atmos request walks down through every
+                    // stereo tier (hi-res -> CD -> 320) before the YouTube
+                    // fallback below; a stereo request walks down from its own
+                    // tier and NEVER steps up to Dolby (28 appears only when
+                    // explicitly requested). Tiers sharing a backend search
+                    // param (27/7 = "hi_res") are not repeated.
+                    val qualitiesToAttempt = when (requestedDownloadQuality) {
+                        LosslessMusicApi.QUALITY_DOLBY_ATMOS -> listOf(
+                            LosslessMusicApi.QUALITY_DOLBY_ATMOS,
+                            LosslessMusicApi.QUALITY_MAX_HI_RES,
+                            LosslessMusicApi.QUALITY_CD_LOSSLESS,
+                            LosslessMusicApi.QUALITY_MP3_320,
+                        )
+                        LosslessMusicApi.QUALITY_MAX_HI_RES -> listOf(
+                            LosslessMusicApi.QUALITY_MAX_HI_RES,
+                            LosslessMusicApi.QUALITY_CD_LOSSLESS,
+                            LosslessMusicApi.QUALITY_MP3_320,
+                        )
+                        LosslessMusicApi.QUALITY_HI_RES_96 -> listOf(
+                            LosslessMusicApi.QUALITY_HI_RES_96,
+                            LosslessMusicApi.QUALITY_CD_LOSSLESS,
+                            LosslessMusicApi.QUALITY_MP3_320,
+                        )
+                        LosslessMusicApi.QUALITY_CD_LOSSLESS -> listOf(
+                            LosslessMusicApi.QUALITY_CD_LOSSLESS,
+                            LosslessMusicApi.QUALITY_MP3_320,
+                        )
+                        else -> listOf(requestedDownloadQuality)
+                    }
+                    for (downloadQuality in qualitiesToAttempt) {
                     try {
                         val expectedDurationSec = durationMs?.takeIf { it > 0 }?.let { (it / 1000L).toInt() }
                             ?: preloadedBestMatch?.durationSeconds?.takeIf { it > 0 }
@@ -906,7 +936,7 @@ class TrackDownloadManager @Inject constructor(
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (moduleError: Throwable) {
-                        android.util.Log.w("TrackDownloadManager", "Module download failed for $title by $artist; falling back to YouTube Music", moduleError)
+                        android.util.Log.w("TrackDownloadManager", "Download (quality=$downloadQuality) failed for $title by $artist; trying next tier or YouTube", moduleError)
                         moduleLicenseDeferred?.cancel()
                         moduleLicenseDeferred = null
                         moduleDescriptor = null
@@ -915,7 +945,26 @@ class TrackDownloadManager @Inject constructor(
                         tempDownloadFile?.let { runCatching { if (it.exists()) it.delete() } }
                         tempDownloadFile = null
                         downloadSucceeded = false
+                        // Reset state for potential retry at lower quality
+                        mimeType = "audio/flac"
+                        extension = "flac"
+                        formatBadge = "24-BIT FLAC"
+                        isLossless = false
+                        durationMs = 0L
+                        downloadHeaders = emptyMap()
+                        expectedContentLength = null
+                        useParallelDownload = false
+                        dashInitUrl = null
+                        dashMediaTemplate = null
+                        dashSegmentCount = 0
+                        dashManifestCodec = ""
+                        dashIsFlacInMp4 = false
+                        bytesReadTotal = 0L
+                        totalBytesRecorded = -1L
+                        continue
                     }
+                    if (downloadSucceeded) break
+                    } // end quality retry loop
                 }
 
                 // 2. Fallback to YouTube Music if module was not requested or module download failed
