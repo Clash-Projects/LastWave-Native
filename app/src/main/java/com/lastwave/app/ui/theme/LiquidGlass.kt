@@ -98,33 +98,19 @@ typealias Backdrop = Backdrop
 
 /** Factory matching Kyant0 Backdrop's official API.
  *
- *  Null-safe: first-frame graphics-layer init is exactly where haunted OEM
- *  drivers die (instant close with no stack). A null backdrop disables glass
- *  for that surface via the existing `backdrop == null` fallbacks — the app
- *  lives, minus refraction. Call sites stay unconditional so remember order
- *  never shifts. */
+ *  NOTE: the Compose compiler forbids try/catch (and runCatching) around
+ *  @Composable invocations, so this stays a direct passthrough. First-frame
+ *  safety comes from the [isDeviceGlassCapable] gate at every call site,
+ *  and any failure still lands in the crash-guard log + startup trail. */
 @Composable
 fun rememberLayerBackdrop(
     onDraw: androidx.compose.ui.graphics.drawscope.ContentDrawScope.() -> Unit = { drawContent() },
-): LayerBackdrop? {
-    // Plain try/catch (runCatching lambdas reject @Composable invocations):
-    // a haunted first-frame GPU init returns null and the surface falls back
-    // to solid instead of killing the process.
-    return try {
-        com.kyant.backdrop.backdrops.rememberLayerBackdrop(onDraw = onDraw)
-    } catch (error: Exception) {
-        android.util.Log.e("LiquidGlass", "Backdrop init failed; glass disabled for this surface", error)
-        null
-    } catch (error: LinkageError) {
-        android.util.Log.e("LiquidGlass", "Backdrop unsupported; glass disabled for this surface", error)
-        null
-    }
-}
+): LayerBackdrop? = com.kyant.backdrop.backdrops.rememberLayerBackdrop(onDraw = onDraw)
 
 /** Marks a composable as the source layer that sibling glass surfaces refract. */
 fun Modifier.layerBackdropCompat(backdrop: LayerBackdrop): Modifier = this.nativeBackdrop(backdrop)
 
-/** Remember a backdrop that draws a flat color + content. Null when glass init fails. */
+/** Remember a backdrop that draws a flat color + content. */
 @Composable
 fun rememberBackdrop(color: Color): LayerBackdrop? =
     rememberLayerBackdrop {
