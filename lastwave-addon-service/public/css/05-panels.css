@@ -1,0 +1,113 @@
+/* 05-panels.css — Matte black surfaces, hairlines, steps.
+   Source module. Built into /public/style.css via tools/build-css.js. */
+
+.panel, .provider-card, .disclosure, .hero-card {
+  background: var(--surface);
+  border: 1px solid var(--line-alpha);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-soft);
+  position: relative;
+}
+.panel { padding: clamp(18px, 2.4vw, 24px); margin: 0 0 18px; transition: border-color 160ms var(--ease-out); min-width: 0; }
+.panel::before, .provider-card::before, .hero-card::before {
+  content: ""; position: absolute; inset: 0 0 auto; height: 1px; border-radius: inherit;
+  background: linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.07) 50%, transparent 95%);
+  pointer-events: none;
+}
+.panel:hover { border-color: rgba(255,255,255,0.13); }
+.panel > h2 { margin-bottom: 4px; }
+.panel-sub { color: var(--muted); font-size: 13.5px; line-height: 1.6; margin: 0 0 16px; text-wrap: pretty; }
+.panel-sub-flat { margin-bottom: 0; }
+/* Accent panel — elevated neutral for creation confirmations */
+.panel-accent {
+  border-color: var(--line-hover);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-soft);
+}
+
+/* Hero addon card — elevated one step above panels */
+.hero-card {
+  padding: clamp(20px, 2.6vw, 28px);
+  margin: 0 0 18px;
+  overflow: hidden;
+  background: #0e0e10;
+  border-color: var(--line-alpha);
+}
+.hero-card::after { display: none; }
+.hero-card > * { position: relative; z-index: 1; }
+/* Micro label — header for URL blocks + status readouts.
+   Single owner (was copy-pasted inline across dashboard + verify). */
+.url-label {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--faint);
+}
+.hero-card .addon-url-label { font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+
+.rowline {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; row-gap: 6px; gap: 8px 14px;
+  padding: 12px 0; border-top: 1px solid rgba(255,255,255,0.06);
+  min-width: 0; max-width: 100%; box-sizing: border-box;
+}
+.rowline:first-of-type { border-top: 0; }
+.rowline .k { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; word-break: break-word; min-width: 0; }
+.rowline .v { font-size: 13.5px; text-align: right; color: var(--text-bright); min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+/* Rowline variants — single owners replacing repeated inline overrides */
+.rowline-top { align-items: flex-start; }
+.rowline-end { display: flex; gap: 8px; align-items: center; flex: none; }
+.rowline-card {
+  background: var(--surface-2);
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  align-items: center;
+}
+.rowline-title { font-weight: 700; font-size: 14px; }
+.rowline-desc { margin: 2px 0 0; }
+/* Flex grow cell that truncates safely */
+.grow { flex: 1; min-width: 0; }
+/* Mono values inside rows and tables wrap instead of overflowing */
+.rowline code, td code { overflow-wrap: anywhere; }
+/* Block-level URL readout inside a rowline card */
+.code-block { display: block; margin-top: 3px; }
+
+/* Steps */
+.steps { list-style: none; margin: 24px 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.steps li {
+  background: var(--surface);
+  border: 1px solid var(--line-alpha);
+  border-radius: var(--r-m);
+  padding: 18px; display: flex; flex-direction: column; gap: 10px; min-width: 0;
+  box-shadow: var(--shadow-soft);
+  transition: border-color 160ms var(--ease-out);
+}
+.steps li:hover { border-color: rgba(255,255,255,0.13); }
+.step-num {
+  width: 28px; height: 28px; border-radius: 8px;
+  background: #1b1b1e; color: #fff;
+  border: 1px solid var(--line);
+  font-weight: 650; font-size: 12px;
+  display: flex; align-items: center; justify-content: center;
+}
+.steps li strong { font-size: 14.5px; color: var(--text-bright); margin-bottom: 3px; display: block; font-weight: 650; }
+.steps li p { color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0; }
+
+/* Quick actions bar */
+.quick-actions {
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch;
+  padding: 12px;
+  border-radius: var(--r-m);
+  border: 1px solid var(--line-soft);
+  background: #080809;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.quick-actions .btn, .quick-actions a.btn, .quick-actions form {
+  flex: 1 1 auto;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.quick-actions form { display: flex; }
+.quick-actions form .btn { flex: 1; }

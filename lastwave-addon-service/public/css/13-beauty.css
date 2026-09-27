@@ -1,0 +1,45 @@
+/* 13-beauty.css — Quiet finish layer (last in cascade, wins without edits).
+   Restraint, hairlines, motion. No color glow. */
+
+:root {
+  --shadow-soft: 0 10px 30px -12px rgba(0, 0, 0, 0.9);
+  --shadow-lift: 0 18px 50px -12px rgba(0, 0, 0, 0.9);
+}
+
+/* Card hover — border shift only, no lift theatrics */
+.panel:hover, .provider-card:hover, .steps li:hover, .stat-card:hover, .tile:hover {
+  border-color: rgba(255, 255, 255, 0.13);
+}
+.stat-card, .tile { transition: border-color 160ms var(--ease-out), background-color 200ms var(--ease-out); }
+.panel, .provider-card, .steps li { transition: border-color 160ms var(--ease-out), background-color 200ms var(--ease-out); }
+
+/* Focus stays crisp — single quiet indigo */
+.btn:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible,
+.admintabs a:focus-visible, .tabbar a:focus-visible, a:focus-visible,
+.nav-btn:focus-visible, .nav-link:focus-visible, .disclosure summary:focus-visible {
+  outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-xs);
+}
+
+/* Live indicators — flat dots, no glow */
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--emerald); display: inline-block; flex-shrink: 0; }
+
+/* Scrollbars stay black + thin */
+* { scrollbar-width: thin; scrollbar-color: #262628 #000000; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #000000; }
+::-webkit-scrollbar-thumb { background: #262628; border-radius: 8px; border: 2px solid #000000; }
+::-webkit-scrollbar-thumb:hover { background: #343438; }
+
+/* Reveal-on-load (progressive, GPU-only, respects reduced motion) */
+@keyframes rise-in { from { opacity: 0; transform: translateY(10px); } }
+.rise { animation: rise-in 480ms var(--ease-out) both; }
+.rise-1 { animation-delay: 40ms; } .rise-2 { animation-delay: 90ms; }
+.rise-3 { animation-delay: 140ms; } .rise-4 { animation-delay: 190ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .panel:hover, .provider-card:hover, .steps li:hover, .stat-card:hover, .tile:hover, .btn:hover { transform: none; }
+  .btn:active { transform: none; }
+  .stepper div.now::after, .pulse-dot, .modal, .modal-backdrop, .toast, .btn .spin,
+  .skeleton::after, .rise { animation: none !important; transition: none !important; }
+}

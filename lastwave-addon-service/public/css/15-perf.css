@@ -1,0 +1,56 @@
+/* 15-perf.css — Runtime performance layer (last in cascade).
+   GPU compositor promotion, paint containment, offscreen skipping,
+   zero-latency touch. Additive only — no visual changes.
+   Source module. Built (minified) into /public/style.css via tools/build-css.js. */
+
+/* Zero-latency taps: eradicate 300ms mobile tap delay on all interactives */
+.btn, a, button, input, select, textarea, summary,
+.tabbar a, .admintabs a, .nav-link, .nav-btn,
+.switch, label.savecheck, .segmented a {
+  touch-action: manipulation;
+}
+
+/* Hardware-accelerated compositing for animating surfaces (own GPU layers) */
+.toast, .modal, .spark,
+#celestial-canvas,
+.eq i,
+.quota-ring .ring-fg,
+.meter > i {
+  will-change: transform, opacity;
+  transform: translateZ(0);
+}
+#celestial-canvas { will-change: transform; }
+/* Text/mixed-property anims need opacity-only hint (transform:translateZ(0) would
+   flatten needed transforms) */
+.btn, .panel, .tile, .stat-card { will-change: auto; }
+
+/* Paint containment: isolated render subtrees, no outside bleed */
+.panel, .provider-card, .hero-card, .stat-card, .tile,
+.modal, .toast, .codeblock, .urlbox {
+  contain: layout style;
+}
+
+/* Offscreen skipping: long admin tables/logs bypass render work until near viewport */
+.table-wrap {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+}
+
+/* Instant active depression (no synthetic click lag) */
+.btn:active { transition-duration: 40ms; }
+.nav-link:active, .tabbar a:active, .admintabs a:active, .nav-btn:active, .segmented a:active { transition-duration: 40ms; }
+
+/* Long mono blocks: bounded layout cost */
+.urlbox code, .codeblock .code {
+  overflow-wrap: anywhere;
+  contain: layout style;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast, .modal, .spark, #celestial-canvas, .eq i,
+  .quota-ring .ring-fg, .meter > i {
+    will-change: auto;
+    transform: none;
+  }
+  .table-wrap { content-visibility: visible; }
+}

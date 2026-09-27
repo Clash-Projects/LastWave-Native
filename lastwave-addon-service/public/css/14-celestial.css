@@ -1,0 +1,136 @@
+/* 14-celestial.css — Retired decorative engine. The starfield canvas is
+   hidden (matte theme) and its animation loop is short-circuited in
+   public/js/src/12-celestial.js. Remaining rules below are quiet,
+   static treatments. Never alters layout, endpoints, or DOM contracts. */
+
+/* ---- Celestial canvas: retired — true black canvas, zero noise ---- */
+#celestial-canvas { display: none; }
+
+/* ---- Border beam: retired — hairline borders carry the structure ---- */
+.beam { position: relative; }
+.beam::before { display: none; }
+
+/* ---- 3D tilt: transform only, no cursor spotlight wash ---- */
+.tilt {
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.tilt::after { display: none; }
+
+/* ---- Static audio-mark bars (quiet, monochrome) ---- */
+.eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 18px;
+  vertical-align: -3px;
+  margin-right: 2px;
+}
+.eq i {
+  width: 3px;
+  height: 100%;
+  border-radius: 2px;
+  background: #3f3f46;
+  transform: scaleY(0.55);
+  transform-origin: bottom;
+}
+.eq-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding-left: 12px;
+  border-left: 2px solid #2e2e33;
+}
+.eq-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* ---- Copy sparkle burst particles (spawned by JS, WAAPI-animated) ---- */
+.spark {
+  position: fixed;
+  z-index: 200;
+  pointer-events: none;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #fff;
+  will-change: transform, opacity;
+}
+.spark.star { border-radius: 1px; transform: rotate(45deg); }
+
+/* ---- Copy morph: quiet checkmark pop ---- */
+.btn.copy-ok .v-icon { animation: pop-in 320ms var(--ease-spring); }
+@keyframes pop-in {
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.25); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* ---- Toast auto-progress dismissal bar ---- */
+.toast { position: relative; overflow: hidden; }
+.toast .t-progress {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.toast .t-progress i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: #71717a;
+  transform-origin: left;
+  animation: t-progress 2.6s linear forwards;
+}
+.toast.err .t-progress i { background: #ef4444; }
+.toast.info .t-progress i { background: #52525b; }
+@keyframes t-progress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+/* ---- Fluid modal physics: spring entrance on desktop ---- */
+.modal-backdrop:not([hidden]) .modal {
+  animation: modal-spring 340ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes modal-spring {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.modal.dragging { transition: none; animation: none; }
+
+/* ---- FX sound toggle (injected into footer by JS) ---- */
+.fx-sound {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  color: var(--faint);
+  font: 600 11px var(--font);
+  letter-spacing: 0.03em;
+  padding: 5px 11px;
+  min-height: 40px;
+  cursor: pointer;
+  transition: color 150ms var(--ease-out), border-color 150ms var(--ease-out);
+}
+.fx-sound:hover { color: #fff; border-color: var(--line-hover); }
+.fx-sound[aria-pressed="true"] { color: #fff; border-color: var(--line-hover); }
+
+/* ---- Low-power trims ---- */
+@media (max-width: 768px) {
+  .tilt::after { display: none; }
+}
+
+/* ---- Reduced motion: static, zero animation ---- */
+@media (prefers-reduced-motion: reduce) {
+  .eq i, .toast .t-progress i,
+  .btn.copy-ok .v-icon, .modal-backdrop:not([hidden]) .modal {
+    animation: none !important;
+  }
+  .tilt::after { display: none; }
+}

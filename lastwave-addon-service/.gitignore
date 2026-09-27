@@ -1,0 +1,5 @@
+# ---> data/*.db (SQLite) — local runtime state, never commit.
+*.db
+*.db-*
+node_modules/
+.env

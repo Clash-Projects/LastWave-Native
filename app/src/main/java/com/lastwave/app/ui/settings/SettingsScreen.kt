@@ -997,7 +997,7 @@ fun SettingsScreen(
                                 position = position,
                             )
                             4 -> SettingsToggleCard(
-                                icon = Icons.Filled.Speaker,
+                                icon = Icons.Filled.VolumeUp,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
                                 title = "System Audio Effects",

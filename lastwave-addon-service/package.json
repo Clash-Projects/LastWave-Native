@@ -1,0 +1,26 @@
+{
+  "name": "lastwave-addon-service",
+  "version": "1.0.0",
+  "description": "LastWave Addons — per-account addon service with Telegram/Discord verification, 500 songs/day quota, and admin console.",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "scripts": {
+    "prestart": "node tools/build-css.js && node tools/build-js.js",
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "build:css": "node tools/build-css.js",
+    "build:js": "node tools/build-js.js",
+    "build": "node tools/build-css.js && node tools/build-js.js",
+    "verify": "node tools/build-css.js && node tools/build-js.js && node -e \"for (const f of ['src/index.js','src/html.js','src/ui/esc.js','src/ui/icons.js','src/ui/layout.js','src/ui/components.js','src/views/home.js','src/views/auth.js','src/views/dashboard.js','src/routes/web.js','src/routes/verify.js','src/routes/admin.js','src/routes/addon.js','src/routes/github.js','src/routes/password.js','public/app.js']) { require('child_process').execSync('node --check '+f, {stdio:'inherit'}); } console.log('verify OK')\""
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "cookie-parser": "^1.4.6",
+    "discord.js": "^14.27.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

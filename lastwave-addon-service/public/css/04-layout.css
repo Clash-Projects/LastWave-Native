@@ -1,0 +1,169 @@
+/* 04-layout.css — Edge-to-edge bands + readable inner containers.
+   Pattern: .page / .section stretch full width (100vw, no side gaps);
+   .wrap / .page-narrow constrain text to a comfortable readable width.
+   Source module. Built into /public/style.css via tools/build-css.js. */
+
+/* Full-bleed canvas: backgrounds and sections touch viewport edges.
+   Horizontal rhythm lives in children/wraps, never in .page itself. */
+.page {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  margin: 0;
+  padding: clamp(24px, 3vw, 44px) 0 64px;
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+}
+
+/* Backward-compat containment: every direct child that is NOT a full-bleed
+   .section stays at the product measure (1200px) with comfortable gutters.
+   This keeps dashboard / auth / verify / error pages identical in width
+   while the shell itself is now edge-to-edge. */
+.page > :not(.section):not(script) {
+  max-width: var(--measure);
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--gutter);
+  padding-right: var(--gutter);
+  min-width: 0;
+  box-sizing: border-box;
+}
+/* Narrow readable column (forms, notices, prose) — legacy class kept. */
+.page > .page-narrow,
+.page-narrow {
+  max-width: var(--measure-narrow);
+  margin-left: auto;
+  margin-right: auto;
+  min-width: 0;
+  padding-left: var(--gutter);
+  padding-right: var(--gutter);
+}
+
+/* Inner readable container for use inside full-bleed .section bands.
+   :not(.inline-row) guards the unrelated .inline-row.wrap utility in forms. */
+.wrap:not(.inline-row) {
+  max-width: var(--measure);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--gutter);
+  padding-right: var(--gutter);
+  min-width: 0;
+}
+.wrap-narrow:not(.inline-row) { max-width: var(--measure-narrow); }
+
+/* Full-bleed band: stretches edge-to-edge, carries the background.
+   Inner .wrap keeps text at readable width. */
+.section {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: var(--section-pad-y) 0;
+  position: relative;
+  min-width: 0;
+}
+.section:first-child { padding-top: clamp(8px, 1.5vw, 20px); }
+.section-hero {
+  background: none;
+  border-bottom: 1px solid var(--section-line);
+  padding-top: clamp(36px, 5vw, 76px);
+  padding-bottom: clamp(32px, 4vw, 60px);
+  overflow: hidden;
+}
+.section-hero::before,
+.section-hero::after { display: none; }
+.section-hero > * { position: relative; z-index: 1; }
+.section-stats {
+  background: var(--section-alt-bg);
+  border-top: 1px solid var(--section-line);
+  border-bottom: 1px solid var(--section-line);
+  padding-top: var(--section-gap);
+  padding-bottom: var(--section-gap);
+}
+.section-steps { padding-top: var(--section-gap); }
+.section-note { padding-top: 0; padding-bottom: var(--section-gap); }
+
+.hero { margin: clamp(6px, 1.5vw, 16px) 0 clamp(20px, 3vw, 32px); max-width: 62ch; }
+.hero h1 {
+  font-size: var(--text-display);
+  font-weight: 650;
+  line-height: 1.08;
+  margin: 18px 0 14px;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  text-shadow: none;
+}
+.hero .lede { font-size: var(--text-lede); line-height: var(--leading-body); color: var(--muted); max-width: 56ch; }
+/* Primary CTA emphasis: hero actions use the large button scale */
+.hero-cta { margin-top: 26px; gap: 12px; align-items: center; }
+.hero-cta .btn { min-height: 54px; padding: 0 28px; font-size: 15px; font-weight: 750; border-radius: 14px; }
+.hero-cta .btn.secondary { min-height: 54px; padding: 0 22px; font-size: 14px; }
+
+.eyebrow-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  background: transparent;
+  padding: 7px 14px; border-radius: var(--r-full);
+  white-space: nowrap;
+}
+.eyebrow-pill .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--emerald); }
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--muted); margin: 0 0 10px; text-wrap: balance;
+}
+.eyebrow .v-icon { transform: translateY(0.5px); }
+/* Eyebrow tones — single owner for status-tinted kickers (replaces inline colors) */
+.eyebrow-danger { color: var(--danger); }
+.eyebrow-warn { color: var(--warn); }
+.page-head { margin: 6px 0 clamp(18px, 2.5vw, 28px); overflow-wrap: break-word; min-width: 0; }
+.page-head h1 { margin-bottom: 10px; font-size: var(--text-h1); line-height: var(--leading-snug); }
+.page-head .lede { margin-top: 8px; }
+.lede { color: var(--muted); font-size: clamp(0.92rem, 0.88rem + 0.3vw, 1rem); line-height: 1.65; max-width: 60ch; text-wrap: pretty; }
+/* Band label: small supporting heading inside full-bleed sections */
+.section-label {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin: 0 0 12px;
+}
+
+/* Section spacing rhythm */
+.stack > * + * { margin-top: 18px; }
+
+/* Split-section header row: title left, chip/meta right, wraps gracefully.
+   Single owner — replaces repeated inline flex headers across views. */
+.row-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.row-head > h2 { margin: 0; }
+/* Supporting paragraph after a panel or meter — one rhythm everywhere */
+.fineprint { margin-top: 16px; }
+
+/* Split dashboard grid */
+.split { display: grid; grid-template-columns: 1.45fr 1fr; gap: 20px; align-items: start; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; }
+.split > * { min-width: 0; max-width: 100%; width: 100%; box-sizing: border-box; }
+
+/* Metric tile grid (dashboard / admin) — key stats carry the most weight */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: var(--card-gap); margin: 0; }
+.tile {
+  background: var(--surface);
+  border: 1px solid var(--line-alpha);
+  border-radius: var(--r-m);
+  padding: var(--card-pad);
+  box-shadow: var(--shadow-soft);
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+}
+.tile::before {
+  content: ""; position: absolute; inset: 0 0 auto; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent);
+}
+.tile .t-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
+.tile .t-value { font-size: clamp(1.65rem, 1.4rem + 1.2vw, 2.1rem); font-weight: 650; letter-spacing: -0.02em; line-height: 1; color: #fff; font-variant-numeric: tabular-nums; margin-top: 6px; }
+.tile .t-sub { font-size: 12.5px; color: var(--muted); margin-top: 6px; }

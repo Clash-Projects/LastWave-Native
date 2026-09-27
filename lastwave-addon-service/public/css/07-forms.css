@@ -1,0 +1,98 @@
+/* 07-forms.css — Matte inputs, OTP code boxes, segmented tabs, toolbars.
+   Source module. Built into /public/style.css via tools/build-css.js. */
+
+label.field { display: block; margin: 0 0 16px; min-width: 0; }
+label.field > span { display: block; font-size: 12.5px; font-weight: 600; letter-spacing: 0.02em; color: var(--muted); margin-bottom: 7px; }
+input[type="text"], input[type="password"], input[type="search"], input[type="number"], select, textarea {
+  width: 100%;
+  min-height: var(--tap);
+  background: #0a0a0b;
+  border: 1px solid var(--line);
+  color: var(--text-bright);
+  border-radius: var(--r-s);
+  padding: 0 14px;
+  font: 400 14px var(--font);
+  box-shadow: none;
+  transition: border-color 160ms var(--ease-out), box-shadow 160ms var(--ease-out), background-color 160ms var(--ease-out);
+  min-width: 0;
+}
+textarea { padding: 12px 14px; min-height: 88px; resize: vertical; }
+input::placeholder, textarea::placeholder { color: var(--faint); }
+input:hover, select:hover, textarea:hover { border-color: var(--line-hover); }
+input:focus, select:focus, textarea:focus {
+  border-color: rgba(255, 255, 255, 0.35);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+  background: #000000;
+}
+select { cursor: pointer; }
+select.inline, input[type="number"].inline { width: auto; }
+
+/* Segmented tab switcher (auth) */
+.segmented {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  padding: 4px; border-radius: 13px;
+  background: #0a0a0b;
+  border: 1px solid var(--line-alpha);
+  margin-bottom: 18px;
+}
+.segmented a {
+  text-align: center; text-decoration: none;
+  padding: 11px 8px; border-radius: 9px;
+  font-size: 13.5px; font-weight: 600; color: var(--muted);
+  min-height: 44px; display: flex; align-items: center; justify-content: center;
+  transition: all 160ms var(--ease-out);
+}
+.segmented a[aria-current="page"] {
+  color: #000; background: var(--accent);
+  box-shadow: none;
+}
+.segmented a:active { transform: scale(0.98); }
+.segmented a:not([aria-current="page"]):hover { color: var(--text-bright); background: rgba(255,255,255,0.04); }
+
+/* 6-digit OTP input */
+.otp-wrap { margin: 14px 0; }
+.otp-boxes { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.otp-boxes input {
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 20px; font-weight: 650;
+  letter-spacing: 0;
+  padding: 0; height: 54px; min-height: 54px;
+  text-transform: uppercase;
+  caret-color: #fff;
+}
+.otp-boxes input.filled { border-color: rgba(16,185,129,0.5); box-shadow: none; }
+.otp-hint { font-size: 12px; color: var(--faint); margin-top: 8px; text-align: center; }
+
+/* Toggle switch (admin health monitors) */
+.switch { position: relative; display: inline-flex; align-items: center; gap: 10px; cursor: pointer; min-height: 44px; }
+.switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.switch .track {
+  width: 42px; height: 24px; border-radius: 999px; flex-shrink: 0;
+  background: #1c1c1f; border: 1px solid var(--line);
+  box-shadow: none;
+  transition: background 180ms var(--ease-out), border-color 180ms var(--ease-out);
+  position: relative;
+}
+.switch .track::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+  background: #8e8e96; box-shadow: none;
+  transition: transform 200ms var(--ease-spring), background-color 180ms var(--ease-out);
+}
+.switch input:checked + .track { background: #f4f4f5; border-color: transparent; box-shadow: none; }
+.switch input:checked + .track::after { transform: translateX(18px); background: #000; }
+.switch:hover .track { border-color: var(--line-hover); }
+.switch:active .track { filter: brightness(1.25); }
+.switch input:focus-visible + .track { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* Tight field — label + control pairs inside OTP / ban-reason blocks */
+.field-tight { margin-bottom: 8px; }
+
+/* Form grid + guards */
+.form-grid { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; align-items: end; }
+.inline-row { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.inline-row.wrap { flex-wrap: wrap; }
+.split > * { min-width: 0; }
+.panel, .provider-card, .codeblock, .urlbox, .table-wrap { min-width: 0; }
+.toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0 4px; }
+.toolbar input[type="search"] { max-width: min(420px, 100%); flex: 1 1 220px; }

@@ -1,0 +1,130 @@
+/* 09-data.css — Hero URL box, identity, howto, provider brands, stepper, codeblock.
+   Source module. Built into /public/style.css via tools/build-css.js. */
+
+.urlbox {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  margin: 10px 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.urlbox code {
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  background: #000000;
+  border: 1px solid var(--line);
+  border-radius: var(--r-inner);
+  padding: 12px 14px;
+  font-size: 12.5px;
+  color: #e4e4e7;
+  display: block;
+  white-space: normal;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+  box-shadow: none;
+  text-shadow: none;
+  user-select: all;
+  -webkit-user-select: all;
+}
+.urlbox code::-webkit-scrollbar { display: none; }
+.urlbox .btn { flex-shrink: 0; }
+.urlbox-hero code { font-size: 13px; padding: 14px 16px; border-radius: 13px; }
+.urlbox-secondary code { font-size: 11.5px; padding: 9px 12px; color: var(--muted); border-color: var(--line-soft); box-shadow: none; text-shadow: none; }
+
+/* Identity */
+.identity { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; min-width: 0; max-width: 100%; box-sizing: border-box; }
+.identity > div { min-width: 0; max-width: 100%; flex: 1 1 auto; }
+.avatar { width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0; object-fit: cover; background: var(--surface-2); border: 1px solid var(--line); }
+.avatar-fallback {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #1c1c1f; color: #fff;
+  font-weight: 650; font-size: 18px; border: 1px solid var(--line);
+  text-shadow: none;
+}
+.identity .who { font-weight: 700; font-size: 16.5px; letter-spacing: -0.015em; color: #fff; overflow-wrap: anywhere; word-break: break-word; }
+.identity .sub { color: var(--muted); font-size: 13px; margin-top: 2px; display: flex; align-items: center; gap: 5px; overflow-wrap: anywhere; word-break: break-word; min-width: 0; flex-wrap: wrap; }
+.identity .sub .v-icon { width: 14px; height: 14px; flex-shrink: 0; }
+.identity .pills { display: flex; gap: 6px; margin-top: 7px; flex-wrap: wrap; max-width: 100%; }
+
+/* Howto */
+.howto { list-style: none; margin: 14px 0 0; padding: 0; min-width: 0; max-width: 100%; box-sizing: border-box; }
+.howto li { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; color: var(--muted); padding: 9px 0; border-top: 1px solid rgba(255,255,255,0.06); min-width: 0; max-width: 100%; box-sizing: border-box; }
+.howto li:first-child { border-top: 0; }
+.howto li span:last-child { flex: 1; min-width: 0; overflow-wrap: break-word; word-break: break-word; }
+.task-icon { width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+.task-icon .v-icon { width: 11px; height: 11px; }
+.task-done { background: #0d2e26; border: 1px solid rgba(16,185,129,0.35); color: #6ee7b7; }
+.task-pending { background: transparent; border: 1px solid var(--line-hover); color: var(--faint); }
+
+/* Provider cards — uniform matte, brand buttons carry identity */
+.provider-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 18px 0; }
+.provider-card { padding: clamp(18px, 2.4vw, 22px); display: flex; flex-direction: column; gap: 14px; min-width: 0; overflow: hidden; }
+/* Pins the action to the card foot so uneven copy blocks stay aligned */
+.provider-card .push-bottom { margin-top: auto; }
+.provider-card.brand-tg, .provider-card.brand-dc { border-color: var(--line-alpha); box-shadow: var(--shadow-soft); }
+.provider-card.brand-tg::after, .provider-card.brand-dc::after { display: none; }
+.provider-head { display: flex; align-items: center; gap: 12px; }
+.provider-head .panel-sub { margin: 0; }
+.provider-head .brand-tag { margin-left: auto; }
+.provider-icon-badge {
+  width: 42px; height: 42px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  border: 1px solid var(--line);
+  background: #141416;
+  color: #fff;
+}
+.provider-icon-badge .v-icon { width: 21px; height: 21px; }
+.provider-tg { background: #141416; }
+.provider-dc { background: #141416; }
+.brand-tag {
+  font-size: 10px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: var(--r-full);
+  border: 1px solid var(--line); background: transparent; color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Stepper */
+.stepper { display: flex; margin: 18px 0; border: 1px solid var(--line-alpha); border-radius: var(--r-s); overflow: hidden; background: rgba(255,255,255,0.02); }
+.stepper div {
+  flex: 1 1 0; min-width: 0; padding: 11px 8px; text-align: center;
+  font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; color: var(--faint);
+  display: flex; align-items: center; justify-content: center; gap: 6px; overflow-wrap: anywhere;
+}
+.stepper div + div { border-left: 1px solid var(--line-alpha); }
+.stepper div.done { color: #6ee7b7; background: rgba(16,185,129,0.07); }
+.stepper div.now { color: #fff; background: rgba(255,255,255,0.06); position: relative; overflow: hidden; }
+.stepper div.now::after { display: none; }
+
+/* Big verification code block */
+.codeblock {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  background: #000000;
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+  padding: 18px 20px; margin: 14px 0;
+  box-shadow: none;
+  min-width: 0;
+}
+.codeblock .code {
+  font-family: var(--mono);
+  font-size: clamp(1.3rem, 1.1rem + 1.6vw, 1.9rem);
+  font-weight: 650; letter-spacing: 0.18em; text-indent: 0.18em;
+  color: #fff;
+  text-shadow: none;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere; min-width: 0;
+}
+
+/* QR thumb */
+.qr-thumb {
+  width: 56px; height: 56px; border-radius: 12px; flex-shrink: 0;
+  background: #fff; padding: 4px;
+  border: 1px solid var(--line);
+}
+.qr-thumb img { width: 100%; height: 100%; border-radius: 8px; display: block; }

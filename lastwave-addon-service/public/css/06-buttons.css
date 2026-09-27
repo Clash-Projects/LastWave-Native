@@ -1,0 +1,106 @@
+/* 06-buttons.css — Quiet monochrome actions, white primary, ripple.
+   Source module. Built into /public/style.css via tools/build-css.js. */
+
+.btn {
+  appearance: none;
+  position: relative;
+  overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: var(--tap);
+  padding: 0 18px;
+  border-radius: var(--r-s);
+  font: 600 13.5px/1 var(--font);
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  cursor: pointer;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  max-width: 100%;
+  box-sizing: border-box;
+  transition: transform 180ms var(--ease-out), background-color 180ms var(--ease-out), border-color 180ms var(--ease-out), box-shadow 180ms var(--ease-out), filter 180ms var(--ease-out), opacity 180ms var(--ease-out);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  isolation: isolate;
+}
+.btn .v-icon { transform: translateY(0.5px); }
+.btn:hover { transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+
+/* Ripple element injected by JS */
+.btn .ripple {
+  position: absolute; border-radius: 50%;
+  transform: scale(0); opacity: 0.45;
+  background: currentColor;
+  animation: ripple 550ms var(--ease-out) forwards;
+  pointer-events: none;
+  z-index: 0;
+}
+.btn > *:not(.ripple) { position: relative; z-index: 1; }
+@keyframes ripple { to { transform: scale(2.6); opacity: 0; } }
+
+.btn.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: transparent;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6), var(--cta-glow);
+  text-shadow: none;
+}
+.btn.primary::after { display: none; }
+.btn.primary:hover {
+  color: var(--accent-ink);
+  background: #ffffff;
+  filter: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6), var(--cta-glow-hover);
+  transform: translateY(-1px);
+}
+.btn.primary:active { transform: translateY(0) scale(0.985); filter: brightness(0.96); }
+.btn.primary:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.btn.primary.is-success {
+  background: #0d3b2e;
+  color: #6ee7b7;
+  border-color: rgba(16,185,129,0.4);
+  box-shadow: none;
+}
+
+.btn.secondary {
+  background: #101012;
+  border-color: var(--line);
+  color: var(--text);
+  box-shadow: none;
+}
+.btn.secondary:hover { border-color: var(--line-hover); background: #161618; color: #fff; }
+.btn.secondary:active { filter: none; background: #1c1c1f; }
+
+.btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+.btn.ghost:hover { color: #fff; background: rgba(255,255,255,0.06); }
+.btn.ghost:active { transform: scale(0.98); background: rgba(255,255,255,0.09); }
+
+.btn.danger { background: transparent; border-color: rgba(248,113,113,0.35); color: var(--danger); }
+.btn.danger:hover { border-color: var(--danger); background: var(--danger-dim); }
+.btn.danger:active { transform: scale(0.98); background: rgba(248,113,113,0.16); }
+.btn.danger-solid { background: var(--danger-solid); border-color: var(--danger-solid); color: #fff; box-shadow: 0 8px 22px -10px rgba(220,38,38,0.7); }
+.btn.danger-solid:hover { background: var(--danger-solid-hover); }
+.btn.danger-solid:active { transform: scale(0.98); filter: brightness(0.92); }
+
+.btn.small { min-height: 34px; padding: 0 13px; font-size: 12.5px; border-radius: 9px; }
+.btn.block { width: 100%; }
+.btn[disabled], .btn.loading { opacity: 0.55; cursor: wait; pointer-events: none; box-shadow: none; filter: saturate(0.5); }
+.btn .spin {
+  width: 14px; height: 14px; flex-shrink: 0; border-radius: 50%;
+  border: 2px solid currentColor; border-top-color: transparent;
+  animation: spin 600ms linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Brand buttons — third-party identities keep their fills for recognition */
+.btn.discord { background: #4c57e2; border-color: transparent; color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+.btn.discord:hover { background: #5865f2; border-color: transparent; color: #fff; }
+.btn.discord:active { transform: scale(0.98); filter: brightness(0.92); }
+.btn.telegram { background: #1d8fc2; border-color: transparent; color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+.btn.telegram:hover { background: #229ed9; border-color: transparent; color: #fff; }
+.btn.telegram:active { transform: scale(0.98); filter: brightness(0.92); }
+
+/* Copy success state — quiet emerald, no glow */
+.btn.copy-ok { border-color: rgba(16,185,129,0.55) !important; box-shadow: none !important; }

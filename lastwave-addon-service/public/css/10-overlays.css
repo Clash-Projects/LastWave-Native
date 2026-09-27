@@ -1,0 +1,115 @@
+/* 10-overlays.css — Toasts (top-right desktop / top-center mobile), bottom-sheet modals, tables.
+   Source module. Built into /public/style.css via tools/build-css.js. */
+
+/* Checkbox save */
+.savecheck {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 14px; min-height: var(--tap);
+  cursor: pointer; font-size: 13.5px; color: var(--muted);
+  border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px;
+}
+.savecheck input { width: 18px; height: 18px; accent-color: #e4e4e7; flex-shrink: 0; cursor: pointer; }
+.savecheck:hover { color: var(--text-bright); }
+.savecheck:active { transform: scale(0.995); }
+.savecheck.is-saved { color: var(--text-bright); }
+.saved-pill {
+  margin-left: auto; font-size: 11.5px; font-weight: 600; color: #6ee7b7;
+  border: 1px solid rgba(16,185,129,0.4); background: var(--emerald-dim);
+  border-radius: var(--r-full); padding: 4px 10px; white-space: nowrap;
+}
+.saved-pill[hidden] { display: none; }
+
+/* Tables */
+.table-wrap { overflow-x: auto; margin: 0 -22px; padding: 0 22px; scrollbar-width: thin; }
+table.grid { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 640px; }
+table.grid th {
+  text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--faint); padding: 10px 12px;
+  border-bottom: 1px solid var(--line-alpha); white-space: nowrap;
+}
+table.grid td { padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: middle; overflow-wrap: anywhere; min-width: 0; }
+table.grid tr:last-child td { border-bottom: 0; }
+table.grid tbody tr { transition: background-color 140ms var(--ease-out); }
+table.grid tbody tr:hover { background: rgba(255,255,255,0.03); }
+table.grid a.rowlink { color: var(--text-bright); font-weight: 650; text-decoration: none; }
+table.grid a.rowlink:hover { text-decoration: underline; }
+.cell-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.cell-actions { white-space: nowrap; text-align: right; }
+.cell-actions form { display: inline; }
+
+/* ---- Toasts: top-right desktop, top-center mobile ---- */
+.toasts {
+  position: fixed;
+  top: calc(72px + env(safe-area-inset-top));
+  right: 20px;
+  bottom: auto; left: auto;
+  transform: none;
+  z-index: var(--z-toast);
+  display: flex; flex-direction: column; gap: 10px; align-items: flex-end;
+  width: max-content; max-width: min(calc(100vw - 32px), 400px);
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  background: #0e0e10;
+  border: 1px solid var(--line-hover);
+  color: var(--text-bright);
+  border-radius: 13px;
+  padding: 12px 16px;
+  font-size: 13px; font-weight: 600; letter-spacing: -0.01em;
+  display: flex; gap: 9px; align-items: center;
+  max-width: 100%; overflow-wrap: anywhere;
+  box-shadow: 0 14px 40px -10px rgba(0,0,0,0.9);
+  animation: toast-in 260ms var(--ease-out);
+  transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out);
+}
+.toast.err { border-color: rgba(248,113,113,0.45); }
+.toast.info { border-color: var(--line-hover); }
+.toast .t-icon { display: inline-flex; flex-shrink: 0; }
+.toast .t-icon .v-icon { width: 15px; height: 15px; }
+.toast:not(.err):not(.info) .t-icon { color: #6ee7b7; }
+.toast.err .t-icon { color: var(--danger); }
+.toast.info .t-icon { color: var(--muted); }
+.toast.out { opacity: 0; transform: translateY(-8px) scale(0.96); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-10px) scale(0.96); } }
+
+/* ---- Modals: glass centered desktop, bottom-sheet mobile ---- */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: var(--z-modal);
+  background: rgba(4, 4, 8, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  animation: fade-in 180ms var(--ease-out);
+}
+.modal-backdrop[hidden] { display: none; }
+.modal {
+  background: #0c0c0e;
+  border: 1px solid var(--line-hover);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  width: min(100%, 420px);
+  max-height: min(86vh, 640px);
+  overflow-y: auto;
+  box-shadow: 0 30px 80px -20px rgba(0,0,0,0.95);
+  animation: modal-in 240ms var(--ease-out);
+}
+.modal::before {
+  content: ""; display: block; height: 1px; margin: -24px -24px 20px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+}
+.modal h2 { font-size: 17px; margin-bottom: 6px; }
+.modal p { color: var(--muted); font-size: 13.5px; margin: 0 0 20px; line-height: 1.6; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.modal-actions .btn { flex: 1; min-height: var(--tap); }
+/* QR variant */
+.modal-qr { text-align: center; }
+.modal-qr .qr-big {
+  background: #fff; border-radius: 16px; padding: 12px;
+  width: min(100%, 248px); margin: 4px auto 14px;
+}
+.modal-qr .qr-big img { width: 100%; border-radius: 8px; display: block; }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes modal-in { from { opacity: 0; transform: translateY(10px) scale(0.97); } }

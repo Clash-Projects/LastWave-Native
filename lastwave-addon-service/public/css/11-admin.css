@@ -1,0 +1,94 @@
+/* 11-admin.css — Stat counters, tabs, mentions, disclosures, cred pills.
+   Source module. Built into /public/style.css via tools/build-css.js. */
+
+.statstrip { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 14px; }
+.statstrip span { display: inline-flex; align-items: baseline; gap: 7px; color: var(--muted); font-size: 13px; }
+.statstrip strong { color: #fff; font-size: 15px; font-weight: 750; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+
+/* Stat counters — same matte metric-card base as home .tile */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: var(--card-gap); margin: 16px 0 20px; }
+.stat-card {
+  position: relative; overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line-alpha);
+  border-radius: var(--r-m);
+  padding: var(--card-pad);
+  box-shadow: var(--shadow-soft);
+  min-width: 0;
+}
+.stat-card::after { display: none; }
+.stat-card .s-label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--faint); display: flex; align-items: center; gap: 6px; }
+.stat-card .s-label .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--emerald); }
+.stat-card .s-value { font-size: clamp(1.65rem, 1.4rem + 1.2vw, 2.1rem); font-weight: 650; letter-spacing: -0.02em; line-height: 1; color: #fff; font-variant-numeric: tabular-nums; margin-top: 6px; }
+.stat-card .s-sub { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+.stat-card.accent-cyan::after, .stat-card.accent-emerald::after, .stat-card.accent-violet::after { display: none; }
+
+.admintabs {
+  display: flex; gap: 4px; margin: 0 0 18px; padding: 4px;
+  border: 1px solid var(--line-alpha); border-radius: 13px;
+  background: #0a0a0b; width: fit-content; max-width: 100%;
+}
+.admintabs a {
+  padding: 8px 18px; border-radius: 9px; color: var(--muted); text-decoration: none;
+  font-size: 13px; font-weight: 600; min-height: 38px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent;
+  transition: all 150ms var(--ease-out);
+}
+.admintabs a:hover { color: #fff; background: rgba(255,255,255,0.06); }
+.admintabs a:active { transform: none; }
+.admintabs a[aria-current="page"] { background: rgba(255,255,255,0.09); color: #fff; border-color: var(--line-alpha); box-shadow: none; }
+
+.mention { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12.5px; color: var(--muted); min-width: 0; }
+.mention .btn { min-height: 34px; padding: 0 11px; font-size: 11.5px; }
+
+.disclosure { border-radius: var(--r-m); margin-top: 16px; overflow: hidden; }
+.disclosure summary { cursor: pointer; padding: 14px 18px; font-size: 13.5px; font-weight: 600; min-height: var(--tap); display: flex; align-items: center; gap: 8px; border-radius: var(--r-inner); list-style: none; transition: background-color 160ms var(--ease-out), color 160ms var(--ease-out); }
+.disclosure summary::-webkit-details-marker { display: none; }
+.disclosure summary:hover { background: rgba(255,255,255,0.03); color: var(--text-bright); }
+.disclosure summary:active { transform: scale(0.995); }
+.disclosure .inner { padding: 16px 18px 18px; border-top: 1px solid rgba(255,255,255,0.06); }
+
+.panel-flush { padding: 0 0 8px; overflow: hidden; }
+.panel-flush > div:first-child { padding: 18px 18px 0; }
+/* Flush panel header — title block pinned to the panel's top edge above a table */
+.panel-h { padding: 18px 18px 0; }
+
+/* Admin compact inputs + control rows — single owners (were inline styles) */
+.field-flat { margin: 0; }
+.switch-dense { min-height: 36px; }
+.input-xs { width: 95px; min-height: 36px; padding: 0 8px; font-size: 13px; }
+.input-xs-narrow { width: 75px; min-height: 36px; padding: 0 6px; font-size: 13px; }
+.grant-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.grant-custom { display: flex; gap: 4px; align-items: center; }
+.inline-form { margin-top: 14px; display: flex; gap: 8px; align-items: center; }
+.inline-form input { flex: 1; min-height: 36px; padding: 0 10px; font-size: 13px; }
+.stack-col { display: flex; flex-direction: column; gap: 8px; }
+.admin-signout { padding-bottom: 18px; }
+.detail-title { font-size: 22px; }
+.mention-row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.back-link { margin-bottom: 12px; }
+th.row-manage { text-align: right; }
+/* VIP display value — one scale for dashboard + admin */
+.vip-display { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
+/* Grouped URL blocks on the dashboard — one rhythm */
+.url-group { margin-top: 16px; }
+
+.cred-pill, .cred-box {
+  font-family: var(--mono);
+  background: #000000; color: #e4e4e7;
+  border: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.cred-pill { padding: 3px 9px; border-radius: 8px; font-weight: 600; font-variant-numeric: tabular-nums; font-size: 12px; }
+.cred-box { padding: 5px 11px; border-radius: 10px; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Health monitor rows */
+.health-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid rgba(255,255,255,0.06); min-width: 0; flex-wrap: wrap; }
+.health-row:first-of-type { border-top: 0; }
+.health-row .h-info { flex: 1; min-width: min(100%, 200px); }
+.health-row .h-info strong { display: block; font-size: 13.5px; color: #fff; }
+.health-row .h-info span { font-size: 12px; color: var(--muted); }
+.health-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--emerald); }
+.health-dot.degraded { background: #f59e0b; }
+.health-dot.down { background: var(--danger); }
