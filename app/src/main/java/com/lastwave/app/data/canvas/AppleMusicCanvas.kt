@@ -76,11 +76,12 @@ object AppleMusicCanvas {
             val albumName = attributes["albumName"]?.jsonPrimitive?.contentOrNull
 
             attributes["editorialVideo"]?.jsonObject?.let { video ->
-                motionUrls(video)?.let { (primary, alternate) ->
+                motionUrls(video)?.let { assets ->
                     Log.d(TAG, "Inline motion artwork found for '$songName'")
                     return CanvasArtwork(
-                        url = primary,
-                        fallbackUrl = alternate,
+                        url = assets.primary,
+                        fallbackUrl = assets.alternate,
+                        tallUrl = assets.tall,
                         title = songName,
                         artist = songArtist,
                         album = albumName,
@@ -126,12 +127,13 @@ object AppleMusicCanvas {
             val name = attributes["name"]?.jsonPrimitive?.contentOrNull
             if (name != null && isCompilation(name)) continue
             val video = attributes["editorialVideo"]?.jsonObject ?: continue
-            val (primary, alternate) = motionUrls(video) ?: continue
+            val assets = motionUrls(video) ?: continue
 
             Log.d(TAG, "Motion artwork found for album '$name'")
             return CanvasArtwork(
-                url = primary,
-                fallbackUrl = alternate,
+                url = assets.primary,
+                fallbackUrl = assets.alternate,
+                tallUrl = assets.tall,
                 title = name,
                 artist = attributes["artistName"]?.jsonPrimitive?.contentOrNull,
                 album = name,
@@ -244,12 +246,13 @@ object AppleMusicCanvas {
         if (isCompilation(albumName)) return null
 
         val video = attributes["editorialVideo"]?.jsonObject ?: return null
-        val (primary, alternate) = motionUrls(video) ?: return null
+        val assets = motionUrls(video) ?: return null
 
         Log.d(TAG, "Motion artwork found on album '$albumName' ($albumId)")
         return CanvasArtwork(
-            url = primary,
-            fallbackUrl = alternate,
+            url = assets.primary,
+            fallbackUrl = assets.alternate,
+            tallUrl = assets.tall,
             title = songTitle,
             artist = songArtist ?: attributes["artistName"]?.jsonPrimitive?.contentOrNull,
             album = albumName,
@@ -257,7 +260,13 @@ object AppleMusicCanvas {
         )
     }
 
-    private fun motionUrls(video: JsonObject): Pair<String, String?>? {
+    private data class MotionUrls(
+        val primary: String,
+        val alternate: String?,
+        val tall: String?,
+    )
+
+    private fun motionUrls(video: JsonObject): MotionUrls? {
         fun link(key: String): String? = video[key]?.jsonObject?.let { asset ->
             asset["video"]?.jsonPrimitive?.contentOrNull
                 ?: asset["videoUrl"]?.jsonPrimitive?.contentOrNull
@@ -270,7 +279,7 @@ object AppleMusicCanvas {
         val tall = link("motionDetailTall") ?: link("motionTallVideo3x4")
         val primary = square ?: raw ?: tall ?: return null
         val alternate = listOfNotNull(square, raw, tall).firstOrNull { it != primary }
-        return primary to alternate
+        return MotionUrls(primary, alternate, tall)
     }
 
     @Volatile private var cachedToken: String? = null

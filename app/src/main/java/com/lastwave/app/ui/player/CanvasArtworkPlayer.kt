@@ -371,7 +371,7 @@ private fun TextureView.applyContentTransform(
     }
     val viewAspect = bounds.width.toFloat() / bounds.height
     val pivotX = bounds.width / 2f
-    val pivotY = if (alignPortraitTop && contentMode == CanvasContentMode.FIT_PORTRAIT && clipAspect < 1f) {
+    val pivotY = if (alignPortraitTop && clipAspect < 1f) {
         0f
     } else bounds.height / 2f
     val matrix = Matrix().apply {
