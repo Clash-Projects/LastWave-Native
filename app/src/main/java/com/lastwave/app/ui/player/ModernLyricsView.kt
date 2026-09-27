@@ -105,7 +105,7 @@ fun ModernLyricsPanel(
     isFullscreen: Boolean = false,
     onRetry: () -> Unit = {},
     modifier: Modifier = Modifier,
-    /** Manual sync correction (ms, + = lyrics later). Applies to lyric
+    /** Manual sync correction (ms, + = lyrics earlier). Applies to lyric
      *  focus/highlight only — the seekbar below keeps true position. */
     lyricsOffsetMs: Long = 0L,
 ) {
@@ -121,8 +121,8 @@ fun ModernLyricsPanel(
 
     LaunchedEffect(progress.positionMs, state.isPlaying, track) {
         val drift = kotlin.math.abs(smoothedPositionMs - progress.positionMs)
-        // Hard snap on seek (>250ms drift) or when stopped/paused
-        if (drift > 250 || !state.isPlaying) {
+        // Hard snap on seek (>120ms drift) or when stopped/paused
+        if (drift > 120 || !state.isPlaying) {
             smoothedPositionMs = progress.positionMs
         }
     }
@@ -141,10 +141,10 @@ fun ModernLyricsPanel(
 
                 var nextPos = smoothedPositionMs + dt
                 val drift = target - nextPos
-                if (kotlin.math.abs(drift) > 250) {
+                if (kotlin.math.abs(drift) > 120) {
                     nextPos = target
                 } else {
-                    nextPos += (drift * 0.15f).toLong()
+                    nextPos += (drift * 0.25f).toLong()
                 }
                 smoothedPositionMs = nextPos.coerceAtLeast(smoothedPositionMs).coerceIn(0L, dur)
             }

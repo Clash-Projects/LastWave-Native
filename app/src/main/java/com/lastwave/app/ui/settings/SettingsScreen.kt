@@ -905,7 +905,7 @@ fun SettingsScreen(
                                 subtitle = if (misc.lyricsOffsetMs == 0L) {
                                     "Off \u2022 highlight follows the audio exactly"
                                 } else {
-                                    "${if (misc.lyricsOffsetMs > 0) "+" else ""}${misc.lyricsOffsetMs} ms \u2022 + delays lyrics, − shows them early"
+                                    "${if (misc.lyricsOffsetMs > 0) "+" else ""}${misc.lyricsOffsetMs} ms \u2022 + shows lyrics early, \u2212 delays them"
                                 },
                                 onClick = { showLyricsOffsetDialog = true },
                                 position = position,
@@ -4219,7 +4219,7 @@ private fun LyricsOffsetDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "Nudges the highlight when a provider's timestamps run early or late. + delays lyrics, − shows them early. Seekbar is unaffected.",
+                    "Nudges the highlight when a provider's timestamps run early or late. + shows lyrics early (fixes late lyrics), \u2212 delays them. Seekbar is unaffected.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
