@@ -340,6 +340,10 @@ class MusicPlayer @Inject constructor(
     /** Recovery attempts per mediaId, so a hopeless window stops at 2 and
      *  the existing error/unavailable machinery owns it from there. */
     private val silentRecoveries = mutableMapOf<String, Int>()
+    /** Tail-pin watchdog cursor: window key + when the tail park began
+     *  (0 = not parked). A track change always starts a fresh grace. */
+    private var tailPinnedKey: String? = null
+    private var tailPinnedSinceMs = 0L
     private var sleepTimerDeadlineMs: Long? = null
     private var sleepTimerStep = 0
     @Volatile
@@ -1357,6 +1361,36 @@ class MusicPlayer @Inject constructor(
                         _state.value.error == null &&
                         player.nextMediaItemIndex != C.INDEX_UNSET
                     ) {
+                        handleNaturalTrackEnd()
+                    }
+
+                    // Tail-pin watchdog: parked AT the duration tail with
+                    // playWhenReady but no ENDED and no advance - BUFFERING
+                    // on a stalled next-resolve, or READY-frozen while still
+                    // reporting playing. The ENDED branch above, the
+                    // pinned-tail advance (!isPlaying only) and the render
+                    // watchdog (parked branch needs !isPlaying; rendering
+                    // branch treats a frozen clock as "wait longer") all miss
+                    // this shape, so the bar sits at -0:00 with Pause showing
+                    // until the user taps next. After a grace window, drive
+                    // the same debounced lossless-first advance, which no-ops
+                    // for repeat-one, paused, actively-resolving, lastwave
+                    // placeholders and end-of-queue states.
+                    val tailNow = SystemClock.elapsedRealtime()
+                    val tailKey = "${player.currentMediaItem?.mediaId}|${player.currentMediaItemIndex}"
+                    val tailPinned = player.duration > 0L &&
+                        pos >= player.duration - END_OF_TRACK_STALL_THRESHOLD_MS &&
+                        player.playWhenReady &&
+                        _state.value.error == null &&
+                        player.playbackState != Player.STATE_ENDED &&
+                        player.nextMediaItemIndex != C.INDEX_UNSET
+                    if (!tailPinned || tailKey != tailPinnedKey) {
+                        tailPinnedKey = tailKey.takeIf { tailPinned }
+                        tailPinnedSinceMs = 0L
+                    } else if (tailPinnedSinceMs == 0L) {
+                        tailPinnedSinceMs = tailNow
+                    } else if (tailNow - tailPinnedSinceMs >= TAIL_PIN_TIMEOUT_MS) {
+                        tailPinnedSinceMs = 0L
                         handleNaturalTrackEnd()
                     }
 
@@ -5403,10 +5437,22 @@ class MusicPlayer @Inject constructor(
             }
             updateBitPerfectState()
         } catch (_: Exception) {
-            val isFlac = url.endsWith(".flac", ignoreCase = true)
+            // Retriever unreadable (scoped-storage race, odd container):
+            // badge from the file extension so the pill never falls back
+            // to a bare "AUDIO" with no provenance.
+            val lower = url.lowercase()
+            val fallbackCodec = when {
+                lower.endsWith(".flac") -> "FLAC"
+                lower.endsWith(".m4a") || lower.endsWith(".mp4") || lower.endsWith(".aac") -> "AAC"
+                lower.endsWith(".opus") || lower.endsWith(".ogg") -> "OPUS"
+                lower.endsWith(".mp3") -> "MP3"
+                lower.endsWith(".wav") -> "WAV"
+                else -> "AUDIO"
+            }
+            val isFlac = fallbackCodec == "FLAC"
             _state.update {
                 it.copy(
-                    audioCodec = if (isFlac) "FLAC" else "AUDIO",
+                    audioCodec = fallbackCodec,
                     bitDepth = if (isFlac) 16 else null,
                     samplingRateKHz = if (isFlac) 44.1 else null,
                     isLossless = isFlac,
@@ -5709,6 +5755,11 @@ class MusicPlayer @Inject constructor(
         /** Tail window where a pinned READY+playWhenReady state counts as a
          *  missed natural advance and triggers the lossless-first watchdog. */
         const val END_OF_TRACK_STALL_THRESHOLD_MS = 750L
+        /** Grace before a tail-parked window (pos pinned at the duration
+         *  with playWhenReady, no ENDED) is force-advanced. Well above
+         *  gapless handoffs (ms) and resolve hiccups, far below "stuck
+         *  at -0:00 forever". */
+        const val TAIL_PIN_TIMEOUT_MS = 5_000L
         /** Debounce so STATE_ENDED + ticker watchdog can't churn generations. */
         const val AUTO_ADVANCE_DEBOUNCE_MS = 3_000L
         /** UI-playing but ExoPlayer frozen (pos + buffer) this long means a
