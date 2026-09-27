@@ -431,7 +431,31 @@ private fun LyricLine.toISyncedLine(isOverallRtl: Boolean = false): ISyncedLine 
     val isLineRtl = isRtl || (isOverallRtl && (text.isBlank() || text == "♪"))
 
     return if (hasSyllables) {
-        val leadSyllables = syllables.filter { !it.isBackground }.ifEmpty { syllables }
+        val leadSyllables = syllables.filter { !it.isBackground }
+        if (leadSyllables.isEmpty()) {
+            // Backing-vocal-only row ("(ooh)" ad-libs): a standalone dim
+            // accompaniment row, never a bright lead row. The library
+            // styles top-level accompaniment rows distinctly.
+            val needsSpacing = text.contains(' ') || text.contains('\u00A0')
+            val contents = renderedSyllableContents(syllables, needsSpacing)
+            val bgKaraoke = syllables.mapIndexed { index, syl ->
+                val sStart = syl.timeMs.toInt()
+                val sEnd = ((syl.timeMs + syl.durationMs).toInt()).coerceAtLeast(sStart + 50)
+                KaraokeSyllable(
+                    content = contents.getOrElse(index) { syl.text },
+                    start = sStart,
+                    end = sEnd,
+                )
+            }
+            return KaraokeLine.AccompanimentKaraokeLine(
+                syllables = bgKaraoke,
+                translation = null,
+                alignment = if (isLineRtl) KaraokeAlignment.Start else KaraokeAlignment.End,
+                start = lineStart,
+                end = lineEnd.coerceAtLeast(lineStart + 100),
+                phonetic = null,
+            )
+        }
         val bgSyllables = if (leadSyllables.size < syllables.size) syllables.filter { it.isBackground } else emptyList()
         val needsSpacing = text.contains(' ') || text.contains('\u00A0')
 

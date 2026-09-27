@@ -362,18 +362,26 @@ private fun SyncedLyricsList(
             start = 16.dp,
             end = 16.dp,
         ),
-        verticalArrangement = Arrangement.spacedBy(
-            when (animationStyle) {
-                LyricsAnimation.APPLE_ZOOM -> 30.dp
-                LyricsAnimation.CARD_POP -> 24.dp
-                else -> 26.dp
-            },
-        ),
+        // Small base gap; each row appends its own trailing gap below so
+        // a lead row followed by backing vocals groups tight instead of
+        // sitting at the same constant distance as full phrases.
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
+        val fullRowGap = when (animationStyle) {
+            LyricsAnimation.APPLE_ZOOM -> 30.dp
+            LyricsAnimation.CARD_POP -> 24.dp
+            else -> 26.dp
+        }
         itemsIndexed(lines, key = { index, line -> "$index:${line.timeMs}" }) { index, line ->
             val isActive = index == activeIndex
             val isPast = activeIndex >= 0 && index < activeIndex
             val distance = kotlin.math.abs(index - activeIndex)
+            // Backing-vocal rows (every syllable flagged background) render
+            // dim and slightly smaller, grouped tight under their lead row.
+            val isBgRow = line.syllables.isNotEmpty() && line.syllables.all { it.isBackground }
+            val tightAfter = lines.getOrNull(index + 1)?.let { next ->
+                next.syllables.isNotEmpty() && next.syllables.all { it.isBackground }
+            } == true
             val isLineRtl = remember(line, isOverallRtl) {
                 line.isRtl || (isOverallRtl && (line.text.isBlank() || line.text == "♪"))
             }
@@ -574,7 +582,7 @@ private fun SyncedLyricsList(
                         .graphicsLayer {
                             scaleX = scale * pulseScale
                             scaleY = scale * pulseScale
-                            this.alpha = alpha
+                            this.alpha = alpha * if (isBgRow) (if (isActive) 0.85f else 0.55f) else 1f
                             this.translationX = translationX * density
                             this.translationY = translationY * density
                             rotationZ = rotation
@@ -596,14 +604,17 @@ private fun SyncedLyricsList(
                     // Compact type: lineHeight leaves room for the focus zoom
                     // (up to 1.18x) so scaled rows neither overlap neighbours
                     // nor clip at the list edges — without the old oversized
-                    // leading that stretched the gaps between rows.
+                    // leading that stretched the gaps between rows. Backing
+                    // rows stay smaller and never take the lead weight.
                     val fontStyle = MaterialTheme.typography.titleLarge.copy(
-                        fontSize = 28.sp,
-                        fontWeight = if (isActive) {
+                        fontSize = if (isBgRow) 21.sp else 28.sp,
+                        fontWeight = if (isBgRow) {
+                            FontWeight.Medium
+                        } else if (isActive) {
                             if (animationStyle == LyricsAnimation.APPLE_ZOOM) FontWeight.Black else FontWeight.ExtraBold
                         } else FontWeight.SemiBold,
                         letterSpacing = (-0.2).sp,
-                        lineHeight = 40.sp,
+                        lineHeight = if (isBgRow) 30.sp else 40.sp,
                     )
 
                     WordByWordLyricLine(
@@ -617,8 +628,12 @@ private fun SyncedLyricsList(
                         animationStyle = animationStyle,
                         fontStyle = fontStyle,
                         isRtl = isLineRtl,
+                        modifier = Modifier.padding(start = if (isBgRow) 14.dp else 0.dp),
                     )
                 }
+            }
+            if (!tightAfter) {
+                Spacer(modifier = Modifier.height(fullRowGap - 4.dp))
             }
         }
     }

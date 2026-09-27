@@ -478,14 +478,17 @@ class PlayerViewModel @Inject constructor(
             is LyricsResult.Success -> {
                 // Single funnel for everything the views draw: de-overlap the
                 // timeline once so word fill, line focus and auto-scroll all
-                // read the same edge-to-edge clock, then merge provider
-                // fragments into whitespace-true words so spacing and
-                // punctuation render as authored. Word-sync rows render
+                // read the same edge-to-edge clock, then group continuation
+                // rows into phrases (no constant-gapped fragments) and merge
+                // provider fragments into whitespace-true words so spacing
+                // and punctuation render as authored. Word-sync rows render
                 // word-by-word; rows without syllables fall back to
                 // line-by-line focus on the same clock.
                 val lines = if (result.isSynced && result.lines.isNotEmpty() && !result.isInstrumental) {
                     com.lastwave.app.ui.player.normalizeWordSpacing(
-                        com.lastwave.app.data.lyrics.LyricsRepository.normalizeLyricTiming(result.lines),
+                        com.lastwave.app.data.lyrics.LyricsRepository.mergeContinuationLines(
+                            com.lastwave.app.data.lyrics.LyricsRepository.normalizeLyricTiming(result.lines),
+                        ),
                     )
                 } else result.lines
                 _lyricsState.value = LyricsUiState.Success(

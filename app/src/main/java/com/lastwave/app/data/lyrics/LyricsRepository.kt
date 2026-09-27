@@ -711,6 +711,100 @@ class LyricsRepository @Inject constructor(
         private val TIMESTAMP_REGEX = Regex("""\[(\d{1,2}):(\d{2})(?:[.:](\d{2,3}))?\]""")
         private val WORD_STAMP_REGEX = Regex("""<(\d{1,3}):(\d{2})[.:](\d{2,3})>""")
         private val OFFSET_REGEX = Regex("""\[offset:\s*([+-]?\d+)\s*\]""", RegexOption.IGNORE_CASE)
+        /**
+         * Backing vocals in LRC have no role markup — convention is a fully
+         * parenthesized row ("(ooh, yeah)"). Dots/brackets are timestamps,
+         * never vocals, so only parens count.
+         */
+        fun isBackgroundVocalText(text: String): Boolean {
+            val t = text.trim()
+            if (t.length < 3 || !t.startsWith('(') || !t.endsWith(')')) return false
+            var depth = 0
+            for (i in t.indices) {
+                when (t[i]) {
+                    '(' -> depth++
+                    ')' -> depth--
+                }
+                if (depth == 0) return i == t.lastIndex
+            }
+            return false
+        }
+
+        /** Display form of a backing row: one outer paren pair off, inners kept. */
+        fun stripBackgroundParens(text: String): String =
+            if (isBackgroundVocalText(text)) {
+                val t = text.trim()
+                t.substring(1, t.length - 1).trim()
+            } else text
+
+        /** A row whose every syllable is backing — renders dim, never as lead. */
+        fun LyricLine.isBackgroundLine(): Boolean =
+            syllables.isNotEmpty() && syllables.all { it.isBackground }
+
+        /** Terminal punctuation: a row ending here never continues below it. */
+        private val TERMINAL_PUNCT = setOf('.', '?', '!', '…', '。', '？', '！', '।', '॥', '؛', '؟', '。')
+        private const val CONTINUATION_GAP_WORD_MS = 1000L
+        private const val CONTINUATION_GAP_LINE_MS = 400L
+        private const val CONTINUATION_MAX_SPAN_MS = 8000L
+        private const val CONTINUATION_MAX_CHARS = 140
+
+        /**
+         * Groups continuation rows: a row that picks up within a breath of
+         * the previous row's end (and the previous row doesn't end with
+         * terminal punctuation) is one phrase split across timestamps, so
+         * the two merge into a single visual group instead of two
+         * constant-gapped rows. Word-sync pairs keep per-word timing, so
+         * the karaoke fill stays truthful; line-sync pairs only merge on a
+         * tiny gap where the early highlight is negligible. Backing rows,
+         * blanks and ♪ markers never merge. Bounded: no chaining past a
+         * span/text cap, overlaps/duets never merge (gap < 0).
+         */
+        fun mergeContinuationLines(lines: List<LyricLine>): List<LyricLine> {
+            if (lines.size < 2) return lines
+            val out = mutableListOf<LyricLine>()
+            var cur: LyricLine? = null
+            fun flush() {
+                cur?.let(out::add)
+                cur = null
+            }
+            for (line in lines) {
+                val c = cur
+                if (c == null) {
+                    cur = line
+                    continue
+                }
+                val cEnd = c.timeMs + c.durationMs
+                val nEnd = line.timeMs + line.durationMs
+                val gap = line.timeMs - cEnd
+                val bothWordSync = c.hasSyllables && line.hasSyllables
+                val gapCap = if (bothWordSync) CONTINUATION_GAP_WORD_MS else CONTINUATION_GAP_LINE_MS
+                val canMerge = !c.isBackgroundLine() && !line.isBackgroundLine() &&
+                    c.text.isNotBlank() && line.text.isNotBlank() &&
+                    c.text.trim() != "♪" && line.text.trim() != "♪" &&
+                    gap in 0..gapCap &&
+                    c.text.trimEnd().lastOrNull() !in TERMINAL_PUNCT &&
+                    (nEnd - c.timeMs) <= CONTINUATION_MAX_SPAN_MS &&
+                    (c.text.length + 1 + line.text.length) <= CONTINUATION_MAX_CHARS
+                if (!canMerge) {
+                    flush()
+                    cur = line
+                    continue
+                }
+                cur = c.copy(
+                    durationMs = (maxOf(cEnd, nEnd) - c.timeMs).coerceAtLeast(0L),
+                    text = (c.text.trimEnd() + " " + line.text.trimStart()).trim(),
+                    syllables = (c.syllables + line.syllables).sortedBy { it.timeMs },
+                    transliteration = listOfNotNull(
+                        c.transliteration?.takeIf { it.isNotBlank() },
+                        line.transliteration?.takeIf { it.isNotBlank() },
+                    ).joinToString(" ").takeIf { it.isNotBlank() },
+                    transliterationSyllables = (c.transliterationSyllables + line.transliterationSyllables)
+                        .sortedBy { it.timeMs },
+                )
+            }
+            flush()
+            return out
+        }
         /** Head start for the preferred provider before the automatic race
          *  takes over: bounds hangs, typical hits resolve well inside it. */
         private const val PREFERRED_HEAD_START_MS = 4_000L
@@ -836,26 +930,45 @@ class LyricsRepository @Inject constructor(
                 val nextStart = raws.getOrNull(index + 1)?.timeMs
                 val cleanText = decodeEntities(raw.body.replace(WORD_STAMP_REGEX, "").trim())
                 val words = parseWordRuns(raw.body, raw.timeMs, nextStart)
+                // Backing vocals ride as dim rows, never bright lead rows.
+                val isBg = isBackgroundVocalText(cleanText)
+                val displayText = if (isBg) stripBackgroundParens(cleanText) else cleanText
                 if (words.isNotEmpty()) {
                     val lineStart = minOf(raw.timeMs, words.first().timeMs)
                     val joined = words.joinToString(" ") { it.text }
                     // Keep the author spacing when the plain body carries
                     // punctuation the word join would rewrite.
-                    val text = if (cleanText.isNotBlank() && cleanText.length >= joined.length) {
-                        cleanText
+                    val text = if (!isBg && displayText.isNotBlank() && displayText.length >= joined.length) {
+                        displayText
+                    } else if (isBg) {
+                        displayText.ifBlank { joined }
                     } else joined
                     result += LyricLine(
                         timeMs = lineStart,
                         durationMs = ((nextStart ?: (words.maxOf { it.timeMs + it.durationMs })) - lineStart).coerceAtLeast(0L),
                         text = text,
-                        syllables = words,
+                        syllables = if (isBg) words.map { it.copy(isBackground = true) } else words,
                     )
                 } else {
+                    val lineDuration = if (nextStart != null && nextStart > raw.timeMs) nextStart - raw.timeMs else 0L
+                    // Line-sync backing rows get one covering bg syllable so
+                    // downstream renders them as dim accompaniment rows with
+                    // a real focus window instead of bright lead rows.
+                    val syllables = if (isBg && displayText.isNotBlank()) {
+                        listOf(
+                            LyricSyllable(
+                                timeMs = raw.timeMs,
+                                durationMs = lineDuration.takeIf { it > 0 } ?: 4000L,
+                                text = displayText,
+                                isBackground = true,
+                            ),
+                        )
+                    } else emptyList()
                     result += LyricLine(
                         timeMs = raw.timeMs,
-                        durationMs = if (nextStart != null && nextStart > raw.timeMs) nextStart - raw.timeMs else 0L,
-                        text = cleanText,
-                        syllables = emptyList(),
+                        durationMs = lineDuration,
+                        text = displayText,
+                        syllables = syllables,
                     )
                 }
             }
