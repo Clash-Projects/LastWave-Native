@@ -904,7 +904,7 @@ private fun MiniPlayer(
         modifier = positionedModifier
             .graphicsLayer {
                 translationX = shownX
-                translationY = shownY.coerceAtLeast(0f)
+                translationY = shownY
                 alpha = (1f - (abs(shownX) + shownY.coerceAtLeast(0f)) / (threshold * 4f)).coerceIn(0.55f, 1f)
             }
             .pointerInput(track.videoId, track.title) {
@@ -2488,14 +2488,14 @@ private fun FullPlayer(
                                         trackKey = track.videoId ?: "${track.artist}|${track.title}",
                                         wavyEnabled = wavySeekbarEnabled,
                                         onSeek = player::seekTo,
-                                        isTranslucent = true,
+                                        isTranslucent = isGlass,
                                         fallbackDurationMs = track.durationMs ?: state.durationMs,
                                     )
                                     Spacer(Modifier.height(14.dp))
-                                    MainControls(state, player, isTranslucent = true)
+                                    MainControls(state, player, isTranslucent = isGlass)
                                     }
                                     Spacer(Modifier.height(24.dp))
-                                    PlayerUtilityControls(state, player, isTranslucent = true)
+                                    PlayerUtilityControls(state, player, isTranslucent = isGlass)
                                 }
                         }
                     }

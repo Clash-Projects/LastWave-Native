@@ -2268,7 +2268,7 @@ private fun DownloadedTrackCard(
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.width(24.dp),
+                    modifier = Modifier.widthIn(min = 24.dp),
                     textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.width(6.dp))

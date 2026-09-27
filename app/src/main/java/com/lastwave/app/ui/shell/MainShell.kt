@@ -193,6 +193,7 @@ fun MainShell(
     onOpenPlaylist: (Long) -> Unit = {},
     onOpenGenerator: () -> Unit = {},
     onOpenNewReleases: () -> Unit = {},
+    onOpenDownloads: () -> Unit = {},
     mainShellViewModel: MainShellViewModel = hiltViewModel(),
 ) {
     val tabs = MainTab.entries
@@ -214,6 +215,7 @@ fun MainShell(
         HorizontalPager(
             state = pagerState,
             beyondViewportPageCount = 0,
+            userScrollEnabled = false,
             modifier = Modifier.fillMaxSize().liquidGlassSource(if (navGlass) navigationBackdrop else null),
         ) { page ->
             val isCurrent = page == pagerState.currentPage
@@ -232,6 +234,7 @@ fun MainShell(
                         onOpenFriends = onOpenFriends,
                         onOpenFriendProfile = onOpenFriendProfile,
                         onOpenNewReleases = onOpenNewReleases,
+                        onOpenDownloads = onOpenDownloads,
                     )
                     MainTab.STATS -> HomeScreen(
                         onOpenSettings = onOpenSettings,

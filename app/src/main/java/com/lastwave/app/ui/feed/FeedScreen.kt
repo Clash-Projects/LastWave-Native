@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.History
@@ -141,6 +142,7 @@ fun FeedScreen(
     onOpenFriends: () -> Unit = {},
     onOpenFriendProfile: (username: String, displayName: String?, avatarUrl: String?) -> Unit = { _, _, _ -> },
     onOpenNewReleases: () -> Unit = {},
+    onOpenDownloads: () -> Unit = {},
     viewModel: FeedViewModel = hiltViewModel(),
     artistAlbumNavigator: ArtistAlbumNavigator = hiltViewModel<ArtistAlbumNavBridgeFeed>().navigator,
 ) {
@@ -203,7 +205,7 @@ fun FeedScreen(
             ExpressiveHeader(
                 title = "Home",
                 actions = {
-                    HeaderActionIcon(Icons.Filled.Explore, "Discover Radar", onOpenDiscover)
+                    HeaderActionIcon(Icons.Filled.Download, "Downloads & Offline Music", onOpenDownloads)
                     HeaderActionIcon(Icons.Filled.Search, "Search", onOpenSearch)
                     HeaderActionIcon(Icons.Filled.Settings, "Settings", onOpenSettings)
                 },
@@ -301,23 +303,25 @@ fun FeedScreen(
                         }
                     }
 
-                    val quickTiles = baseQuickTiles.map { tile ->
+                    val quickTiles = baseQuickTiles.mapNotNull { tile ->
                         if (tile.title.equals("Release Mix", ignoreCase = true) || tile.collection == "new_releases") {
-                            tile.copy(title = "New Release Mix", collection = "new_releases")
+                            tile.copy(title = "New Release", subtitle = "", collection = "new_releases")
+                        } else if (tile.collection == "discover_mix" || tile.title.equals("Discover Mix", ignoreCase = true)) {
+                            null
                         } else {
                             tile
                         }
                     }.toMutableList()
 
-                    if (quickTiles.none { it.title.equals("Discover Mix", ignoreCase = true) || it.collection == "discover_mix" }) {
+                    if (quickTiles.none { it.title.equals("Discover Mix", ignoreCase = true) }) {
                         val newReleasesIndex = quickTiles.indexOfFirst { it.collection == "new_releases" }
                         val insertIndex = if (newReleasesIndex != -1) newReleasesIndex else quickTiles.size
                         quickTiles.add(
                             insertIndex,
                             com.lastwave.app.data.feed.FeedQuickTile(
                                 title = "Discover Mix",
-                                subtitle = "Updated today",
-                                collection = "discover_mix"
+                                subtitle = "Made for you",
+                                playlistId = "RDATY8A62nQoQ"
                             )
                         )
                     }

@@ -193,8 +193,10 @@ fun HomeScreen(
                             ProfileAvatar(
                                 avatarUrl = uiState.stats?.avatarUrl,
                                 modifier = Modifier
-                                    .size(36.dp)
-                                    .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                                    .size(42.dp)
+                                    .border(1.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                                    .padding(2.dp)
+                                    .clip(CircleShape)
                             )
                         }
                     },

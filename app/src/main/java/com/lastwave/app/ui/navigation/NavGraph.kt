@@ -277,6 +277,9 @@ fun LastWaveNavHost(
                 onOpenNewReleases = {
                     navController.navigate(Screen.NewReleases.route)
                 },
+                onOpenDownloads = {
+                    navController.navigate(Screen.Downloads.route)
+                },
             )
         }
 

@@ -1320,7 +1320,7 @@ private fun NativeTrackRow(
         ) {
             // Track index or playing animation
             Box(
-                modifier = Modifier.width(24.dp),
+                modifier = Modifier.widthIn(min = 24.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
                 Text(
