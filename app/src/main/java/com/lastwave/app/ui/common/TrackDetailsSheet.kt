@@ -183,8 +183,14 @@ private fun describeLiveCodec(state: MusicPlayerState): String {
 
 /** Resolution row for live player state (same numbers as the Now Playing pill). */
 private fun describeLiveResolution(state: MusicPlayerState): String {
-    val depth = state.bitDepth
     val rate = state.samplingRateKHz
+    val depth = when {
+        rate != null && rate > 192.0 -> 32
+        rate != null && rate > 48.0 -> 24
+        state.bitDepth != null && state.bitDepth > 16 -> state.bitDepth
+        state.audioCodec?.contains("HI-RES", ignoreCase = true) == true || state.audioCodec?.contains("HI_RES", ignoreCase = true) == true -> 24
+        else -> state.bitDepth
+    }
     val kbps = state.bitrateKbps
     if (isSpatialAudioCodec(state.audioCodec)) {
         val rateText = rate?.let { "${formatSampleRateKHz(it)} kHz" } ?: "48.0 kHz"
@@ -405,7 +411,7 @@ class TrackDetailsViewModel @Inject constructor(
                         !s.codec.equals("aac", ignoreCase = true) &&
                         !s.codec.contains("mp4a", ignoreCase = true))
                     val rateKHz = if (s.sampleRate > 1000) s.sampleRate / 1000.0 else s.sampleRate.toDouble()
-                    val depth = if (s.bitDepth > 0) s.bitDepth else if (rateKHz > 48.0) 24 else 16
+                    val depth = if (rateKHz > 192.0) 32 else if (rateKHz > 48.0) 24 else if (s.bitDepth > 0) s.bitDepth else 16
                     val badge = if (isAtmos) {
                         "DOLBY ATMOS"
                     } else if (isLossless) {

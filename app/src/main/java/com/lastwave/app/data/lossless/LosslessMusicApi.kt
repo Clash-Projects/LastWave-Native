@@ -516,12 +516,22 @@ class LosslessMusicApi @Inject constructor(
                 val manifestSampleRate = manifestSampleRateOf(rawUrl)
                 val rawSampleRate = if (stream.sampleRate > 1000) stream.sampleRate else stream.sampleRate * 1000.0
                 val effectiveSampleRate = manifestSampleRate?.toDouble() ?: rawSampleRate
-                val effectiveBitDepth = if (stream.bitDepth > 16) stream.bitDepth
-                    else if (effectiveSampleRate > 48000.0) 24
-                    else stream.bitDepth
+                val isHiResFlagged = candidate.isHiResFlagged() ||
+                    stream.quality.contains("HI_RES", ignoreCase = true) ||
+                    stream.quality.contains("HI-RES", ignoreCase = true) ||
+                    (wantsHiRes && q == "hi_res") ||
+                    effectiveSampleRate > 48000.0
+                val effectiveBitDepth = when {
+                    stream.bitDepth > 16 -> stream.bitDepth
+                    effectiveSampleRate > 192000.0 -> 32
+                    isHiResFlagged -> 24
+                    else -> stream.bitDepth
+                }
                 val formatId = when {
                     isStreamAtmos -> QUALITY_DOLBY_ATMOS
-                    effectiveBitDepth > 16 || effectiveSampleRate > 48000.0 -> QUALITY_MAX_HI_RES
+                    effectiveBitDepth > 16 || effectiveSampleRate > 48000.0 || isHiResFlagged -> {
+                        if (effectiveSampleRate > 96000.0) QUALITY_MAX_HI_RES else QUALITY_HI_RES_96
+                    }
                     stream.codec.equals("flac", ignoreCase = true) || effectiveBitDepth == 16 -> QUALITY_CD_LOSSLESS
                     stream.quality.equals("high", ignoreCase = true) -> QUALITY_MP3_320
                     else -> QUALITY_CD_LOSSLESS
@@ -532,7 +542,8 @@ class LosslessMusicApi @Inject constructor(
                 // scanning candidates instead of parking playback at 16-bit
                 // while a 24-bit master sits later in the list. The
                 // "lossless" tier below still accepts 16-bit normally.
-                if (wantsHiRes && q == "hi_res" && !isStreamAtmos && formatId != QUALITY_MAX_HI_RES) {
+                val isHiResTierHit = formatId == QUALITY_MAX_HI_RES || formatId == QUALITY_HI_RES_96
+                if (wantsHiRes && q == "hi_res" && !isStreamAtmos && !isHiResTierHit) {
                     Log.i(TAG, "resolveFromAddon: candidate $trackId answered hi_res with ${effectiveBitDepth}-bit/${effectiveSampleRate}Hz; trying next candidate")
                     continue
                 }

@@ -138,7 +138,7 @@ fun LyricsPanel(
     // High-precision frame-level monotonic position clock for 60/120fps bit-perfect vocal sync
     var smoothedPositionMs by remember(track) { mutableLongStateOf(progress.positionMs) }
 
-    LaunchedEffect(progress.positionMs, state.isPlaying) {
+    LaunchedEffect(progress.positionMs, state.isPlaying, track) {
         val drift = kotlin.math.abs(smoothedPositionMs - progress.positionMs)
         // Hard snap on seek (>120ms drift) or when stopped/paused
         if (drift > 120 || !state.isPlaying) {
@@ -146,7 +146,7 @@ fun LyricsPanel(
         }
     }
 
-    LaunchedEffect(state.isPlaying) {
+    LaunchedEffect(state.isPlaying, track) {
         if (!state.isPlaying) return@LaunchedEffect
         var lastFrameTime = SystemClock.elapsedRealtime()
         while (isActive) {
@@ -158,14 +158,13 @@ fun LyricsPanel(
                 val target = progress.positionMs
                 val dur = progress.durationMs.takeIf { it > 0 } ?: state.durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE
 
-                var nextPos = smoothedPositionMs + dt
-                val drift = target - nextPos
+                val drift = target - (smoothedPositionMs + dt)
                 if (kotlin.math.abs(drift) > 120) {
-                    nextPos = target
+                    smoothedPositionMs = target.coerceIn(0L, dur)
                 } else {
-                    nextPos += (drift * 0.25f).toLong()
+                    val nextPos = smoothedPositionMs + dt + (drift * 0.25f).toLong()
+                    smoothedPositionMs = nextPos.coerceAtLeast(smoothedPositionMs).coerceIn(0L, dur)
                 }
-                smoothedPositionMs = nextPos.coerceAtLeast(smoothedPositionMs).coerceIn(0L, dur)
             }
         }
     }

@@ -139,14 +139,13 @@ fun ModernLyricsPanel(
                 val target = progress.positionMs
                 val dur = progress.durationMs.takeIf { it > 0 } ?: state.durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE
 
-                var nextPos = smoothedPositionMs + dt
-                val drift = target - nextPos
+                val drift = target - (smoothedPositionMs + dt)
                 if (kotlin.math.abs(drift) > 120) {
-                    nextPos = target
+                    smoothedPositionMs = target.coerceIn(0L, dur)
                 } else {
-                    nextPos += (drift * 0.25f).toLong()
+                    val nextPos = smoothedPositionMs + dt + (drift * 0.25f).toLong()
+                    smoothedPositionMs = nextPos.coerceAtLeast(smoothedPositionMs).coerceIn(0L, dur)
                 }
-                smoothedPositionMs = nextPos.coerceAtLeast(smoothedPositionMs).coerceIn(0L, dur)
             }
         }
     }

@@ -263,8 +263,10 @@ class ExclusiveUsbOutput @Inject constructor(
         val sourceBits = sourceBitDepth(format.pcmEncoding)
         if (!floatSource && sourceBits == 0) return false
         val resolvedBits = when {
-            sourceBits > 0 -> sourceBits
+            targetRate > 192_000 -> 32
+            targetRate > 48_000 -> 24
             bitDepthHint != null && bitDepthHint > 0 -> bitDepthHint
+            sourceBits > 0 -> sourceBits
             rateOverrideHz != null -> 24
             else -> 16
         }

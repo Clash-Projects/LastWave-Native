@@ -127,13 +127,26 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
         ?: i.appOutputRateHz.takeIf { it > 0 && i.usbExclusiveActive }
     val labelBitDepth = Regex("""(?:^|[^\d])(16|24|32)\s*(?:[-_]bit)?\s*[/]""", RegexOption.IGNORE_CASE)
         .find(i.sourceLabel)?.groupValues?.getOrNull(1)?.toIntOrNull()
-    val bitDepth = labelBitDepth ?: i.sourceBitDepth?.takeIf { it > 0 }
+    val rawBitDepth = labelBitDepth ?: i.sourceBitDepth?.takeIf { it > 0 }
+    val bitDepth = when {
+        src != null && src > 192_000 -> 32
+        src != null && src > 48_000 -> 24
+        rawBitDepth != null && rawBitDepth > 16 -> rawBitDepth
+        i.sourceLabel.contains("HI-RES", ignoreCase = true) || i.sourceLabel.contains("HI_RES", ignoreCase = true) -> 24
+        rawBitDepth != null -> rawBitDepth
+        else -> null
+    }
+    val sourceLabel = if (bitDepth != null && src != null && src > 48_000 && i.sourceLabel.startsWith("16/")) {
+        i.sourceLabel.replaceFirst("16/", "$bitDepth/")
+    } else {
+        i.sourceLabel
+    }
     if (src != null) {
         if (bitDepth != null) {
             checks += PathCheck(
                 R.string.signal_label_source,
                 R.string.signal_detail_src,
-                listOf(i.sourceLabel, bitDepth, src),
+                listOf(sourceLabel, bitDepth, src),
                 passed = true,
             )
         } else {
