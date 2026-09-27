@@ -71,7 +71,20 @@ class YtMusicAuthManager @Inject constructor(
     suspend fun connect(rawCookieHeader: String, accountName: String, channelHandle: String?, photoUrl: String?) {
         val cookies = parseCookieHeader(rawCookieHeader)
         if (cookies.isEmpty()) return
-        preferences.saveConnection(cookies, accountName.ifBlank { "Google account" }, channelHandle, photoUrl)
+        val name = accountName.ifBlank { "Google account" }
+        // Optimistic in-memory update: DataStore persistence + Flow
+        // re-collection is async and loses the race against an immediate
+        // verify on slow devices, which then see DISCONNECTED and report
+        // "YouTube rejected the session" for a perfectly good session.
+        // Matches what saveConnection persists (fresh login resets channel
+        // selection), so the collector converges to the same value.
+        _connection.value = YtConnection(
+            cookies = cookies,
+            accountName = name,
+            channelHandle = channelHandle,
+            photoUrl = photoUrl,
+        )
+        preferences.saveConnection(cookies, name, channelHandle, photoUrl)
     }
 
     suspend fun updateAccountIdentity(accountName: String, channelHandle: String?, photoUrl: String?) {
