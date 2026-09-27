@@ -139,7 +139,18 @@ class AudioEffectsEngine @Inject constructor(
      * that expose no tags: the correction then falls back to 0 dB.
      */
     fun setReplayGainFromFormat(format: Format?) {
-        setReplayGainTags(LoudnessNormalizer.parseFromFormat(format))
+        val sampleMime = format?.sampleMimeType?.lowercase().orEmpty()
+        val isAtmos = sampleMime.contains("eac3") || sampleMime.contains("ec-3") ||
+            sampleMime.contains("ac-3") || sampleMime.contains("ac3")
+        val parsedTags = LoudnessNormalizer.parseFromFormat(format)
+        val finalTags = if (parsedTags == null && isAtmos) {
+            // Dolby Atmos masters target -27 to -31 LUFS (dialogue normalization).
+            // Provide +6 dB loudness compensation so Atmos tracks match stereo listening levels.
+            ReplayGainTags(trackGainDb = 6.0f, trackPeak = 0.89f)
+        } else {
+            parsedTags
+        }
+        setReplayGainTags(finalTags)
     }
 
     fun detach() {

@@ -1,6 +1,7 @@
 package com.lastwave.app.ui.player
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -86,15 +87,15 @@ fun SignalPathDialog(
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f),
                     )
-                    VerdictPill(bitPerfect = report.bitPerfect)
+                    VerdictPill(report = report)
                 }
                 Text(
                     verdictText(report),
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (report.bitPerfect) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                    color = when {
+                        report.bitPerfect -> MaterialTheme.colorScheme.primary
+                        report.clockFallbackResampled -> Color(0xFFFFB74D)
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
                     },
                     modifier = Modifier.padding(top = 4.dp),
                 )
@@ -204,16 +205,21 @@ private fun verdictText(report: SignalPathReport): String {
 }
 
 @Composable
-private fun VerdictPill(bitPerfect: Boolean) {
-    val bg = if (bitPerfect) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.surfaceContainerHighest
+private fun VerdictPill(report: SignalPathReport) {
+    val bg = when {
+        report.bitPerfect -> MaterialTheme.colorScheme.primary
+        report.clockFallbackResampled -> Color(0xFFE65100).copy(alpha = 0.25f)
+        else -> MaterialTheme.colorScheme.surfaceContainerHighest
     }
-    val fg = if (bitPerfect) {
-        MaterialTheme.colorScheme.onPrimary
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
+    val fg = when {
+        report.bitPerfect -> MaterialTheme.colorScheme.onPrimary
+        report.clockFallbackResampled -> Color(0xFFFFB74D)
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val text = when {
+        report.bitPerfect -> stringResource(R.string.signal_bit_perfect)
+        report.clockFallbackResampled -> stringResource(R.string.signal_resampled_dac)
+        else -> stringResource(R.string.signal_check_path)
     }
     Box(
         modifier = Modifier
@@ -222,7 +228,7 @@ private fun VerdictPill(bitPerfect: Boolean) {
             .padding(horizontal = 10.dp, vertical = 5.dp),
     ) {
         Text(
-            if (bitPerfect) stringResource(R.string.signal_bit_perfect) else stringResource(R.string.signal_check_path),
+            text,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.ExtraBold,
             color = fg,

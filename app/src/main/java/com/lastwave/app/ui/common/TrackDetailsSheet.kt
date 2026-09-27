@@ -43,6 +43,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import com.lastwave.app.playback.formatDetailedQualityBadge
+import com.lastwave.app.playback.formatSampleRateKHz
+import com.lastwave.app.playback.isSpatialAudioCodec
+import com.lastwave.app.playback.MusicPlayer
+import com.lastwave.app.playback.MusicPlayerState
+import com.lastwave.app.playback.qualityBadgeLabel
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -160,8 +166,48 @@ data class TrackSpecs(
     val isMetadataLoaded: Boolean = false,
 )
 
+/** Full codec name for the "Stream & Audio Specs" rows, from live player state. */
+private fun describeLiveCodec(state: MusicPlayerState): String {
+    val codec = state.audioCodec.orEmpty()
+    return when {
+        codec.contains("ATMOS", ignoreCase = true) -> "Dolby Atmos (E-AC-3 JOC Spatial)"
+        codec.contains("MP3", ignoreCase = true) -> "MPEG Layer 3 (MP3)"
+        codec.contains("AAC", ignoreCase = true) || codec.contains("MP4A", ignoreCase = true) -> "Advanced Audio Coding (AAC)"
+        codec.contains("OPUS", ignoreCase = true) -> "Opus Interactive Audio"
+        codec.contains("FLAC", ignoreCase = true) || codec.equals("LOSSLESS", ignoreCase = true) ||
+            codec.contains("HI-RES", ignoreCase = true) || state.isLossless -> "Free Lossless Audio Codec (FLAC)"
+        codec.isNotBlank() -> codec
+        else -> "Detecting..."
+    }
+}
+
+/** Resolution row for live player state (same numbers as the Now Playing pill). */
+private fun describeLiveResolution(state: MusicPlayerState): String {
+    val depth = state.bitDepth
+    val rate = state.samplingRateKHz
+    val kbps = state.bitrateKbps
+    if (isSpatialAudioCodec(state.audioCodec)) {
+        val rateText = rate?.let { "${formatSampleRateKHz(it)} kHz" } ?: "48.0 kHz"
+        return "${depth ?: 24}-bit / $rateText (Spatial)"
+    }
+    if (depth != null && rate != null && rate > 0.0) {
+        val kbpsText = kbps?.takeIf { it > 0 }?.let { " ($it kbps)" } ?: ""
+        return "$depth-bit / ${formatSampleRateKHz(rate)} kHz$kbpsText"
+    }
+    return "Analyzing..."
+}
+
+/** Provider row for live player state. */
+private fun describeLiveProvider(state: MusicPlayerState): String = when {
+    isSpatialAudioCodec(state.audioCodec) -> "Dolby Atmos"
+    state.isLossless -> "Lossless"
+    state.audioCodec.isNullOrBlank() -> "Lossless / YouTube"
+    else -> "YouTube Music CDN"
+}
+
 @HiltViewModel
 class TrackDetailsViewModel @Inject constructor(
+    private val player: MusicPlayer,
     private val moduleResolver: ModulePlaybackResolver,
     private val innerTube: InnerTubeMusicApi,
     private val downloadedTrackDao: DownloadedTrackDao,
@@ -189,6 +235,29 @@ class TrackDetailsViewModel @Inject constructor(
                 downloadedEntity = downloaded,
                 isDownloading = isDownloading,
             )
+
+            // Live player state wins for the currently playing track. The
+            // independent module/YouTube resolution in step 3 always reports
+            // Opus (the provider-module path has no provisioned key), so
+            // without this the sheet contradicts the Now Playing pill
+            // whenever lossless/Atmos is actually playing.
+            val live = player.state.value
+            val isLiveTrack = live.current?.let { cur ->
+                cur.title.equals(title, ignoreCase = true) && cur.artist.equals(artist, ignoreCase = true)
+            } == true
+            if (isLiveTrack) {
+                _specs.value = _specs.value?.copy(
+                    qualityBadge = if (live.audioCodec.isNullOrBlank() && !live.isLossless) {
+                        "Resolving..."
+                    } else {
+                        qualityBadgeLabel(live)
+                    },
+                    audioCodec = describeLiveCodec(live),
+                    bitDepthSampleRate = describeLiveResolution(live),
+                    provider = describeLiveProvider(live),
+                    isLossless = live.isLossless,
+                )
+            }
 
             // Resolve real audio resolution specs + Last.fm Scrobble stats + rich metadata in background
             withContext(Dispatchers.IO) {
@@ -318,7 +387,12 @@ class TrackDetailsViewModel @Inject constructor(
                     )
                 }
 
-                // 3. Audio stream resolution via provider module (.lwp engine)
+                // 3. Independent resolution is only a fallback for tracks that
+                // are NOT currently playing: for the live track the specs
+                // above already reflect the actual stream, and this path
+                // would overwrite them with stale YouTube Opus values.
+                if (!isLiveTrack) {
+                // Audio stream resolution via provider module (.lwp engine)
                 val descriptor = runCatching {
                     moduleResolver.resolve(title, artist, 27)
                 }.getOrNull()
@@ -330,10 +404,12 @@ class TrackDetailsViewModel @Inject constructor(
                         !s.codec.equals("mp3", ignoreCase = true) &&
                         !s.codec.equals("aac", ignoreCase = true) &&
                         !s.codec.contains("mp4a", ignoreCase = true))
+                    val rateKHz = if (s.sampleRate > 1000) s.sampleRate / 1000.0 else s.sampleRate.toDouble()
+                    val depth = if (s.bitDepth > 0) s.bitDepth else if (rateKHz > 48.0) 24 else 16
                     val badge = if (isAtmos) {
                         "DOLBY ATMOS"
                     } else if (isLossless) {
-                        if (s.bitDepth > 16 || s.sampleRate > 48000) "24-BIT HI-RES" else "CD LOSSLESS"
+                        formatDetailedQualityBadge(depth, rateKHz)
                     } else if (s.codec.equals("mp3", ignoreCase = true)) {
                         "320k MP3"
                     } else if (s.codec.equals("aac", ignoreCase = true) || s.codec.contains("mp4a", ignoreCase = true)) {
@@ -351,7 +427,7 @@ class TrackDetailsViewModel @Inject constructor(
                     val depthRate = if (isAtmos) {
                         "24-bit / ${if (s.sampleRate > 0) s.sampleRate / 1000.0 else 48.0} kHz (6 Channels Spatial)"
                     } else {
-                        "${if (s.bitDepth > 0) s.bitDepth else 16}-bit / ${if (s.sampleRate > 0) s.sampleRate / 1000.0 else 44.1} kHz (${if (s.bandwidth > 0) s.bandwidth / 1000 else 1411} kbps)"
+                        "$depth-bit / ${if (rateKHz > 0.0) rateKHz else 44.1} kHz (${if (s.bandwidth > 0) s.bandwidth / 1000 else 1411} kbps)"
                     }
                     val durText = downloaded?.durationMs?.takeIf { it > 0L }?.let { ms ->
                         val dur = (ms / 1000).toInt()
@@ -384,6 +460,7 @@ class TrackDetailsViewModel @Inject constructor(
                         provider = "YouTube Music CDN",
                         isLossless = false,
                     )
+                }
                 }
 
                 // 4. Merge genre + iTunes metadata
@@ -471,8 +548,22 @@ class TrackDetailsViewModel @Inject constructor(
         }
     }
 
-    fun downloadNow(title: String, artist: String, album: String?, artworkUrl: String?) {
-        downloadManager.downloadTrack(title, artist, album, artworkUrl)
+    fun downloadNow(
+        title: String,
+        artist: String,
+        album: String?,
+        artworkUrl: String?,
+        videoId: String? = null,
+        durationMs: Long? = null,
+    ) {
+        downloadManager.downloadTrack(
+            title = title,
+            artist = artist,
+            album = album,
+            artworkUrl = artworkUrl,
+            videoId = videoId,
+            durationMs = durationMs,
+        )
         _specs.value = _specs.value?.copy(isDownloading = true)
     }
 }
@@ -484,6 +575,8 @@ fun TrackDetailsSheet(
     artist: String,
     album: String? = null,
     artworkUrl: String? = null,
+    videoId: String? = null,
+    durationMs: Long? = null,
     onDismiss: () -> Unit,
     onPlayTrack: (() -> Unit)? = null,
     viewModel: TrackDetailsViewModel = hiltViewModel(),
@@ -615,7 +708,15 @@ fun TrackDetailsSheet(
 
                 FilledTonalButton(
                     onClick = {
-                        viewModel.downloadNow(title, artist, album, artworkUrl)
+                        viewModel.downloadNow(
+                            title = title,
+                            artist = artist,
+                            album = album,
+                            artworkUrl = artworkUrl,
+                            videoId = videoId,
+                            durationMs = durationMs
+                                ?: currentSpecs.downloadedEntity?.durationMs?.takeIf { it > 0L },
+                        )
                     },
                     enabled = currentSpecs.downloadedEntity == null && !currentSpecs.isDownloading,
                     shape = CircleShape,

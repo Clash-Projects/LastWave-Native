@@ -477,12 +477,24 @@ class SettingsViewModel @Inject constructor(
     fun setWordByWordLyrics(enabled: Boolean) = launchSettingsAction("update word-by-word lyrics") { settingsPreferences.setWordByWordLyrics(enabled) }
     fun setLyricsAnimation(animation: com.lastwave.app.data.local.LyricsAnimation) = launchSettingsAction("update lyrics animation") { settingsPreferences.setLyricsAnimation(animation) }
     fun setLyricsProvider(provider: com.lastwave.app.data.local.LyricsProvider) = launchSettingsAction("update lyrics provider") { settingsPreferences.setLyricsProvider(provider) }
+    fun setLyricsOffsetMs(offsetMs: Long) = launchSettingsAction("update lyrics sync offset") {
+        settingsPreferences.setLyricsOffsetMs(offsetMs.coerceIn(-3000L, 3000L))
+    }
     fun setCrossfadeEnabled(enabled: Boolean) = launchSettingsAction("update crossfade") { settingsPreferences.setCrossfadeEnabled(enabled) }
     fun setCrossfadeSeconds(seconds: Int) = launchSettingsAction("update crossfade duration") {
         settingsPreferences.setCrossfadeSeconds(seconds.coerceIn(1, 12))
     }
     fun setWavySeekbarEnabled(enabled: Boolean) = launchSettingsAction("update seekbar style") {
         settingsPreferences.setWavySeekbarEnabled(enabled)
+    }
+    fun setCanvasEnabled(enabled: Boolean) = launchSettingsAction("update canvas enabled setting") {
+        settingsPreferences.setCanvasEnabled(enabled)
+    }
+    fun setCanvasFullBleed(enabled: Boolean) = launchSettingsAction("update canvas full-bleed setting") {
+        settingsPreferences.setCanvasFullBleed(enabled)
+    }
+    fun setCanvasOverCellular(enabled: Boolean) = launchSettingsAction("update canvas cellular setting") {
+        settingsPreferences.setCanvasOverCellular(enabled)
     }
     fun setDownloadLyrics(enabled: Boolean) = launchSettingsAction("update download lyrics setting") {
         settingsPreferences.setDownloadLyrics(enabled)
@@ -753,10 +765,12 @@ class SettingsViewModel @Inject constructor(
             sb.appendLine("  artPath=${snapshot.artPath} artExists=$artExists")
         }
         val placedWidgets = runCatching {
-            androidx.glance.appwidget.GlanceAppWidgetManager(context)
-                .getGlanceIds(com.lastwave.app.widget.NowPlayingWidget::class.java).size
+            val manager = android.appwidget.AppWidgetManager.getInstance(context)
+            manager.getAppWidgetIds(
+                android.content.ComponentName(context, com.lastwave.app.widget.NowPlayingWidgetReceiver::class.java),
+            ).size
         }.getOrNull()
-        sb.appendLine("placedGlanceWidgets=${placedWidgets ?: "<lookup failed>"}")
+        sb.appendLine("placedWidgets=${placedWidgets ?: "<lookup failed>"}")
         sb.appendLine("---- logcat (this process) ----")
         sb.append(readOwnLogcat())
         sb.appendLine("---- end ----")

@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.lastwave.app.data.lossless.NativeSecrets
 import javax.inject.Inject
 
 /**
@@ -27,6 +28,7 @@ import javax.inject.Inject
 class ModulesViewModel @Inject constructor(
     private val moduleManager: ModuleManager,
     private val settingsPreferences: SettingsPreferences,
+    private val nativeSecrets: NativeSecrets,
 ) : ViewModel() {
 
     private val refreshTick = MutableStateFlow(0)
@@ -45,9 +47,83 @@ class ModulesViewModel @Inject constructor(
         .map { it.preferProviderModules }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
+    val addonUrl: StateFlow<String?> = settingsPreferences.addonUrl
+    val addonName: StateFlow<String?> = settingsPreferences.addonName
+    val addonEnabled: StateFlow<Boolean> = settingsPreferences.addonEnabled
+
+    private val _addonHealth = MutableStateFlow<com.lastwave.app.data.addon.AddonHealth?>(null)
+    val addonHealth: StateFlow<com.lastwave.app.data.addon.AddonHealth?> = _addonHealth.asStateFlow()
+
     fun setPreferModules(enabled: Boolean) {
         viewModelScope.launch {
             runCatching { settingsPreferences.setPreferProviderModules(enabled) }
+        }
+    }
+
+    fun setAddonEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsPreferences.setAddonEnabled(enabled)
+        }
+    }
+
+    fun saveAddon(rawUrl: String) {
+        val trimmed = rawUrl.trim()
+        if (trimmed.isBlank()) {
+            _notice.value = "Addon URL cannot be empty"
+            return
+        }
+        viewModelScope.launch {
+            _busy.value = true
+            try {
+                val client = com.lastwave.app.data.addon.AddonClient(trimmed, nativeSecrets = nativeSecrets)
+                val health = client.health()
+                _addonHealth.value = health
+                val manifestRes = client.manifest()
+                val manifestName = manifestRes.getOrNull()?.displayName ?: "HTTP Addon"
+
+                settingsPreferences.setAddonUrl(trimmed)
+                settingsPreferences.setAddonName(manifestName)
+                settingsPreferences.setAddonEnabled(true)
+
+                when (health) {
+                    is com.lastwave.app.data.addon.AddonHealth.Ok -> _notice.value = "Connected: $manifestName"
+                    is com.lastwave.app.data.addon.AddonHealth.Unreachable -> _notice.value = "Saved, but connection failed: ${health.reason}"
+                    is com.lastwave.app.data.addon.AddonHealth.Rejected -> _notice.value = "Rejected: ${health.reason}"
+                }
+            } catch (e: Exception) {
+                _notice.value = "Error connecting: ${e.message}"
+            } finally {
+                _busy.value = false
+            }
+        }
+    }
+
+    fun removeAddon() {
+        viewModelScope.launch {
+            settingsPreferences.setAddonUrl(null)
+            settingsPreferences.setAddonName(null)
+            settingsPreferences.setAddonEnabled(false)
+            _addonHealth.value = null
+            _notice.value = "Addon removed"
+        }
+    }
+
+    fun testAddon() {
+        val current = addonUrl.value
+        if (current.isNullOrBlank()) return
+        viewModelScope.launch {
+            _busy.value = true
+            try {
+                val health = com.lastwave.app.data.addon.AddonClient(current, nativeSecrets = nativeSecrets).health()
+                _addonHealth.value = health
+                _notice.value = when (health) {
+                    is com.lastwave.app.data.addon.AddonHealth.Ok -> "Addon is active and reachable"
+                    is com.lastwave.app.data.addon.AddonHealth.Unreachable -> "Addon unreachable: ${health.reason}"
+                    is com.lastwave.app.data.addon.AddonHealth.Rejected -> "Addon rejected: ${health.reason}"
+                }
+            } finally {
+                _busy.value = false
+            }
         }
     }
 

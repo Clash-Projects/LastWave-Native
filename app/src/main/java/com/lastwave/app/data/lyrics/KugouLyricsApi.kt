@@ -126,10 +126,7 @@ class KugouLyricsApi @Inject constructor(
                 val candSinger = LrclibLyricsApi.cleanArtistName(cand.singer)
                 val candSong = LrclibLyricsApi.cleanTrackTitle(cand.song)
 
-                val artistMatches = candSinger.contains(cleanedArtist, ignoreCase = true) ||
-                        cleanedArtist.contains(candSinger, ignoreCase = true) ||
-                        LrclibLyricsApi.isSimilar(candSinger, cleanedArtist)
-                if (!artistMatches) return false
+                if (!LrclibLyricsApi.artistMatches(candSinger, cleanedArtist)) return false
 
                 return LrclibLyricsApi.titlesMatch(candSong, cleanedTitle)
             }
@@ -137,16 +134,12 @@ class KugouLyricsApi @Inject constructor(
             val textMatched = searchResult.candidates.filter(::textMatches)
                 .sortedBy(::durationDelta)
 
+            // Text match is mandatory: the old duration-only fallback accepted
+            // ANY same-length song regardless of title/artist (wrong lyrics).
             val candidate = textMatched.firstOrNull { durationDelta(it) <= 8_000L }
                 ?: textMatched.firstOrNull { durationDelta(it) <= 30_000L }
                 ?: textMatched.firstOrNull()
-                ?: searchResult.candidates.firstOrNull { cand ->
-                if (durationSeconds != null && durationSeconds > 0 && cand.duration > 0) {
-                    kotlin.math.abs(cand.duration - (durationSeconds * 1000L)) <= 8000L
-                } else {
-                    true
-                }
-            } ?: return@withContext null
+                ?: return@withContext null
 
             // 2. Download KRC encrypted content (HTTPS — see search note above)
             val downloadUrl = "https://lyrics.kugou.com/download".toHttpUrlOrNull()

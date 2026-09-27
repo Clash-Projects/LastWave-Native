@@ -77,6 +77,14 @@ internal object TextMatch {
         val wantedVariants = tokens(title).intersect(VARIANT_WORDS)
         val unexpectedVariants = tokens(candidate.title).intersect(VARIANT_WORDS) - wantedVariants
         score -= unexpectedVariants.size * 250
+        if (wantedArtist.isNotBlank()) {
+            val artistSim = similarity(candidate.artist, artist)
+            val artistContains = candidateArtist.contains(wantedArtist) || wantedArtist.contains(candidateArtist)
+            val titleContainsArtist = candidateTitle.contains(wantedArtist)
+            if (artistSim < 35 && !artistContains && !titleContainsArtist) {
+                score -= 1000
+            }
+        }
         return score
     }
 }

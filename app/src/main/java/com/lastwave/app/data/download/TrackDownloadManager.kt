@@ -36,6 +36,8 @@ import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.local.sanitizeDownloadFolderName
 import com.lastwave.app.data.artwork.ArtworkNormalizer
 import com.lastwave.app.data.artwork.ArtworkRepository
+import com.lastwave.app.playback.formatDetailedQualityBadge
+import com.lastwave.app.util.ArtistHelper
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -303,7 +305,16 @@ class TrackDownloadManager @Inject constructor(
     fun isDownloading(title: String, artist: String): Boolean {
         val key = makeDownloadKey(title, artist)
         val progress = _downloads.value[key]
-        return activeKeys.contains(key) || (progress != null && !progress.isFinished && progress.error == null)
+        if (activeKeys.contains(key) || (progress != null && !progress.isFinished && progress.error == null)) return true
+        // Stale callers may still pass a counter string ("15 ml listens") that can
+        // never match the sanitized in-flight key; fall back to title match so the
+        // UI doesn't offer a duplicate download.
+        if (ArtistHelper.isPlayCountOrStat(artist)) {
+            return _downloads.value.values.any {
+                !it.isFinished && it.error == null && it.title.equals(title.trim(), ignoreCase = true)
+            }
+        }
+        return false
     }
 
     suspend fun isTrackDownloaded(title: String, artist: String): Boolean = withContext(Dispatchers.IO) {
@@ -311,6 +322,14 @@ class TrackDownloadManager @Inject constructor(
         val existing = runCatching {
             downloadedTrackDao.findByTrackKey(key)
                 ?: downloadedTrackDao.findByTitleAndArtist(title.trim(), artist.trim())
+        }.getOrNull() ?: runCatching {
+            // Stat-artist lookup could never match repaired rows; fall back to
+            // title-only so stale callers still see the track as downloaded.
+            if (ArtistHelper.isPlayCountOrStat(artist)) {
+                downloadedTrackDao.getAllList().firstOrNull {
+                    it.title.equals(title.trim(), ignoreCase = true)
+                }
+            } else null
         }.getOrNull()
 
         if (existing != null) {
@@ -391,6 +410,8 @@ class TrackDownloadManager @Inject constructor(
         album: String? = null,
         artworkUrl: String? = null,
         year: String? = null,
+        videoId: String? = null,
+        durationMs: Long? = null,
     ) {
         val key = makeDownloadKey(title, artist)
         if (!activeKeys.add(key)) return
@@ -469,28 +490,96 @@ class TrackDownloadManager @Inject constructor(
             var tempDownloadFile: File? = null
 
             try {
+                // Never let counter strings ("15 ml listens", "Track 16", "10K views")
+                // leak into filenames, tags or the DB. Callers on fixed code paths
+                // already pass clean values (AlbumDetailScreen safeArtist + hardened
+                // InnerTube parsing), this is the safety net for stale callers and
+                // for the already-queued stat-artist downloads.
+                val rawTitle = title.trim()
+                val rawArtistIsStat = ArtistHelper.isPlayCountOrStat(artist)
+                var safeArtist = artist.trim().takeUnless { ArtistHelper.isPlayCountOrStat(it) }?.ifBlank { null }
+                var safeAlbumInput = album?.trim()?.takeUnless { ArtistHelper.isPlayCountOrStat(it) }?.takeIf { it.isNotBlank() }
+                // If the artist was a counter but the album title is known (album
+                // download case), recover the real artist via search before any
+                // network/stream work so tagging, filenames and DB stay correct.
+                if (safeArtist.isNullOrBlank() && rawTitle.isNotBlank()) {
+                    val recoveryQueryArtist = safeAlbumInput.orEmpty()
+                    val recovered = runCatching {
+                        if (recoveryQueryArtist.isNotBlank()) {
+                            innerTube.findBestMatch(rawTitle, recoveryQueryArtist, prefetchStreams = false)
+                        } else {
+                            innerTube.findBestMatch(rawTitle, "", prefetchStreams = false)
+                        }
+                    }.getOrNull()
+                    val recoveredArtist = recovered?.artist?.trim()
+                        ?.takeUnless { ArtistHelper.isPlayCountOrStat(it) }
+                        ?.takeIf { it.isNotBlank() }
+                    if (recoveredArtist != null) {
+                        safeArtist = recoveredArtist
+                        if (safeAlbumInput.isNullOrBlank()) {
+                            safeAlbumInput = recovered.album?.trim()
+                                ?.takeUnless { ArtistHelper.isPlayCountOrStat(it) }
+                                ?.takeIf { it.isNotBlank() }
+                        }
+                    }
+                }
+                val effTitle = rawTitle.ifBlank { title.trim() }
+                // Fall back to "Unknown Artist" only for display/filename; the DB
+                // repair pass below will re-resolve it when network allows.
+                val effArtist = safeArtist?.takeIf { it.isNotBlank() } ?: "Unknown Artist"
+                val effArtistForLookup = safeArtist?.takeIf { it.isNotBlank() } ?: ""
+                val artistWasStat = rawArtistIsStat || safeArtist.isNullOrBlank()
 
                 // Resolve missing metadata & cover art proactively
                 var resolvedArtworkUrl = artworkUrl?.takeIf { ArtworkNormalizer.isRealImage(it) }
-                var resolvedAlbum = album?.takeIf { it.isNotBlank() }
+                var resolvedAlbum = safeAlbumInput?.takeIf { it.isNotBlank() }
                 var preloadedBestMatch: YouTubeMusicTrack? = null
 
-                if (resolvedArtworkUrl == null || resolvedAlbum == null) {
+                if (!videoId.isNullOrBlank()) {
                     preloadedBestMatch = runCatching {
-                        innerTube.findBestMatch(title, artist, prefetchStreams = false)
+                        innerTube.fetchSongDetails(videoId)
                     }.getOrNull()
+                }
+
+                if (preloadedBestMatch == null && (resolvedArtworkUrl == null || resolvedAlbum == null)) {
+                    preloadedBestMatch = runCatching {
+                        innerTube.findBestMatch(effTitle, effArtistForLookup, prefetchStreams = false)
+                    }.getOrNull()
+                }
+
+                if (preloadedBestMatch != null) {
+                    val cleanMatchArtist = preloadedBestMatch.artist
+                        .takeUnless { ArtistHelper.isPlayCountOrStat(it) }
+                    if (artistWasStat && cleanMatchArtist != null && cleanMatchArtist.isNotBlank()) {
+                        safeArtist = cleanMatchArtist.trim()
+                    }
                     if (resolvedArtworkUrl == null) {
-                        resolvedArtworkUrl = preloadedBestMatch?.artworkUrl?.takeIf { ArtworkNormalizer.isRealImage(it) }
+                        resolvedArtworkUrl = preloadedBestMatch.artworkUrl?.takeIf { ArtworkNormalizer.isRealImage(it) }
                     }
                     if (resolvedAlbum == null) {
-                        resolvedAlbum = preloadedBestMatch?.album?.takeIf { it.isNotBlank() }
+                        resolvedAlbum = preloadedBestMatch.album?.trim()
+                            ?.takeUnless { ArtistHelper.isPlayCountOrStat(it) }
+                            ?.takeIf { it.isNotBlank() }
                     }
                 }
+                if (resolvedAlbum != null) {
+                    resolvedAlbum = resolvedAlbum?.trim()
+                        ?.takeUnless { ArtistHelper.isPlayCountOrStat(it) }
+                        ?.takeIf { it.isNotBlank() }
+                }
+                // Final sanitized values for tagging, filenames, folders and DB.
+                // safeArtist may have been recovered above; effArtist was snapshotted
+                // before, so recompute here.
+                val finalTitle = effTitle
+                val finalArtist = safeArtist?.trim()?.takeIf { it.isNotBlank() } ?: effArtist
+                // DB key must never embed a counter string, otherwise one album
+                // fans out into N artists/albums ("15 ml listens", "Track 3"...).
+                val finalKey = makeDownloadKey(finalTitle, finalArtist)
 
                 val artworkFallback = if (resolvedArtworkUrl == null) {
                     async(Dispatchers.IO) {
-                        artworkRepository.resolve(title, artist)
-                        val cacheKey = ArtworkNormalizer.cacheKey(title, artist)
+                        artworkRepository.resolve(finalTitle, finalArtist)
+                        val cacheKey = ArtworkNormalizer.cacheKey(finalTitle, finalArtist)
                         artworkRepository.resolved.value[cacheKey]
                             ?.takeIf { ArtworkNormalizer.isRealImage(it) }
                             ?: kotlinx.coroutines.withTimeoutOrNull(3_500L) {
@@ -551,12 +640,16 @@ class TrackDownloadManager @Inject constructor(
 
                 if (!isYouTubeRequested) {
                     try {
+                        val expectedDurationSec = durationMs?.takeIf { it > 0 }?.let { (it / 1000L).toInt() }
+                            ?: preloadedBestMatch?.durationSeconds?.takeIf { it > 0 }
                         val losslessStream = runCatching {
                             losslessMusicApi.resolveStream(
-                                title = title,
-                                artist = artist,
+                                title = finalTitle,
+                                artist = finalArtist,
+                                expectedDurationSeconds = expectedDurationSec,
                                 expectedAlbum = resolvedAlbum,
                                 preferredQuality = downloadQuality,
+                                isDownload = true,
                             )
                         }.getOrNull()
 
@@ -579,10 +672,11 @@ class TrackDownloadManager @Inject constructor(
                                     resolvedUrl = parsedDash.initUrl
                                     extension = "m4a"
                                     mimeType = "audio/mp4"
+                                    val rateKHz = if (losslessStream.samplingRate > 1000.0) losslessStream.samplingRate / 1000.0 else losslessStream.samplingRate
+                                    val depth = if (losslessStream.bitDepth > 0) losslessStream.bitDepth else if (rateKHz > 48.0) 24 else 16
                                     formatBadge = when {
                                         isAtmosStream -> "DOLBY ATMOS"
-                                        isFlacStream ->
-                                            if (losslessStream.bitDepth > 16 || losslessStream.samplingRate > 48.0) "24-BIT FLAC" else "CD LOSSLESS"
+                                        isFlacStream -> formatDetailedQualityBadge(depth, rateKHz)
                                         manifestCodec.startsWith("mp4a.40.5") -> "HE-AAC"
                                         manifestCodec.startsWith("mp4a") -> "AAC 320"
                                         else -> "AAC"
@@ -595,15 +689,17 @@ class TrackDownloadManager @Inject constructor(
                                 mimeType = losslessStream.mimeType.ifBlank { "audio/flac" }
                                 extension = if (mimeType.contains("mp3")) "mp3" else "flac"
                                 isLossless = !extension.equals("mp3", ignoreCase = true)
+                                val rateKHz = if (losslessStream.samplingRate > 1000.0) losslessStream.samplingRate / 1000.0 else losslessStream.samplingRate
+                                val depth = if (losslessStream.bitDepth > 0) losslessStream.bitDepth else if (rateKHz > 48.0) 24 else 16
                                 formatBadge = if (isLossless) {
-                                    if (losslessStream.bitDepth > 16 || losslessStream.samplingRate > 48.0) "HI-RES FLAC" else "LOSSLESS FLAC"
+                                    formatDetailedQualityBadge(depth, rateKHz)
                                 } else "MP3"
                                 durationMs = (losslessStream.durationSeconds * 1000L).takeIf { it > 0 } ?: 0L
                             }
                         }
 
                         val desc = if (resolvedUrl != null) null else runCatching {
-                            moduleResolver.resolve(title, artist, downloadQuality)
+                            moduleResolver.resolve(finalTitle, finalArtist, downloadQuality)
                         }.getOrNull()
                         if (desc != null && desc.stream.baseUrl.isNotBlank()) {
                             val s = desc.stream
@@ -621,8 +717,10 @@ class TrackDownloadManager @Inject constructor(
                                     !s.codec.equals("mp3", ignoreCase = true) &&
                                     !s.codec.equals("aac", ignoreCase = true) &&
                                     !s.codec.contains("mp4a", ignoreCase = true)
+                                val rateKHz = if (s.sampleRate > 1000) s.sampleRate / 1000.0 else s.sampleRate.toDouble()
+                                val depth = if (s.bitDepth > 0) s.bitDepth else if (rateKHz > 48.0) 24 else 16
                                 formatBadge = if (isLossless) {
-                                    if (s.bitDepth > 16 || s.sampleRate > 48000) "HI-RES FLAC" else "LOSSLESS FLAC"
+                                    formatDetailedQualityBadge(depth, rateKHz)
                                 } else s.codec.uppercase()
                                 durationMs = desc.durationSec * 1000L
                             } else if (s.type == "dash_xml" || s.baseUrl.startsWith("data:application/dash+xml")) {
@@ -654,10 +752,11 @@ class TrackDownloadManager @Inject constructor(
                                     downloadHeaders = desc.headers
                                     extension = "m4a"
                                     mimeType = "audio/mp4"
+                                    val rateKHz = if (s.sampleRate > 1000) s.sampleRate / 1000.0 else s.sampleRate.toDouble()
+                                    val depth = if (s.bitDepth > 0) s.bitDepth else if (rateKHz > 48.0) 24 else 16
                                     formatBadge = when {
                                         isAtmosStream -> "DOLBY ATMOS"
-                                        isFlacStream ->
-                                            if (s.bitDepth > 16 || s.sampleRate > 48000) "24-BIT FLAC" else "CD LOSSLESS"
+                                        isFlacStream -> formatDetailedQualityBadge(depth, rateKHz)
                                         manifestCodec.startsWith("mp4a.40.5") -> "HE-AAC"
                                         manifestCodec.startsWith("mp4a") -> "AAC 320"
                                         else -> "AAC"
@@ -831,14 +930,18 @@ class TrackDownloadManager @Inject constructor(
                                 formatBadge = "YOUTUBE",
                             )
                         )
-                        val bestMatch = preloadedBestMatch
-                            ?: innerTube.findBestMatch(title, artist, prefetchStreams = false)
-                        val videoId = bestMatch.videoId ?: throw IOException("No audio source found for $title")
+                        val lookupArtist = safeArtist?.trim()?.takeIf { it.isNotBlank() } ?: ""
+                        val targetVideoId = videoId?.takeIf { it.isNotBlank() }
+                            ?: preloadedBestMatch?.videoId
+                            ?: innerTube.findBestMatch(finalTitle, lookupArtist, prefetchStreams = false).videoId
+                        val actualVideoId = targetVideoId ?: throw IOException("No audio source found for $finalTitle")
                         if (resolvedArtworkUrl == null) {
-                            resolvedArtworkUrl = bestMatch.artworkUrl?.takeIf { ArtworkNormalizer.isRealImage(it) }
+                            resolvedArtworkUrl = preloadedBestMatch?.artworkUrl?.takeIf { ArtworkNormalizer.isRealImage(it) }
                         }
-                        if (resolvedAlbum == null) resolvedAlbum = bestMatch.album
-                        val ytStream = innerTube.resolveDownloadStream(videoId)
+                        if (resolvedAlbum == null) resolvedAlbum = preloadedBestMatch?.album?.trim()
+                            ?.takeUnless { ArtistHelper.isPlayCountOrStat(it) }
+                            ?.takeIf { it.isNotBlank() }
+                        val ytStream = innerTube.resolveDownloadStream(actualVideoId)
                         resolvedUrl = ytStream.url
                         downloadHeaders = ytStream.requestHeaders
                         expectedContentLength = ytStream.contentLength
@@ -1001,8 +1104,8 @@ class TrackDownloadManager @Inject constructor(
                     async(Dispatchers.IO) {
                         runCatching {
                             lyricsRepository.getLyrics(
-                                title = title,
-                                artist = artist,
+                                title = finalTitle,
+                                artist = finalArtist,
                                 album = resolvedAlbum,
                                 durationSeconds = null,
                             )
@@ -1082,8 +1185,8 @@ class TrackDownloadManager @Inject constructor(
                             flacTranscoder.transcodeToFlac(
                                 sourceFile = currentAudioFile,
                                 descriptor = transcodeDesc,
-                                title = title,
-                                artist = artist,
+                                title = finalTitle,
+                                artist = finalArtist,
                                 album = resolvedAlbum,
                                 artworkUri = resolvedArtworkUrl,
                             )
@@ -1111,7 +1214,7 @@ class TrackDownloadManager @Inject constructor(
                         }
                     }
 
-                    val safeFilename = sanitizeFilename("$artist - $title") + ".$extension"
+                    val safeFilename = sanitizeFilename("$finalArtist - $finalTitle") + ".$extension"
 
                     // 4. Resolve exact audio duration from downloaded file
                     val durationRetriever = android.media.MediaMetadataRetriever()
@@ -1139,8 +1242,8 @@ class TrackDownloadManager @Inject constructor(
                         if (lyricsRecord !is LyricsResult.Success && durationMs > 0) {
                             lyricsRecord = runCatching {
                                 lyricsRepository.getLyrics(
-                                    title = title,
-                                    artist = artist,
+                                    title = finalTitle,
+                                    artist = finalArtist,
                                     album = resolvedAlbum,
                                     durationSeconds = (durationMs / 1000).toInt(),
                                 )
@@ -1173,8 +1276,8 @@ class TrackDownloadManager @Inject constructor(
                     // iTunes atoms for M4A, ID3v2.3 otherwise).
                     val metadataEmbedded = audioTagWriter.embedMetadata(
                         audioFile = currentAudioFile,
-                        title = title,
-                        artist = artist,
+                        title = finalTitle,
+                        artist = finalArtist,
                         album = resolvedAlbum,
                         artworkUrl = resolvedArtworkUrl,
                         artworkFallbackUrl = preloadedBestMatch?.artworkUrl,
@@ -1188,7 +1291,7 @@ class TrackDownloadManager @Inject constructor(
                     // 5. Transfer tagged file to public storage / MediaStore
                     val dirName = sanitizeDownloadFolderName(misc.downloadFolder)
                     val subpath = downloadSubpath(
-                        artist = artist,
+                        artist = finalArtist,
                         album = resolvedAlbum,
                         year = year,
                         structure = misc.downloadStructure,
@@ -1198,8 +1301,8 @@ class TrackDownloadManager @Inject constructor(
                     val (destStream, uri, file) = openPublicOutputStream(
                         filename = safeFilename,
                         mimeType = mimeType,
-                        title = title,
-                        artist = artist,
+                        title = finalTitle,
+                        artist = finalArtist,
                         album = resolvedAlbum,
                         year = year,
                         durationMs = durationMs,
@@ -1249,16 +1352,17 @@ class TrackDownloadManager @Inject constructor(
                 if (shouldDownloadLyrics) {
                     val lyricsText = syncedLyrics ?: plainLyrics
                     if (!lyricsText.isNullOrBlank()) {
-                        val lrcFilename = sanitizeFilename("$artist - $title") + ".lrc"
+                        val lrcFilename = sanitizeFilename("$finalArtist - $finalTitle") + ".lrc"
                         lrcPath = writePublicCompanionFile(lrcFilename, lyricsText, "text/plain", dirName, subpath, customTreeUri)
                     }
                 }
 
-                // 6. Persist to Room database
+                // 6. Persist to Room database (finalKey never embeds counters,
+                // so one album can no longer fan out into N artists/albums).
                 val entity = DownloadedTrackEntity(
-                    trackKey = key,
-                    title = title,
-                    artist = artist,
+                    trackKey = finalKey,
+                    title = finalTitle,
+                    artist = finalArtist,
                     album = resolvedAlbum.orEmpty(),
                     artworkUrl = resolvedArtworkUrl,
                     filePath = finalPath,
@@ -1287,7 +1391,7 @@ class TrackDownloadManager @Inject constructor(
                     } ?: throw IOException("Offline license refused by provider; retry while online")
                     val withKeys = moduleDescriptor!!.copy(drm = drm.copy(keySetIdB64 = keys.keySetIdB64))
                     moduleManager.writeOfflineSidecar(
-                        title, artist,
+                        finalTitle, finalArtist,
                         OfflineSidecar(
                             descriptorJson = moduleManager.encodeDescriptor(withKeys),
                             keySetIdB64 = keys.keySetIdB64,
@@ -1304,8 +1408,8 @@ class TrackDownloadManager @Inject constructor(
                 updateProgress(
                     DownloadProgress(
                         key = key,
-                        title = title,
-                        artist = artist,
+                        title = finalTitle,
+                        artist = finalArtist,
                         progressPercent = 100,
                         bytesDownloaded = bytesReadTotal,
                         totalBytes = if (totalBytesRecorded > 0) totalBytesRecorded else bytesReadTotal,
@@ -1314,7 +1418,7 @@ class TrackDownloadManager @Inject constructor(
                     ),
                 )
 
-                runCatching { showCompletedNotification(notifId, title, artist, formatBadge) }
+                runCatching { showCompletedNotification(notifId, finalTitle, finalArtist, formatBadge) }
             } catch (cancelled: CancellationException) {
                 // Cancelled by user — clean up partial file
                 destinationUri?.let { runCatching { context.contentResolver.delete(it, null, null) } }
@@ -2369,7 +2473,127 @@ class TrackDownloadManager @Inject constructor(
         downloadedTrackDao.clearAll()
     }
 
+    /**
+     * One-time self-heal for libraries corrupted before counter-string
+     * hardening ("15 ml listens", "Track 16", ... as artist, one album fanned
+     * out into N single-track albums). Runs offline-first inside
+     * [syncDownloadsFromStorage]: groups by album to restore the dominant real
+     * artist without network, then best-effort re-resolves leftovers via
+     * InnerTube. Never deletes user files, only fixes DB rows (and best-effort
+     * file tags). Safe to run on every sync; no-ops when clean.
+     */
+    suspend fun repairCorruptedDownloadMetadata() = withContext(Dispatchers.IO) {
+        val all = runCatching { downloadedTrackDao.getAllList() }.getOrNull().orEmpty()
+        if (all.isEmpty()) return@withContext
+        val corrupted = all.filter { ArtistHelper.isPlayCountOrStat(it.artist) }
+        if (corrupted.isEmpty()) return@withContext
+
+        // Offline pass: within each album, adopt the dominant non-stat artist.
+        // This reunites "one album -> N artists/albums" without any network.
+        val byAlbum = all.groupBy { it.album.trim().lowercase() }
+        var fixedOffline = 0
+        for (corrupt in corrupted.toList()) {
+            val albumKey = corrupt.album.trim().lowercase()
+            if (albumKey.isBlank() || albumKey == "singles") continue
+            val siblings = byAlbum[albumKey].orEmpty()
+            val dominant = siblings.map { it.artist.trim() }
+                .filter { it.isNotBlank() && !ArtistHelper.isPlayCountOrStat(it) }
+                .groupBy { it.lowercase() }
+                .maxByOrNull { it.value.size }
+                ?.value?.firstOrNull()
+            if (dominant.isNullOrBlank()) continue
+            val newKey = makeDownloadKey(corrupt.title, dominant)
+            val clash = runCatching { downloadedTrackDao.findByTrackKey(newKey) }.getOrNull()
+            try {
+                if (clash != null && clash.id != corrupt.id) {
+                    // Good row already holds the correct key; drop the dupe.
+                    runCatching { downloadedTrackDao.delete(corrupt) }
+                } else {
+                    runCatching {
+                        downloadedTrackDao.insert(
+                            corrupt.copy(artist = dominant, trackKey = newKey),
+                        )
+                    }
+                    // Best-effort file retag so external players / re-imports
+                    // don't resurrect the counter string.
+                    runCatching {
+                        val f = File(corrupt.filePath)
+                        if (f.exists() && f.isFile) {
+                            audioTagWriter.embedMetadata(
+                                audioFile = f,
+                                title = corrupt.title,
+                                artist = dominant,
+                                album = corrupt.album.takeIf { it.isNotBlank() },
+                                artworkUrl = corrupt.artworkUrl,
+                                artworkFallbackUrl = null,
+                                lyrics = corrupt.syncedLyrics ?: corrupt.plainLyrics,
+                                year = null,
+                            )
+                        }
+                    }
+                }
+                fixedOffline++
+            } catch (_: Exception) { }
+        }
+
+        // Network pass for leftovers (no dominant sibling, or Singles/blank album).
+        val remaining = runCatching { downloadedTrackDao.getAllList() }.getOrNull().orEmpty()
+            .filter { ArtistHelper.isPlayCountOrStat(it.artist) }
+            .take(25)
+        for (corrupt in remaining) {
+            try {
+                val albumHint = corrupt.album.trim()
+                    .takeUnless { ArtistHelper.isPlayCountOrStat(it) }.orEmpty()
+                val match = runCatching {
+                    if (albumHint.isNotBlank()) {
+                        innerTube.findBestMatchOrNull(corrupt.title, albumHint, prefetchStreams = false)
+                    } else {
+                        innerTube.findBestMatchOrNull(corrupt.title, "", prefetchStreams = false)
+                    }
+                }.getOrNull() ?: continue
+                val cleanArtist = match.artist.trim()
+                    .takeUnless { ArtistHelper.isPlayCountOrStat(it) }
+                    ?.takeIf { it.isNotBlank() } ?: continue
+                val cleanAlbum = match.album?.trim()
+                    ?.takeUnless { ArtistHelper.isPlayCountOrStat(it) }
+                    ?.takeIf { it.isNotBlank() } ?: corrupt.album
+                // Don't adopt a different song's metadata: title must still match.
+                if (!match.title.equals(corrupt.title, ignoreCase = true) &&
+                    match.title.lowercase().none { it in corrupt.title.lowercase() } &&
+                    corrupt.title.lowercase().none { it in match.title.lowercase() }
+                ) continue
+                val newKey = makeDownloadKey(corrupt.title, cleanArtist)
+                val clash = runCatching { downloadedTrackDao.findByTrackKey(newKey) }.getOrNull()
+                if (clash != null && clash.id != corrupt.id) {
+                    runCatching { downloadedTrackDao.delete(corrupt) }
+                } else {
+                    runCatching {
+                        downloadedTrackDao.insert(
+                            corrupt.copy(artist = cleanArtist, album = cleanAlbum, trackKey = newKey),
+                        )
+                    }
+                    runCatching {
+                        val f = File(corrupt.filePath)
+                        if (f.exists() && f.isFile) {
+                            audioTagWriter.embedMetadata(
+                                audioFile = f,
+                                title = corrupt.title,
+                                artist = cleanArtist,
+                                album = cleanAlbum.takeIf { it.isNotBlank() },
+                                artworkUrl = corrupt.artworkUrl,
+                                artworkFallbackUrl = match.artworkUrl,
+                                lyrics = corrupt.syncedLyrics ?: corrupt.plainLyrics,
+                                year = null,
+                            )
+                        }
+                    }
+                }
+            } catch (_: Exception) { }
+        }
+    }
+
     suspend fun syncDownloadsFromStorage() = withContext(Dispatchers.IO) {
+        runCatching { repairCorruptedDownloadMetadata() }
         val existingEntities = downloadedTrackDao.getAllList().toMutableList()
         val existingPaths = existingEntities.map { it.filePath }.toMutableSet()
         val existingUris = existingEntities.mapNotNull { it.mediaStoreUri }.toMutableSet()
@@ -2392,14 +2616,31 @@ class TrackDownloadManager @Inject constructor(
                 val retriever = android.media.MediaMetadataRetriever()
                 try {
                     retriever.setDataSource(file.absolutePath)
-                    val title = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_TITLE)
+                    val rawTitle = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_TITLE)
                         ?.ifBlank { null } ?: file.nameWithoutExtension.substringAfter(" - ").ifBlank { file.nameWithoutExtension }
-                    val artist = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                    val rawArtist = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST)
                         ?.ifBlank { null } ?: file.nameWithoutExtension.substringBefore(" - ").ifBlank { "Unknown Artist" }
+                    val rawAlbum = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ALBUM).orEmpty()
+                    // Never import counter strings as metadata; fall back to
+                    // filename/folder rather than "15 ml listens".
+                    val title = rawTitle.trim().takeIf { it.isNotBlank() } ?: file.nameWithoutExtension
+                    var artist = rawArtist.trim().takeUnless { ArtistHelper.isPlayCountOrStat(it) }
+                    if (artist.isNullOrBlank()) {
+                        val parentName = file.parentFile?.name.orEmpty()
+                        artist = parentName.takeUnless {
+                            it.isBlank() || it.equals("Singles", ignoreCase = true) ||
+                                it.equals(dirName, ignoreCase = true) ||
+                                it.equals("Music", ignoreCase = true) ||
+                                ArtistHelper.isPlayCountOrStat(it)
+                        } ?: file.nameWithoutExtension.substringBefore(" - ")
+                            .takeUnless { ArtistHelper.isPlayCountOrStat(it) }
+                        ?: "Unknown Artist"
+                    }
+                    artist = artist!!.trim().ifBlank { "Unknown Artist" }
                     val trackKey = makeDownloadKey(title, artist)
                     if (trackKey in existingKeys) continue
 
-                    val album = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ALBUM).orEmpty()
+                    val album = rawAlbum.trim().takeUnless { ArtistHelper.isPlayCountOrStat(it) }.orEmpty()
                     val durStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
                     val durMs = durStr?.toLongOrNull() ?: 0L
                     val bitRateStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_BITRATE)
@@ -2497,12 +2738,18 @@ class TrackDownloadManager @Inject constructor(
                         val uri = Uri.withAppendedPath(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id.toString())
                         if (uri.toString() in existingUris) continue
 
-                        val title = cursor.getString(titleCol) ?: "Unknown Track"
-                        val artist = cursor.getString(artistCol) ?: "Unknown Artist"
+                        val rawTitle = cursor.getString(titleCol) ?: "Unknown Track"
+                        val rawArtist = cursor.getString(artistCol) ?: "Unknown Artist"
+                        val rawAlbum = cursor.getString(albumCol).orEmpty()
+                        val title = rawTitle.trim().takeIf { it.isNotBlank() } ?: "Unknown Track"
+                        val artist = rawArtist.trim()
+                            .takeUnless { ArtistHelper.isPlayCountOrStat(it) }
+                            ?.takeIf { it.isNotBlank() } ?: "Unknown Artist"
                         val trackKey = makeDownloadKey(title, artist)
                         if (trackKey in existingKeys) continue
 
-                        val album = cursor.getString(albumCol).orEmpty()
+                        val album = rawAlbum.trim()
+                            .takeUnless { ArtistHelper.isPlayCountOrStat(it) }.orEmpty()
                         val durMs = cursor.getLong(durCol)
                         val size = cursor.getLong(sizeCol)
                         val mime = cursor.getString(mimeCol).orEmpty().lowercase()

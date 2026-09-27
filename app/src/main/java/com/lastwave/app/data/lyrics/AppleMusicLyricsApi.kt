@@ -93,6 +93,20 @@ class AppleMusicLyricsApi @Inject constructor(
                 } else null
             } ?: return@withContext null
 
+        // Direct TTML carries per-syllable timing; try it first and keep
+        // the structured envelope as the fallback.
+        fetchTtmlLines(trackId)?.takeIf { it.isNotEmpty() }?.let { ttmlLines ->
+            val hasWordTiming = ttmlLines.any { it.hasSyllables }
+            return@withContext LyricsResult.Success(
+                lines = ttmlLines,
+                isSynced = true,
+                isWordSynced = hasWordTiming,
+                plainLyrics = ttmlLines.joinToString("\n") { it.text },
+                isInstrumental = false,
+                source = if (hasWordTiming) "Apple Music (Word-Sync)" else "Apple Music (Line-Sync)",
+            )
+        }
+
         val envelope = fetchEnvelope(trackId) ?: return@withContext null
 
         val lines = mapLines(envelope.lyrics)
@@ -168,33 +182,120 @@ class AppleMusicLyricsApi @Inject constructor(
             return null
         }
         val expectedMs = durationSeconds?.takeIf { it > 0 }?.times(1_000L)
-        return results
+        // Wrong-recording gate first: a live/remix/cover tag on one side only
+        // rejects the candidate outright, however close the duration is.
+        val sameRecording = results
             .filter { it.trackId > 0 }
-            .maxByOrNull { score(it, title, artist, expectedMs) }
-            ?.takeIf { score(it, title, artist, expectedMs) >= MIN_MATCH_SCORE }
+            .filter { LrclibLyricsApi.sameVersion(title, it.trackName.orEmpty()) }
+        if (sameRecording.isEmpty()) return null
+        // Best score wins; duration proximity breaks ties (single vs album
+        // cut can differ by a second with identical names).
+        return sameRecording.maxWithOrNull(
+            compareBy({ score(it, title, artist, expectedMs) }, { -durationDistance(it, expectedMs) }),
+        )?.takeIf { isVerifiedMatch(it, title, artist, expectedMs) }
             ?.trackId
     }
 
+    private fun durationDistance(song: ITunesSong, expectedMs: Long?): Long {
+        val songMs = song.trackTimeMillis ?: return Long.MAX_VALUE
+        if (expectedMs == null || expectedMs <= 0 || songMs <= 0) return 0L
+        return abs(songMs - expectedMs)
+    }
+
+    /** A result is usable only with BOTH title and artist agreement; title
+     *  alone (homonym songs) or artist alone (wrong song, same singer) is
+     *  rejected rather than returning another song's lyrics. */
+    private fun isVerifiedMatch(song: ITunesSong, title: String, artist: String, expectedMs: Long?): Boolean {
+        if (!LrclibLyricsApi.sameVersion(title, song.trackName.orEmpty())) return false
+        if (titleScore(song.trackName.orEmpty(), title) <= 0) return false
+        // Unknown-artist requests can't check the singer: demand an exact
+        // title (plus duration when known) instead of failing outright.
+        if (artist.isBlank()) {
+            if (titleScore(song.trackName.orEmpty(), title) < 3) return false
+            return score(song, title, artist, expectedMs) >= MIN_MATCH_SCORE - 2
+        }
+        if (artistScore(song.artistName.orEmpty(), artist) <= 0) return false
+        return score(song, title, artist, expectedMs) >= MIN_MATCH_SCORE
+    }
+
+    private fun titleScore(songTitle: String, title: String): Int {
+        val cleanSong = LrclibLyricsApi.cleanTrackTitle(songTitle)
+        val cleanReq = LrclibLyricsApi.cleanTrackTitle(title)
+        if (cleanSong.equals(cleanReq, ignoreCase = true)) return 3
+        if (LrclibLyricsApi.titlesMatch(cleanSong, cleanReq)) return 1
+        return 0
+    }
+
+    private fun artistScore(songArtist: String, artist: String): Int {
+        if (artist.isBlank() || songArtist.isBlank()) return 0
+        val cleanSong = LrclibLyricsApi.cleanArtistName(songArtist)
+        val cleanReq = LrclibLyricsApi.cleanArtistName(artist)
+        return if (LrclibLyricsApi.artistMatches(cleanSong, cleanReq)) 2 else 0
+    }
+
     /** Exact title + artist/duration agreement wins; junk matches score ~0
-     *  and are rejected rather than returning another song's lyrics. */
+     *  and are rejected rather than returning another song's lyrics.
+     *  Duration is tiered: near-identical lengths decide between edits of
+     *  one song, loose agreement only supports an already-good text match. */
     private fun score(song: ITunesSong, title: String, artist: String, expectedMs: Long?): Int {
-        var score = 0
-        val songTitle = song.trackName.orEmpty()
-        if (songTitle.equals(title, ignoreCase = true)) {
-            score += 3
-        } else if (songTitle.contains(title, ignoreCase = true) || title.contains(songTitle, ignoreCase = true)) {
-            score += 1
-        }
-        if (artist.isNotBlank() && song.artistName?.contains(artist, ignoreCase = true) == true) {
-            score += 2
-        }
+        var score = titleScore(song.trackName.orEmpty(), title) + artistScore(song.artistName.orEmpty(), artist)
         val songMs = song.trackTimeMillis
-        if (expectedMs != null && expectedMs > 0 && songMs != null && songMs > 0 &&
-            abs(songMs - expectedMs) <= DURATION_TOLERANCE_MS
-        ) {
-            score += 2
+        if (expectedMs != null && expectedMs > 0 && songMs != null && songMs > 0) {
+            score += when (abs(songMs - expectedMs)) {
+                in 0..3_000L -> 3
+                in 3_001L..DURATION_TOLERANCE_MS -> 1
+                else -> 0
+            }
         }
         return score
+    }
+
+    private suspend fun fetchTtmlLines(trackId: Long): List<LyricLine>? {
+        val url = "https://lyrics.paxsenix.org/apple-music/lyrics?id=$trackId&ttml=true"
+            .toHttpUrlOrNull() ?: return null
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", USER_AGENT)
+            .header("Accept", "application/json, text/xml, */*")
+            .get()
+            .build()
+        return try {
+            val body = okHttpClient.newCall(request).awaitSuccessfulBodyOrNull() ?: return null
+            val trimmed = body.trim()
+            if (trimmed.isEmpty()) return null
+            // The endpoint answers TTML directly or a JSON envelope holding it.
+            val ttml = extractTtml(trimmed) ?: trimmed
+            if ("<tt" !in ttml.lowercase() && "http://www.w3.org/ns/ttml" !in ttml) return null
+            TtmlParser.parse(ttml).takeIf { it.isNotEmpty() }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun extractTtml(raw: String): String? {
+        if (!raw.startsWith("{") && !raw.startsWith("[")) return raw
+        return try {
+            val element = json.parseToJsonElement(raw)
+            findTtmlString(element)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun findTtmlString(element: kotlinx.serialization.json.JsonElement): String? {
+        return when (element) {
+            is kotlinx.serialization.json.JsonPrimitive -> if (element.isString) {
+                element.content.takeIf { "<tt" in it.lowercase() }
+            } else null
+            is kotlinx.serialization.json.JsonArray -> element.firstNotNullOfOrNull { findTtmlString(it) }
+            is kotlinx.serialization.json.JsonObject -> {
+                val keys = listOf("ttml", "ttmlContent", "lyrics", "lrc", "content", "text", "data", "result")
+                keys.firstNotNullOfOrNull { element[it]?.let { v -> findTtmlString(v) } }
+                    ?: element.values.firstNotNullOfOrNull { findTtmlString(it) }
+            }
+        }
     }
 
     private suspend fun fetchEnvelope(trackId: Long): PaxEnvelope? {
@@ -220,7 +321,9 @@ class AppleMusicLyricsApi @Inject constructor(
 
     companion object {
         const val USER_AGENT = "LastWave"
-        private const val MIN_MATCH_SCORE = 3
+        // 3 (exact title) + 2 (artist) = 5: both sides must agree. The old
+        // threshold of 3 accepted a title-exact homonym with no artist match.
+        private const val MIN_MATCH_SCORE = 5
         private const val DURATION_TOLERANCE_MS = 12_000L
 
         /** Syllable envelope -> [LyricLine]. `part` words continue the
@@ -282,7 +385,52 @@ class AppleMusicLyricsApi @Inject constructor(
                     text = tokens.joinToString(" "),
                     syllables = syllables.sortedBy { it.timeMs },
                 )
-            }.filter { it.text.isNotBlank() }.sortedBy { it.timeMs }
+            }.filter { it.text.isNotBlank() }.sortedBy { it.timeMs }.let(::clampEdges)
+        }
+
+        /**
+         * Edge-to-edge timing: a line never stays lit past the next line's
+         * start, and a syllable never past the next syllable (or its line
+         * end). Generous envelope durations otherwise leave two rows
+         * highlighted at once around every boundary.
+         */
+        private fun clampEdges(lines: List<LyricLine>): List<LyricLine> {
+            if (lines.size < 2) return lines
+            return lines.mapIndexed { index, line ->
+                val nextStart = lines.getOrNull(index + 1)?.timeMs
+                var duration = line.durationMs
+                if (nextStart != null && nextStart > line.timeMs &&
+                    line.timeMs + duration > nextStart
+                ) {
+                    duration = (nextStart - line.timeMs).coerceAtLeast(100L)
+                }
+                val lineEnd = line.timeMs + duration
+                val syllables = line.syllables
+                if (syllables.size < 2) {
+                    if (duration != line.durationMs) line.copy(durationMs = duration) else line
+                } else {
+                    var changed = duration != line.durationMs
+                    val clamped = syllables.mapIndexed { si, syl ->
+                        val nextSyl = syllables.getOrNull(si + 1)
+                        var end = syl.timeMs + syl.durationMs
+                        if (nextSyl != null && end > nextSyl.timeMs) {
+                            end = nextSyl.timeMs
+                            changed = true
+                        }
+                        if (end > lineEnd) {
+                            end = lineEnd
+                            changed = true
+                        }
+                        if (end < syl.timeMs) {
+                            end = syl.timeMs
+                            changed = true
+                        }
+                        if (end - syl.timeMs != syl.durationMs) syl.copy(durationMs = end - syl.timeMs)
+                        else syl
+                    }
+                    if (changed) line.copy(durationMs = duration, syllables = clamped) else line
+                }
+            }
         }
     }
 }

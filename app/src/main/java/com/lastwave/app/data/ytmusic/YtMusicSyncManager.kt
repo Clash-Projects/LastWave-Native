@@ -3,6 +3,7 @@ package com.lastwave.app.data.ytmusic
 import android.util.Log
 import com.lastwave.app.data.generate.youtubeVideoIdOrNull
 import com.lastwave.app.data.music.InnerTubeMusicApi
+import com.lastwave.app.data.music.YtOwnedPlaylist
 import com.lastwave.app.data.playlist.PlaylistRepository
 import com.lastwave.app.data.playlist.SavedPlaylist
 import java.util.concurrent.ConcurrentHashMap
@@ -74,6 +75,7 @@ class YtMusicSyncManager @Inject constructor(
 
     private val negativeMatchCache = ConcurrentHashMap<String, Long>()
     @Volatile private var started = false
+    @Volatile private var sessionExpired = false
 
     fun start() {
         if (started) return
@@ -109,6 +111,7 @@ class YtMusicSyncManager @Inject constructor(
     suspend fun syncNow(reason: String = "manual"): Boolean = preferences.playlistSyncMutex.withLock {
         val conn = ytAuth.connection.value
         if (!conn.isConnected) {
+            sessionExpired = false
             _state.value = YtSyncState.Idle
             return false
         }
@@ -117,10 +120,22 @@ class YtMusicSyncManager @Inject constructor(
             return false
         }
 
+        // Proactively refresh credentials from system CookieManager if available or expired
+        if (sessionExpired) {
+            val refreshed = ytAuth.refreshCookiesFromCookieManager()
+            if (!refreshed) {
+                _state.value = YtSyncState.Failed("YouTube Music session expired. Please sign in again.")
+                return false
+            }
+            sessionExpired = false
+        } else {
+            ytAuth.refreshCookiesFromCookieManager()
+        }
+
         try {
             // Liked Songs included: it mirrors as a private "Liked Songs"
             // playlist. Selective-sync users opt in via the sync picker.
-            val allPlaylists = playlistRepository.getAll()
+            val allPlaylists = playlistRepository.getAll().filterNot { it.remotePlaylistId != null }
             val syncedIds = preferences.syncedPlaylistIds.first()
             val playlists = if (syncedIds != null) allPlaylists.filter { it.id in syncedIds } else allPlaylists
 
@@ -153,7 +168,9 @@ class YtMusicSyncManager @Inject constructor(
             // serialized full-map write per deleted playlist.
             if (removedAnyMapping) preferences.setMappings(mappings)
 
+            var authFailure = false
             playlists.forEachIndexed { index, playlist ->
+                if (authFailure) return@forEachIndexed
                 _state.value = YtSyncState.Running(index + 1, playlists.size, playlist.title)
                 try {
                     unmatchedTotal += reconcile(playlist, mappings)
@@ -162,8 +179,22 @@ class YtMusicSyncManager @Inject constructor(
                 } catch (e: Exception) {
                     failed++
                     Log.w(TAG, "YT sync failed for \"${playlist.title}\"", e)
+                    val isAuthError = (e is InnerTubeMusicApi.InnerTubeHttpException && (e.responseCode == 401 || e.responseCode == 403)) ||
+                        (e.cause is InnerTubeMusicApi.InnerTubeHttpException && ((e.cause as InnerTubeMusicApi.InnerTubeHttpException).responseCode == 401 || (e.cause as InnerTubeMusicApi.InnerTubeHttpException).responseCode == 403))
+                    if (isAuthError) {
+                        authFailure = true
+                    }
                 }
                 delay(WRITE_PACE_MS)
+            }
+
+            if (authFailure) {
+                val recovered = ytAuth.refreshCookiesFromCookieManager()
+                if (!recovered) {
+                    sessionExpired = true
+                    _state.value = YtSyncState.Failed("YouTube Music session expired. Please sign in again.")
+                    return false
+                }
             }
 
             val now = System.currentTimeMillis()
@@ -186,12 +217,36 @@ class YtMusicSyncManager @Inject constructor(
         var mapping = allMappings[playlist.id]
         var remoteId = mapping?.remotePlaylistId
 
-        // A failed read is not evidence that the mapped playlist was deleted.
-        val remote = remoteId?.let {
-            innerTube.fetchOwnedPlaylist(it)
-                ?: throw IllegalStateException("Could not read linked YouTube Music playlist")
+        var remote: YtOwnedPlaylist? = null
+        if (remoteId != null) {
+            try {
+                remote = innerTube.fetchOwnedPlaylist(remoteId)
+            } catch (e: InnerTubeMusicApi.InnerTubeHttpException) {
+                if (e.responseCode == 404) {
+                    Log.w(TAG, "Linked remote playlist $remoteId for \"${playlist.title}\" was deleted on YouTube; recreating mirror")
+                    remoteId = null
+                    mapping = null
+                    allMappings.remove(playlist.id)
+                    preferences.setMappings(allMappings)
+                } else {
+                    throw e
+                }
+            }
         }
         var mutatedRemote = false
+        if (remoteId != null && remote == null) {
+            // Check if remote playlist was deleted / unlinked on YouTube
+            val remoteExists = innerTube.fetchPlaylist(remoteId) != null
+            if (!remoteExists) {
+                Log.w(TAG, "Linked remote playlist $remoteId for \"${playlist.title}\" no longer exists on YouTube; recreating mirror")
+                remoteId = null
+                mapping = null
+                allMappings.remove(playlist.id)
+                preferences.setMappings(allMappings)
+            } else {
+                throw IllegalStateException("Could not read linked YouTube Music playlist: $remoteId")
+            }
+        }
         if (remoteId == null) {
             remoteId = innerTube.createRemotePlaylist(playlist.title)
                 ?: throw IllegalStateException("Could not create YouTube Music playlist")
@@ -249,7 +304,8 @@ class YtMusicSyncManager @Inject constructor(
             innerTube.fetchOwnedPlaylist(remoteId)
         } else {
             remote
-        } ?: throw IllegalStateException("Could not read complete YouTube Music playlist")
+        } ?: innerTube.fetchOwnedPlaylist(remoteId)
+        ?: throw IllegalStateException("Could not read complete YouTube Music playlist")
         val remoteItems = currentRemote.items
         val remoteVideoIds = remoteItems.map { it.videoId }
         val baseline = mapping?.lastSyncedVideoIds.orEmpty().toSet()

@@ -1,5 +1,23 @@
 # Changelog
 
+## [4.2.1] - 2026-09-26
+
+### Added
+- **True Bit-Perfect Audio Pipeline:** Introduced true bit-perfect hardware output with native C++ round-to-nearest-even conversion (`lrintf` / `llround`) in `usb-audio-output.cpp`, eliminating 1-LSB negative sample truncation on 24-bit FLAC streams. Added direct C++ integer bit-depth packing to bypass JVM conversion overhead.
+- **Dual-Crystal UAC2 Hardware Clock Switching:** Integrated automatic parsing of UAC2 `CLOCK_SOURCE` and `CLOCK_SELECTOR` descriptors to switch dynamically between 44.1 kHz and 48 kHz oscillator families on supported DACs. Added smart Soxr resampling fallback for single-crystal DACs.
+- **Expanded Lyrics Ecosystem:** Added support for Apple Music, Better Lyrics, Bini, Musixmatch, and SimpMusic lyrics providers, accompanied by TTML Rich Sync syllable parsing and word-by-word karaoke line splitting.
+- **Fluid Artwork Background & Large Widget:** Added animated fluid gradient mesh backgrounds to the player sheet and introduced a new Large Now Playing home screen widget.
+
+### Changed & Improved
+- **Audio Download Matching Precision:** Overhauled the download matching engine to apply strict artist penalties, expected duration validation (within 5 seconds), and direct video ID routing from track menus, preventing cross-artist mismatches during downloads.
+- **Signal Path Diagnostics:** Signal path dialog now displays exact DAC resampled status, original source bit depth (preventing 32-bit float decoder representation from masking track depth), active hardware sample rates, and detailed USB exclusive open failure diagnostics.
+- **Volume & Output Unity Gain:** Removed the restrictive `ignoreStreamMusicMax` cap in `ExclusiveUsbOutput` so 100% volume consistently achieves true 1.0f unity gain.
+
+### Fixed
+- **YouTube Liked Music & Playlist Crash:** Fixed a fatal `LazyColumn` key collision and layout edge-reorder crash when opening connected YouTube playlists (`LM` / `yt_liked`). Replaced unstable keys with synchronized, collision-proof occurrence suffixes and guarded layout info reads during progressive track streaming.
+- **USB Audio Timing & Glitches:** Corrected exclusive output timing to eliminate buzzing, forward-seek audio cutoffs, runaway seekbar animations, and pause spinner hangs.
+- **Player UI Fixes:** Resolved seekbar buffering clock glitches, repeat-one track skipping, and pill button white-out visual issues.
+
 ## [4.2.0] - 2026-09-23
 
 ### Added

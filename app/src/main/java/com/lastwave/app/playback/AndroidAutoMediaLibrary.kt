@@ -259,6 +259,7 @@ class AndroidAutoMediaLibrary @Inject constructor(
         artworkUrl = artworkUrl,
         playbackUrl = mediaStoreUri?.takeIf(String::isNotBlank)
             ?: Uri.fromFile(File(filePath)).toString(),
+        durationMs = durationMs.takeIf { it > 0L },
     )
 
     private fun browsableItem(

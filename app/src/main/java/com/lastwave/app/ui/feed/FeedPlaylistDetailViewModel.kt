@@ -178,6 +178,7 @@ class FeedPlaylistDetailViewModel @Inject constructor(
         album = album,
         artworkUrl = artworkUrl,
         videoId = videoId,
+        durationMs = durationSeconds?.takeIf { it > 0 }?.times(1_000L),
     )
 
 }

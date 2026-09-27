@@ -3,10 +3,15 @@ package com.lastwave.app.data.lossless
 import android.util.Log
 import com.lastwave.app.data.artwork.awaitSuccessfulBodyOrNull
 import com.lastwave.app.data.plugin.ModuleManager
+import com.lastwave.app.data.addon.AddonClient
+import com.lastwave.app.data.addon.AddonTrack
+import com.lastwave.app.data.addon.AddonStream
+import com.lastwave.app.data.local.SettingsPreferences
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import okhttp3.CertificatePinner
@@ -36,6 +41,7 @@ data class LosslessAudioStream(
 data class BackendCredentials(
     val baseUrl: String = "",
     val apiKey: String = "",
+    val isAddon: Boolean = false,
 )
 
 /** URI or inline MPD extracted from `/trackManifests`. */
@@ -55,13 +61,25 @@ private data class TidalCandidateItem(
     val performers: String = "",
     val isAtmos: Boolean = false,
     val isSpatial: Boolean = false,
-)
+    val rawAddonId: String = "",
+    /** Addon search flag (HI_RES_LOSSLESS vs LOSSLESS). Upstream answers a
+     *  hi_res /stream with HTTP 200 + 16-bit on CD-only masters instead of
+     *  an error, so without this the resolver stops at the first
+     *  downgraded success and a 24-bit master later in the list is never
+     *  tried. */
+    val audioQuality: String = "",
+) {
+    fun isHiResFlagged(): Boolean =
+        audioQuality.contains("HI_RES", ignoreCase = true) ||
+            audioQuality.contains("HI-RES", ignoreCase = true)
+}
 
 @Singleton
 class LosslessMusicApi @Inject constructor(
     okHttpClient: OkHttpClient,
     private val moduleManager: ModuleManager,
     private val nativeSecrets: NativeSecrets,
+    private val settingsPreferences: SettingsPreferences,
 ) {
     private val client = okHttpClient.newBuilder()
         .connectTimeout(5, TimeUnit.SECONDS)
@@ -81,16 +99,8 @@ class LosslessMusicApi @Inject constructor(
     val isConfigured: Boolean
         get() {
             if (System.currentTimeMillis() < failureCooldownUntilMs) return false
-            val cached = cachedCredentials
-            if (cached != null) {
-                return cached.baseUrl.isNotBlank() && cached.apiKey.isNotBlank()
-            }
-            val nativeCreds = runCatching { nativeSecrets.credentials() }.getOrNull()
-            if (nativeCreds != null && nativeCreds.baseUrl.isNotBlank() && nativeCreds.apiKey.isNotBlank()) {
-                cachedCredentials = nativeCreds
-                return true
-            }
-            return false
+            val addonUrl = settingsPreferences.addonUrl.value
+            return settingsPreferences.addonEnabled.value && !addonUrl.isNullOrBlank()
         }
 
     /**
@@ -142,6 +152,7 @@ class LosslessMusicApi @Inject constructor(
         }
 
         private val MANIFEST_CODECS = Regex("""codecs="([^"]+)"""")
+        private val MANIFEST_SAMPLE_RATE = Regex("""audioSamplingRate="(\d+)"""", RegexOption.IGNORE_CASE)
 
         /**
          * True when DASH manifest XML carries E-AC-3 / Dolby Atmos (or JOC).
@@ -174,6 +185,20 @@ class LosslessMusicApi @Inject constructor(
                 ).lowercase()
                 MANIFEST_CODECS.find(xml)?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }
             }.getOrNull()
+        }
+
+        /** Extract audioSamplingRate from base64 DASH data URL or XML. */
+        fun manifestSampleRateOf(dataUrl: String): Int? {
+            val b64 = dataUrl.substringAfter("base64,", "").trim()
+            val xml = if (b64.isNotEmpty() && dataUrl.startsWith("data:application/dash+xml")) {
+                runCatching {
+                    String(android.util.Base64.decode(b64, android.util.Base64.DEFAULT), Charsets.UTF_8)
+                }.getOrNull()
+            } else if (dataUrl.trimStart().startsWith("<")) {
+                dataUrl
+            } else null
+            if (xml.isNullOrBlank()) return null
+            return MANIFEST_SAMPLE_RATE.find(xml)?.groupValues?.getOrNull(1)?.toIntOrNull()?.takeIf { it > 0 }
         }
 
         /** True for E-AC-3 spatial codec labels. Pure; safe to unit-test on JVM. */
@@ -245,7 +270,22 @@ class LosslessMusicApi @Inject constructor(
         }
 
         private const val TAG = "LosslessMusicApi"
-        private const val MAX_DURATION_DIFFERENCE_SECONDS = 8
+        // Bug #2 ("same song, different language audio"): Tidal returns one
+        // entry per language for Indian soundtracks (e.g. Devara Part 1 in
+        // Telugu/Hindi/Tamil share title "Ayudha Pooja" and artist
+        // "Kaala Bhairava"). 8s tolerated cross-language duration overlap,
+        // so tighten to ±5s. Duration only vets when the caller supplies it.
+        private const val MAX_DURATION_DIFFERENCE_SECONDS = 5
+        // Language markers found in YouTube/Tidal titles and album names.
+        // Used to veto same-title different-language matches (bug #2) and to
+        // detect ambiguous candidate sets that must fall back to YouTube.
+        private val LANGUAGE_TOKENS = setOf(
+            "telugu", "tamil", "hindi", "kannada", "malayalam", "punjabi",
+            "marathi", "gujarati", "bengali", "bhojpuri", "odia", "oriya",
+            "assamese", "urdu", "sanskrit", "english", "spanish", "french",
+            "german", "italian", "portuguese", "japanese", "korean", "chinese",
+            "arabic", "turkish",
+        )
         private val DIACRITICS = Regex("\\p{M}+")
         private val NON_ALPHANUMERIC = Regex("[^a-z0-9]+")
         private val MULTI_SPACE = Regex("\\s+")
@@ -289,36 +329,13 @@ class LosslessMusicApi @Inject constructor(
     }
 
     suspend fun getCredentials(): BackendCredentials? = withContext(Dispatchers.IO) {
-        cachedCredentials?.let { return@withContext it }
-
-        // 1. Primary: Native secrets (ARM code + signature verification)
-        val nativeCreds = runCatching { nativeSecrets.credentials() }.getOrNull()
-        if (nativeCreds != null && nativeCreds.baseUrl.isNotBlank() && nativeCreds.apiKey.isNotBlank()) {
-            cachedCredentials = nativeCreds
-            Log.i(TAG, "Backend credentials loaded from native secrets: baseUrl=${nativeCreds.baseUrl}")
-            return@withContext nativeCreds
-        } else {
-            Log.w(TAG, "Native credentials missing or incomplete (baseUrl='${nativeCreds?.baseUrl}', apiKey blank=${nativeCreds?.apiKey.isNullOrBlank()})")
+        val addonUrl = settingsPreferences.addonUrl.value
+        val addonEnabled = settingsPreferences.addonEnabled.value
+        if (addonEnabled && !addonUrl.isNullOrBlank()) {
+            val normalized = AddonClient.normalizeBase(addonUrl)
+            return@withContext BackendCredentials(baseUrl = normalized, apiKey = "addon", isAddon = true)
         }
 
-        // 2. Fallback: .lwp module config
-        val handles = runCatching { moduleManager.enabledHandles() }.getOrNull() ?: emptyList()
-        for (handle in handles) {
-            val json = moduleManager.readDecryptedConfig(handle)
-            if (json != null) {
-                val url = json.optString("baseUrl").ifBlank { json.optJSONObject("tidal")?.optString("baseUrl").orEmpty() }
-                if (url.isNotBlank()) {
-                    val key = nativeCreds?.apiKey.orEmpty().ifBlank { json.optString("apiKey") }
-                    if (key.isNotBlank()) {
-                        val creds = BackendCredentials(baseUrl = url.trimEnd('/'), apiKey = key)
-                        cachedCredentials = creds
-                        Log.i(TAG, "Backend credentials loaded from .lwp module config: baseUrl=${creds.baseUrl}")
-                        return@withContext creds
-                    }
-                }
-            }
-        }
-        Log.w(TAG, "No backend credentials found in native secrets or .lwp module configs")
         null
     }
 
@@ -329,77 +346,28 @@ class LosslessMusicApi @Inject constructor(
         expectedAlbum: String? = null,
         preferredQuality: Int = QUALITY_MAX_HI_RES,
         excludedUrls: Set<String> = emptySet(),
+        isDownload: Boolean = false,
     ): LosslessAudioStream? = withContext(Dispatchers.IO) {
         if (preferredQuality == QUALITY_YOUTUBE || title.isBlank() || artist.isBlank()) {
-            Log.d(TAG, "resolveStream skipped: preferredQuality=$preferredQuality, title='$title', artist='$artist'")
             return@withContext null
         }
 
         val creds = getCredentials()
-        if (creds == null || creds.baseUrl.isBlank() || creds.apiKey.isBlank()) {
-            Log.w(TAG, "resolveStream aborted for '$title': credentials are null or blank")
+        if (creds == null || creds.baseUrl.isBlank() || !creds.isAddon) {
             return@withContext null
         }
-        Log.i(TAG, "resolveStream starting for '$title' by '$artist' (preferredQuality=$preferredQuality)")
+        Log.i(TAG, "resolveStream starting for '$title' by '$artist' via addon (preferredQuality=$preferredQuality, isDownload=$isDownload)")
 
-        try {
-            // 1. Search Tidal via backend
-            val candidates = findVerifiedCandidates(
-                title = title,
-                artist = artist,
-                expectedDurationSeconds = expectedDurationSeconds,
-                expectedAlbum = expectedAlbum,
-                creds = creds,
-                preferredQuality = preferredQuality,
-            )
-            if (candidates.isEmpty()) {
-                Log.w(TAG, "resolveStream: No matching Tidal candidate found for '$title' by '$artist'")
-                return@withContext null
-            }
-            Log.i(TAG, "resolveStream: Matched ${candidates.size} Tidal candidate(s) for '$title'. Top candidate id=${candidates.first().id}, atmos=${candidates.first().isAtmos}")
-
-            // 2. Fetch Tidal streaming manifest in tier attempt order (e.g. Atmos -> Hi-Res -> Lossless -> 320k)
-            val qualitiesToTry = getQualityAttemptOrder(preferredQuality)
-            for (quality in qualitiesToTry) {
-                currentCoroutineContext().ensureActive()
-                val targetCandidates = if (quality == QUALITY_DOLBY_ATMOS) {
-                    val atmosMatches = candidates.filter { it.isAtmos || it.isSpatial }
-                    if (atmosMatches.isNotEmpty()) atmosMatches else listOf(candidates.first())
-                } else {
-                    val stereoMatches = candidates.filter { !it.isAtmos && !it.isSpatial }
-                    if (stereoMatches.isNotEmpty()) stereoMatches else candidates
-                }
-
-                for (candidate in targetCandidates.take(2)) {
-                    currentCoroutineContext().ensureActive()
-                    val stream = fetchTrackStreamUrl(candidate, quality, creds = creds)
-                    if (stream == null || stream.url in excludedUrls) continue
-                    // Never leak an Atmos (E-AC-3) mix into a stereo request:
-                    // devices without an EC-3 decoder fail on it outright.
-                    if (preferredQuality != QUALITY_DOLBY_ATMOS && isAtmosStreamUrl(stream.url)) continue
-                    Log.i(TAG, "resolveStream: Acquired stream for track ${candidate.id}: formatId=${stream.formatId}, bitDepth=${stream.bitDepth}, sampleRate=${stream.samplingRate}kHz, bitrate=${stream.bitrateKbps}kbps, codec=${stream.audioCodecOverride ?: "PCM"}")
-                    consecutiveFailures = 0
-                    failureCooldownUntilMs = 0L
-                    return@withContext stream
-                }
-            }
-            null
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.d(TAG, "Lossless Tidal resolution failed: ${e.message}")
-            // Network blips/timeouts must not trigger the 60s backend
-            // cooldown: the backend is healthy, the radio isn't. Only real
-            // backend failures back off; transient IO just returns null and
-            // the next track tries again immediately.
-            if (!isNetworkException(e)) {
-                consecutiveFailures++
-                if (consecutiveFailures >= 2) {
-                    failureCooldownUntilMs = System.currentTimeMillis() + 60_000L
-                }
-            }
-            null
-        }
+        return@withContext resolveFromAddon(
+            title = title,
+            artist = artist,
+            expectedDurationSeconds = expectedDurationSeconds,
+            expectedAlbum = expectedAlbum,
+            preferredQuality = preferredQuality,
+            addonBaseUrl = creds.baseUrl,
+            excludedUrls = excludedUrls,
+            isDownload = isDownload,
+        )
     }
 
     private fun isNetworkException(error: Throwable): Boolean {
@@ -416,14 +384,17 @@ class LosslessMusicApi @Inject constructor(
         return false
     }
 
-    private suspend fun findVerifiedCandidates(
+    private suspend fun resolveFromAddon(
         title: String,
         artist: String,
         expectedDurationSeconds: Int?,
         expectedAlbum: String?,
-        creds: BackendCredentials,
         preferredQuality: Int,
-    ): List<TidalCandidateItem> {
+        addonBaseUrl: String,
+        excludedUrls: Set<String>,
+        isDownload: Boolean = false,
+    ): LosslessAudioStream? {
+        val addonClient = AddonClient(addonBaseUrl, client, nativeSecrets = nativeSecrets)
         val cleanArtist = cleanForSearch(artist).ifBlank { artist }
         val cleanTitle = cleanForSearch(title).ifBlank { title }
         val queries = listOf(
@@ -431,19 +402,39 @@ class LosslessMusicApi @Inject constructor(
             cleanTitle.trim(),
         ).distinct()
 
+        val isAtmosPreferred = preferredQuality == QUALITY_DOLBY_ATMOS
+        val qualityParam = when (preferredQuality) {
+            QUALITY_DOLBY_ATMOS -> "lossless"
+            QUALITY_MAX_HI_RES, QUALITY_HI_RES_96 -> "hi_res"
+            QUALITY_CD_LOSSLESS -> "lossless"
+            QUALITY_MP3_320 -> "high"
+            QUALITY_DATA_SAVER -> "low"
+            else -> "lossless"
+        }
+
+        var candidates: List<TidalCandidateItem> = emptyList()
         for (query in queries) {
             currentCoroutineContext().ensureActive()
-            val url = "${creds.baseUrl}/search/?s=" + URLEncoder.encode(query, "UTF-8")
-            val reqBuilder = Request.Builder().url(url).get()
-            if (creds.apiKey.isNotBlank()) {
-                reqBuilder.addHeader("X-API-Key", creds.apiKey)
-            }
+            val searchResult = addonClient.search(query, qualityParam, isAtmosPreferred)
+            val tracks = searchResult.getOrNull() ?: continue
+            if (tracks.isEmpty()) continue
 
-            val body = resolutionClient.newCall(reqBuilder.build()).awaitSuccessfulBodyOrNull() ?: continue
-            val items = parseTidalSearchItems(body)
-            if (items.isEmpty()) continue
-
-            val verified = items.asSequence()
+            val verified = tracks.asSequence()
+                .map { track ->
+                    TidalCandidateItem(
+                        id = track.id.toLongOrNull() ?: track.id.hashCode().toLong(),
+                        title = track.title,
+                        duration = track.duration.toInt(),
+                        performerName = track.artist,
+                        albumArtistName = track.artist,
+                        albumTitle = track.album,
+                        performers = track.artist,
+                        isAtmos = track.atmos || track.audioModes.any { it.contains("DOLBY", ignoreCase = true) || it.contains("ATMOS", ignoreCase = true) },
+                        isSpatial = track.audioModes.any { it.contains("360", ignoreCase = true) || it.contains("SPATIAL", ignoreCase = true) },
+                        rawAddonId = track.id,
+                        audioQuality = track.audioQuality,
+                    )
+                }
                 .mapNotNull { item ->
                     verifiedMatchScore(
                         item = item,
@@ -453,250 +444,127 @@ class LosslessMusicApi @Inject constructor(
                         expectedAlbum = expectedAlbum,
                     )?.let { score ->
                         var finalScore = score
-                        if (preferredQuality == QUALITY_DOLBY_ATMOS && (item.isAtmos || item.isSpatial)) finalScore += 200
+                        if (isAtmosPreferred && (item.isAtmos || item.isSpatial)) finalScore += 200
                         item to finalScore
                     }
                 }
-                .sortedWith(
-                    compareByDescending<Pair<TidalCandidateItem, Int>> { it.second },
-                )
+                .sortedWith(compareByDescending { it.second })
                 .map { it.first }
-                .distinctBy { it.id }
+                .distinctBy { it.rawAddonId.ifBlank { it.id.toString() } }
                 .toList()
 
             if (verified.isNotEmpty()) {
-                return verified
+                val gated = gateAmbiguousLanguage(verified, title, expectedAlbum)
+                if (gated.isNotEmpty()) {
+                    candidates = gated
+                    break
+                }
             }
-            // Backend answered but scoring vetoed every candidate — log it:
-            // silent misses here are the #1 reason lossless degrades to
-            // YouTube with a generic badge.
-            Log.d(TAG, "no verified match for '$title' / '$artist' among ${items.size} backend candidates")
         }
 
-        return emptyList()
-    }
-
-    private fun parseTidalSearchItems(body: String): List<TidalCandidateItem> {
-        return runCatching {
-            val json = JSONObject(body)
-            val dataObj = json.optJSONObject("data") ?: return emptyList()
-            val items = dataObj.optJSONArray("items") ?: return emptyList()
-            val result = mutableListOf<TidalCandidateItem>()
-
-            for (i in 0 until items.length()) {
-                val item = items.optJSONObject(i) ?: continue
-                val id = item.optLong("id")
-                val itemTitle = item.optString("title")
-                if (id <= 0 || itemTitle.isBlank()) continue
-
-                val duration = item.optInt("duration", 0)
-                val artistsArray = item.optJSONArray("artists")
-                val performer = artistsArray?.optJSONObject(0)?.optString("name")
-                    ?: item.optJSONObject("artist")?.optString("name").orEmpty()
-                val performers = (0 until (artistsArray?.length() ?: 0))
-                    .mapNotNull { artistsArray?.optJSONObject(it)?.optString("name") }
-                    .joinToString(", ")
-                val albumTitle = item.optJSONObject("album")?.optString("title").orEmpty()
-                val (isAtmos, isSpatial) = parseSpatialFlags(item)
-
-                result.add(
-                    TidalCandidateItem(
-                        id = id,
-                        title = itemTitle,
-                        duration = duration,
-                        performerName = performer,
-                        albumArtistName = performer,
-                        albumTitle = albumTitle,
-                        performers = performers,
-                        isAtmos = isAtmos,
-                        isSpatial = isSpatial,
-                    ),
-                )
-            }
-            result
-        }.getOrDefault(emptyList())
-    }
-
-    private suspend fun fetchTrackStreamUrl(
-        candidate: TidalCandidateItem,
-        quality: Int,
-        creds: BackendCredentials,
-    ): LosslessAudioStream? {
-        if (quality == QUALITY_DOLBY_ATMOS) {
-            fetchTidalAtmosStream(candidate, creds)?.let { return it }
-            fetchTidalSpatialStream(candidate, creds)?.let { return it }
+        if (candidates.isEmpty()) {
+            Log.w(TAG, "resolveFromAddon: No matching candidate found for '$title' by '$artist'")
             return null
         }
 
-        val qualityParam = when (quality) {
-            QUALITY_MAX_HI_RES, QUALITY_HI_RES_96 -> "HI_RES_LOSSLESS"
-            QUALITY_CD_LOSSLESS -> "LOSSLESS"
-            QUALITY_MP3_320 -> "HIGH"
-            QUALITY_DATA_SAVER -> "LOW"
-            else -> "LOSSLESS"
+        // Hi-res preference: hi-res-flagged masters first (stable — score
+        // order kept within each group). A CD-only master otherwise scores
+        // identically to the 24-bit master and backend order wins the coin
+        // flip, parking playback at 16-bit forever.
+        val wantsHiRes = qualityParam == "hi_res" && !isAtmosPreferred
+        val ordered = if (wantsHiRes) {
+            candidates.sortedWith(compareByDescending<TidalCandidateItem> { it.isHiResFlagged() })
+        } else {
+            candidates
         }
-        return loadTrackManifest(candidate, qualityParam, quality, creds)
+
+        val qualitiesToTry = if (isAtmosPreferred) listOf("atmos", "lossless", "high") else listOf(qualityParam, "lossless", "high")
+        for (q in qualitiesToTry) {
+            val wantAtmos = q == "atmos" || isAtmosPreferred
+            val targetCandidates = if (wantAtmos) {
+                val atmosMatches = ordered.filter { it.isAtmos || it.isSpatial }
+                if (atmosMatches.isNotEmpty()) atmosMatches else listOf(ordered.first())
+            } else {
+                val stereoMatches = ordered.filter { !it.isAtmos && !it.isSpatial }
+                if (stereoMatches.isNotEmpty()) stereoMatches else ordered
+            }
+
+            // Hi-res tier scans wider: a silently-downgraded 16-bit answer
+            // below must not consume the attempt budget for the whole tier.
+            val tierBudget = if (wantsHiRes && q == "hi_res") 4 else 2
+            for (candidate in targetCandidates.take(tierBudget)) {
+                currentCoroutineContext().ensureActive()
+                val trackId = candidate.rawAddonId.ifBlank { candidate.id.toString() }
+                val streamResult = addonClient.stream(trackId, q, wantAtmos, isDownload = isDownload)
+                val stream = streamResult.getOrNull() ?: continue
+
+                val rawUrl = stream.dataUrl?.takeIf { it.isNotBlank() }
+                    ?: stream.url.takeIf { it.isNotBlank() }
+                    ?: stream.manifestXml?.takeIf { it.isNotBlank() }?.let { xml ->
+                        val b64 = android.util.Base64.encodeToString(xml.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+                        "data:application/dash+xml;base64,$b64"
+                    }
+                    ?: continue
+
+                if (rawUrl in excludedUrls) continue
+                if (!wantAtmos && isAtmosStreamUrl(rawUrl)) continue
+
+                // Atmos is a property of the STREAM (audioMode flag or spatial
+                // URL), never of the request: a stereo fallback for an Atmos
+                // preference must be labeled (and badged) as what it is.
+                val isStreamAtmos = (stream.audioMode?.contains("ATMOS", ignoreCase = true) == true) || isAtmosStreamUrl(rawUrl)
+                val manifestSampleRate = manifestSampleRateOf(rawUrl)
+                val rawSampleRate = if (stream.sampleRate > 1000) stream.sampleRate else stream.sampleRate * 1000.0
+                val effectiveSampleRate = manifestSampleRate?.toDouble() ?: rawSampleRate
+                val effectiveBitDepth = if (stream.bitDepth > 16) stream.bitDepth
+                    else if (effectiveSampleRate > 48000.0) 24
+                    else stream.bitDepth
+                val formatId = when {
+                    isStreamAtmos -> QUALITY_DOLBY_ATMOS
+                    effectiveBitDepth > 16 || effectiveSampleRate > 48000.0 -> QUALITY_MAX_HI_RES
+                    stream.codec.equals("flac", ignoreCase = true) || effectiveBitDepth == 16 -> QUALITY_CD_LOSSLESS
+                    stream.quality.equals("high", ignoreCase = true) -> QUALITY_MP3_320
+                    else -> QUALITY_CD_LOSSLESS
+                }
+
+                // A hi_res request answered with ≤16-bit/≤48kHz is a silent
+                // downgrade (CD-only master), not a hi-res hit: keep
+                // scanning candidates instead of parking playback at 16-bit
+                // while a 24-bit master sits later in the list. The
+                // "lossless" tier below still accepts 16-bit normally.
+                if (wantsHiRes && q == "hi_res" && !isStreamAtmos && formatId != QUALITY_MAX_HI_RES) {
+                    Log.i(TAG, "resolveFromAddon: candidate $trackId answered hi_res with ${effectiveBitDepth}-bit/${effectiveSampleRate}Hz; trying next candidate")
+                    continue
+                }
+
+                Log.i(TAG, "resolveFromAddon: Acquired stream for track $trackId: formatId=$formatId, bitDepth=$effectiveBitDepth, sampleRate=${effectiveSampleRate}Hz, codec=${stream.codec}")
+                consecutiveFailures = 0
+                failureCooldownUntilMs = 0L
+
+                return LosslessAudioStream(
+                    url = rawUrl,
+                    mimeType = "application/dash+xml",
+                    bitDepth = effectiveBitDepth,
+                    samplingRate = effectiveSampleRate / 1000.0,
+                    formatId = formatId,
+                    bitrateKbps = stream.bitrate?.let { if (it > 10_000) it / 1000 else it },
+                    trackId = candidate.id,
+                    durationSeconds = candidate.duration,
+                    audioCodecOverride = when {
+                        isStreamAtmos -> "DOLBY ATMOS"
+                        stream.codec.equals("mp3", ignoreCase = true) -> "MP3 320k"
+                        else -> null
+                    },
+                )
+            }
+        }
+        return null
     }
 
-    private suspend fun loadTrackManifest(
-        candidate: TidalCandidateItem,
-        qualityParam: String,
-        quality: Int,
-        creds: BackendCredentials,
-    ): LosslessAudioStream? {
-        val url = "${creds.baseUrl}/track/?id=${candidate.id}&quality=$qualityParam"
-        val reqBuilder = Request.Builder().url(url).get()
-        if (creds.apiKey.isNotBlank()) reqBuilder.addHeader("X-API-Key", creds.apiKey)
 
-        return try {
-            val body = resolutionClient.newCall(reqBuilder.build()).awaitSuccessfulBodyOrNull()
-            if (body == null) {
-                Log.w(TAG, "fetchTrackStreamUrl: HTTP response null or failed for track ${candidate.id} ($url)")
-                return null
-            }
-            val json = JSONObject(body)
-            val data = json.optJSONObject("data")
-            if (data == null) {
-                Log.w(TAG, "fetchTrackStreamUrl: 'data' object missing in response: ${body.take(160)}")
-                return null
-            }
-            val manifest = data.optString("manifest")
-            if (manifest.isBlank()) {
-                Log.w(TAG, "fetchTrackStreamUrl: manifest field is blank in response for track ${candidate.id}")
-                return null
-            }
 
-            val bitDepth = data.optInt("bitDepth", 16)
-            // Missing sampleRate used to become 44.1 kHz. A 96 kHz FLAC then
-            // looked like the app had resampled 44.1 → 96. Leave it unknown
-            // so the decoder's real rate is what the signal path shows.
-            val sampleRate = if (data.has("sampleRate")) data.optDouble("sampleRate") else 0.0
-            val audioQuality = data.optString("audioQuality", "LOSSLESS")
-            val manifestUrl = "data:application/dash+xml;base64,$manifest"
-            val manifestIsAtmos = isAtmosStreamUrl(manifestUrl) || isAtmosManifest(
-                runCatching {
-                    String(android.util.Base64.decode(manifest, android.util.Base64.DEFAULT), Charsets.UTF_8)
-                }.getOrDefault(""),
-            )
-            val manifestIsSpatial = !manifestIsAtmos && runCatching {
-                isSpatialManifest(String(android.util.Base64.decode(manifest, android.util.Base64.DEFAULT), Charsets.UTF_8))
-            }.getOrDefault(false)
-            val qualityUpper = audioQuality.uppercase()
-            val formatId = when {
-                manifestIsAtmos || manifestIsSpatial -> QUALITY_DOLBY_ATMOS
-                qualityUpper == "HI_RES_LOSSLESS" || qualityUpper == "HI_RES" -> QUALITY_MAX_HI_RES
-                qualityUpper == "LOSSLESS" -> QUALITY_CD_LOSSLESS
-                qualityUpper == "HIGH" -> QUALITY_MP3_320
-                qualityUpper == "LOW" -> QUALITY_DATA_SAVER
-                else -> quality
-            }
-            val codecOverride = when {
-                manifestIsAtmos -> "DOLBY ATMOS"
-                manifestIsSpatial -> "SPATIAL AUDIO"
-                else -> null
-            }
-            // A spatial request that came back as stereo FLAC is not Atmos.
-            if (quality == QUALITY_DOLBY_ATMOS && codecOverride == null) return null
-            val samplingRateKHz = if (sampleRate > 1000) sampleRate / 1000.0 else sampleRate
-            val bitrateKbps = if (formatId == QUALITY_MP3_320) 320 else if (formatId == QUALITY_DATA_SAVER) 96
-            else ((bitDepth * samplingRateKHz * 2 * 1000) / 1000).toInt()
 
-            LosslessAudioStream(
-                url = "data:application/dash+xml;base64,$manifest",
-                mimeType = "application/dash+xml",
-                bitDepth = bitDepth,
-                samplingRate = samplingRateKHz,
-                formatId = formatId,
-                bitrateKbps = bitrateKbps,
-                trackId = candidate.id,
-                durationSeconds = candidate.duration,
-                audioCodecOverride = codecOverride,
-            )
-        } catch (_: Exception) {
-            null
-        }
-    }
 
-    private suspend fun fetchTidalAtmosStream(
-        candidate: TidalCandidateItem,
-        creds: BackendCredentials,
-    ): LosslessAudioStream? =
-        fetchSpatialManifest(
-            candidate = candidate,
-            creds = creds,
-            query = "atmos=true",
-            accept = { isAtmosManifest(it) },
-            formatId = QUALITY_DOLBY_ATMOS,
-            codecOverride = "DOLBY ATMOS",
-            logLabel = "Atmos",
-        )
-
-    private suspend fun fetchTidalSpatialStream(
-        candidate: TidalCandidateItem,
-        creds: BackendCredentials,
-    ): LosslessAudioStream? =
-        fetchSpatialManifest(
-            candidate = candidate,
-            creds = creds,
-            query = "spatial=true",
-            accept = { isSpatialManifest(it) || isAtmosManifest(it) },
-            formatId = QUALITY_DOLBY_ATMOS,
-            codecOverride = "SPATIAL AUDIO",
-            logLabel = "Spatial",
-        )
-
-    private suspend fun fetchSpatialManifest(
-        candidate: TidalCandidateItem,
-        creds: BackendCredentials,
-        query: String,
-        accept: (String) -> Boolean,
-        formatId: Int,
-        codecOverride: String,
-        logLabel: String,
-    ): LosslessAudioStream? {
-        val url = "${creds.baseUrl}/trackManifests/?id=${candidate.id}&$query"
-        val reqBuilder = Request.Builder().url(url).get()
-        if (creds.apiKey.isNotBlank()) reqBuilder.addHeader("X-API-Key", creds.apiKey)
-
-        return try {
-            val body = resolutionClient.newCall(reqBuilder.build()).awaitSuccessfulBodyOrNull() ?: return null
-            val json = JSONObject(body)
-            val mpdXml = resolveManifestXml(json) ?: return null
-            if (!accept(mpdXml)) {
-                Log.d(TAG, "$logLabel manifest is not spatial for track ${candidate.id}; falling back")
-                return null
-            }
-            val b64 = android.util.Base64.encodeToString(mpdXml.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
-            LosslessAudioStream(
-                url = "data:application/dash+xml;base64,$b64",
-                mimeType = "application/dash+xml",
-                bitDepth = 24,
-                samplingRate = 48.0,
-                formatId = formatId,
-                bitrateKbps = 768,
-                trackId = candidate.id,
-                durationSeconds = candidate.duration,
-                audioCodecOverride = codecOverride,
-            )
-        } catch (error: Exception) {
-            Log.w(TAG, "$logLabel fetch failed for track ${candidate.id}: ${error.message}")
-            null
-        }
-    }
-
-    private suspend fun resolveManifestXml(json: JSONObject): String? {
-        val ref = extractAtmosManifestRef(json) ?: return null
-        ref.mpdXml?.takeIf { it.isNotBlank() }?.let { return it }
-        ref.mpdBase64?.takeIf { it.isNotBlank() }?.let { encoded ->
-            val decoded = runCatching {
-                String(android.util.Base64.decode(encoded, android.util.Base64.DEFAULT), Charsets.UTF_8)
-            }.getOrNull()
-            if (!decoded.isNullOrBlank()) return decoded
-        }
-        val mpdUri = ref.mpdUri?.takeIf { it.isNotBlank() } ?: return null
-        val mpdReq = Request.Builder().url(mpdUri).get().build()
-        return resolutionClient.newCall(mpdReq).awaitSuccessfulBodyOrNull()
-    }
 
     private fun verifiedMatchScore(
         item: TidalCandidateItem,
@@ -744,19 +612,94 @@ class LosslessMusicApi @Inject constructor(
 
         if (!isVerifiedArtistMatch(matchArtist, item.performerName, item.albumArtistName, item.performers)) return null
 
+        // Bug #2: same title + same artist in another language (Telugu vs
+        // Hindi vs Tamil). Veto when both sides declare a language and they
+        // are disjoint. One-sided markers (Tidal omits the tag) stay playable.
+        val expectedLanguages = extractLanguages("$title ${expectedAlbum.orEmpty()}")
+        val candidateLanguages = extractLanguages("${item.title} ${item.albumTitle}")
+        if (expectedLanguages.isNotEmpty() && candidateLanguages.isNotEmpty() &&
+            expectedLanguages.intersect(candidateLanguages).isEmpty()
+        ) {
+            Log.d(TAG, "reject candidate id=${item.id} title='${item.title}' album='${item.albumTitle}': language mismatch expected=$expectedLanguages candidate=$candidateLanguages for '$title'")
+            return null
+        }
+
         val durationDifference = if (expectedDurationSeconds != null && expectedDurationSeconds > 0) {
-            if (item.duration <= 0) return null
-            kotlin.math.abs(item.duration - expectedDurationSeconds).also { if (it > MAX_DURATION_DIFFERENCE_SECONDS) return null }
+            if (item.duration <= 0) {
+                Log.d(TAG, "reject candidate id=${item.id}: missing duration for '$title'")
+                return null
+            }
+            kotlin.math.abs(item.duration - expectedDurationSeconds).also {
+                if (it > MAX_DURATION_DIFFERENCE_SECONDS) {
+                    Log.d(TAG, "reject candidate id=${item.id}: duration ${item.duration}s vs expected ${expectedDurationSeconds}s (Δ${it}s) for '$title'")
+                    return null
+                }
+            }
         } else null
 
         var score = 1_000 - titleDistance * 50
         if (artistExact) score += 300
         if (variantMismatch) score -= 400
+        // Bug #2: album was only +120, so a wrong-language album with the
+        // same title/artist tied the correct one and backend order won.
+        // Exact album match now dominates; containment still scores well
+        // ("Devara Part 1" vs "Devara Part 1 - Telugu"); true mismatches
+        // are penalized so the right language outranks the wrong one.
         expectedAlbum?.takeIf(String::isNotBlank)?.let { album ->
-            if (normalizeTitle(album, "") == normalizeTitle(item.albumTitle, "")) score += 120
+            val normExpected = normalizeTitle(album, "")
+            val normCandidate = normalizeTitle(item.albumTitle, "")
+            if (normExpected.isNotBlank() && normCandidate.isNotBlank()) {
+                when {
+                    normExpected == normCandidate -> score += 500
+                    normCandidate.contains(normExpected) || normExpected.contains(normCandidate) -> score += 300
+                    else -> {
+                        val expTokens = normExpected.split(' ').filter { it.length > 1 }.toSet()
+                        val candTokens = normCandidate.split(' ').filter { it.length > 1 }.toSet()
+                        val expNumbers = Regex("""\b\d+\b""").findAll(normExpected).map { it.value }.toSet()
+                        val candNumbers = Regex("""\b\d+\b""").findAll(normCandidate).map { it.value }.toSet()
+                        val numbersClash = expNumbers.isNotEmpty() && candNumbers.isNotEmpty() && expNumbers != candNumbers
+                        val overlap = expTokens.intersect(candTokens).size
+                        if (!numbersClash && expTokens.isNotEmpty() && overlap >= minOf(2, expTokens.size) && overlap * 2 >= expTokens.size) {
+                            score += 150
+                        } else {
+                            score -= 250
+                            Log.d(TAG, "album mismatch penalty id=${item.id}: expected='$album' candidate='${item.albumTitle}' for '$title'")
+                        }
+                    }
+                }
+            }
         }
         durationDifference?.let { score += (MAX_DURATION_DIFFERENCE_SECONDS - it) * 10 }
         return score
+    }
+
+    private fun extractLanguages(raw: String): Set<String> {
+        if (raw.isBlank()) return emptySet()
+        return normalizeText(raw).split(' ').toSet().intersect(LANGUAGE_TOKENS)
+    }
+
+    /**
+     * Bug #2 gate: when the request carries no language marker but the
+     * verified set spans ≥2 languages (Telugu/Hindi/Tamil variants of the
+     * same title+artist), confidence is low — return empty so the caller
+     * falls back to YouTube (correct language) instead of playing the
+     * backend's first ordering. Returns the input unchanged when confident.
+     */
+    private fun gateAmbiguousLanguage(
+        verified: List<TidalCandidateItem>,
+        title: String,
+        expectedAlbum: String?,
+    ): List<TidalCandidateItem> {
+        if (verified.size < 2) return verified
+        if (extractLanguages("$title ${expectedAlbum.orEmpty()}").isNotEmpty()) return verified
+        val distinct = verified
+            .flatMap { extractLanguages("${it.title} ${it.albumTitle}").toList() }
+            .toSet()
+        if (distinct.size >= 2) {
+            Log.w(TAG, "ambiguous language $distinct among ${verified.size} candidates for '$title'; falling back to YouTube")
+            return emptyList()
+        }
+        return verified
     }
 
     private fun cleanForSearch(raw: String): String {

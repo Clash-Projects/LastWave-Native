@@ -25,10 +25,12 @@ class PlaylistImportManager @Inject constructor(
 ) {
 
     companion object {
-        /** True for the account's special Liked Music playlist (LM / VLLM). */
+        /** True for the account's special Liked Music / Liked Videos playlist (LM / VLLM / LL / VLLL). */
         fun isYtLikedId(id: String): Boolean {
             val clean = id.trim()
-            return clean == "LM" || clean == "VLLM" || clean.removePrefix("VL") == "LM"
+            return clean == "LM" || clean == "VLLM" || clean.removePrefix("VL") == "LM" ||
+                clean == "LL" || clean == "VLLL" || clean.removePrefix("VL") == "LL" ||
+                clean == "FEmusic_liked_videos"
         }
     }
 

@@ -111,6 +111,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -175,6 +176,7 @@ import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.DarkMode
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 private data class AccentPreset(val name: String, val hex: String)
 private val ACCENT_PRESETS = listOf(
@@ -307,6 +309,7 @@ fun SettingsScreen(
     var showEqSheet by remember { mutableStateOf(false) }
     var showLyricsAnimationSheet by remember { mutableStateOf(false) }
     var showLyricsProviderDialog by remember { mutableStateOf(false) }
+    var showLyricsOffsetDialog by remember { mutableStateOf(false) }
     var showLoudnessDialog by remember { mutableStateOf(false) }
     var showClarityPresetDialog by remember { mutableStateOf(false) }
     var showSyncPlaylistsSheet by remember { mutableStateOf(false) }
@@ -817,7 +820,7 @@ fun SettingsScreen(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_experimental))
-                    SettingsGroup(rowCount = 6) { index, position ->
+                    SettingsGroup(rowCount = 7) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.BubbleChart,
@@ -894,7 +897,60 @@ fun SettingsScreen(
                                 onClick = { showLyricsProviderDialog = true },
                                 position = position,
                             )
-                                                    }
+                            6 -> SettingsActionCard(
+                                icon = Icons.Filled.Timer,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = "Lyrics sync offset",
+                                subtitle = if (misc.lyricsOffsetMs == 0L) {
+                                    "Off \u2022 highlight follows the audio exactly"
+                                } else {
+                                    "${if (misc.lyricsOffsetMs > 0) "+" else ""}${misc.lyricsOffsetMs} ms \u2022 + shows lyrics early, \u2212 delays them"
+                                },
+                                onClick = { showLyricsOffsetDialog = true },
+                                position = position,
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SectionLabel(stringResource(R.string.settings_canvas_enabled))
+                    SettingsGroup(rowCount = if (misc.canvasEnabled) 3 else 1) { index, position ->
+                        when (index) {
+                            0 -> SettingsToggleCard(
+                                icon = Icons.Filled.SmartDisplay,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.settings_canvas_enabled),
+                                subtitle = stringResource(R.string.settings_canvas_enabled_sub),
+                                checked = misc.canvasEnabled,
+                                onCheckedChange = viewModel::setCanvasEnabled,
+                                position = position,
+                            )
+                            1 -> SettingsToggleCard(
+                                icon = Icons.Filled.Visibility,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_canvas_full_bleed),
+                                subtitle = stringResource(R.string.settings_canvas_full_bleed_sub),
+                                checked = misc.canvasFullBleed,
+                                onCheckedChange = viewModel::setCanvasFullBleed,
+                                position = position,
+                            )
+                            2 -> SettingsToggleCard(
+                                icon = Icons.Filled.CloudDownload,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = stringResource(R.string.settings_canvas_cellular),
+                                subtitle = stringResource(R.string.settings_canvas_cellular_sub),
+                                checked = misc.canvasOverCellular,
+                                onCheckedChange = viewModel::setCanvasOverCellular,
+                                position = position,
+                            )
+                        }
                     }
                 }
             }
@@ -955,7 +1011,7 @@ fun SettingsScreen(
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
                                 title = "Dolby Atmos / Spatial Audio",
                                 subtitle = if (misc.dolbyAtmosEnabled) {
-                                    "Direct Tidal multi-channel spatial audio (skips Qobuz)"
+                                    "Direct multi-channel spatial audio"
                                 } else {
                                     "Off \u2022 Streams standard stereo lossless audio"
                                 },
@@ -1613,6 +1669,15 @@ fun SettingsScreen(
         )
     }
 
+    // -- Lyrics sync offset stepper: shifts highlight/focus only --
+    if (showLyricsOffsetDialog) {
+        LyricsOffsetDialog(
+            currentMs = misc.lyricsOffsetMs,
+            onSelect = { viewModel.setLyricsOffsetMs(it) },
+            onDismiss = { showLyricsOffsetDialog = false },
+        )
+    }
+
     if (showLoudnessDialog) {
         LoudnessModeDialog(
             current = loudness.mode,
@@ -1674,7 +1739,7 @@ fun SettingsScreen(
 
     if (showQualityDialog) {
         val tiers = listOf(
-            Triple(28, "Dolby Atmos", "Spatial Immersive Audio • Tidal Master" to "ATMOS"),
+            Triple(28, "Dolby Atmos", "Spatial Immersive Audio • Master Audio" to "ATMOS"),
             Triple(27, "Max Quality", "Up to 24-bit / 192 kHz • Lossless Studio FLAC" to "24-BIT / 192k"),
             Triple(7, "Hi-Res Audio", "24-bit / 96 kHz • Lossless Studio FLAC" to "24-BIT / 96k"),
             Triple(6, "CD Lossless", "16-bit / 44.1 kHz • Lossless CD FLAC" to "16-BIT / 44.1k"),
@@ -1824,7 +1889,7 @@ fun SettingsScreen(
 
     if (showDownloadQualityDialog) {
         val downloadTiers = listOf(
-            Triple(28, "Dolby Atmos", "Spatial Immersive Audio • Tidal Master" to "ATMOS"),
+            Triple(28, "Dolby Atmos", "Spatial Immersive Audio • Master Audio" to "ATMOS"),
             Triple(27, "Max Quality", "Up to 24-bit / 192 kHz • Studio Master FLAC" to "24-BIT / 192k"),
             Triple(7, "Hi-Res Audio", "24-bit / 96 kHz • Studio FLAC" to "24-BIT / 96k"),
             Triple(6, "CD Lossless", "16-bit / 44.1 kHz • Bit-Exact CD FLAC" to "16-BIT / 44.1k"),
@@ -2007,11 +2072,11 @@ fun SettingsScreen(
 }
 
 private fun appVersionName(context: android.content.Context): String = try {
-    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "4.2.0"
+    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "4.2.1"
 } catch (error: Exception) {
-    "4.2.0"
+    "4.2.1"
 } catch (error: LinkageError) {
-    "4.2.0"
+    "4.2.1"
 }
 
 /** Small tap-scale used across the row-style cards on this screen for a
@@ -4132,6 +4197,57 @@ private fun LyricsProviderDialog(
                             )
                         }
                     }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_done)) }
+        },
+    )
+}
+
+@Composable
+private fun LyricsOffsetDialog(
+    currentMs: Long,
+    onSelect: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var draftMs by remember(currentMs) { mutableLongStateOf(currentMs) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Lyrics sync offset") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Nudges the highlight when a provider's timestamps run early or late. + shows lyrics early (fixes late lyrics), \u2212 delays them. Seekbar is unaffected.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    if (draftMs == 0L) "0 ms (off)" else "${if (draftMs > 0) "+" else ""}$draftMs ms",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                Slider(
+                    value = draftMs.toFloat(),
+                    onValueChange = { draftMs = it.roundToLong() },
+                    onValueChangeFinished = { onSelect(draftMs) },
+                    valueRange = -1000f..1000f,
+                    steps = 39,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        draftMs = (draftMs - 100).coerceIn(-3000L, 3000L)
+                        onSelect(draftMs)
+                    }) { Text("−100") }
+                    OutlinedButton(onClick = {
+                        draftMs = (draftMs + 100).coerceIn(-3000L, 3000L)
+                        onSelect(draftMs)
+                    }) { Text("+100") }
+                    FilledTonalButton(onClick = {
+                        draftMs = 0L
+                        onSelect(0L)
+                    }) { Text("Reset") }
                 }
             }
         },

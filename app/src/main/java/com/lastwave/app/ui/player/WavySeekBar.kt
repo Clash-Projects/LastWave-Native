@@ -103,13 +103,23 @@ fun WavySeekBar(
     }
     val dragging = frameworkDragging || dragPositionMs != null
 
+    // ExoPlayer reports C.TIME_UNSET (-9223372036854775807) until the
+    // container is parsed; coerce to 0 = unknown. Crucially, do NOT discard
+    // position while duration is unknown: the old `else 0L` froze the time
+    // label at 0:00 and pinned the bar, while the notification (system
+    // extrapolation via speed) kept moving. Show real elapsed + "--:--"
+    // until the duration arrives late, then fraction recovers automatically.
     val boundedDurationMs = durationMs.coerceAtLeast(0L)
     val boundedPositionMs = if (boundedDurationMs > 0L) {
         positionMs.coerceIn(0L, boundedDurationMs)
     } else {
-        0L
+        positionMs.coerceAtLeast(0L)
     }
-    val shownMs = (dragPositionMs?.toLong() ?: boundedPositionMs).coerceIn(0L, boundedDurationMs)
+    val shownMs = if (boundedDurationMs > 0L) {
+        (dragPositionMs?.toLong() ?: boundedPositionMs).coerceIn(0L, boundedDurationMs)
+    } else {
+        (dragPositionMs?.toLong() ?: boundedPositionMs).coerceAtLeast(0L)
+    }
     val shownFraction = if (boundedDurationMs > 0L) {
         (shownMs.toDouble() / boundedDurationMs.toDouble()).toFloat().coerceIn(0f, 1f)
     } else {
@@ -395,11 +405,20 @@ fun WavySeekBar(
             }
 
             Slider(
-                value = shownMs.toFloat().coerceIn(0f, boundedDurationMs.coerceAtLeast(1L).toFloat()),
+                // When duration is unknown the bar is indeterminate (fraction 0):
+                // pin the invisible touch layer to 0 so a real elapsed time
+                // (e.g. 5000ms with range 0..1) can't coerce to the end stop.
+                // Once the late duration arrives, value/range recover together.
+                value = if (boundedDurationMs > 0L) shownMs.toFloat().coerceIn(0f, boundedDurationMs.toFloat()) else 0f,
                 onValueChange = { dragPositionMs = it },
                 onValueChangeFinished = {
                     // Commit only this gesture's value; a finished callback
                     // with no value (press without movement) seeks nowhere.
+                    // Guarded by enabled above, but re-check: no duration = no seek.
+                    if (boundedDurationMs <= 0L) {
+                        dragPositionMs = null
+                        return@Slider
+                    }
                     val target = dragPositionMs?.toLong()?.coerceIn(0L, boundedDurationMs)
                     dragPositionMs = null
                     if (target != null) onSeek(target)
@@ -429,7 +448,7 @@ fun WavySeekBar(
                     color = textColor,
                 )
                 Text(
-                    text = "−${formatTime((boundedDurationMs - shownMs).coerceAtLeast(0))}",
+                    text = if (boundedDurationMs > 0L) "−${formatTime((boundedDurationMs - shownMs).coerceAtLeast(0))}" else "--:--",
                     style = if (isTranslucent) MaterialTheme.typography.labelSmall.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium) else MaterialTheme.typography.labelMedium,
                     color = textColor,
                 )

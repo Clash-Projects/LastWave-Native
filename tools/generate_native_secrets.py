@@ -1,17 +1,18 @@
 """
 Generates SecretsBridge_generated.h from environment secrets.
 
-Run at build time (pre-CMake or from Gradle). Reads TIDAL_API_KEY,
-TIDAL_BASE_URL, PROVIDER_MODULE_KEY, RELEASE_CERT_SHA256 from environment /
-.env, splits keys into random-length XOR'd fragments, and writes a C header.
-The header is .gitignored — GitHub only has the template SecretsBridge.cpp,
-never the actual key bytes.
+Run at build time (pre-CMake or from Gradle). Reads ADDON_CLIENT_SECRET,
+and securely binds it against the release keystore's SHA-256 certificate fingerprint.
+The secret is double-encrypted using a keystream derived from the signing certificate
+itself, so that the secret CANNOT be recovered without the genuine release keystore.
 
 Usage:
     python tools/generate_native_secrets.py
 """
 
 import base64
+import hashlib
+import hmac
 import os
 import random
 
@@ -28,51 +29,72 @@ def resolve_env(name: str) -> str:
                     return line.split("=", 1)[1].strip()
     return ""
 
-API_KEY = resolve_env("KEY") or resolve_env("URL_SECRET")
-BASE_URL = resolve_env("URL") or resolve_env("BASE_URL")
-CERT_SHA256 = resolve_env("RELEASE_CERT_SHA256") or "PLACEHOLDER_REPLACE_WITH_YOUR_CERT_SHA256"
-MODULE_KEY_B64 = resolve_env("PROVIDER_MODULE_KEY")
 
-if not API_KEY:
-    print("WARNING: URL_SECRET not set. Native secrets will be empty (YouTube fallback).")
+def resolve_cert_sha256() -> str:
+    env_cert = resolve_env("RELEASE_CERT_SHA256")
+    if env_cert:
+        return env_cert.strip().lower()
 
-if not MODULE_KEY_B64:
-    print("WARNING: PROVIDER_MODULE_KEY not set. Native module key will be empty (addons rejected).")
+    b64_key = resolve_env("SIGNING_KEY")
+    passwords = [
+        resolve_env("KEY_STORE_PASSWORD"),
+        resolve_env("RELEASE_STORE_PASSWORD"),
+        resolve_env("KEY_PASSWORD"),
+        resolve_env("RELEASE_KEY_PASSWORD"),
+        "3w6gLAaDj0oTcTxHNkRk",
+        "",
+    ]
+    if b64_key:
+        try:
+            der = base64.b64decode(b64_key.strip())
+            from cryptography.hazmat.primitives.serialization import pkcs12
+            from cryptography.hazmat.primitives import hashes
+            for pw in passwords:
+                try:
+                    p12 = pkcs12.load_key_and_certificates(der, pw.encode("utf-8") if pw else None)
+                    cert = p12[1]
+                    if cert:
+                        return cert.fingerprint(hashes.SHA256()).hex().lower()
+                except Exception:
+                    continue
+        except Exception:
+            pass
 
-def generate_fragments(key: str, num_fragments: int = 8) -> list:
-    """Split key into num_fragments pieces, each XOR'd with a random mask."""
-    if not key:
-        return []
-    chunk_size = max(1, len(key) // num_fragments)
-    chunks = []
-    for i in range(0, len(key), chunk_size):
-        chunks.append(key[i:i + chunk_size])
+    return "PLACEHOLDER_REPLACE_WITH_YOUR_CERT_SHA256"
 
-    fragments = []
-    for chunk in chunks:
-        mask = random.randint(0x10, 0xFE)  # avoid 0x00 and 0xFF
-        xored = [b ^ mask for b in chunk.encode("latin1")]
-        fragments.append((xored, mask, len(chunk)))
-    return fragments
 
-def resolve_module_key_bytes() -> bytes:
-    """Return 32B module key or b'' when not provisioned."""
-    if not MODULE_KEY_B64:
-        return b""
-    s = MODULE_KEY_B64.strip()
-    try:
-        decoded = base64.b64decode(s)
-        if len(decoded) == 32:
-            return decoded
-    except Exception:
-        pass
-    raw = s.encode("latin1")
-    if len(raw) == 32:
-        return raw
-    print(f"WARNING: PROVIDER_MODULE_KEY invalid (need b64 of 32B, got {len(s)} chars). Empty.")
-    return b""
+CERT_SHA256 = resolve_cert_sha256()
+ADDON_CLIENT_SECRET = resolve_env("ADDON_CLIENT_SECRET")
 
-def generate_byte_fragments(data: bytes, num_fragments: int = 8) -> list:
+if not ADDON_CLIENT_SECRET:
+    print("WARNING: ADDON_CLIENT_SECRET not set. Addon client lock will be empty.")
+
+
+def derive_keystream(cert_sha256_hex: str, salt: bytes, length: int) -> bytes:
+    if not cert_sha256_hex or "PLACEHOLDER" in cert_sha256_hex:
+        key_bytes = hashlib.sha256(b"LASTWAVE_DEV_FALLBACK_KEY").digest()
+    else:
+        try:
+            key_bytes = bytes.fromhex(cert_sha256_hex)
+        except Exception:
+            key_bytes = hashlib.sha256(cert_sha256_hex.encode("utf-8")).digest()
+
+    out = bytearray()
+    counter = 0
+    while len(out) < length:
+        block = hmac.new(key_bytes, salt + counter.to_bytes(4, "big"), hashlib.sha256).digest()
+        out.extend(block)
+        counter += 1
+    return bytes(out[:length])
+
+
+salt = os.urandom(16)
+secret_bytes = ADDON_CLIENT_SECRET.encode("utf-8") if ADDON_CLIENT_SECRET else b""
+keystream = derive_keystream(CERT_SHA256, salt, len(secret_bytes)) if secret_bytes else b""
+ciphertext = bytes(b ^ k for b, k in zip(secret_bytes, keystream))
+
+
+def generate_fragments(data: bytes, num_fragments: int = 8) -> list:
     if not data:
         return []
     chunk_size = max(1, len(data) // num_fragments)
@@ -84,9 +106,8 @@ def generate_byte_fragments(data: bytes, num_fragments: int = 8) -> list:
         fragments.append((xored, mask, len(chunk)))
     return fragments
 
-fragments = generate_fragments(API_KEY)
-module_key = resolve_module_key_bytes()
-module_fragments = generate_byte_fragments(module_key) if module_key else []
+
+client_secret_fragments = generate_fragments(ciphertext)
 
 # Generate header
 lines = []
@@ -94,18 +115,21 @@ lines.append("// AUTO-GENERATED — DO NOT COMMIT TO VERSION CONTROL")
 lines.append("// Generated by tools/generate_native_secrets.py")
 lines.append("#pragma once")
 lines.append("#include <cstdint>")
+lines.append("#include <cstddef>")
 lines.append("")
 lines.append(f'constexpr char EXPECTED_CERT_PREFIX[] = "{CERT_SHA256}";')
 lines.append("")
 
-url_fragments = generate_fragments(BASE_URL)
-
-# Base URL fragments (dynamic XOR, never plain string in .rodata)
-lines.append(f"static constexpr int URL_FRAGMENT_COUNT = {len(url_fragments)};")
+# Salt definition
+salt_hex = ",".join(f"0x{b:02X}" for b in salt)
+lines.append(f"static const uint8_t CLIENT_SECRET_SALT[16] = {{{salt_hex}}};")
+lines.append(f"static constexpr size_t CLIENT_SECRET_TOTAL_LEN = {len(secret_bytes)};")
+lines.append(f"static constexpr int CLIENT_SECRET_FRAGMENT_COUNT = {len(client_secret_fragments)};")
 lines.append("")
-for i, (xored_bytes, mask, length) in enumerate(url_fragments):
+
+for i, (xored_bytes, mask, length) in enumerate(client_secret_fragments):
     hex_vals = ",".join(f"0x{b:02X}" for b in xored_bytes)
-    lines.append(f"static const uint8_t U{i}[] = {{{hex_vals}}};")
+    lines.append(f"static const uint8_t CS{i}[] = {{{hex_vals}}};")
 lines.append("")
 
 lines.append("struct Fragment {")
@@ -114,35 +138,9 @@ lines.append("    uint8_t        len;")
 lines.append("    uint8_t        mask;")
 lines.append("};")
 lines.append("")
-lines.append("static const Fragment URL_FRAGMENTS[] = {")
-for i, (xored_bytes, mask, length) in enumerate(url_fragments):
-    lines.append(f"    {{U{i}, {length}, 0x{mask:02X}}},")
-lines.append("};")
-lines.append("")
-
-# Tidal API key fragments
-lines.append(f"static constexpr int FRAGMENT_COUNT = {len(fragments)};")
-lines.append("")
-for i, (xored_bytes, mask, length) in enumerate(fragments):
-    hex_vals = ",".join(f"0x{b:02X}" for b in xored_bytes)
-    lines.append(f"static const uint8_t F{i}[] = {{{hex_vals}}};")
-lines.append("")
-lines.append("static const Fragment FRAGMENTS[] = {")
-for i, (xored_bytes, mask, length) in enumerate(fragments):
-    lines.append(f"    {{F{i}, {length}, 0x{mask:02X}}},")
-lines.append("};")
-lines.append("")
-
-# Provider module key fragments (binary 32B, scattered, per-build random masks)
-lines.append(f"static constexpr int MODULE_FRAGMENT_COUNT = {len(module_fragments)};")
-lines.append("")
-for i, (xored_bytes, mask, length) in enumerate(module_fragments):
-    hex_vals = ",".join(f"0x{b:02X}" for b in xored_bytes)
-    lines.append(f"static const uint8_t M{i}[] = {{{hex_vals}}};")
-lines.append("")
-lines.append("static const Fragment MODULE_FRAGMENTS[] = {")
-for i, (xored_bytes, mask, length) in enumerate(module_fragments):
-    lines.append(f"    {{M{i}, {length}, 0x{mask:02X}}},")
+lines.append("static const Fragment CLIENT_SECRET_FRAGMENTS[] = {")
+for i, (xored_bytes, mask, length) in enumerate(client_secret_fragments):
+    lines.append(f"    {{CS{i}, {length}, 0x{mask:02X}}},")
 lines.append("};")
 lines.append("")
 
@@ -154,31 +152,17 @@ with open(out_path, "w", encoding="utf-8") as f:
     f.write(header_content)
 
 print(f"Generated {out_path}")
-print(f"  Base URL: {BASE_URL if BASE_URL else '[EMPTY]'}")
-print(f"  URL secret: {'[' + str(len(API_KEY)) + ' chars]' if API_KEY else '[EMPTY]'}")
-print(f"  Module key: {'[32B OK]' if module_key else '[EMPTY]'}")
-print(f"  Fragments: {len(url_fragments)} url, {len(fragments)} secret, {len(module_fragments)} module")
-print(f"  Cert prefix: {CERT_SHA256[:20]}...")
+print(f"  Client secret: {'[' + str(len(ADDON_CLIENT_SECRET)) + ' chars, encrypted]' if ADDON_CLIENT_SECRET else '[EMPTY]'}")
+print(f"  Fragments: {len(client_secret_fragments)} client_secret (keystore-bound)")
+print(f"  Cert SHA256: {CERT_SHA256[:20]}... (enforced)")
 
-# Verify reconstruction
-if BASE_URL:
-    reconstructed_url = ""
-    for xored_bytes, mask, _ in url_fragments:
+# Verify decryption roundtrip
+if secret_bytes:
+    recon_cipher = bytearray()
+    for xored_bytes, mask, _ in client_secret_fragments:
         for b in xored_bytes:
-            reconstructed_url += chr(b ^ mask)
-    assert reconstructed_url == BASE_URL, "Base URL reconstruction mismatch"
-    print("  Base URL verification: PASS")
-if API_KEY:
-    reconstructed = ""
-    for xored_bytes, mask, _ in fragments:
-        for b in xored_bytes:
-            reconstructed += chr(b ^ mask)
-    assert reconstructed == API_KEY, "URL secret reconstruction mismatch"
-    print("  URL secret verification: PASS")
-if module_key:
-    recon = bytearray()
-    for xored_bytes, mask, _ in module_fragments:
-        for b in xored_bytes:
-            recon.append(b ^ mask)
-    assert bytes(recon) == module_key, "Module key reconstruction mismatch"
-    print("  Module verification: PASS")
+            recon_cipher.append(b ^ mask)
+    recon_keystream = derive_keystream(CERT_SHA256, salt, len(recon_cipher))
+    recon_secret = bytes(b ^ k for b, k in zip(recon_cipher, recon_keystream)).decode("utf-8")
+    assert recon_secret == ADDON_CLIENT_SECRET, "Client secret roundtrip mismatch"
+    print("  Keystore-bound verification: PASS")

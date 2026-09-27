@@ -1,11 +1,13 @@
 package com.lastwave.app.widget
 
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.content.Context
 import android.graphics.Bitmap
+import android.media.MediaMetadata
+import android.media.session.PlaybackState
+import android.os.SystemClock
 import android.util.Log
-import androidx.glance.appwidget.GlanceAppWidget
-import androidx.glance.appwidget.GlanceAppWidgetManager
-import androidx.glance.appwidget.updateAll
 import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.CoroutineScope
@@ -15,58 +17,71 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 private const val TAG = "WidgetUpdater"
 private const val ART_FILE_NAME = "widget_now_playing_art.png"
-private const val WAVE_FRAME_INTERVAL_MS = 550L
+private const val TICK_INTERVAL_MS = 600L
 
-/** Writes and refreshes the shared state of the now-playing widget. */
+/**
+ * Single-widget publisher: plain SharedPreferences + AppWidgetManager.
+ *
+ * Same public API as before (publish / clear / setPlaying / sync /
+ * refreshTheme) so MediaScrobbleListenerService, MusicPlaybackService,
+ * MusicPlayer and LastWaveApplication keep compiling unchanged — but the
+ * inside is dependency-free: no Glance, no Hilt, no theme repo.
+ *
+ * While playing, a light 600ms ticker re-pushes only the equalizer frame
+ * and the live progress fraction (read off the MediaController, never
+ * written to disk). It stops on pause/clear or when no widget is placed.
+ */
 object WidgetUpdater {
-    // Widgets are static RemoteViews, so the artwork's 3-frame equalizer
-    // waves are driven by a light ticker that re-publishes only while a
-    // session is actively playing (550ms per frame). It stops on pause,
-    // clear, or when no widget is placed anymore.
 
     @Volatile
-    internal var animationFrame: Int = 0
+    var animationFrame: Int = 0
         private set
 
-    private val animationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-
-    // Snapshot write + Glance refresh must be atomic: the playback service
-    // (track transitions, artwork landing late) and the scrobble listener
-    // (external apps) publish from different threads, and interleaved
-    // write/write or write/refresh pairs could otherwise leave a stale
-    // snapshot on screen with no later event to repair it (issue #94).
-    // The 550ms wave ticker only re-composes and stays outside the mutex.
-    private val publishMutex = kotlinx.coroutines.sync.Mutex()
+    private val tickerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     @Volatile
-    private var waveAnimationJob: Job? = null
+    private var tickerJob: Job? = null
 
-    /** Starts the equalizer frame ticker for active playback (idempotent). */
-    internal fun startWaveAnimation(context: Context) {
+    /** Starts the equalizer/progress ticker for active playback (idempotent). */
+    fun startWaveAnimation(context: Context) {
         synchronized(this) {
-            if (waveAnimationJob?.isActive == true) return
-            waveAnimationJob = animationScope.launch {
-                val appContext = context.applicationContext
+            if (tickerJob?.isActive == true) return
+            val app = context.applicationContext
+            tickerJob = tickerScope.launch {
                 while (isActive) {
-                    delay(WAVE_FRAME_INTERVAL_MS)
+                    delay(TICK_INTERVAL_MS)
                     animationFrame = (animationFrame + 1) % 3
-                    if (!updateAll(appContext)) break
+                    val snapshot = WidgetSnapshot.read(app)
+                    if (!snapshot.hasSession || !snapshot.isPlaying) {
+                        stopWaveAnimation()
+                        return@launch
+                    }
+                    val fraction = readLiveFraction(app, snapshot.progress)
+                    if (!pushAll(app, eqFrame = animationFrame, progressOverride = fraction)) break
                 }
             }
         }
     }
 
-    /** Stops the equalizer frame ticker. */
-    internal fun stopWaveAnimation() {
+    /** Stops the equalizer/progress ticker. */
+    fun stopWaveAnimation() {
         synchronized(this) {
-            waveAnimationJob?.cancel()
-            waveAnimationJob = null
+            tickerJob?.cancel()
+            tickerJob = null
         }
     }
+
+    // Snapshot write + widget push stay atomic: the playback service and
+    // the scrobble listener publish from different threads, and an
+    // interleaved write/push pair could otherwise leave stale content on
+    // screen with no later event to repair it. The ticker re-push stays
+    // outside the mutex (display-only overrides, no disk writes).
+    private val publishMutex = Mutex()
 
     suspend fun publish(
         context: Context,
@@ -79,9 +94,11 @@ object WidgetUpdater {
         isPlaying: Boolean,
     ) = publishMutex.withLock {
         val artPath = art?.let { bitmap -> writeArt(context, bitmap) }
-        NowPlayingWidgetSnapshot.write(
+        // Snapshot the position now: the controller is fresh at publish time.
+        val fraction = readLiveFraction(context, 0f)
+        WidgetSnapshot.write(
             context,
-            NowPlayingWidgetSnapshot(
+            WidgetSnapshot(
                 title = title,
                 artist = artist,
                 album = album.orEmpty(),
@@ -90,61 +107,79 @@ object WidgetUpdater {
                 artPath = artPath,
                 isPlaying = isPlaying,
                 hasSession = true,
+                progress = fraction,
             ),
         )
-        updateAll(context)
+        pushAll(context)
         if (isPlaying) startWaveAnimation(context) else stopWaveAnimation()
     }
 
     suspend fun clear(context: Context) = publishMutex.withLock {
         stopWaveAnimation()
-        val current = NowPlayingWidgetSnapshot.read(context)
-        NowPlayingWidgetSnapshot.write(
+        val current = WidgetSnapshot.read(context)
+        WidgetSnapshot.write(
             context,
-            current.copy(artPath = null, isPlaying = false, hasSession = false),
+            current.copy(artPath = null, isPlaying = false, hasSession = false, progress = 0f),
         )
-        updateAll(context)
+        pushAll(context)
     }
 
-    /** Immediately reflects widget-originated playback actions while the
-     * media-session callback catches up. Always writes and refreshes so a
+    /**
+     * Immediately reflects widget-originated playback actions while the
+     * media-session callback catches up. Always writes and pushes so a
      * stale persisted flag can never leave the play/pause glyph out of
-     * sync with the real session. */
+     * sync with the real session.
+     */
     suspend fun setPlaying(context: Context, isPlaying: Boolean) = publishMutex.withLock {
-        val current = NowPlayingWidgetSnapshot.read(context)
+        val current = WidgetSnapshot.read(context)
         if (!current.hasSession) return@withLock
-        NowPlayingWidgetSnapshot.write(context, current.copy(isPlaying = isPlaying))
-        updateAll(context)
+        WidgetSnapshot.write(
+            context,
+            current.copy(isPlaying = isPlaying, progress = readLiveFraction(context, current.progress)),
+        )
+        pushAll(context)
         if (isPlaying) startWaveAnimation(context) else stopWaveAnimation()
     }
 
     /** Refreshes a freshly placed widget from persisted state. */
     suspend fun sync(context: Context) {
-        updateAll(context)
+        pushAll(context)
     }
 
-    /** Recompose all placed widgets after the app's live color scheme changes. */
+    /** Re-pushes the widget (theme change is handled by day/night resources). */
     suspend fun refreshTheme(context: Context) {
-        updateAll(context)
+        pushAll(context)
     }
 
-    private suspend fun updateAll(context: Context): Boolean = runCatching {
-            val manager = GlanceAppWidgetManager(context)
-            val updatedSmall = updateWidget(context, manager, NowPlayingWidget::class.java, NowPlayingWidget())
-            val updatedLarge = updateWidget(context, manager, LargeNowPlayingWidget::class.java, LargeNowPlayingWidget())
-            updatedSmall || updatedLarge
-        }.onFailure { Log.w(TAG, "widget update failed", it) }.getOrDefault(false)
+    /**
+     * Pushes the single widget to every placed id. Optional overrides drive
+     * the live ticker without touching disk. Returns false when nothing is
+     * placed (ticker stops itself then).
+     */
+    private fun pushAll(context: Context, eqFrame: Int? = null, progressOverride: Float? = null): Boolean =
+        runCatching {
+            val manager = AppWidgetManager.getInstance(context)
+            val ids = manager.getAppWidgetIds(ComponentName(context, NowPlayingWidgetReceiver::class.java))
+            for (appWidgetId in ids) {
+                val views = WidgetViews.build(context, appWidgetId, eqFrame, progressOverride)
+                runCatching { manager.updateAppWidget(appWidgetId, views) }
+            }
+            ids.isNotEmpty()
+        }.onFailure { Log.w(TAG, "widget push failed", it) }.getOrDefault(false)
 
-    private suspend fun <T : GlanceAppWidget> updateWidget(
-        context: Context,
-        manager: GlanceAppWidgetManager,
-        widgetClass: Class<T>,
-        widget: T,
-    ): Boolean {
-        val ids = manager.getGlanceIds(widgetClass)
-        if (ids.isNotEmpty()) widget.updateAll(context)
-        return ids.isNotEmpty()
-    }
+    /** Live position 0..1 off the MediaController, extrapolated while playing. */
+    private fun readLiveFraction(context: Context, fallback: Float): Float = runCatching {
+        val controller = WidgetActions.resolveController(context) ?: return fallback
+        val state = controller.playbackState ?: return fallback
+        val duration = controller.metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+        if (duration <= 0L) return fallback
+        val position = if (state.state == PlaybackState.STATE_PLAYING) {
+            state.position + (SystemClock.elapsedRealtime() - state.lastPositionUpdateTime)
+        } else {
+            state.position
+        }
+        (position.toFloat() / duration).coerceIn(0f, 1f)
+    }.getOrDefault(fallback)
 
     @Synchronized
     private fun writeArt(context: Context, bitmap: Bitmap): String? = runCatching {

@@ -115,7 +115,7 @@ Built with **Material 3 Expressive**, LastWave combines effortless ad-free strea
 ## <img src="https://api.iconify.design/lucide:rocket.svg?color=%23C6F100" width="20" height="20" align="center" /> Getting Started
 
 1. Download the latest APK from the **[Releases](https://github.com/Clash-Projects/LastWave-native/releases)** or **[Actions](https://github.com/Clash-Projects/LastWave-native/actions)** tab.
-2. Install `LastWave-v4.2.0-release.apk` on your Android device (Android 7.0+).
+2. Install `LastWave-v4.2.1-release.apk` on your Android device (Android 7.0+).
 3. Connect your Last.fm account in **Settings → Integrations** to unlock the scrobbler, taste mixes, and personalized discovery radar.
 4. Enjoy ad-free streaming and smart playlist generation!
 

@@ -102,7 +102,7 @@ class LrclibLyricsApi @Inject constructor(
 
         val request = Request.Builder()
             .url(urlBuilder.build())
-            .header("User-Agent", "LastWave-Android/1.0 (https://github.com/duxtami/LastWave)")
+            .header("User-Agent", "LastWave-Android/1.0 (https://github.com/clash-projects/lastwave)")
             .build()
 
         return try {
@@ -129,7 +129,7 @@ class LrclibLyricsApi @Inject constructor(
 
         val request = Request.Builder()
             .url(urlBuilder.build())
-            .header("User-Agent", "LastWave-Android/1.0 (https://github.com/duxtami/LastWave)")
+            .header("User-Agent", "LastWave-Android/1.0 (https://github.com/clash-projects/lastwave)")
             .build()
 
         return try {
@@ -148,10 +148,7 @@ class LrclibLyricsApi @Inject constructor(
                 val matched = list.mapNotNull { candidate ->
                     val candArtist = cleanArtistName(candidate.artistName ?: "")
                     val reqArtist = cleanArtistName(artist)
-                    val artistMatches = candArtist.contains(reqArtist, ignoreCase = true) ||
-                            reqArtist.contains(candArtist, ignoreCase = true) ||
-                            isSimilar(candArtist, reqArtist)
-                    if (!artistMatches) return@mapNotNull null
+                    if (!artistMatches(candArtist, reqArtist)) return@mapNotNull null
 
                     val candRawTitle = candidate.trackName ?: candidate.name ?: ""
                     // Never serve the wrong recording: a live/remix/cover tag
@@ -205,14 +202,44 @@ class LrclibLyricsApi @Inject constructor(
          * Title match that also tolerates dirty community titles carrying an
          * "Artist - Title" prefix (e.g. trackName "Ed Sheeran - Shape Of You
          * [Official Video]"): the prefix-stripped variant is tried too.
+         *
+         * Substring matching is length-gated: bare `contains` accepted "Love"
+         * for "Love Me Like You Do" (wrong song's lyrics). Shorter side must
+         * cover >=70% of the longer side, otherwise token overlap decides.
          */
         fun titlesMatch(candidateTitle: String, requestTitle: String): Boolean {
             val variants = listOf(candidateTitle, stripLeadingArtistPrefix(candidateTitle))
-            return variants.any { cand ->
-                cand.contains(requestTitle, ignoreCase = true) ||
-                        requestTitle.contains(cand, ignoreCase = true) ||
-                        isSimilar(cand, requestTitle)
+            return variants.any { cand -> strictTitleMatch(cand, requestTitle) }
+        }
+
+        private fun strictTitleMatch(a: String, b: String): Boolean {
+            val ca = a.trim()
+            val cb = b.trim()
+            if (ca.isBlank() || cb.isBlank()) return false
+            if (ca.equals(cb, ignoreCase = true)) return true
+            if (ca.contains(cb, ignoreCase = true) || cb.contains(ca, ignoreCase = true)) {
+                val ratio = minOf(ca.length, cb.length).toDouble() / maxOf(ca.length, cb.length)
+                if (ratio >= 0.7) return true
             }
+            return isSimilar(ca, cb)
+        }
+
+        /**
+         * Artist agreement for search-result filtering. Bare `contains` both
+         * ways accepted "Ann" for "Annie" or "John" for "John Lennon covers".
+         * Exact wins; substring needs length cover; otherwise token overlap.
+         */
+        fun artistMatches(candidateArtist: String, requestArtist: String): Boolean {
+            val ca = candidateArtist.trim()
+            val ra = requestArtist.trim()
+            if (ca.isBlank() || ra.isBlank()) return false
+            if (ca.equals(ra, ignoreCase = true)) return true
+            if (ca.contains(ra, ignoreCase = true) || ra.contains(ca, ignoreCase = true)) {
+                if (minOf(ca.length, ra.length) < 4) return isSimilar(ca, ra)
+                val ratio = minOf(ca.length, ra.length).toDouble() / maxOf(ca.length, ra.length)
+                if (ratio >= 0.6) return true
+            }
+            return isSimilar(ca, ra)
         }
 
         /** Removes a leading "Artist - " / "Artist – " / "Artist: " segment. */
@@ -284,12 +311,22 @@ class LrclibLyricsApi @Inject constructor(
         }
 
         fun cleanTrackTitle(raw: String): String {
-            return raw
-                // Strip bracketed/parenthesized extra text: (feat. ...), (Official Video), [HQ], etc.
-                .replace(Regex("""(?i)\s*[\(\[](?:feat\.?|ft\.?|official|music video|audio|remaster(?:ed)?|live|version|edit|extended|deluxe|explicit|hd|hq|4k|lyric video)[^\)\]]*[\)\]]"""), "")
-                // Strip trailing "- Extended", "- Remix", etc.
-                .replace(Regex("""(?i)\s*-\s*(?:extended|remix|radio edit|remaster(?:ed)?|bonus track|instrumental).*$"""), "")
-                .trim()
+            // Only credits and packaging are stripped here. Version markers
+            // (remix, live, acoustic, edit, version, extended, remastered)
+            // name a different recording and must survive cleaning so the
+            // version check can reject the wrong cut.
+            var out = raw
+            out = out.replace(
+                Regex("""(?i)\s*[\(\[](?:feat\.?|ft\.?|featuring|with)[^\)\]]*[\)\]]"""),
+                "",
+            )
+            out = out.replace(Regex("""(?i)\s+(?:feat\.?|ft\.?|featuring)\s+.*$"""), "")
+            out = out.replace(
+                Regex("""(?i)\s*[\(\[]\s*(?:official\s*)?(?:music\s*)?(?:video|audio|visualizer|lyrics?\s*video|lyrics?|m/?v|hd|hq|4k|full\s*song)\s*[\)\]]"""),
+                "",
+            )
+            out = out.replace(Regex("""(?i)\s*[\(\[]\s*official\s*[\)\]]"""), "")
+            return out.replace(Regex("""\s+"""), " ").trim().ifBlank { raw.trim() }
         }
 
         fun cleanArtistName(raw: String): String {

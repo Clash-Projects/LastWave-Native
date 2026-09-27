@@ -168,6 +168,7 @@ class SearchViewModel @Inject constructor(
                             album = track.album ?: if (tab == SearchTab.ALBUMS) item.name else null,
                             artworkUrl = track.artworkUrl ?: item.artworkUrl,
                             videoId = track.videoId,
+                            durationMs = track.durationSeconds?.takeIf { it > 0 }?.times(1_000L),
                         )
                     }, sourceLabel = "Search")
                 }

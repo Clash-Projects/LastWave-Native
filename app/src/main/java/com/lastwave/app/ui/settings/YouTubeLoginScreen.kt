@@ -7,6 +7,7 @@ import android.webkit.WebViewClient
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,6 +64,16 @@ fun YouTubeLoginScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var loadProgressVisible by remember { mutableStateOf(true) }
     var webViewError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        val cookies = readYouTubeCookies()
+        val hasSession = listOf("__Secure-3PAPISID=", "SAPISID=").any { token ->
+            cookies?.contains(token) == true
+        } && cookies?.contains("LOGIN_INFO=") == true
+        if (hasSession && !state.verifying && state.connectedName == null) {
+            viewModel.attemptConnect(cookies)
+        }
+    }
 
     Box(
         modifier = Modifier.fillMaxSize(),

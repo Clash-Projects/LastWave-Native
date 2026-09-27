@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Equalizer frame 2 of 3. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="18dp"
+    android:height="18dp"
+    android:viewportWidth="18"
+    android:viewportHeight="18">
+    <path
+        android:fillColor="@color/widget_eq_bar"
+        android:pathData="M2,8h3v8H2z" />
+    <path
+        android:fillColor="@color/widget_eq_bar"
+        android:pathData="M7.5,2h3v14h-3z" />
+    <path
+        android:fillColor="@color/widget_eq_bar"
+        android:pathData="M13,10h3v6h-3z" />
+</vector>

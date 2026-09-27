@@ -136,7 +136,9 @@ class YouTubePlaylistImportViewModel @Inject constructor(
 
         // Check if query is a direct YouTube link or playlist ID
         val extractedId = innerTube.extractPlaylistId(clean)
-        if (extractedId.startsWith("PL") || extractedId.startsWith("VL") || extractedId.startsWith("RDCLAK") || clean.contains("list=")) {
+        if (extractedId.startsWith("PL") || extractedId.startsWith("VL") || extractedId.startsWith("RDCLAK") ||
+            PlaylistImportManager.isYtLikedId(extractedId) || clean.contains("list=")
+        ) {
             loadPreview(extractedId)
             return
         }

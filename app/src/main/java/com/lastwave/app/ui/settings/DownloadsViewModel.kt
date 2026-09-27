@@ -50,6 +50,7 @@ fun DownloadedTrackEntity.toPlayableTrack(): PlayableTrack {
         artworkUrl = artworkUrl,
         playbackUrl = bestUrl,
         playbackMimeType = mime,
+        durationMs = durationMs.takeIf { it > 0L },
     )
 }
 
@@ -89,11 +90,33 @@ class DownloadsViewModel @Inject constructor(
             emptyList(),
         )
 
+    // Counter strings ("15 ml listens", "Track 16", ...) must never surface as
+    // artists/albums. They collapse to "Unknown Artist" so one corrupted album
+    // can't fan out into N artists / N single-track albums in the UI.
+    private fun displayArtist(raw: String): String {
+        val trimmed = raw.trim()
+        return if (trimmed.isBlank() ||
+            com.lastwave.app.util.ArtistHelper.isPlayCountOrStat(trimmed)
+        ) {
+            "Unknown Artist"
+        } else {
+            trimmed
+        }
+    }
+
+    private fun isUsableAlbum(raw: String): Boolean {
+        val trimmed = raw.trim()
+        return trimmed.isNotBlank() &&
+            !trimmed.equals("Singles", ignoreCase = true) &&
+            !com.lastwave.app.util.ArtistHelper.isPlayCountOrStat(trimmed)
+    }
+
     val downloadedArtists: StateFlow<List<DownloadedArtist>> = downloadedTracks.map { tracks ->
-        tracks.groupBy { it.artist.trim().ifBlank { "Unknown Artist" } }
+        tracks.groupBy { displayArtist(it.artist) }
             .map { (artistName, artistTracks) ->
                 val uniqueAlbums = artistTracks.map { it.album.trim() }
-                    .filter { it.isNotBlank() && !it.equals("Singles", ignoreCase = true) }
+                    .filter { isUsableAlbum(it) }
+                    .map { it.lowercase() }
                     .distinct()
                 val latestArtwork = artistTracks.firstOrNull { !it.artworkUrl.isNullOrBlank() }?.artworkUrl
                 val totalSize = artistTracks.sumOf { it.fileSizeBytes }
@@ -110,19 +133,24 @@ class DownloadsViewModel @Inject constructor(
 
     val downloadedAlbums: StateFlow<List<DownloadedAlbum>> = downloadedTracks.map { tracks ->
         val albumsList = mutableListOf<DownloadedAlbum>()
-        val tracksWithAlbum = tracks.filter {
-            val alb = it.album.trim()
-            alb.isNotBlank() && !alb.equals("Singles", ignoreCase = true)
-        }
+        val tracksWithAlbum = tracks.filter { isUsableAlbum(it.album) }
         val byTitle = tracksWithAlbum.groupBy { it.album.trim().lowercase() }
         for ((_, sameTitleTracks) in byTitle) {
             val artistClusters = mutableListOf<MutableList<DownloadedTrackEntity>>()
             for (track in sameTitleTracks) {
+                // Stat artists all normalize to the same bucket so they never
+                // split one album into N single-track albums.
+                val normArtist = displayArtist(track.artist).lowercase()
                 val cluster = artistClusters.firstOrNull { cluster ->
                     cluster.any { existing ->
-                        existing.artist.equals(track.artist, ignoreCase = true) ||
-                            existing.artist.contains(track.artist, ignoreCase = true) ||
-                            track.artist.contains(existing.artist, ignoreCase = true)
+                        val existingNorm = displayArtist(existing.artist).lowercase()
+                        if (normArtist == "unknown artist" || existingNorm == "unknown artist") {
+                            true
+                        } else {
+                            existingNorm == normArtist ||
+                                existingNorm.contains(normArtist) ||
+                                normArtist.contains(existingNorm)
+                        }
                     }
                 }
                 if (cluster != null) {
@@ -133,8 +161,8 @@ class DownloadsViewModel @Inject constructor(
             }
             for (clusterTracks in artistClusters) {
                 val albumTitle = clusterTracks.first().album.trim()
-                val dominantArtist = clusterTracks.groupBy { it.artist.trim() }
-                    .maxByOrNull { it.value.size }?.key ?: clusterTracks.first().artist.trim()
+                val dominantArtist = clusterTracks.groupBy { displayArtist(it.artist) }
+                    .maxByOrNull { it.value.size }?.key ?: displayArtist(clusterTracks.first().artist)
                 val latestArtwork = clusterTracks.firstOrNull { !it.artworkUrl.isNullOrBlank() }?.artworkUrl
                 val totalSize = clusterTracks.sumOf { it.fileSizeBytes }
                 val totalDuration = clusterTracks.sumOf { it.durationMs }

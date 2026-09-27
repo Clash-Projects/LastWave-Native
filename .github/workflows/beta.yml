@@ -15,6 +15,8 @@ jobs:
       contents: write
     env:
       SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+      ADDON_CLIENT_SECRET: ${{ secrets.ADDON_CLIENT_SECRET }}
+      RELEASE_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD || secrets.RELEASE_STORE_PASSWORD }}
 
     steps:
       - name: Checkout code
@@ -34,9 +36,7 @@ jobs:
 
       - name: Build Beta Release APKs
         env:
-          PROVIDER_MODULE_KEY: ${{ secrets.PROVIDER_MODULE_KEY }}
-          URL: ${{ secrets.URL }}
-          KEY: ${{ secrets.KEY }}
+          ADDON_CLIENT_SECRET: ${{ secrets.ADDON_CLIENT_SECRET }}
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
           RELEASE_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD || secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.ALIAS || secrets.RELEASE_KEY_ALIAS || 'release_key' }}
@@ -75,7 +75,7 @@ jobs:
           mkdir -p final_apk
           VERSION=$(grep 'versionName = ' app/build.gradle.kts | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
           if [ -z "$VERSION" ]; then
-            VERSION="4.2.0"
+            VERSION="4.2.1"
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "APP_VERSION=$VERSION" >> $GITHUB_ENV

@@ -47,68 +47,109 @@ class BetterLyricsApi @Inject constructor(
     suspend fun fetchWordLyrics(
         title: String,
         artist: String,
+        durationSeconds: Int? = null,
+        album: String? = null,
     ): List<LyricLine>? = withContext(Dispatchers.IO) {
         if (title.isBlank() || artist.isBlank()) return@withContext null
 
-        queryEndpoints(title, artist)?.let { return@withContext it }
+        queryEndpoints(title, artist, durationSeconds, album)?.let { return@withContext it }
 
         val cleanedTitle = LrclibLyricsApi.cleanTrackTitle(title)
         val cleanedArtist = LrclibLyricsApi.cleanArtistName(artist)
         if (cleanedTitle != title || cleanedArtist != artist) {
-            queryEndpoints(cleanedTitle, cleanedArtist)?.let { return@withContext it }
+            queryEndpoints(cleanedTitle, cleanedArtist, durationSeconds, album)?.let { return@withContext it }
         }
 
         null
     }
 
-    private suspend fun queryEndpoints(title: String, artist: String): List<LyricLine>? {
-        // Primary: {"ttml": "<tt ...>"} — params are s (song) + a (artist).
-        fetchTtml(
+    suspend fun fetchPortatoLyrics(
+        title: String,
+        artist: String,
+        durationSeconds: Int? = null,
+        album: String? = null,
+    ): List<LyricLine>? = withContext(Dispatchers.IO) {
+        if (title.isBlank() || artist.isBlank()) return@withContext null
+        fetchDocument(
+            baseUrl = "https://lyrics-api.boidu.dev/qq/getLyrics",
+            title = title,
+            artist = artist,
+            durationSeconds = durationSeconds,
+            album = album,
+        ) ?: run {
+            val cleanedTitle = LrclibLyricsApi.cleanTrackTitle(title)
+            val cleanedArtist = LrclibLyricsApi.cleanArtistName(artist)
+            if (cleanedTitle != title || cleanedArtist != artist) {
+                fetchDocument(
+                    baseUrl = "https://lyrics-api.boidu.dev/qq/getLyrics",
+                    title = cleanedTitle,
+                    artist = cleanedArtist,
+                    durationSeconds = durationSeconds,
+                    album = album,
+                )
+            } else null
+        }
+    }
+
+    private suspend fun queryEndpoints(
+        title: String,
+        artist: String,
+        durationSeconds: Int?,
+        album: String?,
+    ): List<LyricLine>? {
+        fetchDocument(
             baseUrl = "https://lyrics-api.boidu.dev/getLyrics",
             title = title,
             artist = artist,
-            field = BetterField.TTML,
+            durationSeconds = durationSeconds,
+            album = album,
         )?.let { return it }
 
-        // Fallback: {"lyrics": "<tt ...>"}.
-        fetchTtml(
+        fetchDocument(
             baseUrl = "https://lyrics-api.boidu.dev/ttml/getLyrics",
             title = title,
             artist = artist,
-            field = BetterField.LYRICS,
+            durationSeconds = durationSeconds,
+            album = album,
+        )?.let { return it }
+
+        fetchDocument(
+            baseUrl = "https://lyrics-api.boidu.dev/qq/getLyrics",
+            title = title,
+            artist = artist,
+            durationSeconds = durationSeconds,
+            album = album,
         )?.let { return it }
 
         return null
     }
 
-    private enum class BetterField { TTML, LYRICS }
-
-    private suspend fun fetchTtml(
+    private suspend fun fetchDocument(
         baseUrl: String,
         title: String,
         artist: String,
-        field: BetterField,
+        durationSeconds: Int?,
+        album: String?,
     ): List<LyricLine>? {
-        val url = baseUrl.toHttpUrlOrNull()?.newBuilder()
-            ?.addQueryParameter("s", title.trim())
-            ?.addQueryParameter("a", artist.trim())
-            ?.build() ?: return null
-
+        val builder = baseUrl.toHttpUrlOrNull()?.newBuilder() ?: return null
+        builder.addQueryParameter("s", title.trim())
+        builder.addQueryParameter("a", artist.trim())
+        if (durationSeconds != null && durationSeconds > 0) {
+            builder.addQueryParameter("d", durationSeconds.toString())
+        }
+        if (!album.isNullOrBlank()) {
+            builder.addQueryParameter("al", album.trim())
+        }
         val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", "LastWave-Android/1.0 (https://github.com/duxtami/LastWave)")
+            .url(builder.build())
+            .header("User-Agent", "LastWave-Android/1.0 (https://github.com/clash-projects/lastwave)")
             .header("Accept", "application/json")
             .get()
             .build()
 
         return try {
             val body = okHttpClient.newCall(request).awaitSuccessfulBodyOrNull() ?: return null
-            val ttml = when (field) {
-                BetterField.TTML -> json.decodeFromString<BetterLyricsGetResponse>(body).ttml
-                BetterField.LYRICS -> json.decodeFromString<BetterLyricsTtmlResponse>(body).lyrics
-            }
-            if (ttml.isNullOrBlank()) return null
-            parseTtml(ttml).takeIf { it.isNotEmpty() }
+            parseDocument(body)?.takeIf { it.isNotEmpty() }
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: IOException) {
@@ -118,30 +159,130 @@ class BetterLyricsApi @Inject constructor(
         }
     }
 
+    internal fun parseDocument(raw: String): List<LyricLine>? {
+        val payload = unwrapPayload(raw) ?: return null
+        if (payload.isBlank()) return null
+        // TTML word timing first via the shared DOM parser.
+        if ("<tt" in payload.lowercase() || "http://www.w3.org/ns/ttml" in payload) {
+            TtmlParser.parse(payload).takeIf { it.isNotEmpty() }?.let { return it }
+        }
+        // Karaoke line format with millisecond ranges.
+        parseKaraokeLrc(payload).takeIf { it.isNotEmpty() }?.let { return it }
+        // Enhanced + plain LRC (word stamps become syllables).
+        LyricsRepository.parseEnhancedLrc(payload).takeIf { it.isNotEmpty() }?.let { return it }
+        LyricsRepository.parseLrc(payload).takeIf { it.isNotEmpty() }?.let { return it }
+        // Legacy regex path for odd TTML shapes the DOM parser skips.
+        parseTtml(payload).takeIf { it.isNotEmpty() }?.let { return it }
+        return null
+    }
+
+    internal fun unwrapPayload(raw: String): String? {
+        val trimmed = raw.replace("\uFEFF", "").trim()
+        if (trimmed.isBlank()) return null
+        if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return trimmed
+        return try {
+            val element = json.parseToJsonElement(trimmed)
+            extractContent(element)?.trim()?.takeIf { it.isNotEmpty() } ?: trimmed
+        } catch (_: Exception) {
+            trimmed
+        }
+    }
+
+    private fun extractContent(element: kotlinx.serialization.json.JsonElement): String? {
+        return when (element) {
+            is kotlinx.serialization.json.JsonNull -> null
+            is kotlinx.serialization.json.JsonPrimitive -> if (element.isString) {
+                val text = element.content.trim()
+                if (text.isEmpty()) return null
+                // Nested JSON string: unwrap one more level.
+                if ((text.startsWith("{") || text.startsWith("[")) &&
+                    runCatching { json.parseToJsonElement(text) }.getOrNull() != null
+                ) {
+                    runCatching { json.parseToJsonElement(text) }.getOrNull()?.let { extractContent(it) } ?: text
+                } else text
+            } else null
+            is kotlinx.serialization.json.JsonArray -> element.mapNotNull { extractContent(it) }
+                .joinToString("\n").takeIf { it.isNotBlank() }
+            is kotlinx.serialization.json.JsonObject -> {
+                if (element["isError"]?.toString() == "true" || element["ok"]?.toString() == "false") return null
+                val keys = listOf(
+                    "ttml", "ttmlContent", "lyrics", "lrc", "content", "text",
+                    "plainLyrics", "syncedLyrics", "line", "lines", "lyric",
+                    "data", "result", "response",
+                )
+                keys.asSequence().mapNotNull { element[it]?.let { v -> extractContent(v) } }.firstOrNull()
+            }
+        }
+    }
+
+    private val KARAOKE_LINE_REGEX = Regex("""^\[(\d{1,8}),(\d{1,8})](.*)$""")
+    private val KARAOKE_WORD_REGEX = Regex("""\((\d{1,8}),(\d{1,8})(?:,\d{1,8})?\)([^()]*)""")
+    private val KARAOKE_TIME_REGEX = Regex("""\(\d{1,8},\d{1,8}(?:,\d{1,8})?\)""")
+
+    internal fun parseKaraokeLrc(raw: String): List<LyricLine> {
+        if ("[" !in raw || "(" !in raw) return emptyList()
+        val rows = mutableListOf<LyricLine>()
+        for (source in raw.lines()) {
+            val match = KARAOKE_LINE_REGEX.matchEntire(source.trim()) ?: continue
+            val lineStart = match.groupValues[1].toLongOrNull() ?: continue
+            val lineDuration = match.groupValues[2].toLongOrNull() ?: 0L
+            val body = match.groupValues[3]
+            val words = KARAOKE_WORD_REGEX.findAll(body).mapNotNull { word ->
+                val text = LyricsRepository.decodeEntities(word.groupValues[3]).trim()
+                if (text.isEmpty()) return@mapNotNull null
+                val startMs = word.groupValues[1].toLongOrNull() ?: return@mapNotNull null
+                val durMs = word.groupValues[2].toLongOrNull() ?: 0L
+                LyricSyllable(timeMs = startMs, durationMs = durMs.coerceAtLeast(0L), text = text)
+            }.toList()
+            if (words.isEmpty()) continue
+            val text = LyricsRepository.decodeEntities(body.replace(KARAOKE_TIME_REGEX, "")).trim()
+            if (text.isEmpty()) continue
+            rows += LyricLine(
+                timeMs = minOf(lineStart, words.first().timeMs),
+                durationMs = lineDuration.coerceAtLeast(0L),
+                text = text,
+                syllables = words,
+            )
+        }
+        return rows.sortedBy { it.timeMs }
+    }
+
     companion object {
         private val P_TAG_REGEX = Regex(
-            """<p\b[^>]*\bbegin="([^"]+)"[^>]*\bend="([^"]+)"[^>]*>(.*?)</p>""",
+            """<p\b[^>]*>(.*?)</p>""",
             setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
         )
+        private val TIME_ATTR_REGEX = Regex("""\b(begin|end|dur)\s*=\s*"([^"]+)"""", RegexOption.IGNORE_CASE)
         private val SPAN_TAG_REGEX = Regex(
-            """<span\b[^>]*\bbegin="([^"]+)"[^>]*\bend="([^"]+)"[^>]*>(.*?)</span>""",
+            """<span\b[^>]*>(.*?)</span>""",
             setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
         )
         private val XML_TAG_REGEX = Regex("""<[^>]+>""")
 
         fun parseTtml(ttml: String): List<LyricLine> {
+            // Prefer the shared DOM parser; the regex below is the fallback
+            // for documents the DOM pass skips.
+            TtmlParser.parse(ttml).takeIf { it.isNotEmpty() }?.let { return it }
             val lines = mutableListOf<LyricLine>()
             for (pMatch in P_TAG_REGEX.findAll(ttml)) {
-                val lineStartMs = parseTtmlTime(pMatch.groupValues[1]) ?: continue
-                val lineEndMs = parseTtmlTime(pMatch.groupValues[2]) ?: (lineStartMs + 1500L)
-                val inner = pMatch.groupValues[3]
+                val openTag = pMatch.value.substringBefore('>')
+                val attrs = TIME_ATTR_REGEX.findAll(openTag).associate { it.groupValues[1].lowercase() to it.groupValues[2] }
+                val lineStartMs = parseTtmlTime(attrs["begin"] ?: "") ?: continue
+                val lineEndMs = parseTtmlTime(attrs["end"] ?: "")
+                    ?: attrs["dur"]?.let { parseTtmlTime(it)?.let { dur -> lineStartMs + dur } }
+                    ?: (lineStartMs + 1500L)
+                val inner = pMatch.groupValues[1]
 
                 val syllables = mutableListOf<LyricSyllable>()
                 val words = mutableListOf<String>()
                 for (sMatch in SPAN_TAG_REGEX.findAll(inner)) {
-                    val wStart = parseTtmlTime(sMatch.groupValues[1]) ?: continue
-                    val wEnd = parseTtmlTime(sMatch.groupValues[2]) ?: wStart
-                    val word = unescapeXml(sMatch.groupValues[3].trim())
+                    val spanOpen = sMatch.value.substringBefore('>')
+                    val spanAttrs = TIME_ATTR_REGEX.findAll(spanOpen).associate { it.groupValues[1].lowercase() to it.groupValues[2] }
+                    val wStart = parseTtmlTime(spanAttrs["begin"] ?: "") ?: continue
+                    val wEnd = parseTtmlTime(spanAttrs["end"] ?: "")
+                        ?: spanAttrs["dur"]?.let { parseTtmlTime(it)?.let { dur -> wStart + dur } }
+                        ?: wStart
+                    val word = unescapeXml(sMatch.groupValues[1].trim())
                     if (word.isEmpty()) continue
                     words.add(word)
                     syllables.add(

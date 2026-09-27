@@ -110,6 +110,42 @@ class ExclusiveUsbSignalPathTest {
     }
 
     @Test
+    fun clockFallbackResampledFailsGoldWithDacUnsupportedDetail() {
+        val report = evaluateSignalPath(
+            exclusiveInput().copy(
+                sourceRateHz = 88200,
+                appOutputRateHz = 96000,
+                clockFallbackResampled = true,
+                exclusiveClockMatched = false,
+            ),
+        )
+        assertThat(report.bitPerfect).isFalse()
+        assertThat(report.clockFallbackResampled).isTrue()
+        val resamplerCheck = report.checks.first { it.labelRes == com.lastwave.app.R.string.signal_label_resampler }
+        assertThat(resamplerCheck.passed).isFalse()
+        assertThat(resamplerCheck.detailRes).isEqualTo(com.lastwave.app.R.string.signal_detail_resample_dac_unsupported)
+        val outputCheck = report.checks.last { it.labelRes == com.lastwave.app.R.string.signal_label_output }
+        assertThat(outputCheck.passed).isFalse()
+        assertThat(outputCheck.detailRes).isEqualTo(com.lastwave.app.R.string.signal_detail_usb_clock_fallback)
+    }
+
+    @Test
+    fun sourceBitDepthMatchesLabelAndNeverForcedTo32Bit() {
+        val report = evaluateSignalPath(
+            exclusiveInput().copy(
+                sourceLabel = "16/48kHz",
+                sourceRateHz = 48000,
+                sourceBitDepth = 32, // Even if an upstream component erroneously reported 32
+                appOutputRateHz = 48000,
+            ),
+        )
+        assertThat(report.bitPerfect).isTrue()
+        val srcCheck = report.checks.first { it.labelRes == com.lastwave.app.R.string.signal_label_source }
+        assertThat(srcCheck.passed).isTrue()
+        assertThat(srcCheck.detailArgs).containsExactly("16/48kHz", 16, 48000).inOrder()
+    }
+
+    @Test
     fun exclusiveClockDriftUsesFrameClockNotExoPosition() {
         val tracker = StreamHealthTracker()
         val rate = 176_400
@@ -134,6 +170,60 @@ class ExclusiveUsbSignalPathTest {
         val next = tracker.sampleExclusive(rate * 4L, rate, 4_000L, true)
         assertThat(next).isNotNull()
         assertThat(kotlin.math.abs(next!!)).isLessThan(5_000.0)
+    }
+
+    @Test
+    fun exclusiveFallbackRateSelectionOnlyAppliesToUnsupportedRates() {
+        val dacRates = listOf(44100, 48000, 96000, 192000)
+        // 176.4 kHz unsupported by DAC -> falls back to 192 kHz
+        assertThat(MusicPlayer.selectExclusiveRateFallback(176400, dacRates)).isEqualTo(192000)
+        // 44.1 kHz supported -> no fallback (null)
+        assertThat(MusicPlayer.selectExclusiveRateFallback(44100, dacRates)).isNull()
+        // 96 kHz supported -> no fallback (null)
+        assertThat(MusicPlayer.selectExclusiveRateFallback(96000, dacRates)).isNull()
+        // 192 kHz supported -> no fallback (null)
+        assertThat(MusicPlayer.selectExclusiveRateFallback(192000, dacRates)).isNull()
+    }
+
+    @Test
+    fun trackTransitionAfterFallbackRestoresTrueBitPerfectOnSupportedTrack() {
+        val dacRates = listOf(44100, 48000, 96000, 192000)
+
+        // Track 1: 176.4 kHz FLAC unsupported on this DAC -> falls back to 192 kHz
+        val track1FallbackRate = MusicPlayer.selectExclusiveRateFallback(176400, dacRates)
+        assertThat(track1FallbackRate).isEqualTo(192000)
+
+        val track1Report = evaluateSignalPath(
+            exclusiveInput().copy(
+                sourceLabel = "24/176.4kHz",
+                sourceRateHz = 176400,
+                sourceBitDepth = 24,
+                appOutputRateHz = track1FallbackRate ?: 176400,
+                clockFallbackResampled = true,
+                exclusiveClockMatched = false,
+            ),
+        )
+        assertThat(track1Report.bitPerfect).isFalse()
+        assertThat(track1Report.clockFallbackResampled).isTrue()
+
+        // Track 2: Next song in playlist is 44.1 kHz FLAC -> natively supported!
+        val track2FallbackRate = MusicPlayer.selectExclusiveRateFallback(44100, dacRates)
+        assertThat(track2FallbackRate).isNull()
+
+        val track2Report = evaluateSignalPath(
+            exclusiveInput().copy(
+                sourceLabel = "16/44.1kHz",
+                sourceRateHz = 44100,
+                sourceBitDepth = 16,
+                appOutputRateHz = 44100,
+                clockFallbackResampled = false,
+                exclusiveClockMatched = true,
+            ),
+        )
+        assertThat(track2Report.bitPerfect).isTrue()
+        assertThat(track2Report.clockFallbackResampled).isFalse()
+        assertThat(track2Report.appRateHz).isEqualTo(44100)
+        assertThat(track2Report.sourceRateHz).isEqualTo(44100)
     }
 
     private fun exclusiveInput() = SignalPathInput(

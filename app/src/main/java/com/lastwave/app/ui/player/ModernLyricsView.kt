@@ -105,6 +105,9 @@ fun ModernLyricsPanel(
     isFullscreen: Boolean = false,
     onRetry: () -> Unit = {},
     modifier: Modifier = Modifier,
+    /** Manual sync correction (ms, + = lyrics earlier). Applies to lyric
+     *  focus/highlight only — the seekbar below keeps true position. */
+    lyricsOffsetMs: Long = 0L,
 ) {
     val track = state.current ?: return
 
@@ -118,8 +121,8 @@ fun ModernLyricsPanel(
 
     LaunchedEffect(progress.positionMs, state.isPlaying, track) {
         val drift = kotlin.math.abs(smoothedPositionMs - progress.positionMs)
-        // Hard snap on seek (>250ms drift) or when stopped/paused
-        if (drift > 250 || !state.isPlaying) {
+        // Hard snap on seek (>120ms drift) or when stopped/paused
+        if (drift > 120 || !state.isPlaying) {
             smoothedPositionMs = progress.positionMs
         }
     }
@@ -138,10 +141,10 @@ fun ModernLyricsPanel(
 
                 var nextPos = smoothedPositionMs + dt
                 val drift = target - nextPos
-                if (kotlin.math.abs(drift) > 250) {
+                if (kotlin.math.abs(drift) > 120) {
                     nextPos = target
                 } else {
-                    nextPos += (drift * 0.15f).toLong()
+                    nextPos += (drift * 0.25f).toLong()
                 }
                 smoothedPositionMs = nextPos.coerceAtLeast(smoothedPositionMs).coerceIn(0L, dur)
             }
@@ -200,10 +203,11 @@ fun ModernLyricsPanel(
                             onRetry = onRetry,
                         )
                     } else if (targetState.isSynced && targetState.lines.isNotEmpty()) {
-                        // Word-sync can fail (all providers down / LRCLIB line
-                        // fallback): huge karaoke type then overflows off-screen.
-                        // Fall back to a smaller line style, and sit the list a
-                        // little lower so the first line clears the header.
+                        // Line-sync rows (no syllables) use the compact tier
+                        // below; overlong word-sync rows are pre-split to the
+                        // measured width so the large type never overflows
+                        // off-screen. The list sits a little lower so the
+                        // first line clears the header.
                         val isWordSynced = targetState.isWordSynced ||
                             remember(targetState.lines) { targetState.lines.any { it.hasSyllables } }
                         val isOverallRtl = remember(targetState.lines) {
@@ -211,10 +215,13 @@ fun ModernLyricsPanel(
                             if (meaningful.isEmpty()) false
                             else meaningful.count { it.isRtl } > meaningful.size / 2
                         }
-                        // Apple Music word-sync rows run full-sentence wide, so at
-                        // the default 28sp they sit on the screen edge even at
-                        // rest. They get a compact type size; other providers
-                        // keep their existing sizes.
+                        // Apple Music word-sync rows run full-sentence wide, so
+                        // they keep a compact size while other providers use
+                        // the standard tier. Sizes are deliberately moderate:
+                        // oversized type was the gap driver (fewer words fit,
+                        // the splitter chopped rows, multiplied spacing).
+                        // The wrap budget below is measured in these same
+                        // styles so rows still clear the edges.
                         val isAppleMusic = remember(targetState.source) {
                             targetState.source?.contains("Apple Music", ignoreCase = true) == true
                         }
@@ -222,12 +229,12 @@ fun ModernLyricsPanel(
                         // with exactly this style, so its fit verdict matches
                         // what the canvas will draw.
                         val karaokeNormalStyle = LocalTextStyle.current.copy(
-                            fontSize = if (isAppleMusic) 22.sp else if (isWordSynced) 28.sp else 24.sp,
+                            fontSize = if (isAppleMusic) 28.sp else if (isWordSynced) 32.sp else 30.sp,
                             fontWeight = FontWeight.Bold,
                             textMotion = TextMotion.Animated,
                         )
                         val karaokeAccompanimentStyle = LocalTextStyle.current.copy(
-                            fontSize = if (isAppleMusic) 17.sp else if (isWordSynced) 20.sp else 18.sp,
+                            fontSize = if (isAppleMusic) 22.sp else if (isWordSynced) 24.sp else 22.sp,
                             fontWeight = FontWeight.Bold,
                             textMotion = TextMotion.Animated,
                         )
@@ -270,14 +277,14 @@ fun ModernLyricsPanel(
                                 }
                                 KaraokeLineWrapScope(
                                     lines = targetState.lines,
-                                    isWordSynced = isWordSynced,
                                     isOverallRtl = isOverallRtl,
                                     trackTitle = track.title,
                                     trackArtist = track.artist,
                                     normalStyle = karaokeNormalStyle,
                                     accompanimentStyle = karaokeAccompanimentStyle,
-                                    currentPosition = { smoothedPositionMs.toInt() },
+                                    currentPosition = { (smoothedPositionMs + lyricsOffsetMs).toInt() },
                                     player = player,
+                                    lyricsOffsetMs = lyricsOffsetMs,
                                     modifier = Modifier
                                         .weight(1f)
                                         .fillMaxWidth(),
@@ -321,28 +328,25 @@ fun ModernLyricsPanel(
 
 /**
  * Horizontal chrome around karaoke glyphs, both sides combined: 12dp view
- * padding (Modifier.padding on the list below) + the library's own padding
- * on both its outer scrim Box and its inner list (assumed 24dp each, kept
- * from the original conservative estimate) + 16dp line padding inside each
- * karaoke row, plus a small safety margin. The 0.88 zoom headroom in the
- * budget below sits on top of this, so wrapped rows stay clear of the edge
- * in every focus state — including long Apple Music word-sync rows.
+ * padding (Modifier.padding on the list below) + 16dp line padding inside
+ * each karaoke row. Measured, not guessed: the old 128dp estimate plus a
+ * 0.80 panic factor shrank the budget to ~185dp on a 360dp phone, chopping
+ * nearly every line into 2-word rows.
  */
-private val KaraokeHorizontalChrome = 112.dp
+private val KaraokeHorizontalChrome = 56.dp
 
 /**
- * Measures word-sync lines against the settled list width and pre-splits
- * overlong ones into balanced sub-lines (see [splitKaraokeToFit]) before
- * the karaoke canvas ever measures them. The budget reserves headroom for
- * the canvas's focused-line emphasis (~1.1x zoom on the active row): without
- * it a line that exactly fits while idle overflows past the screen edge the
- * moment it becomes active — Apple Music word-sync lines are the usual
- * victims since they routinely span the full width.
+ * Measures lines against the settled list width and pre-splits only
+ * genuinely overlong ones into balanced sub-lines ([splitKaraokeToFit] for
+ * word-sync rows, [splitLineSyncToFit] for line-sync rows) before the
+ * karaoke canvas ever measures them. The budget keeps a small 0.95 reserve
+ * for the canvas's focused-line emphasis (~1.1x zoom on the active row);
+ * normal lines pass through untouched with their authored timing, so focus
+ * and auto-scroll follow lyric lines instead of fabricated chunks.
  */
 @Composable
 private fun KaraokeLineWrapScope(
     lines: List<LyricLine>,
-    isWordSynced: Boolean,
     isOverallRtl: Boolean,
     trackTitle: String,
     trackArtist: String,
@@ -351,26 +355,31 @@ private fun KaraokeLineWrapScope(
     currentPosition: () -> Int,
     player: MusicPlayer,
     modifier: Modifier = Modifier,
+    lyricsOffsetMs: Long = 0L,
 ) {
     BoxWithConstraints(modifier) {
         val density = LocalDensity.current
         val textMeasurer = rememberTextMeasurer()
         val wrapBudgetPx = remember(maxWidth, density) {
-            // Conservative on purpose, two compounding reasons:
-            // 1. The splitter measures word-by-word while the canvas draws
-            //    continuous text, so cross-word kerning can add a pixel or
-            //    two beyond the summed word widths.
-            // 2. The canvas enlarges the focused line (~1.1x). A row that
-            //    exactly fits while idle would spill past the screen edge
-            //    once active — 0.88 reserves that zoom room so wrapped rows
-            //    stay clear of the edge in every focus state.
-            with(density) { (maxWidth - KaraokeHorizontalChrome).toPx().coerceAtLeast(0f) } * 0.88f
+            // Tight on purpose: the splitter measures word-by-word while the
+            // canvas draws continuous text (kerning can add a pixel or two),
+            // and the focused line zooms ~1.1x — 0.95 covers both without
+            // chopping lines that fit. Only true overflow splits.
+            with(density) { (maxWidth - KaraokeHorizontalChrome).toPx().coerceAtLeast(0f) } * 0.95f
         }
         val displayLines = remember(lines, wrapBudgetPx, normalStyle) {
-            if (!isWordSynced) lines
-            else lines.flatMap { line ->
-                line.splitKaraokeToFit(wrapBudgetPx) { text ->
-                    textMeasurer.measure(text, normalStyle).size.width.toFloat()
+            // Word-sync rows split on syllable timing, line-sync rows on
+            // proportional time slices — either way every drawn row fits.
+            val backfilled = backfillLineSyncDurations(lines)
+            backfilled.flatMap { line ->
+                if (!line.hasSyllables) {
+                    line.splitLineSyncToFit(wrapBudgetPx) { text ->
+                        textMeasurer.measure(text, normalStyle).size.width.toFloat()
+                    }
+                } else {
+                    line.splitKaraokeToFit(wrapBudgetPx) { text ->
+                        textMeasurer.measure(text, normalStyle).size.width.toFloat()
+                    }
                 }
             }
         }
@@ -395,7 +404,8 @@ private fun KaraokeLineWrapScope(
             showPhonetic = true,
             currentPosition = currentPosition,
             onLineClicked = { line ->
-                player.seekTo(line.start.toLong())
+                // Inverse of the highlight shift: tap targets audio time.
+                player.seekTo((line.start - lyricsOffsetMs).coerceAtLeast(0).toLong())
             },
             onLinePressed = {},
             modifier = Modifier
@@ -422,6 +432,11 @@ private fun LyricLine.toISyncedLine(isOverallRtl: Boolean = false): ISyncedLine 
         val bgSyllables = if (leadSyllables.size < syllables.size) syllables.filter { it.isBackground } else emptyList()
         val needsSpacing = text.contains(' ') || text.contains('\u00A0')
 
+        // The row's own end caps every syllable: without the cap a generous
+        // provider duration lets one word's fill run into the next word (or
+        // the next row), which reads as the highlight jumping or stalling.
+        val rowEnd = if (durationMs > 0) (timeMs + durationMs).toInt() else Int.MAX_VALUE
+
         fun List<LyricSyllable>.toKaraokeSyllables(): List<KaraokeSyllable> {
             // Separator rule lives in renderedSyllableContents (shared with
             // KaraokeLineSplitter's word grouping) so the wrap points the
@@ -434,11 +449,14 @@ private fun LyricLine.toISyncedLine(isOverallRtl: Boolean = false): ISyncedLine 
                     if (nextSyl != null && nextSyl.timeMs > syl.timeMs) (nextSyl.timeMs - syl.timeMs).toInt()
                     else 150
                 }
-                val sEnd = (sStart + minDur).coerceAtLeast(sStart + 50)
+                var sEnd = (sStart + minDur).coerceAtLeast(sStart + 50)
+                val nextStart = getOrNull(index + 1)?.timeMs?.toInt()
+                if (nextStart != null && nextStart > sStart && sEnd > nextStart) sEnd = nextStart
+                if (rowEnd > sStart && sEnd > rowEnd) sEnd = rowEnd
                 KaraokeSyllable(
                     content = contents[index],
                     start = sStart,
-                    end = sEnd,
+                    end = sEnd.coerceAtLeast(sStart),
                 )
             }
         }
@@ -485,20 +503,9 @@ private fun LyricLine.toISyncedLine(isOverallRtl: Boolean = false): ISyncedLine 
 }
 
 private fun List<LyricLine>.toSyncedLyrics(title: String, artist: String, isOverallRtl: Boolean = false): SyncedLyrics {
-    // Backfill end times: for lines without explicit duration and no syllables,
-    // set duration to reach the next line's start (eliminates gaps/overlaps).
-    val backfilled = mapIndexed { i, line ->
-        if (line.durationMs <= 0 && line.syllables.isEmpty() && i < lastIndex) {
-            val nextStart = this[i + 1].timeMs
-            if (nextStart > line.timeMs) {
-                val gap = nextStart - line.timeMs
-                val dur = if (gap <= 6000L) gap else 4500L
-                line.copy(durationMs = dur)
-            } else line
-        } else if (line.durationMs <= 0 && line.syllables.isEmpty() && i == lastIndex) {
-            line.copy(durationMs = 4500L)
-        } else line
-    }
+    // End times are backfilled first (shared helper, idempotent), so every
+    // row — word-sync or line-sync — maps onto one contiguous clock.
+    val backfilled = backfillLineSyncDurations(this)
     return SyncedLyrics(
         lines = backfilled.map { it.toISyncedLine(isOverallRtl) },
         title = title,
@@ -541,8 +548,8 @@ private fun ModernPlainLyricsView(
             Text(
                 text = plainLyrics,
                 style = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = 19.sp,
-                    lineHeight = 32.sp,
+                    fontSize = 28.sp,
+                    lineHeight = 46.sp,
                     fontWeight = FontWeight.Medium,
                     letterSpacing = 0.1.sp,
                 ),

@@ -256,7 +256,12 @@ fun PlaylistScreen(
                             }
                         }
 
-                        itemsIndexed(state.playlists, key = { index, playlist -> "${playlist.id}_$index" }) { index, playlist ->
+                        // Stable id-only keys: embedding the index makes every key
+                        // change on pin/sort/insert, which combined with
+                        // animateItem() crashes Lazy layout at the scroll edge
+                        // ("key was already used" / anchor OOB). Ids are unique
+                        // Room PKs so they are stable across reorder.
+                        itemsIndexed(state.playlists, key = { _, playlist -> playlist.id }) { index, playlist ->
                             val isNewest = playlist.id == state.newestId
                             Box(Modifier.animateItem()) {
                                 PlaylistCard(

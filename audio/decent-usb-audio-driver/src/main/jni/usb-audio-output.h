@@ -21,6 +21,10 @@
  */
 #define USB_AUDIO_PACKETS_PER_URB 8
 
+/** Keep feedback out of the shared audio submit/reap queue because concurrent
+ *  ISO IN feedback URBs on the same usbdevfs fd disrupt ISO OUT timing on Android xHCI. */
+#define USB_AUDIO_ENABLE_CONTINUOUS_FEEDBACK 0
+
 /**
  * Number of URBs in the ring buffer.
  * 80 URBs ≈ 80 ms of in-flight audio at 44.1 kHz, which empirically gives
@@ -33,10 +37,10 @@
 
 /**
  * Max bytes per URB data buffer.
- * Worst case: 384kHz * 4 bytes * 2 channels / 8000 microframes * 8 packets
- *           = 384 * 8 = 3072 bytes per URB. Round up generously.
+ * Generously sized (16 KB) for 352.8/384/768 kHz 32-bit stereo and bInterval > 1
+ * endpoints so residual buffers and URB slots never overflow or drop frames.
  */
-#define USB_AUDIO_URB_BUFFER_SIZE 4096
+#define USB_AUDIO_URB_BUFFER_SIZE 16384
 
 /**
  * One slot in the pre-allocated URB ring buffer.
@@ -73,6 +77,10 @@ struct UsbAudioContext {
     int32_t bytesPerSample;
     int32_t bytesPerFrame;
     int32_t maxPacketSize;
+    int32_t dataInterval;
+    int32_t feedbackPacketSize;
+    int32_t feedbackInterval;
+    int32_t usbSpeed;
 
     std::atomic<bool> running;
 

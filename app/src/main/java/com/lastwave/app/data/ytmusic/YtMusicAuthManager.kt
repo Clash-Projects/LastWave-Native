@@ -71,7 +71,20 @@ class YtMusicAuthManager @Inject constructor(
     suspend fun connect(rawCookieHeader: String, accountName: String, channelHandle: String?, photoUrl: String?) {
         val cookies = parseCookieHeader(rawCookieHeader)
         if (cookies.isEmpty()) return
-        preferences.saveConnection(cookies, accountName.ifBlank { "Google account" }, channelHandle, photoUrl)
+        val name = accountName.ifBlank { "Google account" }
+        // Optimistic in-memory update: DataStore persistence + Flow
+        // re-collection is async and loses the race against an immediate
+        // verify on slow devices, which then see DISCONNECTED and report
+        // "YouTube rejected the session" for a perfectly good session.
+        // Matches what saveConnection persists (fresh login resets channel
+        // selection), so the collector converges to the same value.
+        _connection.value = YtConnection(
+            cookies = cookies,
+            accountName = name,
+            channelHandle = channelHandle,
+            photoUrl = photoUrl,
+        )
+        preferences.saveConnection(cookies, name, channelHandle, photoUrl)
     }
 
     suspend fun updateAccountIdentity(accountName: String, channelHandle: String?, photoUrl: String?) {
@@ -93,6 +106,49 @@ class YtMusicAuthManager @Inject constructor(
      *  later reconnect starts clean instead of writing into stale playlists
      *  owned by whoever signed in previously. */
     suspend fun signOut() = preferences.clearConnection()
+
+    /**
+     * Attempts to read updated session cookies from Android's system CookieManager.
+     * If valid credentials are found and differ from the active connection,
+     * updates the connection in preferences automatically.
+     * Returns true if fresh cookies were found and saved.
+     */
+    suspend fun refreshCookiesFromCookieManager(): Boolean {
+        return try {
+            val cm = android.webkit.CookieManager.getInstance()
+            val musicCookies = cm.getCookie("https://music.youtube.com").orEmpty()
+            val ytCookies = cm.getCookie("https://www.youtube.com").orEmpty()
+            val combined = when {
+                musicCookies.isBlank() -> ytCookies
+                ytCookies.isBlank() -> musicCookies
+                else -> "$musicCookies; $ytCookies"
+            }
+            if (combined.isBlank()) return false
+            val cookies = parseCookieHeader(combined)
+            val hasSapisid = listOf(COOKIE_SAPISID_PRIMARY, "SAPISID", "APISID").any { cookies.containsKey(it) }
+            val hasLogin = cookies.containsKey("LOGIN_INFO")
+            if (!hasSapisid || !hasLogin) return false
+
+            val current = connection.value
+            if (current.isConnected && current.cookies == cookies) return false
+
+            preferences.saveConnection(
+                cookies = cookies,
+                accountName = current.accountName.ifBlank { "Google account" },
+                channelHandle = current.channelHandle,
+                photoUrl = current.photoUrl,
+                onBehalfOfUser = current.onBehalfOfUser,
+                authUserIndex = current.authUserIndex,
+                pageId = current.pageId,
+            )
+            Log.i(TAG, "Auto-refreshed YouTube Music session cookies from CookieManager")
+            true
+        } catch (e: Throwable) {
+            Log.w(TAG, "Could not auto-refresh cookies from CookieManager", e)
+            false
+        }
+    }
+
 
     private fun parseCookieHeader(raw: String): Map<String, String> =
         raw.split(';')

@@ -300,24 +300,28 @@ class InnerTubeMusicApi @Inject constructor(
             )
             return@withContext null
         }
+        val isLiked = com.lastwave.app.data.playlist.PlaylistImportManager.isYtLikedId(rawId)
         val header = playlistHeader(root)
-
         val title = extractTitleFromHeader(header, root)
+            ?: if (isLiked) "Liked Music" else null
 
         val author = header?.obj("subtitle")?.array("runs")?.firstOrNull()?.asObject()?.string("text")
             ?: header?.obj("straplineTextOne")?.array("runs")?.firstOrNull()?.asObject()?.string("text")
             ?: findFirstAuthor(header)
+            ?: if (isLiked) "YouTube Music" else null
 
         val artworkUrl = extractArtworkFromHeader(header, root)
 
         val trackLimit = maxTracks?.coerceAtLeast(1)
         val songs = mutableListOf<YouTubeMusicTrack>()
-        val playlistPage = browseId.startsWith("VL")
+        val isNextResponse = (root as? JsonObject)?.obj("contents")?.obj("singleColumnMusicWatchNextResultsRenderer") != null ||
+            (root as? JsonObject)?.obj("currentVideoEndpoint") != null
+        val playlistPage = browseId.startsWith("VL") && !isNextResponse
         fun trackContainers(page: JsonElement): List<JsonElement> =
             if (playlistPage) playlistTrackContainers(page) else listOf(page)
         val initialContainers = trackContainers(root)
         val initialSongs = if (initialContainers.isNotEmpty()) {
-            initialContainers.flatMap(::parseSongRenderers)
+            initialContainers.flatMap(::parseSongRenderers).ifEmpty { parseSongRenderers(root) }
         } else {
             parseSongRenderers(root)
         }.distinctBy { it.videoId }.let { parsed ->
@@ -435,12 +439,58 @@ class InnerTubeMusicApi @Inject constructor(
     }
 
     private suspend fun fetchPlaylistRoot(browseId: String): Pair<JsonElement, Boolean>? {
+        val isLiked = com.lastwave.app.data.playlist.PlaylistImportManager.isYtLikedId(browseId)
         if (ytAuth.connection.value.isConnected) {
             runCatching { browseRoot(browseId, authenticated = true) }.getOrNull()?.let {
-                return it to true
+                if (parseSongRenderers(it).isNotEmpty()) return it to true
+            }
+            if (isLiked) {
+                runCatching { browseRoot("FEmusic_liked_videos", authenticated = true) }.getOrNull()?.let {
+                    if (parseSongRenderers(it).isNotEmpty()) return it to true
+                }
+                if (browseId != "LM") {
+                    runCatching { browseRoot("LM", authenticated = true) }.getOrNull()?.let {
+                        if (parseSongRenderers(it).isNotEmpty()) return it to true
+                    }
+                }
             }
         }
-        return runCatching { browseRoot(browseId, authenticated = false) }.getOrNull()?.let { it to false }
+        runCatching { browseRoot(browseId, authenticated = false) }.getOrNull()?.let {
+            if (parseSongRenderers(it).isNotEmpty()) return it to false
+        }
+        // RDCLAK / RD-prefixed IDs (radio/mix) or Liked Music fall back to the "next" endpoint
+        if (browseId.startsWith("RDCLAK") || browseId.startsWith("RD") || isLiked) {
+            val playlistId = if (isLiked) "LM" else browseId.removePrefix("VL")
+            val auth = ytAuth.connection.value.isConnected
+            runCatching { fetchPlaylistViaNext(playlistId, authenticated = auth) }.getOrNull()?.let {
+                return it to auth
+            }
+        }
+        return null
+    }
+
+    /**
+     * Resolves a playlist (RDCLAK…, RD… radio/mix or Liked Music fallback)
+     * through the `next` endpoint when browse fails or returns no tracks.
+     */
+    private suspend fun fetchPlaylistViaNext(playlistId: String, authenticated: Boolean = false): JsonElement? {
+        val config = getWebConfig()
+        val root = post(
+            url = "$MUSIC_API/next?key=${config.apiKey}&prettyPrint=false",
+            body = buildJsonObject {
+                put("context", context("WEB_REMIX", config.clientVersion, config.visitorData))
+                put("playlistId", playlistId)
+                put("isAudioOnly", true)
+            },
+            clientName = "WEB_REMIX",
+            clientVersion = config.clientVersion,
+            userAgent = WEB_USER_AGENT,
+            authenticated = authenticated,
+            callTimeoutMs = RELATED_REQUEST_TIMEOUT_MS,
+        )
+        // Sanity-check: the response must contain at least one track renderer.
+        val hasTracks = parseSongRenderers(root).isNotEmpty()
+        return if (hasTracks) root else null
     }
 
     private fun playlistHeader(root: JsonElement): JsonObject? {
@@ -580,7 +630,12 @@ class InnerTubeMusicApi @Inject constructor(
                     .take(recentLimit.coerceIn(0, 50))
             }
             val liked = async {
-                runCatching { parseSongRenderers(browseRoot(YT_LIKED_BROWSE_ID, authenticated = true)) }
+                runCatching {
+                    val root = runCatching { browseRoot(YT_LIKED_BROWSE_ID, authenticated = true) }
+                        .getOrNull()?.takeIf { parseSongRenderers(it).isNotEmpty() }
+                        ?: browseRoot("FEmusic_liked_videos", authenticated = true)
+                    parseSongRenderers(root)
+                }
                     .getOrDefault(emptyList())
                     .distinctBy { it.videoId }
                     .take(likedLimit.coerceIn(0, 50))
@@ -1087,8 +1142,11 @@ class InnerTubeMusicApi @Inject constructor(
                 userAgent = WEB_USER_AGENT,
                 authenticated = true,
             )
+        }.onFailure {
+            android.util.Log.w(PLAYLIST_LOG_TAG, "createRemotePlaylist failed for \"$cleanTitle\"", it)
         }.getOrNull() ?: return@withContext null
         root.string("playlistId")?.takeIf { it.isNotBlank() }
+            ?: findString(root, "playlistId")?.takeIf { it.isNotBlank() }
     }
 
     /** Renames an owned remote playlist via ACTION_SET_PLAYLIST_NAME. */
@@ -1170,14 +1228,24 @@ class InnerTubeMusicApi @Inject constructor(
         if (!ytAuth.connection.value.isConnected) return@withContext null
         val rawId = extractPlaylistId(playlistIdOrUrl)
         if (rawId.isBlank()) return@withContext null
-        val browseId = if (rawId.startsWith("VL")) rawId else "VL$rawId"
+        val browseId = when {
+            rawId.startsWith("VL") || rawId.startsWith("RDCLAK") || rawId.startsWith("FE") || rawId.startsWith("MPRE") || rawId.startsWith("UC") -> rawId
+            else -> "VL$rawId"
+        }
 
-        val root = runCatching { browseRoot(browseId, authenticated = true) }.getOrNull()
-            ?: return@withContext null
+        val rootResult = runCatching { browseRoot(browseId, authenticated = true) }
+        val root = rootResult.getOrNull()
+            ?: (if (browseId != rawId) runCatching { browseRoot(rawId, authenticated = true) }.getOrNull() else null)
+            ?: run {
+                android.util.Log.w(PLAYLIST_LOG_TAG, "fetchOwnedPlaylist failed for browseId=$browseId", rootResult.exceptionOrNull())
+                return@withContext null
+            }
 
-        val title = root.obj("header")?.obj("musicEditablePlaylistDetailHeaderRenderer")
-            ?.obj("header")?.obj("musicResponsiveHeaderRenderer")?.obj("title")?.array("runs")
-            ?.joinToString("") { it.asObject()?.string("text").orEmpty() }
+        val header = playlistHeader(root)
+        val title = extractTitleFromHeader(header, root)
+            ?: root.obj("header")?.obj("musicEditablePlaylistDetailHeaderRenderer")
+                ?.obj("header")?.obj("musicResponsiveHeaderRenderer")?.obj("title")?.array("runs")
+                ?.joinToString("") { it.asObject()?.string("text").orEmpty() }
             ?: root.obj("header")?.obj("musicDetailHeaderRenderer")?.obj("title")?.array("runs")
                 ?.joinToString("") { it.asObject()?.string("text").orEmpty() }
             ?: root.obj("header")?.obj("musicResponsiveHeaderRenderer")?.obj("title")?.array("runs")
@@ -1185,7 +1253,7 @@ class InnerTubeMusicApi @Inject constructor(
             ?: "Playlist"
 
         val shelves = playlistTrackContainers(root)
-        if (shelves.isEmpty()) return@withContext null
+        val containers = if (shelves.isNotEmpty()) shelves else listOf(root)
 
         val items = mutableListOf<YtOwnedPlaylistItem>()
         val seenEntries = mutableSetOf<String>()
@@ -1204,9 +1272,9 @@ class InnerTubeMusicApi @Inject constructor(
                 items += YtOwnedPlaylistItem(videoId, setVideoId)
             }
         }
-        shelves.forEach(::absorb)
+        containers.forEach(::absorb)
 
-        var token = shelves.firstNotNullOfOrNull(::playlistTrackContinuationToken)
+        var token = containers.firstNotNullOfOrNull(::playlistTrackContinuationToken)
         val seenTokens = mutableSetOf<String>()
         var page = 0
         fun targetFound() = stopAfterVideoId != null && items.any {
@@ -1214,16 +1282,15 @@ class InnerTubeMusicApi @Inject constructor(
         }
         while (!targetFound() && !token.isNullOrBlank() && page < MAX_CONTINUATION_PAGES) {
             val currentToken = token ?: break
-            if (!seenTokens.add(currentToken)) return@withContext null
+            if (!seenTokens.add(currentToken)) break
             val nextPage = runCatching { browseContinuation(currentToken, authenticated = true) }
-                .getOrNull() ?: return@withContext null
+                .getOrNull() ?: break
             val pageContainers = playlistTrackContainers(nextPage)
-            if (pageContainers.isEmpty()) return@withContext null
-            pageContainers.forEach(::absorb)
-            token = pageContainers.firstNotNullOfOrNull(::playlistTrackContinuationToken)
+            val effectivePageContainers = if (pageContainers.isNotEmpty()) pageContainers else listOf(nextPage)
+            effectivePageContainers.forEach(::absorb)
+            token = effectivePageContainers.firstNotNullOfOrNull(::playlistTrackContinuationToken)
             page++
         }
-        if (!targetFound() && !token.isNullOrBlank()) return@withContext null
 
         YtOwnedPlaylist(id = rawId, title = title, items = items)
     }
@@ -1292,7 +1359,8 @@ class InnerTubeMusicApi @Inject constructor(
 
         val musicShelves = mutableListOf<JsonObject>()
         collectObjects(root, "musicShelfRenderer", musicShelves)
-        musicShelves.firstOrNull { parseSongRenderers(it).isNotEmpty() }?.let { return listOf(it) }
+        val validShelves = musicShelves.filter { parseSongRenderers(it).isNotEmpty() }
+        if (validShelves.isNotEmpty()) return validShelves
 
         val continuations = root.obj("continuationContents")
         continuations?.obj("musicShelfContinuation")?.let { return listOf(it) }
@@ -1513,6 +1581,7 @@ class InnerTubeMusicApi @Inject constructor(
                                 album = track.album,
                                 artworkUrl = track.artworkUrl ?: artworkUrl,
                                 videoId = track.videoId,
+                                durationMs = track.durationSeconds?.takeIf { it > 0 }?.times(1_000L),
                             )
                         }
 
@@ -1546,6 +1615,7 @@ class InnerTubeMusicApi @Inject constructor(
                                         album = track.album,
                                         artworkUrl = track.artworkUrl ?: artworkUrl,
                                         videoId = track.videoId,
+                                        durationMs = track.durationSeconds?.takeIf { it > 0 }?.times(1_000L),
                                     )
                                 }
                             }.getOrNull()
@@ -1580,6 +1650,7 @@ class InnerTubeMusicApi @Inject constructor(
                     album = track.album,
                     artworkUrl = track.artworkUrl ?: artworkUrl,
                     videoId = track.videoId,
+                    durationMs = track.durationSeconds?.takeIf { it > 0 }?.times(1_000L),
                 )
             }
         }
@@ -1665,6 +1736,7 @@ class InnerTubeMusicApi @Inject constructor(
                 album = title,
                 artworkUrl = track.artworkUrl ?: artworkUrl,
                 videoId = track.videoId,
+                durationMs = track.durationSeconds?.takeIf { it > 0 }?.times(1_000L),
             )
         }
 
@@ -1873,6 +1945,7 @@ class InnerTubeMusicApi @Inject constructor(
             val videoDetails = root.obj("videoDetails")
             var title = videoDetails?.string("title")
             var artist = videoDetails?.string("author")
+            val durationSec = videoDetails?.string("lengthSeconds")?.toIntOrNull()
             val thumbs = videoDetails?.obj("thumbnail")?.array("thumbnails")
             val artworkUrl = thumbs?.lastOrNull()?.let { (it as? JsonObject)?.string("url") }
 
@@ -1892,6 +1965,7 @@ class InnerTubeMusicApi @Inject constructor(
                     title = title,
                     artist = artist,
                     artworkUrl = artworkUrl ?: "https://i.ytimg.com/vi/$videoId/hqdefault.jpg",
+                    durationSeconds = durationSec,
                 )
             }
         } catch (_: Exception) {}
@@ -2709,12 +2783,20 @@ class InnerTubeMusicApi @Inject constructor(
         val best = validCandidates.asSequence()
             .filter { candidate ->
                 val titleMatch = maxOf(similarity(candidate.title, title), similarity(baseTitle(candidate.title), baseTitle(title))) >= 60
-                val artistMatch = cleanArtist.isBlank() || similarity(candidate.artist, cleanArtist) >= 35
+                val artistMatch = cleanArtist.isBlank() ||
+                    similarity(candidate.artist, cleanArtist) >= 35 ||
+                    normalize(candidate.artist).contains(normalize(cleanArtist)) ||
+                    normalize(candidate.title).contains(normalize(cleanArtist))
                 titleMatch && artistMatch
             }
             .maxByOrNull { candidate -> matchScore(candidate, title, cleanArtist) }
-            ?: validCandidates.maxByOrNull { candidate -> matchScore(candidate, title, cleanArtist) }
-            ?: validCandidates.firstOrNull()
+            ?: validCandidates.filter { candidate ->
+                cleanArtist.isBlank() ||
+                    similarity(candidate.artist, cleanArtist) >= 30 ||
+                    normalize(candidate.artist).contains(normalize(cleanArtist)) ||
+                    normalize(candidate.title).contains(normalize(cleanArtist))
+            }.maxByOrNull { candidate -> matchScore(candidate, title, cleanArtist) }
+            ?: validCandidates.firstOrNull().takeIf { cleanArtist.isBlank() }
             ?: throw IOException("No reliable YouTube Music match found for $title by $artist")
         return best.also {
             if (matchCache.size > MAX_MATCH_CACHE_ENTRIES) matchCache.clear()
@@ -2796,63 +2878,73 @@ class InnerTubeMusicApi @Inject constructor(
         callTimeoutMs: Long? = null,
         authenticatedAccount: YtConnection? = null,
     ): JsonObject {
-        val builder = Request.Builder()
-            .url(url)
-            .header("Content-Type", "application/json")
-            .header("User-Agent", userAgent)
-            .header("Origin", origin)
-            .header("X-Origin", origin)
-            .header("Referer", referer)
-            .header("X-Goog-Api-Format-Version", "1")
-            .header("X-YouTube-Client-Name", CLIENT_IDS[clientName] ?: clientName)
-            .header("X-YouTube-Client-Version", clientVersion)
-            .apply {
-                val (hl, gl) = getEffectiveHlGl()
-                header("Accept-Language", "$hl-$gl,$hl;q=0.9,en;q=0.8")
+        fun buildRequest(): Request {
+            val builder = Request.Builder()
+                .url(url)
+                .header("Content-Type", "application/json")
+                .header("User-Agent", userAgent)
+                .header("Origin", origin)
+                .header("X-Origin", origin)
+                .header("Referer", referer)
+                .header("X-Goog-Api-Format-Version", "1")
+                .header("X-YouTube-Client-Name", CLIENT_IDS[clientName] ?: clientName)
+                .header("X-YouTube-Client-Version", clientVersion)
+                .apply {
+                    val (hl, gl) = getEffectiveHlGl()
+                    header("Accept-Language", "$hl-$gl,$hl;q=0.9,en;q=0.8")
+                }
+
+            if (!visitorData.isNullOrBlank()) {
+                builder.header("X-Goog-Visitor-Id", visitorData)
             }
 
-        if (!visitorData.isNullOrBlank()) {
-            builder.header("X-Goog-Visitor-Id", visitorData)
+            // Account-authenticated surface: cookies + per-request SAPISIDHASH.
+            // Only applied when explicitly requested AND a connection exists —
+            // anonymous endpoints must stay cookie-free so playback never
+            // depends on login state.
+            if (authenticated) {
+                val account = authenticatedAccount ?: ytAuth.connection.value
+                if (authenticatedAccount != null && ytAuth.connection.value != account) {
+                    throw kotlinx.coroutines.CancellationException("YouTube account changed")
+                }
+                ytAuth.cookieHeaderValue(account)?.let { builder.header("Cookie", it) }
+                ytAuth.authorizationHeaderValue(account = account)?.let { builder.header("Authorization", it) }
+                // Brand-channel delegation: same cookies, but YouTube answers as
+                // the selected channel instead of the default (first) one.
+                // Mirrors music.youtube.com, which sends `pageid=` on its switcher
+                // `signin` request and `X-Goog-PageId` per API call afterwards.
+                val pageId = account.pageId.takeIf { it.isNotBlank() }
+                if (pageId != null) {
+                    builder.header("X-Goog-PageId", pageId)
+                    builder.header("X-Goog-AuthUser", (account.authUserIndex ?: 0).toString())
+                } else {
+                    // Multi-login session index: cookies are shared across the
+                    // session's Google accounts, this flag picks which one answers.
+                    account.authUserIndex?.let { builder.header("X-Goog-AuthUser", it.toString()) }
+                }
+            }
+
+            return builder
+                .post(body.toString().toRequestBody(JSON_MEDIA_TYPE))
+                .build()
         }
 
-        // Account-authenticated surface: cookies + per-request SAPISIDHASH.
-        // Only applied when explicitly requested AND a connection exists —
-        // anonymous endpoints must stay cookie-free so playback never
-        // depends on login state.
-        if (authenticated) {
-            val account = authenticatedAccount ?: ytAuth.connection.value
-            if (authenticatedAccount != null && ytAuth.connection.value != account) {
-                throw kotlinx.coroutines.CancellationException("YouTube account changed")
-            }
-            ytAuth.cookieHeaderValue(account)?.let { builder.header("Cookie", it) }
-            ytAuth.authorizationHeaderValue(account = account)?.let { builder.header("Authorization", it) }
-            // Brand-channel delegation: same cookies, but YouTube answers as
-            // the selected channel instead of the default (first) one.
-            // Mirrors music.youtube.com, which sends `pageid=` on its switcher
-            // `signin` request and `X-Goog-PageId` per API call afterwards.
-            val pageId = account.pageId.takeIf { it.isNotBlank() }
-            if (pageId != null) {
-                builder.header("X-Goog-PageId", pageId)
-                builder.header("X-Goog-AuthUser", (account.authUserIndex ?: 0).toString())
-            } else {
-                // Multi-login session index: cookies are shared across the
-                // session's Google accounts, this flag picks which one answers.
-                account.authUserIndex?.let { builder.header("X-Goog-AuthUser", it.toString()) }
-            }
-        }
-
-        val request = builder
-            .post(body.toString().toRequestBody(JSON_MEDIA_TYPE))
-            .build()
         var lastException: Exception? = null
         for (attempt in 1..maxAttempts) {
             currentCoroutineContext().ensureActive()
+            val request = buildRequest()
             try {
                 val call = http.newCall(request)
                 callTimeoutMs?.let { call.timeout().timeout(it, TimeUnit.MILLISECONDS) }
                 val (status, text) = call.readResponseBody()
                 if (status !in 200..299) {
                     if (status == 400 || status == 403 || status == 429) webConfig = null
+                    if (authenticated && (status == 401 || status == 403)) {
+                        if (attempt < maxAttempts && ytAuth.refreshCookiesFromCookieManager()) {
+                            android.util.Log.i(PLAYLIST_LOG_TAG, "Auto-refreshed YouTube cookies from CookieManager after HTTP $status; retrying request")
+                            continue
+                        }
+                    }
                     throw InnerTubeHttpException(status)
                 }
                 return try {
@@ -3310,15 +3402,34 @@ class InnerTubeMusicApi @Inject constructor(
             value.equals("EP", true) || value.equals("Playlist", true)
         ) return false
         if (parseDuration(value) != null || value.matches(Regex("^(19|20)\\d{2}$"))) return false
+        // Centralized stat detection covers "15M listens", "15 ml listens",
+        // "2.3M monthly listeners", "10K subscribers", "Track 16", etc.
+        // The explicit contains-checks below stay as a fast pre-filter so a
+        // future ArtistHelper regression can never leak counters as artists.
         if (value.contains(" view", ignoreCase = true) ||
             value.contains(" views", ignoreCase = true) ||
             value.contains(" song", ignoreCase = true) ||
             value.contains(" play", ignoreCase = true) ||
             value.contains(" plays", ignoreCase = true) ||
             value.contains(" stream", ignoreCase = true) ||
-            value.contains(" track", ignoreCase = true)
+            value.contains(" track", ignoreCase = true) ||
+            value.contains(" listen", ignoreCase = true) ||
+            value.contains(" subscrib", ignoreCase = true) ||
+            value.contains(" follow", ignoreCase = true) ||
+            value.contains(" monthly", ignoreCase = true) ||
+            value.contains(" fan", ignoreCase = true)
         ) return false
         if (com.lastwave.app.util.ArtistHelper.isPlayCountOrStat(value)) return false
+        // Leading digit + stat word anywhere ("15 ml listens") is never an artist.
+        // Real artists starting with digits ("1975", "21 Savage", "30 Seconds")
+        // don't contain counter words, so this is safe.
+        val lower = value.lowercase()
+        if (value.firstOrNull()?.isDigit() == true &&
+            (lower.contains("listen") || lower.contains("subscrib") ||
+                lower.contains("follow") || lower.contains("monthly") ||
+                lower.contains("play") || lower.contains("view") ||
+                lower.contains("stream") || lower.contains("scrobbl"))
+        ) return false
         return true
     }
 

@@ -123,6 +123,9 @@ fun LyricsPanel(
     onToggleFullscreen: (() -> Unit)? = null,
     isFullscreen: Boolean = false,
     modifier: Modifier = Modifier,
+    /** Manual sync correction (ms, + = lyrics earlier). Applies to lyric
+     *  focus/highlight only — the seekbar below keeps true position. */
+    lyricsOffsetMs: Long = 0L,
 ) {
     val track = state.current ?: return
     val liquidGlass = LocalLiquidGlass.current
@@ -137,8 +140,8 @@ fun LyricsPanel(
 
     LaunchedEffect(progress.positionMs, state.isPlaying) {
         val drift = kotlin.math.abs(smoothedPositionMs - progress.positionMs)
-        // Hard snap on seek (>250ms drift) or when stopped/paused
-        if (drift > 250 || !state.isPlaying) {
+        // Hard snap on seek (>120ms drift) or when stopped/paused
+        if (drift > 120 || !state.isPlaying) {
             smoothedPositionMs = progress.positionMs
         }
     }
@@ -157,10 +160,10 @@ fun LyricsPanel(
 
                 var nextPos = smoothedPositionMs + dt
                 val drift = target - nextPos
-                if (kotlin.math.abs(drift) > 250) {
+                if (kotlin.math.abs(drift) > 120) {
                     nextPos = target
                 } else {
-                    nextPos += (drift * 0.15f).toLong()
+                    nextPos += (drift * 0.25f).toLong()
                 }
                 smoothedPositionMs = nextPos.coerceAtLeast(smoothedPositionMs).coerceIn(0L, dur)
             }
@@ -224,7 +227,8 @@ fun LyricsPanel(
                         } else if (targetState.isSynced && targetState.lines.isNotEmpty()) {
                             SyncedLyricsList(
                                 lines = targetState.lines,
-                                currentPositionMs = smoothedPositionMs,
+                                currentPositionMs = smoothedPositionMs + lyricsOffsetMs,
+                                lyricsOffsetMs = lyricsOffsetMs,
                                 isPlaying = state.isPlaying,
                                 onSeek = player::seekTo,
                                 animationStyle = lyricsAnimation,
@@ -276,6 +280,7 @@ private fun SyncedLyricsList(
     animationStyle: LyricsAnimation,
     liquidGlass: Boolean,
     modifier: Modifier = Modifier,
+    lyricsOffsetMs: Long = 0L,
 ) {
     val listState = rememberLazyListState()
     var userScrolledTime by remember { mutableLongStateOf(0L) }
@@ -286,35 +291,37 @@ private fun SyncedLyricsList(
         else meaningfulLines.count { it.isRtl } > meaningfulLines.size / 2
     }
 
-    // Active line detection: range-aware matching without per-frame derivedStateOf reallocations
-    val activeIndex by remember(lines) {
-        androidx.compose.runtime.derivedStateOf {
-            val pos = currentPositionMs
-            var match = -1
-            for (idx in lines.indices.reversed()) {
-                val line = lines[idx]
-                val nextStart = lines.getOrNull(idx + 1)?.timeMs
-                val effectiveDuration = when {
-                    line.durationMs > 0 -> line.durationMs
-                    line.syllables.isNotEmpty() -> {
-                        val lastSyl = line.syllables.last()
+    // Active line detection, recomputed from the live position every frame:
+    // word-sync rows focus edge-to-edge on their own clock, rows without
+    // syllables hold until the next row (capped through long instrumentals).
+    val activeIndex = remember(lines, currentPositionMs) {
+        val pos = currentPositionMs
+        var match = -1
+        for (idx in lines.indices.reversed()) {
+            val line = lines[idx]
+            val nextStart = lines.getOrNull(idx + 1)?.timeMs
+            val effectiveDuration = when {
+                line.durationMs > 0 -> line.durationMs
+                line.syllables.isNotEmpty() -> {
+                    val lastSyl = line.syllables.maxByOrNull { it.timeMs + it.durationMs }
+                    if (lastSyl != null) {
                         (lastSyl.timeMs + lastSyl.durationMs - line.timeMs).coerceAtLeast(1000L)
-                    }
-                    nextStart != null && nextStart > line.timeMs -> {
-                        val gap = nextStart - line.timeMs
-                        if (gap <= 6000L) gap else 4500L
-                    }
-                    else -> 5000L
+                    } else 1000L
                 }
-                val end = line.timeMs + effectiveDuration
-                if (pos >= line.timeMs && pos < end) {
-                    match = idx
-                    break
+                nextStart != null && nextStart > line.timeMs -> {
+                    val gap = nextStart - line.timeMs
+                    if (gap <= 6000L) gap else 4500L
                 }
+                else -> 5000L
             }
-            if (match >= 0) match
-            else lines.indexOfLast { it.timeMs <= pos }
+            val end = line.timeMs + effectiveDuration
+            if (pos >= line.timeMs && pos < end) {
+                match = idx
+                break
+            }
         }
+        if (match >= 0) match
+        else lines.indexOfLast { it.timeMs <= pos }
     }
 
     if (listState.isScrollInProgress) {
@@ -346,14 +353,17 @@ private fun SyncedLyricsList(
         contentPadding = PaddingValues(
             top = 40.dp,
             bottom = 130.dp,
-            start = 12.dp,
-            end = 12.dp,
+            // Wider gutters: at the large type scale the focus zoom
+            // (up to 1.18x) would otherwise push scaled rows past the
+            // clipped list edges.
+            start = 16.dp,
+            end = 16.dp,
         ),
         verticalArrangement = Arrangement.spacedBy(
             when (animationStyle) {
-                LyricsAnimation.APPLE_ZOOM -> 22.dp
-                LyricsAnimation.CARD_POP -> 16.dp
-                else -> 18.dp
+                LyricsAnimation.APPLE_ZOOM -> 30.dp
+                LyricsAnimation.CARD_POP -> 24.dp
+                else -> 26.dp
             },
         ),
     ) {
@@ -572,19 +582,25 @@ private fun SyncedLyricsList(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                         ) {
-                            onSeek(line.timeMs)
+                            // Inverse of the highlight shift: tap targets audio time.
+                            onSeek((line.timeMs - lyricsOffsetMs).coerceAtLeast(0L))
                         }
                         .padding(
                             horizontal = if (animationStyle == LyricsAnimation.CARD_POP) 16.dp else 12.dp,
-                            vertical = if (isActive) 10.dp else 8.dp,
+                            vertical = if (isActive) 8.dp else 6.dp,
                         ),
                 ) {
+                    // Compact type: lineHeight leaves room for the focus zoom
+                    // (up to 1.18x) so scaled rows neither overlap neighbours
+                    // nor clip at the list edges — without the old oversized
+                    // leading that stretched the gaps between rows.
                     val fontStyle = MaterialTheme.typography.titleLarge.copy(
+                        fontSize = 28.sp,
                         fontWeight = if (isActive) {
                             if (animationStyle == LyricsAnimation.APPLE_ZOOM) FontWeight.Black else FontWeight.ExtraBold
                         } else FontWeight.SemiBold,
                         letterSpacing = (-0.2).sp,
-                        lineHeight = 32.sp,
+                        lineHeight = 40.sp,
                     )
 
                     WordByWordLyricLine(
@@ -647,6 +663,8 @@ private fun WordByWordLyricLine(
                         Text(
                             text = line.transliteration,
                             style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 18.sp,
+                                lineHeight = 26.sp,
                                 fontWeight = FontWeight.Medium,
                                 letterSpacing = 0.2.sp,
                             ),
@@ -681,7 +699,13 @@ private fun WordByWordLyricLine(
                 line.syllables.forEachIndexed { sIndex, syllable ->
                     val sylStart = syllable.timeMs
                     val minDur = if (syllable.durationMs > 0) syllable.durationMs else 150L
-                    val sylEnd = sylStart + minDur
+                    // Edge-to-edge word stepping: each word stays lit until
+                    // the next word starts, so the highlight sweeps
+                    // continuously instead of dropping into dead gaps between
+                    // words. The last word keeps its own duration.
+                    val nextStart = line.syllables.getOrNull(sIndex + 1)?.timeMs
+                    val sylEnd = if (nextStart != null && nextStart > sylStart) nextStart
+                    else sylStart + minDur
                     val isSyllableActive = currentPositionMs in sylStart until sylEnd
                     val isSyllablePast = currentPositionMs >= sylEnd
 
@@ -842,8 +866,8 @@ private fun PlainLyricsView(
             Text(
                 text = plainLyrics,
                 style = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = 19.sp,
-                    lineHeight = 32.sp,
+                    fontSize = 22.sp,
+                    lineHeight = 36.sp,
                     fontWeight = FontWeight.Medium,
                     letterSpacing = 0.1.sp,
                 ),

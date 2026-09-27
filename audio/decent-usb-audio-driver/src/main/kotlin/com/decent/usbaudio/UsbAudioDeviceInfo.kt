@@ -13,8 +13,13 @@ data class UsbAudioDeviceInfo(
     val endpointOutAddress: Int,
     val endpointFeedbackAddress: Int,
     val maxPacketSize: Int,
+    val dataInterval: Int,
+    val feedbackPacketSize: Int,
+    val feedbackInterval: Int,
     val altSettingCount: Int,
     val clockSourceId: Int,
     val bestAltSetting: Int,
-    val bestBitDepth: Int
+    val bestBitDepth: Int,
+    /** USB Audio Class version from bcdADC; this does not identify USB bus speed. */
+    val uacVersion: Int = 0,
 )

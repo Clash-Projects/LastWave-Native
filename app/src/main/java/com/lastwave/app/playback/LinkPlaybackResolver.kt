@@ -200,6 +200,7 @@ class LinkPlaybackResolver @Inject constructor(
                 album = match.album,
                 artworkUrl = artworkUrl ?: match.artworkUrl,
                 videoId = match.videoId,
+                durationMs = match.durationSeconds?.takeIf { it > 0 }?.times(1_000L),
             )
         } else {
             PlayableTrack(
@@ -228,5 +229,6 @@ class LinkPlaybackResolver @Inject constructor(
         album = album,
         artworkUrl = artworkUrl,
         videoId = videoId,
+        durationMs = durationSeconds?.takeIf { it > 0 }?.times(1_000L),
     )
 }

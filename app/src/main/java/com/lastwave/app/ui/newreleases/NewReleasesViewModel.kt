@@ -120,5 +120,6 @@ class NewReleasesViewModel @Inject constructor(
         album = album,
         artworkUrl = artworkUrl,
         videoId = videoId.takeIf(String::isNotBlank),
+        durationMs = durationSeconds?.takeIf { it > 0 }?.times(1_000L),
     )
 }

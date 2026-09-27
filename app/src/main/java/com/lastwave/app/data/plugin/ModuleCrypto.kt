@@ -16,31 +16,24 @@ import javax.inject.Singleton
  * LWP2 (current): magic "LWP2"(4) + nonce(12) + ct+tag, AES-256-GCM with
  *   AAD = entryName UTF-8 (binds ciphertext to file path, blocks swap).
  *
- * Key lives ONLY in native .so (NativeModuleKey, scattered XOR fragments
- * + APK signature gate). Nothing in DEX/BuildConfig. keyId
+ * The native provider-module key provisioning (NativeModuleKey /
+ * PROVIDER_MODULE_KEY) was removed as dead code: its JNI getters were
+ * unconditional empty stubs, so no build could ever provision a key.
+ * Encrypted configs are therefore rejected exactly as before (loadKey
+ * returns null); plaintext module handling is untouched. keyId
  * (sha256(key)[:16 hex]) must constant-time match manifest's enc.keyId
  * or package is rejected before execution.
  */
 @Singleton
-class ModuleCrypto @Inject constructor(
-    private val nativeKey: NativeModuleKey,
-) {
+class ModuleCrypto @Inject constructor() {
+    /** No provisioned provider key: encrypted module configs are rejected. */
+    fun appKey(): ByteArray? = null
     companion object {
         private val MAGIC_LWP1 = byteArrayOf('L'.code.toByte(), 'W'.code.toByte(), 'P'.code.toByte(), '1'.code.toByte())
         private val MAGIC_LWP2 = byteArrayOf('L'.code.toByte(), 'W'.code.toByte(), 'P'.code.toByte(), '2'.code.toByte())
         private const val NONCE_LEN = 12
         private const val TAG_BITS = 128
         private const val MAX_PLAINTEXT = 8 * 1024 * 1024 // 8MB cap: reject zip-bombs
-    }
-
-    /** Null when build wasn't provisioned (public fork) or signature fails. */
-    fun appKey(): ByteArray? {
-        val k = runCatching { nativeKey.moduleKey() }.getOrNull() ?: return null
-        if (k.size != 32) {
-            k.fill(0)
-            return null
-        }
-        return k
     }
 
     /** Returns key only when its id constant-time equals [expectedKeyId]. */
@@ -54,19 +47,6 @@ class ModuleCrypto @Inject constructor(
             key.fill(0)
             null
         }
-    }
-
-    fun appKeyId(): String? {
-        val key = appKey() ?: return null
-        val id = keyIdOf(key)
-        key.fill(0)
-        return id
-    }
-
-    fun isKeyProvisioned(): Boolean {
-        val k = appKey() ?: return false
-        k.fill(0)
-        return true
     }
 
     fun keyIdOf(key: ByteArray): String =

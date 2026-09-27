@@ -60,6 +60,10 @@ data class SignalPathInput(
     val exclusiveClockMatched: Boolean = false,
     /** UAC Feature Unit volume is in use (PCM payload unscaled). */
     val exclusiveHardwareVolume: Boolean = false,
+    /** Last exclusive open failure, if any (openDevice/alt-setting/etc). */
+    val exclusiveFailureReason: String? = null,
+    /** True when exclusive USB resampled through soxr because DAC clock unsupported. */
+    val clockFallbackResampled: Boolean = false,
 )
 
 /**
@@ -86,6 +90,7 @@ data class SignalPathReport(
     val glitchCount: Long,
     val isPlaying: Boolean,
     val usbExclusiveActive: Boolean = false,
+    val clockFallbackResampled: Boolean = false,
 ) {
     companion object {
         fun initial() = SignalPathReport(
@@ -102,6 +107,7 @@ data class SignalPathReport(
             glitchCount = 0L,
             isPlaying = false,
             usbExclusiveActive = false,
+            clockFallbackResampled = false,
         )
     }
 }
@@ -119,7 +125,9 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
     // rate rather than failing gold as "unknown".
     val src = i.sourceRateHz?.takeIf { it > 0 }
         ?: i.appOutputRateHz.takeIf { it > 0 && i.usbExclusiveActive }
-    val bitDepth = i.sourceBitDepth?.takeIf { it > 0 }
+    val labelBitDepth = Regex("""(?:^|[^\d])(16|24|32)\s*(?:[-_]bit)?\s*[/]""", RegexOption.IGNORE_CASE)
+        .find(i.sourceLabel)?.groupValues?.getOrNull(1)?.toIntOrNull()
+    val bitDepth = labelBitDepth ?: i.sourceBitDepth?.takeIf { it > 0 }
     if (src != null) {
         if (bitDepth != null) {
             checks += PathCheck(
@@ -153,6 +161,13 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
                 R.string.signal_detail_resample_bypass,
                 listOf(src),
                 passed = true,
+            )
+        } else if (i.usbExclusiveActive && i.clockFallbackResampled) {
+            checks += PathCheck(
+                R.string.signal_label_resampler,
+                R.string.signal_detail_resample_dac_unsupported,
+                listOf(src, app),
+                passed = false,
             )
         } else {
             checks += PathCheck(
@@ -347,10 +362,25 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
     }
 
     // 9 — Exclusive clock verification. Mixer routing is never gold.
+    // When exclusive failed to start, name the reason (device/permission/
+    // alt-setting/stream start) instead of the generic unverified line so
+    // the failure is diagnosable from the dialog alone.
     when {
+        !i.usbExclusiveActive && i.exclusiveFailureReason != null -> checks += PathCheck(
+            R.string.signal_label_output,
+            R.string.signal_detail_exclusive_failed,
+            listOf(i.exclusiveFailureReason),
+            passed = false,
+        )
         !i.usbExclusiveActive -> checks += PathCheck(
             R.string.signal_label_output,
             R.string.signal_detail_route_unverified,
+            passed = false,
+        )
+        i.clockFallbackResampled -> checks += PathCheck(
+            R.string.signal_label_output,
+            R.string.signal_detail_usb_clock_fallback,
+            listOf(src ?: 0, app ?: 0),
             passed = false,
         )
         i.exclusiveClockMatched || i.routeVerified -> checks += PathCheck(
@@ -368,6 +398,7 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
     return SignalPathReport(
         checks = checks,
         bitPerfect = i.usbExclusiveActive &&
+            !i.clockFallbackResampled &&
             (i.exclusiveClockMatched || i.routeVerified) &&
             checks.all { it.passed },
         sourceLabel = i.sourceLabel,
@@ -379,6 +410,7 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
         glitchCount = i.glitchCount,
         isPlaying = i.isPlaying,
         usbExclusiveActive = i.usbExclusiveActive,
+        clockFallbackResampled = i.clockFallbackResampled,
     )
 }
 
@@ -415,6 +447,7 @@ class StreamHealthTracker {
     fun sample(positionMs: Long, wallMs: Long, playing: Boolean): Double? {
         if (!playing || positionMs < 0) {
             lastPositionMs = -1L
+            if (!playing) driftPpm = null
             return driftPpm
         }
         if (lastPositionMs < 0) {
@@ -450,7 +483,12 @@ class StreamHealthTracker {
      * on "measuring…". Compare cumulative frames to wall from a baseline.
      */
     fun sampleExclusive(framesWritten: Long, rateHz: Int, wallMs: Long, playing: Boolean): Double? {
-        if (!playing || rateHz <= 0 || framesWritten < 0L) {
+        if (!playing) {
+            exclusiveOriginFrames = -1L
+            driftPpm = null
+            return null
+        }
+        if (rateHz <= 0 || framesWritten < 0L) {
             exclusiveOriginFrames = -1L
             return driftPpm
         }

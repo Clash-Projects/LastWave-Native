@@ -259,11 +259,44 @@ class UsbAudioDevice private constructor(private val context: Context) {
         connection = conn
         currentDevice = device
 
-        // Auto-detect Clock Source ID and best alt setting from USB descriptors
+        // Auto-detect Clock Source ID, best alt setting, and UAC version from USB descriptors
+        val uacVersion = parseUacVersion(conn)
         val clockSourceId = parseClockSourceId(conn)
-        val (bestAlt, bestBits) = parseBestAltSetting(conn)
+        val (bestAlt, bestBits) = parseBestAltSetting(conn, uacVersion)
+        val bestAltInterface = (0 until device.interfaceCount)
+            .map { device.getInterface(it) }
+            .firstOrNull {
+                it.interfaceClass == UsbConstants.USB_CLASS_AUDIO &&
+                    it.interfaceSubclass == 2 &&
+                    it.alternateSetting == bestAlt
+            }
+        val bestAltOut = bestAltInterface?.let { iface ->
+            (0 until iface.endpointCount).map { iface.getEndpoint(it) }
+                .firstOrNull {
+                    it.type == UsbConstants.USB_ENDPOINT_XFER_ISOC &&
+                        it.direction == UsbConstants.USB_DIR_OUT
+                }
+        }
+        val bestAltFeedback = bestAltInterface?.let { iface ->
+            (0 until iface.endpointCount).map { iface.getEndpoint(it) }
+                .firstOrNull {
+                    it.type == UsbConstants.USB_ENDPOINT_XFER_ISOC &&
+                        it.direction == UsbConstants.USB_DIR_IN
+                }
+        }
+        if (bestAltOut != null) {
+            endpointOut = bestAltOut.address
+            maxPacketSize = bestAltOut.maxPacketSize
+        }
+        if (bestAltFeedback != null) endpointFeedback = bestAltFeedback.address
+        val dataInterval = bestAltOut?.interval ?: 1
+        val feedbackPacketSize = bestAltFeedback?.maxPacketSize ?: 4
+        val feedbackInterval = bestAltFeedback?.interval ?: dataInterval
         Log.i(TAG, "Auto-detected: clockSourceId=0x${clockSourceId.toString(16)}, " +
-                "bestAlt=$bestAlt, bestBits=$bestBits")
+                "bestAlt=$bestAlt, bestBits=$bestBits, uacVersion=$uacVersion, " +
+                "epOut=0x${endpointOut.toString(16)}, maxPacket=$maxPacketSize, " +
+                "dataInterval=$dataInterval, epFb=0x${endpointFeedback.toString(16)}, " +
+                "fbPacket=$feedbackPacketSize, fbInterval=$feedbackInterval")
 
         val info = UsbAudioDeviceInfo(
                 connection = conn,
@@ -273,10 +306,14 @@ class UsbAudioDevice private constructor(private val context: Context) {
                 endpointOutAddress = endpointOut,
                 endpointFeedbackAddress = endpointFeedback,
                 maxPacketSize = maxPacketSize,
+                dataInterval = dataInterval,
+                feedbackPacketSize = feedbackPacketSize,
+                feedbackInterval = feedbackInterval,
                 altSettingCount = altSettingCount,
                 clockSourceId = clockSourceId,
                 bestAltSetting = bestAlt,
-                bestBitDepth = bestBits
+                bestBitDepth = bestBits,
+                uacVersion = uacVersion,
         )
         cachedDeviceInfo = info
         return info
@@ -306,17 +343,27 @@ class UsbAudioDevice private constructor(private val context: Context) {
         // The next openDevice() will see connection != null and skip re-opening
     }
 
+    /** All parsed CLOCK_SOURCE (0x0A) entity IDs in AudioControl order. */
+    private var parsedClockSourceIds: List<Int> = emptyList()
+    /** Optional CLOCK_SELECTOR (0x0B) entity ID and its 1-indexed input pin -> clockSourceId list. */
+    private var parsedClockSelectorId: Int = -1
+    private var parsedClockSelectorPins: List<Int> = emptyList()
+    /** Active clock source ID last selected via setSampleRate(). */
+    @Volatile private var activeClockSourceId: Int = -1
+    /** Per-Clock-Source supported sample rates discovered via GET_RANGE. */
+    private val clockSourceRateMap = mutableMapOf<Int, Set<Int>>()
+
     /**
-     * Parse raw USB descriptors to find the UAC2 Clock Source entity ID.
-     * This is the entity that controls the DAC's sample rate.
+     * Parse raw USB descriptors to find all UAC2 Clock Source entity IDs (0x0A)
+     * and any Clock Selector entity (0x0B) for dual-oscillator (44.1k + 48k) DACs.
      *
-     * Scans the AudioControl interface descriptors for a CLOCK_SOURCE
-     * descriptor (bDescriptorSubtype = 0x0A) and returns its bClockID.
-     *
-     * @return Clock Source entity ID, or -1 if not found.
+     * @return Primary Clock Source entity ID, or -1 if not found.
      */
     private fun parseClockSourceId(conn: UsbDeviceConnection): Int {
         val raw = conn.rawDescriptors ?: return -1
+        val sources = mutableListOf<Int>()
+        var selectorId = -1
+        val selectorPins = mutableListOf<Int>()
 
         var i = 0
         var inAudioControl = false
@@ -337,21 +384,41 @@ class UsbAudioDevice private constructor(private val context: Context) {
             }
 
             // CS_INTERFACE descriptor (0x24) inside AudioControl
-            if (inAudioControl && bDescriptorType == 0x24 && bLength >= 3) {
+            if (inAudioControl && bDescriptorType == 0x24 && bLength >= 4) {
                 val bDescriptorSubtype = raw[i + 2].toInt() and 0xFF
                 // CLOCK_SOURCE = 0x0A
                 if (bDescriptorSubtype == 0x0A && bLength >= 5) {
                     val bClockID = raw[i + 3].toInt() and 0xFF
-                    Log.i(TAG, "parseClockSourceId: found CLOCK_SOURCE bClockID=0x${bClockID.toString(16)}")
-                    return bClockID
+                    if (bClockID > 0 && bClockID !in sources) {
+                        sources += bClockID
+                        Log.i(TAG, "parseClockSourceId: found CLOCK_SOURCE bClockID=0x${bClockID.toString(16)}")
+                    }
+                } else if (bDescriptorSubtype == 0x0B && bLength >= 5 && selectorId < 0) {
+                    // CLOCK_SELECTOR = 0x0B: [bLength, 0x24, 0x0B, bClockID, bNrInPins, baCSourceID(1..p)...]
+                    selectorId = raw[i + 3].toInt() and 0xFF
+                    val nrPins = raw[i + 4].toInt() and 0xFF
+                    for (p in 0 until nrPins) {
+                        val off = i + 5 + p
+                        if (off < i + bLength) {
+                            selectorPins += raw[off].toInt() and 0xFF
+                        }
+                    }
+                    Log.i(TAG, "parseClockSourceId: found CLOCK_SELECTOR id=0x${selectorId.toString(16)} pins=$selectorPins")
                 }
             }
 
             i += bLength
         }
 
-        Log.w(TAG, "parseClockSourceId: no CLOCK_SOURCE descriptor found")
-        return -1
+        parsedClockSourceIds = sources
+        parsedClockSelectorId = selectorId
+        parsedClockSelectorPins = selectorPins
+        val primary = sources.firstOrNull() ?: -1
+        activeClockSourceId = primary
+        if (primary < 0) {
+            Log.w(TAG, "parseClockSourceId: no CLOCK_SOURCE descriptor found")
+        }
+        return primary
     }
 
     /**
@@ -366,7 +433,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
     /** Parsed alt setting: (altNumber, bitResolution) */
     private var parsedAltSettings: List<Pair<Int, Int>> = emptyList()
 
-    private fun parseBestAltSetting(conn: UsbDeviceConnection): Pair<Int, Int> {
+    private fun parseBestAltSetting(conn: UsbDeviceConnection, uacVersion: Int): Pair<Int, Int> {
         val raw = conn.rawDescriptors ?: return Pair(1, 16)
         val altSettings = mutableListOf<Pair<Int, Int>>()
 
@@ -396,15 +463,25 @@ class UsbAudioDevice private constructor(private val context: Context) {
             if (inAudioStreaming && bDescriptorType == 0x24 && bLength >= 6) {
                 val bDescriptorSubtype = raw[i + 2].toInt() and 0xFF
                 if (bDescriptorSubtype == 0x02) {
-                    val bSubslotSize = raw[i + 4].toInt() and 0xFF
-                    val bBitResolution = raw[i + 5].toInt() and 0xFF
-                    Log.i(TAG, "parseBestAltSetting: alt=$currentAlt subslotSize=$bSubslotSize bitResolution=$bBitResolution")
+                    val bSubslotSize: Int
+                    val bBitResolution: Int
+                    if (uacVersion == 100) {
+                        // UAC 1.0: bSubframeSize is at offset 5, bBitResolution at offset 6
+                        bSubslotSize = if (bLength >= 7) raw[i + 5].toInt() and 0xFF else 2
+                        bBitResolution = if (bLength >= 7) raw[i + 6].toInt() and 0xFF else 16
+                    } else {
+                        // UAC 2.0/3.0: bSubslotSize is at offset 4, bBitResolution at offset 5
+                        bSubslotSize = raw[i + 4].toInt() and 0xFF
+                        bBitResolution = raw[i + 5].toInt() and 0xFF
+                    }
+                    val containerBits = bSubslotSize * 8
+                    Log.i(TAG, "parseBestAltSetting: alt=$currentAlt subslotSize=$bSubslotSize bitResolution=$bBitResolution containerBits=$containerBits")
 
                     if (currentAlt > 0) {
-                        altSettings.add(Pair(currentAlt, bBitResolution))
+                        altSettings.add(Pair(currentAlt, containerBits))
                     }
-                    if (bBitResolution > bestBits && currentAlt > 0) {
-                        bestBits = bBitResolution
+                    if (containerBits > bestBits && currentAlt > 0) {
+                        bestBits = containerBits
                         bestAlt = currentAlt
                     }
                 }
@@ -416,6 +493,63 @@ class UsbAudioDevice private constructor(private val context: Context) {
         parsedAltSettings = altSettings
         Log.i(TAG, "parseBestAltSetting: best alt=$bestAlt bits=$bestBits, all=$altSettings")
         return Pair(bestAlt, bestBits)
+    }
+
+    /**
+     * Parse the USB Audio Class version from the AudioControl interface header descriptor.
+     *
+     * Reads the `bcdADC` field (bytes 3–4 of the AC Header CS_INTERFACE descriptor,
+     * subtype 0x01) to distinguish UAC 1.0 (0x0100) from UAC 2.0 (0x0200).
+     *
+     * - UAC 1.0 → returns 100 (simple USB headsets, e.g. Apple EarPods USB-C)
+     * - UAC 2.0 → returns 200 (audiophile DACs with Clock Source entities)
+     * - Unknown  → returns 0
+     *
+     * This is used to gate UAC 2.0-only features (exclusive isochronous output,
+     * SET_CUR clock control) away from simple headsets that do not implement them.
+     */
+    fun parseUacVersion(conn: UsbDeviceConnection): Int {
+        val raw = conn.rawDescriptors ?: return 0
+        var i = 0
+        var inAudioControl = false
+
+        while (i + 1 < raw.size) {
+            val bLength = raw[i].toInt() and 0xFF
+            if (bLength < 2) break
+            if (i + bLength > raw.size) break
+
+            val bDescriptorType = raw[i + 1].toInt() and 0xFF
+
+            // Interface descriptor (type 0x04)
+            if (bDescriptorType == 0x04 && bLength >= 9) {
+                val bInterfaceClass    = raw[i + 5].toInt() and 0xFF
+                val bInterfaceSubClass = raw[i + 6].toInt() and 0xFF
+                inAudioControl = (bInterfaceClass == 1 && bInterfaceSubClass == 1)
+            }
+
+            // CS_INTERFACE (0x24) inside AudioControl — subtype 0x01 = AC Header
+            if (inAudioControl && bDescriptorType == 0x24 && bLength >= 5) {
+                val bDescriptorSubtype = raw[i + 2].toInt() and 0xFF
+                if (bDescriptorSubtype == 0x01) {
+                    // bcdADC: bytes at offset 3 (LSB) and 4 (MSB)
+                    val bcdLo = raw[i + 3].toInt() and 0xFF
+                    val bcdHi = raw[i + 4].toInt() and 0xFF
+                    val bcd = (bcdHi shl 8) or bcdLo
+                    val version = when (bcd) {
+                        0x0100 -> 100  // UAC 1.0
+                        0x0200 -> 200  // UAC 2.0
+                        0x0300 -> 300  // UAC 3.0 (rare)
+                        else   -> 0
+                    }
+                    Log.i(TAG, "parseUacVersion: bcdADC=0x${bcd.toString(16).padStart(4,'0')} -> UAC $version")
+                    return version
+                }
+            }
+
+            i += bLength
+        }
+        Log.w(TAG, "parseUacVersion: no AC Header descriptor found, returning 0")
+        return 0
     }
 
     /**
@@ -453,11 +587,19 @@ class UsbAudioDevice private constructor(private val context: Context) {
         return best
     }
 
+    private var cachedSupportedRates: List<Int> = emptyList()
+
     /**
      * Close the USB device and release all resources.
      */
     fun closeDevice() {
         cachedDeviceInfo = null
+        cachedSupportedRates = emptyList()
+        clockSourceRateMap.clear()
+        parsedClockSourceIds = emptyList()
+        parsedClockSelectorId = -1
+        parsedClockSelectorPins = emptyList()
+        activeClockSourceId = -1
         claimedInterface?.let { iface ->
             connection?.releaseInterface(iface)
             claimedInterface = null
@@ -469,17 +611,183 @@ class UsbAudioDevice private constructor(private val context: Context) {
     }
 
     /**
-     * Set the sample rate on a UAC2 Clock Source entity via SET_CUR control transfer.
-     *
-     * Tries multiple common clock source entity IDs since we can't easily read
-     * the AudioControl descriptors from userspace on Android.
-     *
-     * UAC2 SET_CUR format:
-     *   bmRequestType = 0x21 (Host-to-Device, Class, Interface)
-     *   bRequest = 0x01 (SET_CUR)
-     *   wValue = (CS_SAM_FREQ_CONTROL << 8) | 0 = 0x0100
-     *   wIndex = (clockSourceEntityId << 8) | audioControlInterfaceNumber
-     *   data = 4-byte LE sample rate
+     * Queries all hardware-clock sample rates supported by the connected USB DAC.
+     * Combines UAC 2.0 Clock Source GET_RANGE (CS_SAM_FREQ_CONTROL = 0x01) across
+     * all Clock Source entities (supporting dual-crystal 44.1k+48k DACs) and
+     * UAC 1.0 AudioStreaming Format Type I tSamFreq descriptor tables.
+     */
+    fun querySupportedSampleRates(): List<Int> {
+        if (cachedSupportedRates.isNotEmpty()) return cachedSupportedRates
+        val conn = connection ?: return emptyList()
+        val rates = linkedSetOf<Int>()
+
+        // 1. Probe UAC 2.0 Clock Source GET_RANGE (bRequest = 0x02, wValue = 0x0100)
+        val detectedId = cachedDeviceInfo?.clockSourceId ?: -1
+        val candidateIds = buildList {
+            addAll(parsedClockSourceIds)
+            if (detectedId > 0) add(detectedId)
+            addAll(listOf(0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x28, 0x29, 0x06, 0x07, 0x08, 0x10, 0x20))
+        }.distinct()
+        val standardRates = intArrayOf(
+            44100, 48000, 88200, 96000, 176400, 192000, 352800, 384000, 705600, 768000
+        )
+        val rangeBuf = ByteArray(258)
+        val stopOnFirstHit = parsedClockSourceIds.size <= 1
+        for (csId in candidateIds) {
+            val wIndex = (csId shl 8) or 0
+            val ret = conn.controlTransfer(
+                0xA1,
+                0x02,   // GET_RANGE
+                0x0100, // CS_SAM_FREQ_CONTROL
+                wIndex,
+                rangeBuf,
+                rangeBuf.size,
+                500,
+            )
+            if (ret >= 14) {
+                val csRates = linkedSetOf<Int>()
+                val count = (rangeBuf[0].toInt() and 0xFF) or ((rangeBuf[1].toInt() and 0xFF) shl 8)
+                val maxEntries = ((ret - 2) / 12).coerceAtMost(count)
+                for (idx in 0 until maxEntries) {
+                    val base = 2 + idx * 12
+                    val dMin = readLeInt32(rangeBuf, base)
+                    val dMax = readLeInt32(rangeBuf, base + 4)
+                    val dRes = readLeInt32(rangeBuf, base + 8)
+                    if (dMin in 8000..1536000 && dMax >= dMin) {
+                        if (dMin == dMax || dRes <= 0) {
+                            csRates += dMin
+                        } else if (dRes == 44100 || (dMin % 44100 == 0 && dMax % 44100 == 0)) {
+                            for (std in standardRates) {
+                                if (std % 44100 == 0 && std in dMin..dMax) csRates += std
+                            }
+                        } else if (dRes == 48000 || (dMin % 48000 == 0 && dMax % 48000 == 0)) {
+                            for (std in standardRates) {
+                                if (std % 48000 == 0 && std in dMin..dMax) csRates += std
+                            }
+                        } else {
+                            csRates += dMin
+                            csRates += dMax
+                            for (std in standardRates) {
+                                if (std % 48000 == 0 && std in dMin..dMax && ((std - dMin) % dRes == 0)) {
+                                    csRates += std
+                                }
+                            }
+                        }
+                    }
+                }
+                if (csRates.isNotEmpty()) {
+                    clockSourceRateMap[csId] = csRates
+                    rates.addAll(csRates)
+                    if (stopOnFirstHit && csId !in parsedClockSourceIds) break
+                }
+            }
+        }
+
+        // 2. Parse UAC 1.0 Format Type I discrete/continuous tSamFreq from raw USB descriptors
+        val raw = conn.rawDescriptors
+        if (raw != null) {
+            var i = 0
+            var inAudioStreaming = false
+            while (i + 1 < raw.size) {
+                val bLength = raw[i].toInt() and 0xFF
+                if (bLength < 2 || i + bLength > raw.size) break
+                val bDescriptorType = raw[i + 1].toInt() and 0xFF
+                if (bDescriptorType == 0x04 && bLength >= 9) {
+                    val cls = raw[i + 5].toInt() and 0xFF
+                    val sub = raw[i + 6].toInt() and 0xFF
+                    inAudioStreaming = (cls == 1 && sub == 2)
+                } else if (inAudioStreaming && bDescriptorType == 0x24 && bLength >= 8) {
+                    val subtype = raw[i + 2].toInt() and 0xFF
+                    if (subtype == 0x02) { // FORMAT_TYPE
+                        val samFreqType = raw[i + 7].toInt() and 0xFF
+                        if (samFreqType == 0 && bLength >= 14) {
+                            val lower = readLeInt24(raw, i + 8)
+                            val upper = readLeInt24(raw, i + 11)
+                            if (lower in 8000..1536000) rates += lower
+                            if (upper in 8000..1536000) rates += upper
+                            for (std in standardRates) {
+                                if (std % 48000 == 0 && std in lower..upper) rates += std
+                            }
+                        } else if (samFreqType > 0) {
+                            for (k in 0 until samFreqType) {
+                                val off = i + 8 + k * 3
+                                if (off + 2 < i + bLength) {
+                                    val freq = readLeInt24(raw, off)
+                                    if (freq in 8000..1536000) rates += freq
+                                }
+                            }
+                        }
+                    }
+                }
+                i += bLength
+            }
+        }
+
+        // Single-crystal DACs (only 1 Clock Source and no Clock Selector) derive high-speed
+        // clocks from a 48 kHz-family crystal (12 / 24.576 MHz) where 48/96/192/384 kHz have
+        // exact integer frames per 125us USB microframe (6/12/24/48). High-rate 44.1 kHz
+        // multiples (88.2/176.4/352.8/705.6 kHz -> 11.025/22.05/44.1 frames/microframe) require
+        // a dedicated dual-crystal 22.5792/45.1584 MHz oscillator (multiple CLOCK_SOURCEs or
+        // CLOCK_SELECTOR 0x0B). Exclude those fractional high-rate 44.1k multiples on single-clock
+        // DACs so they cleanly resample via 64-bit libsoxr to 96/192/384/48 kHz.
+        val hasDedicated441Crystal = parsedClockSelectorId > 0 ||
+            parsedClockSourceIds.size >= 2 ||
+            clockSourceRateMap.size >= 2 ||
+            rates.none { it % 48000 == 0 }
+        if (!hasDedicated441Crystal) {
+            val removed = rates.filter { it > 44100 && it % 44100 == 0 }
+            if (removed.isNotEmpty()) {
+                rates.removeAll(removed.toSet())
+                Log.i(
+                    TAG,
+                    "querySupportedSampleRates: single-clock DAC lacks dedicated 44.1k crystal " +
+                        "(sources=${parsedClockSourceIds.size}, selector=$parsedClockSelectorId); " +
+                        "routing $removed to 48k-family hardware clock via soxr",
+                )
+            }
+        }
+
+        val sorted = rates.sorted()
+        if (sorted.isNotEmpty()) {
+            cachedSupportedRates = sorted
+            Log.i(TAG, "querySupportedSampleRates: DAC hardware clock rates=$sorted (perClock=$clockSourceRateMap)")
+        }
+        return sorted
+    }
+
+    private fun readLeInt24(buf: ByteArray, offset: Int): Int =
+        (buf[offset].toInt() and 0xFF) or
+            ((buf[offset + 1].toInt() and 0xFF) shl 8) or
+            ((buf[offset + 2].toInt() and 0xFF) shl 16)
+
+    private fun readLeInt32(buf: ByteArray, offset: Int): Int =
+        (buf[offset].toInt() and 0xFF) or
+            ((buf[offset + 1].toInt() and 0xFF) shl 8) or
+            ((buf[offset + 2].toInt() and 0xFF) shl 16) or
+            ((buf[offset + 3].toInt() and 0xFF) shl 24)
+
+    private fun selectClockSelectorPinIfNeeded(conn: UsbDeviceConnection, targetClockSourceId: Int) {
+        if (parsedClockSelectorId <= 0 || parsedClockSelectorPins.isEmpty()) return
+        val pinZeroIndex = parsedClockSelectorPins.indexOf(targetClockSourceId)
+        if (pinZeroIndex < 0) return
+        val pinNumber = (pinZeroIndex + 1).toByte() // UAC2 Clock Selector pins are 1-based
+        val pinData = byteArrayOf(pinNumber)
+        val wIndex = (parsedClockSelectorId shl 8) or 0
+        val ret = conn.controlTransfer(
+            0x21,
+            0x01,   // SET_CUR
+            0x0100, // CS_CLOCK_SELECTOR_CONTROL
+            wIndex,
+            pinData,
+            pinData.size,
+            500,
+        )
+        Log.i(TAG, "selectClockSelectorPin: selector=0x${parsedClockSelectorId.toString(16)} -> pin=$pinNumber (csId=0x${targetClockSourceId.toString(16)}, ret=$ret)")
+    }
+
+    /**
+     * Set the sample rate on a UAC2 Clock Source entity via SET_CUR control transfer,
+     * with Clock Selector switching for dual-oscillator DACs and UAC1 Endpoint fallback.
      */
     fun setSampleRate(sampleRateHz: Int): Boolean {
         val conn = connection ?: return false
@@ -490,18 +798,29 @@ class UsbAudioDevice private constructor(private val context: Context) {
         data[2] = ((sampleRateHz shr 16) and 0xFF).toByte()
         data[3] = ((sampleRateHz shr 24) and 0xFF).toByte()
 
-        // Use auto-detected clock source ID from USB descriptors.
-        // If not available, fall back to brute-force trying common IDs.
+        // Prioritize the Clock Source entity whose GET_RANGE explicitly includes sampleRateHz
+        // (critical for dual-oscillator DACs with separate 44.1kHz and 48kHz crystals).
+        val matchingClockSources = clockSourceRateMap.entries
+            .filter { sampleRateHz in it.value }
+            .map { it.key }
         val detectedId = cachedDeviceInfo?.clockSourceId ?: -1
-        val clockSourceIds = if (detectedId > 0) {
-            intArrayOf(detectedId)  // use the one we parsed from descriptors
-        } else {
-            intArrayOf(0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
-                    0x28, 0x29, 0x2A, 0x06, 0x07, 0x08,
-                    0x10, 0x11, 0x12, 0x20, 0x21, 0x22)
-        }
+        val clockSourceIds = buildList {
+            addAll(matchingClockSources)
+            addAll(parsedClockSourceIds)
+            if (detectedId > 0) add(detectedId)
+            if (isEmpty()) {
+                addAll(
+                    listOf(
+                        0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
+                        0x28, 0x29, 0x2A, 0x06, 0x07, 0x08,
+                        0x10, 0x11, 0x12, 0x20, 0x21, 0x22,
+                    )
+                )
+            }
+        }.distinct()
 
         for (csId in clockSourceIds) {
+            selectClockSelectorPinIfNeeded(conn, csId)
             val wIndex = (csId shl 8) or 0  // entityId << 8 | audioControlInterface(0)
             val ret = conn.controlTransfer(
                     0x21,    // bmRequestType: Host-to-Device, Class, Interface
@@ -513,7 +832,31 @@ class UsbAudioDevice private constructor(private val context: Context) {
                     1000     // timeout ms
             )
             if (ret >= 0) {
+                activeClockSourceId = csId
                 Log.i(TAG, "setSampleRate($sampleRateHz Hz): SUCCESS with clockSourceId=0x${csId.toString(16)} (wIndex=0x${wIndex.toString(16)}, ret=$ret)")
+                return true
+            }
+        }
+
+        // UAC 1.0 fallback: Endpoint SAMPLING_FREQ_CONTROL (bmRequestType=0x22, bRequest=0x01, wValue=0x0100)
+        val epOut = cachedDeviceInfo?.endpointOutAddress ?: -1
+        if (epOut > 0) {
+            val uac1Data = byteArrayOf(
+                (sampleRateHz and 0xFF).toByte(),
+                ((sampleRateHz shr 8) and 0xFF).toByte(),
+                ((sampleRateHz shr 16) and 0xFF).toByte(),
+            )
+            val ret = conn.controlTransfer(
+                0x22,
+                0x01,
+                0x0100,
+                epOut,
+                uac1Data,
+                uac1Data.size,
+                1000,
+            )
+            if (ret >= 0) {
+                Log.i(TAG, "setSampleRate($sampleRateHz Hz): SUCCESS via UAC1 endpoint 0x${epOut.toString(16)}")
                 return true
             }
         }
@@ -523,7 +866,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
     }
 
     /**
-     * Read the current sample rate from the DAC via UAC2 GET_CUR.
+     * Read the current sample rate from the DAC via UAC2 GET_CUR (or UAC1 Endpoint GET_CUR).
      * This verifies whether our SET_CUR actually took effect.
      */
     fun readSampleRate(): Int {
@@ -531,8 +874,12 @@ class UsbAudioDevice private constructor(private val context: Context) {
         val data = ByteArray(4)
 
         val detectedId = cachedDeviceInfo?.clockSourceId ?: -1
-        val clockSourceIds = if (detectedId > 0) intArrayOf(detectedId)
-                else intArrayOf(0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x28, 0x29)
+        val clockSourceIds = buildList {
+            if (activeClockSourceId > 0) add(activeClockSourceId)
+            addAll(parsedClockSourceIds)
+            if (detectedId > 0) add(detectedId)
+            if (isEmpty()) addAll(listOf(0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x28, 0x29))
+        }.distinct()
         for (csId in clockSourceIds) {
             val wIndex = (csId shl 8) or 0
             val ret = conn.controlTransfer(
@@ -554,6 +901,28 @@ class UsbAudioDevice private constructor(private val context: Context) {
                 return rate
             }
         }
+
+        val epOut = cachedDeviceInfo?.endpointOutAddress ?: -1
+        if (epOut > 0) {
+            val uac1Data = ByteArray(3)
+            val ret = conn.controlTransfer(
+                0xA2,
+                0x81, // UAC1 GET_CUR
+                0x0100,
+                epOut,
+                uac1Data,
+                uac1Data.size,
+                1000,
+            )
+            if (ret >= 3) {
+                val rate = readLeInt24(uac1Data, 0)
+                if (rate in 8000..1536000) {
+                    Log.i(TAG, "readSampleRate: UAC1 endpoint 0x${epOut.toString(16)} returned $rate Hz")
+                    return rate
+                }
+            }
+        }
+
         Log.w(TAG, "readSampleRate: all GET_CUR attempts failed")
         return -1
     }

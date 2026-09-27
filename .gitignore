@@ -58,7 +58,6 @@ app/src/main/assets/modules/
 *.lwp
 tools/*
 !tools/generate_native_secrets.py
-!tools/build_lossless_lwp.py
 provider.js
 # Single raw provider source at repo base only (plaintext JSON, encrypted at build)
 provider.json

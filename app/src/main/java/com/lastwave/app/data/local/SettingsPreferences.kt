@@ -6,12 +6,18 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -53,14 +59,18 @@ enum class LyricsProvider(val id: String, val title: String, val subtitle: Strin
     LYRICS_PLUS("lyrics_plus", "LyricsPlus", "Word-synced lyrics first"),
     BETTER_LYRICS("better_lyrics", "BetterLyrics", "Word-synced lyrics first"),
     KUGOU("kugou", "Kugou", "KRC word-synced lyrics first"),
+    BINI_LYRICS("bini_lyrics", "Syllable-Sync", "Recording-matched syllable lyrics first"),
+    SIMP_MUSIC("simp_music", "Video-Match", "Matched on the playing video first"),
+    MUSIXMATCH("musixmatch", "Catalog", "Largest catalogue line-sync first"),
     LRCLIB("lrclib", "LRCLIB", "Line-synced community lyrics first");
 
     val isWordProvider: Boolean get() =
-        this == APPLE_MUSIC || this == LYRICS_PLUS || this == BETTER_LYRICS || this == KUGOU
+        this == APPLE_MUSIC || this == LYRICS_PLUS || this == BETTER_LYRICS || this == KUGOU ||
+            this == BINI_LYRICS || this == SIMP_MUSIC || this == MUSIXMATCH
 
     companion object {
         fun fromId(id: String?): LyricsProvider =
-            entries.firstOrNull { it.id == id } ?: APPLE_MUSIC
+            entries.firstOrNull { it.id == id } ?: AUTO
     }
 }
 
@@ -84,14 +94,14 @@ data class MiscSettings(
      *  directly from lossless CDN when a high-confidence match exists. Falls back to YouTube Music. */
     val preferLosslessStreaming: Boolean = true,
     /** When true, the player also queries installed provider modules in
-     *  parallel with the backend; a module hit plays instantly on miss. */
+     *  parallel with the addon; a module hit plays instantly on miss. */
     val preferProviderModules: Boolean = true,
     /** Preferred quality preset for lossless streaming (27: 24/192, 7: 24/96, 6: 16/44.1, 5: 320k).
      *  If a track does not support the requested quality, the worker automatically selects the highest available. */
     val losslessQuality: Int = 27,
     /** Preferred quality preset for downloads (27: 24/192, 7: 24/96, 6: 16/44.1, 5: 320k, -1: YouTube Music). */
     val downloadQuality: Int = 27,
-    /** When true, queries both Tidal and Qobuz in parallel for Dolby Atmos / max resolution audio. */
+    /** When true, queries for Dolby Atmos / max resolution audio. */
     val dolbyAtmosEnabled: Boolean = false,
     /** Optional studio-clarity curve. On by default; Bit-Perfect disables it. */
     val isStudioMasterClarityEnabled: Boolean = true,
@@ -107,8 +117,13 @@ data class MiscSettings(
     /** Experimental lyrics animation style (Settings -> Experimental -> Lyrics Animation). */
     val lyricsAnimation: LyricsAnimation = LyricsAnimation.APPLE_FLUID,
     /** Preferred lyrics source (Settings -> Experimental -> Lyrics Provider).
-     *  Apple Music syllable-sync is the default; AUTO races all providers. */
-    val lyricsProvider: LyricsProvider = LyricsProvider.APPLE_MUSIC,
+     *  AUTO races all providers (fastest valid word-sync wins); an explicit
+     *  pick is tried first with the rest as fallback. */
+    val lyricsProvider: LyricsProvider = LyricsProvider.AUTO,
+    /** Manual sync offset applied to lyric focus/highlight only (ms).
+     *  Positive shifts lyrics later (highlights lag the audio less when the
+     *  provider timestamps run early). Clamped to ±3s. */
+    val lyricsOffsetMs: Long = 0L,
     /** Blend the end of one queued track into the beginning of the next. */
     val crossfadeEnabled: Boolean = false,
     /** Crossfade length in seconds; kept within the native settings slider range. */
@@ -134,9 +149,21 @@ data class MiscSettings(
     val useAlbumArtistForFolders: Boolean = true,
     /** When true, folder names use only the primary artist (strips feat./collaborators). */
     val primaryArtistOnly: Boolean = true,
+    /** User configured HTTP Addon URL (e.g. http://localhost:8787/a/<token>/). */
+    val addonUrl: String = "",
+    /** Display name discovered from the addon's manifest. */
+    val addonName: String = "",
+    /** When true, the addon is active for search, streaming, and downloads. */
+    val addonEnabled: Boolean = true,
     /** Ids of Home tab sections the user hid ([HomeSection.id]).
      *  Empty = everything visible. Unknown ids are dropped on read. */
     val hiddenHomeSections: Set<String> = emptySet(),
+    /** When true, Animated Album Canvas motion video loops are displayed. */
+    val canvasEnabled: Boolean = true,
+    /** When true, portrait motion artwork is displayed edge-to-edge behind player controls. */
+    val canvasFullBleed: Boolean = true,
+    /** When true, canvas video loops may be fetched over cellular data. */
+    val canvasOverCellular: Boolean = true,
 )
 
 /** Toggleable sections of the Home tab (see FeedScreen). Hero greeting and
@@ -220,6 +247,7 @@ class SettingsPreferences @Inject constructor(
         val WORD_BY_WORD_LYRICS = booleanPreferencesKey("lw_word_by_word_lyrics")
         val LYRICS_ANIMATION = stringPreferencesKey("lw_lyrics_animation")
         val LYRICS_PROVIDER = stringPreferencesKey("lw_lyrics_provider")
+        val LYRICS_OFFSET_MS = longPreferencesKey("lw_lyrics_offset_ms")
         val CROSSFADE_ENABLED = booleanPreferencesKey("lw_crossfade_enabled")
         val CROSSFADE_SECONDS = intPreferencesKey("lw_crossfade_seconds")
         val WAVY_SEEKBAR_ENABLED = booleanPreferencesKey("lw_wavy_seekbar_enabled")
@@ -232,6 +260,12 @@ class SettingsPreferences @Inject constructor(
         val USE_ALBUM_ARTIST_FOLDERS = booleanPreferencesKey("lw_use_album_artist_folders")
         val PRIMARY_ARTIST_ONLY = booleanPreferencesKey("lw_primary_artist_only")
         val HIDDEN_HOME_SECTIONS = stringSetPreferencesKey("lw_hidden_home_sections")
+        val ADDON_URL = stringPreferencesKey("lw_addon_url")
+        val ADDON_NAME = stringPreferencesKey("lw_addon_name")
+        val ADDON_ENABLED = booleanPreferencesKey("lw_addon_enabled")
+        val CANVAS_ENABLED = booleanPreferencesKey("lw_canvas_enabled")
+        val CANVAS_FULL_BLEED = booleanPreferencesKey("lw_canvas_full_bleed")
+        val CANVAS_OVER_CELLULAR = booleanPreferencesKey("lw_canvas_over_cellular")
     }
 
     val settings: Flow<MiscSettings> = dataStore.data
@@ -254,6 +288,7 @@ class SettingsPreferences @Inject constructor(
                 wordByWordLyrics = p.readSafely(Keys.WORD_BY_WORD_LYRICS) ?: true,
                 lyricsAnimation = LyricsAnimation.fromId(p.readSafely(Keys.LYRICS_ANIMATION)),
                 lyricsProvider = LyricsProvider.fromId(p.readSafely(Keys.LYRICS_PROVIDER)),
+                lyricsOffsetMs = (p.readSafely(Keys.LYRICS_OFFSET_MS) ?: 0L).coerceIn(-3000L, 3000L),
                 crossfadeEnabled = p.readSafely(Keys.CROSSFADE_ENABLED) ?: false,
                 crossfadeSeconds = (p.readSafely(Keys.CROSSFADE_SECONDS) ?: 5).coerceIn(1, 12),
                 wavySeekbarEnabled = p.readSafely(Keys.WAVY_SEEKBAR_ENABLED) ?: true,
@@ -267,8 +302,44 @@ class SettingsPreferences @Inject constructor(
                 hiddenHomeSections = p.readSafely(Keys.HIDDEN_HOME_SECTIONS)
                     ?.filter { id -> HomeSection.entries.any { it.id == id } }?.toSet()
                     ?: emptySet(),
+                addonUrl = p.readSafely(Keys.ADDON_URL)?.trim().orEmpty(),
+                addonName = p.readSafely(Keys.ADDON_NAME)?.trim().orEmpty(),
+                addonEnabled = p.readSafely(Keys.ADDON_ENABLED) ?: true,
+                canvasEnabled = p.readSafely(Keys.CANVAS_ENABLED) ?: true,
+                canvasFullBleed = p.readSafely(Keys.CANVAS_FULL_BLEED) ?: true,
+                canvasOverCellular = p.readSafely(Keys.CANVAS_OVER_CELLULAR) ?: true,
             )
         }
+
+    val addonUrl: StateFlow<String?> = settings
+        .map { it.addonUrl.takeIf { s -> s.isNotBlank() } }
+        .stateIn(CoroutineScope(Dispatchers.IO + SupervisorJob()), SharingStarted.Eagerly, null)
+
+    val addonName: StateFlow<String?> = settings
+        .map { it.addonName.takeIf { s -> s.isNotBlank() } }
+        .stateIn(CoroutineScope(Dispatchers.IO + SupervisorJob()), SharingStarted.Eagerly, null)
+
+    val addonEnabled: StateFlow<Boolean> = settings
+        .map { it.addonEnabled }
+        .stateIn(CoroutineScope(Dispatchers.IO + SupervisorJob()), SharingStarted.Eagerly, true)
+
+    suspend fun setAddonUrl(url: String?) {
+        dataStore.edit {
+            if (url.isNullOrBlank()) it.remove(Keys.ADDON_URL)
+            else it[Keys.ADDON_URL] = url.trim()
+        }
+    }
+
+    suspend fun setAddonName(name: String?) {
+        dataStore.edit {
+            if (name.isNullOrBlank()) it.remove(Keys.ADDON_NAME)
+            else it[Keys.ADDON_NAME] = name.trim()
+        }
+    }
+
+    suspend fun setAddonEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.ADDON_ENABLED] = enabled }
+    }
 
     suspend fun setDynamicNowPlaying(enabled: Boolean) {
         dataStore.edit { it[Keys.DYNAMIC_NOW_PLAYING] = enabled }
@@ -338,6 +409,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setLyricsProvider(provider: LyricsProvider) {
         dataStore.edit { it[Keys.LYRICS_PROVIDER] = provider.id }
+    }
+
+    suspend fun setLyricsOffsetMs(offsetMs: Long) {
+        dataStore.edit { it[Keys.LYRICS_OFFSET_MS] = offsetMs.coerceIn(-3000L, 3000L) }
     }
 
     suspend fun setCrossfadeEnabled(enabled: Boolean) {
@@ -421,6 +496,18 @@ class SettingsPreferences @Inject constructor(
             val current = prefs.readSafely(Keys.PINNED_FRIENDS) ?: emptySet()
             prefs[Keys.PINNED_FRIENDS] = if (username in current) current - username else current + username
         }
+    }
+
+    suspend fun setCanvasEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.CANVAS_ENABLED] = enabled }
+    }
+
+    suspend fun setCanvasFullBleed(enabled: Boolean) {
+        dataStore.edit { it[Keys.CANVAS_FULL_BLEED] = enabled }
+    }
+
+    suspend fun setCanvasOverCellular(enabled: Boolean) {
+        dataStore.edit { it[Keys.CANVAS_OVER_CELLULAR] = enabled }
     }
 
     private companion object {

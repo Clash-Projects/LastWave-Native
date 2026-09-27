@@ -19,6 +19,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.contentOrNull
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -169,18 +170,22 @@ class ArtworkRepository @Inject constructor(
     }
 
     private suspend fun fetchDeezer(name: String, artist: String): String? = withContext(Dispatchers.IO) {
+        // limit=1 blindly trusted Deezer's top hit (wrong cover for homonym
+        // titles — also visible on Home). Verify title+artist over a small set.
         val query = if (artist.isNotBlank()) "$name $artist" else name
-        val url = "https://api.deezer.com/search?q=${java.net.URLEncoder.encode(query, "UTF-8")}&limit=1"
+        val url = "https://api.deezer.com/search?q=${java.net.URLEncoder.encode(query, "UTF-8")}&limit=5"
         try {
             val req = okhttp3.Request.Builder().url(url).build()
             val body = http.newCall(req).awaitSuccessfulBodyOrNull() ?: return@withContext null
             val jsonEl = json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
             val data = jsonEl?.get("data") as? kotlinx.serialization.json.JsonArray
-            val first = data?.firstOrNull() as? kotlinx.serialization.json.JsonObject
-            val album = first?.get("album") as? kotlinx.serialization.json.JsonObject
+            val items = data?.mapNotNull { it as? kotlinx.serialization.json.JsonObject }.orEmpty()
+            val best = items.maxByOrNull { deezerScore(it, name, artist) }
+                ?.takeIf { deezerVerified(it, name, artist) } ?: return@withContext null
+            val album = best.get("album") as? kotlinx.serialization.json.JsonObject
             (album?.get("cover_big") as? kotlinx.serialization.json.JsonPrimitive)?.content
                 ?: (album?.get("cover_xl") as? kotlinx.serialization.json.JsonPrimitive)?.content
-                ?: ((first?.get("artist") as? kotlinx.serialization.json.JsonObject)?.get("picture_xl") as? kotlinx.serialization.json.JsonPrimitive)?.content
+                ?: ((best.get("artist") as? kotlinx.serialization.json.JsonObject)?.get("picture_xl") as? kotlinx.serialization.json.JsonPrimitive)?.content
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Exception) {
@@ -188,16 +193,69 @@ class ArtworkRepository @Inject constructor(
         }
     }
 
+    private fun deezerText(obj: kotlinx.serialization.json.JsonObject, vararg keys: String): String {
+        var cur: kotlinx.serialization.json.JsonElement? = obj
+        for (k in keys) cur = (cur as? kotlinx.serialization.json.JsonObject)?.get(k)
+        return (cur as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull.orEmpty()
+    }
+
+    private fun deezerVerified(item: kotlinx.serialization.json.JsonObject, name: String, artist: String): Boolean {
+        if (!lyricsTitleOk(deezerText(item, "title"), name)) return false
+        if (artist.isNotBlank() && !lyricsArtistOk(deezerText(item, "artist", "name"), artist)) return false
+        return true
+    }
+
+    private fun deezerScore(item: kotlinx.serialization.json.JsonObject, name: String, artist: String): Int {
+        var score = if (deezerText(item, "title").equals(name, ignoreCase = true)) 3
+        else if (lyricsTitleOk(deezerText(item, "title"), name)) 1 else 0
+        if (lyricsArtistOk(deezerText(item, "artist", "name"), artist)) score += 2
+        return score
+    }
+
+    private fun lyricsTitleOk(songTitle: String, title: String): Boolean {
+        if (songTitle.isBlank() || title.isBlank()) return false
+        if (songTitle.equals(title, ignoreCase = true)) return true
+        return com.lastwave.app.data.lyrics.LrclibLyricsApi.titlesMatch(
+            com.lastwave.app.data.lyrics.LrclibLyricsApi.cleanTrackTitle(songTitle),
+            com.lastwave.app.data.lyrics.LrclibLyricsApi.cleanTrackTitle(title),
+        )
+    }
+
+    private fun lyricsArtistOk(songArtist: String, artist: String): Boolean {
+        if (artist.isBlank() || songArtist.isBlank()) return false
+        return com.lastwave.app.data.lyrics.LrclibLyricsApi.artistMatches(
+            com.lastwave.app.data.lyrics.LrclibLyricsApi.cleanArtistName(songArtist),
+            com.lastwave.app.data.lyrics.LrclibLyricsApi.cleanArtistName(artist),
+        )
+    }
+
     private suspend fun fetchYouTubeMusic(name: String, artist: String): String? = withContext(Dispatchers.IO) {
+        // The old code published searchSongs()[0] artwork with zero title /
+        // artist verification — covers/remixes/homonyms won the race and the
+        // wrong cover landed on Home + player. Score candidates strictly.
         try {
             val query = if (artist.isNotBlank()) "$name $artist" else name
-            val results = innerTube.searchSongs(query, limit = 2, prefetchStreams = false)
-            results.firstOrNull()?.artworkUrl
+            val results = innerTube.searchSongs(query, limit = 5, prefetchStreams = false)
+            if (results.isEmpty()) return@withContext null
+            results
+                .filter { !it.artworkUrl.isNullOrBlank() }
+                .maxByOrNull { com.lastwave.app.data.music.TextMatch.matchScore(it, name, artist) }
+                ?.takeIf { ytVerified(it.title, it.artist, name, artist) }
+                ?.artworkUrl
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Exception) {
             null
         }
+    }
+
+    /** Title must closely agree AND artist must agree (when known). */
+    private fun ytVerified(candTitle: String, candArtist: String, name: String, artist: String): Boolean {
+        val titleSim = com.lastwave.app.data.music.TextMatch.similarity(candTitle, name)
+        if (titleSim < 85) return false
+        if (artist.isBlank()) return true
+        if (candArtist.equals(artist, ignoreCase = true)) return true
+        return com.lastwave.app.data.music.TextMatch.similarity(candArtist, artist) >= 60
     }
 
     /** Runs one provider call with its own try/catch */

@@ -62,8 +62,12 @@ class YouTubeLoginViewModel @Inject constructor(
                 runCatching { sessionPreferences.exitGuestMode() }
                 // Verify the session is really authenticated before reporting
                 // success (desktop `verifyConnection()` parity: an
-                // authenticated browse, not just cookie presence).
+                // authenticated browse, not just cookie presence). Retried
+                // once: a single guest-shaped 200 (stale visitor data,
+                // transient bot-check) or a network blip must not fail a
+                // good sign-in, which is what some devices kept hitting.
                 val info = runCatching { innerTube.fetchAccountInfo() }.getOrNull()
+                    ?: runCatching { innerTube.fetchAccountInfo() }.getOrNull()
                     ?: throw java.io.IOException("YouTube rejected the session — sign in again.")
                 val displayName = info.accountName.ifBlank { "Google account" }
                 ytAuthManager.updateAccountIdentity(info.accountName, info.channelHandle, info.photoUrl)

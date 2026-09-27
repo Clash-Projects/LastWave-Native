@@ -125,13 +125,16 @@ class UsbDacMonitor @Inject constructor(
                 deviceId = info.id,
             )
         }
+        val previousDac = _state.value.dac
         val dac = mixerDac ?: peripheral?.let { usb ->
+            val samePeripheral = previousDac?.vendorId == usb.vendorId &&
+                previousDac.productId == usb.productId
             UsbDacInfo(
                 name = usb.productName?.takeIf { it.isNotBlank() } ?: "USB DAC",
                 vendorId = usb.vendorId,
                 productId = usb.productId,
-                sampleRatesHz = emptyList(),
-                channelCounts = emptyList(),
+                sampleRatesHz = if (samePeripheral) previousDac?.sampleRatesHz.orEmpty() else emptyList(),
+                channelCounts = if (samePeripheral) previousDac?.channelCounts.orEmpty() else emptyList(),
                 usbPermissionGranted = granted,
                 hasUsbPeripheral = true,
                 deviceId = -1,
