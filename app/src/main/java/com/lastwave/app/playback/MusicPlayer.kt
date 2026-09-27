@@ -550,6 +550,7 @@ class MusicPlayer @Inject constructor(
                             player.prepare()
                             player.play()
                         }
+                        resetPlayhead(0L, _state.value.current?.mediaIdKey())
                         _state.update { it.copy(positionMs = 0L, isPlaying = true) }
                     }
                 } else {
@@ -570,9 +571,17 @@ class MusicPlayer @Inject constructor(
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             if (isCasting) return
             recordLocalListenSignal(reason)
-            // New item owns the clock from here: drop any seek-settle mask
-            // from the previous track so it can't pin this one.
+            // Settle target or sanitize raw position from ExoPlayer
+            val rawPos = player.currentPosition.coerceAtLeast(0L)
+            val seekSettling = lastSeekTargetMs >= 0L &&
+                (SystemClock.elapsedRealtime() - lastSeekAtElapsedMs <= SEEK_SETTLE_WINDOW_MS)
+            val targetPos = when {
+                seekSettling -> lastSeekTargetMs
+                else -> if (rawPos > 1_500L) 0L else rawPos
+            }
             lastSeekTargetMs = -1L
+            playheadPosMs = targetPos
+            playheadWallMs = SystemClock.elapsedRealtime()
             // Natural advances (track end, repeat-all wrap, crossfade
             // handoff) are the only transitions the explicit next()/queue-tap
             // paths don't record — manual seeks arrive as SEEK, not AUTO.
@@ -592,13 +601,7 @@ class MusicPlayer @Inject constructor(
                     it.copy(
                         current = currentTrack,
                         currentIndex = currentIndex,
-                        positionMs = if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) {
-                            player.currentPosition.coerceAtLeast(0L)
-                        } else {
-                            player.currentPosition.coerceAtLeast(0L).let { raw ->
-                                if (raw > 1_500L) 0L else raw
-                            }
-                        },
+                        positionMs = targetPos,
                         bufferedPositionMs = player.bufferedPosition.coerceAtLeast(0L),
                         durationMs = effectiveDuration(player.duration, player, it.durationMs),
                         queue = if (currentQueue.isNotEmpty()) currentQueue else it.queue,
@@ -1669,6 +1672,7 @@ class MusicPlayer @Inject constructor(
                 player.stop()
                 player.clearMediaItems()
             }
+            resetPlayhead(startPositionMs, selectedTrack.mediaIdKey())
             _state.value = MusicPlayerState(
                 current = selectedTrack,
                 queue = tracks,
@@ -1718,6 +1722,7 @@ class MusicPlayer @Inject constructor(
                     val mediaItems = tracks.mapIndexed { index, track ->
                         track.toMediaItem(if (index == selectedIndex) resolved else null)
                     }
+                    resetPlayhead(startPositionMs, selectedTrack.mediaIdKey())
                     player.setMediaItems(mediaItems, selectedIndex, startPositionMs.coerceAtLeast(0L))
                     if (isShuffle) {
                         if (mediaItems.size > 1) {
@@ -1961,7 +1966,7 @@ class MusicPlayer @Inject constructor(
         }
         if (player.playbackState == Player.STATE_IDLE) player.prepare()
         if (player.playbackState == Player.STATE_ENDED) {
-            player.seekTo(0)
+            seekTo(0)
             player.prepare()
         }
         player.play()
@@ -2027,6 +2032,17 @@ class MusicPlayer @Inject constructor(
         _state.update { it.copy(positionMs = target) }
     }
 
+    private fun resetPlayhead(startPosMs: Long = 0L, key: String? = null) {
+        val now = SystemClock.elapsedRealtime()
+        val target = startPosMs.coerceAtLeast(0L)
+        lastSeekTargetMs = target
+        lastSeekAtElapsedMs = now
+        playheadPosMs = target
+        playheadWallMs = now
+        playheadKey = key
+        playheadMoving = false
+    }
+
     /**
      * Masks pre-seek position reads with the seek target while ExoPlayer
      * lands the seek. Self-healing: the window expires on its own and any
@@ -2083,6 +2099,9 @@ class MusicPlayer @Inject constructor(
             val currentMediaMatch = player.currentMediaItem?.mediaId == _state.value.current?.mediaIdKey()
             if (currentMediaMatch && (playbackState == Player.STATE_READY || playbackState == Player.STATE_BUFFERING)) {
                 val exoPos = player.currentPosition.coerceAtLeast(0L)
+                if (playbackState == Player.STATE_BUFFERING && playheadPosMs == 0L && exoPos > 1_500L) {
+                    return 0L
+                }
                 playheadPosMs = exoPos
                 playheadWallMs = now
                 playheadMoving = playing && playbackState == Player.STATE_READY
@@ -2713,13 +2732,16 @@ class MusicPlayer @Inject constructor(
             return@onMain
         }
         val snapshot = _state.value
-        // Manual queue jump to a different track: the departing song becomes
-        // "previously heard" for shuffle-Previous. previous() navigates via
-        // resolveAndPlayQueueItem/playPendingQueueItem directly so popping
-        // history never re-records the song we just left.
+        // If user taps the song currently playing, restart it from 0:00 immediately
+        if (index in snapshot.queue.indices && index == snapshot.currentIndex) {
+            seekTo(0)
+            player.play()
+            return@onMain
+        }
         if (index in snapshot.queue.indices && index != snapshot.currentIndex) {
             recordHistory(snapshot.current?.mediaIdKey())
         }
+        resetPlayhead(0L, snapshot.queue.getOrNull(index)?.mediaIdKey())
         if (index in 0 until player.mediaItemCount) {
             resolveAndPlayQueueItem(index)
         } else {
@@ -2735,7 +2757,7 @@ class MusicPlayer @Inject constructor(
         cancelCrossfade()
         val pendingState = _state.value
         if (player.currentPosition > 5_000) {
-            player.seekTo(0)
+            seekTo(0)
         } else {
             // Under shuffle, walk the explicit listening history first:
             // the engine permutation is rebuilt on toggle/handoff/edits, so
@@ -2744,7 +2766,7 @@ class MusicPlayer @Inject constructor(
             // restart instead of jumping to a random unheard track.
             val historyIndex = if (pendingState.shuffleEnabled) popHistoryIndex(pendingState) else null
             if (historyIndex == null && pendingState.shuffleEnabled) {
-                player.seekTo(0)
+                seekTo(0)
                 return@onMain
             }
             // Under REPEAT_ONE the engine loops previous onto the current
@@ -3014,6 +3036,7 @@ class MusicPlayer @Inject constructor(
 
         val track = mediaItem.toPlayableTrack()
         val expectedMediaId = mediaItem.mediaId
+        resetPlayhead(0L, expectedMediaId)
         resolvingMediaIds[expectedMediaId] = generation
         // Screen-off continuity: do NOT player.pause() here. Pausing drops
         // ExoPlayer's WAKE_MODE_NETWORK wake/wifi lock and lets refresh()
@@ -4168,6 +4191,7 @@ class MusicPlayer @Inject constructor(
                 player.prepare()
                 player.play()
             }
+            resetPlayhead(0L, mediaId)
             _state.update { it.copy(positionMs = 0L, isPlaying = true) }
             return
         }
@@ -6030,8 +6054,11 @@ class MusicPlayer @Inject constructor(
         // TIME_UNSET (buffering / container not parsed yet): that reset froze
         // the bar at 0:00 and disabled seeking until the next event.
         val dur = effectiveDuration(player.duration, player, previous.durationMs)
-        val pos = if (!exclusiveUsbOutput.isActive() && player.playbackState != Player.STATE_IDLE) {
-            settleSeekPosition(player.currentPosition.coerceAtLeast(0L))
+        val currentMediaMatch = player.currentMediaItem?.mediaId == previous.current?.mediaIdKey()
+        val pos = if (!exclusiveUsbOutput.isActive() && player.playbackState != Player.STATE_IDLE && currentMediaMatch) {
+            settleSeekPosition(player.currentPosition.coerceAtLeast(0L)).let { raw ->
+                if (previous.positionMs == 0L && player.playbackState == Player.STATE_BUFFERING && raw > 1_500L) 0L else raw
+            }
         } else {
             previous.positionMs
         }

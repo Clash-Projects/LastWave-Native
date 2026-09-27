@@ -209,9 +209,9 @@ private suspend fun loadTexture(context: Context, url: String): Bitmap? = withCo
 }
 
 internal fun fluidBlurSigma(width: Float, height: Float, extraBlur: Boolean = false): Float =
-    (minOf(width, height) * (if (extraBlur) 0.36f else BLUR_FRACTION)).coerceIn(
-        if (extraBlur) 200f else BLUR_SIGMA_MIN,
-        if (extraBlur) 560f else BLUR_SIGMA_MAX
+    (minOf(width, height) * (if (extraBlur) 0.50f else BLUR_FRACTION)).coerceIn(
+        if (extraBlur) 280f else BLUR_SIGMA_MIN,
+        if (extraBlur) 720f else BLUR_SIGMA_MAX
     )
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -351,7 +351,7 @@ fun FluidArtworkBackground(
                     }
                     .then(
                         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                            Modifier.blur(if (extraBlur) 180.dp else 120.dp)
+                            Modifier.blur(if (extraBlur) 240.dp else 120.dp)
                         } else {
                             Modifier
                         }

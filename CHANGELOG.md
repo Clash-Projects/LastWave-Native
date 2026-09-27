@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.2.2] - 2026-09-27
+
+### Added
+- **System Audio Effects mode (Experimental, default OFF):** publishes the audio session for external equalizer apps and OEM Dolby, flattens in-app DSP airtight on mixer routes, auto-suspends on bit-perfect / USB exclusive.
+- **Diagnostics capture:** crash-guard log and startup trail included in the diagnostics export; startup stage breadcrumbs for instant-kill diagnosis.
+
+### Fixed
+- **Settings organization:** Equalizer and Studio Clarity moved to Audio → Output & Loudness, liquid glass to Appearance, Experimental reindexed.
+- **Playlist duplication races:** serialized add/remove, auto-suffix same-title siblings, monotonic ids.
+- **Atmos honesty:** JOC-only capability check plus spatial-manifest veto with step-down cascade to stereo / Opus.
+- **Hi-res reporting:** sample-rate driven 24-bit depth inference across resolve, quality pill, signal path, and track details.
+- **Lyrics readability:** lyrics-tab blur boost plus readability veil; adaptive transport row no longer clips Next on small screens.
+- **Build:** missing YouTubeMusicTrack import, composable-safe backdrop guard.
+
 ## [4.2.1] - 2026-09-26
 
 ### Added

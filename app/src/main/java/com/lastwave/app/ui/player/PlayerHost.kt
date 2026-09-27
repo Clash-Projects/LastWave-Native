@@ -27,6 +27,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -35,6 +36,7 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -1753,7 +1755,14 @@ private fun FullPlayer(
                                     scaleX = 1.35f
                                     scaleY = 1.35f
                                     alpha = 0.9f
-                                },
+                                }
+                                .then(
+                                    if (currentTab == FullPlayerTab.LYRICS) {
+                                        Modifier.blur(36.dp)
+                                    } else {
+                                        Modifier
+                                    }
+                                ),
                             corner = 0.dp,
                             decodeSizePx = 200,
                         )
@@ -1829,6 +1838,40 @@ private fun FullPlayer(
                             ),
                         ),
                 )
+                if (showFullBleed && activeCanvas != null) {
+                    val heroHeight = if (heroBottomPx > 0f) {
+                        with(LocalDensity.current) { heroBottomPx.toDp() }
+                    } else {
+                        with(LocalDensity.current) { (bgHeight * 0.54f).toDp() }
+                    }
+                    val lyricsCanvasBlurDp by animateDpAsState(
+                        targetValue = if (currentTab == FullPlayerTab.LYRICS) 32.dp else 0.dp,
+                        animationSpec = tween(350),
+                        label = "lyricsCanvasBlur",
+                    )
+                    CanvasArtworkPlayer(
+                        canvas = activeCanvas,
+                        isPlaying = state.isPlaying,
+                        contentMode = CanvasContentMode.CROP,
+                        alignPortraitTop = true,
+                        bottomFade = 0.38f,
+                        onAspectRatioChanged = { canvasAspect = it },
+                        onRenderedChanged = { canvasRendered = it },
+                        pausedForTransition = shownDismissY > 0f || currentTab != FullPlayerTab.NOW_PLAYING,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .fillMaxWidth()
+                            .height(heroHeight)
+                            .then(
+                                if (lyricsCanvasBlurDp > 0.dp) {
+                                    Modifier.blur(lyricsCanvasBlurDp)
+                                } else {
+                                    Modifier
+                                }
+                            ),
+                    )
+                }
+
                 // Lyrics-only readability veil: heavy blur still can't tame a
                 // bright face behind small text, so fade in extra dim on the
                 // lyrics tab. Now Playing tab is untouched.
@@ -1843,34 +1886,12 @@ private fun FullPlayer(
                             .fillMaxSize()
                             .background(
                                 Brush.verticalGradient(
-                                    0.00f to Color.Black.copy(alpha = 0.50f * lyricsVeil),
-                                    0.35f to Color.Black.copy(alpha = 0.42f * lyricsVeil),
-                                    0.70f to Color.Black.copy(alpha = 0.52f * lyricsVeil),
-                                    1.00f to Color.Black.copy(alpha = 0.70f * lyricsVeil),
+                                    0.00f to Color.Black.copy(alpha = 0.62f * lyricsVeil),
+                                    0.35f to Color.Black.copy(alpha = 0.52f * lyricsVeil),
+                                    0.70f to Color.Black.copy(alpha = 0.58f * lyricsVeil),
+                                    1.00f to Color.Black.copy(alpha = 0.72f * lyricsVeil),
                                 )
                             )
-                    )
-                }
-
-                if (showFullBleed && activeCanvas != null) {
-                    val heroHeight = if (heroBottomPx > 0f) {
-                        with(LocalDensity.current) { heroBottomPx.toDp() }
-                    } else {
-                        with(LocalDensity.current) { (bgHeight * 0.54f).toDp() }
-                    }
-                    CanvasArtworkPlayer(
-                        canvas = activeCanvas,
-                        isPlaying = state.isPlaying,
-                        contentMode = CanvasContentMode.CROP,
-                        alignPortraitTop = true,
-                        bottomFade = 0.38f,
-                        onAspectRatioChanged = { canvasAspect = it },
-                        onRenderedChanged = { canvasRendered = it },
-                        pausedForTransition = shownDismissY > 0f || currentTab != FullPlayerTab.NOW_PLAYING,
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .fillMaxWidth()
-                            .height(heroHeight),
                     )
                 }
             }
@@ -2817,11 +2838,23 @@ private fun MainControls(state: MusicPlayerState, player: MusicPlayer, isTranslu
     val isNextPressed by nextInteraction.collectIsPressedAsState()
     val nextScale by animateFloatAsState(if (isNextPressed) 0.85f else 1.0f, ExpressiveMotion.spatialSpring(), label = "nextScale")
 
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(if (isTranslucent) 18.dp else 16.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
+    // Adaptive transport row: fixed 58+188+58dp used to overflow narrow
+    // screens (320dp class + parent padding), clipping the side buttons so
+    // Next looked crushed against the edge. The pill now flexes between a
+    // legible floor and its design width; prev/next never clip on any
+    // screen size or Android version.
+    val sideSize = if (isTranslucent) 54.dp else 58.dp
+    val gapSize = if (isTranslucent) 18.dp else 16.dp
+    androidx.compose.foundation.layout.BoxWithConstraints(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center,
     ) {
+        val pillWidth = (maxWidth - sideSize * 2 - gapSize * 2)
+            .coerceIn(112.dp, if (isTranslucent) 180.dp else 188.dp)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(gapSize, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
         LiquidGlassSurface(
             glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = prevInteraction),
             onClick = player::previous,
@@ -2832,7 +2865,7 @@ private fun MainControls(state: MusicPlayerState, player: MusicPlayer, isTranslu
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,
             modifier = Modifier
-                .size(if (isTranslucent) 54.dp else 58.dp)
+                .size(sideSize)
                 .graphicsLayer {
                     scaleX = prevScale
                     scaleY = prevScale
@@ -2868,7 +2901,7 @@ private fun MainControls(state: MusicPlayerState, player: MusicPlayer, isTranslu
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,
             modifier = Modifier
-                .width(if (isTranslucent) 180.dp else 188.dp)
+                .width(pillWidth)
                 .height(if (isTranslucent) 56.dp else 60.dp)
                 .graphicsLayer {
                     scaleX = playScale
@@ -2908,7 +2941,7 @@ private fun MainControls(state: MusicPlayerState, player: MusicPlayer, isTranslu
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,
             modifier = Modifier
-                .size(if (isTranslucent) 54.dp else 58.dp)
+                .size(sideSize)
                 .graphicsLayer {
                     scaleX = nextScale
                     scaleY = nextScale
@@ -2917,6 +2950,7 @@ private fun MainControls(state: MusicPlayerState, player: MusicPlayer, isTranslu
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Icon(Icons.Filled.SkipNext, "Next", Modifier.size(if (isTranslucent) 28.dp else 31.dp))
             }
+        }
         }
     }
 }
