@@ -203,6 +203,18 @@
                 android:resource="@xml/now_playing_widget_info" />
         </receiver>
 
+        <receiver
+            android:name=".widget.ObsidianGlassWidgetReceiver"
+            android:exported="false"
+            android:label="@string/widget_obsidian_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/obsidian_glass_widget_info" />
+        </receiver>
+
         <!-- Receiver for cancel/reconnect actions on background-download notifications -->
         <receiver
             android:name=".data.download.DownloadCancelReceiver"

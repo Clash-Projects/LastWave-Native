@@ -3,6 +3,8 @@
     <string name="app_name">LastWave</string>
     <string name="widget_name">LastWave Player</string>
     <string name="widget_description">Artwork, track details and playback controls for every media app</string>
+    <string name="widget_obsidian_name">LastWave Obsidian Glass</string>
+    <string name="widget_obsidian_description">Frosted obsidian glass player with translucent depth and crystal rim</string>
 
     <!-- Bottom navigation -->
     <string name="nav_feed">Feed</string>

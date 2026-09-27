@@ -2170,8 +2170,10 @@ class MusicPlayer @Inject constructor(
     private fun updateCrossfade(positionMs: Long): Boolean {
         if (!crossfadeEnabled || bitPerfectEnabled) return false
         outgoingPlayer?.let { outgoing ->
-            val actualPos = if (positionMs > 0L) positionMs else player.currentPosition.coerceAtLeast(0L)
-            val progress = (actualPos.toFloat() / overlapDurationMs.coerceAtLeast(1L)).coerceIn(0f, 1f)
+            // Drive the blend off the incoming (active) player position so a
+            // pause parks the fade instead of counting down underneath it.
+            val incomingPos = runCatching { player.currentPosition.coerceAtLeast(0L) }.getOrDefault(0L)
+            val progress = (incomingPos.toFloat() / overlapDurationMs.coerceAtLeast(1L)).coerceIn(0f, 1f)
             if (progress >= 1f || outgoing.playbackState == Player.STATE_ENDED || outgoing.playerError != null) {
                 cancelCrossfade()
             } else {
@@ -2183,17 +2185,21 @@ class MusicPlayer @Inject constructor(
             return false
         }
         if (!player.isPlaying || player.repeatMode == Player.REPEAT_MODE_ONE) return false
-        // Time the handoff off the TRUE container duration only. A seeded
-        // (approximate) duration can undershoot the real end and would fire
-        // the handoff early: the old track keeps playing while the new-track
-        // state sits frozen at 0:00, then jumps. Unknown duration means no
-        // crossfade; the natural advance still works via STATE_ENDED.
-        val trueDurationMs = player.duration.takeIf { it > 0L } ?: return false
+        // Time the handoff off the best-known duration. Requiring the TRUE
+        // container duration alone means TIME_UNSET streams (YouTube WebM/MP4
+        // takes 30-40s to parse) never arm. Fall back to the seeded /
+        // resolve-time duration also used by the progress bar.
+        val timingDurationMs = player.duration.takeIf { it > 0L }
+            ?: effectiveDuration(player.duration, player, _state.value.durationMs).takeIf { it > 0L }
+            ?: return false
         val nextIndex = player.nextMediaItemIndex
         if (nextIndex == C.INDEX_UNSET || nextIndex == player.currentMediaItemIndex) return false
-        val fadeMs = minOf((crossfadeDurationMs * player.playbackParameters.speed).toLong(), trueDurationMs / 3)
-        val remainingMs = trueDurationMs - positionMs
-        if (remainingMs <= 0L || remainingMs > fadeMs + 2_500L) return false
+        val livePosMs = runCatching { player.currentPosition.coerceAtLeast(0L) }.getOrDefault(0L)
+            .takeIf { it > 0L } ?: positionMs.coerceAtLeast(0L)
+        val fadeMs = minOf((crossfadeDurationMs * player.playbackParameters.speed).toLong(), timingDurationMs / 3)
+        if (fadeMs <= 0L) return false
+        val remainingMs = timingDurationMs - livePosMs
+        if (remainingMs <= 0L || remainingMs > fadeMs + CROSSFADE_ARM_LEAD_MS) return false
         val nextItem = player.getMediaItemAt(nextIndex)
         if (nextItem.localConfiguration?.uri?.scheme == "lastwave") {
             // The next track hasn't been resolved yet (slow or failed
@@ -2212,7 +2218,12 @@ class MusicPlayer @Inject constructor(
             return false
         }
         val stream = nextItem.localConfiguration?.customCacheKey?.let(preparedStreams::get)
-        if (stream?.isExpired() == true) return false
+        if (stream?.isExpired() == true) {
+            if (preloadJob?.isActive != true) {
+                preloadNextTrack(nextIndex, nextItem.toPlayableTrack())
+            }
+            return false
+        }
 
         val standby = if (player === secondaryPlayer) playerDelegate.value else {
             secondaryPlayer ?: run {
@@ -2234,7 +2245,11 @@ class MusicPlayer @Inject constructor(
             standby.setMediaItems(standbyQueue, nextIndex, 0L)
             standby.prepare()
         }
-        if (remainingMs > fadeMs || standby.playbackState != Player.STATE_READY) return false
+        // Two stages: arm early so the standby buffers, hand off only inside
+        // the fade window once it is READY. This is what makes slow lossless
+        // resolves still blend instead of missing the window.
+        if (remainingMs > fadeMs) return false
+        if (standby.playbackState != Player.STATE_READY) return false
         // A queue edit during preparation must never start a stale next track.
         if (standbyQueue.indices.any { standbyQueue[it] != player.getMediaItemAt(it) }) {
             cancelCrossfade()
@@ -2254,6 +2269,8 @@ class MusicPlayer @Inject constructor(
         standby.playbackParameters = outgoing.playbackParameters
         overlapDurationMs = minOf(fadeMs, remainingMs,
             standby.duration.takeIf { it > 0L }?.div(3) ?: fadeMs).coerceAtLeast(1L)
+        outgoing.volume = 1f
+        standby.volume = 0f
         outgoing.removeListener(listener)
         outgoing.setAudioAttributes(outgoing.audioAttributes, false)
         outgoing.repeatMode = Player.REPEAT_MODE_OFF
@@ -6176,6 +6193,11 @@ class MusicPlayer @Inject constructor(
         const val TAIL_PIN_TIMEOUT_MS = 5_000L
         /** Debounce so STATE_ENDED + ticker watchdog can't churn generations. */
         const val AUTO_ADVANCE_DEBOUNCE_MS = 3_000L
+        /** Arm the crossfade standby early so the next track can buffer
+         *  before the fade window. Without this the handoff requires READY
+         *  on the exact tick it enters the window and slow resolves always
+         *  miss it. */
+        const val CROSSFADE_ARM_LEAD_MS = 10_000L
         /** UI-playing but ExoPlayer frozen (pos + buffer) this long means a
          *  silent window, not slow loading — legit rebuffers advance the
          *  buffer and reset the clock. Well above normal hitches, far below

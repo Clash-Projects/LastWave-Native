@@ -10,8 +10,8 @@
     android:targetCellHeight="1"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
-    android:initialLayout="@layout/widget_now_playing"
-    android:previewLayout="@layout/widget_now_playing"
+    android:initialLayout="@layout/widget_obsidian_horizontal"
+    android:previewLayout="@layout/widget_obsidian_horizontal"
     android:previewImage="@mipmap/ic_launcher"
-    android:description="@string/widget_description"
+    android:description="@string/widget_obsidian_description"
     android:updatePeriodMillis="0" />

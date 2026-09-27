@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Hero action: brand red with a top-lit gradient so it reads as
-     lacquered, not flat. White icon sits on top in the layout. -->
+<!-- Hero action: circular play button with radiant crimson gradient and subtle rim highlight. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <corners android:radius="16dp" />
+    android:shape="oval">
     <gradient
         android:angle="270"
         android:startColor="@color/widget_primary_top"
         android:endColor="@color/widget_primary_deep"
         android:type="linear" />
+    <stroke
+        android:width="1dp"
+        android:color="#33FFFFFF" />
 </shape>
