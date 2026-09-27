@@ -76,7 +76,6 @@ sealed interface LyricsResult {
 
 @Singleton
 class LyricsRepository @Inject constructor(
-    private val lyricsPlusApi: LyricsPlusApi,
     private val betterLyricsApi: BetterLyricsApi,
     private val kugouApi: KugouLyricsApi,
     private val lrclibApi: LrclibLyricsApi,
@@ -276,9 +275,6 @@ class LyricsRepository @Inject constructor(
                         fetchWordFromBini(title, artist, album, durationSeconds, recordingIsrc, biniHit, effectiveVideoId)
                     },
                     async<LyricsResult.Success?> {
-                        fetchWordFromLyricsPlus(title, artist, album, durationSeconds, recordingIsrc)
-                    },
-                    async<LyricsResult.Success?> {
                         fetchWordFromBetterLyrics(title, artist, album, durationSeconds)
                     },
                     async<LyricsResult.Success?> {
@@ -452,8 +448,6 @@ class LyricsRepository @Inject constructor(
     ): LyricsResult.Success? = when (preferred) {
         com.lastwave.app.data.local.LyricsProvider.APPLE_MUSIC ->
             fetchWordFromAppleMusic(title, artist, album, durationSeconds)
-        com.lastwave.app.data.local.LyricsProvider.LYRICS_PLUS ->
-            fetchWordFromLyricsPlus(title, artist, album, durationSeconds, isrc)
         com.lastwave.app.data.local.LyricsProvider.BETTER_LYRICS ->
             fetchWordFromBetterLyrics(title, artist, album, durationSeconds)
         com.lastwave.app.data.local.LyricsProvider.KUGOU ->
@@ -570,70 +564,6 @@ class LyricsRepository @Inject constructor(
         return null
     }
 
-    private suspend fun fetchWordFromLyricsPlus(
-        title: String,
-        artist: String,
-        album: String?,
-        durationSeconds: Int?,
-        isrc: String? = null,
-    ): LyricsResult.Success? {
-        try {
-            val wordResponse = lyricsPlusApi.fetchWordLyrics(title, artist, album, durationSeconds, isrc)
-            if (wordResponse != null && !wordResponse.lyrics.isNullOrEmpty()) {
-                val lines = wordResponse.lyrics.map { line ->
-                    val syllables = line.syllabus?.map { syl ->
-                        LyricSyllable(
-                            timeMs = syl.time,
-                            durationMs = syl.duration,
-                            text = syl.text,
-                            isBackground = syl.isBackground,
-                        )
-                    } ?: emptyList()
-
-                    val transliterationSyllables = line.transliteration?.syllabus?.map { syl ->
-                        LyricSyllable(
-                            timeMs = syl.time,
-                            durationMs = syl.duration,
-                            text = syl.text,
-                            isBackground = syl.isBackground,
-                        )
-                    } ?: emptyList()
-
-                    LyricLine(
-                        timeMs = line.time,
-                        durationMs = line.duration,
-                        text = line.text,
-                        syllables = syllables,
-                        transliteration = line.transliteration?.text,
-                        transliterationSyllables = transliterationSyllables,
-                    )
-                }.sortedBy { it.timeMs }
-
-                if (lines.isNotEmpty()) {
-                    // LyricsPlus fuzzy-matches server-side with no candidate
-                    // metadata in the response, so a same-title wrong-artist
-                    // hit can't be filtered by text. Duration plausibility is
-                    // the only client-side signal: reject timelines that
-                    // overrun the track or cover less than half of it.
-                    if (!plausibleDuration(lines, durationSeconds)) return null
-                    val hasWordTiming = lines.any { it.hasSyllables }
-                    return LyricsResult.Success(
-                        lines = lines,
-                        isSynced = true,
-                        isWordSynced = hasWordTiming,
-                        plainLyrics = lines.joinToString("\n") { it.text },
-                        isInstrumental = false,
-                        source = if (hasWordTiming) "LyricsPlus (Word-Sync)" else "LyricsPlus (Line-Sync)",
-                    )
-                }
-            }
-        } catch (cancellation: kotlinx.coroutines.CancellationException) {
-            throw cancellation
-        } catch (_: Exception) {
-        }
-        return null
-    }
-
     private suspend fun fetchWordFromBetterLyrics(
         title: String,
         artist: String,
@@ -648,8 +578,7 @@ class LyricsRepository @Inject constructor(
                 album,
             ) ?: betterLyricsApi.fetchWordLyrics(title, artist, durationSeconds, album)
             if (!betterLines.isNullOrEmpty()) {
-                // Same unverified-fuzzy situation as LyricsPlus (TTML carries
-                // no candidate identity): duration plausibility only.
+                // TTML carries no candidate identity: duration plausibility only.
                 if (!plausibleDuration(betterLines, durationSeconds)) return null
                 val hasWordTiming = betterLines.any { it.hasSyllables }
                 return LyricsResult.Success(
@@ -757,7 +686,7 @@ class LyricsRepository @Inject constructor(
 
         /**
          * Duration plausibility for providers whose responses carry no
-         * candidate identity (LyricsPlus, BetterLyrics): the server
+         * candidate identity (BetterLyrics): the server
          * fuzzy-matches, so a same-title wrong-artist hit is otherwise
          * undetectable client-side. The lyric timeline must roughly fit the
          * track: reject timelines running 45s+ past the end, or covering

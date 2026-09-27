@@ -4978,7 +4978,7 @@ class MusicPlayer @Inject constructor(
                         lookupTrack,
                         misc,
                         excludedLosslessUrls,
-                        expectedDurationSeconds,
+                        expectedDurationSeconds ?: track.durationMs?.takeIf { it > 0L }?.let { (it / 1000L).toInt() },
                     )
                 }.getOrNull()
             }

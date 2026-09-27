@@ -73,6 +73,7 @@ import androidx.compose.material.icons.filled.Waves
 import com.lastwave.app.data.local.LyricsAnimation
 import com.lastwave.app.data.local.LyricsProvider
 import com.lastwave.app.data.local.LyricsUiVersion
+import com.lastwave.app.ui.player.LyricsOffsetDialog
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Palette
@@ -4474,56 +4475,7 @@ private fun LyricsProviderDialog(
     )
 }
 
-@Composable
-private fun LyricsOffsetDialog(
-    currentMs: Long,
-    onSelect: (Long) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var draftMs by remember(currentMs) { mutableLongStateOf(currentMs) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Lyrics sync offset") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "Nudges the highlight when a provider's timestamps run early or late. + shows lyrics early (fixes late lyrics), \u2212 delays them. Seekbar is unaffected.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    if (draftMs == 0L) "0 ms (off)" else "${if (draftMs > 0) "+" else ""}$draftMs ms",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                )
-                Slider(
-                    value = draftMs.toFloat(),
-                    onValueChange = { draftMs = it.roundToLong() },
-                    onValueChangeFinished = { onSelect(draftMs) },
-                    valueRange = -1000f..1000f,
-                    steps = 39,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = {
-                        draftMs = (draftMs - 100).coerceIn(-3000L, 3000L)
-                        onSelect(draftMs)
-                    }) { Text("−100") }
-                    OutlinedButton(onClick = {
-                        draftMs = (draftMs + 100).coerceIn(-3000L, 3000L)
-                        onSelect(draftMs)
-                    }) { Text("+100") }
-                    FilledTonalButton(onClick = {
-                        draftMs = 0L
-                        onSelect(0L)
-                    }) { Text("Reset") }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_done)) }
-        },
-    )
-}
+
 
 private fun loudnessModeTitle(mode: LoudnessMode): String = when (mode) {
     LoudnessMode.TRACK -> "Track"

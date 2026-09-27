@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.SyncDisabled
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -104,6 +105,7 @@ fun ModernLyricsPanel(
     onToggleFullscreen: (() -> Unit)? = null,
     isFullscreen: Boolean = false,
     onRetry: () -> Unit = {},
+    onOpenLyricsOffset: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     /** Manual sync correction (ms, + = lyrics earlier). Applies to lyric
      *  focus/highlight only — the seekbar below keeps true position. */
@@ -317,6 +319,8 @@ fun ModernLyricsPanel(
             wavySeekbarEnabled = wavySeekbarEnabled,
             onToggleFullscreen = onToggleFullscreen,
             isFullscreen = isFullscreen,
+            lyricsOffsetMs = lyricsOffsetMs,
+            onOpenLyricsOffset = onOpenLyricsOffset,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
@@ -621,6 +625,8 @@ private fun ModernLyricsControls(
     wavySeekbarEnabled: Boolean = true,
     onToggleFullscreen: (() -> Unit)? = null,
     isFullscreen: Boolean = false,
+    lyricsOffsetMs: Long = 0L,
+    onOpenLyricsOffset: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -629,42 +635,81 @@ private fun ModernLyricsControls(
             .padding(horizontal = 4.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        if (onToggleFullscreen != null) {
+        if (onToggleFullscreen != null || onOpenLyricsOffset != null) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 2.dp),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                val playerInteraction = remember { MutableInteractionSource() }
-                val isPlayerPressed by playerInteraction.collectIsPressedAsState()
-                val playerScale by animateFloatAsState(
-                    targetValue = if (isPlayerPressed) 0.82f else 1.0f,
-                    animationSpec = ExpressiveMotion.spatialSpring(),
-                    label = "playerTabScale",
-                )
-                IconButton(
-                    onClick = onToggleFullscreen,
-                    interactionSource = playerInteraction,
-                    modifier = Modifier
-                        .size(44.dp)
-                        .graphicsLayer {
-                            scaleX = playerScale
-                            scaleY = playerScale
-                        }
-                        .clip(CircleShape)
-                        .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = playerInteraction)
-                        .background(
-                            liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
-                        ),
-                ) {
-                    Icon(
-                        if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                        contentDescription = if (isFullscreen) "Exit fullscreen lyrics" else "Fullscreen lyrics",
-                        modifier = Modifier.size(24.dp),
-                        tint = Color.White.copy(alpha = 0.90f),
+                if (onOpenLyricsOffset != null) {
+                    val offsetInteraction = remember { MutableInteractionSource() }
+                    val isOffsetPressed by offsetInteraction.collectIsPressedAsState()
+                    val offsetScale by animateFloatAsState(
+                        targetValue = if (isOffsetPressed) 0.82f else 1.0f,
+                        animationSpec = ExpressiveMotion.spatialSpring(),
+                        label = "lyricsOffsetScale",
                     )
+                    IconButton(
+                        onClick = onOpenLyricsOffset,
+                        interactionSource = offsetInteraction,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .graphicsLayer {
+                                scaleX = offsetScale
+                                scaleY = offsetScale
+                            }
+                            .clip(CircleShape)
+                            .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = offsetInteraction)
+                            .background(
+                                liquidGlassContainerColor(
+                                    if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+                                    else Color.White.copy(alpha = 0.14f)
+                                ),
+                            ),
+                    ) {
+                        Icon(
+                            Icons.Filled.Timer,
+                            contentDescription = "Lyrics sync offset",
+                            modifier = Modifier.size(22.dp),
+                            tint = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.90f),
+                        )
+                    }
+                } else {
+                    Spacer(Modifier.size(44.dp))
+                }
+
+                if (onToggleFullscreen != null) {
+                    val playerInteraction = remember { MutableInteractionSource() }
+                    val isPlayerPressed by playerInteraction.collectIsPressedAsState()
+                    val playerScale by animateFloatAsState(
+                        targetValue = if (isPlayerPressed) 0.82f else 1.0f,
+                        animationSpec = ExpressiveMotion.spatialSpring(),
+                        label = "playerTabScale",
+                    )
+                    IconButton(
+                        onClick = onToggleFullscreen,
+                        interactionSource = playerInteraction,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .graphicsLayer {
+                                scaleX = playerScale
+                                scaleY = playerScale
+                            }
+                            .clip(CircleShape)
+                            .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = playerInteraction)
+                            .background(
+                                liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
+                            ),
+                    ) {
+                        Icon(
+                            if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                            contentDescription = if (isFullscreen) "Exit fullscreen lyrics" else "Fullscreen lyrics",
+                            modifier = Modifier.size(24.dp),
+                            tint = Color.White.copy(alpha = 0.90f),
+                        )
+                    }
                 }
             }
         }

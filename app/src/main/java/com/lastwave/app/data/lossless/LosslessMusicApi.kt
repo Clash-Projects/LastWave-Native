@@ -397,9 +397,13 @@ class LosslessMusicApi @Inject constructor(
         val addonClient = AddonClient(addonBaseUrl, client, nativeSecrets = nativeSecrets)
         val cleanArtist = cleanForSearch(artist).ifBlank { artist }
         val cleanTitle = cleanForSearch(title).ifBlank { title }
-        val queries = listOf(
+        val unaccentTitle = normalizeText(cleanTitle)
+        val unaccentArtist = normalizeText(cleanArtist)
+        val queries = listOfNotNull(
             "$cleanTitle $cleanArtist".trim(),
+            if (unaccentTitle.isNotBlank() && unaccentTitle != cleanTitle.lowercase()) "$unaccentTitle $unaccentArtist".trim() else null,
             cleanTitle.trim(),
+            if (unaccentTitle.isNotBlank() && unaccentTitle != cleanTitle.lowercase()) unaccentTitle.trim() else null,
         ).distinct()
 
         val isAtmosPreferred = preferredQuality == QUALITY_DOLBY_ATMOS
@@ -597,9 +601,13 @@ class LosslessMusicApi @Inject constructor(
             .map(::normalizeText)
             .filter(String::isNotBlank)
 
-        val artistExact = primaryIdentities.any { iden ->
-            targetArtists.any { ta -> iden == ta }
-        }
+        val candidateArtists = primaryIdentities
+            .flatMap { it.split(Regex("""(?i)\s*(?:&|,|\bx\b|feat\.?|ft\.?|featuring|with|\+)\s*""")) }
+            .map(::normalizeText)
+            .filter(String::isNotBlank)
+
+        val artistExact = primaryIdentities.any { iden -> targetArtists.any { ta -> iden == ta } } ||
+            candidateArtists.any { ca -> targetArtists.any { ta -> ca == ta } }
 
         val titleDistance = levenshtein(targetTitle, candidateTitle)
         val isExactMatch = targetTitle == candidateTitle
@@ -635,14 +643,19 @@ class LosslessMusicApi @Inject constructor(
             return null
         }
 
+        val maxDurationDifference = when {
+            isExactMatch && artistExact && !variantMismatch -> 12
+            isExactMatch || artistExact -> 8
+            else -> MAX_DURATION_DIFFERENCE_SECONDS
+        }
         val durationDifference = if (expectedDurationSeconds != null && expectedDurationSeconds > 0) {
             if (item.duration <= 0) {
                 Log.d(TAG, "reject candidate id=${item.id}: missing duration for '$title'")
                 return null
             }
             kotlin.math.abs(item.duration - expectedDurationSeconds).also {
-                if (it > MAX_DURATION_DIFFERENCE_SECONDS) {
-                    Log.d(TAG, "reject candidate id=${item.id}: duration ${item.duration}s vs expected ${expectedDurationSeconds}s (Δ${it}s) for '$title'")
+                if (it > maxDurationDifference) {
+                    Log.d(TAG, "reject candidate id=${item.id}: duration ${item.duration}s vs expected ${expectedDurationSeconds}s (Δ${it}s > ${maxDurationDifference}s) for '$title'")
                     return null
                 }
             }
@@ -680,7 +693,7 @@ class LosslessMusicApi @Inject constructor(
                 }
             }
         }
-        durationDifference?.let { score += (MAX_DURATION_DIFFERENCE_SECONDS - it) * 10 }
+        durationDifference?.let { score += (maxDurationDifference - it) * 10 }
         return score
     }
 

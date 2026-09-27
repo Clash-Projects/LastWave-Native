@@ -81,8 +81,8 @@
     <string name="settings_studio_clarity_off">Original unshaped output</string>
     <string name="settings_canvas_enabled">Animated Album Canvas</string>
     <string name="settings_canvas_enabled_sub">Stream motion artwork loops from Apple Music, Tidal and community</string>
-    <string name="settings_canvas_full_bleed">Edge-to-Edge Canvas Background</string>
-    <string name="settings_canvas_full_bleed_sub">Display vertical motion art behind player controls</string>
+    <string name="settings_canvas_full_bleed">Full Screen Artwork</string>
+    <string name="settings_canvas_full_bleed_sub">Full screen edge-to-edge artwork for static and animated tracks</string>
     <string name="settings_canvas_cellular">Canvas Over Cellular</string>
     <string name="settings_canvas_cellular_sub">Download motion artwork over mobile data (cached after first loop)</string>
 

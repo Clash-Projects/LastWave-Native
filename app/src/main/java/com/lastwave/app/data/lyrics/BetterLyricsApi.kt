@@ -30,7 +30,7 @@ private data class BetterLyricsTtmlResponse(
  * Free, no API key, GPL-3.0. Serves Apple-Music TTML with per-syllable
  * `<span begin end>` timing, which maps 1:1 onto [LyricLine]/[LyricSyllable].
  *
- * Chain position: after LyricsPlus, before Kugou — both TTML endpoints are
+ * Chain position: before Kugou — both TTML endpoints are
  * tried (`/getLyrics` returns `{"ttml"}`, `/ttml/getLyrics` returns
  * `{"lyrics"}`).
  */

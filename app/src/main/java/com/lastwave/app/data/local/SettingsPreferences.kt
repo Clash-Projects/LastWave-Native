@@ -56,7 +56,6 @@ enum class LyricsAnimation(val id: String, val title: String, val description: S
 enum class LyricsProvider(val id: String, val title: String, val subtitle: String) {
     AUTO("auto", "Auto", "Fastest word-sync wins, LRCLIB fallback"),
     APPLE_MUSIC("apple_music", "Apple Music", "Syllable-synced Apple Music lyrics first"),
-    LYRICS_PLUS("lyrics_plus", "LyricsPlus", "Word-synced lyrics first"),
     BETTER_LYRICS("better_lyrics", "BetterLyrics", "Word-synced lyrics first"),
     KUGOU("kugou", "Kugou", "KRC word-synced lyrics first"),
     BINI_LYRICS("bini_lyrics", "Syllable-Sync", "Recording-matched syllable lyrics first"),
@@ -65,7 +64,7 @@ enum class LyricsProvider(val id: String, val title: String, val subtitle: Strin
     LRCLIB("lrclib", "LRCLIB", "Line-synced community lyrics first");
 
     val isWordProvider: Boolean get() =
-        this == APPLE_MUSIC || this == LYRICS_PLUS || this == BETTER_LYRICS || this == KUGOU ||
+        this == APPLE_MUSIC || this == BETTER_LYRICS || this == KUGOU ||
             this == BINI_LYRICS || this == SIMP_MUSIC || this == MUSIXMATCH
 
     companion object {

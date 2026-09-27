@@ -319,6 +319,12 @@ class PlayerViewModel @Inject constructor(
         navigator.openAlbum(title, artist, browseId)
     }
 
+    fun setLyricsOffsetMs(offsetMs: Long) {
+        viewModelScope.launch {
+            settingsPreferences.setLyricsOffsetMs(offsetMs.coerceIn(-3000L, 3000L))
+        }
+    }
+
     private val _lyricsState = MutableStateFlow<LyricsUiState>(LyricsUiState.Idle)
     val lyricsState = _lyricsState.asStateFlow()
 
@@ -764,6 +770,7 @@ private fun ExpandedPlayer(
         lyricsAnimation = settings.lyricsAnimation,
         wavySeekbarEnabled = settings.wavySeekbarEnabled,
         lyricsOffsetMs = settings.lyricsOffsetMs,
+        onSetLyricsOffsetMs = viewModel::setLyricsOffsetMs,
         canvas = canvas,
         canvasEnabled = settings.canvasEnabled,
         canvasFullBleedEnabled = settings.canvasFullBleed,
@@ -1575,6 +1582,7 @@ private fun FullPlayer(
     lyricsAnimation: LyricsAnimation = LyricsAnimation.APPLE_FLUID,
     wavySeekbarEnabled: Boolean = true,
     lyricsOffsetMs: Long = 0L,
+    onSetLyricsOffsetMs: ((Long) -> Unit)? = null,
     canvas: com.lastwave.app.data.canvas.CanvasArtwork? = null,
     canvasEnabled: Boolean = true,
     canvasFullBleedEnabled: Boolean = true,
@@ -1588,8 +1596,9 @@ private fun FullPlayer(
     onDoubleTapLike: () -> Unit = {},
 ) {
     val track = state.current ?: return
+    var showLyricsOffsetDialog by remember { mutableStateOf(false) }
     val isCanvasActive = canvasEnabled && canvas != null
-    val showFullBleed = isCanvasActive && canvasFullBleedEnabled
+    val showFullBleed = canvasFullBleedEnabled
     val showSleeveCanvas = isCanvasActive && !showFullBleed
     val activeCanvas = remember(canvas, showFullBleed) {
         val tall = canvas?.tallUrl
@@ -1838,7 +1847,7 @@ private fun FullPlayer(
                             ),
                         ),
                 )
-                if (showFullBleed && activeCanvas != null) {
+                if (showFullBleed) {
                     val heroHeight = if (heroBottomPx > 0f) {
                         with(LocalDensity.current) { heroBottomPx.toDp() }
                     } else {
@@ -1849,15 +1858,12 @@ private fun FullPlayer(
                         animationSpec = tween(350),
                         label = "lyricsCanvasBlur",
                     )
-                    CanvasArtworkPlayer(
-                        canvas = activeCanvas,
-                        isPlaying = state.isPlaying,
-                        contentMode = CanvasContentMode.CROP,
-                        alignPortraitTop = true,
-                        bottomFade = 0.38f,
-                        onAspectRatioChanged = { canvasAspect = it },
-                        onRenderedChanged = { canvasRendered = it },
-                        pausedForTransition = shownDismissY > 0f || currentTab != FullPlayerTab.NOW_PLAYING,
+                    val canvasCrossfadeAlpha by animateFloatAsState(
+                        targetValue = if (activeCanvas != null && canvasRendered) 1f else 0f,
+                        animationSpec = tween(400),
+                        label = "canvasCrossfadeAlpha",
+                    )
+                    Box(
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .fillMaxWidth()
@@ -1869,7 +1875,44 @@ private fun FullPlayer(
                                     Modifier
                                 }
                             ),
-                    )
+                    ) {
+                        ArtworkImage(
+                            name = track.title,
+                            artist = track.artist,
+                            embeddedUrl = track.artworkUrl,
+                            fallbackIcon = Icons.Filled.MusicNote,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        0.00f to Color.Transparent,
+                                        0.50f to Color.Transparent,
+                                        0.78f to Color.Black.copy(alpha = 0.45f),
+                                        1.00f to Color.Black.copy(alpha = 0.90f),
+                                    )
+                                )
+                        )
+                        if (activeCanvas != null) {
+                            CanvasArtworkPlayer(
+                                canvas = activeCanvas,
+                                isPlaying = state.isPlaying,
+                                contentMode = CanvasContentMode.CROP,
+                                alignPortraitTop = true,
+                                bottomFade = 0.38f,
+                                onAspectRatioChanged = { canvasAspect = it },
+                                onRenderedChanged = { canvasRendered = it },
+                                pausedForTransition = shownDismissY > 0f || currentTab != FullPlayerTab.NOW_PLAYING,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer {
+                                        alpha = canvasCrossfadeAlpha
+                                    },
+                            )
+                        }
+                    }
                 }
 
                 // Lyrics-only readability veil: heavy blur still can't tame a
@@ -2028,6 +2071,7 @@ private fun FullPlayer(
                                         onRetry = onRetryLyrics,
                                         onToggleFullscreen = { lyricsFullscreen = !lyricsFullscreen },
                                         isFullscreen = lyricsFullscreen,
+                                        onOpenLyricsOffset = { showLyricsOffsetDialog = true },
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .adaptiveContentWidth(maxWidth = 720.dp),
@@ -2044,6 +2088,7 @@ private fun FullPlayer(
                                         onRetry = onRetryLyrics,
                                         onToggleFullscreen = { lyricsFullscreen = !lyricsFullscreen },
                                         isFullscreen = lyricsFullscreen,
+                                        onOpenLyricsOffset = { showLyricsOffsetDialog = true },
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .adaptiveContentWidth(maxWidth = 720.dp),
@@ -2076,7 +2121,7 @@ private fun FullPlayer(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
                                     val sleeveAlpha by animateFloatAsState(
-                                        targetValue = if (showFullBleed && canvasRendered) 0f else 1f,
+                                        targetValue = if (showFullBleed) 0f else 1f,
                                         animationSpec = tween(350),
                                         label = "sleeveAlpha",
                                     )
@@ -2557,6 +2602,13 @@ private fun FullPlayer(
             playableTrack = track,
             onDismiss = { showTrackMenu = false },
             onPlayInLastWave = { player.play(track, sourceLabel = state.sourceLabel) },
+        )
+    }
+    if (showLyricsOffsetDialog && onSetLyricsOffsetMs != null) {
+        LyricsOffsetDialog(
+            currentMs = lyricsOffsetMs,
+            onSelect = onSetLyricsOffsetMs,
+            onDismiss = { showLyricsOffsetDialog = false },
         )
     }
 }
