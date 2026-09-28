@@ -128,6 +128,9 @@ fun LyricsPanel(
     /** Manual sync correction (ms, + = lyrics earlier). Applies to lyric
      *  focus/highlight only — the seekbar below keeps true position. */
     lyricsOffsetMs: Long = 0L,
+    primaryColor: Color = MaterialTheme.colorScheme.primary,
+    secondaryColor: Color = MaterialTheme.colorScheme.secondary,
+    tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
 ) {
     val track = state.current ?: return
     val liquidGlass = LocalLiquidGlass.current
@@ -266,6 +269,9 @@ fun LyricsPanel(
             isFullscreen = isFullscreen,
             lyricsOffsetMs = lyricsOffsetMs,
             onOpenLyricsOffset = onOpenLyricsOffset,
+            primaryColor = primaryColor,
+            secondaryColor = secondaryColor,
+            tertiaryColor = tertiaryColor,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
@@ -962,6 +968,9 @@ private fun LyricsPlaybackControls(
     isFullscreen: Boolean = false,
     lyricsOffsetMs: Long = 0L,
     onOpenLyricsOffset: (() -> Unit)? = null,
+    primaryColor: Color = MaterialTheme.colorScheme.primary,
+    secondaryColor: Color = MaterialTheme.colorScheme.secondary,
+    tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
     modifier: Modifier = Modifier,
 ) {
     // This Column performs layout only. It intentionally draws no container.
@@ -1077,6 +1086,9 @@ private fun LyricsPlaybackControls(
                 trackKey = state.current?.let { it.videoId ?: "${it.artist}|${it.title}" },
                 showTimeLabels = false,
                 modifier = Modifier.fillMaxWidth(),
+                primaryColor = primaryColor,
+                secondaryColor = secondaryColor,
+                tertiaryColor = tertiaryColor,
             )
         } else {
             PlayerProgressSlider(
@@ -1092,6 +1104,8 @@ private fun LyricsPlaybackControls(
                 enabled = totalDurationMs > 0,
                 modifier = Modifier.fillMaxWidth(),
                 interactionSource = seekInteraction,
+                primaryColor = primaryColor,
+                tertiaryColor = tertiaryColor,
             )
         }
 
