@@ -68,7 +68,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.composed
+import androidx.compose.ui.graphics.Shape
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -272,6 +279,79 @@ private fun SettingsGroup(rowCount: Int, content: @Composable (index: Int, posit
 }
 
 /**
+ * Determines the target LazyColumn item index (section) for a searchable setting.
+ */
+private fun getTargetSectionIndex(settingId: String?): Int {
+    if (settingId == null) return 0
+    val entry = SettingsSearchIndex.allEntries.firstOrNull { it.id == settingId } ?: return 0
+    return when (entry.parentTab) {
+        SettingsTab.AUDIO -> if (entry.section == "Output & Loudness") 1 else 0
+        SettingsTab.APPEARANCE -> when (entry.section) {
+            "Accent Color" -> 1
+            "Experimental & Player" -> 2
+            else -> 0
+        }
+        SettingsTab.LIBRARY -> when (entry.section) {
+            "Imports" -> 1
+            "Modules & Addons" -> 2
+            else -> 0
+        }
+        SettingsTab.DATA_BACKUP -> if (entry.section == "Data Management") 1 else 0
+        SettingsTab.ABOUT -> if (entry.section == "About & Community") 1 else 0
+        else -> 0
+    }
+}
+
+/**
+ * Attaches a BringIntoViewRequester and renders an expressive pulsing highlight glow
+ * with outer colored shadow halo, accent border, and auto-scroll when isHighlighted is true.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private fun Modifier.settingHighlightGlow(
+    isHighlighted: Boolean,
+    shape: Shape = CardOuterShape,
+): Modifier = composed {
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
+    val primaryColor = MaterialTheme.colorScheme.primary
+
+    LaunchedEffect(isHighlighted) {
+        if (isHighlighted) {
+            delay(160L)
+            bringIntoViewRequester.bringIntoView()
+        }
+    }
+
+    if (!isHighlighted) {
+        return@composed this.bringIntoViewRequester(bringIntoViewRequester)
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "settingHighlightGlow")
+    val glowProgress by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(650, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "glowProgress",
+    )
+
+    this
+        .bringIntoViewRequester(bringIntoViewRequester)
+        .shadow(
+            elevation = (7 * glowProgress).dp,
+            shape = shape,
+            ambientColor = primaryColor.copy(alpha = 0.40f * glowProgress),
+            spotColor = primaryColor.copy(alpha = 0.55f * glowProgress),
+        )
+        .border(
+            width = 2.5.dp,
+            color = primaryColor.copy(alpha = glowProgress),
+            shape = shape,
+        )
+}
+
+/**
  * Faithful port of settings.js (par 8): Last.fm account management, appearance
  * (AMOLED / Dynamic Color / Monochrome / accent presets / custom color
  * wheel), iTunes/ListenBrainz artwork toggles, data management (clear
@@ -455,13 +535,14 @@ fun SettingsScreen(
         var activeTab by remember { mutableStateOf<SettingsTab?>(null) }
         var isSearchBarVisible by rememberSaveable { mutableStateOf(false) }
         var highlightedSettingId by remember { mutableStateOf<String?>(null) }
+        val focusManager = LocalFocusManager.current
 
         val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
         val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
 
         LaunchedEffect(highlightedSettingId) {
             if (highlightedSettingId != null) {
-                kotlinx.coroutines.delay(2000L)
+                delay(3200L)
                 highlightedSettingId = null
             }
         }
@@ -529,6 +610,7 @@ fun SettingsScreen(
                 query = searchQuery,
                 results = searchResults,
                 onResultClick = { entry ->
+                    focusManager.clearFocus()
                     viewModel.clearSearch()
                     isSearchBarVisible = false
                     activeTab = entry.parentTab
@@ -555,7 +637,23 @@ fun SettingsScreen(
             label = "SettingsTabTransition",
             modifier = Modifier.weight(1f).fillMaxWidth(),
         ) { tab ->
+            val listState = remember(tab) { LazyListState() }
+
+            LaunchedEffect(highlightedSettingId, tab) {
+                if (highlightedSettingId != null && tab != null) {
+                    val targetIndex = getTargetSectionIndex(highlightedSettingId)
+                    if (targetIndex > 0) {
+                        delay(80L)
+                        listState.animateScrollToItem(targetIndex)
+                    } else if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
+                        delay(80L)
+                        listState.animateScrollToItem(0)
+                    }
+                }
+            }
+
             LazyColumn(
+                state = listState,
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
@@ -787,6 +885,7 @@ fun SettingsScreen(
                                     seconds = misc.crossfadeSeconds,
                                     onSecondsChange = viewModel::setCrossfadeSeconds,
                                     position = position,
+                                    isHighlighted = (highlightedSettingId == "audio.crossfade_duration"),
                                 )
                             } else {
                                 SettingsToggleCard(
@@ -960,6 +1059,7 @@ fun SettingsScreen(
                                 currentThemeMode = theme?.themeMode ?: ThemeMode.SYSTEM,
                                 onSelectThemeMode = viewModel::setThemeMode,
                                 position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.theme_mode"),
                             )
                             1 -> SettingsToggleCard(
                                 icon = Icons.Filled.Contrast,
@@ -1044,7 +1144,16 @@ fun SettingsScreen(
                     Spacer(Modifier.height(10.dp))
                     Card(
                         shape = CardOuterShape,
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (highlightedSettingId == "appearance.accent_preset") MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .settingHighlightGlow(
+                                isHighlighted = (highlightedSettingId == "appearance.accent_preset"),
+                                shape = CardOuterShape,
+                            ),
                     ) {
                         Column(Modifier.padding(20.dp)) {
                             AccentPresetGrid(
@@ -1214,6 +1323,7 @@ fun SettingsScreen(
                                     channelHandle = ytConnection.channelHandle,
                                     onDisconnect = { showYtDisconnectConfirm = true },
                                     position = position,
+                                    isHighlighted = (highlightedSettingId == "youtube.account"),
                                 )
                             } else {
                                 SettingsActionCard(
@@ -1347,6 +1457,7 @@ fun SettingsScreen(
                         connecting = lastFmConnecting,
                         awaitingApproval = lastFmAuthUrl != null,
                         hasApiKey = hasApiKey,
+                        isHighlighted = (highlightedSettingId in listOf("lastfm.connect", "lastfm.api_credentials")),
                         onConnect = { viewModel.beginLastFmConnect() },
                         onCancel = viewModel::cancelLastFmConnect,
                         onDisconnect = viewModel::disconnectLastFm,
@@ -1410,6 +1521,7 @@ fun SettingsScreen(
                                 percent = scrobbler.scrobblePercent,
                                 onPercentChange = viewModel::setScrobblePercent,
                                 position = position,
+                                isHighlighted = (highlightedSettingId == "scrobbler.threshold"),
                             )
                         }
                     }
@@ -1502,7 +1614,12 @@ fun SettingsScreen(
                     shape = RoundedCornerShape(22.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .settingHighlightGlow(
+                            isHighlighted = (highlightedSettingId == "library.modules"),
+                            shape = RoundedCornerShape(22.dp),
+                        ),
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp).fillMaxWidth(),
@@ -2437,14 +2554,19 @@ private fun ThemeModeSelectorCard(
     currentThemeMode: ThemeMode,
     onSelectThemeMode: (ThemeMode) -> Unit,
     position: GroupPosition = GroupPosition.SINGLE,
+    isHighlighted: Boolean = false,
 ) {
     val shape = groupShape(position)
 
     Card(
         shape = shape,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
     ) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
@@ -2513,34 +2635,20 @@ private fun SettingsToggleCard(
     val scale = rememberPressScale(interactionSource)
     val shape = groupShape(position)
 
-    val highlightBorder = if (isHighlighted) {
-        val infiniteTransition = rememberInfiniteTransition(label = "toggleHighlightGlow")
-        val alpha by infiniteTransition.animateFloat(
-            initialValue = 0.4f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(500, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "toggleGlowAlpha",
-        )
-        BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = alpha))
-    } else null
-
     Card(
         onClick = { if (enabled) onCheckedChange(!checked) },
         shape = shape,
         enabled = enabled,
-        border = highlightBorder,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh,
             disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
-            .scale(if (enabled) scale else 1f),
+            .scale(if (enabled) scale else 1f)
+            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
@@ -2595,14 +2703,23 @@ private fun SettingsToggleCard(
  *  matter for tracks over 8 minutes long, a genuine edge case not worth
  *  the extra UI here. */
 @Composable
-private fun ScrobbleThresholdRow(percent: Int, onPercentChange: (Int) -> Unit, position: GroupPosition = GroupPosition.SINGLE) {
+private fun ScrobbleThresholdRow(
+    percent: Int,
+    onPercentChange: (Int) -> Unit,
+    position: GroupPosition = GroupPosition.SINGLE,
+    isHighlighted: Boolean = false,
+) {
     var sliderValue by remember(percent) { mutableStateOf(percent.coerceIn(25, 90).toFloat()) }
     val shape = groupShape(position)
     Card(
         shape = shape,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2634,6 +2751,7 @@ private fun CrossfadeDurationRow(
     seconds: Int,
     onSecondsChange: (Int) -> Unit,
     position: GroupPosition = GroupPosition.SINGLE,
+    isHighlighted: Boolean = false,
 ) {
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     var sliderValue by remember { mutableStateOf(seconds.coerceIn(1, 12).toFloat()) }
@@ -2652,9 +2770,13 @@ private fun CrossfadeDurationRow(
 
     Card(
         shape = shape,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2734,30 +2856,18 @@ private fun SettingsActionCard(
     val titleColor = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
     val shape = groupShape(position)
 
-    val highlightBorder = if (isHighlighted) {
-        val infiniteTransition = rememberInfiniteTransition(label = "actionHighlightGlow")
-        val alpha by infiniteTransition.animateFloat(
-            initialValue = 0.4f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(500, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "actionGlowAlpha",
-        )
-        BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = alpha))
-    } else null
-
     Card(
         onClick = onClick,
         shape = shape,
-        border = highlightBorder,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
-            .scale(scale),
+            .scale(scale)
+            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
@@ -3055,15 +3165,19 @@ private fun YouTubeAccountRow(
     channelHandle: String?,
     onDisconnect: () -> Unit,
     position: GroupPosition,
+    isHighlighted: Boolean = false,
 ) {
     val shape = groupShape(position)
     Card(
         shape = shape,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .animateContentSize(),
+            .animateContentSize()
+            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
@@ -3143,6 +3257,7 @@ private fun LastFmIntegrationCard(
     onSaveKeys: (String, String) -> Unit,
     onRemoveKey: () -> Unit,
     onOpenCreateKeyPage: () -> Unit,
+    isHighlighted: Boolean = false,
 ) {
     var showDisconnectConfirm by remember { mutableStateOf(false) }
     // No shared key exists, so the form starts open until a key is saved.
@@ -3152,8 +3267,14 @@ private fun LastFmIntegrationCard(
 
     Card(
         shape = CardOuterShape,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-        modifier = Modifier.fillMaxWidth().animateContentSize(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize()
+            .settingHighlightGlow(isHighlighted = isHighlighted, shape = CardOuterShape),
     ) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = if (isConnected) 14.dp else 16.dp),
