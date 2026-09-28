@@ -68,6 +68,27 @@ private fun Color.shiftTonal(lightnessDelta: Float, saturationScale: Float = 1.0
 }
 
 /**
+ * Ensures a color has sufficient brightness and saturation to stand out
+ * vibrantly on dark scrims and backgrounds without washing out.
+ */
+private fun Color.ensureLuminousForDarkBackground(minBrightness: Float = 0.55f): Color {
+    val hsv = FloatArray(3)
+    android.graphics.Color.RGBToHSV(
+        (red * 255).toInt().coerceIn(0, 255),
+        (green * 255).toInt().coerceIn(0, 255),
+        (blue * 255).toInt().coerceIn(0, 255),
+        hsv,
+    )
+    if (hsv[2] < minBrightness) {
+        hsv[2] = minBrightness
+    }
+    if (hsv[1] in 0.05f..0.35f) {
+        hsv[1] = 0.35f
+    }
+    return Color(android.graphics.Color.HSVToColor(hsv))
+}
+
+/**
  * Material Design 3 Dynamic Counter-Gradient Frosted Glass Waveform Seekbar.
  * Features 3 frosted glass waves that dynamically transition across playback progress:
  * - Layer 1: Light -> Dark
@@ -85,6 +106,9 @@ fun WavySeekBar(
     isTranslucent: Boolean = false,
     trackKey: String? = null,
     showTimeLabels: Boolean = true,
+    primaryColor: Color = MaterialTheme.colorScheme.primary,
+    secondaryColor: Color = MaterialTheme.colorScheme.secondary,
+    tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
 ) {
     val interactionSource = remember(trackKey) { MutableInteractionSource() }
     val frameworkDragging by interactionSource.collectIsDraggedAsState()
@@ -127,10 +151,16 @@ fun WavySeekBar(
         0f
     }
 
-    // 100% Material Design 3 Harmonized Theme Colors
-    val primaryColor = if (isTranslucent) Color.White else MaterialTheme.colorScheme.primary
-    val secondaryColor = if (isTranslucent) Color.White else MaterialTheme.colorScheme.secondary
-    val tertiaryColor = if (isTranslucent) Color.White else MaterialTheme.colorScheme.tertiary
+    // Ensure colors stand out vibrantly on dark scrim/translucent backgrounds
+    val effectivePrimary = remember(primaryColor, isTranslucent) {
+        if (isTranslucent) primaryColor.ensureLuminousForDarkBackground(0.60f) else primaryColor
+    }
+    val effectiveSecondary = remember(secondaryColor, isTranslucent) {
+        if (isTranslucent) secondaryColor.ensureLuminousForDarkBackground(0.52f) else secondaryColor
+    }
+    val effectiveTertiary = remember(tertiaryColor, isTranslucent) {
+        if (isTranslucent) tertiaryColor.ensureLuminousForDarkBackground(0.48f) else tertiaryColor
+    }
 
     val inactiveColor = if (isTranslucent) {
         Color.White.copy(alpha = 0.22f)
@@ -144,13 +174,13 @@ fun WavySeekBar(
     }
 
     // Pre-calculated tonal palette (zero allocation in draw loop)
-    val layer1Light = remember(tertiaryColor, isTranslucent) { tertiaryColor.shiftTonal(lightnessDelta = +0.18f, saturationScale = 0.85f) }
-    val layer1Dark = remember(tertiaryColor, isTranslucent) { tertiaryColor.shiftTonal(lightnessDelta = -0.15f, saturationScale = 1.30f) }
-    val layer2Dark = remember(secondaryColor, isTranslucent) { secondaryColor.shiftTonal(lightnessDelta = -0.16f, saturationScale = 1.30f) }
-    val layer2Light = remember(secondaryColor, isTranslucent) { secondaryColor.shiftTonal(lightnessDelta = +0.18f, saturationScale = 0.85f) }
-    val layer3Light = remember(primaryColor, isTranslucent) { primaryColor.shiftTonal(lightnessDelta = +0.20f, saturationScale = 0.90f) }
-    val layer3Dark = remember(primaryColor, isTranslucent) { primaryColor.shiftTonal(lightnessDelta = -0.14f, saturationScale = 1.35f) }
-    val thumbColor = remember(primaryColor) { primaryColor.shiftTonal(lightnessDelta = -0.10f, saturationScale = 1.25f) }
+    val layer1Light = remember(effectiveTertiary) { effectiveTertiary.shiftTonal(lightnessDelta = +0.18f, saturationScale = 0.85f) }
+    val layer1Dark = remember(effectiveTertiary) { effectiveTertiary.shiftTonal(lightnessDelta = -0.15f, saturationScale = 1.30f) }
+    val layer2Dark = remember(effectiveSecondary) { effectiveSecondary.shiftTonal(lightnessDelta = -0.16f, saturationScale = 1.30f) }
+    val layer2Light = remember(effectiveSecondary) { effectiveSecondary.shiftTonal(lightnessDelta = +0.18f, saturationScale = 0.85f) }
+    val layer3Light = remember(effectivePrimary) { effectivePrimary.shiftTonal(lightnessDelta = +0.20f, saturationScale = 0.90f) }
+    val layer3Dark = remember(effectivePrimary) { effectivePrimary.shiftTonal(lightnessDelta = -0.14f, saturationScale = 1.35f) }
+    val thumbColor = remember(effectivePrimary) { effectivePrimary.shiftTonal(lightnessDelta = -0.06f, saturationScale = 1.15f) }
 
     // Fluid wave animations
     val infiniteTransition = rememberInfiniteTransition(label = "MaterialGlassWaveAnimation")
@@ -465,6 +495,9 @@ fun WavySeekBar(
     onSeek: (Long) -> Unit,
     modifier: Modifier = Modifier,
     isTranslucent: Boolean = false,
+    primaryColor: Color = MaterialTheme.colorScheme.primary,
+    secondaryColor: Color = MaterialTheme.colorScheme.secondary,
+    tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
 ) {
     WavySeekBar(
         positionMs = state.positionMs,
@@ -474,6 +507,9 @@ fun WavySeekBar(
         modifier = modifier,
         isTranslucent = isTranslucent,
         trackKey = state.current?.let { it.videoId ?: "${it.artist}|${it.title}" },
+        primaryColor = primaryColor,
+        secondaryColor = secondaryColor,
+        tertiaryColor = tertiaryColor,
     )
 }
 
