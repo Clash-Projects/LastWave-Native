@@ -98,9 +98,6 @@ import com.mocharealm.accompanist.lyrics.core.model.synced.SyncedLine
 import com.mocharealm.accompanist.lyrics.ui.composable.lyrics.KaraokeLyricsView
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
-import androidx.compose.material3.Slider
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
 
 @Composable
 fun ModernLyricsPanel(
