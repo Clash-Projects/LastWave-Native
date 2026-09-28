@@ -396,12 +396,12 @@ fun TrackContextMenuSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        modifier = if (LocalLiquidGlass.current) Modifier.liquidGlassChrome(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), true) else Modifier,
+        modifier = Modifier.liquidGlassChrome(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), true),
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         // The background behind is smoothly blurred by EdgeToEdgeDialogWindow.
         // A translucent/transparent container lets the soft blur shine through
         // while the individual action cards float with clean contrast on top.
-        containerColor = if (LocalLiquidGlass.current) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.65f),
+        containerColor = Color.Transparent,
         scrimColor = Color.Black.copy(alpha = 0.32f),
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
         dragHandle = {

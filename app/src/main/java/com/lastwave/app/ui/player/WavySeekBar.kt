@@ -60,8 +60,9 @@ private fun Color.shiftTonal(lightnessDelta: Float, saturationScale: Float = 1.0
         (blue * 255).toInt().coerceIn(0, 255),
         hsv,
     )
-    hsv[1] = (hsv[1] * saturationScale).coerceIn(0.15f, 1.0f)
-    hsv[2] = (hsv[2] + lightnessDelta).coerceIn(0.15f, 1.0f)
+    val originalSaturation = hsv[1]
+    hsv[1] = (hsv[1] * saturationScale).coerceIn(if (originalSaturation > 0.05f) 0.15f else 0.0f, 1.0f)
+    hsv[2] = (hsv[2] + lightnessDelta).coerceIn(if (originalSaturation > 0.05f) 0.15f else 0.0f, 1.0f)
     val rgb = android.graphics.Color.HSVToColor(hsv)
     return Color(rgb)
 }

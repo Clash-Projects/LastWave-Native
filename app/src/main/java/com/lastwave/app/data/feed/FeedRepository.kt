@@ -682,14 +682,15 @@ class FeedRepository @Inject constructor(
                     isLiked = true,
                 ))
             }
-            val savedMix = homePlaylists.firstOrNull { it.title.equals("Mix", ignoreCase = true) }
+            val savedDiscoverMix = homePlaylists.firstOrNull { it.title.contains("Discover Mix", ignoreCase = true) }
+            val savedMix = savedDiscoverMix ?: homePlaylists.firstOrNull { it.title.equals("Mix", ignoreCase = true) }
             add(savedMix?.let {
                 FeedQuickTile(title = it.title, subtitle = it.author, artworkUrl = it.artworkUrl, playlistId = it.id)
-            } ?: FeedQuickTile(title = "Mix", subtitle = "Made for you",
+            } ?: FeedQuickTile(title = "Discover Mix", subtitle = "Made for you",
                 artworkUrl = quickPicks.firstOrNull()?.artworkUrl, collection = "radio"))
             add(
                 FeedQuickTile(
-                    title = "New releases",
+                    title = "New Release",
                     subtitle = "Fresh drops",
                     artworkUrl = newReleases.firstOrNull()?.artworkUrl,
                     collection = "new_releases",

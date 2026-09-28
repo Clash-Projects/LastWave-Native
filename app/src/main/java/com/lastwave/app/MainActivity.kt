@@ -129,12 +129,22 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             val themeState by themeViewModel.uiState.collectAsStateWithLifecycle()
 
             LastWaveTheme(themeState = themeState) {
-                val navController = rememberNavController()
-                val backStackEntry by navController.currentBackStackEntryAsState()
-                val hasBottomNavigation = backStackEntry?.destination?.route == Screen.MainShell.route
+                val currentConfig = androidx.compose.ui.platform.LocalViewConfiguration.current
+                androidx.compose.runtime.CompositionLocalProvider(
+                    androidx.compose.ui.platform.LocalViewConfiguration provides object : androidx.compose.ui.platform.ViewConfiguration by currentConfig {
+                        override val touchSlop: Float
+                            get() = currentConfig.touchSlop * 1.5f
+                        override val minimumTouchTargetSize: androidx.compose.ui.unit.DpSize
+                            get() = androidx.compose.ui.unit.DpSize(48.dp, 48.dp)
+                    }
+                ) {
+                    val navController = rememberNavController()
+                    val backStackEntry by navController.currentBackStackEntryAsState()
+                    val hasBottomNavigation = backStackEntry?.destination?.route == Screen.MainShell.route
 
-                PlayerHost(hasBottomNavigation = hasBottomNavigation) {
-                    LastWaveNavHost(navController)
+                    PlayerHost(hasBottomNavigation = hasBottomNavigation) {
+                        LastWaveNavHost(navController)
+                    }
                 }
             }
         }

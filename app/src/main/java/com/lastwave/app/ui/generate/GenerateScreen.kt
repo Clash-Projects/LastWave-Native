@@ -119,7 +119,7 @@ fun GenerateScreen(
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
         ) {
         ExpressiveHeader(
-            title = "Generator",
+            title = "Choose a mode to generate a playlist",
             subtitle = "Shape a playlist with two discovery engines",
             onBack = onBack,
         )

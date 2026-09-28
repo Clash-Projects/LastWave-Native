@@ -64,6 +64,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PlayArrow
@@ -872,6 +873,13 @@ fun PlaylistDetailScreen(
                                 )
                             }
                             Spacer(Modifier.width(10.dp))
+                            Icon(
+                                imageVector = Icons.Filled.LocationOn,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
                             Text(
                                 text = playlist.title,
                                 style = MaterialTheme.typography.titleMedium,

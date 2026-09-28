@@ -698,11 +698,19 @@ fun PlayerHost(
                 visible = expanded && state.current != null,
                 enter = slideInVertically(
                     animationSpec = ExpressiveMotion.smoothSpring(),
-                    initialOffsetY = { it },
+                    initialOffsetY = { (it * 0.85f).toInt() },
+                ) + scaleIn(
+                    animationSpec = ExpressiveMotion.smoothSpring(),
+                    initialScale = 0.85f,
+                    transformOrigin = TransformOrigin(0.5f, 1f)
                 ) + fadeIn(tween(180)),
                 exit = slideOutVertically(
                     animationSpec = ExpressiveMotion.smoothSpring(),
-                    targetOffsetY = { it },
+                    targetOffsetY = { (it * 0.85f).toInt() },
+                ) + scaleOut(
+                    animationSpec = ExpressiveMotion.smoothSpring(),
+                    targetScale = 0.85f,
+                    transformOrigin = TransformOrigin(0.5f, 1f)
                 ) + fadeOut(tween(150)),
             ) {
                 PredictiveBackScreen(
@@ -2544,7 +2552,7 @@ private fun FullPlayer(
                                         trackKey = track.videoId ?: "${track.artist}|${track.title}",
                                         wavyEnabled = wavySeekbarEnabled,
                                         onSeek = player::seekTo,
-                                        isTranslucent = true,
+                                        isTranslucent = LocalLiquidGlass.current,
                                         fallbackDurationMs = track.durationMs ?: state.durationMs,
                                     )
                                     Spacer(Modifier.height(14.dp))
