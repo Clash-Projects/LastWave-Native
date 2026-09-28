@@ -25,6 +25,7 @@ import com.lastwave.app.playback.NativeAudioEngine
 import com.lastwave.app.util.FileExportHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,6 +33,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -156,6 +158,12 @@ class SettingsViewModel @Inject constructor(
         .withSettingsFallback("session", SessionData())
         .stateIn(viewModelScope, SettingsSharing, SessionData())
 
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _searchResults = MutableStateFlow<List<MatchResult>>(emptyList())
+    val searchResults: StateFlow<List<MatchResult>> = _searchResults.asStateFlow()
+
     init {
         viewModelScope.launch(Dispatchers.IO) {
             session.collect { sess ->
@@ -167,6 +175,22 @@ class SettingsViewModel @Inject constructor(
                     _avatarUrl.value = null
                 }
             }
+        }
+
+        @OptIn(FlowPreview::class)
+        viewModelScope.launch {
+            _searchQuery
+                .debounce(150)
+                .collect { query ->
+                    if (query.isBlank()) {
+                        _searchResults.value = emptyList()
+                    } else {
+                        val results = withContext(Dispatchers.Default) {
+                            FuzzyMatcher.search(query, SettingsSearchIndex.allEntries)
+                        }
+                        _searchResults.value = results
+                    }
+                }
         }
     }
 
@@ -984,5 +1008,13 @@ class SettingsViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    fun onSearchQueryChange(query: String) {
+        _searchQuery.value = query
+    }
+
+    fun clearSearch() {
+        _searchQuery.value = ""
     }
 }
