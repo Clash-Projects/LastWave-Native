@@ -318,4 +318,11 @@
     <string name="dialog_disconnect_yt_text">Playlists already mirrored to your account stay there, but LastWave stops syncing and forgets the connection.</string>
     <string name="dialog_logout_title">Log out from Last.fm?</string>
     <string name="dialog_logout_text">Your playlists and cached data will be kept.</string>
+
+    <!-- Settings Search -->
+    <string name="settings_search_hint">Search settings…</string>
+    <string name="settings_search_no_results">No settings found for “%1$s”</string>
+    <string name="settings_search_no_results_sub">Try checking for typos or searching with different keywords</string>
+    <string name="settings_search_clear">Clear search</string>
+    <string name="settings_search_title">Search settings</string>
 </resources>
