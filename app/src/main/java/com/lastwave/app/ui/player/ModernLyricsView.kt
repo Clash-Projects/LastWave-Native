@@ -46,6 +46,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.Slider
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -94,6 +98,9 @@ import com.mocharealm.accompanist.lyrics.core.model.synced.SyncedLine
 import com.mocharealm.accompanist.lyrics.ui.composable.lyrics.KaraokeLyricsView
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
+import androidx.compose.material3.Slider
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 
 @Composable
 fun ModernLyricsPanel(
@@ -115,6 +122,10 @@ fun ModernLyricsPanel(
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
 ) {
     val track = state.current ?: return
+    
+    var lyricsFontScale by rememberSaveable {
+    mutableFloatStateOf(1f)
+    }
 
     val progress by (progressState ?: player.progressState).collectAsStateWithLifecycle(
         initialValue = PlaybackProgressState(positionMs = state.positionMs, durationMs = state.durationMs),
@@ -233,12 +244,12 @@ fun ModernLyricsPanel(
                         // with exactly this style, so its fit verdict matches
                         // what the canvas will draw.
                         val karaokeNormalStyle = LocalTextStyle.current.copy(
-                            fontSize = if (isAppleMusic) 28.sp else if (isWordSynced) 32.sp else 30.sp,
+                            fontSize = ((if (isAppleMusic) 28f else if (isWordSynced) 32f else 30f) * lyricsFontScale).sp,
                             fontWeight = FontWeight.Bold,
                             textMotion = TextMotion.Animated,
                         )
                         val karaokeAccompanimentStyle = LocalTextStyle.current.copy(
-                            fontSize = if (isAppleMusic) 22.sp else if (isWordSynced) 24.sp else 22.sp,
+                            fontSize = ((if (isAppleMusic) 22f else if (isWordSynced) 24f else 22f) * lyricsFontScale).sp,
                             fontWeight = FontWeight.Bold,
                             textMotion = TextMotion.Animated,
                         )
@@ -298,6 +309,7 @@ fun ModernLyricsPanel(
                     } else if (!targetState.plainLyrics.isNullOrBlank()) {
                         ModernPlainLyricsView(
                             plainLyrics = targetState.plainLyrics,
+                            lyricsFontScale = lyricsFontScale,
                             modifier = Modifier.fillMaxSize(),
                         )
                     } else {
@@ -324,6 +336,8 @@ fun ModernLyricsPanel(
             isFullscreen = isFullscreen,
             lyricsOffsetMs = lyricsOffsetMs,
             onOpenLyricsOffset = onOpenLyricsOffset,
+            lyricsFontScale = lyricsFontScale,
+onLyricsFontScaleChange = { lyricsFontScale = it },
             primaryColor = primaryColor,
             secondaryColor = secondaryColor,
             tertiaryColor = tertiaryColor,
@@ -549,6 +563,7 @@ private fun List<LyricLine>.toSyncedLyrics(title: String, artist: String, isOver
 @Composable
 private fun ModernPlainLyricsView(
     plainLyrics: String,
+    lyricsFontScale: Float = 1f,
     modifier: Modifier = Modifier,
 ) {
     val isRtl = remember(plainLyrics) { isRtlText(plainLyrics) }
@@ -581,8 +596,8 @@ private fun ModernPlainLyricsView(
             Text(
                 text = plainLyrics,
                 style = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = 28.sp,
-                    lineHeight = 46.sp,
+                fontSize = (28f * lyricsFontScale).sp,
+lineHeight = (46f * lyricsFontScale).sp,
                     fontWeight = FontWeight.Medium,
                     letterSpacing = 0.1.sp,
                 ),
@@ -657,6 +672,8 @@ private fun ModernLyricsControls(
     isFullscreen: Boolean = false,
     lyricsOffsetMs: Long = 0L,
     onOpenLyricsOffset: (() -> Unit)? = null,
+    lyricsFontScale: Float = 1f,
+    onLyricsFontScaleChange: (Float) -> Unit = {},
     primaryColor: Color = MaterialTheme.colorScheme.primary,
     secondaryColor: Color = MaterialTheme.colorScheme.secondary,
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
@@ -668,6 +685,30 @@ private fun ModernLyricsControls(
             .padding(horizontal = 4.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        Row(
+    modifier = Modifier.fillMaxWidth(),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(12.dp),
+) {
+    Text(
+        text = "A",
+        fontSize = 14.sp,
+        color = Color.White.copy(alpha = 0.75f),
+    )
+
+    Slider(
+        value = lyricsFontScale,
+        onValueChange = onLyricsFontScaleChange,
+        valueRange = 0.7f..1.4f,
+        modifier = Modifier.weight(1f),
+    )
+
+    Text(
+        text = "A",
+        fontSize = 24.sp,
+        color = Color.White.copy(alpha = 0.95f),
+    )
+        }
         if (onToggleFullscreen != null || onOpenLyricsOffset != null) {
             Row(
                 modifier = Modifier
