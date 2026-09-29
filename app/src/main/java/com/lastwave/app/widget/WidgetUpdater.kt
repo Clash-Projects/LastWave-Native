@@ -93,6 +93,7 @@ object WidgetUpdater {
         sourcePackage: String,
         art: Bitmap?,
         isPlaying: Boolean,
+        isBuffering: Boolean = false,
         isFavorite: Boolean = false,
         isShuffle: Boolean = false,
         repeatMode: Int = 0,
@@ -103,7 +104,7 @@ object WidgetUpdater {
     ) {
         publishInternal(
             context, title, artist, album, sourceApp, sourcePackage,
-            art, isPlaying, isFavorite, isShuffle, repeatMode, themeMode,
+            art, isPlaying, isBuffering, isFavorite, isShuffle, repeatMode, themeMode,
         )
     }
 
@@ -111,7 +112,20 @@ object WidgetUpdater {
         val current = WidgetSnapshot.read(context)
         if (current.title.isBlank()) return@withLock
 
-        val updated = current.copy(isPlaying = isPlaying)
+        val updated = current.copy(
+            isPlaying = isPlaying,
+            isBuffering = if (isPlaying) current.isBuffering else false,
+        )
+        WidgetSnapshot.write(context, updated)
+        pushStateToGlance(context, updated)
+    }
+
+    suspend fun setPlaybackState(context: Context, isPlaying: Boolean, isBuffering: Boolean) = publishMutex.withLock {
+        val current = WidgetSnapshot.read(context)
+        if (current.title.isBlank()) return@withLock
+        if (current.isPlaying == isPlaying && current.isBuffering == isBuffering) return@withLock
+
+        val updated = current.copy(isPlaying = isPlaying, isBuffering = isBuffering)
         WidgetSnapshot.write(context, updated)
         pushStateToGlance(context, updated)
     }
@@ -119,6 +133,7 @@ object WidgetUpdater {
     suspend fun setFavorite(context: Context, isFavorite: Boolean) = publishMutex.withLock {
         val current = WidgetSnapshot.read(context)
         if (current.title.isBlank()) return@withLock
+        if (current.isFavorite == isFavorite) return@withLock
 
         val updated = current.copy(isFavorite = isFavorite)
         WidgetSnapshot.write(context, updated)
@@ -171,6 +186,7 @@ object WidgetUpdater {
         if (old.artist != new.artist) return true
         if (old.album != new.album) return true
         if (old.isPlaying != new.isPlaying) return true
+        if (old.isBuffering != new.isBuffering) return true
         if (old.isFavorite != new.isFavorite) return true
         if (old.isShuffle != new.isShuffle) return true
         if (old.repeatMode != new.repeatMode) return true
@@ -196,6 +212,7 @@ object WidgetUpdater {
         sourcePackage: String,
         art: Bitmap?,
         isPlaying: Boolean,
+        isBuffering: Boolean,
         isFavorite: Boolean,
         isShuffle: Boolean,
         repeatMode: Int,
@@ -227,6 +244,7 @@ object WidgetUpdater {
             sourcePackage = sourcePackage,
             artPath = artPath,
             isPlaying = isPlaying,
+            isBuffering = isBuffering,
             hasSession = true,
             progress = 0f,
             isFavorite = isFavorite,

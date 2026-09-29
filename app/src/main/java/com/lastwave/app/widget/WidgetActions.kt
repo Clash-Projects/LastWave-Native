@@ -100,7 +100,7 @@ object WidgetActions {
         val newPlaying = !wasPlaying
 
         if (current.title.isNotBlank()) {
-            WidgetUpdater.setPlaying(context, newPlaying)
+            WidgetUpdater.setPlaybackState(context, isPlaying = newPlaying, isBuffering = newPlaying)
         }
 
         if (livePlayer != null) {
@@ -156,9 +156,6 @@ object WidgetActions {
         val current = WidgetSnapshot.read(context)
         if (!isFavoriteActionAvailable(context, current)) return
 
-        val newFav = !current.isFavorite
-        WidgetUpdater.setFavorite(context, newFav)
-
         val liveLiked = ActiveMediaSessionHolder.likedSongsManager
         val liveTrack = ActiveMediaSessionHolder.player?.state?.value?.current
         val trackToLike = if (liveTrack != null) {
@@ -178,9 +175,10 @@ object WidgetActions {
         } else null
 
         if (liveLiked != null && trackToLike != null) {
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val loved = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 liveLiked.toggle(trackToLike)
             }
+            WidgetUpdater.setFavorite(context, loved)
         } else {
             sendServiceAction(context, ACTION_FAVORITE)
         }
@@ -197,6 +195,7 @@ object WidgetActions {
     private const val SERVICE_ACTION_PREVIOUS = "com.lastwave.app.playback.PREVIOUS"
     private const val SERVICE_ACTION_TOGGLE = "com.lastwave.app.playback.TOGGLE"
     private const val SERVICE_ACTION_NEXT = "com.lastwave.app.playback.NEXT"
+    private const val SERVICE_ACTION_FAVORITE = "com.lastwave.app.playback.FAVORITE"
     private const val SERVICE_ACTION_SHUFFLE = "com.lastwave.app.playback.SHUFFLE"
     private const val SERVICE_ACTION_REPEAT = "com.lastwave.app.playback.REPEAT"
 
@@ -205,6 +204,7 @@ object WidgetActions {
             ACTION_TOGGLE -> SERVICE_ACTION_TOGGLE
             ACTION_NEXT -> SERVICE_ACTION_NEXT
             ACTION_PREV -> SERVICE_ACTION_PREVIOUS
+            ACTION_FAVORITE -> SERVICE_ACTION_FAVORITE
             ACTION_SHUFFLE -> SERVICE_ACTION_SHUFFLE
             ACTION_REPEAT -> SERVICE_ACTION_REPEAT
             else -> action

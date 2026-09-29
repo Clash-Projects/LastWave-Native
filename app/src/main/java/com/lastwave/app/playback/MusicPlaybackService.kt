@@ -42,7 +42,10 @@ import com.lastwave.app.data.local.ScrobblerSettings
 import com.lastwave.app.data.repository.ScrobbleRepository
 import com.lastwave.app.data.repository.ThemeRepository
 
+import com.lastwave.app.data.generate.normalizeTrackText
+import com.lastwave.app.data.playlist.LikedSongsManager
 import com.lastwave.app.widget.ActiveMediaSessionHolder
+import com.lastwave.app.widget.WidgetSnapshot
 import com.lastwave.app.widget.WidgetUpdater
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -94,6 +97,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     @Inject lateinit var themeRepository: ThemeRepository
     @Inject lateinit var artworkRepository: com.lastwave.app.data.artwork.ArtworkRepository
     @Inject lateinit var androidAutoLibrary: AndroidAutoMediaLibrary
+    @Inject lateinit var likedSongsManager: LikedSongsManager
 
     // SupervisorJob stops sibling failure propagation; the handler below
     // additionally stops an unexpected exception in any fire-and-forget
@@ -258,6 +262,19 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                     detectTransition(state)
                     themeRepository.updateNowPlayingArtwork(state.current?.title, state.current?.artist)
                 }
+        }
+        scope.launch {
+            likedSongsManager.likedTrackKeys.collect { likedKeys ->
+                val track = musicPlayer.state.value.current
+                if (track != null) {
+                    val trackKey = "${track.title.normalizeTrackText()}|${track.artist.normalizeTrackText()}".lowercase()
+                    val isFav = trackKey in likedKeys
+                    val currentSnapshot = WidgetSnapshot.read(this@MusicPlaybackService)
+                    if (currentSnapshot.isFavorite != isFav && currentSnapshot.title == track.title) {
+                        WidgetUpdater.setFavorite(this@MusicPlaybackService, isFav)
+                    }
+                }
+            }
         }
         scope.launch {
             artworkRepository.resolved.collect { map ->
@@ -538,6 +555,15 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             ACTION_PREVIOUS -> musicPlayer.previous()
             ACTION_TOGGLE -> musicPlayer.togglePlayPause()
             ACTION_NEXT -> musicPlayer.next()
+            ACTION_FAVORITE -> {
+                val current = musicPlayer.state.value.current
+                if (current != null) {
+                    scope.launch(Dispatchers.IO) {
+                        val loved = likedSongsManager.toggle(current.toGeneratedTrack())
+                        WidgetUpdater.setFavorite(this@MusicPlaybackService, loved)
+                    }
+                }
+            }
             ACTION_SHUFFLE -> musicPlayer.toggleShuffle()
             ACTION_REPEAT -> musicPlayer.cycleRepeatMode()
             ACTION_STOP -> musicPlayer.stopAndClear()
@@ -913,7 +939,9 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         val otherAppIsPlaying = active?.packageName != packageName &&
             active?.playbackState?.state == PlatformPlaybackState.STATE_PLAYING
         if (!state.isPlaying && otherAppIsPlaying) return
-        val signature = "${track.title}|${track.artist}|${state.isPlaying}|$artworkUrl|${artworkBitmap != null}"
+        val trackKey = "${track.title.normalizeTrackText()}|${track.artist.normalizeTrackText()}".lowercase()
+        val isFavorite = trackKey in likedSongsManager.likedTrackKeys.value
+        val signature = "${track.title}|${track.artist}|${state.isPlaying}|${state.isBuffering}|$isFavorite|$artworkUrl|${artworkBitmap != null}"
         if (signature == widgetSignature) return
         widgetSignature = signature
         scope.launch(Dispatchers.IO) {
@@ -926,6 +954,8 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                 sourcePackage = packageName,
                 art = artworkBitmap,
                 isPlaying = state.isPlaying,
+                isBuffering = state.isBuffering,
+                isFavorite = isFavorite,
             )
         }
     }
@@ -1377,6 +1407,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         const val ACTION_PREVIOUS = "com.lastwave.app.playback.PREVIOUS"
         const val ACTION_TOGGLE = "com.lastwave.app.playback.TOGGLE"
         const val ACTION_NEXT = "com.lastwave.app.playback.NEXT"
+        const val ACTION_FAVORITE = "com.lastwave.app.playback.FAVORITE"
         const val ACTION_SHUFFLE = "com.lastwave.app.playback.SHUFFLE"
         const val ACTION_REPEAT = "com.lastwave.app.playback.REPEAT"
         const val ACTION_STOP = "com.lastwave.app.playback.STOP"

@@ -10,6 +10,7 @@ data class WidgetSnapshot(
     val sourcePackage: String = "",
     val artPath: String? = null,
     val isPlaying: Boolean = false,
+    val isBuffering: Boolean = false,
     val hasSession: Boolean = false,
     val progress: Float = 0f,
     val isFavorite: Boolean = false,
@@ -47,6 +48,7 @@ data class WidgetSnapshot(
                 sourcePackage = prefs.getString("source_package", "").orEmpty(),
                 artPath = prefs.getString("art_path", null),
                 isPlaying = prefs.getBoolean("is_playing", false),
+                isBuffering = prefs.getBoolean("is_buffering", false),
                 hasSession = prefs.getBoolean("has_session", false),
                 progress = prefs.getFloat("progress", 0f).coerceIn(0f, 1f),
                 isFavorite = prefs.getBoolean("is_favorite", false),
@@ -79,6 +81,7 @@ data class WidgetSnapshot(
                     .putString("source_package", value.sourcePackage)
                     .putString("art_path", value.artPath)
                     .putBoolean("is_playing", value.isPlaying)
+                    .putBoolean("is_buffering", value.isBuffering)
                     .putBoolean("has_session", value.hasSession)
                     .putFloat("progress", value.progress.coerceIn(0f, 1f))
                     .putBoolean("is_favorite", value.isFavorite)
@@ -115,6 +118,7 @@ data class WidgetSnapshot(
                 sourcePackage = prefs[WidgetPrefKeys.SOURCE_PACKAGE].orEmpty(),
                 artPath = prefs[WidgetPrefKeys.ART_PATH],
                 isPlaying = prefs[WidgetPrefKeys.IS_PLAYING] ?: false,
+                isBuffering = prefs[WidgetPrefKeys.IS_BUFFERING] ?: false,
                 hasSession = prefs[WidgetPrefKeys.HAS_SESSION] ?: true,
                 progress = prefs[WidgetPrefKeys.PROGRESS] ?: 0f,
                 isFavorite = prefs[WidgetPrefKeys.IS_FAVORITE] ?: false,
@@ -150,6 +154,7 @@ data class WidgetSnapshot(
             prefs.remove(WidgetPrefKeys.ART_PATH)
         }
         prefs[WidgetPrefKeys.IS_PLAYING] = isPlaying
+        prefs[WidgetPrefKeys.IS_BUFFERING] = isBuffering
         prefs[WidgetPrefKeys.HAS_SESSION] = hasSession
         prefs[WidgetPrefKeys.PROGRESS] = progress
         prefs[WidgetPrefKeys.IS_FAVORITE] = isFavorite
@@ -180,6 +185,7 @@ object WidgetPrefKeys {
     val SOURCE_PACKAGE = androidx.datastore.preferences.core.stringPreferencesKey("source_package")
     val ART_PATH = androidx.datastore.preferences.core.stringPreferencesKey("art_path")
     val IS_PLAYING = androidx.datastore.preferences.core.booleanPreferencesKey("is_playing")
+    val IS_BUFFERING = androidx.datastore.preferences.core.booleanPreferencesKey("is_buffering")
     val HAS_SESSION = androidx.datastore.preferences.core.booleanPreferencesKey("has_session")
     val PROGRESS = androidx.datastore.preferences.core.floatPreferencesKey("progress")
     val IS_FAVORITE = androidx.datastore.preferences.core.booleanPreferencesKey("is_favorite")
