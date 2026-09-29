@@ -158,6 +158,8 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         )?.apply { setReferenceCounted(false) }
 
         createNotificationChannel()
+        ActiveMediaSessionHolder.isPlaybackServiceRunning = true
+        ActiveMediaSessionHolder.player = musicPlayer
         runCatching {
             val session = MediaSessionCompat(this, "LastWavePlayer").apply {
                 setFlags(
@@ -214,6 +216,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             platformSessionToken = session.sessionToken.token as? MediaSession.Token
             ownController = platformSessionToken?.let { token -> MediaController(this, token) }
             ActiveMediaSessionHolder.ownToken = platformSessionToken
+            ActiveMediaSessionHolder.player = musicPlayer
         }.onFailure { error ->
             android.util.Log.e("MusicPlaybackService", "System media integration unavailable; continuing audio-only", error)
             runCatching { mediaSession?.release() }
@@ -582,6 +585,10 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         platformSessionToken = null
         ownController?.let { controller -> ActiveMediaSessionHolder.clear(controller) }
         ActiveMediaSessionHolder.clearToken(releasedToken)
+        ActiveMediaSessionHolder.isPlaybackServiceRunning = false
+        if (ActiveMediaSessionHolder.player == musicPlayer) {
+            ActiveMediaSessionHolder.player = null
+        }
         scope.cancel()
         super.onDestroy()
     }

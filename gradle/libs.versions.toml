@@ -18,6 +18,7 @@ room = "2.7.1"
 datastore = "1.1.1"
 coilCompose = "2.7.0"
 palette = "1.0.0"
+glance = "1.1.1"
 splashscreen = "1.0.1"
 browser = "1.8.0"
 material = "1.12.0"
@@ -46,6 +47,8 @@ androidx-navigation-compose = { group = "androidx.navigation", name = "navigatio
 androidx-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashscreen" }
 androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "browser" }
 androidx-palette = { group = "androidx.palette", name = "palette-ktx", version.ref = "palette" }
+androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
+androidx-glance-material3 = { group = "androidx.glance", name = "glance-material3", version.ref = "glance" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
 hilt-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", version.ref = "hilt" }

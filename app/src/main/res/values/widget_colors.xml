@@ -14,4 +14,11 @@
     <color name="widget_hairline">#00000000</color>
     <color name="widget_track">#33000000</color>
     <color name="widget_eq_bar">#FFFFFFFF</color>
+
+    <!-- TwoTone Split Widget Colors (Light) -->
+    <color name="widget_twotone_left_bg">#B6F3C5</color>
+    <color name="widget_twotone_right_bg">#113426</color>
+    <color name="widget_twotone_on_left">#0C2D1B</color>
+    <color name="widget_twotone_on_left_sub">#B30C2D1B</color>
+    <color name="widget_twotone_on_right">#B6F3C5</color>
 </resources>

@@ -156,7 +156,7 @@
         <!-- Now playing widgets -->
         <receiver
             android:name=".widget.NowPlayingWidgetReceiver"
-            android:exported="false"
+            android:exported="true"
             android:label="@string/widget_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -168,7 +168,7 @@
 
         <receiver
             android:name=".widget.ObsidianGlassWidgetReceiver"
-            android:exported="false"
+            android:exported="true"
             android:label="@string/widget_obsidian_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -176,6 +176,25 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/obsidian_glass_widget_info" />
+        </receiver>
+
+        <!-- Material You Two-Tone Split Card Widget (Jetpack Glance) -->
+        <receiver
+            android:name=".widget.TwoToneSplitWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_twotone_split_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.lastwave.app.widget.action.TOGGLE" />
+                <action android:name="com.lastwave.app.widget.action.NEXT" />
+                <action android:name="com.lastwave.app.widget.action.PREV" />
+                <action android:name="com.lastwave.app.widget.action.FAVORITE" />
+                <action android:name="com.lastwave.app.widget.action.SHUFFLE" />
+                <action android:name="com.lastwave.app.widget.action.REPEAT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/twotone_split_widget_info" />
         </receiver>
 
         <!-- Receiver for cancel/reconnect actions on background-download notifications -->
