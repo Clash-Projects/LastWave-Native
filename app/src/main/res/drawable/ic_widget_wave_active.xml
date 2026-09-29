@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="140dp"
+    android:height="16dp"
+    android:viewportWidth="140"
+    android:viewportHeight="16">
+    <!-- Android 13/14/15 lockscreen media player fluid wavy line -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M 4,8 C 12,2 20,14 28,8 C 36,2 44,14 52,8 C 60,2 68,14 76,8 C 84,2 92,14 100,8 C 108,2 116,14 124,8 C 128,5 132,8 136,8" />
+</vector>

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Card Base -->
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="28dp" />
+            <solid android:color="@color/widget_twotone_left_bg" />
+        </shape>
+    </item>
+
+    <!-- Right Pane Base -->
+    <item
+        android:start="140dp">
+        <shape android:shape="rectangle">
+            <corners
+                android:topLeftRadius="0dp"
+                android:bottomLeftRadius="0dp"
+                android:topRightRadius="28dp"
+                android:bottomRightRadius="28dp" />
+            <solid android:color="@color/widget_twotone_right_bg" />
+        </shape>
+    </item>
+
+    <!-- Hero Artwork Center in Right Pane -->
+    <item
+        android:start="154dp"
+        android:end="14dp"
+        android:top="14dp"
+        android:bottom="14dp"
+        android:drawable="@drawable/widget_art_empty_hero" />
+
+    <!-- Wave Graphic on Left Pane -->
+    <item
+        android:start="16dp"
+        android:end="156dp"
+        android:gravity="center_vertical"
+        android:drawable="@drawable/ic_widget_wave_active" />
+</layer-list>

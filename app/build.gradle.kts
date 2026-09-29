@@ -233,6 +233,9 @@ dependencies {
     ksp(libs.room.compiler)
 
     implementation(libs.datastore.preferences)
+    implementation(libs.androidx.palette)
+    implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.glance.material3)
     implementation(libs.coil.compose)
     implementation(libs.lyrics.ui)
     implementation(libs.lyrics.core)

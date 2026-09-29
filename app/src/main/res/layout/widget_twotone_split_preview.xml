@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_twotone_preview_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:baselineAligned="false"
+    android:orientation="horizontal"
+    android:background="@drawable/widget_twotone_preview_card_bg">
+
+    <!-- ==================== LEFT PANE (50%) ==================== -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:background="@drawable/widget_twotone_preview_left_bg"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Top Header Row: Note Badge & Heart Chip -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <!-- Note Badge -->
+            <FrameLayout
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:background="@drawable/widget_twotone_preview_circle_solid">
+
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:layout_gravity="center"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_widget_music_note"
+                    android:tint="@color/widget_twotone_left_bg" />
+            </FrameLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <!-- Heart Button (idle outline) -->
+            <FrameLayout
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:background="@drawable/widget_twotone_preview_circle_dark">
+
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:layout_gravity="center"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_widget_heart_outline"
+                    android:tint="@color/widget_twotone_on_left" />
+            </FrameLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <!-- Metadata -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:maxLines="1"
+                android:text="Ready to Play"
+                android:textColor="@color/widget_twotone_on_left"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:maxLines="1"
+                android:text="Tap to explore music"
+                android:textColor="@color/widget_twotone_on_left_sub"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <!-- Sound Wave -->
+        <ImageView
+            android:layout_width="match_parent"
+            android:layout_height="14dp"
+            android:layout_marginTop="6dp"
+            android:layout_marginBottom="6dp"
+            android:contentDescription="@null"
+            android:scaleType="fitXY"
+            android:src="@drawable/ic_widget_wave_active"
+            android:tint="@color/widget_twotone_on_left" />
+
+        <!-- Bottom Playback Deck (Prev, Play, Next) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <!-- Previous Button -->
+            <FrameLayout
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@drawable/widget_twotone_preview_circle_dark">
+
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:layout_gravity="center"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_widget_skip_previous"
+                    android:tint="@color/widget_twotone_on_left" />
+            </FrameLayout>
+
+            <!-- Play Center Button -->
+            <FrameLayout
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/widget_twotone_preview_circle_solid">
+
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_widget_play"
+                    android:tint="@color/widget_twotone_left_bg" />
+            </FrameLayout>
+
+            <!-- Next Button -->
+            <FrameLayout
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/widget_twotone_preview_circle_dark">
+
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:layout_gravity="center"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_widget_skip_next"
+                    android:tint="@color/widget_twotone_on_left" />
+            </FrameLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- ==================== RIGHT PANE (50%) ==================== -->
+    <FrameLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:background="@drawable/widget_twotone_preview_right_bg"
+        android:padding="16dp">
+
+        <ImageView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@null"
+            android:scaleType="centerCrop"
+            android:src="@drawable/widget_art_placeholder" />
+    </FrameLayout>
+</LinearLayout>

@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="140dp"
+    android:height="16dp"
+    android:viewportWidth="140"
+    android:viewportHeight="16">
+    <!-- Android 13/14/15 media player straight baseline shown when audio is stopped/paused -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M 4,8 L 136,8" />
+</vector>

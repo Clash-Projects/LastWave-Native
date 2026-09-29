@@ -14,4 +14,11 @@
     <color name="widget_hairline">#00000000</color>
     <color name="widget_track">#33000000</color>
     <color name="widget_eq_bar">@android:color/system_accent1_200</color>
+
+    <!-- TwoTone Split Widget Colors (Dynamic Monet Dark) -->
+    <color name="widget_twotone_left_bg">@android:color/system_accent2_800</color>
+    <color name="widget_twotone_right_bg">@android:color/system_accent1_900</color>
+    <color name="widget_twotone_on_left">@android:color/system_accent2_100</color>
+    <color name="widget_twotone_on_left_sub">@android:color/system_accent2_200</color>
+    <color name="widget_twotone_on_right">@android:color/system_accent1_200</color>
 </resources>

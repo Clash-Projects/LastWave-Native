@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Outer Card Background with Rounded Corners -->
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="26dp" />
+            <solid android:color="#1F000000" />
+            <stroke
+                android:width="1dp"
+                android:color="#1FFFFFFF" />
+        </shape>
+    </item>
+
+    <!-- Subtle Vinyl Groove Ring 1 -->
+    <item
+        android:width="92dp"
+        android:height="92dp"
+        android:gravity="center">
+        <shape android:shape="oval">
+            <stroke
+                android:width="1dp"
+                android:color="#14FFFFFF" />
+            <solid android:color="#0D000000" />
+        </shape>
+    </item>
+
+    <!-- Subtle Vinyl Groove Ring 2 -->
+    <item
+        android:width="64dp"
+        android:height="64dp"
+        android:gravity="center">
+        <shape android:shape="oval">
+            <stroke
+                android:width="1dp"
+                android:color="#1FFFFFFF" />
+            <solid android:color="#14000000" />
+        </shape>
+    </item>
+
+    <!-- Center Wave Equalizer Icon Badge -->
+    <item
+        android:width="36dp"
+        android:height="36dp"
+        android:gravity="center"
+        android:drawable="@drawable/ic_widget_logo_mark" />
+</layer-list>
