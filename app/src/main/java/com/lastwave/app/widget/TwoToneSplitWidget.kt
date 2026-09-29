@@ -124,6 +124,7 @@ class TwoToneSplitWidget : GlanceAppWidget() {
 
         val hasSongContent = hasContent && snapshot.title.isNotBlank()
         val isAppInBackground = WidgetActions.isAppInBackground(context)
+        val isActivelyPlaying = snapshot.isPlaying && !snapshot.isBuffering
 
         // Like button is ONLY disabled when:
         // 1. On default screen with no song loaded (!hasSongContent)
@@ -177,7 +178,7 @@ class TwoToneSplitWidget : GlanceAppWidget() {
                                     .clickable(openAppAction),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                val soundIcon = if (snapshot.isPlaying) Icons.Rounded.GraphicEq else Icons.Rounded.MusicNote
+                                val soundIcon = if (isActivelyPlaying) Icons.Rounded.GraphicEq else Icons.Rounded.MusicNote
                                 Image(
                                     provider = GlanceMaterialIcons.rememberVectorProvider(
                                         image = soundIcon,
@@ -185,7 +186,7 @@ class TwoToneSplitWidget : GlanceAppWidget() {
                                         sizeDp = 18.dp,
                                     ),
                                     modifier = GlanceModifier.size(18.dp),
-                                    contentDescription = if (snapshot.isPlaying) "Playing - Sound Wave" else "Music Note - Open LastWave",
+                                    contentDescription = if (isActivelyPlaying) "Playing - Sound Wave" else "Music Note - Open LastWave",
                                 )
                             }
 
@@ -278,7 +279,7 @@ class TwoToneSplitWidget : GlanceAppWidget() {
                                 .clickable(openAppAction),
                             contentAlignment = Alignment.CenterStart,
                         ) {
-                            val waveDrawable = if (snapshot.isPlaying) {
+                            val waveDrawable = if (isActivelyPlaying) {
                                 R.drawable.ic_widget_wave_active
                             } else {
                                 R.drawable.ic_widget_wave_idle
@@ -286,11 +287,11 @@ class TwoToneSplitWidget : GlanceAppWidget() {
                             Image(
                                 provider = ImageProvider(waveDrawable),
                                 colorFilter = ColorFilter.tint(
-                                    if (snapshot.isPlaying) onLeftTextProvider else onLeftTextSubProvider
+                                    if (isActivelyPlaying) onLeftTextProvider else onLeftTextSubProvider
                                 ),
                                 modifier = GlanceModifier.fillMaxWidth().height(14.dp),
                                 contentScale = ContentScale.FillBounds,
-                                contentDescription = if (snapshot.isPlaying) "Playing Wave" else "Stopped Baseline",
+                                contentDescription = if (isActivelyPlaying) "Playing Wave" else "Stopped Baseline",
                             )
                         }
                         Spacer(modifier = GlanceModifier.height(4.dp))

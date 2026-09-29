@@ -219,6 +219,7 @@ import com.lastwave.app.playback.isSpatialAudioCodec
 import com.lastwave.app.playback.qualityBadgeLabel
 import com.lastwave.app.playback.PlaybackProgressState
 import com.lastwave.app.playback.PlayableTrack
+import com.lastwave.app.playback.toGeneratedTrack
 import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ExpressiveInlineLoadingIndicator
 import com.lastwave.app.ui.common.ExpressiveMotion
@@ -3745,10 +3746,4 @@ internal fun formatTime(ms: Long): String {
     return "%d:%02d".format(total / 60, total % 60)
 }
 
-private fun PlayableTrack.toGeneratedTrack() = com.lastwave.app.data.generate.GeneratedTrack(
-    name = title,
-    artist = artist,
-    artworkUrl = artworkUrl,
-    album = album,
-    url = videoId?.let { "https://music.youtube.com/watch?v=$it" }.orEmpty(),
-)
+

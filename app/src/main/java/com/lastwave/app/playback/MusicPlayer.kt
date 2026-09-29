@@ -119,6 +119,14 @@ data class PlayableTrack(
     val durationMs: Long? = null,
 )
 
+fun PlayableTrack.toGeneratedTrack(): GeneratedTrack = GeneratedTrack(
+    name = title,
+    artist = artist,
+    artworkUrl = artworkUrl,
+    album = album,
+    url = videoId?.let { "https://music.youtube.com/watch?v=$it" }.orEmpty(),
+)
+
 @Serializable
 internal data class PersistedPlaybackSession(
     val version: Int = 2,

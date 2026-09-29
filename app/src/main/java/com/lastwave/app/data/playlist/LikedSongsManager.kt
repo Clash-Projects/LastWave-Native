@@ -4,7 +4,11 @@ import android.content.Context
 import android.os.Build
 import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.generate.distinctSongs
+import com.lastwave.app.data.generate.normalizeTrackText
 import com.lastwave.app.data.generate.sameSongAs
+import com.lastwave.app.widget.ActiveMediaSessionHolder
+import com.lastwave.app.widget.WidgetSnapshot
+import com.lastwave.app.widget.WidgetUpdater
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -139,10 +143,27 @@ class LikedSongsManager @Inject constructor(
     }
 
     private suspend fun refresh() {
-        _likedTrackKeys.value = playlistRepository.getLikedSongs()
+        val keys = playlistRepository.getLikedSongs()
             ?.tracks
             ?.mapTo(mutableSetOf()) { it.key }
             .orEmpty()
+        _likedTrackKeys.value = keys
+
+        runCatching {
+            val currentTrack = ActiveMediaSessionHolder.player?.state?.value?.current
+            val trackKey = if (currentTrack != null) {
+                "${currentTrack.title.normalizeTrackText()}|${currentTrack.artist.normalizeTrackText()}".lowercase()
+            } else {
+                val snapshot = WidgetSnapshot.read(context)
+                if (snapshot.title.isNotBlank()) {
+                    "${snapshot.title.normalizeTrackText()}|${snapshot.artist.normalizeTrackText()}".lowercase()
+                } else null
+            }
+            if (trackKey != null) {
+                val isFav = trackKey in keys
+                WidgetUpdater.setFavorite(context, isFav)
+            }
+        }
     }
 
     private suspend fun bootstrapForInstalledVersion() {

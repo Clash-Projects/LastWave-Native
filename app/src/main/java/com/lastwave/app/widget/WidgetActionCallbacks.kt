@@ -11,7 +11,14 @@ class ToggleActionCallback : ActionCallback {
         runCatching {
             androidx.glance.appwidget.state.updateAppWidgetState(context, glanceId) { prefs ->
                 val isPlaying = prefs[WidgetPrefKeys.IS_PLAYING] ?: false
-                prefs[WidgetPrefKeys.IS_PLAYING] = !isPlaying
+                val newPlaying = !isPlaying
+                prefs[WidgetPrefKeys.IS_PLAYING] = newPlaying
+                if (newPlaying) {
+                    // Start in buffering mode so line remains straight until playback confirms
+                    prefs[WidgetPrefKeys.IS_BUFFERING] = true
+                } else {
+                    prefs[WidgetPrefKeys.IS_BUFFERING] = false
+                }
             }
             TwoToneSplitWidget().update(context, glanceId)
         }
@@ -51,11 +58,26 @@ class FavoriteActionCallback : ActionCallback {
             return
         }
 
+        // Determine ground truth of current favorite status to avoid stale toggle flip
+        val liveLiked = ActiveMediaSessionHolder.likedSongsManager
+        val liveTrack = ActiveMediaSessionHolder.player?.state?.value?.current
+        val trackName = liveTrack?.title ?: snapshot.title
+        val trackArtist = liveTrack?.artist ?: snapshot.artist
+        val trackKey = if (trackName.isNotBlank()) {
+            com.lastwave.app.data.generate.GeneratedTrack(name = trackName, artist = trackArtist).key
+        } else null
+
+        val currentIsFav = if (liveLiked != null && trackKey != null) {
+            trackKey in liveLiked.likedTrackKeys.value
+        } else {
+            snapshot.isFavorite
+        }
+        val targetFav = !currentIsFav
+
         // Immediate 0ms local toggle in Glance state so the heart flips in the current frame!
         runCatching {
             androidx.glance.appwidget.state.updateAppWidgetState(context, glanceId) { p ->
-                val isFav = p[WidgetPrefKeys.IS_FAVORITE] ?: false
-                p[WidgetPrefKeys.IS_FAVORITE] = !isFav
+                p[WidgetPrefKeys.IS_FAVORITE] = targetFav
             }
             TwoToneSplitWidget().update(context, glanceId)
         }
