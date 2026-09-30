@@ -56,7 +56,7 @@ object TwoTonePaletteExtractor {
             val fromCache = synchronized(paletteCache) { paletteCache.get(songKey) }
             if (fromCache != null) return fromCache
         }
-        if (bitmap == null) return TwoToneColors()
+        if (bitmap == null || bitmap.isRecycled) return TwoToneColors()
 
         val bitmapHash = System.identityHashCode(bitmap)
         val cachedColors = lastExtracted

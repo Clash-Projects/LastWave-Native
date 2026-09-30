@@ -116,6 +116,7 @@
 
             <!-- Hero Action FAB only in compact mode -->
             <LinearLayout
+                android:id="@+id/widget_play_pause_container"
                 android:layout_width="36dp"
                 android:layout_height="36dp"
                 android:background="@drawable/widget_ref_circle"
@@ -139,11 +140,23 @@
                 android:contentDescription="@string/desc_previous"
                 android:visibility="gone" />
 
+            <LinearLayout
+                android:id="@+id/widget_prev_container"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:visibility="gone" />
+
             <ImageButton
                 android:id="@+id/widget_next"
                 android:layout_width="0dp"
                 android:layout_height="0dp"
                 android:contentDescription="@string/desc_next"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/widget_next_container"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
                 android:visibility="gone" />
 
             <LinearLayout

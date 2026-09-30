@@ -213,9 +213,14 @@ internal object ObsidianWidgetViews {
         if (path.isNullOrBlank()) return null
         val file = File(path)
         if (!file.exists()) return null
+        val cacheKey = "rounded_${path}_${file.lastModified()}"
+        val cached = AlbumArtBitmapCache.get(cacheKey)
+        if (cached != null && !cached.isRecycled) return cached
+
         BitmapFactory.decodeFile(file.absolutePath)?.let { decoded ->
             val art = roundedCorners(decoded, 0.22f)
             if (art !== decoded) runCatching { decoded.recycle() }
+            AlbumArtBitmapCache.put(cacheKey, art)
             art
         }
     }.getOrNull()

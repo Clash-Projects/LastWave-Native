@@ -26,13 +26,18 @@ class TwoToneSplitWidgetReceiver : GlanceAppWidgetReceiver() {
         appWidgetIds: IntArray,
     ) {
         super.onUpdate(context, appWidgetManager, appWidgetIds)
+        ioScope.launch {
+            runCatching {
+                WidgetUpdater.sync(context)
+            }
+        }
     }
 
     override fun onEnabled(context: Context) {
         super.onEnabled(context)
         ioScope.launch {
             runCatching {
-                glanceAppWidget.updateAll(context)
+                WidgetUpdater.sync(context)
             }
         }
     }

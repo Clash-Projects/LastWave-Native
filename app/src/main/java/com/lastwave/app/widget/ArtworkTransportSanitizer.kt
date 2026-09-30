@@ -29,6 +29,9 @@ object ArtworkTransportSanitizer {
     private const val JPEG_QUALITY_STEP = 6
 
     fun scaleBitmapIfNeeded(bitmap: Bitmap, maxDimensionPx: Int = MAX_DIMENSION_PX): Bitmap {
+        if (bitmap.isRecycled || bitmap.width <= 0 || bitmap.height <= 0) {
+            return bitmap
+        }
         val currentMax = max(bitmap.width, bitmap.height)
         if (currentMax <= maxDimensionPx) {
             return bitmap
@@ -43,6 +46,7 @@ object ArtworkTransportSanitizer {
         bitmap: Bitmap,
         maxBytes: Int = MAX_BYTES,
     ): ByteArray? {
+        if (bitmap.isRecycled) return null
         var quality = INITIAL_JPEG_QUALITY
         var lastValidBytes: ByteArray? = null
 
@@ -71,6 +75,7 @@ object ArtworkTransportSanitizer {
         source: Bitmap,
         fileName: String = "twotone_widget_art.jpg",
     ): String? {
+        if (source.isRecycled) return null
         return runCatching {
             val scaled = scaleBitmapIfNeeded(source, MAX_DIMENSION_PX)
             val bytes = compressToByteArray(scaled, MAX_BYTES) ?: return null

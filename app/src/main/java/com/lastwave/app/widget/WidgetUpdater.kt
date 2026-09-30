@@ -41,6 +41,9 @@ object WidgetUpdater {
     @Volatile
     private var lastSanitizedArtPath: String? = null
 
+    @Volatile
+    private var lastSanitizedSongKey: String? = null
+
     private val publishMutex = Mutex()
 
     fun startWaveAnimation(context: Context) = Unit
@@ -144,6 +147,8 @@ object WidgetUpdater {
         lastPublishedSnapshot = null
         lastRawBitmapHash = 0
         lastSanitizedArtPath = null
+        lastSanitizedSongKey = null
+        ActiveMediaSessionHolder.currentArtwork = null
         AlbumArtBitmapCache.clear()
 
         context.filesDir.listFiles { _, name -> name.startsWith("widget_art_") }
@@ -221,14 +226,16 @@ object WidgetUpdater {
         val songKey = "${title}|${artist}"
 
         val artPath: String? = if (art != null && !art.isRecycled) {
-            AlbumArtBitmapCache.put(songKey, art)
-            ActiveMediaSessionHolder.currentArtwork = art
-            getOrWriteSanitizedArt(context, art, songKey)
+            val path = getOrWriteSanitizedArt(context, art, songKey)
+            ActiveMediaSessionHolder.currentArtwork = AlbumArtBitmapCache.get(songKey) ?: art
+            path
         } else {
             val cached = AlbumArtBitmapCache.get(songKey)
             if (cached != null) {
+                ActiveMediaSessionHolder.currentArtwork = cached
                 getOrWriteSanitizedArt(context, cached, songKey)
             } else {
+                ActiveMediaSessionHolder.currentArtwork = null
                 null
             }
         }
@@ -332,7 +339,7 @@ object WidgetUpdater {
         }
 
         val finalFile = File(context.filesDir, "widget_art_current.jpg")
-        if (songKey.isNotBlank() && AlbumArtBitmapCache.get(songKey) != null && finalFile.exists()) {
+        if (songKey.isNotBlank() && lastSanitizedSongKey == songKey && AlbumArtBitmapCache.get(songKey) != null && finalFile.exists()) {
             return finalFile.absolutePath
         }
 
@@ -356,6 +363,9 @@ object WidgetUpdater {
 
         lastRawBitmapHash = bitmapHash
         lastSanitizedArtPath = path
+        if (songKey.isNotBlank()) {
+            lastSanitizedSongKey = songKey
+        }
 
         context.filesDir.listFiles { _, name ->
             name.startsWith("widget_art_") && name != "widget_art_current.jpg" && name != "widget_art_current.tmp"
