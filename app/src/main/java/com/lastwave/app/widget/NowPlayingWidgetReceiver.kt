@@ -14,12 +14,7 @@ import kotlinx.coroutines.launch
 
 /**
  * The one now-playing widget: classic AppWidgetProvider + a single adaptive
- * RemoteViews layout. The binder hides elements per measured width
- * (compact / standard / expanded) — there is exactly one provider, one
- * layout, one snapshot, so a duplicate can never render.
- *
- * onUpdate always pushes fully-built content (or the empty state) with
- * every call guarded — no code path leaves the widget without content.
+ * RemoteViews layout.
  */
 class NowPlayingWidgetReceiver : AppWidgetProvider() {
 
@@ -31,22 +26,16 @@ class NowPlayingWidgetReceiver : AppWidgetProvider() {
                 manager.updateAppWidget(appWidgetId, WidgetViews.build(context, appWidgetId))
             }
         }
-        // Restart the EQ/progress ticker after process death when the
-        // persisted snapshot says something is still playing.
         ioScope.launch {
             runCatching {
                 val snapshot = WidgetSnapshot.read(context)
-                if (snapshot.hasSession && snapshot.isPlaying) {
+                if (snapshot.hasSession && snapshot.isPlaying && WidgetActions.isAppInBackground(context)) {
                     WidgetUpdater.startWaveAnimation(context.applicationContext)
                 }
             }
         }
     }
 
-    /**
-     * The user resized the widget: re-resolve the breakpoint for the new
-     * allocation right away instead of waiting for the next track event.
-     */
     override fun onAppWidgetOptionsChanged(
         context: Context,
         manager: AppWidgetManager,
@@ -86,8 +75,6 @@ class NowPlayingWidgetReceiver : AppWidgetProvider() {
 
     override fun onEnabled(context: Context) {
         super.onEnabled(context)
-        // Freshly placed widget must show persisted state immediately,
-        // even if the service hasn't published since boot.
         ioScope.launch { runCatching { WidgetUpdater.sync(context) } }
     }
 }

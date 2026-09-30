@@ -156,6 +156,7 @@
             android:orientation="horizontal">
 
             <LinearLayout
+                android:id="@+id/widget_prev_container"
                 android:layout_width="36dp"
                 android:layout_height="36dp"
                 android:background="@drawable/widget_ref_circle"

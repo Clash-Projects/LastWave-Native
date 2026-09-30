@@ -20,8 +20,6 @@ import java.io.File
 
 /**
  * RemoteViews factory for the Frosted Obsidian Glass widget.
- * Features smoked translucent glass surfaces, specular crystal hairlines,
- * and adaptive multi-size layouts.
  */
 internal object ObsidianWidgetViews {
 
@@ -146,7 +144,8 @@ internal object ObsidianWidgetViews {
             R.id.widget_subtitle,
             snapshot.artist.ifBlank { "Unknown artist" },
         )
-        val playing = snapshot.isPlaying
+        val isAppInBackground = WidgetActions.isAppInBackground(context)
+        val playing = isAppInBackground && snapshot.isPlaying
         views.setTextViewText(
             R.id.widget_state,
             if (playing) "PLAYING" else "PAUSED",
@@ -188,19 +187,26 @@ internal object ObsidianWidgetViews {
             views.setImageViewResource(R.id.widget_art, R.drawable.widget_art_placeholder)
         }
 
+        val playPausePending = if (isAppInBackground) {
+            WidgetActions.togglePending(context, ObsidianGlassWidgetReceiver::class.java)
+        } else {
+            WidgetActions.openAppPending(context)
+        }
+        val prevPending = if (isAppInBackground) {
+            WidgetActions.prevPending(context, ObsidianGlassWidgetReceiver::class.java)
+        } else {
+            WidgetActions.openAppPending(context)
+        }
+        val nextPending = if (isAppInBackground) {
+            WidgetActions.nextPending(context, ObsidianGlassWidgetReceiver::class.java)
+        } else {
+            WidgetActions.openAppPending(context)
+        }
+
         views.setOnClickPendingIntent(R.id.widget_root, WidgetActions.openAppPending(context))
-        views.setOnClickPendingIntent(
-            R.id.widget_play_pause,
-            WidgetActions.togglePending(context, ObsidianGlassWidgetReceiver::class.java),
-        )
-        views.setOnClickPendingIntent(
-            R.id.widget_prev,
-            WidgetActions.prevPending(context, ObsidianGlassWidgetReceiver::class.java),
-        )
-        views.setOnClickPendingIntent(
-            R.id.widget_next,
-            WidgetActions.nextPending(context, ObsidianGlassWidgetReceiver::class.java),
-        )
+        views.setOnClickPendingIntent(R.id.widget_play_pause, playPausePending)
+        views.setOnClickPendingIntent(R.id.widget_prev, prevPending)
+        views.setOnClickPendingIntent(R.id.widget_next, nextPending)
     }
 
     private fun resolveArtBitmap(path: String?): Bitmap? = runCatching {

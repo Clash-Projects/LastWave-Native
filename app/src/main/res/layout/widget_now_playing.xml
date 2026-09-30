@@ -126,6 +126,10 @@
                     android:id="@+id/widget_prev"
                     android:layout_width="0dp"
                     android:layout_height="0dp" />
+                <LinearLayout
+                    android:id="@+id/widget_prev_container"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp" />
             </LinearLayout>
 
             <!-- Expressive Pills Row -->

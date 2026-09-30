@@ -22,15 +22,6 @@ import java.io.File
  * Multi-size responsive RemoteViews factory. One rule: this NEVER throws.
  * Every decode / lookup is guarded and falls back to placeholders, so
  * onUpdate always pushes valid content.
- *
- * Provides dedicated layout archetypes for every slot ratio:
- * - Compact horizontal (<220dp width, e.g. 2x1): art + title/artist + play FAB.
- * - Standard horizontal (>=220dp width, <115dp height, e.g. 3x1, 4x1, 5x1): art + track + EQ + controls + bottom progress bar.
- * - Square / tall (<250dp width, >=115dp height, e.g. 2x2, 3x2, 3x3): centered large art + info + progress + centered controls.
- * - Expanded (>=250dp width, >=115dp height, e.g. 4x2, 5x2, 4x3): 88dp hero art + brand + title + artist + controls + progress.
- *
- * On Android 12+ (API 31+), responsive size-mapping delivers fluid resizing.
- * On Android 10/11, options-based selection picks the best matching layout.
  */
 internal object WidgetViews {
 
@@ -175,7 +166,8 @@ internal object WidgetViews {
             R.id.widget_subtitle,
             snapshot.artist.ifBlank { "Unknown artist" },
         )
-        val playing = snapshot.isPlaying
+        val isAppInBackground = WidgetActions.isAppInBackground(context)
+        val playing = isAppInBackground && snapshot.isPlaying
         views.setTextViewText(
             R.id.widget_state,
             if (playing) "Pause" else "Play",
@@ -212,27 +204,29 @@ internal object WidgetViews {
             views.setImageViewResource(R.id.widget_art, R.drawable.widget_art_placeholder)
         }
 
+        val playPausePending = if (isAppInBackground) {
+            WidgetActions.togglePending(context, NowPlayingWidgetReceiver::class.java)
+        } else {
+            WidgetActions.openAppPending(context)
+        }
+        val prevPending = if (isAppInBackground) {
+            WidgetActions.prevPending(context, NowPlayingWidgetReceiver::class.java)
+        } else {
+            WidgetActions.openAppPending(context)
+        }
+        val nextPending = if (isAppInBackground) {
+            WidgetActions.nextPending(context, NowPlayingWidgetReceiver::class.java)
+        } else {
+            WidgetActions.openAppPending(context)
+        }
+
         views.setOnClickPendingIntent(R.id.widget_root, WidgetActions.openAppPending(context))
-        views.setOnClickPendingIntent(
-            R.id.widget_play_pause,
-            WidgetActions.togglePending(context, NowPlayingWidgetReceiver::class.java),
-        )
-        views.setOnClickPendingIntent(
-            R.id.widget_play_pause_container,
-            WidgetActions.togglePending(context, NowPlayingWidgetReceiver::class.java),
-        )
-        views.setOnClickPendingIntent(
-            R.id.widget_prev,
-            WidgetActions.prevPending(context, NowPlayingWidgetReceiver::class.java),
-        )
-        views.setOnClickPendingIntent(
-            R.id.widget_next,
-            WidgetActions.nextPending(context, NowPlayingWidgetReceiver::class.java),
-        )
-        views.setOnClickPendingIntent(
-            R.id.widget_next_container,
-            WidgetActions.nextPending(context, NowPlayingWidgetReceiver::class.java),
-        )
+        views.setOnClickPendingIntent(R.id.widget_play_pause, playPausePending)
+        views.setOnClickPendingIntent(R.id.widget_play_pause_container, playPausePending)
+        views.setOnClickPendingIntent(R.id.widget_prev, prevPending)
+        views.setOnClickPendingIntent(R.id.widget_prev_container, prevPending)
+        views.setOnClickPendingIntent(R.id.widget_next, nextPending)
+        views.setOnClickPendingIntent(R.id.widget_next_container, nextPending)
     }
 
     /**

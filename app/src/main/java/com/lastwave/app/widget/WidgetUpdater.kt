@@ -117,7 +117,7 @@ object WidgetUpdater {
             isBuffering = if (isPlaying) current.isBuffering else false,
         )
         WidgetSnapshot.write(context, updated)
-        pushStateToGlance(context, updated)
+        pushState(context, updated)
     }
 
     suspend fun setPlaybackState(context: Context, isPlaying: Boolean, isBuffering: Boolean) = publishMutex.withLock {
@@ -127,7 +127,7 @@ object WidgetUpdater {
 
         val updated = current.copy(isPlaying = isPlaying, isBuffering = isBuffering)
         WidgetSnapshot.write(context, updated)
-        pushStateToGlance(context, updated)
+        pushState(context, updated)
     }
 
     suspend fun setFavorite(context: Context, isFavorite: Boolean) = publishMutex.withLock {
@@ -137,7 +137,7 @@ object WidgetUpdater {
 
         val updated = current.copy(isFavorite = isFavorite)
         WidgetSnapshot.write(context, updated)
-        pushStateToGlance(context, updated)
+        pushState(context, updated)
     }
 
     suspend fun clear(context: Context) = publishMutex.withLock {
@@ -160,7 +160,7 @@ object WidgetUpdater {
             progress = 0f,
         )
         WidgetSnapshot.write(context, cleared)
-        pushStateToGlance(context, cleared)
+        pushState(context, cleared)
     }
 
     suspend fun refreshTheme(context: Context) {
@@ -269,8 +269,29 @@ object WidgetUpdater {
         if (shouldUpdateWidget(lastPublishedSnapshot, newSnapshot)) {
             lastPublishedSnapshot = newSnapshot
             WidgetSnapshot.write(context, newSnapshot)
-            pushStateToGlance(context, newSnapshot)
+            pushState(context, newSnapshot)
         }
+    }
+
+    suspend fun pushState(context: Context, snapshot: WidgetSnapshot) {
+        pushStateToGlance(context, snapshot)
+        updateRemoteViews(context)
+    }
+
+    private fun updateRemoteViews(context: Context) {
+        runCatching {
+            val manager = AppWidgetManager.getInstance(context)
+            val ids = manager.getAppWidgetIds(ComponentName(context, NowPlayingWidgetReceiver::class.java))
+            for (appWidgetId in ids) {
+                val views = WidgetViews.build(context, appWidgetId)
+                runCatching { manager.updateAppWidget(appWidgetId, views) }
+            }
+            val obsidianIds = manager.getAppWidgetIds(ComponentName(context, ObsidianGlassWidgetReceiver::class.java))
+            for (appWidgetId in obsidianIds) {
+                val views = ObsidianWidgetViews.build(context, appWidgetId)
+                runCatching { manager.updateAppWidget(appWidgetId, views) }
+            }
+        }.onFailure { Log.w(TAG, "updateRemoteViews failed", it) }
     }
 
     suspend fun pushStateToGlance(context: Context, snapshot: WidgetSnapshot): Boolean =
@@ -290,21 +311,10 @@ object WidgetUpdater {
             true
         }.onFailure { Log.w(TAG, "pushStateToGlance failed", it) }.getOrDefault(false)
 
-    private suspend fun pushAll(context: Context): Boolean =
+    suspend fun pushAll(context: Context): Boolean =
         runCatching {
             val current = WidgetSnapshot.read(context)
-            pushStateToGlance(context, current)
-            val manager = AppWidgetManager.getInstance(context)
-            val ids = manager.getAppWidgetIds(ComponentName(context, NowPlayingWidgetReceiver::class.java))
-            for (appWidgetId in ids) {
-                val views = WidgetViews.build(context, appWidgetId)
-                runCatching { manager.updateAppWidget(appWidgetId, views) }
-            }
-            val obsidianIds = manager.getAppWidgetIds(ComponentName(context, ObsidianGlassWidgetReceiver::class.java))
-            for (appWidgetId in obsidianIds) {
-                val views = ObsidianWidgetViews.build(context, appWidgetId)
-                runCatching { manager.updateAppWidget(appWidgetId, views) }
-            }
+            pushState(context, current)
             true
         }.onFailure { Log.w(TAG, "widget push failed", it) }.getOrDefault(false)
 

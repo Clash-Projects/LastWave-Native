@@ -28,7 +28,7 @@ class ObsidianGlassWidgetReceiver : AppWidgetProvider() {
         ioScope.launch {
             runCatching {
                 val snapshot = WidgetSnapshot.read(context)
-                if (snapshot.hasSession && snapshot.isPlaying) {
+                if (snapshot.hasSession && snapshot.isPlaying && WidgetActions.isAppInBackground(context)) {
                     WidgetUpdater.startWaveAnimation(context.applicationContext)
                 }
             }

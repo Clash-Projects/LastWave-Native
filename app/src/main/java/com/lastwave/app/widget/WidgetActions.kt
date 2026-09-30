@@ -94,6 +94,11 @@ object WidgetActions {
     }
 
     suspend fun performToggle(context: Context, glanceId: GlanceId? = null) {
+        if (!isAppInBackground(context)) {
+            runCatching { openAppPending(context).send() }
+            return
+        }
+
         val livePlayer = ActiveMediaSessionHolder.player
         val current = WidgetSnapshot.read(context)
         val wasPlaying = livePlayer?.state?.value?.isPlaying ?: current.isPlaying
@@ -118,6 +123,11 @@ object WidgetActions {
     }
 
     suspend fun performSkip(context: Context, next: Boolean, glanceId: GlanceId? = null) {
+        if (!isAppInBackground(context)) {
+            runCatching { openAppPending(context).send() }
+            return
+        }
+
         val livePlayer = ActiveMediaSessionHolder.player
         if (livePlayer != null) {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -135,6 +145,8 @@ object WidgetActions {
 
     fun isAppInBackground(context: Context): Boolean {
         if (ActiveMediaSessionHolder.isPlaybackServiceRunning) return true
+        if (ActiveMediaSessionHolder.isAppForeground) return true
+        if (ActiveMediaSessionHolder.activeActivityCount > 0) return true
         if (ActiveMediaSessionHolder.player != null) return true
         if (ActiveMediaSessionHolder.controller != null) return true
         if (ActiveMediaSessionHolder.ownToken != null) return true
@@ -154,7 +166,10 @@ object WidgetActions {
 
     suspend fun performFavorite(context: Context, glanceId: GlanceId? = null) {
         val current = WidgetSnapshot.read(context)
-        if (!isFavoriteActionAvailable(context, current)) return
+        if (!isFavoriteActionAvailable(context, current)) {
+            runCatching { openAppPending(context).send() }
+            return
+        }
 
         val liveLiked = ActiveMediaSessionHolder.likedSongsManager
         val liveTrack = ActiveMediaSessionHolder.player?.state?.value?.current

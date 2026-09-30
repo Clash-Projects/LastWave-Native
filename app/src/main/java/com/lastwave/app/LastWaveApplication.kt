@@ -48,6 +48,23 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         StartupTrail.mark("app.onCreate.start")
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: android.app.Activity, savedInstanceState: android.os.Bundle?) {}
+            override fun onActivityStarted(activity: android.app.Activity) {}
+            override fun onActivityResumed(activity: android.app.Activity) {
+                com.lastwave.app.widget.ActiveMediaSessionHolder.activeActivityCount++
+                com.lastwave.app.widget.ActiveMediaSessionHolder.isAppForeground = true
+            }
+            override fun onActivityPaused(activity: android.app.Activity) {
+                com.lastwave.app.widget.ActiveMediaSessionHolder.activeActivityCount =
+                    maxOf(0, com.lastwave.app.widget.ActiveMediaSessionHolder.activeActivityCount - 1)
+                com.lastwave.app.widget.ActiveMediaSessionHolder.isAppForeground =
+                    com.lastwave.app.widget.ActiveMediaSessionHolder.activeActivityCount > 0
+            }
+            override fun onActivityStopped(activity: android.app.Activity) {}
+            override fun onActivitySaveInstanceState(activity: android.app.Activity, outState: android.os.Bundle) {}
+            override fun onActivityDestroyed(activity: android.app.Activity) {}
+        })
         // Sync per-app locale (Settings -> Language) before any UI is drawn.
         // AppCompat restores the last requested locale itself; the collector
         // inside keeps it in sync with DataStore afterwards.

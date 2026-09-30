@@ -7,6 +7,11 @@ import androidx.glance.appwidget.action.ActionCallback
 
 class ToggleActionCallback : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        if (!WidgetActions.isAppInBackground(context)) {
+            runCatching { WidgetActions.openAppPending(context).send() }
+            return
+        }
+
         // Immediate 0ms local toggle in Glance state so the icon flips in the current frame!
         runCatching {
             androidx.glance.appwidget.state.updateAppWidgetState(context, glanceId) { prefs ->
@@ -28,12 +33,20 @@ class ToggleActionCallback : ActionCallback {
 
 class NextActionCallback : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        if (!WidgetActions.isAppInBackground(context)) {
+            runCatching { WidgetActions.openAppPending(context).send() }
+            return
+        }
         WidgetActions.performSkip(context, next = true, glanceId = glanceId)
     }
 }
 
 class PrevActionCallback : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        if (!WidgetActions.isAppInBackground(context)) {
+            runCatching { WidgetActions.openAppPending(context).send() }
+            return
+        }
         WidgetActions.performSkip(context, next = false, glanceId = glanceId)
     }
 }
@@ -55,6 +68,7 @@ class FavoriteActionCallback : ActionCallback {
 
         // Guard: Favorite button should NOT work when nothing is playing, empty state, or app not active
         if (!WidgetActions.isFavoriteActionAvailable(context, snapshot)) {
+            runCatching { WidgetActions.openAppPending(context).send() }
             return
         }
 
@@ -82,17 +96,5 @@ class FavoriteActionCallback : ActionCallback {
             TwoToneSplitWidget().update(context, glanceId)
         }
         WidgetActions.performFavorite(context, glanceId)
-    }
-}
-
-class ShuffleActionCallback : ActionCallback {
-    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        WidgetActions.performShuffle(context, glanceId)
-    }
-}
-
-class RepeatActionCallback : ActionCallback {
-    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        WidgetActions.performRepeat(context, glanceId)
     }
 }

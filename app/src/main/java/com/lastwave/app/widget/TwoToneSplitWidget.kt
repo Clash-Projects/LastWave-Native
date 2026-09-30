@@ -124,7 +124,11 @@ class TwoToneSplitWidget : GlanceAppWidget() {
 
         val hasSongContent = hasContent && snapshot.title.isNotBlank()
         val isAppInBackground = WidgetActions.isAppInBackground(context)
-        val isActivelyPlaying = snapshot.isPlaying && !snapshot.isBuffering
+        val isActivelyPlaying = isAppInBackground && snapshot.isPlaying && !snapshot.isBuffering
+
+        val playPauseAction = if (hasSongContent && isAppInBackground) actionRunCallback<ToggleActionCallback>() else openAppAction
+        val prevAction = if (hasSongContent && isAppInBackground) actionRunCallback<PrevActionCallback>() else openAppAction
+        val nextAction = if (hasSongContent && isAppInBackground) actionRunCallback<NextActionCallback>() else openAppAction
 
         // Like button is ONLY disabled when:
         // 1. On default screen with no song loaded (!hasSongContent)
@@ -203,13 +207,7 @@ class TwoToneSplitWidget : GlanceAppWidget() {
                                     }
                                 )
                                 .cornerRadius(18.dp)
-                                .let { mod ->
-                                    if (isLikeButtonEnabled) {
-                                        mod.clickable(actionRunCallback<FavoriteActionCallback>())
-                                    } else {
-                                        mod
-                                    }
-                                }
+                                .clickable(if (isLikeButtonEnabled) actionRunCallback<FavoriteActionCallback>() else openAppAction)
 
                             Box(
                                 modifier = heartBoxModifier,
@@ -307,7 +305,7 @@ class TwoToneSplitWidget : GlanceAppWidget() {
                                     .size(38.dp)
                                     .background(Color(0x1F000000))
                                     .cornerRadius(19.dp)
-                                    .clickable(actionRunCallback<PrevActionCallback>()),
+                                    .clickable(prevAction),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Image(
@@ -329,10 +327,11 @@ class TwoToneSplitWidget : GlanceAppWidget() {
                                     .size(46.dp)
                                     .background(onLeftTextProvider)
                                     .cornerRadius(23.dp)
-                                    .clickable(if (hasContent) actionRunCallback<ToggleActionCallback>() else openAppAction),
+                                    .clickable(playPauseAction),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                val playPauseIcon = if (snapshot.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow
+                                val isPlayingNow = isAppInBackground && snapshot.isPlaying
+                                val playPauseIcon = if (isPlayingNow) Icons.Rounded.Pause else Icons.Rounded.PlayArrow
                                 Image(
                                     provider = GlanceMaterialIcons.rememberVectorProvider(
                                         image = playPauseIcon,
@@ -340,7 +339,7 @@ class TwoToneSplitWidget : GlanceAppWidget() {
                                         sizeDp = 22.dp,
                                     ),
                                     modifier = GlanceModifier.size(22.dp),
-                                    contentDescription = if (snapshot.isPlaying) "Pause" else "Play",
+                                    contentDescription = if (isPlayingNow) "Pause" else "Play",
                                 )
                             }
 
@@ -352,7 +351,7 @@ class TwoToneSplitWidget : GlanceAppWidget() {
                                     .size(38.dp)
                                     .background(Color(0x1F000000))
                                     .cornerRadius(19.dp)
-                                    .clickable(actionRunCallback<NextActionCallback>()),
+                                    .clickable(nextAction),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Image(
@@ -380,7 +379,7 @@ class TwoToneSplitWidget : GlanceAppWidget() {
                         .clickable(openAppAction),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (artBitmap != null) {
+                    if (artBitmap != null && !artBitmap.isRecycled) {
                         Image(
                             provider = ImageProvider(artBitmap),
                             contentDescription = "Album Cover - Open LastWave",
