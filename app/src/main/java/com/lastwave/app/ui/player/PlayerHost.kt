@@ -327,6 +327,12 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    fun setLyricsFontScale(scale: Float) {
+        viewModelScope.launch {
+            settingsPreferences.setLyricsFontScale(scale)
+        }
+    }
+
     private val _lyricsState = MutableStateFlow<LyricsUiState>(LyricsUiState.Idle)
     val lyricsState = _lyricsState.asStateFlow()
 
@@ -786,6 +792,8 @@ private fun ExpandedPlayer(
         wavySeekbarEnabled = settings.wavySeekbarEnabled,
         lyricsOffsetMs = settings.lyricsOffsetMs,
         onSetLyricsOffsetMs = viewModel::setLyricsOffsetMs,
+        lyricsFontScale = settings.lyricsFontScale,
+        onSetLyricsFontScale = viewModel::setLyricsFontScale,
         canvas = canvas,
         canvasEnabled = settings.canvasEnabled,
         canvasFullBleedEnabled = settings.canvasFullBleed,
@@ -1618,6 +1626,8 @@ private fun FullPlayer(
     wavySeekbarEnabled: Boolean = true,
     lyricsOffsetMs: Long = 0L,
     onSetLyricsOffsetMs: ((Long) -> Unit)? = null,
+    lyricsFontScale: Float = 1.0f,
+    onSetLyricsFontScale: ((Float) -> Unit)? = null,
     canvas: com.lastwave.app.data.canvas.CanvasArtwork? = null,
     canvasEnabled: Boolean = true,
     canvasFullBleedEnabled: Boolean = true,
@@ -2185,6 +2195,8 @@ private fun FullPlayer(
                                         progressState = progressState,
                                         wavySeekbarEnabled = wavySeekbarEnabled,
                                         lyricsOffsetMs = lyricsOffsetMs,
+                                        lyricsFontScale = lyricsFontScale,
+                                        onLyricsFontScaleChange = onSetLyricsFontScale ?: {},
                                         onRetry = onRetryLyrics,
                                         onToggleFullscreen = { lyricsFullscreen = !lyricsFullscreen },
                                         isFullscreen = lyricsFullscreen,
@@ -2205,6 +2217,8 @@ private fun FullPlayer(
                                         lyricsAnimation = lyricsAnimation,
                                         wavySeekbarEnabled = wavySeekbarEnabled,
                                         lyricsOffsetMs = lyricsOffsetMs,
+                                        lyricsFontScale = lyricsFontScale,
+                                        onLyricsFontScaleChange = onSetLyricsFontScale ?: {},
                                         onRetry = onRetryLyrics,
                                         onToggleFullscreen = { lyricsFullscreen = !lyricsFullscreen },
                                         isFullscreen = lyricsFullscreen,

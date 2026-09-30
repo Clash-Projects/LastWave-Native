@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -124,10 +125,10 @@ data class MiscSettings(
      *  AUTO races all providers (fastest valid word-sync wins); an explicit
      *  pick is tried first with the rest as fallback. */
     val lyricsProvider: LyricsProvider = LyricsProvider.AUTO,
-    /** Manual sync offset applied to lyric focus/highlight only (ms).
-     *  Positive shifts lyrics later (highlights lag the audio less when the
-     *  provider timestamps run early). Clamped to ±3s. */
     val lyricsOffsetMs: Long = 0L,
+    /** Scale factor applied to lyrics font size across both modern and classic views.
+     *  Default 1.0f (100%), clamped between 0.7f (70%) and 1.5f (150%). */
+    val lyricsFontScale: Float = 1.0f,
     /** Blend the end of one queued track into the beginning of the next. */
     val crossfadeEnabled: Boolean = false,
     /** Crossfade length in seconds; kept within the native settings slider range. */
@@ -252,6 +253,7 @@ class SettingsPreferences @Inject constructor(
         val LYRICS_ANIMATION = stringPreferencesKey("lw_lyrics_animation")
         val LYRICS_PROVIDER = stringPreferencesKey("lw_lyrics_provider")
         val LYRICS_OFFSET_MS = longPreferencesKey("lw_lyrics_offset_ms")
+        val LYRICS_FONT_SCALE = floatPreferencesKey("lw_lyrics_font_scale")
         val CROSSFADE_ENABLED = booleanPreferencesKey("lw_crossfade_enabled")
         val CROSSFADE_SECONDS = intPreferencesKey("lw_crossfade_seconds")
         val WAVY_SEEKBAR_ENABLED = booleanPreferencesKey("lw_wavy_seekbar_enabled")
@@ -295,6 +297,7 @@ class SettingsPreferences @Inject constructor(
                 lyricsAnimation = LyricsAnimation.fromId(p.readSafely(Keys.LYRICS_ANIMATION)),
                 lyricsProvider = LyricsProvider.fromId(p.readSafely(Keys.LYRICS_PROVIDER)),
                 lyricsOffsetMs = (p.readSafely(Keys.LYRICS_OFFSET_MS) ?: 0L).coerceIn(-3000L, 3000L),
+                lyricsFontScale = (p.readSafely(Keys.LYRICS_FONT_SCALE) ?: 1.0f).coerceIn(0.7f, 1.5f),
                 crossfadeEnabled = p.readSafely(Keys.CROSSFADE_ENABLED) ?: false,
                 crossfadeSeconds = (p.readSafely(Keys.CROSSFADE_SECONDS) ?: 5).coerceIn(1, 12),
                 wavySeekbarEnabled = p.readSafely(Keys.WAVY_SEEKBAR_ENABLED) ?: true,
@@ -423,6 +426,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setLyricsOffsetMs(offsetMs: Long) {
         dataStore.edit { it[Keys.LYRICS_OFFSET_MS] = offsetMs.coerceIn(-3000L, 3000L) }
+    }
+
+    suspend fun setLyricsFontScale(scale: Float) {
+        dataStore.edit { it[Keys.LYRICS_FONT_SCALE] = scale.coerceIn(0.7f, 1.5f) }
     }
 
     suspend fun setCrossfadeEnabled(enabled: Boolean) {

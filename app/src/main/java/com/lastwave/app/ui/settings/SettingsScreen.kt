@@ -108,6 +108,9 @@ import com.lastwave.app.data.local.LyricsAnimation
 import com.lastwave.app.data.local.LyricsProvider
 import com.lastwave.app.data.local.LyricsUiVersion
 import com.lastwave.app.ui.player.LyricsOffsetDialog
+import com.lastwave.app.ui.player.LyricsSizeDialog
+import androidx.compose.material.icons.filled.FormatSize
+import kotlin.math.roundToInt
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Palette
@@ -466,6 +469,7 @@ fun SettingsScreen(
     var showLyricsAnimationSheet by remember { mutableStateOf(false) }
     var showLyricsProviderDialog by remember { mutableStateOf(false) }
     var showLyricsOffsetDialog by remember { mutableStateOf(false) }
+    var showLyricsSizeDialog by remember { mutableStateOf(false) }
     var showLoudnessDialog by remember { mutableStateOf(false) }
     var showClarityPresetDialog by remember { mutableStateOf(false) }
     var showSyncPlaylistsSheet by remember { mutableStateOf(false) }
@@ -1144,7 +1148,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_experimental))
-                    SettingsGroup(rowCount = 5) { index, position ->
+                    SettingsGroup(rowCount = 6) { index, position ->
                         when (index) {
                             0 -> SettingsActionCard(
                                 icon = Icons.Filled.Lyrics,
@@ -1199,7 +1203,24 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.lyrics_offset"),
                             )
-                            4 -> SettingsToggleCard(
+                            4 -> SettingsActionCard(
+                                icon = Icons.Filled.FormatSize,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = "Lyrics text size",
+                                subtitle = "${(misc.lyricsFontScale * 100).roundToInt()}% \u2022 ${
+                                    when {
+                                        misc.lyricsFontScale < 0.85f -> "Small"
+                                        misc.lyricsFontScale in 0.85f..1.15f -> "Standard"
+                                        misc.lyricsFontScale in 1.16f..1.35f -> "Large"
+                                        else -> "Extra Large"
+                                    }
+                                }",
+                                onClick = { showLyricsSizeDialog = true },
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.lyrics_size"),
+                            )
+                            5 -> SettingsToggleCard(
                                 icon = Icons.Filled.VolumeUp,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -2030,6 +2051,15 @@ fun SettingsScreen(
             currentMs = misc.lyricsOffsetMs,
             onSelect = { viewModel.setLyricsOffsetMs(it) },
             onDismiss = { showLyricsOffsetDialog = false },
+        )
+    }
+
+    // -- Lyrics text size dialog: scales font size with live preview --
+    if (showLyricsSizeDialog) {
+        LyricsSizeDialog(
+            currentScale = misc.lyricsFontScale,
+            onSelect = { viewModel.setLyricsFontScale(it) },
+            onDismiss = { showLyricsSizeDialog = false },
         )
     }
 

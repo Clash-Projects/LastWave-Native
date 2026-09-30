@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.HighQuality
@@ -533,6 +534,23 @@ object SettingsSearchIndex {
                     icon = Icons.Filled.Timer,
                     iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Experimental & Features",
+                    type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "appearance.lyrics_size",
+                    title = "Lyrics Text Size",
+                    subtitle = "Scale and resize lyrics font size across the player and full-screen views",
+                    keywords = listOf(
+                        "lyrics size", "lyrics font size", "font size", "text size", "resize lyrics",
+                        "bigger lyrics", "smaller lyrics", "lyrics scale", "lyrics zoom"
+                    ),
+                    icon = Icons.Filled.FormatSize,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
                     parentTab = SettingsTab.APPEARANCE,
                     section = "Experimental & Features",
                     type = EntryType.ACTION,

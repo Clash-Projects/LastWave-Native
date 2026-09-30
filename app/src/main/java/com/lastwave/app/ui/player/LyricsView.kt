@@ -2,15 +2,23 @@ package com.lastwave.app.ui.player
 
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.FormatSize
+import androidx.compose.material3.Slider
+import androidx.compose.runtime.saveable.rememberSaveable
+import kotlin.math.roundToInt
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.clickable
@@ -124,6 +132,8 @@ fun LyricsPanel(
     onToggleFullscreen: (() -> Unit)? = null,
     isFullscreen: Boolean = false,
     onOpenLyricsOffset: (() -> Unit)? = null,
+    lyricsFontScale: Float = 1.0f,
+    onLyricsFontScaleChange: (Float) -> Unit = {},
     modifier: Modifier = Modifier,
     /** Manual sync correction (ms, + = lyrics earlier). Applies to lyric
      *  focus/highlight only — the seekbar below keeps true position. */
@@ -233,6 +243,7 @@ fun LyricsPanel(
                                 lines = targetState.lines,
                                 currentPositionMs = smoothedPositionMs + lyricsOffsetMs,
                                 lyricsOffsetMs = lyricsOffsetMs,
+                                lyricsFontScale = lyricsFontScale,
                                 isPlaying = state.isPlaying,
                                 onSeek = player::seekTo,
                                 animationStyle = lyricsAnimation,
@@ -242,6 +253,7 @@ fun LyricsPanel(
                         } else if (!targetState.plainLyrics.isNullOrBlank()) {
                             PlainLyricsView(
                                 plainLyrics = targetState.plainLyrics,
+                                lyricsFontScale = lyricsFontScale,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         } else {
@@ -269,6 +281,8 @@ fun LyricsPanel(
             isFullscreen = isFullscreen,
             lyricsOffsetMs = lyricsOffsetMs,
             onOpenLyricsOffset = onOpenLyricsOffset,
+            lyricsFontScale = lyricsFontScale,
+            onLyricsFontScaleChange = onLyricsFontScaleChange,
             primaryColor = primaryColor,
             secondaryColor = secondaryColor,
             tertiaryColor = tertiaryColor,
@@ -290,6 +304,7 @@ private fun SyncedLyricsList(
     liquidGlass: Boolean,
     modifier: Modifier = Modifier,
     lyricsOffsetMs: Long = 0L,
+    lyricsFontScale: Float = 1.0f,
 ) {
     val listState = rememberLazyListState()
     var userScrolledTime by remember { mutableLongStateOf(0L) }
@@ -613,14 +628,14 @@ private fun SyncedLyricsList(
                     // leading that stretched the gaps between rows. Backing
                     // rows stay smaller and never take the lead weight.
                     val fontStyle = MaterialTheme.typography.titleLarge.copy(
-                        fontSize = if (isBgRow) 21.sp else 28.sp,
+                        fontSize = ((if (isBgRow) 21f else 28f) * lyricsFontScale).sp,
                         fontWeight = if (isBgRow) {
                             FontWeight.Medium
                         } else if (isActive) {
                             if (animationStyle == LyricsAnimation.APPLE_ZOOM) FontWeight.Black else FontWeight.ExtraBold
                         } else FontWeight.SemiBold,
                         letterSpacing = (-0.2).sp,
-                        lineHeight = if (isBgRow) 30.sp else 40.sp,
+                        lineHeight = ((if (isBgRow) 30f else 40f) * lyricsFontScale).sp,
                     )
 
                     WordByWordLyricLine(
@@ -859,6 +874,7 @@ private fun WordByWordLyricLine(
 private fun PlainLyricsView(
     plainLyrics: String,
     modifier: Modifier = Modifier,
+    lyricsFontScale: Float = 1.0f,
 ) {
     val isRtl = remember(plainLyrics) { isRtlText(plainLyrics) }
     val layoutDirection = if (isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
@@ -890,8 +906,8 @@ private fun PlainLyricsView(
             Text(
                 text = plainLyrics,
                 style = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = 22.sp,
-                    lineHeight = 36.sp,
+                    fontSize = (22f * lyricsFontScale).sp,
+                    lineHeight = (36f * lyricsFontScale).sp,
                     fontWeight = FontWeight.Medium,
                     letterSpacing = 0.1.sp,
                 ),
@@ -968,11 +984,15 @@ private fun LyricsPlaybackControls(
     isFullscreen: Boolean = false,
     lyricsOffsetMs: Long = 0L,
     onOpenLyricsOffset: (() -> Unit)? = null,
+    lyricsFontScale: Float = 1.0f,
+    onLyricsFontScaleChange: (Float) -> Unit = {},
     primaryColor: Color = MaterialTheme.colorScheme.primary,
     secondaryColor: Color = MaterialTheme.colorScheme.secondary,
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
     modifier: Modifier = Modifier,
 ) {
+    var showFontSlider by rememberSaveable { mutableStateOf(false) }
+
     // This Column performs layout only. It intentionally draws no container.
     Column(
         modifier = modifier
@@ -980,6 +1000,75 @@ private fun LyricsPlaybackControls(
             .padding(horizontal = 4.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        AnimatedVisibility(
+            visible = showFontSlider,
+            enter = fadeIn(tween(150)) + expandVertically(tween(200)),
+            exit = fadeOut(tween(150)) + shrinkVertically(tween(200)),
+        ) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color.Black.copy(alpha = 0.35f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "Lyrics size: ${(lyricsFontScale * 100).roundToInt()}%",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White.copy(alpha = 0.90f),
+                        )
+                        if (lyricsFontScale != 1.0f) {
+                            TextButton(
+                                onClick = { onLyricsFontScaleChange(1.0f) },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                modifier = Modifier.height(26.dp),
+                            ) {
+                                Text(
+                                    "Reset",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            text = "A",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White.copy(alpha = 0.70f),
+                        )
+                        Slider(
+                            value = lyricsFontScale,
+                            onValueChange = onLyricsFontScaleChange,
+                            valueRange = 0.7f..1.5f,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            text = "A",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.95f),
+                        )
+                    }
+                }
+            }
+        }
+
         if (onToggleFullscreen != null || onOpenLyricsOffset != null) {
             Row(
                 modifier = Modifier
@@ -1023,6 +1112,41 @@ private fun LyricsPlaybackControls(
                     }
                 } else {
                     Spacer(Modifier.size(44.dp))
+                }
+
+                // Lyrics Font Scale toggle button
+                val fontInteraction = remember { MutableInteractionSource() }
+                val isFontPressed by fontInteraction.collectIsPressedAsState()
+                val fontScaleAnim by animateFloatAsState(
+                    targetValue = if (isFontPressed) 0.82f else 1.0f,
+                    animationSpec = ExpressiveMotion.spatialSpring(),
+                    label = "fontScaleAnim",
+                )
+                val isCustomFont = lyricsFontScale != 1.0f
+                IconButton(
+                    onClick = { showFontSlider = !showFontSlider },
+                    interactionSource = fontInteraction,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .graphicsLayer {
+                            scaleX = fontScaleAnim
+                            scaleY = fontScaleAnim
+                        }
+                        .clip(CircleShape)
+                        .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = fontInteraction)
+                        .background(
+                            liquidGlassContainerColor(
+                                if (showFontSlider || isCustomFont) MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+                                else Color.White.copy(alpha = 0.14f)
+                            ),
+                        ),
+                ) {
+                    Icon(
+                        Icons.Filled.FormatSize,
+                        contentDescription = "Adjust lyrics text size",
+                        modifier = Modifier.size(22.dp),
+                        tint = if (showFontSlider || isCustomFont) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.90f),
+                    )
                 }
 
                 if (onToggleFullscreen != null) {

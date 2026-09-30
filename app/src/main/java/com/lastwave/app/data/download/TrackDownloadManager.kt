@@ -1707,7 +1707,7 @@ class TrackDownloadManager @Inject constructor(
                         "Download complete with missing extras for $finalTitle by $finalArtist: ${missingExtras.joinToString()}",
                     )
                 }
-                val completedBadge = if (missingExtras.isEmpty()) formatBadge {
+                val completedBadge = if (missingExtras.isEmpty()) formatBadge else {
                     "$formatBadge • ${missingExtras.joinToString(" + ")}"
                 }
                 runCatching { showCompletedNotification(notifId, finalTitle, finalArtist, completedBadge) }
