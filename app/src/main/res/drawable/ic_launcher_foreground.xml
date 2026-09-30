@@ -3,23 +3,25 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Geometry extracted directly from the official logo (four rounded
-         bars, tallest second-from-left) and scaled so the full group sits
-         inside the adaptive icon's 66dp safe zone. Paired with
-         @color/ic_launcher_background (the logo's lime) as the background
-         layer in mipmap-anydpi-v26/ic_launcher.xml, and reused unmodified
-         as the monochrome (Android 13+ themed icon) layer since it's
-         already a single-tone silhouette. -->
+    <!-- Geometry extracted from the official logo (four rounded bars,
+         tallest second-from-left) and scaled to fit strictly within the
+         adaptive icon 66dp circular safe zone (radius <= 33dp centered at 54, 54).
+         This ensures the bars are never clipped by circular launcher masks (72dp
+         diameter) or Android 12+ splash-screen icon zoom animations (#188).
+         The fourth bar thickness is normalized to match the rhythm of the other
+         bars. Paired with @color/ic_launcher_background (the logo's lime) as
+         the background layer in mipmap-anydpi-v26/ic_launcher.xml, and reused
+         unmodified as the monochrome (Android 13+ themed icon) layer. -->
     <path
         android:fillColor="#012226"
-        android:pathData="M23.62,40.46 A4.47,4.47 0 0 1 32.57,40.46 L32.57,71.80 A4.47,4.47 0 0 1 23.62,71.80 Z" />
+        android:pathData="M29.70,43.17 A3.58,3.58 0 0 1 36.86,43.17 L36.86,68.24 A3.58,3.58 0 0 1 29.70,68.24 Z" />
     <path
         android:fillColor="#012226"
-        android:pathData="M41.52,25.59 A4.59,4.59 0 0 1 50.71,25.59 L50.71,82.41 A4.59,4.59 0 0 1 41.52,82.41 Z" />
+        android:pathData="M44.02,31.27 A3.68,3.68 0 0 1 51.37,31.27 L51.37,76.73 A3.68,3.68 0 0 1 44.02,76.73 Z" />
     <path
         android:fillColor="#012226"
-        android:pathData="M59.22,30.48 A4.67,4.67 0 0 1 68.57,30.48 L68.57,76.61 A4.67,4.67 0 0 1 59.22,76.61 Z" />
+        android:pathData="M58.18,35.18 A3.74,3.74 0 0 1 65.66,35.18 L65.66,72.09 A3.74,3.74 0 0 1 58.18,72.09 Z" />
     <path
         android:fillColor="#012226"
-        android:pathData="M74.32,38.41 A5.03,5.03 0 0 1 84.38,38.41 L84.38,68.65 A5.03,5.03 0 0 1 74.32,68.65 Z" />
+        android:pathData="M72.48,41.53 A3.74,3.74 0 0 1 79.96,41.53 L79.96,65.72 A3.74,3.74 0 0 1 72.48,65.72 Z" />
 </vector>
