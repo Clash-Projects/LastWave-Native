@@ -54,6 +54,11 @@ class FuzzyMatcherTest {
         val loudnessResults = FuzzyMatcher.search("loudness", allEntries)
         assertThat(loudnessResults).isNotEmpty()
         assertThat(loudnessResults.any { it.entry.id == "audio.loudness_normalization" }).isTrue()
+
+        // "rotating" matches "Rotating Background"
+        val rotatingResults = FuzzyMatcher.search("rotating", allEntries)
+        assertThat(rotatingResults).isNotEmpty()
+        assertThat(rotatingResults.any { it.entry.id == "appearance.rotating_background" }).isTrue()
     }
 
     @Test

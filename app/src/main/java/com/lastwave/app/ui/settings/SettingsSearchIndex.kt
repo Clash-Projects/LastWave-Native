@@ -507,6 +507,24 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "appearance.rotating_background",
+                    title = "Rotating Background",
+                    subtitle = "Animate fluid rotating artwork in player and lyrics view (disable for static background)",
+                    keywords = listOf(
+                        "rotating background", "rotating artwork", "fluid background", "static background",
+                        "disable rotation", "android 11", "spinning artwork", "player background",
+                        "lyrics background", "album rotation", "static artwork"
+                    ),
+                    icon = Icons.Filled.RestartAlt,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Experimental & Features",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "appearance.lyrics_provider",
                     title = "Lyrics Provider",
                     subtitle = "Choose preferred synced lyrics provider (LRCLIB, Musixmatch, etc.)",

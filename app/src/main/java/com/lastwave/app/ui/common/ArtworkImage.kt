@@ -20,6 +20,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.transform.Transformation
 import com.lastwave.app.data.artwork.ArtworkNormalizer
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -46,14 +47,17 @@ fun ArtworkImage(
     modifier: Modifier = Modifier,
     decodeSizePx: Int? = null,
     alignment: Alignment = Alignment.Center,
+    transformations: List<Transformation> = emptyList(),
     artworkViewModel: ArtworkViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     var embeddedFailed by remember(name, artist, embeddedUrl) { mutableStateOf(false) }
     if (ArtworkNormalizer.isRealImage(embeddedUrl) && !embeddedFailed) {
-        val model = remember(embeddedUrl, decodeSizePx, context) {
-            if (decodeSizePx == null) embeddedUrl
-            else ImageRequest.Builder(context).data(embeddedUrl).size(decodeSizePx).build()
+        val model = remember(embeddedUrl, decodeSizePx, transformations, context) {
+            val builder = ImageRequest.Builder(context).data(embeddedUrl)
+            if (decodeSizePx != null) builder.size(decodeSizePx)
+            if (transformations.isNotEmpty()) builder.transformations(transformations)
+            builder.build()
         }
         Box(modifier = modifier, contentAlignment = alignment) {
             AsyncImage(
@@ -91,9 +95,11 @@ fun ArtworkImage(
     Box(modifier = modifier, contentAlignment = alignment) {
         when {
             !resolvedUrl.isNullOrBlank() && !resolvedFailed -> {
-                val model = remember(resolvedUrl, decodeSizePx, context) {
-                    if (decodeSizePx == null) resolvedUrl
-                    else ImageRequest.Builder(context).data(resolvedUrl).size(decodeSizePx).build()
+                val model = remember(resolvedUrl, decodeSizePx, transformations, context) {
+                    val builder = ImageRequest.Builder(context).data(resolvedUrl)
+                    if (decodeSizePx != null) builder.size(decodeSizePx)
+                    if (transformations.isNotEmpty()) builder.transformations(transformations)
+                    builder.build()
                 }
                 AsyncImage(
                     model = model,

@@ -522,6 +522,9 @@ class SettingsViewModel @Inject constructor(
     fun setWavySeekbarEnabled(enabled: Boolean) = launchSettingsAction("update seekbar style") {
         settingsPreferences.setWavySeekbarEnabled(enabled)
     }
+    fun setRotatingBackgroundEnabled(enabled: Boolean) = launchSettingsAction("update rotating background") {
+        settingsPreferences.setRotatingBackgroundEnabled(enabled)
+    }
     fun setCanvasEnabled(enabled: Boolean) = launchSettingsAction("update canvas enabled setting") {
         settingsPreferences.setCanvasEnabled(enabled)
     }

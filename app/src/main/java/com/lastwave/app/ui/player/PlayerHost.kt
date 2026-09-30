@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.DisposableEffect
@@ -790,6 +791,7 @@ private fun ExpandedPlayer(
         lyricsUiVersion = settings.lyricsUiVersion,
         lyricsAnimation = settings.lyricsAnimation,
         wavySeekbarEnabled = settings.wavySeekbarEnabled,
+        rotatingBackgroundEnabled = settings.rotatingBackgroundEnabled,
         lyricsOffsetMs = settings.lyricsOffsetMs,
         onSetLyricsOffsetMs = viewModel::setLyricsOffsetMs,
         lyricsFontScale = settings.lyricsFontScale,
@@ -1624,6 +1626,7 @@ private fun FullPlayer(
     lyricsUiVersion: LyricsUiVersion = LyricsUiVersion.MODERN,
     lyricsAnimation: LyricsAnimation = LyricsAnimation.APPLE_FLUID,
     wavySeekbarEnabled: Boolean = true,
+    rotatingBackgroundEnabled: Boolean = true,
     lyricsOffsetMs: Long = 0L,
     onSetLyricsOffsetMs: ((Long) -> Unit)? = null,
     lyricsFontScale: Float = 1.0f,
@@ -1800,7 +1803,20 @@ private fun FullPlayer(
                     // Lyrics legibility lives or dies on background
                     // suppression; the Now Playing tab keeps its light blur.
                     extraBlur = currentTab == FullPlayerTab.LYRICS,
+                    rotatingBackgroundEnabled = rotatingBackgroundEnabled,
                     fallback = {
+                        val staticBlurTransform = remember(currentTab) {
+                            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                                listOf(
+                                    BlurTransformation(
+                                        radius = if (currentTab == FullPlayerTab.LYRICS) 25 else 18,
+                                        maxDimension = 100,
+                                    )
+                                )
+                            } else {
+                                emptyList()
+                            }
+                        }
                         PlayerArtwork(
                             track = track,
                             modifier = Modifier
@@ -1811,14 +1827,19 @@ private fun FullPlayer(
                                     alpha = 0.9f
                                 }
                                 .then(
-                                    if (currentTab == FullPlayerTab.LYRICS) {
-                                        Modifier.blur(36.dp)
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                        if (currentTab == FullPlayerTab.LYRICS) {
+                                            Modifier.blur(36.dp)
+                                        } else {
+                                            Modifier.blur(20.dp)
+                                        }
                                     } else {
                                         Modifier
                                     }
                                 ),
                             corner = 0.dp,
                             decodeSizePx = 200,
+                            transformations = staticBlurTransform,
                         )
                         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.52f)))
                         Box(
@@ -3716,6 +3737,7 @@ private fun PlayerArtwork(
     canvas: com.lastwave.app.data.canvas.CanvasArtwork? = null,
     isPlaying: Boolean = false,
     pausedForTransition: Boolean = false,
+    transformations: List<coil.transform.Transformation> = emptyList(),
     onAspectRatioChanged: (Float) -> Unit = {},
 ) {
     Box(modifier.clip(RoundedCornerShape(corner)).background(MaterialTheme.colorScheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
@@ -3726,6 +3748,7 @@ private fun PlayerArtwork(
             fallbackIcon = Icons.Filled.MusicNote,
             modifier = Modifier.fillMaxSize(),
             decodeSizePx = decodeSizePx,
+            transformations = transformations,
         )
         if (canvas != null) {
             CanvasArtworkPlayer(

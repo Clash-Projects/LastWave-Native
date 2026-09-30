@@ -136,6 +136,9 @@ data class MiscSettings(
     /** When true (default), uses the multi-layer dynamic wavy seekbar.
      *  When false, uses the classic standard progress slider in the player tab. */
     val wavySeekbarEnabled: Boolean = true,
+    /** When true (default), animates fluid rotating artwork in the player and lyrics background.
+     *  When false, uses a calm static blurred artwork background (especially recommended for Android 11 and below). */
+    val rotatingBackgroundEnabled: Boolean = true,
     /** When true (default), downloads fetch and save synced lyrics (.lrc companion files and embedded tags). */
     val downloadLyrics: Boolean = true,
     /** In-app language override tag: "system" (default), "en", "tr", "zh-Hans". */
@@ -257,6 +260,7 @@ class SettingsPreferences @Inject constructor(
         val CROSSFADE_ENABLED = booleanPreferencesKey("lw_crossfade_enabled")
         val CROSSFADE_SECONDS = intPreferencesKey("lw_crossfade_seconds")
         val WAVY_SEEKBAR_ENABLED = booleanPreferencesKey("lw_wavy_seekbar_enabled")
+        val ROTATING_BACKGROUND_ENABLED = booleanPreferencesKey("lw_rotating_background_enabled")
         val DOWNLOAD_LYRICS = booleanPreferencesKey("lw_download_lyrics")
         val APP_LANGUAGE = stringPreferencesKey("lw_app_language")
         val DOWNLOAD_FOLDER = stringPreferencesKey("lw_download_folder")
@@ -301,6 +305,7 @@ class SettingsPreferences @Inject constructor(
                 crossfadeEnabled = p.readSafely(Keys.CROSSFADE_ENABLED) ?: false,
                 crossfadeSeconds = (p.readSafely(Keys.CROSSFADE_SECONDS) ?: 5).coerceIn(1, 12),
                 wavySeekbarEnabled = p.readSafely(Keys.WAVY_SEEKBAR_ENABLED) ?: true,
+                rotatingBackgroundEnabled = p.readSafely(Keys.ROTATING_BACKGROUND_ENABLED) ?: true,
                 downloadLyrics = p.readSafely(Keys.DOWNLOAD_LYRICS) ?: true,
                 appLanguageTag = AppLanguage.fromTag(p.readSafely(Keys.APP_LANGUAGE)).tag,
                 downloadFolder = sanitizeDownloadFolderName(p.readSafely(Keys.DOWNLOAD_FOLDER)),
@@ -442,6 +447,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setWavySeekbarEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.WAVY_SEEKBAR_ENABLED] = enabled }
+    }
+
+    suspend fun setRotatingBackgroundEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.ROTATING_BACKGROUND_ENABLED] = enabled }
     }
 
     suspend fun setDownloadLyrics(enabled: Boolean) {

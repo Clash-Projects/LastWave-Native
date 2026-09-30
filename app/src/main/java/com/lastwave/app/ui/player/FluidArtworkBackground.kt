@@ -261,9 +261,17 @@ fun FluidArtworkBackground(
     track: PlayableTrack,
     modifier: Modifier = Modifier,
     extraBlur: Boolean = false,
+    rotatingBackgroundEnabled: Boolean = true,
     artworkViewModel: ArtworkViewModel = hiltViewModel(),
     fallback: @Composable () -> Unit,
 ) {
+    if (!rotatingBackgroundEnabled) {
+        Box(modifier) {
+            fallback()
+        }
+        return
+    }
+
     val context = LocalContext.current
     val embeddedUrl = track.artworkUrl
     val isReal = remember(embeddedUrl) { ArtworkNormalizer.isRealImage(embeddedUrl) }
@@ -349,13 +357,6 @@ fun FluidArtworkBackground(
                             }.getOrNull()
                         }
                     }
-                    .then(
-                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                            Modifier.blur(if (extraBlur) 240.dp else 120.dp)
-                        } else {
-                            Modifier
-                        }
-                    )
                     .drawBehind {
                         val cur = current ?: return@drawBehind
                         val prv = previous ?: cur
