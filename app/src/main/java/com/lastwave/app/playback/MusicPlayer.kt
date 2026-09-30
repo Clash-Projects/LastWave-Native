@@ -1869,11 +1869,26 @@ class MusicPlayer @Inject constructor(
                     persistPlaybackSession()
                     return@withContext
                 }
-                val index = (player.currentMediaItemIndex + 1).coerceAtMost(player.mediaItemCount)
+                val wasEnded = player.playbackState == Player.STATE_ENDED
+                val wasEmpty = player.mediaItemCount == 0
+                val currentIndex = player.currentMediaItemIndex
+                val index = (currentIndex + 1).coerceIn(0, player.mediaItemCount)
                 player.addMediaItem(index, enriched.toMediaItem())
                 // Under shuffle the insert lands at a random permutation spot;
                 // pin it directly after the current track so it truly plays next.
                 placeInsertedIndexInShuffleOrder(index, last = false)
+                refresh(player)
+                enrichUpcomingQueue(currentIndex.coerceAtLeast(0))
+                val nextIndex = if (player.shuffleModeEnabled) player.nextMediaItemIndex else (currentIndex + 1)
+                if (nextIndex != C.INDEX_UNSET && nextIndex in 0 until player.mediaItemCount) {
+                    preloadNextTrack(nextIndex, player.getMediaItemAt(nextIndex).toPlayableTrack())
+                }
+                if (wasEmpty || wasEnded) {
+                    player.seekToDefaultPosition(index)
+                    player.prepare()
+                    player.play()
+                }
+                persistPlaybackSession()
             }
         }
     }
@@ -1886,10 +1901,26 @@ class MusicPlayer @Inject constructor(
                     _state.update { it.copy(queue = it.queue + enriched) }
                     persistPlaybackSession()
                 } else {
+                    val wasEnded = player.playbackState == Player.STATE_ENDED
+                    val wasEmpty = player.mediaItemCount == 0
+                    val previousCount = player.mediaItemCount
                     player.addMediaItem(enriched.toMediaItem())
                     // Under shuffle the append lands at a random permutation
                     // spot; pin it at the end of the actual play order.
                     placeInsertedIndexInShuffleOrder(player.mediaItemCount - 1, last = true)
+                    refresh(player)
+                    val currentIndex = player.currentMediaItemIndex
+                    enrichUpcomingQueue(currentIndex.coerceAtLeast(0))
+                    val nextIndex = if (player.shuffleModeEnabled) player.nextMediaItemIndex else currentIndex + 1
+                    if (nextIndex == player.mediaItemCount - 1) {
+                        preloadNextTrack(nextIndex, player.getMediaItemAt(nextIndex).toPlayableTrack())
+                    }
+                    if (wasEmpty || (wasEnded && currentIndex >= previousCount - 1)) {
+                        player.seekToDefaultPosition(previousCount)
+                        player.prepare()
+                        player.play()
+                    }
+                    persistPlaybackSession()
                 }
             }
         }
@@ -2915,10 +2946,12 @@ class MusicPlayer @Inject constructor(
         }
         if (index !in order) return
         order.remove(index)
-        if (last) {
+        val currentIndex = player.currentMediaItemIndex
+        val currentPos = order.indexOf(currentIndex)
+        if (last || currentPos == -1) {
             order.add(index)
         } else {
-            val at = (order.indexOf(player.currentMediaItemIndex) + 1).coerceIn(0, order.size)
+            val at = (currentPos + 1).coerceIn(0, order.size)
             order.add(at, index)
         }
         player.setShuffleOrder(DefaultShuffleOrder(order.toIntArray(), Random.nextLong()))
