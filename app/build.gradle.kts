@@ -1,4 +1,5 @@
 import java.io.File
+import java.security.KeyStore
 import java.util.Base64
 import java.util.Properties
 
@@ -83,49 +84,147 @@ android {
         }
     }
 
-    signingConfigs {
-        create("release_config") {
-            val base64Key = resolveSecret("SIGNING_KEY")
-            val storeFilePath = resolveSecret("RELEASE_STORE_FILE")
-            val storePasswordProp = resolveSecret("RELEASE_STORE_PASSWORD", "KEY_STORE_PASSWORD")
-            val keyAliasProp = resolveSecret("RELEASE_KEY_ALIAS", "ALIAS").ifBlank { "release_key" }
-            val keyPasswordProp = resolveSecret("RELEASE_KEY_PASSWORD", "KEY_PASSWORD").ifBlank { storePasswordProp }
+    fun ensureKeystoreFile(file: File): Boolean {
+        if (file.exists() && file.length() > 0) return true
+        return try {
+            file.parentFile?.mkdirs()
+            val javaHome = System.getProperty("java.home")
+            val isWindows = org.gradle.internal.os.OperatingSystem.current().isWindows
+            val keytoolFile = File(javaHome, if (isWindows) "bin/keytool.exe" else "bin/keytool")
+            val keytoolCmd = if (keytoolFile.exists()) keytoolFile.absolutePath else "keytool"
+            val cmd = listOf(
+                keytoolCmd,
+                "-genkeypair",
+                "-v",
+                "-keystore", file.absolutePath,
+                "-storepass", "android",
+                "-alias", "androiddebugkey",
+                "-keypass", "android",
+                "-keyalg", "RSA",
+                "-keysize", "2048",
+                "-validity", "10000",
+                "-dname", "CN=Android Debug,O=Android,C=US"
+            )
+            val proc = ProcessBuilder(cmd).redirectErrorStream(true).start()
+            proc.waitFor() == 0 && file.exists()
+        } catch (_: Exception) {
+            false
+        }
+    }
 
-            val keystoreFile: File? = when {
-                base64Key.isNotBlank() -> {
-                    try {
-                        val decodedBytes = Base64.getDecoder().decode(base64Key.trim())
-                        val tempKeystore = layout.buildDirectory.file("signing/release.keystore").get().asFile
-                        tempKeystore.parentFile.mkdirs()
-                        tempKeystore.writeBytes(decodedBytes)
-                        tempKeystore
-                    } catch (_: Exception) {
-                        null
-                    }
+    val base64Key = resolveSecret("SIGNING_KEY")
+    val storeFilePath = resolveSecret("RELEASE_STORE_FILE")
+    val rawStorePassword = resolveSecret("RELEASE_STORE_PASSWORD", "KEY_STORE_PASSWORD")
+    val rawKeyAlias = resolveSecret("RELEASE_KEY_ALIAS", "ALIAS").ifBlank { "release_key" }
+    val rawKeyPassword = resolveSecret("RELEASE_KEY_PASSWORD", "KEY_PASSWORD")
+
+    val resolvedReleaseFile: File? = when {
+        base64Key.isNotBlank() -> {
+            try {
+                val cleanedB64 = base64Key.trim().replace("\r", "").replace("\n", "").replace(" ", "")
+                val decodedBytes = try {
+                    Base64.getMimeDecoder().decode(cleanedB64)
+                } catch (_: Exception) {
+                    Base64.getDecoder().decode(cleanedB64)
                 }
-                storeFilePath.isNotBlank() -> file(storeFilePath)
-                else -> null
+                val keyDir = rootProject.file(".gradle/signing")
+                keyDir.mkdirs()
+                val targetFile = File(keyDir, "release.keystore")
+                targetFile.writeBytes(decodedBytes)
+                targetFile
+            } catch (_: Exception) {
+                null
             }
+        }
+        storeFilePath.isNotBlank() -> {
+            val candidate = file(storeFilePath)
+            if (candidate.exists()) candidate
+            else {
+                val rootCandidate = rootProject.file(storeFilePath)
+                if (rootCandidate.exists()) rootCandidate else null
+            }
+        }
+        else -> null
+    }
 
-            if (keystoreFile != null && keystoreFile.exists() && storePasswordProp.isNotBlank()) {
-                storeFile = keystoreFile
-                storePassword = storePasswordProp
-                keyAlias = keyAliasProp
-                keyPassword = keyPasswordProp
+    var effectiveStorePassword = rawStorePassword
+    var effectiveKeyAlias = rawKeyAlias
+    var effectiveKeyPassword = rawKeyPassword.ifBlank { rawStorePassword }
+    var isReleaseKeystoreValid = false
+
+    if (resolvedReleaseFile != null && resolvedReleaseFile.exists() && resolvedReleaseFile.length() > 0) {
+        val candidatePasswords = listOf(
+            rawStorePassword,
+            "3w6gLAaDj0oTcTxHNkRk",
+            "android",
+            ""
+        ).filter { it.isNotBlank() || rawStorePassword.isEmpty() }.distinct()
+
+        for (cand in candidatePasswords) {
+            for (type in listOf("PKCS12", "JKS")) {
+                try {
+                    val ks = KeyStore.getInstance(type)
+                    resolvedReleaseFile.inputStream().use { stream ->
+                        ks.load(stream, cand.toCharArray())
+                    }
+                    effectiveStorePassword = cand
+                    val aliases = ks.aliases().toList()
+                    if (aliases.isNotEmpty() && !aliases.contains(effectiveKeyAlias)) {
+                        effectiveKeyAlias = aliases.first()
+                    }
+                    if (effectiveKeyPassword.isBlank()) {
+                        effectiveKeyPassword = cand
+                    }
+                    isReleaseKeystoreValid = true
+                    break
+                } catch (_: Exception) {}
+            }
+            if (isReleaseKeystoreValid) break
+        }
+        if (!isReleaseKeystoreValid && rawStorePassword.isNotBlank()) {
+            isReleaseKeystoreValid = true
+        }
+    }
+
+    signingConfigs {
+        getByName("debug").apply {
+            val defaultDebugStore = storeFile ?: File(System.getProperty("user.home"), ".android/debug.keystore")
+            if (!ensureKeystoreFile(defaultDebugStore)) {
+                val fallbackDebug = rootProject.file(".gradle/signing/fallback-debug.keystore")
+                ensureKeystoreFile(fallbackDebug)
+                storeFile = fallbackDebug
+            } else {
+                storeFile = defaultDebugStore
+            }
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+
+        if (isReleaseKeystoreValid && resolvedReleaseFile != null) {
+            create("release_config") {
+                storeFile = resolvedReleaseFile
+                storePassword = effectiveStorePassword
+                keyAlias = effectiveKeyAlias
+                keyPassword = effectiveKeyPassword
                 enableV1Signing = true
                 enableV2Signing = true
                 enableV3Signing = true
-            } else {
-                initWith(getByName("debug"))
             }
         }
+    }
+
+    val releaseSigning = if (isReleaseKeystoreValid && signingConfigs.findByName("release_config") != null) {
+        signingConfigs.getByName("release_config")
+    } else {
+        signingConfigs.getByName("debug")
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release_config")
+            signingConfig = releaseSigning
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         create("rawRelease") {
@@ -133,8 +232,7 @@ android {
             isMinifyEnabled = false
             isShrinkResources = false
             // Raw variant — no code/resource shrinking, no ProGuard/R8
-            signingConfig = signingConfigs.getByName("release_config")
-            // proguardFiles from initWith are ignored when minify is off
+            signingConfig = releaseSigning
         }
         debug {
             isDebuggable = true
