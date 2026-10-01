@@ -315,7 +315,7 @@
     <string name="desc_next">Next</string>
 
     <string name="dialog_clear_all_title">Clear all data?</string>
-    <string name="dialog_clear_all_text">This removes your credentials, playlists, and cached data. This can\'t be undone.</string>
+    <string name="dialog_clear_all_text">This removes your credentials, playlists, downloaded songs, and cached data. This can\'t be undone.</string>
     <string name="dialog_clear_all_confirm">Clear Everything</string>
     <string name="dialog_disconnect_yt_title">Disconnect YouTube Music?</string>
     <string name="dialog_disconnect_yt_text">Playlists already mirrored to your account stay there, but LastWave stops syncing and forgets the connection.</string>

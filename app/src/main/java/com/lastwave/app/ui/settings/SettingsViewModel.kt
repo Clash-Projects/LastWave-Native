@@ -17,9 +17,11 @@ import com.lastwave.app.data.local.ScrobblerSettings
 import com.lastwave.app.data.local.SessionData
 import com.lastwave.app.data.local.SessionPreferences
 import com.lastwave.app.data.local.SettingsPreferences
+import com.lastwave.app.data.download.TrackDownloadManager
 import com.lastwave.app.data.playlist.PlaylistRepository
 import com.lastwave.app.data.repository.AuthRepository
 import com.lastwave.app.data.repository.ThemeRepository
+import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.data.repository.ThemeUiState
 import com.lastwave.app.playback.NativeAudioEngine
 import com.lastwave.app.util.FileExportHelper
@@ -89,6 +91,8 @@ class SettingsViewModel @Inject constructor(
     private val discoverRepository: com.lastwave.app.data.discover.DiscoverRepository,
     private val backupRepository: BackupRepository,
     private val playlistRepository: PlaylistRepository,
+    private val musicPlayer: MusicPlayer,
+    private val downloadManager: TrackDownloadManager,
     private val fileExportHelper: FileExportHelper,
     private val scrobblerPreferences: ScrobblerPreferences,
     private val equalizerPreferences: com.lastwave.app.data.local.EqualizerPreferences,
@@ -595,9 +599,19 @@ class SettingsViewModel @Inject constructor(
     fun dismissClearAllConfirm() = _uiState.update { it.copy(showClearAllConfirm = false) }
     fun confirmClearAllData(onComplete: () -> Unit) {
         launchSettingsAction("clear saved data") {
-            sessionPreferences.clearAll()
+            // MusicPlayer.stopAndClear posts through Dispatchers.Main.immediate.
+            // Invoke it on the main dispatcher before any suspension so queue,
+            // service, cast, and widget state are reset before sign-out can
+            // cancel this coroutine. The singleton player stays alive.
+            withContext(Dispatchers.Main.immediate) {
+                musicPlayer.stopAndClear(clearSession = true)
+            }
+            downloadManager.clearAllDownloads()
             discoverRepository.clearRecommendationExclusions()
             playlistRepository.clearAll()
+            // Session last: clearing it navigates to login and can cancel this
+            // scope, which used to interrupt the reset halfway through.
+            sessionPreferences.clearAll()
             _uiState.update { it.copy(showClearAllConfirm = false) }
             onComplete()
         }

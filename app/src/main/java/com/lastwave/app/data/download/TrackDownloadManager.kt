@@ -44,6 +44,7 @@ import com.lastwave.app.util.ArtistHelper
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -71,6 +72,7 @@ import okhttp3.Request
 import okhttp3.Response
 import java.io.EOFException
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.InterruptedIOException
 import java.io.IOException
@@ -202,6 +204,10 @@ class TrackDownloadManager @Inject constructor(
     }
     private val activeKeys = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val activeJobs = ConcurrentHashMap<String, Job>()
+    /** Shared with [downloadTrack] so a wipe can freeze admission before it snapshots jobs. */
+    private val admissionLock = Any()
+    @Volatile
+    private var downloadsWiping = false
     private val activeUris = ConcurrentHashMap<String, Uri>()
     private val activeFiles = ConcurrentHashMap<String, File>()
     private val reconnectGenerations = ConcurrentHashMap<String, AtomicLong>()
@@ -236,9 +242,16 @@ class TrackDownloadManager @Inject constructor(
         "${artist.trim().lowercase()}_${title.trim().lowercase()}"
 
     /** Active download subfolder under Music/ (sanitized single segment). */
-    private suspend fun currentDownloadDirName(): String = runCatching {
-        sanitizeDownloadFolderName(settingsPreferences.settings.first().downloadFolder)
-    }.getOrDefault(PUBLIC_DIR_NAME)
+    private suspend fun currentDownloadDirName(): String {
+        val folder = try {
+            settingsPreferences.settings.first().downloadFolder
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return PUBLIC_DIR_NAME
+        }
+        return runCatching { sanitizeDownloadFolderName(folder) }.getOrDefault(PUBLIC_DIR_NAME)
+    }
 
     /** All dirs to search for existing files: active folder first, then the
      *  legacy default so tracks downloaded before a folder change still resolve. */
@@ -417,10 +430,30 @@ class TrackDownloadManager @Inject constructor(
         durationMs: Long? = null,
     ) {
         val key = makeDownloadKey(title, artist)
-        if (!activeKeys.add(key)) return
-        reconnectGenerations[key] = AtomicLong()
+        // Admission and job registration share [admissionLock] with the wipe so a
+        // worker cannot start, or publish its handle, after the wipe has snapshotted.
+        synchronized(admissionLock) {
+            if (downloadsWiping) return
+            if (!activeKeys.add(key)) return
+            reconnectGenerations[key] = AtomicLong()
+            val job = applicationScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
+                runDownloadJob(key, title, artist, album, artworkUrl, year, videoId, durationMs)
+            }
+            activeJobs[key] = job
+            job.start()
+        }
+    }
 
-        val job = applicationScope.launch(Dispatchers.IO) {
+    private suspend fun CoroutineScope.runDownloadJob(
+        key: String,
+        title: String,
+        artist: String,
+        album: String?,
+        artworkUrl: String?,
+        year: String?,
+        videoId: String?,
+        durationMs: Long?,
+    ) {
             // Bound the number of simultaneous downloads: each one holds
             // sockets, buffers and (during tagging) a decoded cover bitmap,
             // and unbounded overlap OOMed low-RAM devices after a few songs.
@@ -429,18 +462,28 @@ class TrackDownloadManager @Inject constructor(
             try {
                 downloadSlots.acquire()
             } catch (cancelled: CancellationException) {
-                activeKeys.remove(key)
-                activeJobs.remove(key)
-                reconnectGenerations.remove(key)
-                _downloads.update { it - key }
-                return@launch
+                forgetDownloadKey(key)
+                return
+            }
+            if (downloadsWiping) {
+                abandonAcquiredDownload(key)
+                return
             }
             // Already downloaded? Skip re-downloading entirely rather than
             // re-fetching the file and inserting a duplicate DB row or (1).flac file.
-            val existing = runCatching {
+            val existing = try {
                 downloadedTrackDao.findByTrackKey(key)
                     ?: downloadedTrackDao.findByTitleAndArtist(title.trim(), artist.trim())
-            }.getOrNull()
+            } catch (cancelled: CancellationException) {
+                abandonAcquiredDownload(key)
+                return
+            } catch (_: Exception) {
+                null
+            }
+            if (downloadsWiping) {
+                abandonAcquiredDownload(key)
+                return
+            }
             if (existing != null) {
                 val fileStillPresent = when {
                     existing.mediaStoreUri != null -> runCatching {
@@ -454,14 +497,19 @@ class TrackDownloadManager @Inject constructor(
                 }
                 if (fileStillPresent) {
                     downloadSlots.release()
-                    activeKeys.remove(key)
-                    return@launch
+                    forgetDownloadKey(key)
+                    return
                 }
                 // Row is stale (file was deleted outside the app) — fall through
                 // and re-download; the unique trackKey index means the insert
                 // below will REPLACE this row instead of duplicating it.
             } else {
-                val dirName = currentDownloadDirName()
+                val dirName = try {
+                    currentDownloadDirName()
+                } catch (cancelled: CancellationException) {
+                    abandonAcquiredDownload(key)
+                    return
+                }
                 val sanitizedBase = sanitizeFilename("${artist.trim()} - ${title.trim()}")
                 val candidateNames = setOf("flac", "m4a", "opus", "mp3", "webm").map { "$sanitizedBase.$it" }.toSet()
                 // Guarded: this ran outside any try/catch, so a filesystem
@@ -476,8 +524,8 @@ class TrackDownloadManager @Inject constructor(
                 }.getOrDefault(false)
                 if (found) {
                     downloadSlots.release()
-                    activeKeys.remove(key)
-                    return@launch
+                    forgetDownloadKey(key)
+                    return
                 }
             }
             val notifId = key.hashCode()
@@ -509,6 +557,7 @@ class TrackDownloadManager @Inject constructor(
             var tempDownloadFile: File? = null
 
             try {
+                ensureDownloadStillAllowed()
                 // Never let counter strings ("15 ml listens", "Track 16", "10K views")
                 // leak into filenames, tags or the DB. Callers on fixed code paths
                 // already pass clean values (AlbumDetailScreen safeArtist + hardened
@@ -611,6 +660,7 @@ class TrackDownloadManager @Inject constructor(
 
                 // 1. Resolve source — respect user's download quality preference (Lossless tiers or YouTube Music)
                 val misc = runCatching { settingsPreferences.settings.first() }.getOrDefault(MiscSettings())
+                ensureDownloadStillAllowed()
                 // Custom SAF folder (e.g. SD card): resolve once per download.
                 // A stale grant (revoked permission / removed card) fails fast
                 // with an actionable message instead of silently filling
@@ -622,7 +672,7 @@ class TrackDownloadManager @Inject constructor(
                         DownloadProgress(key = key, title = title, artist = artist, error = staleMsg),
                     )
                     runCatching { showErrorNotification(notifId, key, title, artist, staleMsg) }
-                    return@launch
+                    return
                 }
                 var resolvedUrl: String? = null
                 // Exact YouTube videoId that produced this download (when the
@@ -1362,7 +1412,7 @@ class TrackDownloadManager @Inject constructor(
                         runCatching {
                             showErrorNotification(notifId, key, title, artist, "Skipped: $shortReason")
                         }
-                        return@launch
+                        return
                     }
                 }
 
@@ -1578,6 +1628,7 @@ class TrackDownloadManager @Inject constructor(
                         useAlbumArtist = misc.useAlbumArtistForFolders,
                         primaryOnly = misc.primaryArtistOnly,
                     )
+                    ensureDownloadStillAllowed()
                     val (destStream, uri, file) = openPublicOutputStream(
                         filename = safeFilename,
                         mimeType = mimeType,
@@ -1628,7 +1679,10 @@ class TrackDownloadManager @Inject constructor(
                         ?: expectedPublicFile.absolutePath
 
 
-                // 7. Also write the sidecar .lrc companion file for players that read them
+                // 7. Also write the sidecar .lrc companion file for players that read them.
+                // Stop before creating lyrics or the database row if a wipe has
+                // cancelled this worker; the wipe joins us before it deletes rows.
+                ensureDownloadStillAllowed()
                 if (shouldDownloadLyrics) {
                     val lyricsText = syncedLyrics ?: plainLyrics
                     if (!lyricsText.isNullOrBlank()) {
@@ -1762,9 +1816,6 @@ class TrackDownloadManager @Inject constructor(
                 reconnectGenerations.remove(key)
                 tempDownloadFile?.let { runCatching { if (it.exists()) it.delete() } }
             }
-
-        }
-        activeJobs[key] = job
     }
 
     private suspend fun downloadToTempFile(
@@ -2873,30 +2924,140 @@ class TrackDownloadManager @Inject constructor(
         }
     }
 
-    suspend fun clearAllDownloads() = withContext(Dispatchers.IO) {
-        val all = downloadedTrackDao.getAllList()
-        all.forEach { track ->
-            if (!track.mediaStoreUri.isNullOrBlank()) {
-                runCatching { context.contentResolver.delete(Uri.parse(track.mediaStoreUri), null, null) }
-            }
-            if (track.filePath.isNotBlank()) {
-                runCatching {
-                    val f = File(track.filePath)
-                    if (f.exists()) f.delete()
+    /**
+     * Cancels in-flight downloads, waits until those workers finish, then deletes
+     * each persisted audio file, lyric file, and content URI before removing that
+     * row. A missing file is success. Permission errors and failed deletes keep
+     * the row so a later wipe can retry, and they fail this call.
+     * New [downloadTrack] calls are refused until the guard is released.
+     */
+    suspend fun clearAllDownloads() {
+        val jobs = synchronized(admissionLock) {
+            downloadsWiping = true
+            activeJobs.values.toList()
+        }
+        // Ask workers to stop before the first suspension point so a caller
+        // cancelled immediately after this still cannot race a new insert in.
+        jobs.forEach { it.cancel() }
+        try {
+            withContext(Dispatchers.IO) {
+                // Existing cancellation also drops partial MediaStore rows and files.
+                cancelAllDownloads()
+                jobs.forEach { job ->
+                    job.cancel()
+                    job.join()
                 }
-            }
-            if (!track.lrcFilePath.isNullOrBlank()) {
-                if (track.lrcFilePath.startsWith("content://")) {
-                    runCatching { context.contentResolver.delete(Uri.parse(track.lrcFilePath), null, null) }
-                } else {
-                    runCatching {
-                        val lf = File(track.lrcFilePath)
-                        if (lf.exists()) lf.delete()
+                val tracks = downloadedTrackDao.getAllList()
+                val failed = ArrayList<DownloadedTrackEntity>(tracks.size)
+                for (track in tracks) {
+                    ensureActive()
+                    if (deleteRecordedDownload(track)) {
+                        downloadedTrackDao.delete(track)
+                    } else {
+                        failed += track
                     }
                 }
+                if (failed.isNotEmpty()) {
+                    throw IOException("Failed to delete ${failed.size} downloaded track(s)")
+                }
+            }
+        } finally {
+            synchronized(admissionLock) {
+                downloadsWiping = false
             }
         }
-        downloadedTrackDao.clearAll()
+    }
+
+    private suspend fun ensureDownloadStillAllowed() {
+        currentCoroutineContext().ensureActive()
+        if (downloadsWiping) throw CancellationException("Downloads are being cleared")
+    }
+
+    /** Queued worker cancelled before it acquired a download slot. */
+    private fun forgetDownloadKey(key: String) {
+        activeKeys.remove(key)
+        activeJobs.remove(key)
+        reconnectGenerations.remove(key)
+        _downloads.update { it - key }
+    }
+
+    /** Worker that already holds a slot must release it exactly once. */
+    private fun abandonAcquiredDownload(key: String) {
+        runCatching { downloadSlots.release() }
+        activeUris.remove(key)?.let { uri ->
+            runCatching { context.contentResolver.delete(uri, null, null) }
+        }
+        activeFiles.remove(key)?.let { file ->
+            runCatching { if (file.exists()) file.delete() }
+        }
+        forgetDownloadKey(key)
+    }
+
+    private fun deleteRecordedDownload(track: DownloadedTrackEntity): Boolean {
+        val uriDeleted = deleteContentUriIfRecorded(track.mediaStoreUri)
+        val audioDeleted = deleteFileIfRecorded(track.filePath)
+        val lyricsDeleted = deleteFileIfRecorded(track.lrcFilePath)
+        if (!uriDeleted || !audioDeleted || !lyricsDeleted) {
+            android.util.Log.w(
+                "TrackDownloadManager",
+                "Kept download row for ${track.title} by ${track.artist}; deletion can be retried",
+            )
+        }
+        return uriDeleted && audioDeleted && lyricsDeleted
+    }
+
+    private fun deleteFileIfRecorded(path: String?): Boolean {
+        if (path.isNullOrBlank()) return true
+        if (path.startsWith("content://")) return deleteContentUriIfRecorded(path)
+        val file = File(path)
+        if (!file.exists()) return true
+        return try {
+            file.delete() || !file.exists()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (security: SecurityException) {
+            android.util.Log.w("TrackDownloadManager", "Couldn't delete download file $path", security)
+            false
+        }
+    }
+
+    private fun deleteContentUriIfRecorded(uriString: String?): Boolean {
+        if (uriString.isNullOrBlank()) return true
+        val uri = try {
+            Uri.parse(uriString)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return false
+        }
+        try {
+            context.contentResolver.delete(uri, null, null)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: FileNotFoundException) {
+            return true
+        } catch (security: SecurityException) {
+            android.util.Log.w("TrackDownloadManager", "Couldn't delete download uri $uriString", security)
+            return false
+        } catch (error: Exception) {
+            android.util.Log.w("TrackDownloadManager", "Download uri delete failed for $uriString", error)
+        }
+        return !contentUriStillPresent(uri)
+    }
+
+    /** True when the provider can still open the URI, so the row must stay retryable. */
+    private fun contentUriStillPresent(uri: Uri): Boolean = try {
+        context.contentResolver.openInputStream(uri)?.use { true } ?: false
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: FileNotFoundException) {
+        false
+    } catch (_: IllegalArgumentException) {
+        false
+    } catch (_: SecurityException) {
+        true
+    } catch (_: Exception) {
+        true
     }
 
     /**
