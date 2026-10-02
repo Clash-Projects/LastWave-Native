@@ -1,7 +1,5 @@
 package com.lastwave.app.ui.settings
 
-import android.content.Intent
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -20,7 +18,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Extension
@@ -43,7 +40,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -84,7 +80,6 @@ fun ModulesScreen(
     var showAddonDialog by remember { mutableStateOf(false) }
     var addonInputText by remember { mutableStateOf("") }
     val snackbar = remember { SnackbarHostState() }
-    val context = LocalContext.current
 
     // "*/*": providers misreport .lwp as octet-stream; real validation
     // happens in ModuleManager.install after the file is read.
@@ -119,12 +114,6 @@ fun ModulesScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Spacer(Modifier.height(8.dp))
-                    TextButton(
-                        onClick = { openAddonTelegramChannel(context, "clashprojects") },
-                    ) {
-                        Text("Don't have an addon? Join @clashprojects")
-                    }
                 }
             },
             confirmButton = {
@@ -305,34 +294,6 @@ fun ModulesScreen(
                 }
             }
 
-            // --- Get addons: same TG channel as Support section ---
-            item {
-                Card(
-                    onClick = { openAddonTelegramChannel(context, "clashprojects") },
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp).fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
-                        Spacer(Modifier.width(16.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                "Get Addons",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            Text(
-                                "Join @clashprojects on Telegram for addons",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                    }
-                }
-            }
 
             // --- Section 2: Local .lwp Packages ---
             item {
@@ -441,35 +402,5 @@ private fun ModuleRow(
                 Icon(Icons.Filled.Delete, contentDescription = null)
             }
         }
-    }
-}
-
-private fun openAddonTelegramChannel(context: android.content.Context, handleOrUrl: String): Boolean {
-    val username = handleOrUrl
-        .removePrefix("https://t.me/")
-        .removePrefix("http://t.me/")
-        .removePrefix("@")
-        .trim()
-    val tgIntent = Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve?domain=$username")).apply {
-        setPackage("org.telegram.messenger")
-    }
-    val genericTgIntent = Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve?domain=$username"))
-    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/$username"))
-    return startAddonActivitySafely(context, tgIntent) ||
-        startAddonActivitySafely(context, genericTgIntent) ||
-        startAddonActivitySafely(context, webIntent)
-}
-
-private fun startAddonActivitySafely(context: android.content.Context, intent: Intent): Boolean {
-    val safeIntent = Intent(intent).apply {
-        if (context !is android.app.Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-    return try {
-        context.startActivity(safeIntent)
-        true
-    } catch (_: Exception) {
-        false
-    } catch (_: LinkageError) {
-        false
     }
 }
