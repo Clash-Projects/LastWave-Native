@@ -192,7 +192,7 @@ fun HomeScreen(
                         HeaderActionIcon(Icons.Filled.Download, "Downloads", onOpenDownloads)
                         HeaderActionIcon(Icons.Filled.Search, "Search", onOpenSearch)
                         IconButton(onClick = onOpenSettings) {
-                            ProfileAvatar(avatarUrl = uiState.stats?.avatarUrl, modifier = Modifier.size(26.dp))
+                            ProfileAvatar(avatarUrl = uiState.stats?.avatarUrl, modifier = Modifier.size(38.dp))
                         }
                     },
                 )

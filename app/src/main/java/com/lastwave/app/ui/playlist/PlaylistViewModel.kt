@@ -464,7 +464,8 @@ class PlaylistViewModel @Inject constructor(
                 val ytId = playlist.remotePlaylistId
                 if (ytId != null) {
                     try {
-                        innerTubeApi.deleteRemotePlaylist(ytId)
+                        val actualId = if (ytId.startsWith("VL")) ytId.drop(2) else ytId
+                        innerTubeApi.deleteRemotePlaylist(actualId)
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
@@ -486,7 +487,8 @@ class PlaylistViewModel @Inject constructor(
                     val ytId = playlist.remotePlaylistId
                     if (ytId != null) {
                         try {
-                            innerTubeApi.deleteRemotePlaylist(ytId)
+                            val actualId = if (ytId.startsWith("VL")) ytId.drop(2) else ytId
+                            innerTubeApi.deleteRemotePlaylist(actualId)
                         } catch (e: Exception) {
                             e.printStackTrace()
                         }

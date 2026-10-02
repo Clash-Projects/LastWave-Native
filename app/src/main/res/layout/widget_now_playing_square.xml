@@ -64,8 +64,8 @@
         <!-- Centered Album Artwork -->
         <ImageView
             android:id="@+id/widget_art"
-            android:layout_width="88dp"
-            android:layout_height="88dp"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
             android:contentDescription="@null"
             android:scaleType="centerCrop"
             android:src="@drawable/widget_art_placeholder" />
@@ -82,7 +82,7 @@
             android:maxLines="1"
             android:text="Unknown track"
             android:textColor="@color/widget_on_surface"
-            android:textSize="17sp"
+            android:textSize="15sp"
             android:textStyle="bold" />
 
         <!-- Subtitle & EQ Animation -->
@@ -103,7 +103,7 @@
                 android:maxLines="1"
                 android:text="Unknown artist"
                 android:textColor="@color/widget_on_surface"
-                android:textSize="13.5sp" />
+                android:textSize="12.5sp" />
 
             <LinearLayout
                 android:id="@+id/widget_eq_group"

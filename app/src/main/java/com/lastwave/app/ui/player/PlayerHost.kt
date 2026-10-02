@@ -702,41 +702,44 @@ fun PlayerHost(
                 )
                 
                 // Sleep Timer Button
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 16.dp, bottom = if (hasBottomNavigation) 160.dp else 80.dp)
+                AnimatedVisibility(
+                    visible = playbackState.sleepTimerRemainingMs != null,
+                    enter = fadeIn(tween(150)),
+                    exit = fadeOut(tween(150)),
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = if (hasBottomNavigation) 160.dp else 80.dp),
                 ) {
-                    androidx.compose.material3.Surface(
-                        shape = androidx.compose.foundation.shape.CircleShape,
-                        color = androidx.compose.material3.MaterialTheme.colorScheme.secondaryContainer,
-                        shadowElevation = 6.dp,
-                        modifier = Modifier
-                            .height(48.dp)
-                            .defaultMinSize(minWidth = 48.dp)
-                            .clickable(onClick = { viewModel.player.cycleSleepTimer() })
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.padding(horizontal = 12.dp)
+                    Box {
+                        androidx.compose.material3.Surface(
+                            shape = androidx.compose.foundation.shape.CircleShape,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.secondaryContainer,
+                            shadowElevation = 6.dp,
+                            modifier = Modifier
+                                .height(48.dp)
+                                .defaultMinSize(minWidth = 48.dp)
+                                .clickable(onClick = { viewModel.player.cycleSleepTimer() })
                         ) {
-                            androidx.compose.material3.Icon(
-                                imageVector = androidx.compose.material.icons.Icons.Filled.Timer,
-                                contentDescription = "Sleep Timer",
-                                tint = androidx.compose.material3.MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            if (playbackState.sleepTimerRemainingMs != null) {
-                                Spacer(modifier = Modifier.width(6.dp))
-                                val minutes = (playbackState.sleepTimerRemainingMs!! / 60000).toInt()
-                                val seconds = ((playbackState.sleepTimerRemainingMs!! % 60000) / 1000).toInt()
-                                androidx.compose.material3.Text(
-                                    text = String.format("%02d:%02d", minutes, seconds),
-                                    style = androidx.compose.material3.MaterialTheme.typography.labelLarge,
-                                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSecondaryContainer,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.padding(horizontal = 12.dp)
+                            ) {
+                                androidx.compose.material3.Icon(
+                                    imageVector = androidx.compose.material.icons.Icons.Filled.Timer,
+                                    contentDescription = "Sleep Timer",
+                                    tint = androidx.compose.material3.MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.size(20.dp)
                                 )
+                                if (playbackState.sleepTimerRemainingMs != null) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    val minutes = (playbackState.sleepTimerRemainingMs!! / 60000).toInt()
+                                    val seconds = ((playbackState.sleepTimerRemainingMs!! % 60000) / 1000).toInt()
+                                    androidx.compose.material3.Text(
+                                        text = String.format("%02d:%02d", minutes, seconds),
+                                        style = androidx.compose.material3.MaterialTheme.typography.labelLarge,
+                                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSecondaryContainer,
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                     }
@@ -790,7 +793,13 @@ fun PlayerHost(
                 }
             }
             
-            bottomNavSlot.value()
+            AnimatedVisibility(
+                visible = !expanded || state.current == null,
+                enter = fadeIn(tween(150)),
+                exit = fadeOut(tween(150)),
+            ) {
+                bottomNavSlot.value()
+            }
             
             playlistTrack?.let { track ->
                 AddToPlaylistDialogHost(
@@ -800,6 +809,7 @@ fun PlayerHost(
                     onAdd = { playlistIds, duplicatePlaylistIds ->
                         viewModel.addToPlaylists(playlistIds, duplicatePlaylistIds, track)
                         playlistTrack = null
+                        android.widget.Toast.makeText(context, "Added to playlist", android.widget.Toast.LENGTH_SHORT).show()
                     },
                     onFindDuplicates = { playlistIds ->
                         viewModel.findDuplicatePlaylistIds(playlistIds, track)
@@ -929,36 +939,7 @@ private fun MiniPlayer(
     val liquidGlass = LocalLiquidGlass.current
     val isGlass = liquidGlass && isLiquidGlassBackdropSupported() && backdrop != null
     val layer = rememberGraphicsLayer()
-    val luminance = remember { Animatable(0.5f) }
-    LaunchedEffect(layer, isGlass, track.videoId) {
-        if (!isGlass) {
-            luminance.snapTo(0.5f)
-            return@LaunchedEffect
-        }
-        val buffer = IntBuffer.allocate(25)
-        while (isActive) {
-            try {
-                withContext(Dispatchers.IO) {
-                    val thumbnail = layer.toImageBitmap()
-                        .asAndroidBitmap()
-                        .scale(5, 5, false)
-                        .copy(Bitmap.Config.ARGB_8888, false)
-                    buffer.rewind()
-                    thumbnail.copyPixelsToBuffer(buffer)
-                }
-            } catch (_: Exception) {
-            }
-            val avg = (0 until 25).sumOf { i ->
-                val c = buffer.get(i)
-                val r = (c shr 16 and 0xFF) / 255f
-                val g = (c shr 8 and 0xFF) / 255f
-                val b = (c and 0xFF) / 255f
-                0.2126 * r + 0.7152 * g + 0.0722 * b
-            } / 25
-            luminance.animateTo(avg.coerceIn(0.3, 0.8).toFloat(), tween(500))
-            delay(1.seconds)
-        }
-    }
+    val luminance = 0.5f // Fixed luminance to avoid heavy GPU readback which causes stuttering
     val barInteraction = remember { MutableInteractionSource() }
     var dragX by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
     var dragY by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
@@ -1004,8 +985,8 @@ private fun MiniPlayer(
                     if (abs(dragX + amount.x) > abs(dragY + amount.y)) dragX += amount.x
                     else dragY += amount.y
                 }
-            }
-            .clickable(interactionSource = barInteraction, indication = null, onClick = onExpand),
+                }
+            },
         contentAlignment = Alignment.Center,
     ) {
         Surface(
@@ -1016,9 +997,10 @@ private fun MiniPlayer(
             shadowElevation = if (edgeToEdge || isGlass) 0.dp else 12.dp,
             modifier = Modifier.fillMaxWidth().then(
                 if (isGlass && backdrop != null) {
-                    Modifier.liquidGlass(backdrop, layer, luminance.value, shape)
+                    Modifier.liquidGlass(backdrop, layer, luminance, shape)
                 } else Modifier
-            ),
+            )
+            .clickable(interactionSource = barInteraction, indication = null, onClick = onExpand),
         ) {
             Column(
                 modifier = if (edgeToEdge) {

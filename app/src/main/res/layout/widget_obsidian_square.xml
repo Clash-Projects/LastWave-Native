@@ -18,8 +18,8 @@
 
         <ImageView
             android:id="@+id/widget_art"
-            android:layout_width="96dp"
-            android:layout_height="96dp"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
             android:contentDescription="@null"
             android:scaleType="centerCrop"
             android:src="@drawable/widget_art_placeholder" />
@@ -35,7 +35,7 @@
             android:maxLines="1"
             android:text="Unknown track"
             android:textColor="@color/widget_on_surface"
-            android:textSize="18sp"
+            android:textSize="16sp"
             android:textStyle="bold" />
 
         <TextView
@@ -49,7 +49,7 @@
             android:maxLines="1"
             android:text="Unknown artist"
             android:textColor="@color/widget_on_surface_variant"
-            android:textSize="14sp" />
+            android:textSize="13sp" />
 
         <LinearLayout
             android:layout_width="wrap_content"
