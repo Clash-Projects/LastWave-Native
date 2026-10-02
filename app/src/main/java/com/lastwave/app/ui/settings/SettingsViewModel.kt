@@ -819,8 +819,8 @@ class SettingsViewModel @Inject constructor(
             ).size
         }.getOrNull()
         sb.appendLine("placedWidgets=${placedWidgets ?: "<lookup failed>"}")
-        sb.appendLine("---- crash guard log (persisted across restarts) ----")
-        sb.appendLine(readCrashGuardLog())
+        sb.appendLine("---- crashes (persisted across restarts) ----")
+        sb.appendLine(readCrashReports())
         sb.appendLine("---- startup trail (how far the last launches got) ----")
         sb.appendLine(runCatching { com.lastwave.app.StartupTrail.readTail(context) }.getOrDefault("(startup trail unavailable)"))
         sb.appendLine("---- logcat (this process) ----")
@@ -851,21 +851,34 @@ class SettingsViewModel @Inject constructor(
         lines.joinToString("\n").ifBlank { "(empty log buffer)" }
     }.getOrElse { "(logcat unavailable: ${it.message})" }
 
-    /** Tail of the persisted fatal-exception log. Logcat dies with the
-     *  crashed process, so a post-restart export would otherwise never show
-     *  the actual stack. Never throws. */
-    private fun readCrashGuardLog(): String = runCatching {
-        val file = java.io.File(context.applicationInfo.dataDir, "lastwave_crash_guard.log")
-        if (!file.exists()) return "(no recorded crashes)"
-        file.readLines(Charsets.UTF_8)
-            .takeLast(CRASH_LOG_MAX_LINES)
-            .joinToString("\n").ifBlank { "(empty crash log)" }
-    }.getOrElse { "(crash log unreadable: ${it.message})" }
+    /** The retained crash reports, newest first.
+     *
+     *  `logcat` dies with the crashed process, so a post-restart export would
+     *  otherwise never show the actual stack — these files are the reason a
+     *  crash survives process death. Falls back to the pre-4.3 crash log so an
+     *  older crash is not lost. Never throws. */
+    private fun readCrashReports(): String {
+        val files = runCatching { com.lastwave.app.diagnostics.CrashRecorder.crashFiles(context) }
+            .getOrDefault(emptyList())
+        val legacy = runCatching {
+            java.io.File(context.applicationInfo.dataDir, LEGACY_CRASH_LOG)
+                .takeIf { it.exists() }
+                ?.readText(Charsets.UTF_8)
+                ?.let { "\n(legacy $LEGACY_CRASH_LOG)\n$it" }
+                .orEmpty()
+        }.getOrDefault("")
+
+        if (files.isEmpty() && legacy.isBlank()) return "(no recorded crashes)"
+        return files.joinToString("\n") { file ->
+            "\n=== ${file.name} ===\n" + runCatching { file.readText(Charsets.UTF_8) }
+                .getOrElse { "(crash report unreadable: ${it.message})" }
+        } + legacy
+    }
 
     private companion object {
         const val LOGCAT_MAX_LINES = 3000
         const val LOGCAT_TIMEOUT_SEC = 8L
-        const val CRASH_LOG_MAX_LINES = 120
+        const val LEGACY_CRASH_LOG = "lastwave_crash_guard.log"
     }
 
     // ── Scrobbler ──

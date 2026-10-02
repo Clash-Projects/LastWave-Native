@@ -9,14 +9,15 @@ import java.util.Locale
 /** Minimal launch-stage breadcrumbs for instant-kill diagnosis.
  *
  *  A cold-start crash that escapes every handler (native kill, graphics-layer
- *  failure, pre-CrashGuard provider fault) leaves no stack anywhere. These
- *  markers are flushed to disk at each startup stage, so the next launch —
- *  or a diagnostics export — shows exactly how far the dead process got.
- *  File holds the last two launches only; every call is exception-proof. */
+ *  failure, pre-provider fault) leaves no stack anywhere. These markers are
+ *  flushed to disk at each startup stage, so the next launch — or a
+ *  diagnostics export — shows exactly how far the dead process got.
+ *  Retention is [com.lastwave.app.diagnostics.core.Retention.KEEP_LAUNCHES];
+ *  every call is exception-proof. */
 object StartupTrail {
 
     private const val LOG_FILE_NAME = "lastwave_startup_trail.log"
-    private const val MAX_LAUNCHES_KEPT = 2
+    private val MAX_LAUNCHES_KEPT = com.lastwave.app.diagnostics.core.Retention.KEEP_LAUNCHES
 
     @Volatile private var logFile: File? = null
 

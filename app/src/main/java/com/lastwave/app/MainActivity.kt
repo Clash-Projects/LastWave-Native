@@ -174,6 +174,30 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     }
 
     /**
+     * Buffered log records are written on a 200ms cadence, so anything logged
+     * just before the app leaves the foreground would otherwise sit unwritten
+     * until the next launch.
+     */
+    override fun onStop() {
+        super.onStop()
+        com.lastwave.app.diagnostics.AppLog.flush()
+    }
+
+    /**
+     * Marks the session as ended on purpose, so the next launch does not report
+     * a phantom "ended without a clean-shutdown marker".
+     *
+     * `isFinishing` excludes configuration changes, which destroy and recreate
+     * this activity while the session is plainly still alive.
+     */
+    override fun onDestroy() {
+        if (isFinishing) {
+            com.lastwave.app.diagnostics.Diagnostics.markCleanShutdown(this)
+        }
+        super.onDestroy()
+    }
+
+    /**
      * Ask the window scheduler for the panel's fastest supported rate. This is
      * a preference, not a forced mode: Android can still lower it for battery,
      * thermals or a user's display setting, and 60 Hz panels remain at 60 Hz.

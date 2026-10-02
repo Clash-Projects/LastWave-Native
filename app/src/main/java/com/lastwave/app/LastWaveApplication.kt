@@ -40,7 +40,10 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
         // Content providers (including AndroidX startup/profile components)
         // are created before Application.onCreate(). Install diagnostics here
         // so failures in that earlier device-dependent phase are not lost.
-        CrashGuard.install(this)
+        // This replaces CrashGuard: it records the same uncaught exceptions plus
+        // ANRs, native crashes and low-memory kills, keeping the last 10 as
+        // separate readable files instead of one truncating log.
+        com.lastwave.app.diagnostics.Diagnostics.install(this)
         StartupTrail.begin(this)
         StartupTrail.mark("app.attach")
     }
@@ -83,7 +86,7 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
             // playback's direct-URL fast path can attach it immediately.
             runCatching { innerTubeMusicApi.get().preWarmPlayback() }
             runCatching { likedSongsManager.get().start() }
-                .onFailure { android.util.Log.e("LastWaveStartup", "Liked Songs startup disabled", it) }
+                .onFailure { com.lastwave.app.diagnostics.AppLog.e("LastWaveStartup", "Liked Songs startup disabled", it) }
         }
         // Never create BotGuard's headless WebView during app launch. Some
         // Android 11 OEM devices have a missing/updating WebView provider,
@@ -93,7 +96,7 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
         applicationScope.launch {
             delay(OPTIONAL_STARTUP_DELAY_MS)
             runCatching { ytMusicSyncManager.get().start() }
-                .onFailure { android.util.Log.e("LastWaveStartup", "YT sync startup disabled", it) }
+                .onFailure { com.lastwave.app.diagnostics.AppLog.e("LastWaveStartup", "YT sync startup disabled", it) }
         }
         // YouTube Music playback-history sync (no-ops until an account is
         // connected AND history sync is enabled in Settings — on by default).
@@ -101,14 +104,14 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
         applicationScope.launch {
             delay(OPTIONAL_STARTUP_DELAY_MS)
             runCatching { ytMusicHistorySyncManager.get().start() }
-                .onFailure { android.util.Log.e("LastWaveStartup", "YT history sync startup disabled", it) }
+                .onFailure { com.lastwave.app.diagnostics.AppLog.e("LastWaveStartup", "YT history sync startup disabled", it) }
         }
         // Reconcile public download directory & MediaStore with local database
         // asynchronously on startup so offline playback works immediately.
         applicationScope.launch(Dispatchers.IO) {
             delay(OPTIONAL_STARTUP_DELAY_MS)
             runCatching { trackDownloadManager.get().syncDownloadsFromStorage() }
-                .onFailure { android.util.Log.e("LastWaveStartup", "Download sync startup failed", it) }
+                .onFailure { com.lastwave.app.diagnostics.AppLog.e("LastWaveStartup", "Download sync startup failed", it) }
         }
         // A widget is a separate RemoteViews surface, so it needs an explicit
         // refresh whenever LastWave's live theme changes. The widget's palette
@@ -127,7 +130,7 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Throwable) {
-                android.util.Log.e("LastWaveStartup", "Widget theme observer disabled", error)
+                com.lastwave.app.diagnostics.AppLog.e("LastWaveStartup", "Widget theme observer disabled", error)
             }
         }
         StartupTrail.mark("app.onCreate.end")
@@ -163,10 +166,10 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
             .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
             .build()
         } catch (error: Exception) {
-            android.util.Log.e("LastWaveStartup", "Shared artwork client unavailable; using isolated client", error)
+            com.lastwave.app.diagnostics.AppLog.e("LastWaveStartup", "Shared artwork client unavailable; using isolated client", error)
             okhttp3.OkHttpClient.Builder().build()
         } catch (error: LinkageError) {
-            android.util.Log.e("LastWaveStartup", "Shared artwork client unsupported; using isolated client", error)
+            com.lastwave.app.diagnostics.AppLog.e("LastWaveStartup", "Shared artwork client unsupported; using isolated client", error)
             okhttp3.OkHttpClient.Builder().build()
         }
 
