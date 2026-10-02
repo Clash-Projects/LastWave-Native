@@ -626,6 +626,7 @@ fun PlayerHost(
     var expanded by rememberSaveable { mutableStateOf(false) }
     var currentTab by rememberSaveable { mutableStateOf(FullPlayerTab.NOW_PLAYING) }
     var playlistTrack by remember { mutableStateOf<PlayableTrack?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
     val requestAddToPlaylist = remember(viewModel) {
         { track: PlayableTrack ->
             viewModel.prepareCustomPlaylists()
@@ -948,7 +949,6 @@ private fun MiniPlayer(
                     change.consume()
                     if (abs(dragX + amount.x) > abs(dragY + amount.y)) dragX += amount.x
                     else dragY += amount.y
-                }
                 }
             },
         contentAlignment = Alignment.Center,
