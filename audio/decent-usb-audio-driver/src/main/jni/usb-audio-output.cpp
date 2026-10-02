@@ -147,11 +147,22 @@ static double readFeedback(int fd, int ep, int feedbackPacketSize) {
     u->iso_frame_desc[0].length = feedbackPacketSize;
     if (ioctl(fd, USBDEVFS_SUBMITURB, u) < 0) { free(u); return 0; }
     struct usbdevfs_urb *c = nullptr;
-    usleep(2000);
-    if (ioctl(fd, USBDEVFS_REAPURBNDELAY, &c) < 0) {
+    bool reaped = false;
+    for (int retry = 0; retry < 10; retry++) {
+        usleep(1000);
+        if (ioctl(fd, USBDEVFS_REAPURBNDELAY, &c) == 0 && c == u) {
+            reaped = true;
+            break;
+        }
+    }
+    if (!reaped) {
         ioctl(fd, USBDEVFS_DISCARDURB, u);
-        ioctl(fd, USBDEVFS_REAPURBNDELAY, &c);
-        free(u); return 0;
+        for (int i = 0; i < 5; i++) {
+            if (ioctl(fd, USBDEVFS_REAPURBNDELAY, &c) == 0 && c == u) break;
+            usleep(1000);
+        }
+        free(u);
+        return 0;
     }
     double r = 0;
     if (u->iso_frame_desc[0].actual_length >= static_cast<unsigned>(feedbackPacketSize)) {
@@ -528,7 +539,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioStart(
     double nominalFpmf = ctx->sampleRate * packetPeriod / 8000.0;
     ctx->calibratedFpmf = nominalFpmf;
 
-    if (ctx->endpointFeedback > 0 && USB_AUDIO_ENABLE_CONTINUOUS_FEEDBACK) {
+    if (ctx->endpointFeedback > 0) {
         double fb = readFeedback(ctx->fd, ctx->endpointFeedback, ctx->feedbackPacketSize);
         if (fb > 0) {
             const double period = ctx->usbSpeed == USB_SPEED_FULL
@@ -546,18 +557,45 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioStart(
             LOGW("Start: feedback not responding, using nominal %.4f fpmf", nominalFpmf);
         }
 
+#if USB_AUDIO_ENABLE_CONTINUOUS_FEEDBACK
         // Start continuous feedback: submit a feedback URB that will be
         // automatically recycled in the reap loop during streaming.
         // The host controller schedules the feedback endpoint once per
         // microframe (~1 ms effective interval).
         submitFeedbackUrb(ctx);
+#endif
     }
 
-    LOGI("Start: rate=%d ch=%d bits=%d ring=%d slots×%dpkt fpmf=%.4f feedback=%s",
+    // Prime the pipeline with silence URBs so the host controller schedules
+    // isochronous microframes immediately and locks the DAC PLL,
+    // preventing startup clock-loss auto-mute on sensitive DACs.
+    int pktSizes[USB_AUDIO_PACKETS_PER_URB];
+    int urbBytes = 0;
+    for (int p = 0; p < USB_AUDIO_PACKETS_PER_URB; p++) {
+        ctx->frameAccumulator += ctx->calibratedFpmf;
+        int frames = (int)ctx->frameAccumulator;
+        ctx->frameAccumulator -= frames;
+        int b = frames * ctx->bytesPerFrame;
+        pktSizes[p] = b;
+        urbBytes += b;
+    }
+    ctx->frameAccumulator = 0.0;
+    if (urbBytes > 0 && urbBytes <= USB_AUDIO_URB_BUFFER_SIZE) {
+        for (int u = 0; u < 4 && ctx->urbsInFlight < USB_AUDIO_NUM_URBS; u++) {
+            UrbSlot *slot = &ctx->ring[ctx->submitIdx];
+            memset(slot->buffer, 0, urbBytes);
+            if (submitRingUrb(ctx, pktSizes, USB_AUDIO_PACKETS_PER_URB, urbBytes) < 0) {
+                break;
+            }
+        }
+    }
+
+    LOGI("Start: rate=%d ch=%d bits=%d ring=%d slots×%dpkt fpmf=%.4f feedback=%s (primed=%d)",
          ctx->sampleRate, ctx->channelCount, ctx->bitDepth,
          USB_AUDIO_NUM_URBS, USB_AUDIO_PACKETS_PER_URB,
          ctx->calibratedFpmf,
-         ctx->feedbackInFlight ? "continuous" : "one-shot");
+         ctx->feedbackInFlight ? "continuous" : "one-shot",
+         ctx->urbsInFlight);
     return JNI_TRUE;
 }
 
@@ -766,14 +804,15 @@ void packInt32ToInt24(const uint8_t *src, uint8_t *dst, int numSamples) {
     auto *in32 = reinterpret_cast<const int32_t *>(src);
     bool isRightAligned24 = true;
     bool hasNonZero = false;
-    int checkCount = std::min(numSamples, 64);
-    for (int i = 0; i < checkCount; i++) {
+    for (int i = 0; i < numSamples; i++) {
         int32_t v = in32[i];
-        if (v != 0) hasNonZero = true;
-        int32_t signExt = (v << 8) >> 8;
-        if (v != signExt) {
-            isRightAligned24 = false;
-            break;
+        if (v != 0) {
+            hasNonZero = true;
+            int32_t signExt = (v << 8) >> 8;
+            if (v != signExt) {
+                isRightAligned24 = false;
+                break;
+            }
         }
     }
     for (int i = 0; i < numSamples; i++) {
@@ -962,17 +1001,18 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioWriteRaw(
     if (inputBitDepth == 32 && ctx->bitDepth == 32) {
         auto *in32 = reinterpret_cast<const int32_t *>(rawData);
         bool isRightAligned24 = true;
-        bool hasLowByteData = false;
-        int checkCount = std::min(totalSamples, 64);
-        for (int i = 0; i < checkCount; i++) {
+        bool hasNonZero = false;
+        for (int i = 0; i < totalSamples; i++) {
             int32_t v = in32[i];
-            if ((v & 0xFF) != 0) hasLowByteData = true;
-            if (v != ((v << 8) >> 8)) {
-                isRightAligned24 = false;
-                break;
+            if (v != 0) {
+                hasNonZero = true;
+                if (v != ((v << 8) >> 8)) {
+                    isRightAligned24 = false;
+                    break;
+                }
             }
         }
-        if (hasLowByteData && isRightAligned24) {
+        if (hasNonZero && isRightAligned24) {
             shiftInt32From24((uint8_t *)rawData, ctx->transferBuffer, totalSamples);
         } else {
             memcpy(ctx->transferBuffer, rawData, inputBytes);

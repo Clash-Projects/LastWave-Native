@@ -34,6 +34,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
     private var connection: UsbDeviceConnection? = null
     private var currentDevice: UsbDevice? = null
     private var claimedInterface: UsbInterface? = null
+    private var controlInterfaceId: Int = 0
 
     companion object {
         private const val TAG = "UsbAudioDevice"
@@ -157,67 +158,72 @@ class UsbAudioDevice private constructor(private val context: Context) {
             return null
         }
 
-        // Find the AudioStreaming interface and its endpoints
+        // Find the AudioStreaming playback interface with an isochronous OUT endpoint
         var streamingInterface: UsbInterface? = null
         var endpointOut = -1
         var endpointFeedback = -1
         var maxPacketSize = 0
         var altSettingCount = 0
 
-        // Count alternate settings for the streaming interface
         for (i in 0 until device.interfaceCount) {
             val iface = device.getInterface(i)
             if (iface.interfaceClass == UsbConstants.USB_CLASS_AUDIO &&
-                iface.interfaceSubclass == 2) {
-                altSettingCount++
-
-                // Look for endpoints in non-zero alt settings
-                if (iface.endpointCount > 0 && streamingInterface == null) {
-                    streamingInterface = iface
-
-                    for (e in 0 until iface.endpointCount) {
-                        val ep = iface.getEndpoint(e)
-                        when {
-                            // Isochronous OUT endpoint (audio data)
-                            ep.type == UsbConstants.USB_ENDPOINT_XFER_ISOC &&
-                                    ep.direction == UsbConstants.USB_DIR_OUT -> {
-                                endpointOut = ep.address
-                                maxPacketSize = ep.maxPacketSize
-                                Log.i(TAG, "Found ISO OUT endpoint: address=0x${ep.address.toString(16)}, " +
-                                        "maxPacket=$maxPacketSize, interval=${ep.interval}")
-                            }
-                            // Isochronous IN endpoint (feedback)
-                            ep.type == UsbConstants.USB_ENDPOINT_XFER_ISOC &&
-                                    ep.direction == UsbConstants.USB_DIR_IN -> {
-                                endpointFeedback = ep.address
-                                Log.i(TAG, "Found ISO IN (feedback) endpoint: address=0x${ep.address.toString(16)}, " +
-                                        "interval=${ep.interval}")
-                            }
+                iface.interfaceSubclass == 2 &&
+                iface.endpointCount > 0) {
+                var foundOut = false
+                var foundOutAddr = -1
+                var foundMaxPacket = 0
+                var foundFbAddr = -1
+                for (e in 0 until iface.endpointCount) {
+                    val ep = iface.getEndpoint(e)
+                    if (ep.type == UsbConstants.USB_ENDPOINT_XFER_ISOC) {
+                        if (ep.direction == UsbConstants.USB_DIR_OUT) {
+                            foundOut = true
+                            foundOutAddr = ep.address
+                            foundMaxPacket = ep.maxPacketSize
+                        } else if (ep.direction == UsbConstants.USB_DIR_IN) {
+                            foundFbAddr = ep.address
                         }
                     }
+                }
+                if (foundOut) {
+                    streamingInterface = iface
+                    endpointOut = foundOutAddr
+                    maxPacketSize = foundMaxPacket
+                    if (foundFbAddr > 0) endpointFeedback = foundFbAddr
+                    Log.i(TAG, "Selected AudioStreaming output interface ${iface.id} (alt=${iface.alternateSetting}): epOut=0x${endpointOut.toString(16)}, epFb=0x${endpointFeedback.toString(16)}")
+                    break
                 }
             }
         }
 
         if (streamingInterface == null || endpointOut < 0) {
-            Log.e(TAG, "No suitable AudioStreaming interface/endpoint found")
+            Log.e(TAG, "No suitable AudioStreaming playback interface/endpoint found")
             conn.close()
             return null
         }
 
-        // Claim the AudioControl interface (0) with force=true to disconnect kernel driver
+        // Count alternate settings specifically for the playback streaming interface
+        val targetStreamId = streamingInterface.id
+        altSettingCount = (0 until device.interfaceCount).count {
+            val iface = device.getInterface(it)
+            iface.id == targetStreamId &&
+                iface.interfaceClass == UsbConstants.USB_CLASS_AUDIO &&
+                iface.interfaceSubclass == 2
+        }
+
+        // Claim the AudioControl interface with force=true to disconnect kernel driver
         val controlInterface = (0 until device.interfaceCount)
                 .map { device.getInterface(it) }
                 .firstOrNull { it.interfaceClass == UsbConstants.USB_CLASS_AUDIO && it.interfaceSubclass == 1 }
 
         if (controlInterface != null) {
+            controlInterfaceId = controlInterface.id
             val claimed = conn.claimInterface(controlInterface, true)
             Log.i(TAG, "Claimed AudioControl interface ${controlInterface.id} force=true: $claimed")
         }
 
         // Claim the AudioStreaming interface with force=true to disconnect kernel driver (snd-usb-audio)
-        // NOTE: We claim the zero-bandwidth alt setting (alt=0). The actual streaming alt setting
-        // will be activated later via setInterface() which allocates USB bandwidth.
         val claimed = conn.claimInterface(streamingInterface, true)
         Log.i(TAG, "Claimed AudioStreaming interface ${streamingInterface.id} force=true: $claimed " +
                 "(alt=${streamingInterface.alternateSetting}, endpoints=${streamingInterface.endpointCount})")
@@ -228,14 +234,19 @@ class UsbAudioDevice private constructor(private val context: Context) {
         }
         claimedInterface = streamingInterface
 
-        // Force alt=0 to stop any streaming left by kernel driver
+        // Force alt=0 on the playback streaming interface to stop any streaming left by kernel driver
         val zeroAlt = (0 until device.interfaceCount)
+                .map { device.getInterface(it) }
+                .firstOrNull { it.interfaceClass == UsbConstants.USB_CLASS_AUDIO &&
+                        it.interfaceSubclass == 2 &&
+                        it.id == streamingInterface.id &&
+                        it.alternateSetting == 0 } ?: (0 until device.interfaceCount)
                 .map { device.getInterface(it) }
                 .firstOrNull { it.interfaceClass == UsbConstants.USB_CLASS_AUDIO &&
                         it.interfaceSubclass == 2 && it.alternateSetting == 0 }
         if (zeroAlt != null) {
             conn.setInterface(zeroAlt)
-            Log.i(TAG, "Reset streaming to alt=0 (zero-bandwidth)")
+            Log.i(TAG, "Reset streaming interface ${zeroAlt.id} to alt=0 (zero-bandwidth)")
         }
         Thread.sleep(100)
 
@@ -268,8 +279,15 @@ class UsbAudioDevice private constructor(private val context: Context) {
             .firstOrNull {
                 it.interfaceClass == UsbConstants.USB_CLASS_AUDIO &&
                     it.interfaceSubclass == 2 &&
+                    it.id == interfaceId &&
                     it.alternateSetting == bestAlt
-            }
+            } ?: (0 until device.interfaceCount)
+                .map { device.getInterface(it) }
+                .firstOrNull {
+                    it.interfaceClass == UsbConstants.USB_CLASS_AUDIO &&
+                        it.interfaceSubclass == 2 &&
+                        it.alternateSetting == bestAlt
+                }
         val bestAltOut = bestAltInterface?.let { iface ->
             (0 until iface.endpointCount).map { iface.getEndpoint(it) }
                 .firstOrNull {
@@ -353,9 +371,22 @@ class UsbAudioDevice private constructor(private val context: Context) {
     /** Per-Clock-Source supported sample rates discovered via GET_RANGE. */
     private val clockSourceRateMap = mutableMapOf<Int, Set<Int>>()
 
+    data class DetailedAltSetting(
+        val interfaceId: Int,
+        val altSetting: Int,
+        val bitDepth: Int,
+        val channels: Int,
+        val maxPacketSize: Int,
+        val interval: Int,
+        val endpointOut: Int,
+    )
+    private var detailedAltSettings: List<DetailedAltSetting> = emptyList()
+
     /**
      * Parse raw USB descriptors to find all UAC2 Clock Source entity IDs (0x0A)
      * and any Clock Selector entity (0x0B) for dual-oscillator (44.1k + 48k) DACs.
+     * Also traces AudioStreaming AS_GENERAL bTerminalLink -> Terminal -> bCSourceID
+     * topology to identify the specific Clock entity driving the output stream.
      *
      * @return Primary Clock Source entity ID, or -1 if not found.
      */
@@ -364,9 +395,14 @@ class UsbAudioDevice private constructor(private val context: Context) {
         val sources = mutableListOf<Int>()
         var selectorId = -1
         val selectorPins = mutableListOf<Int>()
+        val selectorPinsMap = mutableMapOf<Int, List<Int>>()
+        val multiplierSourceMap = mutableMapOf<Int, Int>()
+        val terminalClockMap = mutableMapOf<Int, Int>()
+        val streamingTerminalLinks = mutableListOf<Int>()
 
         var i = 0
         var inAudioControl = false
+        var inAudioStreaming = false
 
         while (i + 1 < raw.size) {
             val bLength = raw[i].toInt() and 0xFF
@@ -379,44 +415,125 @@ class UsbAudioDevice private constructor(private val context: Context) {
             if (bDescriptorType == 0x04 && bLength >= 9) {
                 val bInterfaceClass = raw[i + 5].toInt() and 0xFF
                 val bInterfaceSubClass = raw[i + 6].toInt() and 0xFF
-                // AudioControl = class 1, subclass 1
+                // AudioControl = class 1, subclass 1; AudioStreaming = class 1, subclass 2
                 inAudioControl = (bInterfaceClass == 1 && bInterfaceSubClass == 1)
+                inAudioStreaming = (bInterfaceClass == 1 && bInterfaceSubClass == 2)
             }
 
             // CS_INTERFACE descriptor (0x24) inside AudioControl
             if (inAudioControl && bDescriptorType == 0x24 && bLength >= 4) {
                 val bDescriptorSubtype = raw[i + 2].toInt() and 0xFF
-                // CLOCK_SOURCE = 0x0A
-                if (bDescriptorSubtype == 0x0A && bLength >= 5) {
-                    val bClockID = raw[i + 3].toInt() and 0xFF
-                    if (bClockID > 0 && bClockID !in sources) {
-                        sources += bClockID
-                        Log.i(TAG, "parseClockSourceId: found CLOCK_SOURCE bClockID=0x${bClockID.toString(16)}")
-                    }
-                } else if (bDescriptorSubtype == 0x0B && bLength >= 5 && selectorId < 0) {
-                    // CLOCK_SELECTOR = 0x0B: [bLength, 0x24, 0x0B, bClockID, bNrInPins, baCSourceID(1..p)...]
-                    selectorId = raw[i + 3].toInt() and 0xFF
-                    val nrPins = raw[i + 4].toInt() and 0xFF
-                    for (p in 0 until nrPins) {
-                        val off = i + 5 + p
-                        if (off < i + bLength) {
-                            selectorPins += raw[off].toInt() and 0xFF
+                when (bDescriptorSubtype) {
+                    0x02 -> {
+                        // INPUT_TERMINAL: [bLength, 0x24, 0x02, bTerminalID, wTerminalType(2B), bAssocTerminal, bCSourceID...]
+                        if (bLength >= 8) {
+                            val termId = raw[i + 3].toInt() and 0xFF
+                            val cSourceId = raw[i + 7].toInt() and 0xFF
+                            if (cSourceId > 0) terminalClockMap[termId] = cSourceId
+                            Log.i(TAG, "parseClockSourceId: InputTerminal id=0x${termId.toString(16)} -> cSource=0x${cSourceId.toString(16)}")
                         }
                     }
-                    Log.i(TAG, "parseClockSourceId: found CLOCK_SELECTOR id=0x${selectorId.toString(16)} pins=$selectorPins")
+                    0x03 -> {
+                        // OUTPUT_TERMINAL: [bLength, 0x24, 0x03, bTerminalID, wTerminalType(2B), bAssocTerminal, bSourceID, bCSourceID...]
+                        if (bLength >= 9) {
+                            val termId = raw[i + 3].toInt() and 0xFF
+                            val cSourceId = raw[i + 8].toInt() and 0xFF
+                            if (cSourceId > 0) terminalClockMap[termId] = cSourceId
+                            Log.i(TAG, "parseClockSourceId: OutputTerminal id=0x${termId.toString(16)} -> cSource=0x${cSourceId.toString(16)}")
+                        }
+                    }
+                    0x0A -> {
+                        // CLOCK_SOURCE: [bLength, 0x24, 0x0A, bClockID, ...]
+                        if (bLength >= 5) {
+                            val bClockID = raw[i + 3].toInt() and 0xFF
+                            if (bClockID > 0 && bClockID !in sources) {
+                                sources += bClockID
+                                Log.i(TAG, "parseClockSourceId: found CLOCK_SOURCE bClockID=0x${bClockID.toString(16)}")
+                            }
+                        }
+                    }
+                    0x0B -> {
+                        // CLOCK_SELECTOR: [bLength, 0x24, 0x0B, bClockID, bNrInPins, baCSourceID(1..p)...]
+                        if (bLength >= 5) {
+                            val selId = raw[i + 3].toInt() and 0xFF
+                            val nrPins = raw[i + 4].toInt() and 0xFF
+                            val pins = mutableListOf<Int>()
+                            for (p in 0 until nrPins) {
+                                val off = i + 5 + p
+                                if (off < i + bLength) {
+                                    pins += raw[off].toInt() and 0xFF
+                                }
+                            }
+                            selectorPinsMap[selId] = pins
+                            if (selectorId < 0) {
+                                selectorId = selId
+                                selectorPins.addAll(pins)
+                            }
+                            Log.i(TAG, "parseClockSourceId: found CLOCK_SELECTOR id=0x${selId.toString(16)} pins=$pins")
+                        }
+                    }
+                    0x0C -> {
+                        // CLOCK_MULTIPLIER: [bLength, 0x24, 0x0C, bClockID, bCSourceID, ...]
+                        if (bLength >= 5) {
+                            val multId = raw[i + 3].toInt() and 0xFF
+                            val cSourceId = raw[i + 4].toInt() and 0xFF
+                            multiplierSourceMap[multId] = cSourceId
+                            Log.i(TAG, "parseClockSourceId: found CLOCK_MULTIPLIER id=0x${multId.toString(16)} -> parent=0x${cSourceId.toString(16)}")
+                        }
+                    }
+                }
+            }
+
+            // CS_INTERFACE descriptor (0x24) inside AudioStreaming
+            if (inAudioStreaming && bDescriptorType == 0x24 && bLength >= 4) {
+                val bDescriptorSubtype = raw[i + 2].toInt() and 0xFF
+                // AS_GENERAL = 0x01: offset 3 is bTerminalLink
+                if (bDescriptorSubtype == 0x01) {
+                    val terminalLink = raw[i + 3].toInt() and 0xFF
+                    if (terminalLink > 0 && terminalLink !in streamingTerminalLinks) {
+                        streamingTerminalLinks += terminalLink
+                        Log.i(TAG, "parseClockSourceId: found AS_GENERAL bTerminalLink=0x${terminalLink.toString(16)}")
+                    }
                 }
             }
 
             i += bLength
         }
 
-        parsedClockSourceIds = sources
+        // Trace topology from streamingTerminalLinks -> Terminal -> Clock Source/Selector/Multiplier
+        val topologyResolvedClockSources = mutableListOf<Int>()
+        for (termLink in streamingTerminalLinks) {
+            var clkEntity = terminalClockMap[termLink]
+            if (clkEntity != null && multiplierSourceMap.containsKey(clkEntity)) {
+                clkEntity = multiplierSourceMap[clkEntity]
+            }
+            if (clkEntity != null) {
+                if (selectorPinsMap.containsKey(clkEntity)) {
+                    selectorId = clkEntity
+                    selectorPins.clear()
+                    selectorPins.addAll(selectorPinsMap[clkEntity] ?: emptyList())
+                    for (pin in selectorPins) {
+                        if (pin !in topologyResolvedClockSources) topologyResolvedClockSources += pin
+                    }
+                    Log.i(TAG, "parseClockSourceId: resolved terminalLink 0x${termLink.toString(16)} to CLOCK_SELECTOR 0x${clkEntity.toString(16)} with pins $selectorPins")
+                } else if (clkEntity in sources) {
+                    if (clkEntity !in topologyResolvedClockSources) topologyResolvedClockSources += clkEntity
+                    Log.i(TAG, "parseClockSourceId: resolved terminalLink 0x${termLink.toString(16)} directly to CLOCK_SOURCE 0x${clkEntity.toString(16)}")
+                }
+            }
+        }
+
+        val combinedSources = (topologyResolvedClockSources + sources).distinct()
+
+        parsedClockSourceIds = combinedSources
         parsedClockSelectorId = selectorId
         parsedClockSelectorPins = selectorPins
-        val primary = sources.firstOrNull() ?: -1
+        val primary = combinedSources.firstOrNull() ?: -1
         activeClockSourceId = primary
         if (primary < 0) {
             Log.w(TAG, "parseClockSourceId: no CLOCK_SOURCE descriptor found")
+        } else {
+            Log.i(TAG, "parseClockSourceId: primary=0x${primary.toString(16)}, all=0x${combinedSources.map { it.toString(16) }}")
         }
         return primary
     }
@@ -436,12 +553,36 @@ class UsbAudioDevice private constructor(private val context: Context) {
     private fun parseBestAltSetting(conn: UsbDeviceConnection, uacVersion: Int): Pair<Int, Int> {
         val raw = conn.rawDescriptors ?: return Pair(1, 16)
         val altSettings = mutableListOf<Pair<Int, Int>>()
+        val detailed = mutableListOf<DetailedAltSetting>()
 
         var i = 0
+        var currentIfaceId = -1
         var currentAlt = 0
         var inAudioStreaming = false
+        var currentChannels = 2
+        var currentBitRes = 16
+        var currentEpOut = -1
+        var currentMaxPacket = 0
+        var currentInterval = 1
+        var formatFound = false
         var bestAlt = 1
         var bestBits = 16
+
+        fun saveCurrentAlt() {
+            if (formatFound && currentAlt > 0) {
+                detailed.add(
+                    DetailedAltSetting(
+                        interfaceId = currentIfaceId,
+                        altSetting = currentAlt,
+                        bitDepth = currentBitRes,
+                        channels = currentChannels,
+                        maxPacketSize = currentMaxPacket,
+                        interval = currentInterval,
+                        endpointOut = currentEpOut,
+                    )
+                )
+            }
+        }
 
         while (i + 1 < raw.size) {
             val bLength = raw[i].toInt() and 0xFF
@@ -452,21 +593,36 @@ class UsbAudioDevice private constructor(private val context: Context) {
 
             // Interface descriptor (0x04)
             if (bDescriptorType == 0x04 && bLength >= 9) {
+                saveCurrentAlt()
+                val bInterfaceNumber = raw[i + 2].toInt() and 0xFF
+                val bAlternateSetting = raw[i + 3].toInt() and 0xFF
                 val bInterfaceClass = raw[i + 5].toInt() and 0xFF
                 val bInterfaceSubClass = raw[i + 6].toInt() and 0xFF
-                val bAlternateSetting = raw[i + 3].toInt() and 0xFF
                 inAudioStreaming = (bInterfaceClass == 1 && bInterfaceSubClass == 2)
-                if (inAudioStreaming) currentAlt = bAlternateSetting
+                currentIfaceId = bInterfaceNumber
+                currentAlt = bAlternateSetting
+                currentChannels = 2
+                currentBitRes = 16
+                currentEpOut = -1
+                currentMaxPacket = 0
+                currentInterval = 1
+                formatFound = false
             }
 
-            // CS_INTERFACE (0x24) in AudioStreaming — Format Type I (subtype 0x02)
-            if (inAudioStreaming && bDescriptorType == 0x24 && bLength >= 6) {
+            // CS_INTERFACE (0x24) in AudioStreaming
+            if (inAudioStreaming && bDescriptorType == 0x24 && bLength >= 4) {
                 val bDescriptorSubtype = raw[i + 2].toInt() and 0xFF
-                if (bDescriptorSubtype == 0x02) {
+                if (bDescriptorSubtype == 0x01 && bLength >= 11) {
+                    // AS_GENERAL: UAC2 has bNrChannels at offset 10
+                    val ch = raw[i + 10].toInt() and 0xFF
+                    if (ch > 0) currentChannels = ch
+                } else if (bDescriptorSubtype == 0x02 && bLength >= 6) {
+                    // Format Type I
                     val bSubslotSize: Int
                     val bBitResolution: Int
                     if (uacVersion == 100) {
-                        // UAC 1.0: bSubframeSize is at offset 5, bBitResolution at offset 6
+                        // UAC 1.0: bNrChannels at offset 4, bSubframeSize at offset 5, bBitResolution at offset 6
+                        if (bLength >= 5) currentChannels = raw[i + 4].toInt() and 0xFF
                         bSubslotSize = if (bLength >= 7) raw[i + 5].toInt() and 0xFF else 2
                         bBitResolution = if (bLength >= 7) raw[i + 6].toInt() and 0xFF else 16
                     } else {
@@ -475,7 +631,9 @@ class UsbAudioDevice private constructor(private val context: Context) {
                         bBitResolution = raw[i + 5].toInt() and 0xFF
                     }
                     val containerBits = bSubslotSize * 8
-                    Log.i(TAG, "parseBestAltSetting: alt=$currentAlt subslotSize=$bSubslotSize bitResolution=$bBitResolution containerBits=$containerBits")
+                    currentBitRes = containerBits
+                    formatFound = true
+                    Log.i(TAG, "parseBestAltSetting: iface=$currentIfaceId alt=$currentAlt subslotSize=$bSubslotSize bitResolution=$bBitResolution containerBits=$containerBits ch=$currentChannels")
 
                     if (currentAlt > 0) {
                         altSettings.add(Pair(currentAlt, containerBits))
@@ -487,11 +645,29 @@ class UsbAudioDevice private constructor(private val context: Context) {
                 }
             }
 
+            // Endpoint descriptor (0x05)
+            if (inAudioStreaming && bDescriptorType == 0x05 && bLength >= 7) {
+                val epAddr = raw[i + 2].toInt() and 0xFF
+                val epAttr = raw[i + 3].toInt() and 0xFF
+                val rawPacket = (raw[i + 4].toInt() and 0xFF) or ((raw[i + 5].toInt() and 0xFF) shl 8)
+                val interval = raw[i + 6].toInt() and 0xFF
+                if ((epAttr and 0x03) == 0x01 && (epAddr and 0x80) == 0) {
+                    // Isochronous OUT endpoint
+                    currentEpOut = epAddr
+                    val extra = (rawPacket shr 11) and 0x3
+                    val size = rawPacket and 0x7FF
+                    currentMaxPacket = if (extra > 0) size * (1 + extra) else rawPacket
+                    currentInterval = interval.coerceAtLeast(1)
+                }
+            }
+
             i += bLength
         }
+        saveCurrentAlt()
 
+        detailedAltSettings = detailed
         parsedAltSettings = altSettings
-        Log.i(TAG, "parseBestAltSetting: best alt=$bestAlt bits=$bestBits, all=$altSettings")
+        Log.i(TAG, "parseBestAltSetting: best alt=$bestAlt bits=$bestBits, all=$altSettings, detailedCount=${detailed.size}")
         return Pair(bestAlt, bestBits)
     }
 
@@ -553,13 +729,50 @@ class UsbAudioDevice private constructor(private val context: Context) {
     }
 
     /**
-     * Find the alt setting that matches the given source bit depth exactly.
+     * Find the alt setting that matches the given source bit depth, sample rate,
+     * and channel count with sufficient endpoint bandwidth.
      * If no exact match, returns the next higher bit depth.
      * Fallback: returns the best (highest) alt setting.
      *
      * @return Pair(altSetting, bitDepth)
      */
-    fun findAltSettingForBitDepth(targetBitDepth: Int): Pair<Int, Int> {
+    fun findAltSettingForBitDepth(
+        targetBitDepth: Int,
+        sampleRate: Int = 0,
+        channelCount: Int = 2,
+    ): Pair<Int, Int> {
+        val targetIfaceId = cachedDeviceInfo?.interfaceId ?: -1
+        if (detailedAltSettings.isNotEmpty()) {
+            val candidates = detailedAltSettings.filter { alt ->
+                (targetIfaceId < 0 || alt.interfaceId == targetIfaceId) &&
+                    alt.altSetting > 0 &&
+                    (alt.endpointOut > 0 || alt.maxPacketSize > 0) &&
+                    (channelCount <= 0 || alt.channels <= 0 || alt.channels == channelCount) &&
+                    (sampleRate <= 0 || alt.maxPacketSize <= 0 || isPacketSizeSufficient(alt.maxPacketSize, sampleRate, alt.channels.coerceAtLeast(1), alt.bitDepth, alt.interval))
+            }
+
+            // Exact match
+            val exact = candidates.firstOrNull { it.bitDepth == targetBitDepth }
+            if (exact != null) {
+                Log.i(TAG, "findAltSettingForBitDepth($targetBitDepth, rate=$sampleRate, ch=$channelCount): exact match alt=${exact.altSetting} bits=${exact.bitDepth}")
+                return Pair(exact.altSetting, exact.bitDepth)
+            }
+
+            // Next higher
+            val higher = candidates.filter { it.bitDepth > targetBitDepth }.minByOrNull { it.bitDepth }
+            if (higher != null) {
+                Log.i(TAG, "findAltSettingForBitDepth($targetBitDepth, rate=$sampleRate, ch=$channelCount): next higher alt=${higher.altSetting} bits=${higher.bitDepth}")
+                return Pair(higher.altSetting, higher.bitDepth)
+            }
+
+            // Fallback to highest candidate
+            val bestCandidate = candidates.maxByOrNull { it.bitDepth }
+            if (bestCandidate != null) {
+                Log.i(TAG, "findAltSettingForBitDepth($targetBitDepth, rate=$sampleRate, ch=$channelCount): best candidate alt=${bestCandidate.altSetting} bits=${bestCandidate.bitDepth}")
+                return Pair(bestCandidate.altSetting, bestCandidate.bitDepth)
+            }
+        }
+
         if (parsedAltSettings.isEmpty()) {
             val info = cachedDeviceInfo ?: return Pair(1, 16)
             return Pair(info.bestAltSetting, info.bestBitDepth)
@@ -587,6 +800,21 @@ class UsbAudioDevice private constructor(private val context: Context) {
         return best
     }
 
+    private fun isPacketSizeSufficient(
+        maxPacketSize: Int,
+        sampleRateHz: Int,
+        channels: Int,
+        bitDepth: Int,
+        interval: Int,
+    ): Boolean {
+        if (maxPacketSize <= 0 || sampleRateHz <= 0) return true
+        val bytesPerFrame = ((bitDepth + 7) / 8) * channels
+        val microframes = if (interval > 1) 1 shl (interval - 1).coerceAtMost(4) else 1
+        val maxFramesPerPacket = ((sampleRateHz + 7999) / 8000) * microframes + 1
+        val requiredBytes = maxFramesPerPacket * bytesPerFrame
+        return maxPacketSize >= requiredBytes
+    }
+
     private var cachedSupportedRates: List<Int> = emptyList()
 
     /**
@@ -599,6 +827,8 @@ class UsbAudioDevice private constructor(private val context: Context) {
         parsedClockSourceIds = emptyList()
         parsedClockSelectorId = -1
         parsedClockSelectorPins = emptyList()
+        detailedAltSettings = emptyList()
+        controlInterfaceId = 0
         activeClockSourceId = -1
         claimedInterface?.let { iface ->
             connection?.releaseInterface(iface)
@@ -634,7 +864,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
         val rangeBuf = ByteArray(258)
         val stopOnFirstHit = parsedClockSourceIds.size <= 1
         for (csId in candidateIds) {
-            val wIndex = (csId shl 8) or 0
+            val wIndex = (csId shl 8) or controlInterfaceId
             val ret = conn.controlTransfer(
                 0xA1,
                 0x02,   // GET_RANGE
@@ -772,7 +1002,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
         if (pinZeroIndex < 0) return
         val pinNumber = (pinZeroIndex + 1).toByte() // UAC2 Clock Selector pins are 1-based
         val pinData = byteArrayOf(pinNumber)
-        val wIndex = (parsedClockSelectorId shl 8) or 0
+        val wIndex = (parsedClockSelectorId shl 8) or controlInterfaceId
         val ret = conn.controlTransfer(
             0x21,
             0x01,   // SET_CUR
@@ -821,7 +1051,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
 
         for (csId in clockSourceIds) {
             selectClockSelectorPinIfNeeded(conn, csId)
-            val wIndex = (csId shl 8) or 0  // entityId << 8 | audioControlInterface(0)
+            val wIndex = (csId shl 8) or controlInterfaceId  // entityId << 8 | controlInterfaceId
             val ret = conn.controlTransfer(
                     0x21,    // bmRequestType: Host-to-Device, Class, Interface
                     0x01,    // bRequest: SET_CUR
@@ -841,27 +1071,46 @@ class UsbAudioDevice private constructor(private val context: Context) {
         // UAC 1.0 fallback: Endpoint SAMPLING_FREQ_CONTROL (bmRequestType=0x22, bRequest=0x01, wValue=0x0100)
         val epOut = cachedDeviceInfo?.endpointOutAddress ?: -1
         if (epOut > 0) {
-            val uac1Data = byteArrayOf(
+            val uac1Data3 = byteArrayOf(
                 (sampleRateHz and 0xFF).toByte(),
                 ((sampleRateHz shr 8) and 0xFF).toByte(),
                 ((sampleRateHz shr 16) and 0xFF).toByte(),
             )
-            val ret = conn.controlTransfer(
+            var ret = conn.controlTransfer(
                 0x22,
                 0x01,
                 0x0100,
                 epOut,
-                uac1Data,
-                uac1Data.size,
+                uac1Data3,
+                uac1Data3.size,
                 1000,
             )
+            if (ret < 0) {
+                ret = conn.controlTransfer(
+                    0x22,
+                    0x01,
+                    0x0100,
+                    epOut,
+                    data,
+                    data.size,
+                    1000,
+                )
+            }
             if (ret >= 0) {
                 Log.i(TAG, "setSampleRate($sampleRateHz Hz): SUCCESS via UAC1 endpoint 0x${epOut.toString(16)}")
                 return true
             }
         }
 
-        Log.w(TAG, "setSampleRate($sampleRateHz Hz): all clock source IDs failed, DAC may auto-detect")
+        // If SET_CUR was rejected but the hardware clock is already running at requested rate
+        // (common on auto-switching or fixed-rate DACs), treat as success.
+        val currentRate = readSampleRate()
+        if (currentRate == sampleRateHz) {
+            Log.i(TAG, "setSampleRate($sampleRateHz Hz): DAC clock already at requested rate ($currentRate Hz)")
+            return true
+        }
+
+        Log.w(TAG, "setSampleRate($sampleRateHz Hz): all clock source IDs failed (currentRate=$currentRate), DAC may auto-detect")
         return false
     }
 
@@ -881,7 +1130,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
             if (isEmpty()) addAll(listOf(0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x28, 0x29))
         }.distinct()
         for (csId in clockSourceIds) {
-            val wIndex = (csId shl 8) or 0
+            val wIndex = (csId shl 8) or controlInterfaceId
             val ret = conn.controlTransfer(
                     0xA1,    // bmRequestType: Device-to-Host, Class, Interface
                     0x01,    // bRequest: GET_CUR (actually CUR is 0x01 for both)
@@ -904,21 +1153,23 @@ class UsbAudioDevice private constructor(private val context: Context) {
 
         val epOut = cachedDeviceInfo?.endpointOutAddress ?: -1
         if (epOut > 0) {
-            val uac1Data = ByteArray(3)
-            val ret = conn.controlTransfer(
-                0xA2,
-                0x81, // UAC1 GET_CUR
-                0x0100,
-                epOut,
-                uac1Data,
-                uac1Data.size,
-                1000,
-            )
-            if (ret >= 3) {
-                val rate = readLeInt24(uac1Data, 0)
-                if (rate in 8000..1536000) {
-                    Log.i(TAG, "readSampleRate: UAC1 endpoint 0x${epOut.toString(16)} returned $rate Hz")
-                    return rate
+            for (req in intArrayOf(0x81, 0x01)) {
+                val uac1Data = ByteArray(3)
+                val ret = conn.controlTransfer(
+                    0xA2,
+                    req, // UAC1 GET_CUR (0x81 or 0x01)
+                    0x0100,
+                    epOut,
+                    uac1Data,
+                    uac1Data.size,
+                    1000,
+                )
+                if (ret >= 3) {
+                    val rate = readLeInt24(uac1Data, 0)
+                    if (rate in 8000..1536000) {
+                        Log.i(TAG, "readSampleRate: UAC1 endpoint 0x${epOut.toString(16)} (req=0x${req.toString(16)}) returned $rate Hz")
+                        return rate
+                    }
                 }
             }
         }
@@ -943,7 +1194,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
         val clockSourceIds = if (detectedId > 0) intArrayOf(detectedId)
                 else intArrayOf(0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x28, 0x29)
         for (csId in clockSourceIds) {
-            val wIndex = (csId shl 8) or 0
+            val wIndex = (csId shl 8) or controlInterfaceId
             val ret = conn.controlTransfer(
                     0xA1,    // bmRequestType: Device-to-Host, Class, Interface
                     0x01,    // bRequest: GET_CUR
@@ -970,33 +1221,56 @@ class UsbAudioDevice private constructor(private val context: Context) {
     fun setAltSetting(altSetting: Int): Boolean {
         val conn = connection ?: return false
         val device = currentDevice ?: return false
+        val targetIfaceId = cachedDeviceInfo?.interfaceId ?: -1
 
-        // Find the UsbInterface with the matching alt setting
+        // 1. Try matching the exact AudioStreaming interface claimed for playback
+        if (targetIfaceId >= 0) {
+            for (i in 0 until device.interfaceCount) {
+                val iface = device.getInterface(i)
+                if (iface.id == targetIfaceId &&
+                    iface.interfaceClass == UsbConstants.USB_CLASS_AUDIO &&
+                    iface.interfaceSubclass == 2 &&
+                    iface.alternateSetting == altSetting) {
+                    val result = conn.setInterface(iface)
+                    Log.i(TAG, "setAltSetting($altSetting) on playback iface $targetIfaceId: $result " +
+                            "(endpoints=${iface.endpointCount})")
+                    return result
+                }
+            }
+        }
+
+        // 2. Try any AudioStreaming interface matching alt setting that has an OUT endpoint
+        for (i in 0 until device.interfaceCount) {
+            val iface = device.getInterface(i)
+            if (iface.interfaceClass == UsbConstants.USB_CLASS_AUDIO &&
+                iface.interfaceSubclass == 2 &&
+                iface.alternateSetting == altSetting) {
+                val hasOut = (0 until iface.endpointCount).any {
+                    val ep = iface.getEndpoint(it)
+                    ep.type == UsbConstants.USB_ENDPOINT_XFER_ISOC && ep.direction == UsbConstants.USB_DIR_OUT
+                }
+                if (hasOut) {
+                    val result = conn.setInterface(iface)
+                    Log.i(TAG, "setAltSetting($altSetting) on OUT iface ${iface.id}: $result " +
+                            "(endpoints=${iface.endpointCount})")
+                    return result
+                }
+            }
+        }
+
+        // 3. Fallback: try any AudioStreaming interface with matching alt
         for (i in 0 until device.interfaceCount) {
             val iface = device.getInterface(i)
             if (iface.interfaceClass == UsbConstants.USB_CLASS_AUDIO &&
                 iface.interfaceSubclass == 2 &&
                 iface.alternateSetting == altSetting) {
                 val result = conn.setInterface(iface)
-                Log.i(TAG, "setAltSetting($altSetting) via Java API: $result " +
-                        "(iface id=${iface.id}, endpoints=${iface.endpointCount})")
+                Log.i(TAG, "setAltSetting($altSetting) fallback on iface ${iface.id}: $result")
                 return result
             }
         }
 
-        Log.w(TAG, "setAltSetting($altSetting): no matching UsbInterface found, " +
-                "trying all AudioStreaming interfaces...")
-
-        // Fallback: try any AudioStreaming interface with matching alt
-        for (i in 0 until device.interfaceCount) {
-            val iface = device.getInterface(i)
-            if (iface.interfaceClass == UsbConstants.USB_CLASS_AUDIO &&
-                iface.interfaceSubclass == 2) {
-                Log.d(TAG, "  interface $i: id=${iface.id} alt=${iface.alternateSetting} " +
-                        "endpoints=${iface.endpointCount}")
-            }
-        }
-
+        Log.w(TAG, "setAltSetting($altSetting): no matching UsbInterface found")
         return false
     }
 

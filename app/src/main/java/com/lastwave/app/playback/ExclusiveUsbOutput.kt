@@ -445,11 +445,17 @@ class ExclusiveUsbOutput @Inject constructor(
         rateOverrideHz: Int? = null,
     ): Boolean {
         val manager = appContext.getSystemService(Context.USB_SERVICE) as UsbManager
-        val usbDevice = manager.deviceList.values.firstOrNull { dev ->
-            (0 until dev.interfaceCount).any {
-                dev.getInterface(it).interfaceClass == UsbConstants.USB_CLASS_AUDIO
-            }
-        } ?: return failLocked("no USB audio device")
+        val usbDevice = usbAudio.findUsbAudioDevice()
+            ?: manager.deviceList.values.firstOrNull { dev ->
+                (0 until dev.interfaceCount).any {
+                    val iface = dev.getInterface(it)
+                    iface.interfaceClass == UsbConstants.USB_CLASS_AUDIO && iface.interfaceSubclass == 2
+                }
+            } ?: manager.deviceList.values.firstOrNull { dev ->
+                (0 until dev.interfaceCount).any {
+                    dev.getInterface(it).interfaceClass == UsbConstants.USB_CLASS_AUDIO
+                }
+            } ?: return failLocked("no USB audio device")
         if (!manager.hasPermission(usbDevice)) return failLocked("USB permission missing")
 
         val bits = if (sourceBits > 0) sourceBits else (if (floatSource) 24 else 16)
@@ -501,9 +507,23 @@ class ExclusiveUsbOutput @Inject constructor(
             }
         }
 
-        var (alt, wireBits) = usbAudio.findAltSettingForBitDepth(effectiveBits)
+        var (alt, wireBits) = usbAudio.findAltSettingForBitDepth(effectiveBits, effectiveRate, channelCount)
         var rateSetBefore = usbAudio.setSampleRate(effectiveRate)
         if (!usbAudio.setAltSetting(alt)) return failLocked("setAltSetting $alt failed")
+
+        // Allow DAC PLL to stabilize and verify Clock Valid if supported by the DAC
+        var clockValid = false
+        for (i in 0 until CLOCK_VALID_TRIES) {
+            if (usbAudio.readClockValid()) {
+                clockValid = true
+                break
+            }
+            runCatching { Thread.sleep(CLOCK_VALID_STEP_MS) }
+        }
+        if (!clockValid) {
+            runCatching { Thread.sleep(PLL_SETTLE_MS) }
+        }
+
         var reported = usbAudio.readSampleRate()
         if (!rateSetBefore || (reported > 0 && reported != effectiveRate)) {
             rateSetBefore = usbAudio.setSampleRate(effectiveRate)
@@ -536,7 +556,7 @@ class ExclusiveUsbOutput @Inject constructor(
             effectiveFloatSource = true
             effectiveEncoding = C.ENCODING_PCM_FLOAT
             autoNegotiatedFallback = true
-            val updatedAlt = usbAudio.findAltSettingForBitDepth(effectiveBits)
+            val updatedAlt = usbAudio.findAltSettingForBitDepth(effectiveBits, effectiveRate, channelCount)
             if (updatedAlt.first != alt) {
                 if (usbAudio.setAltSetting(updatedAlt.first)) {
                     alt = updatedAlt.first
@@ -551,9 +571,20 @@ class ExclusiveUsbOutput @Inject constructor(
             .firstOrNull {
                 it.interfaceClass == UsbConstants.USB_CLASS_AUDIO &&
                     it.interfaceSubclass == 2 &&
+                    it.id == info.interfaceId &&
                     it.alternateSetting == alt &&
                     it.endpointCount > 0
-            }
+            } ?: (0 until usbDevice.interfaceCount)
+                .map { usbDevice.getInterface(it) }
+                .firstOrNull {
+                    it.interfaceClass == UsbConstants.USB_CLASS_AUDIO &&
+                        it.interfaceSubclass == 2 &&
+                        it.alternateSetting == alt &&
+                        (0 until it.endpointCount).any { e ->
+                            val ep = it.getEndpoint(e)
+                            ep.type == UsbConstants.USB_ENDPOINT_XFER_ISOC && ep.direction == UsbConstants.USB_DIR_OUT
+                        }
+                }
         val selectedOut = selected?.let { iface ->
             (0 until iface.endpointCount).map { iface.getEndpoint(it) }
                 .firstOrNull {
@@ -619,6 +650,9 @@ class ExclusiveUsbOutput @Inject constructor(
         val volumeControl = UacFeatureVolume(info.connection, controlId)
         featureVolume = volumeControl
         hardwareVolume = volumeControl.attach()
+        if (hardwareVolume) {
+            volumeControl.unmute()
+        }
         Log.i(
             TAG,
             "decent USB started ${usbDevice.productName} ${sampleRate}Hz " +
@@ -627,8 +661,19 @@ class ExclusiveUsbOutput @Inject constructor(
         )
 
         ensureVolumeObserverLocked()
-        rememberStreamGain(readStreamMusicGain())
-        listeningGain = listeningGainForDac()
+        val rawGain = readStreamMusicGain()
+        val safeGain = if (rawGain == null || rawGain <= 0.001f) {
+            if (lastNonMaxListeningGain.isFinite() && lastNonMaxListeningGain > 0.01f) {
+                Log.i(TAG, "Android STREAM_MUSIC reported zero during USB attach; preserving last listening gain $lastNonMaxListeningGain")
+                lastNonMaxListeningGain
+            } else {
+                rawGain ?: 0.8f
+            }
+        } else {
+            rawGain
+        }
+        rememberStreamGain(safeGain)
+        listeningGain = safeGain
         lastAppliedCombined = Float.NaN
         applyVolumeLocked()
         Log.i(
@@ -689,7 +734,13 @@ class ExclusiveUsbOutput @Inject constructor(
 
     private fun listeningGainForDac(): Float {
         ignoreStreamMusicMax = false
-        return readStreamMusicGain() ?: listeningGain
+        val current = readStreamMusicGain()
+        if (current == null || current <= 0.001f) {
+            if (lastNonMaxListeningGain.isFinite() && lastNonMaxListeningGain > 0.01f) {
+                return lastNonMaxListeningGain
+            }
+        }
+        return current ?: listeningGain
     }
 
     private fun syncListeningGainLocked() {
@@ -721,7 +772,13 @@ class ExclusiveUsbOutput @Inject constructor(
         stopWriterLocked()
         writerStop = false
         flushRequested = false
-        val thread = Thread({ writeLoop(target) }, "ExclusiveUsbWriter")
+        val thread = Thread(
+            {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO)
+                writeLoop(target)
+            },
+            "ExclusiveUsbWriter",
+        )
         writer = thread
         thread.start()
     }
