@@ -500,6 +500,16 @@ class MusicPlayer @Inject constructor(
      */
     private val knownDurations = ConcurrentHashMap<String, Long>()
 
+    /**
+     * Media id of the item that produced the currently published
+     * [MusicPlayerState.durationMs]. A published duration is only reusable while
+     * this still matches the item playing: without it, the outgoing track's
+     * length became the incoming track's seek-bar ceiling *and* its crossfade
+     * timer, which handed off to the next item seconds into a full-length track.
+     * Written and read on the main thread alongside the state it describes.
+     */
+    private var durationOwnerMediaId: String? = null
+
     private val mediaCache: Cache by lazy {
         val cacheDir = java.io.File(appContext.cacheDir, "media_stream_cache")
         // Bounded playback buffer, not an offline library. LRU eviction keeps
@@ -1695,6 +1705,7 @@ class MusicPlayer @Inject constructor(
                     durationMs = selectedTrack.durationMs ?: findKnownDuration(selectedTrack) ?: 0L,
                     sourceLabel = sourceLabel, isEndlessQueue = endlessDiscover,
                     shuffleEnabled = startShuffled, error = null)
+                durationOwnerMediaId = selectedTrack.mediaIdKey()
                 castPlayback?.load(_state.value)
             }
             return
@@ -1734,6 +1745,7 @@ class MusicPlayer @Inject constructor(
                 shuffleEnabled = if (playerDelegate.isInitialized()) player.shuffleModeEnabled else startShuffled,
                 repeatMode = player.repeatMode,
             )
+            durationOwnerMediaId = selectedTrack.mediaIdKey()
             persistPlaybackSession()
         }
         playRequest = applicationScope.launch(Dispatchers.IO) {
@@ -2188,6 +2200,21 @@ class MusicPlayer @Inject constructor(
                 playheadMoving = false
                 return dur
             }
+            // IDLE, or the player is still holding the previous item while the
+            // queue has already moved on. Nothing is rendering, so the playhead
+            // must not fall through to the wall clock below: that clock keeps
+            // counting whenever _state.isPlaying is true, and it is held true on
+            // purpose across resolve/buffer windows so a locked screen does not
+            // drop its wake lock. The two together made the seek bar run
+            // forward through a stall or a track transition - the "playing while
+            // buffering" report. Freeze here instead; the real position resumes
+            // as soon as the item matches again.
+            //
+            // USB-exclusive output is excluded above and keeps its own stream
+            // clock, so bit-perfect playback is untouched by this.
+            playheadMoving = false
+            playheadWallMs = now
+            return playheadPosMs
         }
         if (!playing) {
             if (playheadMoving) {
@@ -2329,6 +2356,12 @@ class MusicPlayer @Inject constructor(
         // container duration alone means TIME_UNSET streams (YouTube WebM/MP4
         // takes 30-40s to parse) never arm. Fall back to the seeded /
         // resolve-time duration also used by the progress bar.
+        //
+        // A window opened off a duration that belongs to ANOTHER track is worse
+        // than no window at all: `remaining` crosses its threshold seconds into
+        // a full-length track and the hand-off abandons the rest of it. So
+        // effectiveDuration returns 0 here rather than the outgoing track's
+        // length, and this track simply idles until its own duration is known.
         val timingDurationMs = player.duration.takeIf { it > 0L }
             ?: effectiveDuration(player.duration, player, _state.value.durationMs).takeIf { it > 0L }
             ?: return false
@@ -5831,10 +5864,15 @@ class MusicPlayer @Inject constructor(
     }
 
     /**
-     * Best-known duration for the given item: exact ExoPlayer value when
-     * available, otherwise the resolve-time seed, otherwise the previous UI
-     * value. Never returns 0 while a seed exists, so a slow-to-parse stream
-     * can't zero out (and freeze) the progress bar mid-track.
+     * Best-known duration for the item the player currently holds, applied
+     * through [selectDuration] so a previous track's length can never be reused
+     * as this one's denominator or crossfade timer.
+     *
+     * Returns 0 while nothing trustworthy is known, which is the honest answer:
+     * a stream whose container has not parsed yet has no length, and the caller
+     * shows no denominator rather than the outgoing track's. Reuse across
+     * re-reads of the *same* item is still allowed, so a mid-track rebuffer
+     * cannot freeze the progress bar at 0:00.
      */
     private fun effectiveDuration(
         playerDurationMs: Long,
@@ -5851,17 +5889,28 @@ class MusicPlayer @Inject constructor(
             rememberKnownDuration(current?.localConfiguration?.customCacheKey, playerDurationMs)
             rememberKnownDuration(current?.mediaId, playerDurationMs)
             rememberTrackDuration(currentTrack, playerDurationMs)
+            durationOwnerMediaId = current?.mediaId
             return playerDurationMs
         }
-        val seeded = current?.localConfiguration?.customCacheKey?.let(knownDurations::get)
+        // Everything below is keyed to the item in hand, so it is trustworthy
+        // even across a transition. `previousMs` deliberately is not: that is
+        // whatever was published last, which after a track change describes a
+        // different song entirely.
+        val knownForCurrentItem = current?.localConfiguration?.customCacheKey?.let(knownDurations::get)
             ?: current?.mediaId?.let(knownDurations::get)
             ?: findKnownDuration(currentTrack)
             ?: current?.mediaMetadata?.extras?.getLong("durationMs")?.takeIf { it > 0L }
             ?: currentTrack?.durationMs?.takeIf { it > 0L }
             ?: current?.localConfiguration?.customCacheKey?.let(preparedStreams::get)?.durationMs
-            ?: previousMs.takeIf { it > 0L }
-            ?: _state.value.durationMs.takeIf { it > 0L }
-        return seeded ?: 0L
+        return selectDuration(
+            DurationRequest(
+                playerMs = playerDurationMs,
+                knownForCurrentItemMs = knownForCurrentItem?.coerceAtLeast(0L) ?: 0L,
+                publishedMs = previousMs,
+                publishedBelongsToCurrentItem = current?.mediaId != null &&
+                    durationOwnerMediaId == current.mediaId,
+            ),
+        )
     }
 
     private fun findPreparedStreamFor(
@@ -6173,6 +6222,7 @@ class MusicPlayer @Inject constructor(
             repeatMode = session.repeatMode,
             speed = session.speed,
         )
+        durationOwnerMediaId = restoredQueue[restoredIndex].mediaIdKey()
         pendingRestoredSession = session.copy(
             queue = restoredQueue,
             currentIndex = restoredIndex,
