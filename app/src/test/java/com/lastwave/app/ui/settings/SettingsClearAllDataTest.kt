@@ -70,6 +70,7 @@ class SettingsClearAllDataTest {
     private val downloadManager = mockk<TrackDownloadManager>(relaxed = true)
     private val fileExportHelper = mockk<com.lastwave.app.util.FileExportHelper>(relaxed = true)
     private val scrobblerPreferences = mockk<com.lastwave.app.data.local.ScrobblerPreferences>(relaxed = true)
+    private val discordPresencePreferences = mockk<com.lastwave.app.presence.DiscordPresencePreferences>(relaxed = true)
     private val equalizerPreferences = mockk<com.lastwave.app.data.local.EqualizerPreferences>(relaxed = true)
     private val loudnessPrefs = mockk<com.lastwave.app.playback.LoudnessPrefs>(relaxed = true)
     private val ytAuthManager = mockk<com.lastwave.app.data.ytmusic.YtMusicAuthManager>(relaxed = true)
@@ -95,6 +96,7 @@ class SettingsClearAllDataTest {
         every { settingsPreferences.settings } returns MutableStateFlow(MiscSettings())
         every { playlistRepository.playlists } returns MutableStateFlow(emptyList())
         every { scrobblerPreferences.settings } returns MutableStateFlow(ScrobblerSettings())
+        every { discordPresencePreferences.enabled } returns MutableStateFlow(true)
         every { equalizerPreferences.settings } returns MutableStateFlow(EqualizerSettings())
         every { loudnessPrefs.settings } returns MutableStateFlow(LoudnessSettings())
         every { ytAuthManager.connection } returns MutableStateFlow(YtConnection.DISCONNECTED)
@@ -132,6 +134,7 @@ class SettingsClearAllDataTest {
             downloadManager = downloadManager,
             fileExportHelper = fileExportHelper,
             scrobblerPreferences = scrobblerPreferences,
+            discordPresencePreferences = discordPresencePreferences,
             equalizerPreferences = equalizerPreferences,
             loudnessPrefs = loudnessPrefs,
             ytAuthManager = ytAuthManager,
