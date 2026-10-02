@@ -702,47 +702,11 @@ fun PlayerHost(
                 )
                 
                 // Sleep Timer Button
-                AnimatedVisibility(
-                    visible = playbackState.sleepTimerRemainingMs != null,
-                    enter = fadeIn(tween(150)),
-                    exit = fadeOut(tween(150)),
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = if (hasBottomNavigation) 160.dp else 80.dp),
-                ) {
-                    Box {
-                        androidx.compose.material3.Surface(
-                            shape = androidx.compose.foundation.shape.CircleShape,
-                            color = androidx.compose.material3.MaterialTheme.colorScheme.secondaryContainer,
-                            shadowElevation = 6.dp,
-                            modifier = Modifier
-                                .height(48.dp)
-                                .defaultMinSize(minWidth = 48.dp)
-                                .clickable(onClick = { viewModel.player.cycleSleepTimer() })
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center,
-                                modifier = Modifier.padding(horizontal = 12.dp)
-                            ) {
-                                androidx.compose.material3.Icon(
-                                    imageVector = androidx.compose.material.icons.Icons.Filled.Timer,
-                                    contentDescription = "Sleep Timer",
-                                    tint = androidx.compose.material3.MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                if (playbackState.sleepTimerRemainingMs != null) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    val minutes = (playbackState.sleepTimerRemainingMs!! / 60000).toInt()
-                                    val seconds = ((playbackState.sleepTimerRemainingMs!! % 60000) / 1000).toInt()
-                                    androidx.compose.material3.Text(
-                                        text = String.format("%02d:%02d", minutes, seconds),
-                                        style = androidx.compose.material3.MaterialTheme.typography.labelLarge,
-                                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSecondaryContainer,
-                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-                    }
+                if (!expanded) {
+                    DraggableSleepTimerOverlay(
+                        sleepTimerRemainingMs = playbackState.sleepTimerRemainingMs,
+                        onCycleTimer = { viewModel.player.cycleSleepTimer() },
+                    )
                 }
             }
             if (activeDownloads.isNotEmpty() && !expanded) {
