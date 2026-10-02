@@ -65,6 +65,14 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             .onFailure { android.util.Log.e(STARTUP_TAG, "Splash compatibility layer unavailable", it) }
             .getOrNull()
         super.onCreate(savedInstanceState)
+        // The Discord Social SDK keeps a reference to an engine Activity for the
+        // screens it can open (OAuth in a Custom Tab, voice call UI). Presence
+        // itself is published from DiscordPresenceManager over the SDK's bound
+        // service, but registering the Activity is what the SDK expects from a
+        // host app and costs one static assignment. LastWave never authorizes,
+        // so those screens are never reached.
+        runCatching { com.discord.socialsdk.DiscordSocialSdkInit.setEngineActivity(this) }
+            .onFailure { android.util.Log.w(STARTUP_TAG, "Discord engine activity not registered", it) }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             // Adopt choices made via system Settings -> App languages so the
             // in-app picker shows the truth. The framework recreates us itself.

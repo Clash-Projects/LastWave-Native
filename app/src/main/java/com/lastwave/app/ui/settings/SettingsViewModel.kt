@@ -95,6 +95,8 @@ class SettingsViewModel @Inject constructor(
     private val downloadManager: TrackDownloadManager,
     private val fileExportHelper: FileExportHelper,
     private val scrobblerPreferences: ScrobblerPreferences,
+    private val discordPresencePreferences: com.lastwave.app.presence.DiscordPresencePreferences,
+    private val discordPresenceManager: dagger.Lazy<com.lastwave.app.presence.DiscordPresenceManager>,
     private val equalizerPreferences: com.lastwave.app.data.local.EqualizerPreferences,
     private val loudnessPrefs: com.lastwave.app.playback.LoudnessPrefs,
     private val ytAuthManager: com.lastwave.app.data.ytmusic.YtMusicAuthManager,
@@ -131,6 +133,25 @@ class SettingsViewModel @Inject constructor(
     val syncedPlaylistIds: StateFlow<Set<Long>?> = ytMusicPreferences.syncedPlaylistIds
         .withSettingsFallback("YouTube playlist selection", null)
         .stateIn(viewModelScope, SettingsSharing, null)
+    /**
+     * Discord Rich Presence switch. Defaults ON (see
+     * [com.lastwave.app.presence.DiscordPresencePreferences.enabled]); turning it
+     * off hides the card immediately rather than waiting for the next playback
+     * change, and turning it on publishes the current track at once.
+     */
+    val discordPresenceEnabled: StateFlow<Boolean> = discordPresencePreferences.enabled
+        .withSettingsFallback("Discord presence preference", true)
+        .stateIn(viewModelScope, SettingsSharing, true)
+
+    fun setDiscordPresenceEnabled(enabled: Boolean) {
+        launchSettingsAction("update Discord presence") {
+            discordPresencePreferences.setEnabled(enabled)
+            // The switch is a promise about what is visible *now*, not from the
+            // next track: clear or publish immediately instead of letting the
+            // manager's throttled heartbeat decide.
+            discordPresenceManager.get().refresh()
+        }
+    }
     val ytAccountPlaylists = ytMusicLibraryManager.accountPlaylists
     val hiddenYtLibraryPlaylistIds: StateFlow<Set<String>> = ytMusicPreferences.hiddenLibraryPlaylistIds
         .withSettingsFallback("YouTube library visibility", emptySet())

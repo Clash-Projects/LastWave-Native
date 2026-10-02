@@ -31,6 +31,7 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
     @Inject lateinit var ytMusicHistorySyncManager: dagger.Lazy<com.lastwave.app.data.ytmusic.YtMusicHistorySyncManager>
     @Inject lateinit var likedSongsManager: dagger.Lazy<com.lastwave.app.data.playlist.LikedSongsManager>
     @Inject lateinit var trackDownloadManager: dagger.Lazy<com.lastwave.app.data.download.TrackDownloadManager>
+    @Inject lateinit var discordPresenceManager: dagger.Lazy<com.lastwave.app.presence.DiscordPresenceManager>
     @Inject lateinit var appLocaleManager: dagger.Lazy<com.lastwave.app.util.AppLocaleManager>
 
     override fun attachBaseContext(base: Context) {
@@ -109,6 +110,15 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
             delay(OPTIONAL_STARTUP_DELAY_MS)
             runCatching { trackDownloadManager.get().syncDownloadsFromStorage() }
                 .onFailure { android.util.Log.e("LastWaveStartup", "Download sync startup failed", it) }
+        }
+        // Discord Rich Presence (no-ops unless the switch is on AND the Discord
+        // app is installed and signed in). Observes playback state only; it can
+        // never affect audio delivery, and every failure stays contained here so
+        // a missing Discord install cannot reach startup.
+        applicationScope.launch {
+            delay(OPTIONAL_STARTUP_DELAY_MS)
+            runCatching { discordPresenceManager.get().start() }
+                .onFailure { android.util.Log.e("LastWaveStartup", "Discord presence startup disabled", it) }
         }
         // A widget is a separate RemoteViews surface, so it needs an explicit
         // refresh whenever LastWave's live theme changes. The widget's palette

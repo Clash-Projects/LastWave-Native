@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.FormatSize
@@ -801,6 +802,23 @@ object SettingsSearchIndex {
                     parentTab = SettingsTab.LAST_FM,
                     section = "Integrations / Scrobbling",
                     type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "discord.presence",
+                    title = "Discord Rich Presence",
+                    subtitle = "Show the playing track, quality and cover on your Discord profile",
+                    keywords = listOf(
+                        "discord", "rich presence", "discord rpc", "now playing discord",
+                        "discord status", "listening to", "presence", "show what im playing"
+                    ),
+                    icon = Icons.Filled.Public,
+                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.LAST_FM,
+                    section = "Integrations / Scrobbling",
+                    type = EntryType.TOGGLE,
                 )
             )
 

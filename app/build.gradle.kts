@@ -259,6 +259,18 @@ dependencies {
     // decoders remain as automatic fallbacks.
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.2.1+1")
 
+    // Discord Rich Presence. Discord's own SDK, downloaded from the Developer
+    // Portal (Applications -> your app -> Social SDK -> Downloads) and vendored
+    // here rather than resolved from a repository: com.discord:* is not
+    // published to Maven Central, and the download is gated behind a portal
+    // login, so it cannot be fetched by a clone or by CI. Debug variants of
+    // the archive are ~290 MB; this is the release build.
+    //
+    // The AAR carries the Java API (com.discord.socialsdk.DiscordRpcClient)
+    // plus libdiscord_partner_sdk.so for every ABI, and ships consumer
+    // ProGuard rules, so presence stays intact under R8.
+    implementation(files("libs/discord_partner_sdk.aar"))
+
     // Core library desugaring required by the FFmpeg decoder AAR metadata.
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 

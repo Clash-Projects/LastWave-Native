@@ -4,6 +4,12 @@
 *.ap_
 *.aab
 
+# …except the Discord Social SDK, which is vendored on purpose. It is not on
+# Maven Central and the Developer Portal download needs a logged-in session, so
+# neither a fresh clone nor CI can fetch it; without this file the release build
+# (and every fork) fails to resolve the dependency in app/build.gradle.kts.
+!app/libs/discord_partner_sdk.aar
+
 # Files for the ART/Dalvik VM
 *.dex
 
