@@ -151,10 +151,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -1672,6 +1675,8 @@ private fun AddToPlaylistDialog(
 
 private enum class SeekDirection { REWIND, FORWARD }
 
+private const val HERO_FADE_FRACTION = 0.42f
+
 @Composable
 private fun FullPlayer(
     state: MusicPlayerState,
@@ -1982,14 +1987,6 @@ private fun FullPlayer(
                 )
                 if (showFullBleed) {
                     val density = LocalDensity.current
-                    // Dominant-derived solid the hero melts into. Darkened just enough
-                    // for white title/controls to stay legible while keeping hue,
-                    // so the eye can't find where art ends and background begins.
-                    val seamlessBase = androidx.compose.ui.graphics.lerp(
-                        ambientDeep,
-                        Color.Black,
-                        0.42f,
-                    )
                     // Square-capped hero: a tall container forces Crop to zoom and eat
                     // the sides (the "stretch"). Clamp measured height near square so
                     // side-crop stays minimal. Tall portrait canvas keeps full-page.
@@ -2008,34 +2005,6 @@ private fun FullPlayer(
                     val minPx = minOf(bgWidth * 0.92f, bgHeight * 0.50f)
                     val heroPx = measuredPx.coerceIn(minPx, maxPx).coerceAtLeast(1f)
                     val heroHeight = with(density) { heroPx.toDp() }
-                    // Melt foundation UNDER the hero: transparent where hero is opaque,
-                    // fully solid where hero has faded out. The hero's bottom overlay
-                    // fades toward exactly this colour, so there is never a hero-edge
-                    // line - just hue into hue.
-                    //
-                    // The ramp is keyed to heroPx, NOT to bgHeight. heroPx is capped by
-                    // bgWidth * 1.08f, which on a tall screen binds long before the old
-                    // fixed 0.62 stop and lands the hero's bottom edge near 0.50 *
-                    // bgHeight. The foundation was still only ~half opaque there while
-                    // the hero above it was already 100% seamlessBase, which drew a hard
-                    // horizontal seam straight across the artwork. Anchoring the solid
-                    // stop to the hero's own bottom makes the join exact at any height.
-                    val foundationSolidAt =
-                        (heroPx / bgHeight.coerceAtLeast(1f)).coerceIn(0.05f, 1f)
-                    val foundationScale = foundationSolidAt / 0.62f
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    0.00f to Color.Transparent,
-                                    0.30f * foundationScale to Color.Transparent,
-                                    0.50f * foundationScale to seamlessBase.copy(alpha = 0.55f),
-                                    foundationSolidAt to seamlessBase,
-                                    1.00f to seamlessBase,
-                                )
-                            )
-                    )
                     val lyricsCanvasBlurDp by animateDpAsState(
                         targetValue = if (currentTab == FullPlayerTab.LYRICS) 32.dp else 0.dp,
                         animationSpec = tween(350),
@@ -2059,13 +2028,6 @@ private fun FullPlayer(
                             .align(Alignment.TopStart)
                             .fillMaxWidth()
                             .height(heroHeight)
-                            // No offscreen compositing strategy here on purpose. The melt
-                            // used to be a BlendMode.DstIn drawWithContent mask on an
-                            // Offscreen graphicsLayer, which wrapped the motion artwork
-                            // TextureView in two nested saveLayers and underflowed the
-                            // canvas save stack ("Underflow in restore - more restores
-                            // than saves") on some GPUs. The identical image is now a
-                            // plain source-over pass at the bottom of this Box.
                             .then(
                                 if (lyricsCanvasBlurDp > 0.dp) {
                                     Modifier.blur(lyricsCanvasBlurDp)
@@ -2074,6 +2036,8 @@ private fun FullPlayer(
                                 }
                             ),
                     ) {
+                        // The cover art banner dissolves over its bottom HERO_FADE_FRACTION (42%)
+                        // into the underlying fluid/ambient backdrop via an offscreen DstIn blend mask.
                         if (heroCoverAlpha > 0.001f) {
                             ArtworkImage(
                                 name = track.title,
@@ -2083,7 +2047,34 @@ private fun FullPlayer(
                                 alignment = Alignment.TopCenter,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .graphicsLayer { alpha = heroCoverAlpha },
+                                    .graphicsLayer {
+                                        alpha = heroCoverAlpha
+                                        compositingStrategy = CompositingStrategy.Offscreen
+                                    }
+                                    .drawWithContent {
+                                        drawContent()
+                                        drawRect(
+                                            brush = Brush.verticalGradient(
+                                                colors = listOf(Color.Black, Color.Transparent),
+                                                startY = size.height * (1f - HERO_FADE_FRACTION),
+                                                endY = size.height,
+                                            ),
+                                            blendMode = BlendMode.DstIn,
+                                        )
+                                    },
+                            )
+                        }
+                        if (activeCanvas != null) {
+                            CanvasArtworkPlayer(
+                                canvas = activeCanvas,
+                                isPlaying = state.isPlaying,
+                                contentMode = CanvasContentMode.CROP,
+                                alignPortraitTop = true,
+                                bottomFade = HERO_FADE_FRACTION,
+                                onAspectRatioChanged = { canvasAspect = it },
+                                onRenderedChanged = { canvasRendered = it },
+                                pausedForTransition = shownDismissY > 0f || currentTab != FullPlayerTab.NOW_PLAYING,
+                                modifier = Modifier.fillMaxSize(),
                             )
                         }
                         // Top status bar vignette only (ensures system indicators remain legible over bright artwork)
@@ -2096,48 +2087,6 @@ private fun FullPlayer(
                                         0.00f to Color.Black.copy(alpha = 0.35f),
                                         0.60f to Color.Black.copy(alpha = 0.12f),
                                         1.00f to Color.Transparent,
-                                    )
-                                )
-                        )
-                        if (activeCanvas != null) {
-                            CanvasArtworkPlayer(
-                                canvas = activeCanvas,
-                                isPlaying = state.isPlaying,
-                                contentMode = CanvasContentMode.CROP,
-                                alignPortraitTop = true,
-                                onAspectRatioChanged = { canvasAspect = it },
-                                onRenderedChanged = { canvasRendered = it },
-                                pausedForTransition = shownDismissY > 0f || currentTab != FullPlayerTab.NOW_PLAYING,
-                                // No bottomFade here. It runs a second, differently-shaped
-                                // ramp (DST_IN over the canvas's own bottom slice) on top of
-                                // the hero melt, so animated art faded to a different curve
-                                // than the static cover. At 0 it is skipped entirely, the
-                                // outer melt gradient owns the fade for both, and the
-                                // saveLayer it needed - the underflow source behind the
-                                // "Underflow in restore" crash guard - never runs.
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
-                        // Melt + hue-tint in ONE source-over pass, replacing the old
-                        // BlendMode.DstIn mask. Alpha here is 1 - (old mask alpha) at the
-                        // exact same stop positions, painted toward the same seamlessBase
-                        // the artwork used to be erased into, so the rendered pixels are
-                        // unchanged — minus the offscreen RenderNode and saveLayer that
-                        // used to sit around the motion artwork TextureView.
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .fillMaxWidth()
-                                .height(heroHeight)
-                                .background(
-                                    Brush.verticalGradient(
-                                        0.00f to Color.Transparent,
-                                        0.52f to Color.Transparent,
-                                        0.66f to seamlessBase.copy(alpha = 0.08f),
-                                        0.78f to seamlessBase.copy(alpha = 0.34f),
-                                        0.88f to seamlessBase.copy(alpha = 0.70f),
-                                        0.95f to seamlessBase.copy(alpha = 0.92f),
-                                        1.00f to seamlessBase,
                                     )
                                 )
                         )
