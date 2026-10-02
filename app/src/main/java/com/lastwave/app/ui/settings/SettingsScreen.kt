@@ -221,7 +221,6 @@ import com.lastwave.app.ui.theme.ExpressivePillShape
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.DarkMode
-import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 private data class AccentPreset(val name: String, val hex: String)

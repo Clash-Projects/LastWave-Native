@@ -240,14 +240,11 @@ import com.lastwave.app.ui.theme.Backdrop
 import com.lastwave.app.ui.theme.rememberLayerBackdrop
 import android.graphics.Bitmap
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.graphics.scale
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
 import java.nio.IntBuffer
 import kotlin.time.Duration.Companion.seconds
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -721,10 +718,10 @@ fun PlayerHost(
                             horizontalArrangement = Arrangement.Center,
                             modifier = Modifier.padding(horizontal = 12.dp)
                         ) {
-                            androidx.compose.material3.Icon(
-                                imageVector = androidx.compose.material.icons.Icons.Filled.Timer,
+                            Icon(
+                                imageVector = Icons.Filled.Timer,
                                 contentDescription = "Sleep Timer",
-                                tint = androidx.compose.material3.MaterialTheme.colorScheme.onSecondaryContainer,
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
                                 modifier = Modifier.size(20.dp)
                             )
                             if (playbackState.sleepTimerRemainingMs != null) {
