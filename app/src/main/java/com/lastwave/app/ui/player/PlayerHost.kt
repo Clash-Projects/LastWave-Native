@@ -1704,12 +1704,20 @@ private fun FullPlayer(
     val isCanvasActive = canvasEnabled && canvas != null
     val showFullBleed = canvasFullBleedEnabled
     val showSleeveCanvas = isCanvasActive && !showFullBleed
-    val activeCanvas = remember(canvas, showFullBleed) {
-        val tall = canvas?.tallUrl
-        if (showFullBleed && canvas != null && !tall.isNullOrBlank()) {
-            canvas.copy(url = tall)
+    // activeCanvas is the single gate every render branch below keys off, so it also
+    // carries the Animated Album Canvas toggle. The ViewModel nulls canvasState
+    // asynchronously, so without this a disabled toggle still paints one frame of
+    // motion artwork over the cover.
+    val activeCanvas = remember(canvas, showFullBleed, canvasEnabled) {
+        if (!canvasEnabled) {
+            null
         } else {
-            canvas
+            val tall = canvas?.tallUrl
+            if (showFullBleed && canvas != null && !tall.isNullOrBlank()) {
+                canvas.copy(url = tall)
+            } else {
+                canvas
+            }
         }
     }
     var canvasAspect by remember(activeCanvas?.url) { mutableFloatStateOf(0f) }
@@ -2003,16 +2011,27 @@ private fun FullPlayer(
                     // Melt foundation UNDER the hero: transparent where hero is opaque,
                     // fully solid where hero has faded out. The hero's bottom overlay
                     // fades toward exactly this colour, so there is never a hero-edge
-                    // line — just hue into hue.
+                    // line - just hue into hue.
+                    //
+                    // The ramp is keyed to heroPx, NOT to bgHeight. heroPx is capped by
+                    // bgWidth * 1.08f, which on a tall screen binds long before the old
+                    // fixed 0.62 stop and lands the hero's bottom edge near 0.50 *
+                    // bgHeight. The foundation was still only ~half opaque there while
+                    // the hero above it was already 100% seamlessBase, which drew a hard
+                    // horizontal seam straight across the artwork. Anchoring the solid
+                    // stop to the hero's own bottom makes the join exact at any height.
+                    val foundationSolidAt =
+                        (heroPx / bgHeight.coerceAtLeast(1f)).coerceIn(0.05f, 1f)
+                    val foundationScale = foundationSolidAt / 0.62f
                     Box(
                         Modifier
                             .fillMaxSize()
                             .background(
                                 Brush.verticalGradient(
                                     0.00f to Color.Transparent,
-                                    0.30f to Color.Transparent,
-                                    0.50f to seamlessBase.copy(alpha = 0.55f),
-                                    0.62f to seamlessBase,
+                                    0.30f * foundationScale to Color.Transparent,
+                                    0.50f * foundationScale to seamlessBase.copy(alpha = 0.55f),
+                                    foundationSolidAt to seamlessBase,
                                     1.00f to seamlessBase,
                                 )
                             )
@@ -2022,11 +2041,19 @@ private fun FullPlayer(
                         animationSpec = tween(350),
                         label = "lyricsCanvasBlur",
                     )
+                    // Canvas wins over the static cover - never both. The cover is only a
+                    // loading / decode-error placeholder, so once the motion canvas reports a
+                    // real rendered frame (CanvasArtworkPlayer sets rendered from
+                    // onSurfaceTextureUpdated, i.e. after pixels exist) the cover fades out and
+                    // leaves the tree entirely. Both fade from the same trigger, so this is a
+                    // true crossfade with no gap: the cover fades out here while
+                    // CanvasArtworkPlayer fades itself in over the same window.
                     val canvasCrossfadeAlpha by animateFloatAsState(
                         targetValue = if (activeCanvas != null && canvasRendered) 1f else 0f,
                         animationSpec = tween(400),
                         label = "canvasCrossfadeAlpha",
                     )
+                    val heroCoverAlpha = if (activeCanvas == null) 1f else 1f - canvasCrossfadeAlpha
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopStart)
@@ -2047,14 +2074,18 @@ private fun FullPlayer(
                                 }
                             ),
                     ) {
-                        ArtworkImage(
-                            name = track.title,
-                            artist = track.artist,
-                            embeddedUrl = track.artworkUrl,
-                            fallbackIcon = Icons.Filled.MusicNote,
-                            alignment = Alignment.TopCenter,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        if (heroCoverAlpha > 0.001f) {
+                            ArtworkImage(
+                                name = track.title,
+                                artist = track.artist,
+                                embeddedUrl = track.artworkUrl,
+                                fallbackIcon = Icons.Filled.MusicNote,
+                                alignment = Alignment.TopCenter,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer { alpha = heroCoverAlpha },
+                            )
+                        }
                         // Top status bar vignette only (ensures system indicators remain legible over bright artwork)
                         Box(
                             modifier = Modifier
@@ -2074,18 +2105,17 @@ private fun FullPlayer(
                                 isPlaying = state.isPlaying,
                                 contentMode = CanvasContentMode.CROP,
                                 alignPortraitTop = true,
-                                // Lower than before: outer hero mask + bottom tint now own
-                                // the melt. Higher values double-darken animated art.
-                                bottomFade = 0.30f,
-                                bottomFadeFallbackColor = seamlessBase.toArgb(),
                                 onAspectRatioChanged = { canvasAspect = it },
                                 onRenderedChanged = { canvasRendered = it },
                                 pausedForTransition = shownDismissY > 0f || currentTab != FullPlayerTab.NOW_PLAYING,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .graphicsLayer {
-                                        alpha = canvasCrossfadeAlpha
-                                    },
+                                // No bottomFade here. It runs a second, differently-shaped
+                                // ramp (DST_IN over the canvas's own bottom slice) on top of
+                                // the hero melt, so animated art faded to a different curve
+                                // than the static cover. At 0 it is skipped entirely, the
+                                // outer melt gradient owns the fade for both, and the
+                                // saveLayer it needed - the underflow source behind the
+                                // "Underflow in restore" crash guard - never runs.
+                                modifier = Modifier.fillMaxSize(),
                             )
                         }
                         // Melt + hue-tint in ONE source-over pass, replacing the old
@@ -3809,22 +3839,38 @@ private fun PlayerArtwork(
     transformations: List<coil.transform.Transformation> = emptyList(),
     onAspectRatioChanged: (Float) -> Unit = {},
 ) {
+    // Same rule as the full-bleed hero: the canvas is the artwork, the static cover is
+    // only a loading / decode-error placeholder. Crossfade the cover out and drop it
+    // from the tree once the canvas has actually rendered, so the two are never both
+    // visible. With canvas == null this is exactly the old static-only behaviour.
+    var canvasRendered by remember(canvas?.url) { mutableStateOf(false) }
+    val canvasAlpha by animateFloatAsState(
+        targetValue = if (canvas != null && canvasRendered) 1f else 0f,
+        animationSpec = tween(400),
+        label = "sleeveCanvasAlpha",
+    )
+    val coverAlpha = if (canvas == null) 1f else 1f - canvasAlpha
     Box(modifier.clip(RoundedCornerShape(corner)).background(MaterialTheme.colorScheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
-        ArtworkImage(
-            name = track.title,
-            artist = track.artist,
-            embeddedUrl = track.artworkUrl,
-            fallbackIcon = Icons.Filled.MusicNote,
-            modifier = Modifier.fillMaxSize(),
-            decodeSizePx = decodeSizePx,
-            transformations = transformations,
-        )
+        if (coverAlpha > 0.001f) {
+            ArtworkImage(
+                name = track.title,
+                artist = track.artist,
+                embeddedUrl = track.artworkUrl,
+                fallbackIcon = Icons.Filled.MusicNote,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = coverAlpha },
+                decodeSizePx = decodeSizePx,
+                transformations = transformations,
+            )
+        }
         if (canvas != null) {
             CanvasArtworkPlayer(
                 canvas = canvas,
                 isPlaying = isPlaying,
                 pausedForTransition = pausedForTransition,
                 onAspectRatioChanged = onAspectRatioChanged,
+                onRenderedChanged = { canvasRendered = it },
                 contentMode = CanvasContentMode.CROP,
                 modifier = Modifier.fillMaxSize(),
             )
