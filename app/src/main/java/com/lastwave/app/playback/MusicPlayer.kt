@@ -1369,7 +1369,7 @@ class MusicPlayer @Inject constructor(
                             updateCrossfade(player.currentPosition.coerceAtLeast(0L))
                             cadenceMs = 50L
                         }
-                        if (!isCurrentMediaMatch(player, _state.value.current)) {
+                        if (!isCurrentMediaMatch(player, _state.value.current) && !player.isPlaying) {
                             _state.update { it.copy(sleepTimerRemainingMs = remaining?.coerceAtLeast(0)) }
                             cadenceMs = 60L
                         } else {
@@ -2164,6 +2164,15 @@ class MusicPlayer @Inject constructor(
     private fun isCurrentMediaMatch(player: Player, expected: PlayableTrack?): Boolean {
         if (expected == null) return false
         val currentItem = runCatching { player.currentMediaItem }.getOrNull() ?: return false
+
+        // Actively rendering audio is the authoritative source of playback truth
+        if (player.isPlaying) return true
+
+        val currentIndex = runCatching { player.currentMediaItemIndex }.getOrNull() ?: -1
+        if (currentIndex >= 0 && currentIndex == _state.value.currentIndex && currentIndex in 0 until player.mediaItemCount) {
+            return true
+        }
+
         val itemMediaId = currentItem.mediaId
         val expectedKey = expected.mediaIdKey()
         if (itemMediaId == expectedKey) return true
@@ -2182,10 +2191,16 @@ class MusicPlayer @Inject constructor(
             if (uriStr == expectedPlaybackUrl || uriStr == "file://$expectedPlaybackUrl") return true
         }
 
-        val itemTitle = currentItem.mediaMetadata.title?.toString()
-        val itemArtist = currentItem.mediaMetadata.artist?.toString()
-        if (!itemTitle.isNullOrBlank() && itemTitle.equals(expected.title, ignoreCase = true)) {
-            if (itemArtist.isNullOrBlank() || expected.artist.isBlank() || itemArtist.equals(expected.artist, ignoreCase = true)) {
+        val itemTitle = currentItem.mediaMetadata.title?.toString()?.trim()
+        val itemArtist = currentItem.mediaMetadata.artist?.toString()?.trim()
+        val expectedTitle = expected.title.trim()
+        val expectedArtist = expected.artist.trim()
+        if (!itemTitle.isNullOrBlank() && itemTitle.equals(expectedTitle, ignoreCase = true)) {
+            if (itemArtist.isNullOrBlank() || expectedArtist.isBlank() ||
+                itemArtist.equals(expectedArtist, ignoreCase = true) ||
+                itemArtist.contains(expectedArtist, ignoreCase = true) ||
+                expectedArtist.contains(itemArtist, ignoreCase = true)
+            ) {
                 return true
             }
         }
@@ -2228,7 +2243,7 @@ class MusicPlayer @Inject constructor(
         }
         if (!exclusiveUsbOutput.isActive() && playerDelegate.isInitialized()) {
             val playbackState = player.playbackState
-            val currentMediaMatch = isCurrentMediaMatch(player, _state.value.current)
+            val currentMediaMatch = isCurrentMediaMatch(player, _state.value.current) || player.isPlaying
             if (currentMediaMatch && (playbackState == Player.STATE_READY || playbackState == Player.STATE_BUFFERING)) {
                 val exoPos = player.currentPosition.coerceAtLeast(0L)
                 if (playbackState == Player.STATE_BUFFERING && playheadPosMs == 0L && exoPos > 1_500L) {
@@ -6408,7 +6423,7 @@ class MusicPlayer @Inject constructor(
         // TIME_UNSET (buffering / container not parsed yet): that reset froze
         // the bar at 0:00 and disabled seeking until the next event.
         val dur = effectiveDuration(player.duration, player, previous.durationMs)
-        val currentMediaMatch = isCurrentMediaMatch(player, previous.current)
+        val currentMediaMatch = isCurrentMediaMatch(player, previous.current) || player.isPlaying
         val pos = if (!exclusiveUsbOutput.isActive() && player.playbackState != Player.STATE_IDLE && currentMediaMatch) {
             settleSeekPosition(player.currentPosition.coerceAtLeast(0L)).let { raw ->
                 if (previous.positionMs == 0L && player.playbackState == Player.STATE_BUFFERING && raw > 1_500L) 0L else raw

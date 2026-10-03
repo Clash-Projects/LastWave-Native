@@ -8,7 +8,9 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -113,25 +115,45 @@ fun WavySeekBar(
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
 ) {
     val interactionSource = remember(trackKey) { MutableInteractionSource() }
-    val frameworkDragging by interactionSource.collectIsDraggedAsState()
+    var isInteracting by remember(trackKey) { mutableStateOf(false) }
+    LaunchedEffect(interactionSource, trackKey) {
+        var dragCount = 0
+        var pressCount = 0
+        interactionSource.interactions.collect { interaction ->
+            when (interaction) {
+                is DragInteraction.Start -> dragCount++
+                is DragInteraction.Stop, is DragInteraction.Cancel -> dragCount = maxOf(0, dragCount - 1)
+                is PressInteraction.Press -> pressCount++
+                is PressInteraction.Release, is PressInteraction.Cancel -> pressCount = maxOf(0, pressCount - 1)
+            }
+            isInteracting = dragCount > 0 || pressCount > 0
+        }
+    }
     // Current-gesture drag value only; null = finger off, show live position.
     // Nullable (never a stale 0f) so a press that yields no onValueChange can
     // never seek anywhere, and a gesture that ends without
     // onValueChangeFinished can never pin the slider to a dead value.
     var dragPositionMs by remember(trackKey) { mutableStateOf<Float?>(null) }
     var lastSeekValue by remember(trackKey) { mutableStateOf<Float?>(null) }
-    // Heal: framework reports finger lifted but the finished callback never
-    // ran (cancelled/disposed gesture) -> drop the dead value and resume live
-    // position. A small delay ensures onValueChangeFinished runs and captures
-    // the seek target before the gesture state is cleared.
-    LaunchedEffect(frameworkDragging, trackKey) {
-        if (!frameworkDragging) {
+    // Heal: framework reports finger lifted or cancelled but the finished callback
+    // never ran -> drop the dead value and resume live position.
+    LaunchedEffect(isInteracting, trackKey) {
+        if (!isInteracting) {
             delay(120L)
             dragPositionMs = null
             lastSeekValue = null
         }
     }
-    val dragging = frameworkDragging || dragPositionMs != null
+    // Watchdog: if dragPositionMs was set by a tap/cancelled gesture while not interacting,
+    // ensure it never permanently wedges the seekbar.
+    LaunchedEffect(dragPositionMs, isInteracting, trackKey) {
+        if (dragPositionMs != null && !isInteracting) {
+            delay(250L)
+            dragPositionMs = null
+            lastSeekValue = null
+        }
+    }
+    val dragging = isInteracting || dragPositionMs != null
 
     // ExoPlayer reports C.TIME_UNSET (-9223372036854775807) until the
     // container is parsed; coerce to 0 = unknown. Crucially, do NOT discard

@@ -2164,6 +2164,7 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .adaptiveContentWidth(maxWidth = 640.dp)
                     .align(Alignment.CenterHorizontally)
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp)
                     .padding(bottom = 24.dp + safeDrawingBottomPadding()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -2314,6 +2315,7 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .adaptiveContentWidth(maxWidth = 640.dp)
                     .align(Alignment.CenterHorizontally)
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp)
                     .padding(bottom = 24.dp + safeDrawingBottomPadding()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),

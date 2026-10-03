@@ -40,6 +40,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.foundation.interaction.DragInteraction
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.Canvas
@@ -2874,15 +2876,36 @@ private fun SeekBar(
     // Nullable (never a stale 0f) so a press without movement seeks nowhere
     // and a gesture that ends without onValueChangeFinished can't pin the bar.
     val seekInteraction = remember(trackKey) { MutableInteractionSource() }
-    val frameworkDragging by seekInteraction.collectIsDraggedAsState()
+    var isInteracting by remember(trackKey) { mutableStateOf(false) }
+    LaunchedEffect(seekInteraction, trackKey) {
+        var dragCount = 0
+        var pressCount = 0
+        seekInteraction.interactions.collect { interaction ->
+            when (interaction) {
+                is DragInteraction.Start -> dragCount++
+                is DragInteraction.Stop, is DragInteraction.Cancel -> dragCount = maxOf(0, dragCount - 1)
+                is PressInteraction.Press -> pressCount++
+                is PressInteraction.Release, is PressInteraction.Cancel -> pressCount = maxOf(0, pressCount - 1)
+            }
+            isInteracting = dragCount > 0 || pressCount > 0
+        }
+    }
     var dragFraction by remember(trackKey) { mutableStateOf<Float?>(null) }
     var lastSeekFraction by remember(trackKey) { mutableStateOf<Float?>(null) }
-    // Heal a gesture that ended without the finished callback: drop the dead
-    // value, resume live position. A brief delay ensures onValueChangeFinished
-    // runs and captures the target fraction first.
-    LaunchedEffect(frameworkDragging, trackKey) {
-        if (!frameworkDragging) {
+    // Heal: framework reports finger lifted or cancelled but the finished callback
+    // never ran -> drop the dead value and resume live position.
+    LaunchedEffect(isInteracting, trackKey) {
+        if (!isInteracting) {
             delay(120L)
+            dragFraction = null
+            lastSeekFraction = null
+        }
+    }
+    // Watchdog: if dragFraction was set by a tap/cancelled gesture while not interacting,
+    // ensure it never permanently wedges the seekbar.
+    LaunchedEffect(dragFraction, isInteracting, trackKey) {
+        if (dragFraction != null && !isInteracting) {
+            delay(250L)
             dragFraction = null
             lastSeekFraction = null
         }

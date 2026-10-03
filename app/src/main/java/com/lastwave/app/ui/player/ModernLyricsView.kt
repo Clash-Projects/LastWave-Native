@@ -15,7 +15,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.FormatSize
 import kotlin.math.roundToInt
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -883,12 +885,32 @@ private fun ModernLyricsControls(
         // gesture that ends without onValueChangeFinished can't pin the bar.
         val lyricsTrackKey = state.current?.let { it.videoId ?: "${it.artist}|${it.title}" }
         val seekInteraction = remember(lyricsTrackKey) { MutableInteractionSource() }
-        val frameworkDragging by seekInteraction.collectIsDraggedAsState()
+        var isInteracting by remember(lyricsTrackKey) { mutableStateOf(false) }
+        LaunchedEffect(seekInteraction, lyricsTrackKey) {
+            var dragCount = 0
+            var pressCount = 0
+            seekInteraction.interactions.collect { interaction ->
+                when (interaction) {
+                    is DragInteraction.Start -> dragCount++
+                    is DragInteraction.Stop, is DragInteraction.Cancel -> dragCount = maxOf(0, dragCount - 1)
+                    is PressInteraction.Press -> pressCount++
+                    is PressInteraction.Release, is PressInteraction.Cancel -> pressCount = maxOf(0, pressCount - 1)
+                }
+                isInteracting = dragCount > 0 || pressCount > 0
+            }
+        }
         var dragValue by remember(lyricsTrackKey) { mutableStateOf<Float?>(null) }
         var lastSeekValue by remember(lyricsTrackKey) { mutableStateOf<Float?>(null) }
-        LaunchedEffect(frameworkDragging, lyricsTrackKey) {
-            if (!frameworkDragging) {
+        LaunchedEffect(isInteracting, lyricsTrackKey) {
+            if (!isInteracting) {
                 delay(120L)
+                dragValue = null
+                lastSeekValue = null
+            }
+        }
+        LaunchedEffect(dragValue, isInteracting, lyricsTrackKey) {
+            if (dragValue != null && !isInteracting) {
+                delay(250L)
                 dragValue = null
                 lastSeekValue = null
             }
