@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -72,10 +73,10 @@ class ArtworkRepository @Inject constructor(
                 // inflated startup DB work and the first map copy.
                 val cachedEntities = cacheDao.getNewest(MAX_ARTWORK_MEMORY_ENTRIES).asReversed()
                 val validMap = cachedEntities
-                    .filter { it.url.isNotBlank() && now - it.timestampMillis < DISK_CACHE_TTL_MILLIS }
+                    .filter { it.url.isNotBlank() && now - it.timestampMillis < DISK_CACHE_TTL_MILLIS && it.provider in ArtworkNormalizer.HIGH_RES_PROVIDERS }
                     .associate { it.cacheKey to it.url }
                 _resolved.update { validMap + it }
-                Log.d(TAG, "Pre-warmed memory cache with ${validMap.size} artwork entries")
+                Log.d(TAG, "Pre-warmed memory cache with ${validMap.size} high-res artwork entries")
                 cacheDao.deleteOlderThan(now - DISK_CACHE_TTL_MILLIS)
                 cacheDao.trimToNewest(MAX_ARTWORK_DB_ENTRIES)
             } catch (e: Exception) {
@@ -126,36 +127,59 @@ class ArtworkRepository @Inject constructor(
                 null
             }
             if (cached != null && cached.url.isNotBlank() && System.currentTimeMillis() - cached.timestampMillis < DISK_CACHE_TTL_MILLIS) {
+                if (cached.provider in ArtworkNormalizer.HIGH_RES_PROVIDERS) {
+                    publish(key, cached.url)
+                    return
+                }
+                // Old low-res entry (e.g. YouTube): publish immediately as placeholder, but proceed to resolve high-res master art!
                 publish(key, cached.url)
-                return
             }
 
-            // 3. Multi-provider race, bounded across all visible rows.
+            // 3. Strict priority resolution: Spotify -> Apple Music -> Tidal -> Deezer -> YouTube Music (last fallback)
             val winner = networkRaceSemaphore.withPermit {
-                val channel = kotlinx.coroutines.channels.Channel<Pair<String, String?>>(3)
-                val jobs = mutableListOf<kotlinx.coroutines.Job>()
-                jobs += scope.launch(Dispatchers.IO) {
-                    channel.trySend("deezer" to fetchDeezer(name, artist))
-                }
-                jobs += scope.launch(Dispatchers.IO) {
-                    channel.trySend("itunes" to safeFetch("iTunes", name, artist) {
-                        itunes.fetchArtworkUrl(name, artist)
-                    })
-                }
-                jobs += scope.launch(Dispatchers.IO) {
-                    channel.trySend("youtube" to fetchYouTubeMusic(name, artist))
-                }
-                try {
-                    kotlinx.coroutines.withTimeoutOrNull(3_000L) {
-                        repeat(3) {
-                            val (provider, url) = channel.receive()
-                            if (!url.isNullOrBlank()) return@withTimeoutOrNull provider to url
-                        }
-                        null
+                withContext(Dispatchers.IO) {
+                    val spotifyJob = async { safeFetch("Spotify", name, artist) { fetchSpotify(name, artist) } }
+                    val appleJob = async { safeFetch("Apple Music", name, artist) { itunes.fetchArtworkUrl(name, artist) } }
+                    val tidalJob = async { safeFetch("Tidal", name, artist) { fetchTidal(name, artist) } }
+                    val deezerJob = async { safeFetch("Deezer", name, artist) { fetchDeezer(name, artist) } }
+
+                    // Priority 1: Spotify
+                    val spotifyUrl = spotifyJob.await()
+                    if (!spotifyUrl.isNullOrBlank()) {
+                        appleJob.cancel()
+                        tidalJob.cancel()
+                        deezerJob.cancel()
+                        return@withContext "spotify" to spotifyUrl
                     }
-                } finally {
-                    channel.close()
-                    jobs.forEach { it.cancel() }
+
+                    // Priority 2: Apple Music (iTunes)
+                    val appleUrl = appleJob.await()
+                    if (!appleUrl.isNullOrBlank()) {
+                        tidalJob.cancel()
+                        deezerJob.cancel()
+                        return@withContext "itunes" to appleUrl
+                    }
+
+                    // Priority 3: Tidal
+                    val tidalUrl = tidalJob.await()
+                    if (!tidalUrl.isNullOrBlank()) {
+                        deezerJob.cancel()
+                        return@withContext "tidal" to tidalUrl
+                    }
+
+                    // Priority 4: Deezer
+                    val deezerUrl = deezerJob.await()
+                    if (!deezerUrl.isNullOrBlank()) {
+                        return@withContext "deezer" to deezerUrl
+                    }
+
+                    // Priority 5: YouTube Music (Only as last fallback if providers 1-4 found no verified match)
+                    val ytUrl = safeFetch("YouTube Music", name, artist) { fetchYouTubeMusic(name, artist) }
+                    if (!ytUrl.isNullOrBlank()) {
+                        return@withContext "youtube" to ytUrl
+                    }
+
+                    null
                 }
             }
 
@@ -169,22 +193,122 @@ class ArtworkRepository @Inject constructor(
         }
     }
 
+    private val spotifyTrackRegex = Regex("""(?:spotify:track:|open\.spotify\.com/(?:[a-z]{2}(?:-[a-z]{2})?/)?track/)([a-zA-Z0-9]+)""")
+
+    private suspend fun fetchSpotify(name: String, artist: String): String? = withContext(Dispatchers.IO) {
+        val id = spotifyTrackRegex.find(name)?.groupValues?.getOrNull(1)
+            ?: spotifyTrackRegex.find(artist)?.groupValues?.getOrNull(1)
+        if (!id.isNullOrBlank()) {
+            return@withContext fetchSpotifyOEmbed("https://open.spotify.com/track/$id")
+        }
+        null
+    }
+
+    private suspend fun fetchSpotifyOEmbed(url: String): String? {
+        try {
+            val oembedUrl = "https://open.spotify.com/oembed?url=${java.net.URLEncoder.encode(url, "UTF-8")}"
+            val req = okhttp3.Request.Builder().url(oembedUrl).build()
+            val body = http.newCall(req).awaitSuccessfulBodyOrNull() ?: return null
+            val root = json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject ?: return null
+            val thumb = (root["thumbnail_url"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+            if (!thumb.isNullOrBlank()) {
+                // Upscale Spotify thumbnail from 300x300 (ab67616d00001e02) to 640x640 (ab67616d0000b273)
+                return thumb.replace("ab67616d00001e02", "ab67616d0000b273")
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            null
+        }
+        return null
+    }
+
+    private suspend fun fetchTidal(name: String, artist: String): String? = withContext(Dispatchers.IO) {
+        val direct = queryTidal(name, artist)
+        if (!direct.isNullOrBlank()) return@withContext direct
+        val cleanedTitle = ArtworkNormalizer.cleanTitle(name)
+        val cleanedArtist = ArtworkNormalizer.cleanArtist(artist)
+        if (cleanedTitle != name || cleanedArtist != artist) {
+            queryTidal(cleanedTitle, cleanedArtist)
+        } else null
+    }
+
+    private suspend fun queryTidal(name: String, artist: String): String? {
+        val query = if (artist.isNotBlank()) "$name $artist" else name
+        val countryCode = java.util.Locale.getDefault().country.takeIf { it.length == 2 }?.uppercase(java.util.Locale.ROOT) ?: "US"
+        val url = "https://api.tidal.com/v1/search?query=${java.net.URLEncoder.encode(query, "UTF-8")}&limit=5&types=TRACKS&countryCode=$countryCode"
+        try {
+            val req = okhttp3.Request.Builder()
+                .url(url)
+                .header("X-Tidal-Token", "vNVdglQOjFJJGG2U")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                .build()
+            val body = http.newCall(req).awaitSuccessfulBodyOrNull() ?: return null
+            val root = json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject ?: return null
+            val tracks = root["tracks"] as? kotlinx.serialization.json.JsonObject ?: return null
+            val items = (tracks["items"] as? kotlinx.serialization.json.JsonArray)
+                ?.mapNotNull { it as? kotlinx.serialization.json.JsonObject }.orEmpty()
+
+            for (item in items) {
+                val candTitle = (item["title"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull ?: continue
+                val candVersion = (item["version"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+                val effectiveCandTitle = if (!candVersion.isNullOrBlank()) "$candTitle ($candVersion)" else candTitle
+
+                if (!lyricsTitleOk(effectiveCandTitle, name)) continue
+
+                if (artist.isNotBlank()) {
+                    val artistsArray = (item["artists"] as? kotlinx.serialization.json.JsonArray)
+                        ?.mapNotNull { ((it as? kotlinx.serialization.json.JsonObject)?.get("name") as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull }
+                        .orEmpty()
+                    val artistMatches = artistsArray.any { lyricsArtistOk(it, artist) } ||
+                        lyricsArtistOk(artistsArray.joinToString(", "), artist)
+                    if (!artistMatches) continue
+                }
+
+                val album = item["album"] as? kotlinx.serialization.json.JsonObject
+                val coverUuid = (album?.get("cover") as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+                if (!coverUuid.isNullOrBlank()) {
+                    val parts = coverUuid.split("-")
+                    if (parts.size == 5) {
+                        return "https://resources.tidal.com/images/${parts.joinToString("/")}/1280x1280.jpg"
+                    }
+                }
+            }
+            null
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private suspend fun fetchDeezer(name: String, artist: String): String? = withContext(Dispatchers.IO) {
-        // limit=1 blindly trusted Deezer's top hit (wrong cover for homonym
-        // titles — also visible on Home). Verify title+artist over a small set.
+        val direct = queryDeezer(name, artist)
+        if (!direct.isNullOrBlank()) return@withContext direct
+        val cleanedTitle = ArtworkNormalizer.cleanTitle(name)
+        val cleanedArtist = ArtworkNormalizer.cleanArtist(artist)
+        if (cleanedTitle != name || cleanedArtist != artist) {
+            queryDeezer(cleanedTitle, cleanedArtist)
+        } else null
+    }
+
+    private suspend fun queryDeezer(name: String, artist: String): String? {
         val query = if (artist.isNotBlank()) "$name $artist" else name
         val url = "https://api.deezer.com/search?q=${java.net.URLEncoder.encode(query, "UTF-8")}&limit=5"
         try {
-            val req = okhttp3.Request.Builder().url(url).build()
-            val body = http.newCall(req).awaitSuccessfulBodyOrNull() ?: return@withContext null
+            val req = okhttp3.Request.Builder()
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                .build()
+            val body = http.newCall(req).awaitSuccessfulBodyOrNull() ?: return null
             val jsonEl = json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
             val data = jsonEl?.get("data") as? kotlinx.serialization.json.JsonArray
             val items = data?.mapNotNull { it as? kotlinx.serialization.json.JsonObject }.orEmpty()
             val best = items.maxByOrNull { deezerScore(it, name, artist) }
-                ?.takeIf { deezerVerified(it, name, artist) } ?: return@withContext null
+                ?.takeIf { deezerVerified(it, name, artist) } ?: return null
             val album = best.get("album") as? kotlinx.serialization.json.JsonObject
-            (album?.get("cover_big") as? kotlinx.serialization.json.JsonPrimitive)?.content
-                ?: (album?.get("cover_xl") as? kotlinx.serialization.json.JsonPrimitive)?.content
+            return (album?.get("cover_xl") as? kotlinx.serialization.json.JsonPrimitive)?.content
+                ?: (album?.get("cover_big") as? kotlinx.serialization.json.JsonPrimitive)?.content
                 ?: ((best.get("artist") as? kotlinx.serialization.json.JsonObject)?.get("picture_xl") as? kotlinx.serialization.json.JsonPrimitive)?.content
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -215,6 +339,7 @@ class ArtworkRepository @Inject constructor(
     private fun lyricsTitleOk(songTitle: String, title: String): Boolean {
         if (songTitle.isBlank() || title.isBlank()) return false
         if (songTitle.equals(title, ignoreCase = true)) return true
+        if (!com.lastwave.app.data.lyrics.LrclibLyricsApi.sameVersion(title, songTitle)) return false
         return com.lastwave.app.data.lyrics.LrclibLyricsApi.titlesMatch(
             com.lastwave.app.data.lyrics.LrclibLyricsApi.cleanTrackTitle(songTitle),
             com.lastwave.app.data.lyrics.LrclibLyricsApi.cleanTrackTitle(title),
@@ -230,18 +355,16 @@ class ArtworkRepository @Inject constructor(
     }
 
     private suspend fun fetchYouTubeMusic(name: String, artist: String): String? = withContext(Dispatchers.IO) {
-        // The old code published searchSongs()[0] artwork with zero title /
-        // artist verification — covers/remixes/homonyms won the race and the
-        // wrong cover landed on Home + player. Score candidates strictly.
         try {
             val query = if (artist.isNotBlank()) "$name $artist" else name
             val results = innerTube.searchSongs(query, limit = 5, prefetchStreams = false)
             if (results.isEmpty()) return@withContext null
-            results
+            val best = results
                 .filter { !it.artworkUrl.isNullOrBlank() }
                 .maxByOrNull { com.lastwave.app.data.music.TextMatch.matchScore(it, name, artist) }
                 ?.takeIf { ytVerified(it.title, it.artist, name, artist) }
-                ?.artworkUrl
+            val raw = best?.artworkUrl ?: return@withContext null
+            ArtworkNormalizer.upscaleYoutubeArtwork(raw)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Exception) {
@@ -249,13 +372,11 @@ class ArtworkRepository @Inject constructor(
         }
     }
 
-    /** Title must closely agree AND artist must agree (when known). */
+    /** Title must strictly agree in version and core title, AND artist must agree (when known). */
     private fun ytVerified(candTitle: String, candArtist: String, name: String, artist: String): Boolean {
-        val titleSim = com.lastwave.app.data.music.TextMatch.similarity(candTitle, name)
-        if (titleSim < 85) return false
-        if (artist.isBlank()) return true
-        if (candArtist.equals(artist, ignoreCase = true)) return true
-        return com.lastwave.app.data.music.TextMatch.similarity(candArtist, artist) >= 60
+        if (!lyricsTitleOk(candTitle, name)) return false
+        if (artist.isNotBlank() && !lyricsArtistOk(candArtist, artist)) return false
+        return true
     }
 
     /** Runs one provider call with its own try/catch */
@@ -313,18 +434,36 @@ class ArtworkRepository @Inject constructor(
         if (!allowed) return
 
         try {
-            val fromLastFm = safeFetch("Last.fm track.getInfo (force)", name, artist) { lastFm.fetchArtworkUrl(name, artist) }
-            val resolved = if (!fromLastFm.isNullOrBlank()) {
-                save(key, "lastfm", fromLastFm)
-                fromLastFm
+            val fromSpotify = safeFetch("Spotify (force)", name, artist) { fetchSpotify(name, artist) }
+            val resolved = if (!fromSpotify.isNullOrBlank()) {
+                save(key, "spotify", fromSpotify)
+                fromSpotify
             } else {
                 val fromItunes = safeFetch("iTunes (force)", name, artist) { itunes.fetchArtworkUrl(name, artist) }
                 if (!fromItunes.isNullOrBlank()) {
                     save(key, "itunes", fromItunes)
                     fromItunes
                 } else {
-                    save(key, "none", "")
-                    ""
+                    val fromTidal = safeFetch("Tidal (force)", name, artist) { fetchTidal(name, artist) }
+                    if (!fromTidal.isNullOrBlank()) {
+                        save(key, "tidal", fromTidal)
+                        fromTidal
+                    } else {
+                        val fromDeezer = safeFetch("Deezer (force)", name, artist) { fetchDeezer(name, artist) }
+                        if (!fromDeezer.isNullOrBlank()) {
+                            save(key, "deezer", fromDeezer)
+                            fromDeezer
+                        } else {
+                            val fromYt = safeFetch("YouTube Music (force)", name, artist) { fetchYouTubeMusic(name, artist) }
+                            if (!fromYt.isNullOrBlank()) {
+                                save(key, "youtube", fromYt)
+                                fromYt
+                            } else {
+                                save(key, "none", "")
+                                ""
+                            }
+                        }
+                    }
                 }
             }
             Log.d(TAG, "Force-refreshed artwork | Track: $name | Artist: $artist | Result: $resolved")

@@ -51,27 +51,6 @@ fun ArtworkImage(
     artworkViewModel: ArtworkViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
-    var embeddedFailed by remember(name, artist, embeddedUrl) { mutableStateOf(false) }
-    if (ArtworkNormalizer.isRealImage(embeddedUrl) && !embeddedFailed) {
-        val model = remember(embeddedUrl, decodeSizePx, transformations, context) {
-            val builder = ImageRequest.Builder(context).data(embeddedUrl)
-            if (decodeSizePx != null) builder.size(decodeSizePx)
-            if (transformations.isNotEmpty()) builder.transformations(transformations)
-            builder.build()
-        }
-        Box(modifier = modifier, contentAlignment = alignment) {
-            AsyncImage(
-                model = model,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                alignment = alignment,
-                modifier = Modifier.fillMaxSize(),
-                onError = { embeddedFailed = true },
-            )
-        }
-        return
-    }
-
     val key = remember(name, artist) { ArtworkNormalizer.cacheKey(name, artist) }
     // Collect ONLY this row's slot of the shared resolved-map. Collecting the
     // whole map meant every resolution anywhere recomposed every visible
@@ -81,42 +60,57 @@ fun ArtworkImage(
         artworkViewModel.resolved.map { it[key] }.distinctUntilChanged()
     }.collectAsStateWithLifecycle(initialValue = artworkViewModel.resolved.value[key])
     var resolvedFailed by remember(key, resolvedUrl) { mutableStateOf(false) }
+    var embeddedFailed by remember(name, artist, embeddedUrl) { mutableStateOf(false) }
     var refreshRequested by remember(key) { mutableStateOf(false) }
 
-    LaunchedEffect(key, embeddedFailed) {
-        if (embeddedFailed) {
+    LaunchedEffect(key, resolvedFailed) {
+        if (resolvedFailed && !refreshRequested) {
             refreshRequested = true
             artworkViewModel.refresh(name, artist)
-        } else if (resolvedUrl.isNullOrBlank()) {
+        } else if (resolvedUrl == null) {
             artworkViewModel.resolve(name, artist)
         }
     }
 
+    val highResUrl = resolvedUrl?.takeIf { it.isNotBlank() }
+    val useHighRes = highResUrl != null && !resolvedFailed
+
+    // High-resolution master artwork from Spotify -> Apple Music -> Tidal -> Deezer takes priority.
+    // While resolving in background, embeddedUrl (upscaled) is shown seamlessly.
+    val displayUrl = if (useHighRes) {
+        highResUrl
+    } else if (ArtworkNormalizer.isRealImage(embeddedUrl) && !embeddedFailed) {
+        ArtworkNormalizer.upscaleYoutubeArtwork(embeddedUrl)
+    } else {
+        null
+    }
+
     Box(modifier = modifier, contentAlignment = alignment) {
-        when {
-            !resolvedUrl.isNullOrBlank() && !resolvedFailed -> {
-                val model = remember(resolvedUrl, decodeSizePx, transformations, context) {
-                    val builder = ImageRequest.Builder(context).data(resolvedUrl)
-                    if (decodeSizePx != null) builder.size(decodeSizePx)
-                    if (transformations.isNotEmpty()) builder.transformations(transformations)
-                    builder.build()
-                }
-                AsyncImage(
-                    model = model,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    alignment = alignment,
-                    modifier = Modifier.fillMaxSize(),
-                    onError = {
-                        resolvedFailed = true
-                        if (!refreshRequested) {
-                            refreshRequested = true
-                            artworkViewModel.refresh(name, artist)
-                        }
-                    },
-                )
+        if (!displayUrl.isNullOrBlank()) {
+            val model = remember(displayUrl, decodeSizePx, transformations, context) {
+                val builder = ImageRequest.Builder(context)
+                    .data(displayUrl)
+                    .crossfade(300)
+                if (decodeSizePx != null) builder.size(decodeSizePx)
+                if (transformations.isNotEmpty()) builder.transformations(transformations)
+                builder.build()
             }
-            else -> Icon(
+            AsyncImage(
+                model = model,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                alignment = alignment,
+                modifier = Modifier.fillMaxSize(),
+                onError = {
+                    if (useHighRes) {
+                        resolvedFailed = true
+                    } else {
+                        embeddedFailed = true
+                    }
+                },
+            )
+        } else {
+            Icon(
                 fallbackIcon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (resolvedUrl == null) 0.35f else 0.6f),

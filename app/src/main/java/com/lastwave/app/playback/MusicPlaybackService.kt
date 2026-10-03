@@ -987,20 +987,29 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         artworkUrl = null
         artworkJob?.cancel()
 
-        val directUrl = track.artworkUrl?.takeIf(String::isNotBlank)
-        if (directUrl != null) {
-            fetchArtwork(directUrl)
-            return
-        }
-
-        // If track artwork is missing (e.g. from lists/generator), resolve via ArtworkRepository
         val key = com.lastwave.app.data.artwork.ArtworkNormalizer.cacheKey(track.title, track.artist)
         val cached = artworkRepository.resolved.value[key]?.takeIf(String::isNotBlank)
         if (cached != null) {
             fetchArtwork(cached)
-        } else {
-            scope.launch(Dispatchers.IO) {
-                artworkRepository.resolve(track.title, track.artist)
+            return
+        }
+
+        // Show immediate upscaled placeholder while high-res artwork resolves
+        val placeholder = com.lastwave.app.data.artwork.ArtworkNormalizer.upscaleYoutubeArtwork(track.artworkUrl)?.takeIf(String::isNotBlank)
+        if (placeholder != null) {
+            fetchArtwork(placeholder)
+        }
+
+        // Resolve high-resolution master artwork (Spotify -> Apple Music -> Tidal -> Deezer) in background
+        scope.launch(Dispatchers.IO) {
+            artworkRepository.resolve(track.title, track.artist)
+            val resolved = artworkRepository.resolved.value[key]?.takeIf(String::isNotBlank)
+            if (resolved != null && resolved != artworkUrl) {
+                withContext(Dispatchers.Main) {
+                    if (artworkRequestKey == requestKey) {
+                        fetchArtwork(resolved)
+                    }
+                }
             }
         }
     }

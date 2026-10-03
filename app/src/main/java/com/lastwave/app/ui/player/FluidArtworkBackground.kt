@@ -274,7 +274,6 @@ fun FluidArtworkBackground(
 
     val context = LocalContext.current
     val embeddedUrl = track.artworkUrl
-    val isReal = remember(embeddedUrl) { ArtworkNormalizer.isRealImage(embeddedUrl) }
     
     val key = remember(track.title, track.artist) { ArtworkNormalizer.cacheKey(track.title, track.artist) }
     val resolvedUrl by remember(key) {
@@ -282,12 +281,13 @@ fun FluidArtworkBackground(
     }.collectAsStateWithLifecycle(initialValue = artworkViewModel.resolved.value[key])
     
     LaunchedEffect(key) {
-        if (!isReal && resolvedUrl.isNullOrBlank()) {
+        if (resolvedUrl == null) {
             artworkViewModel.resolve(track.title, track.artist)
         }
     }
     
-    val artworkUrl = if (isReal) embeddedUrl else resolvedUrl
+    val artworkUrl = resolvedUrl?.takeIf { it.isNotBlank() }
+        ?: ArtworkNormalizer.upscaleYoutubeArtwork(embeddedUrl)
     
     var current by remember { mutableStateOf<Bitmap?>(null) }
     var previous by remember { mutableStateOf<Bitmap?>(null) }

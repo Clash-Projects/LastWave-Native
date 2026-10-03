@@ -43,32 +43,27 @@ class ITunesArtworkProvider @Inject constructor(
     private val upscalePattern = Regex("""/\d+x\d+bb\.(jpg|png|webp)$""", RegexOption.IGNORE_CASE)
 
     suspend fun fetchArtworkUrl(track: String, artist: String): String? = withContext(Dispatchers.IO) {
-        // Try direct term first
-        fetchByTerm(if (artist.isNotBlank()) "$track $artist" else track)
+        fetchByTrackAndArtist(track, artist)
             ?: run {
                 val cleanedTrack = ArtworkNormalizer.cleanTitle(track)
                 val cleanedArtist = ArtworkNormalizer.cleanArtist(artist)
-                val cleanedTerm = if (cleanedArtist.isNotBlank()) "$cleanedTrack $cleanedArtist" else cleanedTrack
-                if (cleanedTerm != "$track $artist") {
-                    fetchByTerm(cleanedTerm)
+                if (cleanedTrack != track || cleanedArtist != artist) {
+                    fetchByTrackAndArtist(cleanedTrack, cleanedArtist)
                 } else null
             }
     }
 
-    private suspend fun fetchByTerm(term: String): String? {
-        // limit=1 blindly trusted the top hit: homonym titles ("Halo") often
-        // returned another artist's cover (visible as wrong art on Home too).
-        // Score a small candidate set and publish only a verified match.
-        val track = term.substringBeforeLast(" ").ifBlank { term }
-        val url = "https://itunes.apple.com/search?term=${URLEncoder.encode(term, "UTF-8")}&media=music&entity=song&limit=5"
+    private suspend fun fetchByTrackAndArtist(track: String, artist: String): String? {
+        val query = if (artist.isNotBlank()) "$track $artist" else track
+        val url = "https://itunes.apple.com/search?term=${URLEncoder.encode(query, "UTF-8")}&media=music&entity=song&limit=5"
         try {
             val request = Request.Builder().url(url).build()
             val body = client.newCall(request).awaitSuccessfulBodyOrNull() ?: return null
             val parsed = json.decodeFromString<ITunesSearchResponse>(body)
             val best = parsed.results
                 .filter { !it.artworkUrl100.isNullOrBlank() || !it.artworkUrl60.isNullOrBlank() }
-                .maxByOrNull { score(it, track, term) }
-                ?.takeIf { isVerified(it, track, term) } ?: return null
+                .maxByOrNull { score(it, track, artist) }
+                ?.takeIf { isVerified(it, track, artist) } ?: return null
             val raw = best.artworkUrl100 ?: best.artworkUrl60
             return raw?.let { upscale(it) }
         } catch (cancellation: kotlinx.coroutines.CancellationException) {
@@ -78,25 +73,24 @@ class ITunesArtworkProvider @Inject constructor(
         }
     }
 
-    /** Both title and artist must agree; title alone (homonym) is rejected. */
-    private fun isVerified(candidate: ITunesResult, track: String, term: String): Boolean {
-        val artist = term.removePrefix(track).trim()
+    /** Both title and artist must agree; homonyms and wrong version recordings are strictly rejected. */
+    private fun isVerified(candidate: ITunesResult, track: String, artist: String): Boolean {
         if (!titleOk(candidate.trackName.orEmpty(), track)) return false
         if (artist.isNotBlank() && !artistOk(candidate.artistName.orEmpty(), artist)) return false
         return true
     }
 
-    private fun score(candidate: ITunesResult, track: String, term: String): Int {
-        val artist = term.removePrefix(track).trim()
+    private fun score(candidate: ITunesResult, track: String, artist: String): Int {
         var score = if (candidate.trackName?.equals(track, ignoreCase = true) == true) 3
         else if (titleOk(candidate.trackName.orEmpty(), track)) 1 else 0
-        if (artistOk(candidate.artistName.orEmpty(), artist)) score += 2
+        if (artist.isNotBlank() && artistOk(candidate.artistName.orEmpty(), artist)) score += 2
         return score
     }
 
     private fun titleOk(songTitle: String, title: String): Boolean {
         if (songTitle.isBlank() || title.isBlank()) return false
         if (songTitle.equals(title, ignoreCase = true)) return true
+        if (!com.lastwave.app.data.lyrics.LrclibLyricsApi.sameVersion(title, songTitle)) return false
         return com.lastwave.app.data.lyrics.LrclibLyricsApi.titlesMatch(
             com.lastwave.app.data.lyrics.LrclibLyricsApi.cleanTrackTitle(songTitle),
             com.lastwave.app.data.lyrics.LrclibLyricsApi.cleanTrackTitle(title),
@@ -111,6 +105,6 @@ class ITunesArtworkProvider @Inject constructor(
         )
     }
 
-    /** …/100x100bb.jpg -> …/600x600bb.jpg */
-    private fun upscale(rawUrl: String): String = upscalePattern.replace(rawUrl, "/600x600bb.jpg")
+    /** …/100x100bb.jpg -> …/1200x1200bb.jpg master artwork */
+    private fun upscale(rawUrl: String): String = upscalePattern.replace(rawUrl, "/1200x1200bb.jpg")
 }

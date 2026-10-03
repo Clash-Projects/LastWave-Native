@@ -38,6 +38,31 @@ object ArtworkNormalizer {
     private val FEAT_REGEX = Regex("(?i)\\s*[(|\\[](feat|ft|with|featuring)\\.?\\s+.*?[)|\\]]")
     private val REMASTER_REGEX = Regex("(?i)\\s*[(|\\[].*?(remaster|live|version|edit|mono|stereo|deluxe|bonus).*?[)|\\]]")
 
+    val HIGH_RES_PROVIDERS: Set<String> = setOf("spotify", "apple", "itunes", "tidal", "deezer")
+
+    private val YT_SIZE_REGEX = Regex("""=w\d+-h\d+[^?#]*|=s\d+[^?#]*""")
+
+    /**
+     * Upscales YouTube / Googleusercontent thumbnails from compressed low-res
+     * dimensions (e.g. w120-h120 or s544) to high-resolution master dimensions (s1200 or maxresdefault).
+     */
+    fun upscaleYoutubeArtwork(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        if (!isRealImage(url)) return url
+        var result = url
+        if (result.contains("googleusercontent.com") || result.contains("ggpht.com")) {
+            result = if (YT_SIZE_REGEX.containsMatchIn(result)) {
+                result.replace(YT_SIZE_REGEX, "=s1200")
+            } else {
+                "$result=s1200"
+            }
+        } else if (result.contains("i.ytimg.com/vi/")) {
+            result = result.replace("/hqdefault.jpg", "/maxresdefault.jpg")
+                .replace("/sddefault.jpg", "/maxresdefault.jpg")
+        }
+        return result
+    }
+
     fun cleanTitle(title: String): String = title
         .replace(FEAT_REGEX, "")
         .replace(REMASTER_REGEX, "")
