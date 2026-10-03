@@ -72,3 +72,6 @@ lastwave-addon-service/
 *.zip
 credentials_backup*
 
+# Isolated git worktrees (never commit their contents)
+.worktrees/
+
