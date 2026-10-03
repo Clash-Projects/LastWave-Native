@@ -678,7 +678,7 @@ private fun SyncedLyricsList(
 @Composable
 private fun WordByWordLyricLine(
     line: LyricLine,
-    currentPositionMs: Long,
+    currentPositionMs: () -> Long,
     isActive: Boolean,
     activeColor: Color,
     inactiveColor: Color,
@@ -689,6 +689,7 @@ private fun WordByWordLyricLine(
     isRtl: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    val positionMs = currentPositionMs()
     val lineLayoutDirection = if (isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
     val lineColor by animateColorAsState(
         targetValue = if (isActive) activeColor else inactiveColor,
@@ -759,8 +760,8 @@ private fun WordByWordLyricLine(
                     val nextStart = line.syllables.getOrNull(sIndex + 1)?.timeMs
                     val sylEnd = if (nextStart != null && nextStart > sylStart) nextStart
                     else sylStart + minDur
-                    val isSyllableActive = currentPositionMs in sylStart until sylEnd
-                    val isSyllablePast = currentPositionMs >= sylEnd
+                    val isSyllableActive = positionMs in sylStart until sylEnd
+                    val isSyllablePast = positionMs >= sylEnd
 
                     val nextSyllable = line.syllables.getOrNull(sIndex + 1)
                     val separator = if (needsSpacing &&
