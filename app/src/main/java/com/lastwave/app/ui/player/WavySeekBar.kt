@@ -20,7 +20,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -117,14 +119,17 @@ fun WavySeekBar(
     // never seek anywhere, and a gesture that ends without
     // onValueChangeFinished can never pin the slider to a dead value.
     var dragPositionMs by remember(trackKey) { mutableStateOf<Float?>(null) }
+    var lastSeekValue by remember(trackKey) { mutableStateOf<Float?>(null) }
     // Heal: framework reports finger lifted but the finished callback never
     // ran (cancelled/disposed gesture) -> drop the dead value and resume live
-    // position. This never seeks; the commit happens only in
-    // onValueChangeFinished below (which runs before the framework's
-    // drag-end emission reaches this collector, so a legit seek can't be
-    // lost here — worst case a raced clear drops one seek, never invents one).
+    // position. A small delay ensures onValueChangeFinished runs and captures
+    // the seek target before the gesture state is cleared.
     LaunchedEffect(frameworkDragging, trackKey) {
-        if (!frameworkDragging) dragPositionMs = null
+        if (!frameworkDragging) {
+            delay(120L)
+            dragPositionMs = null
+            lastSeekValue = null
+        }
     }
     val dragging = frameworkDragging || dragPositionMs != null
 
@@ -441,25 +446,38 @@ fun WavySeekBar(
                 // (e.g. 5000ms with range 0..1) can't coerce to the end stop.
                 // Once the late duration arrives, value/range recover together.
                 value = if (boundedDurationMs > 0L) shownMs.toFloat().coerceIn(0f, boundedDurationMs.toFloat()) else 0f,
-                onValueChange = { dragPositionMs = it },
+                onValueChange = {
+                    dragPositionMs = it
+                    lastSeekValue = it
+                },
                 onValueChangeFinished = {
                     // Commit only this gesture's value; a finished callback
                     // with no value (press without movement) seeks nowhere.
                     // Guarded by enabled above, but re-check: no duration = no seek.
                     if (boundedDurationMs <= 0L) {
                         dragPositionMs = null
+                        lastSeekValue = null
                         return@Slider
                     }
-                    val target = dragPositionMs?.toLong()?.coerceIn(0L, boundedDurationMs)
+                    val target = (lastSeekValue ?: dragPositionMs)?.toLong()?.coerceIn(0L, boundedDurationMs)
                     dragPositionMs = null
+                    lastSeekValue = null
                     if (target != null) onSeek(target)
                 },
                 valueRange = 0f..boundedDurationMs.coerceAtLeast(1L).toFloat(),
                 enabled = boundedDurationMs > 0L,
                 interactionSource = interactionSource,
-                modifier = Modifier
-                    .matchParentSize()
-                    .alpha(0f),
+                modifier = Modifier.matchParentSize(),
+                colors = SliderDefaults.colors(
+                    thumbColor = Color.Transparent,
+                    activeTrackColor = Color.Transparent,
+                    inactiveTrackColor = Color.Transparent,
+                    activeTickColor = Color.Transparent,
+                    inactiveTickColor = Color.Transparent,
+                    disabledThumbColor = Color.Transparent,
+                    disabledActiveTrackColor = Color.Transparent,
+                    disabledInactiveTrackColor = Color.Transparent,
+                ),
             )
         }
 

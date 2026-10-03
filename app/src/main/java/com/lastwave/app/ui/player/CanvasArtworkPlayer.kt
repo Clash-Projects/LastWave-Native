@@ -369,7 +369,7 @@ private fun TextureView.applyContentTransform(
     }
     val viewAspect = bounds.width.toFloat() / bounds.height
     val pivotX = bounds.width / 2f
-    val pivotY = if (alignPortraitTop && clipAspect < 1f) {
+    val pivotY = if (alignPortraitTop && clipAspect <= 1.05f) {
         0f
     } else bounds.height / 2f
     val matrix = Matrix().apply {
@@ -447,20 +447,39 @@ private class FadingBottomFrame(context: Context) : FrameLayout(context) {
             drawWithFallbackFade(canvas, fade, endY)
             return
         }
+        val startY = (endY * (1f - fade)).coerceAtLeast(0f)
         val shader = gradient?.takeIf { gradientHeight == height } ?: LinearGradient(
             0f,
-            endY * (1f - fade),
+            startY,
             0f,
             endY,
-            android.graphics.Color.BLACK,
-            android.graphics.Color.TRANSPARENT,
+            intArrayOf(
+                android.graphics.Color.BLACK,
+                0xF5000000.toInt(), // 0.96
+                0xD1000000.toInt(), // 0.82
+                0x94000000.toInt(), // 0.58
+                0x57000000.toInt(), // 0.34
+                0x29000000.toInt(), // 0.16
+                0x0A000000.toInt(), // 0.04
+                android.graphics.Color.TRANSPARENT,
+            ),
+            floatArrayOf(
+                0.00f,
+                0.20f,
+                0.38f,
+                0.56f,
+                0.72f,
+                0.84f,
+                0.94f,
+                1.00f,
+            ),
             Shader.TileMode.CLAMP,
         ).also {
             gradient = it
             gradientHeight = height
         }
         maskPaint.shader = shader
-        val layer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
+        val layer = canvas.saveLayer(0f, startY, width.toFloat(), endY, null)
         // saveLayer returns -1 when the driver refuses to allocate the layer.
         if (layer < 0) {
             giveUpOnBlendMask()
@@ -470,7 +489,7 @@ private class FadingBottomFrame(context: Context) : FrameLayout(context) {
         var restored = false
         try {
             super.dispatchDraw(canvas)
-            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), maskPaint)
+            canvas.drawRect(0f, startY, width.toFloat(), endY, maskPaint)
         } catch (graphics: RuntimeException) {
             giveUpOnBlendMask()
         } finally {
@@ -482,27 +501,45 @@ private class FadingBottomFrame(context: Context) : FrameLayout(context) {
     }
 
     /**
-     * Same ramp as the DST_IN mask, but plain source-over toward [fadeFallbackColor], so a
-     * refused layer costs the blend mode and nothing else. Falls back to an unpainted
-     * child draw when the caller supplied no colour.
+     * Same multi-stop ramp as the DST_IN mask, but plain source-over toward [fadeFallbackColor], so a
+     * refused layer costs the blend mode and nothing else.
      */
     private fun drawWithFallbackFade(canvas: Canvas, fade: Float, endY: Float) {
         super.dispatchDraw(canvas)
-        val color = fadeFallbackColor ?: return
-        val top = endY * (1f - fade)
+        val color = fadeFallbackColor ?: 0xFF000000.toInt()
+        val top = (endY * (1f - fade)).coerceAtLeast(0f)
+        val rgb = color and 0x00FFFFFF
+        val colors = intArrayOf(
+            rgb,
+            rgb or 0x14000000,
+            rgb or 0x3D000000,
+            rgb or 0x80000000.toInt(),
+            rgb or 0xC0000000.toInt(),
+            rgb or 0xEB000000.toInt(),
+            color or 0xFF000000.toInt(),
+        )
+        val positions = floatArrayOf(
+            0.00f,
+            0.20f,
+            0.40f,
+            0.62f,
+            0.80f,
+            0.92f,
+            1.00f,
+        )
         canvas.drawRect(
             0f,
             top,
             width.toFloat(),
-            height.toFloat(),
+            endY,
             Paint().apply {
                 shader = LinearGradient(
                     0f,
                     top,
                     0f,
                     endY,
-                    color and 0x00FFFFFF,
-                    color,
+                    colors,
+                    positions,
                     Shader.TileMode.CLAMP,
                 )
             },

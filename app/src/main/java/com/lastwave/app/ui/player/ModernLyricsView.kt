@@ -1,6 +1,7 @@
 package com.lastwave.app.ui.player
 
 import android.os.SystemClock
+import kotlinx.coroutines.delay
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -136,12 +137,24 @@ fun ModernLyricsPanel(
     // Keyed on the whole track: videoId is null for local/search tracks,
     // and a null key would leak the previous song's smoothing state.
     var smoothedPositionMs by remember(track) { mutableLongStateOf(progress.positionMs) }
+    var lastReportedMs by remember(track) { mutableLongStateOf(progress.positionMs) }
+    var lastObservedAtMs by remember(track) { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+    var wasPlaying by remember(track) { mutableStateOf(state.isPlaying) }
 
     LaunchedEffect(progress.positionMs, state.isPlaying, track) {
-        val drift = kotlin.math.abs(smoothedPositionMs - progress.positionMs)
-        // Hard snap on seek (>120ms drift) or when stopped/paused
-        if (drift > 120 || !state.isPlaying) {
+        val now = SystemClock.elapsedRealtime()
+        val elapsedMs = (now - lastObservedAtMs).coerceAtLeast(0L)
+        val expectedMs = lastReportedMs + if (wasPlaying) elapsedMs else 0L
+        val discontinuity = !state.isPlaying || kotlin.math.abs(progress.positionMs - expectedMs) > 1_250L
+
+        lastReportedMs = progress.positionMs
+        lastObservedAtMs = now
+        wasPlaying = state.isPlaying
+
+        if (discontinuity) {
             smoothedPositionMs = progress.positionMs
+        } else {
+            smoothedPositionMs = maxOf(smoothedPositionMs, progress.positionMs)
         }
     }
 
@@ -154,16 +167,8 @@ fun ModernLyricsPanel(
                 val dt = (now - lastFrameTime).coerceIn(0L, 50L)
                 lastFrameTime = now
 
-                val target = progress.positionMs
                 val dur = progress.durationMs.takeIf { it > 0 } ?: state.durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE
-
-                val drift = target - (smoothedPositionMs + dt)
-                if (kotlin.math.abs(drift) > 120) {
-                    smoothedPositionMs = target.coerceIn(0L, dur)
-                } else {
-                    val nextPos = smoothedPositionMs + dt + (drift * 0.25f).toLong()
-                    smoothedPositionMs = nextPos.coerceAtLeast(smoothedPositionMs).coerceIn(0L, dur)
-                }
+                smoothedPositionMs = (smoothedPositionMs + dt).coerceIn(0L, dur)
             }
         }
     }
@@ -880,8 +885,13 @@ private fun ModernLyricsControls(
         val seekInteraction = remember(lyricsTrackKey) { MutableInteractionSource() }
         val frameworkDragging by seekInteraction.collectIsDraggedAsState()
         var dragValue by remember(lyricsTrackKey) { mutableStateOf<Float?>(null) }
+        var lastSeekValue by remember(lyricsTrackKey) { mutableStateOf<Float?>(null) }
         LaunchedEffect(frameworkDragging, lyricsTrackKey) {
-            if (!frameworkDragging) dragValue = null
+            if (!frameworkDragging) {
+                delay(120L)
+                dragValue = null
+                lastSeekValue = null
+            }
         }
         val end = totalDurationMs.coerceAtLeast(1).toFloat()
         val shown = (dragValue ?: currentPositionMs.coerceIn(0, totalDurationMs.coerceAtLeast(0)).toFloat())
@@ -904,11 +914,15 @@ private fun ModernLyricsControls(
         } else {
             PlayerProgressSlider(
                 value = shown,
-                onValueChange = { dragValue = it },
+                onValueChange = {
+                    dragValue = it
+                    lastSeekValue = it
+                },
                 onValueChangeFinished = {
                     // Commit only this gesture's value; no value = no seek.
-                    val target = dragValue?.toLong()
+                    val target = (lastSeekValue ?: dragValue)?.toLong()
                     dragValue = null
+                    lastSeekValue = null
                     if (target != null) player.seekTo(target)
                 },
                 valueRange = 0f..end,

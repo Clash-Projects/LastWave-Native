@@ -1360,7 +1360,7 @@ class MusicPlayer @Inject constructor(
                             updateCrossfade(player.currentPosition.coerceAtLeast(0L))
                             cadenceMs = 50L
                         }
-                        if (player.currentMediaItem?.mediaId != _state.value.current?.mediaIdKey()) {
+                        if (!isCurrentMediaMatch(player, _state.value.current)) {
                             _state.update { it.copy(sleepTimerRemainingMs = remaining?.coerceAtLeast(0)) }
                             cadenceMs = 60L
                         } else {
@@ -2150,6 +2150,41 @@ class MusicPlayer @Inject constructor(
         return playheadPosMs.coerceAtLeast(0L)
     }
 
+    private fun isCurrentMediaMatch(player: Player, expected: PlayableTrack?): Boolean {
+        if (expected == null) return false
+        val currentItem = runCatching { player.currentMediaItem }.getOrNull() ?: return false
+        val itemMediaId = currentItem.mediaId
+        val expectedKey = expected.mediaIdKey()
+        if (itemMediaId == expectedKey) return true
+
+        val expectedVideoId = expected.videoId?.takeIf { it.isNotBlank() }
+        if (expectedVideoId != null) {
+            if (itemMediaId == expectedVideoId) return true
+            if (itemMediaId.removePrefix("local:") == expectedVideoId) return true
+        }
+
+        val expectedPlaybackUrl = expected.playbackUrl?.takeIf { it.isNotBlank() }
+        if (expectedPlaybackUrl != null) {
+            if (itemMediaId == expectedPlaybackUrl || itemMediaId == "local:$expectedPlaybackUrl") return true
+            if (itemMediaId.removePrefix("local:") == expectedPlaybackUrl) return true
+            val uriStr = currentItem.localConfiguration?.uri?.toString()
+            if (uriStr == expectedPlaybackUrl || uriStr == "file://$expectedPlaybackUrl") return true
+        }
+
+        val itemTitle = currentItem.mediaMetadata.title?.toString()
+        val itemArtist = currentItem.mediaMetadata.artist?.toString()
+        if (!itemTitle.isNullOrBlank() && itemTitle.equals(expected.title, ignoreCase = true)) {
+            if (itemArtist.isNullOrBlank() || expected.artist.isBlank() || itemArtist.equals(expected.artist, ignoreCase = true)) {
+                return true
+            }
+        }
+
+        val queryKey = "query:${expected.artist.lowercase()}|${expected.title.lowercase()}"
+        if (itemMediaId == queryKey) return true
+
+        return false
+    }
+
     /**
      * Accurate audio playhead clock.
      * In standard playback, aligns with ExoPlayer's true hardware audio presentation position
@@ -2182,7 +2217,7 @@ class MusicPlayer @Inject constructor(
         }
         if (!exclusiveUsbOutput.isActive() && playerDelegate.isInitialized()) {
             val playbackState = player.playbackState
-            val currentMediaMatch = player.currentMediaItem?.mediaId == _state.value.current?.mediaIdKey()
+            val currentMediaMatch = isCurrentMediaMatch(player, _state.value.current)
             if (currentMediaMatch && (playbackState == Player.STATE_READY || playbackState == Player.STATE_BUFFERING)) {
                 val exoPos = player.currentPosition.coerceAtLeast(0L)
                 if (playbackState == Player.STATE_BUFFERING && playheadPosMs == 0L && exoPos > 1_500L) {
@@ -4602,7 +4637,7 @@ class MusicPlayer @Inject constructor(
             stalledWindow != C.INDEX_UNSET &&
             stalledWindow in 0 until player.mediaItemCount &&
             mediaId != null &&
-            mediaId == snapshot.current?.mediaIdKey() &&
+            isCurrentMediaMatch(player, snapshot.current) &&
             player.playbackState != Player.STATE_ENDED
         // Null mediaId can't smart-cast through the flag above; re-check
         // here so the recovery call below type-checks.
@@ -4666,7 +4701,7 @@ class MusicPlayer @Inject constructor(
     private fun recoverSilentAdvance(index: Int, mediaId: String) {
         if (isCasting) return
         if (!playerDelegate.isInitialized() || index !in 0 until player.mediaItemCount) return
-        if (_state.value.current?.mediaIdKey() != mediaId || !_state.value.isPlaying || _state.value.error != null) return
+        if (!isCurrentMediaMatch(player, _state.value.current) || !_state.value.isPlaying || _state.value.error != null) return
         if (silentRecoveries.size > 64) silentRecoveries.clear()
         val attempt = (silentRecoveries[mediaId] ?: 0) + 1
         if (attempt > MAX_SILENT_RECOVERIES) return
@@ -6320,7 +6355,7 @@ class MusicPlayer @Inject constructor(
         val selectionIsResolving = selectedMediaId != null &&
             resolvingMediaIds[selectedMediaId] == playRequestGeneration.get()
         if ((selectionIsResolving || unavailableSkipJob?.isActive == true) &&
-            (player.currentMediaItemIndex != previous.currentIndex || player.currentMediaItem?.mediaId != selectedMediaId)
+            (player.currentMediaItemIndex != previous.currentIndex || !isCurrentMediaMatch(player, previous.current))
         ) return
         val queue = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).toPlayableTrack() }
         val current = player.currentMediaItem?.toPlayableTrack()
@@ -6351,7 +6386,7 @@ class MusicPlayer @Inject constructor(
         // TIME_UNSET (buffering / container not parsed yet): that reset froze
         // the bar at 0:00 and disabled seeking until the next event.
         val dur = effectiveDuration(player.duration, player, previous.durationMs)
-        val currentMediaMatch = player.currentMediaItem?.mediaId == previous.current?.mediaIdKey()
+        val currentMediaMatch = isCurrentMediaMatch(player, previous.current)
         val pos = if (!exclusiveUsbOutput.isActive() && player.playbackState != Player.STATE_IDLE && currentMediaMatch) {
             settleSeekPosition(player.currentPosition.coerceAtLeast(0L)).let { raw ->
                 if (previous.positionMs == 0L && player.playbackState == Player.STATE_BUFFERING && raw > 1_500L) 0L else raw

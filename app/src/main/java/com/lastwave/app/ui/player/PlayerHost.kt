@@ -1622,6 +1622,7 @@ private fun AddToPlaylistDialog(
 private enum class SeekDirection { REWIND, FORWARD }
 
 private const val HERO_FADE_FRACTION = 0.42f
+private const val COVER_ART_FADE_FRACTION = 0.65f
 
 @Composable
 private fun FullPlayer(
@@ -1982,8 +1983,8 @@ private fun FullPlayer(
                                 }
                             ),
                     ) {
-                        // The cover art banner dissolves over its bottom HERO_FADE_FRACTION (42%)
-                        // into the underlying fluid/ambient backdrop via an offscreen DstIn blend mask.
+                        // The cover art banner dissolves over its bottom COVER_ART_FADE_FRACTION (65%)
+                        // into the underlying fluid/ambient backdrop via an offscreen DstIn blend mask with organic easing.
                         if (heroCoverAlpha > 0.001f) {
                             ArtworkImage(
                                 name = track.title,
@@ -2001,8 +2002,16 @@ private fun FullPlayer(
                                         drawContent()
                                         drawRect(
                                             brush = Brush.verticalGradient(
-                                                colors = listOf(Color.Black, Color.Transparent),
-                                                startY = size.height * (1f - HERO_FADE_FRACTION),
+                                                0.00f to Color.Black,
+                                                0.35f to Color.Black,
+                                                0.48f to Color.Black.copy(alpha = 0.96f),
+                                                0.60f to Color.Black.copy(alpha = 0.82f),
+                                                0.72f to Color.Black.copy(alpha = 0.58f),
+                                                0.82f to Color.Black.copy(alpha = 0.34f),
+                                                0.90f to Color.Black.copy(alpha = 0.16f),
+                                                0.96f to Color.Black.copy(alpha = 0.04f),
+                                                1.00f to Color.Transparent,
+                                                startY = 0f,
                                                 endY = size.height,
                                             ),
                                             blendMode = BlendMode.DstIn,
@@ -2011,12 +2020,14 @@ private fun FullPlayer(
                             )
                         }
                         if (activeCanvas != null) {
+                            val activeBottomFade = if (isTallCanvas) HERO_FADE_FRACTION else COVER_ART_FADE_FRACTION
                             CanvasArtworkPlayer(
                                 canvas = activeCanvas,
                                 isPlaying = state.isPlaying,
                                 contentMode = CanvasContentMode.CROP,
                                 alignPortraitTop = true,
-                                bottomFade = HERO_FADE_FRACTION,
+                                bottomFade = activeBottomFade,
+                                bottomFadeFallbackColor = ambientColor.toArgb(),
                                 onAspectRatioChanged = { canvasAspect = it },
                                 onRenderedChanged = { canvasRendered = it },
                                 pausedForTransition = shownDismissY > 0f || currentTab != FullPlayerTab.NOW_PLAYING,
@@ -2863,10 +2874,16 @@ private fun SeekBar(
     val seekInteraction = remember(trackKey) { MutableInteractionSource() }
     val frameworkDragging by seekInteraction.collectIsDraggedAsState()
     var dragFraction by remember(trackKey) { mutableStateOf<Float?>(null) }
+    var lastSeekFraction by remember(trackKey) { mutableStateOf<Float?>(null) }
     // Heal a gesture that ended without the finished callback: drop the dead
-    // value, resume live position. Never seeks; commit is only below.
+    // value, resume live position. A brief delay ensures onValueChangeFinished
+    // runs and captures the target fraction first.
     LaunchedEffect(frameworkDragging, trackKey) {
-        if (!frameworkDragging) dragFraction = null
+        if (!frameworkDragging) {
+            delay(120L)
+            dragFraction = null
+            lastSeekFraction = null
+        }
     }
 
     val boundedDurationMs = effectiveDurationMs.coerceAtLeast(0L)
@@ -2960,13 +2977,17 @@ private fun SeekBar(
             // Invisible Material interaction layer: custom visuals, reliable seeking semantics.
             Slider(
                 value = fraction,
-                onValueChange = { dragFraction = it },
+                onValueChange = {
+                    dragFraction = it
+                    lastSeekFraction = it
+                },
                 onValueChangeFinished = {
                     // Commit only this gesture's value; no value = no seek.
-                    val target = dragFraction?.let {
+                    val target = (lastSeekFraction ?: dragFraction)?.let {
                         (it * boundedDurationMs).toLong().coerceIn(0L, boundedDurationMs)
                     }
                     dragFraction = null
+                    lastSeekFraction = null
                     if (target != null && boundedDurationMs > 0L) {
                         onSeek(target)
                     }
