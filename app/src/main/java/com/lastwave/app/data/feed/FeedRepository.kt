@@ -702,7 +702,7 @@ class FeedRepository @Inject constructor(
                 savedDiscoverMix?.let {
                     FeedQuickTile(
                         title = "Discover Mix",
-                        subtitle = it.author.ifBlank { "Weekly mix" },
+                        subtitle = it.author.takeIf { author -> !author.isNullOrBlank() } ?: "Weekly mix",
                         artworkUrl = it.artworkUrl,
                         playlistId = it.id,
                         collection = "discover_mix",
@@ -721,7 +721,7 @@ class FeedRepository @Inject constructor(
                 savedMyMix?.let {
                     FeedQuickTile(
                         title = "My Mix",
-                        subtitle = it.author.ifBlank { "Endless radio" },
+                        subtitle = it.author.takeIf { author -> !author.isNullOrBlank() } ?: "Endless radio",
                         artworkUrl = it.artworkUrl,
                         playlistId = it.id,
                         collection = "mix",
