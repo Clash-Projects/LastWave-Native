@@ -2164,7 +2164,7 @@ private fun FullPlayer(
                                 label = "lyricsOffsetScale",
                             )
                             IconButton(
-                                onClick = { showLyricsOffset = true },
+                                onClick = { showLyricsOffsetDialog = true },
                                 interactionSource = offsetInteraction,
                                 modifier = Modifier
                                     .size(44.dp)
