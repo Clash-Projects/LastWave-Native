@@ -686,7 +686,7 @@ class MusicPlayer @Inject constructor(
                     ?.customCacheKey
                     ?.let(preparedStreams::get))
                     ?.let { stream ->
-                        publishResolvedQuality(stream)
+                        publishResolvedQuality(stream, expectedMediaId = mediaItem.mediaId)
                         applyDacRoutingFor(dacRateFor(stream), stream.audioCodec)
                         if (!stream.isLossless && stream.audioCodec != "DOLBY ATMOS") {
                             scheduleQualityUpgrade(
@@ -836,7 +836,7 @@ class MusicPlayer @Inject constructor(
                             }
                             if (failedIndex in 0 until player.mediaItemCount) {
                                 registerPreparedStream(stream)
-                                publishResolvedQuality(stream)
+                                publishResolvedQuality(stream, expectedMediaId = failedMediaId)
                                 applyDacRoutingFor(dacRateFor(stream))
                                 logStreamEvent("player-retry", stream, retry = retry)
                                 cacheCurrentTrackStream(stream)
@@ -934,7 +934,10 @@ class MusicPlayer @Inject constructor(
                                 android.util.Log.i("MusicPlayer", "[MEDIA3] loader resolved '${track.title}' key=${resolved.cacheKey} codec=${resolved.audioCodec}")
                                 applicationScope.launch(Dispatchers.Main.immediate) {
                                     registerPreparedStream(resolved)
-                                    publishResolvedQuality(resolved)
+                                    val isCurrentlyPlaying = track.mediaIdKey() == _state.value.current?.mediaIdKey()
+                                    if (isCurrentlyPlaying) {
+                                        publishResolvedQuality(resolved, expectedMediaId = track.mediaIdKey())
+                                    }
                                 }
                             }
                         }
@@ -1031,7 +1034,9 @@ class MusicPlayer @Inject constructor(
                         // Only the active player may publish sample rate and
                         // re-settle bit-perfect/system volume, otherwise the
                         // next track's rate lands on the current track's pill.
-                        if (handleAudioFocus) onDecodedPcmFormatConfigured(rateHz)
+                        if (handleAudioFocus && (activePlayer == null || (playerDelegate.isInitialized() && activePlayer === playerDelegate.value))) {
+                            onDecodedPcmFormatConfigured(rateHz)
+                        }
                     }
                     sink.bitDepthHintProvider = {
                         val s = _state.value
@@ -1155,6 +1160,10 @@ class MusicPlayer @Inject constructor(
                         format: androidx.media3.common.Format,
                     ) {
                         runCatching { effects.setReplayGainFromFormat(format) }
+                        // Crossfade standby or background players must NEVER publish format or rate to active state.
+                        if (!handleAudioFocus || (activePlayer != null && this@apply !== activePlayer)) return
+                        // Pre-buffering of the next track in the playlist must NOT leak into the active track's quality pill.
+                        if (eventTime.windowIndex != currentMediaItemIndex) return
                         val rateHz = format.sampleRate
                         val sampleMime = format.sampleMimeType?.lowercase().orEmpty()
                         val detectedCodec = when {
@@ -1766,7 +1775,8 @@ class MusicPlayer @Inject constructor(
                     val isShuffle = startShuffled || (playerDelegate.isInitialized() && player.shuffleModeEnabled)
                     resolved?.let {
                         registerPreparedStream(it)
-                        publishResolvedQuality(it)
+                        stagePendingQuality(selectedTrack.mediaIdKey(), it)
+                        publishResolvedQuality(it, expectedMediaId = selectedTrack.mediaIdKey())
                         applyDacRoutingFor(dacRateFor(it))
                         logStreamEvent("player-prepare", it, retry = 0)
                         cacheCurrentTrackStream(it)
@@ -1829,7 +1839,8 @@ class MusicPlayer @Inject constructor(
                             if (generation != playRequestGeneration.get()) return@withContext
                             val isShuffle = startShuffled || (playerDelegate.isInitialized() && player.shuffleModeEnabled)
                             registerPreparedStream(ytFallback)
-                            publishResolvedQuality(ytFallback)
+                            stagePendingQuality(selectedTrack.mediaIdKey(), ytFallback)
+                            publishResolvedQuality(ytFallback, expectedMediaId = selectedTrack.mediaIdKey())
                             cacheCurrentTrackStream(ytFallback)
                             val mediaItems = tracks.mapIndexed { index, track ->
                                 track.toMediaItem(if (index == selectedIndex) ytFallback else null)
@@ -3316,7 +3327,7 @@ class MusicPlayer @Inject constructor(
             // clears these very fields.
             prepared?.let { stream ->
                 stagePendingQuality(mediaItem.mediaId, stream)
-                publishResolvedQuality(stream)
+                publishResolvedQuality(stream, expectedMediaId = mediaItem.mediaId)
             }
             takeOverPlayback(index, mediaItem.mediaId)
             preloadNextQueueItem(index)
@@ -3377,7 +3388,7 @@ class MusicPlayer @Inject constructor(
                     // seek hands the resolved depth straight back instead of
                     // blanking the pill.
                     stagePendingQuality(expectedMediaId, resolved)
-                    publishResolvedQuality(resolved)
+                    publishResolvedQuality(resolved, expectedMediaId = expectedMediaId)
                     applyDacRoutingFor(dacRateFor(resolved))
                     logStreamEvent("queue-prepare", resolved, retry = 0)
                     cacheCurrentTrackStream(resolved)
@@ -3418,7 +3429,7 @@ class MusicPlayer @Inject constructor(
                             }
                             registerPreparedStream(ytFallback)
                             stagePendingQuality(expectedMediaId, ytFallback)
-                            publishResolvedQuality(ytFallback)
+                            publishResolvedQuality(ytFallback, expectedMediaId = expectedMediaId)
                             applyDacRoutingFor(dacRateFor(ytFallback))
                             logStreamEvent("queue-prepare-yt-fallback", ytFallback, retry = 0)
                             cacheCurrentTrackStream(ytFallback)
@@ -5647,7 +5658,17 @@ class MusicPlayer @Inject constructor(
         )
     }
 
-    private fun publishResolvedQuality(resolved: ResolvedStream) {
+    private fun publishResolvedQuality(resolved: ResolvedStream, expectedMediaId: String? = null) {
+        if (expectedMediaId != null) {
+            val currentMediaId = _state.value.current?.mediaIdKey()
+            if (currentMediaId != null && currentMediaId != expectedMediaId) {
+                android.util.Log.d(
+                    "MusicPlayer",
+                    "Quality Pill: ignoring publishResolvedQuality for non-current track (expected=$expectedMediaId, current=$currentMediaId)",
+                )
+                return
+            }
+        }
         android.util.Log.i(
             "MusicPlayer",
             "Quality Pill: publishResolvedQuality(codec=${resolved.audioCodec}, depth=${resolved.bitDepth}, rate=${resolved.samplingRateKHz}kHz, kbps=${resolved.bitrateKbps}, isLossless=${resolved.isLossless})",
@@ -5680,10 +5701,11 @@ class MusicPlayer @Inject constructor(
                     bitDepth = resolved.bitDepth,
                     samplingRateKHz = if (isSpatialAudioCodec(resolved.audioCodec)) {
                         48.0
-                    } else if (decodedSampleRateHz > 0) {
-                        decodedSampleRateHz / 1000.0
                     } else {
-                        resolved.samplingRateKHz ?: it.samplingRateKHz
+                        // The freshly resolved stream's explicit sample rate MUST take priority over
+                        // any residual or standby decodedSampleRateHz from previous tracks/decoders.
+                        resolved.samplingRateKHz
+                            ?: (if (decodedSampleRateHz > 0) decodedSampleRateHz / 1000.0 else it.samplingRateKHz)
                     },
                     // Seed the progress denominator the moment the stream
                     // resolves instead of waiting for ExoPlayer to parse the
