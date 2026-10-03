@@ -197,3 +197,205 @@ internal fun parseQualityFromCodec(codec: String?): String? {
 
 private val GENERIC_AUDIO_LABELS = setOf("AUDIO", "LOCAL AUDIO")
 
+/**
+ * Ground-truth FLAC format facts read straight from the file's STREAMINFO
+ * block — no MediaMetadataRetriever, no decoder, no API-level gate.
+ *
+ * Why this exists: the pill was rendering rate-only ("44.1kHz FLAC" /
+ * "48kHz FLAC") on many devices because [MusicPlayerState.bitDepth] was null.
+ * The retriever path only runs on API 31+ and still returns null for
+ * BITS_PER_SAMPLE on several OEMs/files, while the decoder's PCM width is
+ * deliberately never used as source depth. STREAMINFO is written by every
+ * FLAC encoder, is identical on every device, and carries both the sample
+ * rate (20 bits) and the bits-per-sample (5 bits, stored value + 1).
+ */
+data class FlacStreamInfo(val bitDepth: Int?, val sampleRateHz: Int?)
+
+/** Parse one 34-byte STREAMINFO body into depth + rate. Null when invalid. */
+fun parseFlacStreamInfoBody(body: ByteArray, offset: Int = 0): FlacStreamInfo? {
+    if (body.size - offset < 34) return null
+    val b10 = body[offset + 10].toInt() and 0xFF
+    val b11 = body[offset + 11].toInt() and 0xFF
+    val b12 = body[offset + 12].toInt() and 0xFF
+    val b13 = body[offset + 13].toInt() and 0xFF
+    val sampleRateHz = (b10 shl 12) or (b11 shl 4) or ((b12 shr 4) and 0x0F)
+    val bpsMinusOne = ((b12 and 0x01) shl 4) or ((b13 shr 4) and 0x0F)
+    val bitDepth = bpsMinusOne + 1
+    if (sampleRateHz < 8000 || sampleRateHz > 768000) return null
+    if (bitDepth < 4 || bitDepth > 32) return null
+    return FlacStreamInfo(bitDepth = bitDepth, sampleRateHz = sampleRateHz)
+}
+
+/**
+ * Scan a byte buffer holding the start of a FLAC file (optional ID3v2 prefix,
+ * "fLaC" marker, then metadata blocks) for STREAMINFO. Returns null when the
+ * buffer is not FLAC or STREAMINFO is not within [validBytes].
+ */
+fun parseFlacHeaderBytes(data: ByteArray, validBytes: Int = data.size): FlacStreamInfo? {
+    var pos = 0
+    val end = validBytes.coerceAtMost(data.size)
+    // Optional ID3v2 prefix ("ID3" + ver(2) + flags(1) + 4 synchsafe bytes).
+    if (end - pos >= 10 && data[0] == 'I'.code.toByte() && data[1] == 'D'.code.toByte() &&
+        data[2] == '3'.code.toByte()
+    ) {
+        val size = ((data[6].toInt() and 0x7F) shl 21) or
+            ((data[7].toInt() and 0x7F) shl 14) or
+            ((data[8].toInt() and 0x7F) shl 7) or
+            (data[9].toInt() and 0x7F)
+        pos = 10 + size
+    }
+    if (end - pos < 4) return null
+    if (!(data[pos] == 'f'.code.toByte() && data[pos + 1] == 'L'.code.toByte() &&
+            data[pos + 2] == 'a'.code.toByte() && data[pos + 3] == 'C'.code.toByte())
+    ) return null
+    pos += 4
+    repeat(64) {
+        if (end - pos < 4) return null
+        val header = data[pos].toInt() and 0xFF
+        val isLast = (header and 0x80) != 0
+        val type = header and 0x7F
+        val len = ((data[pos + 1].toInt() and 0xFF) shl 16) or
+            ((data[pos + 2].toInt() and 0xFF) shl 8) or
+            (data[pos + 3].toInt() and 0xFF)
+        pos += 4
+        if (len < 0 || end - pos < len) return null
+        if (type == 0) return parseFlacStreamInfoBody(data, pos)
+        pos += len
+        if (isLast) return null
+    }
+    return null
+}
+
+/**
+ * Read STREAMINFO from an open stream (file or content URI). Consumes only the
+ * header bytes needed (ID3 prefix + "fLaC" + block headers + 34-byte
+ * STREAMINFO); picture blocks are skipped without loading them. Never throws.
+ */
+fun readFlacStreamInfo(input: java.io.InputStream): FlacStreamInfo? {
+    return try {
+        fun readFully(buf: ByteArray, off: Int = 0, len: Int = buf.size - off): Boolean {
+            var o = off
+            var remaining = len
+            while (remaining > 0) {
+                val n = input.read(buf, o, remaining)
+                if (n <= 0) return false
+                o += n
+                remaining -= n
+            }
+            return true
+        }
+        fun skipFully(n: Long): Boolean {
+            var remaining = n
+            while (remaining > 0) {
+                val skipped = input.skip(remaining)
+                if (skipped <= 0) {
+                    // skip() may return 0 — fall back to a single-byte read.
+                    if (input.read() == -1) return false
+                    remaining -= 1
+                } else {
+                    remaining -= skipped
+                }
+            }
+            return true
+        }
+        val id3 = ByteArray(10)
+        if (!readFully(id3)) return null
+        var first = id3
+        if (first[0] == 'I'.code.toByte() && first[1] == 'D'.code.toByte() && first[2] == '3'.code.toByte()) {
+            val size = ((first[6].toInt() and 0x7F) shl 21) or
+                ((first[7].toInt() and 0x7F) shl 14) or
+                ((first[8].toInt() and 0x7F) shl 7) or
+                (first[9].toInt() and 0x7F)
+            if (!skipFully(size.toLong())) return null
+            val magic = ByteArray(4)
+            if (!readFully(magic)) return null
+            first = ByteArray(10) // recycle variable; first 4 bytes hold the magic
+            magic.copyInto(first, 0, 0, 4)
+            if (!(first[0] == 'f'.code.toByte() && first[1] == 'L'.code.toByte() &&
+                    first[2] == 'a'.code.toByte() && first[3] == 'C'.code.toByte())
+            ) return null
+        } else {
+            if (!(first[0] == 'f'.code.toByte() && first[1] == 'L'.code.toByte() &&
+                    first[2] == 'a'.code.toByte() && first[3] == 'C'.code.toByte())
+            ) return null
+            // We already consumed 10 bytes: 4 magic + 6 bytes of the first
+            // block header area. Re-assemble from the buffer.
+            // Put the 6 lookahead bytes back into play via a small prefix copy.
+            val lookahead = first.copyOfRange(4, 10)
+            // Continue parsing below using lookahead + stream.
+            return readFlacBlocksWithPrefix(lookahead, input)
+        }
+        // ID3 path: stream is positioned right after "fLaC".
+        readFlacBlocks(input)
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private fun readFlacBlocks(input: java.io.InputStream): FlacStreamInfo? {
+    try {
+        repeat(64) {
+            val h = ByteArray(4)
+            var o = 0
+            while (o < 4) {
+                val n = input.read(h, o, 4 - o)
+                if (n <= 0) return null
+                o += n
+            }
+            val header = h[0].toInt() and 0xFF
+            val isLast = (header and 0x80) != 0
+            val type = header and 0x7F
+            val len = ((h[1].toInt() and 0xFF) shl 16) or
+                ((h[2].toInt() and 0xFF) shl 8) or
+                (h[3].toInt() and 0xFF)
+            if (len < 0 || len > 32 * 1024 * 1024) return null
+            if (type == 0) {
+                if (len < 34) return null
+                val body = ByteArray(34)
+                var bo = 0
+                while (bo < 34) {
+                    val n = input.read(body, bo, 34 - bo)
+                    if (n <= 0) return null
+                    bo += n
+                }
+                // Skip any STREAMINFO remainder (should be none: len == 34).
+                var rest = (len - 34).toLong()
+                while (rest > 0) {
+                    val s = input.skip(rest)
+                    if (s <= 0) {
+                        if (input.read() == -1) break
+                        rest -= 1
+                    } else rest -= s
+                }
+                return parseFlacStreamInfoBody(body, 0)
+            }
+            var remaining = len.toLong()
+            while (remaining > 0) {
+                val s = input.skip(remaining)
+                if (s <= 0) {
+                    if (input.read() == -1) return null
+                    remaining -= 1
+                } else remaining -= s
+            }
+            if (isLast) return null
+        }
+    } catch (_: Exception) {
+        return null
+    }
+    return null
+}
+
+private fun readFlacBlocksWithPrefix(prefix: ByteArray, input: java.io.InputStream): FlacStreamInfo? {
+    try {
+        // Stitch the 6 buffered bytes in front of the live stream.
+        val head = prefix + ByteArray(0)
+        val buffered = java.io.SequenceInputStream(
+            java.io.ByteArrayInputStream(head),
+            input,
+        )
+        return readFlacBlocks(buffered)
+    } catch (_: Exception) {
+        return null
+    }
+}
+

@@ -4955,6 +4955,26 @@ class MusicPlayer @Inject constructor(
                 retriever.release()
             }
         }
+        // FLAC STREAMINFO fallback: device- and API-independent ground truth.
+        // The retriever keys above need API 31+ and still return null on
+        // several OEMs/files, which left bitDepth null and the pill stuck at
+        // rate-only ("44.1kHz FLAC"). The header parse works on every device.
+        if ((mime.contains("flac") || (uri.path ?: targetUrl).endsWith(".flac", ignoreCase = true)) &&
+            (bitDepth == null || samplingRateKHz == null)
+        ) {
+            runCatching {
+                val header: FlacStreamInfo? = if (targetUrl.startsWith("content://")) {
+                    appContext.contentResolver.openInputStream(uri)?.use { readFlacStreamInfo(it) }
+                } else {
+                    val path = uri.path ?: targetUrl.removePrefix("file://")
+                    java.io.File(path).takeIf { it.isFile && it.canRead() }?.inputStream()?.use { readFlacStreamInfo(it) }
+                }
+                if (header != null) {
+                    if (bitDepth == null) bitDepth = header.bitDepth?.takeIf { it > 0 }
+                    if (samplingRateKHz == null) header.sampleRateHz?.takeIf { it > 0 }?.let { samplingRateKHz = it / 1000.0 }
+                }
+            }
+        }
 
         val resolvedBadge = badge ?: when {
             mime.contains("flac") -> {
@@ -6176,15 +6196,32 @@ class MusicPlayer @Inject constructor(
 
             // Retriever values are measured container facts (STREAMINFO),
             // not backend hearsay: a present 16 beside 96kHz is a genuine
-            // 16/96 file — trust it. Absent stays absent (unknown, not 16;
-            // missing rate is not 44.1kHz either). The decoder's measured
-            // PCM encoding restores certainty where measurable.
-            val effectiveBitDepth = bitDepth?.takeIf { it > 0 }
+            // 16/96 file — trust it. When the retriever omits depth/rate
+            // (pre-S APIs, several OEMs/files), the FLAC header itself is
+            // read instead — same STREAMINFO facts, working on every device.
+            // Only a truly unreadable header stays unknown, never a guessed
+            // 16 or 44.1.
+            var effectiveBitDepth = bitDepth?.takeIf { it > 0 }
+            var effectiveRateKHz = sampleRateKHz
+            if (isFlac && (effectiveBitDepth == null || effectiveRateKHz == null)) {
+                runCatching {
+                    val header: FlacStreamInfo? = if (url.startsWith("content://")) {
+                        appContext.contentResolver.openInputStream(Uri.parse(url))?.use { readFlacStreamInfo(it) }
+                    } else {
+                        java.io.File(url.removePrefix("file://")).takeIf { it.isFile && it.canRead() }
+                            ?.inputStream()?.use { readFlacStreamInfo(it) }
+                    }
+                    if (header != null) {
+                        if (effectiveBitDepth == null) effectiveBitDepth = header.bitDepth?.takeIf { it > 0 }
+                        if (effectiveRateKHz == null) header.sampleRateHz?.takeIf { it > 0 }?.let { effectiveRateKHz = it / 1000.0 }
+                    }
+                }
+            }
 
             val codec = when {
-                isFlac && effectiveBitDepth != null && sampleRateKHz != null && sampleRateKHz > 0.0 ->
-                    "$effectiveBitDepth/${formatSampleRateKHz(sampleRateKHz)}kHz"
-                isFlac && ((effectiveBitDepth ?: 0) > 16 || (sampleRateKHz ?: 0.0) > 48.0) -> "HI-RES FLAC"
+                isFlac && effectiveBitDepth != null && effectiveRateKHz != null && effectiveRateKHz > 0.0 ->
+                    "$effectiveBitDepth/${formatSampleRateKHz(effectiveRateKHz)}kHz"
+                isFlac && ((effectiveBitDepth ?: 0) > 16 || (effectiveRateKHz ?: 0.0) > 48.0) -> "HI-RES FLAC"
                 isFlac -> "FLAC"
                 isM4a -> "AAC"
                 isOpus -> "OPUS"
@@ -6197,7 +6234,7 @@ class MusicPlayer @Inject constructor(
                     audioCodec = codec,
                     bitrateKbps = bitrateKbps,
                     bitDepth = effectiveBitDepth,
-                    samplingRateKHz = sampleRateKHz,
+                    samplingRateKHz = effectiveRateKHz,
                     // FLAC is lossless at every bit depth. Requiring >16 here
                     // marked CD-quality (16/44.1) FLAC — and any FLAC whose
                     // container omits BITS_PER_SAMPLE — as lossy, which pushed
