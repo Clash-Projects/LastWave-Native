@@ -39,6 +39,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.ThumbUp
@@ -320,18 +321,25 @@ fun FeedScreen(
                                 tiles = quickTiles,
                                 onTileClick = { tile ->
                                     when {
-                                        tile.title.equals("My Mix", ignoreCase = true) || (tile.collection == "mix" && !tile.title.contains("Discover", ignoreCase = true)) -> {
-                                            viewModel.playMyMix(tile)
+                                        tile.collection == "radio" -> onOpenDiscover()
+                                        tile.collection == "discover_mix" -> {
+                                            if (tile.playlistId != null) {
+                                                viewModel.playPlaylistById(tile.playlistId, tile.title)
+                                            } else {
+                                                onOpenDiscover()
+                                            }
                                         }
-                                        tile.title.contains("Discover Mix", ignoreCase = true) || tile.collection == "discover_mix" -> {
-                                            tile.playlistId?.let { onOpenFeedPlaylist(it) } ?: onOpenDiscover()
-                                        }
-                                        tile.title.equals("Discover", ignoreCase = true) || tile.collection == "radio" -> {
-                                            onOpenDiscover()
+                                        tile.collection == "mix" -> onOpenGenerator()
+                                        tile.collection == "my_mix" -> {
+                                            if (tile.playlistId != null) {
+                                                viewModel.playPlaylistById(tile.playlistId, tile.title)
+                                            } else {
+                                                viewModel.playInfiniteRadio()
+                                            }
                                         }
                                         tile.collection == "yt_liked" || tile.playlistId == "yt_liked" -> onOpenFeedPlaylist("yt_liked")
                                         tile.collection == "yt_recent" || tile.playlistId == "yt_recent" -> onOpenFeedPlaylist("yt_recent")
-                                        tile.collection == "new_releases" || tile.title.equals("New Releases", ignoreCase = true) -> onOpenNewReleases()
+                                        tile.collection == "new_releases" -> onOpenNewReleases()
                                         tile.localPlaylistId != null -> onOpenPlaylist(tile.localPlaylistId)
                                         tile.playlistId != null -> onOpenFeedPlaylist(tile.playlistId)
                                         else -> viewModel.handleQuickTileClick(tile)
@@ -1197,10 +1205,7 @@ private fun QuickTilesGrid(
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        items(
-            items = tiles,
-            key = { tile -> tile.title + "_" + (tile.playlistId ?: "") + "_" + (tile.collection ?: "") + "_" + tile.isLiked }
-        ) { tile ->
+        items(tiles) { tile ->
             QuickTileCard(
                 tile = tile,
                 onClick = { onTileClick(tile) },
@@ -1221,26 +1226,23 @@ private fun QuickTileCard(
     val isYtLikedTile = tile.collection == "yt_liked" || tile.playlistId == "yt_liked"
     val isLocalLikedTile = tile.isLiked && !isYtLikedTile
     val isLikedTile = isYtLikedTile || isLocalLikedTile
-    val isMyMixTile = tile.title.equals("My Mix", ignoreCase = true) || (tile.collection == "mix" && !tile.title.contains("Discover", ignoreCase = true))
-    val isDiscoverMixTile = tile.title.contains("Discover Mix", ignoreCase = true) || tile.collection == "discover_mix"
-    val isDiscoverTile = !isDiscoverMixTile && (tile.title.equals("Discover", ignoreCase = true) || tile.collection == "radio" || tile.title.contains("Discover", ignoreCase = true))
-    val isNewReleasesTile = tile.collection == "new_releases" || tile.title.equals("New Releases", ignoreCase = true)
+    val isMixTile = tile.collection == "mix" || tile.collection == "discover_mix" || tile.title.contains("Discover Mix", ignoreCase = true)
+    val isMyMixTile = tile.collection == "my_mix" || tile.title.equals("My Mix", ignoreCase = true)
+    val isDiscoverTile = tile.collection == "radio" || tile.title.equals("Discover", ignoreCase = true)
+    val isNewReleasesTile = tile.collection == "new_releases"
 
     val iconGradient = when {
         isLikedTile -> Brush.linearGradient(
             colors = listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.primary),
         )
-        isMyMixTile -> Brush.linearGradient(
-            colors = listOf(MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.tertiary),
-        )
-        isDiscoverMixTile -> Brush.linearGradient(
+        isMixTile -> Brush.linearGradient(
             colors = listOf(MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.secondary),
         )
+        isMyMixTile -> Brush.linearGradient(
+            colors = listOf(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)),
+        )
         isDiscoverTile -> Brush.linearGradient(
-            colors = listOf(
-                MaterialTheme.colorScheme.primaryContainer,
-                MaterialTheme.colorScheme.tertiaryContainer,
-            ),
+            colors = listOf(MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.tertiary),
         )
         isNewReleasesTile -> Brush.linearGradient(
             colors = listOf(MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.error),
@@ -1258,9 +1260,9 @@ private fun QuickTileCard(
         shape = tileShape,
         color = when {
             isLikedTile -> MaterialTheme.colorScheme.primaryContainer
-            isMyMixTile -> MaterialTheme.colorScheme.tertiaryContainer
-            isDiscoverMixTile -> MaterialTheme.colorScheme.secondaryContainer
-            isDiscoverTile -> MaterialTheme.colorScheme.surfaceContainerHigh
+            isMixTile -> MaterialTheme.colorScheme.secondaryContainer
+            isMyMixTile -> MaterialTheme.colorScheme.surfaceVariant
+            isDiscoverTile -> MaterialTheme.colorScheme.tertiaryContainer
             isNewReleasesTile -> MaterialTheme.colorScheme.errorContainer
             else -> MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f)
         },
@@ -1269,8 +1271,7 @@ private fun QuickTileCard(
             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.10f),
         ),
         modifier = modifier
-            .width(136.dp)
-            .clip(tileShape),
+            .width(136.dp),
     ) {
         Column(
             modifier = Modifier
@@ -1300,18 +1301,18 @@ private fun QuickTileCard(
                         tint = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.size(36.dp),
                     )
-                } else if (isMyMixTile) {
-                    Icon(
-                        Icons.Filled.GraphicEq,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                        modifier = Modifier.size(36.dp),
-                    )
-                } else if (isDiscoverMixTile) {
+                } else if (isMixTile) {
                     Icon(
                         Icons.Filled.AutoAwesome,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.size(36.dp),
+                    )
+                } else if (isMyMixTile) {
+                    Icon(
+                        Icons.Filled.AllInclusive,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(36.dp),
                     )
                 } else if (isDiscoverTile) {
