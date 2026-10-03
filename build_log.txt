@@ -1,310 +1,58 @@
-Build Release APKs	Run unit tests (audio pipeline + regression)	﻿2026-09-24T10:07:36.7780945Z ##[group]Run ./gradlew :app:testDebugUnitTest --stacktrace
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:36.7781907Z ^[[36;1m./gradlew :app:testDebugUnitTest --stacktrace^[[0m
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:36.7840850Z shell: /usr/bin/bash -e {0}
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:36.7841133Z env:
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:36.7858906Z   SIGNING_KEY: ***
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:36.7859280Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.20-1/x64
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:36.7859804Z   JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.20-1/x64
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:36.7860208Z ##[endgroup]
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:37.5482129Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:37.5490239Z Welcome to Gradle 9.3.1!
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:37.5501970Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:37.5522487Z Here are the highlights of this release:
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:37.5532215Z  - Test reporting improvements
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:37.5533049Z  - Error and warning improvements
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:37.5533593Z  - Build authoring improvements
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:37.5533946Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:37.5534347Z For more details see https://docs.gradle.org/9.3.1/release-notes.html
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:37.5534989Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:37.6433245Z Starting a Gradle Daemon (subsequent builds will be faster)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:47.0432689Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:47.0438627Z > Configure project :app
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:47.0446361Z WARNING: The option setting 'android.builtInKotlin=false' is deprecated.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:47.0454233Z The current default is 'true'.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:47.0455103Z It will be removed in version 10.0 of the Android Gradle plugin.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:47.0465776Z WARNING: The option setting 'android.newDsl=false' is deprecated.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:47.0466866Z The current default is 'true'.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:47.0467961Z It will be removed in version 10.0 of the Android Gradle plugin.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:49.1432191Z w: ⚠️ Deprecated 'org.jetbrains.kotlin.android' plugin usage
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:49.1441658Z The 'org.jetbrains.kotlin.android' plugin in project ':app' is no longer required for Kotlin support since AGP 9.0.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:49.1471121Z Solution: Remove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:49.1473046Z See https://kotl.in/gradle/agp-built-in-kotlin for more details.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:49.1473827Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:49.7429638Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:49.7441166Z > Configure project :audio:decent-usb-audio-driver
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:49.7443001Z w: ⚠️ Deprecated 'org.jetbrains.kotlin.android' plugin usage
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:49.7445148Z The 'org.jetbrains.kotlin.android' plugin in project ':audio:decent-usb-audio-driver' is no longer required for Kotlin support since AGP 9.0.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:49.7447215Z Solution: Remove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:49.7448705Z See https://kotl.in/gradle/agp-built-in-kotlin for more details.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:49.7449729Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.8429430Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.8441558Z > Task :audio:decent-usb-audio-driver:preBuild UP-TO-DATE
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.8442495Z > Task :audio:decent-usb-audio-driver:preDebugBuild UP-TO-DATE
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.9472046Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.9542430Z > Task :app:generateNativeSecrets
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.9586961Z WARNING: URL_SECRET not set. Native secrets will be empty (YouTube fallback).
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.9652666Z WARNING: PROVIDER_MODULE_KEY not set. Native module key will be empty (addons rejected).
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.9672463Z Generated app/src/main/cpp/SecretsBridge_generated.h
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.9673325Z   Base URL: [EMPTY]
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.9674317Z   URL secret: [EMPTY]
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.9675909Z   Module key: [EMPTY]
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.9690795Z   Fragments: 0 url, 0 secret, 0 module
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.9691936Z   Cert prefix: PLACEHOLDER_REPLACE_...
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.9692302Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.9692467Z > Task :app:preBuild
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.9692912Z > Task :app:preDebugBuild
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.9693431Z > Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.9694391Z > Task :audio:decent-usb-audio-driver:processDebugNavigationResources FROM-CACHE
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.9696004Z > Task :audio:decent-usb-audio-driver:checkKotlinGradlePluginConfigurationErrors SKIPPED
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:55.9696899Z > Task :app:generateDebugBuildConfig FROM-CACHE
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:56.0431205Z > Task :audio:decent-usb-audio-driver:generateDebugResources FROM-CACHE
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:56.0437189Z > Task :audio:decent-usb-audio-driver:packageDebugResources FROM-CACHE
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:57.3462962Z > Task :audio:decent-usb-audio-driver:parseDebugLocalResources FROM-CACHE
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:57.3502747Z > Task :audio:decent-usb-audio-driver:generateDebugRFile FROM-CACHE
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:57.3542184Z > Task :app:generateDebugResources
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:58.1430029Z > Task :audio:decent-usb-audio-driver:javaPreCompileDebug FROM-CACHE
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:58.1444031Z > Task :audio:decent-usb-audio-driver:writeDebugAarMetadata
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:58.1447026Z > Task :audio:decent-usb-audio-driver:extractDeepLinksDebug FROM-CACHE
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:58.1447976Z > Task :audio:decent-usb-audio-driver:processDebugManifest FROM-CACHE
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:58.1448766Z > Task :audio:decent-usb-audio-driver:mapDebugSourceSetPaths
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:58.1449746Z > Task :audio:decent-usb-audio-driver:compileDebugLibraryResources FROM-CACHE
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:07:58.2452525Z > Task :app:packageDebugResources
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:00.1439485Z > Task :app:processDebugNavigationResources
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:01.2452956Z > Task :app:javaPreCompileDebug FROM-CACHE
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:01.4462696Z > Task :app:parseDebugLocalResources
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:01.5462462Z > Task :app:mapDebugSourceSetPaths
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:01.5492408Z > Task :app:compileDebugNavigationResources FROM-CACHE
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:01.6441786Z > Task :app:checkDebugAarMetadata
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:01.6472365Z > Task :app:generateDebugRFile
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:06.4443013Z > Task :app:createDebugCompatibleScreenManifests
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:06.4452295Z > Task :app:extractDeepLinksDebug FROM-CACHE
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:07.5442911Z > Task :app:processDebugMainManifest
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:07.8472357Z > Task :app:processDebugManifest
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:07.8501963Z > Task :app:preDebugUnitTestBuild
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:07.8582084Z > Task :app:javaPreCompileDebugUnitTest FROM-CACHE
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:07.8611903Z > Task :app:processDebugManifestForPackage
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:08.5430292Z > Task :app:mergeDebugResources
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:11.7430860Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:11.7432271Z > Task :audio:decent-usb-audio-driver:compileDebugKotlin
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:11.7435114Z w: file:///home/runner/work/LastWave-Native/LastWave-Native/audio/decent-usb-audio-driver/src/main/kotlin/com/decent/usbaudio/UsbAudioPermissionHelper.kt:38:29 'fun <T : Parcelable!> getParcelableExtra(p0: String!): T?' is deprecated. Deprecated in Java.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:12.0428847Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:12.0429633Z > Task :app:processDebugResources
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:12.1452844Z > Task :audio:decent-usb-audio-driver:compileDebugJavaWithJavac NO-SOURCE
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:12.2437265Z > Task :audio:decent-usb-audio-driver:bundleLibRuntimeToJarDebug
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:12.2446357Z > Task :audio:decent-usb-audio-driver:bundleLibCompileToJarDebug
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:12.2477900Z > Task :audio:decent-usb-audio-driver:processDebugJavaRes
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:08:40.2444600Z > Task :app:kspDebugKotlin
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:10.2453932Z > Task :app:compileDebugKotlin
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.5430455Z e: file:///home/runner/work/LastWave-Native/LastWave-Native/app/src/main/java/com/lastwave/app/ui/player/FluidArtworkBackground.kt:42:36 Unresolved reference 'PlayableTrack'.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.5453404Z e: file:///home/runner/work/LastWave-Native/LastWave-Native/app/src/main/java/com/lastwave/app/ui/player/FluidArtworkBackground.kt:43:35 Unresolved reference 'ArtworkNormalizer'.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.5464129Z e: file:///home/runner/work/LastWave-Native/LastWave-Native/app/src/main/java/com/lastwave/app/ui/player/FluidArtworkBackground.kt:261:12 Unresolved reference 'PlayableTrack'.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.5466728Z e: file:///home/runner/work/LastWave-Native/LastWave-Native/app/src/main/java/com/lastwave/app/ui/player/FluidArtworkBackground.kt:268:29 Unresolved reference 'artworkUrl'.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.5473820Z e: file:///home/runner/work/LastWave-Native/LastWave-Native/app/src/main/java/com/lastwave/app/ui/player/FluidArtworkBackground.kt:269:18 Cannot infer type for type parameter 'T'. Specify it explicitly.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.5476347Z e: file:///home/runner/work/LastWave-Native/LastWave-Native/app/src/main/java/com/lastwave/app/ui/player/FluidArtworkBackground.kt:269:42 Unresolved reference 'ArtworkNormalizer'.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.5478856Z e: file:///home/runner/work/LastWave-Native/LastWave-Native/app/src/main/java/com/lastwave/app/ui/player/FluidArtworkBackground.kt:271:15 Cannot infer type for type parameter 'T'. Specify it explicitly.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.5481271Z e: file:///home/runner/work/LastWave-Native/LastWave-Native/app/src/main/java/com/lastwave/app/ui/player/FluidArtworkBackground.kt:271:30 Unresolved reference 'title'.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.5483774Z e: file:///home/runner/work/LastWave-Native/LastWave-Native/app/src/main/java/com/lastwave/app/ui/player/FluidArtworkBackground.kt:271:43 Unresolved reference 'artist'.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.5486137Z e: file:///home/runner/work/LastWave-Native/LastWave-Native/app/src/main/java/com/lastwave/app/ui/player/FluidArtworkBackground.kt:271:53 Unresolved reference 'ArtworkNormalizer'.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.5488438Z e: file:///home/runner/work/LastWave-Native/LastWave-Native/app/src/main/java/com/lastwave/app/ui/player/FluidArtworkBackground.kt:271:86 Unresolved reference 'title'.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.5490567Z e: file:///home/runner/work/LastWave-Native/LastWave-Native/app/src/main/java/com/lastwave/app/ui/player/FluidArtworkBackground.kt:271:99 Unresolved reference 'artist'.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.5492993Z e: file:///home/runner/work/LastWave-Native/LastWave-Native/app/src/main/java/com/lastwave/app/ui/player/FluidArtworkBackground.kt:277:13 Unresolved reference 'not' for operator '!'.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.5495209Z e: file:///home/runner/work/LastWave-Native/LastWave-Native/app/src/main/java/com/lastwave/app/ui/player/FluidArtworkBackground.kt:278:44 Unresolved reference 'title'.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.5497401Z e: file:///home/runner/work/LastWave-Native/LastWave-Native/app/src/main/java/com/lastwave/app/ui/player/FluidArtworkBackground.kt:278:57 Unresolved reference 'artist'.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.6471817Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.6477461Z > Task :app:compileDebugKotlin FAILED
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7429091Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7433009Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7452397Z FAILURE: Build failed with an exception.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7452928Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7478540Z [Incubating] Problems report is available at: file:///home/runner/work/LastWave-Native/LastWave-Native/build/reports/problems/problems-report.html
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7483187Z * What went wrong:
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7527117Z Execution failed for task ':app:compileDebugKotlin'.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7557008Z > A failure occurred while executing org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7562005Z    > Compilation error. See log for more details
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7583070Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7584492Z 36 actionable tasks: 22 executed, 14 from cache
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7606622Z * Try:
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7634616Z > Run with --info or --debug option to get more log output.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7635723Z > Run with --scan to get full insights from a Build Scan (powered by Develocity).
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7659492Z > Get more help at https://help.gradle.org.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7686276Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7712043Z * Exception is:
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7713489Z org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':app:compileDebugKotlin'.
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7740178Z 	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.lambda$executeIfValid$1(ExecuteActionsTaskExecuter.java:135)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7764898Z 	at org.gradle.internal.Try$Failure.ifSuccessfulOrElse(Try.java:288)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7793417Z 	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:133)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7818211Z 	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute(ExecuteActionsTaskExecuter.java:121)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7823625Z 	at org.gradle.api.internal.tasks.execution.ProblemsTaskPathTrackingTaskExecuter.execute(ProblemsTaskPathTrackingTaskExecuter.java:41)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7873378Z 	at org.gradle.api.internal.tasks.execution.FinalizePropertiesTaskExecuter.execute(FinalizePropertiesTaskExecuter.java:46)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7902940Z 	at org.gradle.api.internal.tasks.execution.ResolveTaskExecutionModeExecuter.execute(ResolveTaskExecutionModeExecuter.java:51)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7912585Z 	at org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter.execute(SkipTaskWithNoActionsExecuter.java:57)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7927644Z 	at org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter.execute(SkipOnlyIfTaskExecuter.java:74)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7962631Z 	at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:36)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7968552Z 	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.executeTask(EventFiringTaskExecuter.java:77)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.7999671Z 	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:55)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8022707Z 	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:52)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8039199Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8041093Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8092738Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8104050Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8125503Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8147967Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8162965Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8164700Z 	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter.execute(EventFiringTaskExecuter.java:52)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8166378Z 	at org.gradle.execution.plan.DefaultNodeExecutor.executeLocalTaskNode(DefaultNodeExecutor.java:55)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8167878Z 	at org.gradle.execution.plan.DefaultNodeExecutor.execute(DefaultNodeExecutor.java:34)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8169642Z 	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:355)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8171973Z 	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:343)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8174175Z 	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.lambda$execute$0(DefaultTaskExecutionGraph.java:339)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8176127Z 	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:84)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8178153Z 	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:339)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8180369Z 	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:328)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8182542Z 	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:459)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8184779Z 	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:376)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8186721Z 	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8188374Z 	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8189803Z Caused by: org.gradle.workers.internal.DefaultWorkerExecutor$WorkExecutionException: A failure occurred while executing org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8191162Z 	at org.gradle.workers.internal.DefaultWorkerExecutor$WorkItemExecution.waitForCompletion(DefaultWorkerExecutor.java:289)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8193090Z 	at org.gradle.internal.work.DefaultAsyncWorkTracker.lambda$waitForItemsAndGatherFailures$2(DefaultAsyncWorkTracker.java:130)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8194283Z 	at org.gradle.internal.Factories$1.create(Factories.java:30)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8194956Z 	at org.gradle.internal.work.DefaultWorkerLeaseService.lambda$withoutLocks$2(DefaultWorkerLeaseService.java:344)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8195755Z 	at org.gradle.internal.work.ResourceLockStatistics$1.measure(ResourceLockStatistics.java:42)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8196525Z 	at org.gradle.internal.work.DefaultWorkerLeaseService.withoutLocks(DefaultWorkerLeaseService.java:342)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8197325Z 	at org.gradle.internal.work.DefaultWorkerLeaseService.withoutLocks(DefaultWorkerLeaseService.java:326)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8198116Z 	at org.gradle.internal.work.DefaultWorkerLeaseService.withoutLock(DefaultWorkerLeaseService.java:331)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8198976Z 	at org.gradle.internal.work.DefaultAsyncWorkTracker.waitForItemsAndGatherFailures(DefaultAsyncWorkTracker.java:126)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8199904Z 	at org.gradle.internal.work.DefaultAsyncWorkTracker.waitForItemsAndGatherFailures(DefaultAsyncWorkTracker.java:92)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8200731Z 	at org.gradle.internal.work.DefaultAsyncWorkTracker.waitForAll(DefaultAsyncWorkTracker.java:78)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8201804Z 	at org.gradle.internal.work.DefaultAsyncWorkTracker.waitForCompletion(DefaultAsyncWorkTracker.java:66)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8202592Z 	at org.gradle.api.internal.tasks.execution.TaskExecution$3.run(TaskExecution.java:267)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8203349Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:29)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8204544Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:26)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8205386Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8206216Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8207053Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8207892Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8208725Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner.run(DefaultBuildOperationRunner.java:47)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8209494Z 	at org.gradle.api.internal.tasks.execution.TaskExecution.executeAction(TaskExecution.java:244)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8210224Z 	at org.gradle.api.internal.tasks.execution.TaskExecution.executeActions(TaskExecution.java:227)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8211034Z 	at org.gradle.api.internal.tasks.execution.TaskExecution.executeWithPreviousOutputFiles(TaskExecution.java:210)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8212074Z 	at org.gradle.api.internal.tasks.execution.TaskExecution.execute(TaskExecution.java:176)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8212755Z 	at org.gradle.internal.execution.steps.ExecuteStep.executeInternal(ExecuteStep.java:110)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8213410Z 	at org.gradle.internal.execution.steps.ExecuteStep.access$000(ExecuteStep.java:47)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8214014Z 	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:64)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8215018Z 	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:61)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8215848Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8216931Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8217887Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8218718Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8219558Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8220398Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8221464Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8222213Z 	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:61)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8222816Z 	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:47)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8223485Z 	at org.gradle.internal.execution.steps.CancelExecutionStep.execute(CancelExecutionStep.java:42)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8224228Z 	at org.gradle.internal.execution.steps.TimeoutStep.executeWithoutTimeout(TimeoutStep.java:75)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8224902Z 	at org.gradle.internal.execution.steps.TimeoutStep.execute(TimeoutStep.java:55)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8225647Z 	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:51)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8226516Z 	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:29)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8227666Z 	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.executeMutable(RemovePreviousOutputsStep.java:70)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8229135Z 	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.executeMutable(RemovePreviousOutputsStep.java:40)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8230411Z 	at org.gradle.internal.execution.steps.MutableStep.execute(MutableStep.java:25)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8231927Z 	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:62)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8233559Z 	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:27)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8235292Z 	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:69)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8237106Z 	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:46)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8238882Z 	at org.gradle.internal.execution.steps.ResolveInputChangesStep.executeMutable(ResolveInputChangesStep.java:39)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8240588Z 	at org.gradle.internal.execution.steps.ResolveInputChangesStep.executeMutable(ResolveInputChangesStep.java:28)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8242330Z 	at org.gradle.internal.execution.steps.MutableStep.execute(MutableStep.java:25)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8243655Z 	at org.gradle.internal.execution.steps.BuildCacheStep.executeWithoutCache(BuildCacheStep.java:192)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8245174Z 	at org.gradle.internal.execution.steps.BuildCacheStep.executeAndStoreInCache(BuildCacheStep.java:148)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8246651Z 	at org.gradle.internal.execution.steps.BuildCacheStep.lambda$executeWithCache$4(BuildCacheStep.java:104)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8248145Z 	at org.gradle.internal.execution.steps.BuildCacheStep.lambda$executeWithCache$5(BuildCacheStep.java:104)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8249278Z 	at org.gradle.internal.Try$Success.map(Try.java:170)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8250345Z 	at org.gradle.internal.execution.steps.BuildCacheStep.executeWithCache(BuildCacheStep.java:88)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8252434Z 	at org.gradle.internal.execution.steps.BuildCacheStep.lambda$execute$0(BuildCacheStep.java:75)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8253420Z 	at org.gradle.internal.Either$Left.fold(Either.java:116)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8254225Z 	at org.gradle.internal.execution.caching.CachingState.fold(CachingState.java:62)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8255255Z 	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:74)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8256541Z 	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:49)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8264213Z 	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:46)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8265747Z 	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:35)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8267187Z 	at org.gradle.internal.execution.steps.SkipUpToDateStep.executeBecause(SkipUpToDateStep.java:75)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8268594Z 	at org.gradle.internal.execution.steps.SkipUpToDateStep.lambda$execute$2(SkipUpToDateStep.java:53)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8269916Z 	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:53)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8271160Z 	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:35)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8272994Z 	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:37)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8275016Z 	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:27)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8277018Z 	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:49)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8281697Z 	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:27)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8283630Z 	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:71)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8298228Z 	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:39)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8299827Z 	at org.gradle.internal.execution.steps.ResolveChangesStep.executeMutable(ResolveChangesStep.java:63)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8301221Z 	at org.gradle.internal.execution.steps.ResolveChangesStep.executeMutable(ResolveChangesStep.java:34)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8302966Z 	at org.gradle.internal.execution.steps.MutableStep.execute(MutableStep.java:25)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8304034Z 	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:64)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8305123Z 	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:42)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8306676Z 	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:77)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8308769Z 	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:46)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8310831Z 	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.executeWithNonEmptySources(AbstractSkipEmptyWorkStep.java:133)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8312946Z 	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:64)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8314545Z 	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:36)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8316308Z 	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsStartedStep.execute(MarkSnapshottingInputsStartedStep.java:38)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8318168Z 	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:36)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8319900Z 	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:23)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8336184Z 	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.executeMutable(HandleStaleOutputsStep.java:77)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8337794Z 	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.executeMutable(HandleStaleOutputsStep.java:43)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8339160Z 	at org.gradle.internal.execution.steps.MutableStep.execute(MutableStep.java:25)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8340591Z 	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.lambda$execute$0(AssignMutableWorkspaceStep.java:35)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8342343Z 	at org.gradle.api.internal.tasks.execution.TaskExecution$4.withWorkspace(TaskExecution.java:305)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8343798Z 	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:31)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8345395Z 	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:22)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8346846Z 	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:40)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8348141Z 	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:23)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8362556Z 	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.lambda$execute$2(ExecuteWorkBuildOperationFiringStep.java:67)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8364682Z 	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:67)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8366610Z 	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:39)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8368217Z 	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:46)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8369509Z 	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:34)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8371046Z 	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:44)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8372416Z 	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:31)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8373689Z 	at org.gradle.internal.execution.impl.DefaultExecutionEngine$1.execute(DefaultExecutionEngine.java:68)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8375285Z 	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:132)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8376413Z 	... 30 more
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8377307Z Caused by: org.jetbrains.kotlin.gradle.tasks.CompilationErrorException: Compilation error. See log for more details
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8378816Z 	at org.jetbrains.kotlin.gradle.tasks.TasksUtilsKt.throwExceptionIfCompilationFailed(tasksUtils.kt:21)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8380431Z 	at org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork.execute(BuildToolsApiCompilationWork.kt:320)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8382094Z 	at org.gradle.workers.internal.DefaultWorkerServer.execute(DefaultWorkerServer.java:68)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8383407Z 	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:64)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8384771Z 	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:61)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8386161Z 	at org.gradle.internal.classloader.ClassLoaderUtils.executeInClassloader(ClassLoaderUtils.java:102)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8387631Z 	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.lambda$execute$0(NoIsolationWorkerFactory.java:61)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8388896Z 	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:44)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8389901Z 	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:41)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8391559Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8393527Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8395723Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8397550Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8399061Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8400575Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8402523Z 	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8403984Z 	at org.gradle.workers.internal.AbstractWorker.executeWrappedInBuildOperation(AbstractWorker.java:41)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8405368Z 	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.execute(NoIsolationWorkerFactory.java:58)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8406731Z 	at org.gradle.workers.internal.DefaultWorkerExecutor.lambda$submitWork$0(DefaultWorkerExecutor.java:176)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8408351Z 	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runExecution(DefaultConditionalExecutionQueue.java:194)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8410176Z 	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.access$700(DefaultConditionalExecutionQueue.java:127)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8412197Z 	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner$1.run(DefaultConditionalExecutionQueue.java:169)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8413559Z 	at org.gradle.internal.Factories$1.create(Factories.java:30)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8414812Z 	at org.gradle.internal.work.DefaultWorkerLeaseService.lambda$withLocksAcquired$0(DefaultWorkerLeaseService.java:269)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8416310Z 	at org.gradle.internal.work.ResourceLockStatistics$1.measure(ResourceLockStatistics.java:42)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8417735Z 	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocksAcquired(DefaultWorkerLeaseService.java:267)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8419264Z 	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:259)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8420762Z 	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:127)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8422472Z 	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:132)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8424072Z 	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runBatch(DefaultConditionalExecutionQueue.java:164)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8425858Z 	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.run(DefaultConditionalExecutionQueue.java:133)
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8426989Z 	... 2 more
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8427202Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8427211Z 
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:29.8427381Z BUILD FAILED in 1m 52s
-Build Release APKs	Run unit tests (audio pipeline + regression)	2026-09-24T10:09:30.2587650Z ##[error]Process completed with exit code 1.
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.3.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+
+> Configure project :app
+WARNING: The option setting 'android.builtInKotlin=false' is deprecated.
+The current default is 'true'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+WARNING: The option setting 'android.newDsl=false' is deprecated.
+The current default is 'true'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+WARNING: The option setting 'android.aapt2FromMavenOverride=/data/data/com.termux/files/usr/bin/aapt2' is experimental.
+w: [33m[1m⚠️ Deprecated 'org.jetbrains.kotlin.android' plugin usage[0m[0m
+The 'org.jetbrains.kotlin.android' plugin in project ':app' is no longer required for Kotlin support since AGP 9.0.
+[32m[1mSolution:[0m[0m
+[32m[3mRemove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.[0m[0m
+[36mSee [0m[34mhttps://kotl.in/gradle/agp-built-in-kotlin[0m[36m for more details.[0m
+
+
+> Configure project :audio:decent-usb-audio-driver
+w: [33m[1m⚠️ Deprecated 'org.jetbrains.kotlin.android' plugin usage[0m[0m
+The 'org.jetbrains.kotlin.android' plugin in project ':audio:decent-usb-audio-driver' is no longer required for Kotlin support since AGP 9.0.
+[32m[1mSolution:[0m[0m
+[32m[3mRemove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.[0m[0m
+[36mSee [0m[34mhttps://kotl.in/gradle/agp-built-in-kotlin[0m[36m for more details.[0m
+
+Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+
+> Task :audio:decent-usb-audio-driver:preBuild UP-TO-DATE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :audio:decent-usb-audio-driver:preDebugBuild UP-TO-DATE
+> Task :audio:decent-usb-audio-driver:processDebugNavigationResources UP-TO-DATE
+> Task :audio:decent-usb-audio-driver:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :audio:decent-usb-audio-driver:generateDebugResources UP-TO-DATE
+
+> Task :app:generateNativeSecrets
+WARNING: ADDON_CLIENT_SECRET not set. Addon client lock will be empty.
+Generated app/src/main/cpp/SecretsBridge_generated.h
+  Client secret: [EMPTY]
+  Fragments: 0 client_secret (keystore-bound)
+  Cert SHA256: PLACEHOLDER_REPLACE_... (enforced)
+
+> Task :app:preBuild
+> Task :app:preDebugBuild
+> Task :audio:decent-usb-audio-driver:packageDebugResources UP-TO-DATE
+> Task :app:generateDebugBuildConfig UP-TO-DATE
+> Task :audio:decent-usb-audio-driver:parseDebugLocalResources UP-TO-DATE
+> Task :audio:decent-usb-audio-driver:generateDebugRFile UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :audio:decent-usb-audio-driver:compileDebugKotlin UP-TO-DATE
+> Task :audio:decent-usb-audio-driver:javaPreCompileDebug UP-TO-DATE
+> Task :audio:decent-usb-audio-driver:compileDebugJavaWithJavac NO-SOURCE
+> Task :audio:decent-usb-audio-driver:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :app:processDebugNavigationResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:generateDebugRFile UP-TO-DATE
+> Task :app:kspDebugKotlin
+> Task :app:compileDebugKotlin

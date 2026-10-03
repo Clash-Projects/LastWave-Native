@@ -6,7 +6,7 @@
     android:background="@drawable/widget_obsidian_background"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:padding="16dp">
+    android:padding="12dp">
 
     <!-- Empty state -->
     <LinearLayout
@@ -19,8 +19,8 @@
 
         <ImageView
             android:id="@+id/widget_empty_icon"
-            android:layout_width="72dp"
-            android:layout_height="72dp"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
             android:contentDescription="@null"
             android:src="@drawable/widget_art_placeholder" />
 
@@ -67,8 +67,8 @@
 
         <ImageView
             android:id="@+id/widget_art"
-            android:layout_width="72dp"
-            android:layout_height="72dp"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
             android:contentDescription="@null"
             android:scaleType="centerCrop"
             android:src="@drawable/widget_art_placeholder" />

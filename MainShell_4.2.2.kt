@@ -1,0 +1,582 @@
+package com.lastwave.app.ui.shell
+
+import android.os.Build
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Leaderboard
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.isSpecified
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.lerp
+import androidx.compose.ui.zIndex
+import android.view.HapticFeedbackConstants
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.platform.LocalView
+import android.graphics.Bitmap
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.core.graphics.scale
+import com.lastwave.app.ui.theme.drawInteractiveGlass
+import com.lastwave.app.ui.theme.liquidGlass
+import com.lastwave.app.ui.theme.rememberGlassInteraction
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
+import java.nio.IntBuffer
+import kotlin.time.Duration.Companion.seconds
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lastwave.app.ui.common.ExpressiveMotion
+import com.lastwave.app.ui.common.PredictiveBackScreen
+import com.lastwave.app.ui.common.adaptiveContentWidth
+import com.lastwave.app.ui.feed.FeedScreen
+import com.lastwave.app.ui.home.HomeScreen
+import com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance
+import com.lastwave.app.ui.playlist.PlaylistScreen
+import androidx.compose.foundation.shape.CornerBasedShape
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.colorControls
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.Shadow
+import kotlin.math.sign
+import com.lastwave.app.ui.theme.LocalIsDarkTheme
+import com.lastwave.app.ui.theme.LocalLiquidGlass
+import com.lastwave.app.ui.theme.LiquidGlassPreset
+import com.lastwave.app.ui.theme.liquidGlassChrome
+import com.lastwave.app.ui.theme.liquidGlassContainerColor
+import com.lastwave.app.ui.theme.LayerBackdrop
+import com.lastwave.app.ui.theme.SquircleShape
+import com.lastwave.app.ui.theme.rememberLayerBackdrop
+import com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported
+import com.lastwave.app.ui.theme.liquidGlassSource
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+/** Thin bridge exposing AppUpdateManager's live update state to MainShell */
+@HiltViewModel
+class MainShellViewModel @Inject constructor(
+    val appUpdateManager: com.lastwave.app.data.update.AppUpdateManager,
+) : ViewModel() {
+    val updateInfo = appUpdateManager.updateInfo
+
+    fun dismissUpdate(version: String) {
+        appUpdateManager.dismissUpdate(version)
+    }
+
+    fun openUpdate(context: android.content.Context) {
+        appUpdateManager.openUpdate(context)
+    }
+}
+
+private enum class MainTab(val labelRes: Int) {
+    FEED(com.lastwave.app.R.string.nav_feed),
+    STATS(com.lastwave.app.R.string.nav_stats),
+    PLAYLISTS(com.lastwave.app.R.string.nav_playlists),
+}
+
+/** Shared with any screen hosted inside [MainShell] so their scrolling
+ *  lists know how much bottom content padding to reserve — the nav
+ *  overlays content (it's not a Scaffold bottomBar reserving space), so
+ *  each screen leaves this much room for its last item to clear it. */
+object FloatingNavDefaults {
+    val ContentBottomPadding = 112.dp
+
+    /**
+     * Full bottom clearance for edge-to-edge scrolling content: the floating
+     * dock's visual height + margins ([ContentBottomPadding]) PLUS the live
+     * navigation-bar (gesture area) inset. Screens that let their list draw
+     * beneath the transparent gesture area must use this instead of the raw
+     * constant, otherwise the last row hides behind the dock/gesture bar.
+     */
+    @Composable
+    fun contentBottomPadding(): Dp =
+        ContentBottomPadding +
+            LocalMiniPlayerScrollClearance.current +
+            WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding()
+}
+
+private val DockShape: CornerBasedShape = RoundedCornerShape(32.dp)
+private val PillShape: Shape = CircleShape
+
+private fun <T> navSpring() = ExpressiveMotion.spatialSpring<T>()
+
+@Composable
+fun MainShell(
+    onOpenSettings: () -> Unit,
+    onOpenSearch: () -> Unit,
+    onOpenDiscover: () -> Unit,
+    onOpenGenres: () -> Unit,
+    onOpenFriends: () -> Unit,
+    onOpenFriendProfile: (username: String, displayName: String?, avatarUrl: String?) -> Unit = { _, _, _ -> },
+    onOpenFeedPlaylist: (String) -> Unit,
+    onOpenPlaylist: (Long) -> Unit = {},
+    onOpenGenerator: () -> Unit = {},
+    onOpenNewReleases: () -> Unit = {},
+    mainShellViewModel: MainShellViewModel = hiltViewModel(),
+) {
+    val tabs = MainTab.entries
+    val pagerState = rememberPagerState(pageCount = { tabs.size })
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    // Drive the dock selection from an explicit tab index instead of
+    // pagerState.currentPage. currentPage flips mid-scroll (halfway through
+    // animateScrollToPage), which re-triggers the pill width animation + the
+    // generator FAB enter/exit while the pager is still moving — the two
+    // competing size animations clip the dock (rectangular, limited) and let
+    // the FAB draw over the pill. Updating immediately on tap and syncing from
+    // settledPage on swipe keeps one clean transition.
+    var selectedTabIndex by remember { mutableIntStateOf(pagerState.currentPage) }
+    LaunchedEffect(pagerState.settledPage) {
+        if (selectedTabIndex != pagerState.settledPage) {
+            selectedTabIndex = pagerState.settledPage
+        }
+    }
+    val updateInfo by mainShellViewModel.updateInfo.collectAsStateWithLifecycle()
+    val showUpdateBanner = updateInfo.isUpdateAvailable && !updateInfo.isDismissed
+    val backgroundColor = MaterialTheme.colorScheme.background
+    // Unconditional remember keeps composition stable; usage gated below.
+    val navigationBackdrop = rememberLayerBackdrop {
+        drawRect(backgroundColor)
+        drawContent()
+    }
+    val navGlass = isLiquidGlassBackdropSupported()
+
+    Box(Modifier.fillMaxSize()) {
+        val feedIndex = tabs.indexOf(MainTab.FEED)
+        HorizontalPager(
+            state = pagerState,
+            beyondViewportPageCount = 0,
+            modifier = Modifier.fillMaxSize().liquidGlassSource(if (navGlass) navigationBackdrop else null),
+        ) { page ->
+            val isCurrent = page == pagerState.currentPage
+            PredictiveBackScreen(
+                enabled = isCurrent && tabs[page] != MainTab.FEED,
+                onBack = { scope.launch { pagerState.animateScrollToPage(feedIndex) } },
+            ) {
+                when (tabs[page]) {
+                    MainTab.FEED -> FeedScreen(
+                        onOpenSettings = onOpenSettings,
+                        onOpenSearch = onOpenSearch,
+                        onOpenDiscover = onOpenDiscover,
+                        onOpenPlaylist = onOpenPlaylist,
+                        onOpenFeedPlaylist = onOpenFeedPlaylist,
+                        onOpenGenerator = onOpenGenerator,
+                        onOpenFriends = onOpenFriends,
+                        onOpenFriendProfile = onOpenFriendProfile,
+                        onOpenNewReleases = onOpenNewReleases,
+                    )
+                    MainTab.STATS -> HomeScreen(
+                        onOpenSettings = onOpenSettings,
+                        onOpenSearch = onOpenSearch,
+                        onOpenDiscover = onOpenDiscover,
+                        onOpenGenres = onOpenGenres,
+                        onOpenFriends = onOpenFriends,
+                    )
+                    MainTab.PLAYLISTS -> PlaylistScreen(onOpenPlaylist = onOpenPlaylist)
+                }
+            }
+        }
+
+        // App update prompt banner (only shown on app open when an update is available and not dismissed)
+        AnimatedVisibility(
+            visible = showUpdateBanner,
+            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .adaptiveContentWidth(maxWidth = 600.dp)
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .zIndex(10f),
+        ) {
+            UpdatePromptCard(
+                version = updateInfo.latestVersion,
+                onUpdate = { mainShellViewModel.openUpdate(context) },
+                onDismiss = { mainShellViewModel.dismissUpdate(updateInfo.latestVersion) },
+            )
+        }
+
+        FloatingNavBar(
+            backdrop = navigationBackdrop,
+            tabs = tabs,
+            selectedIndex = selectedTabIndex,
+            onSelect = { index ->
+                if (index != selectedTabIndex) selectedTabIndex = index
+                scope.launch { pagerState.animateScrollToPage(index) }
+            },
+            onOpenGenerator = onOpenGenerator,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+    }
+}
+
+@Composable
+private fun UpdatePromptCard(
+    version: String,
+    onUpdate: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        shadowElevation = 8.dp,
+        tonalElevation = 6.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.CloudDownload,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(24.dp),
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.update_available),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Text(
+                    text = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.update_ready_to_install, version),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
+                )
+            }
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable(onClick = onUpdate),
+            ) {
+                Text(
+                    text = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.update),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                )
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(28.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.dismiss_update),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FloatingNavBar(
+    backdrop: LayerBackdrop?,
+    tabs: List<MainTab>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    onOpenGenerator: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val liquidGlass = LocalLiquidGlass.current
+    val glassHoverIndex = remember(liquidGlass) { mutableStateOf<Int?>(null) }
+    val glassNavBounds = remember { mutableStateMapOf<Int, Rect>() }
+    val dockInteraction = remember { MutableInteractionSource() }
+    val fabInteraction = remember { MutableInteractionSource() }
+    Box(
+        modifier = modifier
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
+            )
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        // No animateContentSize here: the dock pills already animate their own
+        // width and the FAB animates its enter/exit size. Animating this outer
+        // wrapper at the same time squeezes the Row mid-transition, clipping
+        // the dock to a narrow rectangle and pushing the FAB over the pill.
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Surface(
+                shape = DockShape,
+                color = liquidGlassContainerColor(
+                    MaterialTheme.colorScheme.surfaceContainerHigh,
+                    enabled = liquidGlass,
+                    backdrop = backdrop,
+                ),
+                tonalElevation = if (liquidGlass) 0.dp else 6.dp,
+                shadowElevation = if (liquidGlass) 0.dp else 12.dp,
+                modifier = Modifier.liquidGlassChrome(DockShape, liquidGlass, LiquidGlassPreset.BottomNavigation, backdrop, interactionSource = dockInteraction),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .then(
+                            if (liquidGlass) {
+                                Modifier.pointerInput(Unit) {
+                                    val bridge = 6.dp.toPx()
+                                    val hitIndex: (Offset) -> Int? = { pos ->
+                                        glassNavBounds.entries
+                                            .firstOrNull { it.value.inflate(bridge).contains(pos) }
+                                            ?.key
+                                    }
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                        glassHoverIndex.value = hitIndex(down.position)
+                                        while (true) {
+                                            val event = awaitPointerEvent()
+                                            val change = event.changes.firstOrNull { it.id == down.id }
+                                            if (change == null || !change.pressed) {
+                                                glassHoverIndex.value = null
+                                                break
+                                            }
+                                            glassHoverIndex.value = hitIndex(change.position)
+                                        }
+                                    }
+                                }
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    tabs.forEachIndexed { index, tab ->
+                        val onClick = remember(index) { { onSelect(index) } }
+                        FloatingNavItem(
+                            label = androidx.compose.ui.res.stringResource(tab.labelRes),
+                            icon = tab.icon(),
+                            selected = selectedIndex == index,
+                            onClick = onClick,
+                        )
+                    }
+                }
+            }
+
+            // Satellite Companion Generator Button (only visible on Playlists tab).
+            // Size-affecting enter/exit run with clip = false so the circular
+            // FAB is never sliced into a rectangle mid-transition, and the
+            // dock Row is never squeezed — the FAB grows beside the dock
+            // instead of drawing over the selected pill.
+            AnimatedVisibility(
+                visible = selectedIndex == tabs.indexOf(MainTab.PLAYLISTS),
+                enter = fadeIn(animationSpec = tween(180)) +
+                    scaleIn(initialScale = 0.6f, animationSpec = navSpring()) +
+                    expandHorizontally(
+                        animationSpec = navSpring(),
+                        expandFrom = Alignment.End,
+                        clip = false,
+                    ),
+                exit = fadeOut(animationSpec = tween(120)) +
+                    scaleOut(targetScale = 0.6f, animationSpec = navSpring()) +
+                    shrinkHorizontally(
+                        animationSpec = navSpring(),
+                        shrinkTowards = Alignment.End,
+                        clip = false,
+                    ),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(Modifier.width(10.dp))
+                    Surface(
+                        shape = CircleShape,
+                        color = liquidGlassContainerColor(MaterialTheme.colorScheme.primaryContainer, backdrop = backdrop),
+                        shadowElevation = if (liquidGlass) 0.dp else 10.dp,
+                        tonalElevation = if (liquidGlass) 0.dp else 4.dp,
+                        modifier = Modifier
+                            .size(56.dp)
+                            .liquidGlassChrome(CircleShape, liquidGlass, LiquidGlassPreset.FloatingControls, backdrop, interactionSource = fabInteraction)
+                            .clickable(interactionSource = fabInteraction, indication = null, onClick = onOpenGenerator),
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = Icons.Filled.AutoAwesome,
+                                contentDescription = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.nav_create_playlist),
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(24.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FloatingNavItem(
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val backgroundColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(
+            alpha = if (LocalLiquidGlass.current) 0.28f else 1f,
+        ) else Color.Transparent,
+        animationSpec = navSpring(),
+        label = "navItemBackground",
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = navSpring(),
+        label = "navItemContent",
+    )
+    // Animate the pill padding instead of jumping it: combined with the label
+    // expand below this gives one smooth width change. (Previously this
+    // Surface also had animateContentSize on top of the label expand — the two
+    // competing width animations clipped the pill to a rectangle and cut the
+    // label mid-switch.)
+    val horizontalPadding by animateDpAsState(
+        targetValue = if (selected) 18.dp else 12.dp,
+        animationSpec = navSpring(),
+        label = "navItemPadding",
+    )
+
+    Surface(
+        onClick = onClick,
+        shape = PillShape,
+        color = backgroundColor,
+        modifier = Modifier.height(48.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .padding(horizontal = horizontalPadding)
+                .height(48.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = contentColor,
+                modifier = Modifier.size(24.dp),
+            )
+            AnimatedVisibility(
+                visible = selected,
+                enter = fadeIn(animationSpec = navSpring()) + expandHorizontally(
+                    animationSpec = navSpring(),
+                    expandFrom = Alignment.Start,
+                    clip = false,
+                ),
+                exit = fadeOut(animationSpec = tween(90)) + shrinkHorizontally(
+                    animationSpec = navSpring(),
+                    shrinkTowards = Alignment.Start,
+                    clip = false,
+                ),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(start = 8.dp),
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = contentColor,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun MainTab.icon(): ImageVector = when (this) {
+    MainTab.FEED -> Icons.Filled.Home
+    MainTab.STATS -> Icons.Filled.Leaderboard
+    MainTab.PLAYLISTS -> Icons.AutoMirrored.Filled.QueueMusic
+}

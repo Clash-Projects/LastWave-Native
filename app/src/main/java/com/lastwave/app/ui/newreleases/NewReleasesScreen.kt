@@ -120,7 +120,7 @@ fun NewReleasesScreen(
         ) {
             ExpressiveHeader(
                 title = "New releases",
-                subtitle = "Fresh drops and new songs",
+                subtitle = "Find fresh drops",
                 onBack = onBack,
                 actions = {
                     HeaderActionIcon(Icons.Filled.Refresh, "Refresh", viewModel::refresh)

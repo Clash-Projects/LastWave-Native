@@ -73,8 +73,8 @@ fun DraggableSleepTimerOverlay(
             val density = LocalDensity.current
             val haptic = LocalHapticFeedback.current
 
-            val widthDp = 86.dp
-            val heightDp = 48.dp
+            val widthDp = 72.dp
+            val heightDp = 72.dp
             val widthPx = with(density) { widthDp.toPx() }
             val heightPx = with(density) { heightDp.toPx() }
             val screenWidthPx = with(density) { maxWidth.toPx() }
@@ -94,8 +94,8 @@ fun DraggableSleepTimerOverlay(
             Box(
                 modifier = Modifier
                     .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
-                    .width(widthDp)
-                    .height(heightDp)
+                    .sizeIn(minWidth = widthDp, minHeight = heightDp)
+                    .aspectRatio(1f)
                     .pointerInput(Unit) {
                         detectDragGestures(
                             onDragStart = {
@@ -135,26 +135,27 @@ fun DraggableSleepTimerOverlay(
                             shape = CircleShape,
                         ),
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                        modifier = Modifier.padding(horizontal = 12.dp)
+                    androidx.compose.foundation.layout.Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier.padding(10.dp).fillMaxSize()
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Timer,
                             contentDescription = "Sleep Timer",
                             tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                         if (sleepTimerRemainingMs != null) {
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.height(2.dp))
                             val minutes = (sleepTimerRemainingMs / 60000).toInt()
                             val seconds = ((sleepTimerRemainingMs % 60000) / 1000).toInt()
                             Text(
                                 text = String.format("%02d:%02d", minutes, seconds),
-                                style = MaterialTheme.typography.labelLarge,
+                                style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
                             )
                         }
                     }

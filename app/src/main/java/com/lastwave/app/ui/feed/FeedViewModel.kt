@@ -278,6 +278,18 @@ class FeedViewModel @Inject constructor(
         }
     }
 
+    fun playPlaylistById(playlistId: String, title: String) {
+        viewModelScope.launch {
+            val result = runCatching { innerTube.fetchPlaylist(playlistId, maxTracks = 100) }
+                .getOrNull()
+            val tracks = result?.tracks.orEmpty()
+            if (tracks.isNotEmpty()) {
+                val playable = tracks.map { it.toPlayableTrack() }
+                musicPlayer.playQueue(playable, startIndex = 0, sourceLabel = title)
+            }
+        }
+    }
+
     fun handleQuickTileClick(tile: FeedQuickTile) {
         val videoId = tile.actionVideoId ?: return
         musicPlayer.play(

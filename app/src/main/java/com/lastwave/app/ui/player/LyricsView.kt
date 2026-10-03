@@ -134,7 +134,6 @@ fun LyricsPanel(
     onRetry: () -> Unit,
     onToggleFullscreen: (() -> Unit)? = null,
     isFullscreen: Boolean = false,
-    onOpenLyricsOffset: (() -> Unit)? = null,
     lyricsFontScale: Float = 1.0f,
     onLyricsFontScaleChange: (Float) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -287,7 +286,6 @@ fun LyricsPanel(
             onToggleFullscreen = onToggleFullscreen,
             isFullscreen = isFullscreen,
             lyricsOffsetMs = lyricsOffsetMs,
-            onOpenLyricsOffset = onOpenLyricsOffset,
             lyricsFontScale = lyricsFontScale,
             onLyricsFontScaleChange = onLyricsFontScaleChange,
             primaryColor = primaryColor,
@@ -990,7 +988,6 @@ private fun LyricsPlaybackControls(
     onToggleFullscreen: (() -> Unit)? = null,
     isFullscreen: Boolean = false,
     lyricsOffsetMs: Long = 0L,
-    onOpenLyricsOffset: (() -> Unit)? = null,
     lyricsFontScale: Float = 1.0f,
     onLyricsFontScaleChange: (Float) -> Unit = {},
     primaryColor: Color = MaterialTheme.colorScheme.primary,
@@ -1076,7 +1073,7 @@ private fun LyricsPlaybackControls(
             }
         }
 
-        if (onToggleFullscreen != null || onOpenLyricsOffset != null) {
+        if (onToggleFullscreen != null) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1084,42 +1081,6 @@ private fun LyricsPlaybackControls(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (onOpenLyricsOffset != null) {
-                    val offsetInteraction = remember { MutableInteractionSource() }
-                    val isOffsetPressed by offsetInteraction.collectIsPressedAsState()
-                    val offsetScale by animateFloatAsState(
-                        targetValue = if (isOffsetPressed) 0.82f else 1.0f,
-                        animationSpec = ExpressiveMotion.spatialSpring(),
-                        label = "lyricsOffsetScale",
-                    )
-                    IconButton(
-                        onClick = onOpenLyricsOffset,
-                        interactionSource = offsetInteraction,
-                        modifier = Modifier
-                            .size(44.dp)
-                            .graphicsLayer {
-                                scaleX = offsetScale
-                                scaleY = offsetScale
-                            }
-                            .clip(CircleShape)
-                            .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = offsetInteraction)
-                            .background(
-                                liquidGlassContainerColor(
-                                    if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
-                                    else Color.White.copy(alpha = 0.14f)
-                                ),
-                            ),
-                    ) {
-                        Icon(
-                            Icons.Filled.Timer,
-                            contentDescription = "Lyrics sync offset",
-                            modifier = Modifier.size(22.dp),
-                            tint = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.90f),
-                        )
-                    }
-                } else {
-                    Spacer(Modifier.size(44.dp))
-                }
 
                 // Lyrics Font Scale toggle button
                 val fontInteraction = remember { MutableInteractionSource() }

@@ -470,7 +470,7 @@ fun TrackContextMenuSheet(
                         onDismiss()
                     },
                     onPlayNext = { musicPlayer.playNext(playable); onDismiss() },
-                    onTimer = { showTimerDialog = true },
+                    onAddToPlaylist = { addToPlaylist(playable); onDismiss() },
                 )
                 val rows = buildList<@Composable (GroupPosition) -> Unit> {
                     val t = target
@@ -488,7 +488,7 @@ fun TrackContextMenuSheet(
                             )
                         }
                     }
-                    add { pos -> MenuActionRow(Icons.Filled.PlaylistAdd, "Add to playlist", position = pos) { addToPlaylist(playable); onDismiss() } }
+                    add { pos -> MenuActionRow(Icons.Filled.Timer, "Sleep timer", position = pos) { showTimerDialog = true } }
                     val splitArtists = com.lastwave.app.util.ArtistHelper.splitArtists(t.artist)
                     for (art in splitArtists) {
                         add { pos ->
@@ -709,7 +709,7 @@ private fun StartMixCard(onClick: () -> Unit) {
 private fun QuickActionsRow(
     onPlay: () -> Unit,
     onPlayNext: () -> Unit,
-    onTimer: () -> Unit,
+    onAddToPlaylist: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -717,7 +717,7 @@ private fun QuickActionsRow(
     ) {
         QuickActionCard(Icons.Filled.PlayCircle, "Play", Modifier.weight(1f), onPlay)
         QuickActionCard(Icons.Filled.QueuePlayNext, "Play next", Modifier.weight(1f), onPlayNext)
-        QuickActionCard(Icons.Filled.Timer, "Timer", Modifier.weight(1f), onTimer)
+        QuickActionCard(Icons.Filled.PlaylistAdd, "Add to", Modifier.weight(1f), onAddToPlaylist)
     }
 }
 

@@ -536,6 +536,7 @@ class PlayerViewModel @Inject constructor(
         playlistIds: Set<Long>,
         duplicatePlaylistIds: Set<Long>,
         track: PlayableTrack,
+        onComplete: () -> Unit = {},
     ) {
         if (playlistIds.isEmpty()) return
         viewModelScope.launch {
@@ -560,6 +561,7 @@ class PlayerViewModel @Inject constructor(
                     refreshCustomPlaylists()
                 }
             }
+            onComplete()
         }
     }
 
@@ -782,9 +784,11 @@ fun PlayerHost(
                     track = track,
                     onDismiss = { playlistTrack = null },
                     onAdd = { playlistIds, duplicatePlaylistIds ->
-                        viewModel.addToPlaylists(playlistIds, duplicatePlaylistIds, track)
+                        val appContext = context.applicationContext
+                        viewModel.addToPlaylists(playlistIds, duplicatePlaylistIds, track) {
+                            android.widget.Toast.makeText(appContext, "Added to playlist", android.widget.Toast.LENGTH_SHORT).show()
+                        }
                         playlistTrack = null
-                        android.widget.Toast.makeText(context, "Added to playlist", android.widget.Toast.LENGTH_SHORT).show()
                     },
                     onFindDuplicates = { playlistIds ->
                         viewModel.findDuplicatePlaylistIds(playlistIds, track)
@@ -2146,23 +2150,62 @@ private fun FullPlayer(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    IconButton(
-                        onClick = { showTrackMenu = true },
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls)
-                            .background(
-                                liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
-                            ),
+                    Row(
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(
-                            Icons.Filled.MoreVert,
-                            "Song options",
-                            modifier = Modifier.size(22.dp),
-                            tint = Color.White.copy(alpha = 0.94f),
-                        )
+                        if (currentTab == FullPlayerTab.LYRICS) {
+                            val offsetInteraction = remember { MutableInteractionSource() }
+                            val isOffsetPressed by offsetInteraction.collectIsPressedAsState()
+                            val offsetScale by animateFloatAsState(
+                                targetValue = if (isOffsetPressed) 0.82f else 1.0f,
+                                animationSpec = ExpressiveMotion.spatialSpring(),
+                                label = "lyricsOffsetScale",
+                            )
+                            IconButton(
+                                onClick = { showLyricsOffset = true },
+                                interactionSource = offsetInteraction,
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .graphicsLayer {
+                                        scaleX = offsetScale
+                                        scaleY = offsetScale
+                                    }
+                                    .clip(CircleShape)
+                                    .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = offsetInteraction)
+                                    .background(
+                                        liquidGlassContainerColor(
+                                            if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+                                            else Color.White.copy(alpha = 0.14f)
+                                        ),
+                                    ),
+                            ) {
+                                Icon(
+                                    Icons.Filled.Timer,
+                                    "Lyrics sync offset",
+                                    modifier = Modifier.size(22.dp),
+                                    tint = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.94f),
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = { showTrackMenu = true },
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls)
+                                .background(
+                                    liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
+                                ),
+                        ) {
+                            Icon(
+                                Icons.Filled.MoreVert,
+                                "Song options",
+                                modifier = Modifier.size(22.dp),
+                                tint = Color.White.copy(alpha = 0.94f),
+                            )
+                        }
                     }
                 }
 
@@ -2212,7 +2255,6 @@ private fun FullPlayer(
                                         onRetry = onRetryLyrics,
                                         onToggleFullscreen = { lyricsFullscreen = !lyricsFullscreen },
                                         isFullscreen = lyricsFullscreen,
-                                        onOpenLyricsOffset = { showLyricsOffsetDialog = true },
                                         primaryColor = ambientColor,
                                         secondaryColor = ambientCompanion,
                                         tertiaryColor = ambientDeep,
@@ -2234,7 +2276,6 @@ private fun FullPlayer(
                                         onRetry = onRetryLyrics,
                                         onToggleFullscreen = { lyricsFullscreen = !lyricsFullscreen },
                                         isFullscreen = lyricsFullscreen,
-                                        onOpenLyricsOffset = { showLyricsOffsetDialog = true },
                                         primaryColor = ambientColor,
                                         secondaryColor = ambientCompanion,
                                         tertiaryColor = ambientDeep,
