@@ -135,42 +135,42 @@ class ArtworkRepository @Inject constructor(
                 publish(key, cached.url)
             }
 
-            // 3. Strict priority resolution: Spotify -> Apple Music -> Tidal -> Deezer -> YouTube Music (last fallback)
+            // 3. Strict priority resolution: Apple Music (1200x1200bb) -> Tidal (1280x1280) -> Deezer (1000x1000) -> Spotify (640x640) -> YouTube Music (last fallback)
             val winner = networkRaceSemaphore.withPermit {
                 withContext(Dispatchers.IO) {
-                    val spotifyJob = async { safeFetch("Spotify", name, artist) { fetchSpotify(name, artist) } }
                     val appleJob = async { safeFetch("Apple Music", name, artist) { itunes.fetchArtworkUrl(name, artist) } }
                     val tidalJob = async { safeFetch("Tidal", name, artist) { fetchTidal(name, artist) } }
                     val deezerJob = async { safeFetch("Deezer", name, artist) { fetchDeezer(name, artist) } }
+                    val spotifyJob = async { safeFetch("Spotify", name, artist) { fetchSpotify(name, artist) } }
 
-                    // Priority 1: Spotify
-                    val spotifyUrl = spotifyJob.await()
-                    if (!spotifyUrl.isNullOrBlank()) {
-                        appleJob.cancel()
-                        tidalJob.cancel()
-                        deezerJob.cancel()
-                        return@withContext "spotify" to spotifyUrl
-                    }
-
-                    // Priority 2: Apple Music (iTunes)
+                    // Priority 1: Apple Music (Pristine 1200x1200bb master art)
                     val appleUrl = appleJob.await()
                     if (!appleUrl.isNullOrBlank()) {
                         tidalJob.cancel()
                         deezerJob.cancel()
+                        spotifyJob.cancel()
                         return@withContext "itunes" to appleUrl
                     }
 
-                    // Priority 3: Tidal
+                    // Priority 2: Tidal (Pristine 1280x1280 Hi-Fi master art)
                     val tidalUrl = tidalJob.await()
                     if (!tidalUrl.isNullOrBlank()) {
                         deezerJob.cancel()
+                        spotifyJob.cancel()
                         return@withContext "tidal" to tidalUrl
                     }
 
-                    // Priority 4: Deezer
+                    // Priority 3: Deezer (Pristine 1000x1000 cover_xl art)
                     val deezerUrl = deezerJob.await()
                     if (!deezerUrl.isNullOrBlank()) {
+                        spotifyJob.cancel()
                         return@withContext "deezer" to deezerUrl
+                    }
+
+                    // Priority 4: Spotify (640x640 art)
+                    val spotifyUrl = spotifyJob.await()
+                    if (!spotifyUrl.isNullOrBlank()) {
+                        return@withContext "spotify" to spotifyUrl
                     }
 
                     // Priority 5: YouTube Music (Only as last fallback if providers 1-4 found no verified match)
@@ -205,22 +205,27 @@ class ArtworkRepository @Inject constructor(
     }
 
     private suspend fun fetchSpotifyOEmbed(url: String): String? {
-        try {
+        return try {
             val oembedUrl = "https://open.spotify.com/oembed?url=${java.net.URLEncoder.encode(url, "UTF-8")}"
             val req = okhttp3.Request.Builder().url(oembedUrl).build()
-            val body = http.newCall(req).awaitSuccessfulBodyOrNull() ?: return null
-            val root = json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject ?: return null
-            val thumb = (root["thumbnail_url"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
-            if (!thumb.isNullOrBlank()) {
-                // Upscale Spotify thumbnail from 300x300 (ab67616d00001e02) to 640x640 (ab67616d0000b273)
-                return thumb.replace("ab67616d00001e02", "ab67616d0000b273")
+            val body = http.newCall(req).awaitSuccessfulBodyOrNull()
+            if (body == null) {
+                null
+            } else {
+                val root = json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
+                val thumb = (root?.get("thumbnail_url") as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+                if (!thumb.isNullOrBlank()) {
+                    // Upscale Spotify thumbnail from 300x300 (ab67616d00001e02) to 640x640 (ab67616d0000b273)
+                    thumb.replace("ab67616d00001e02", "ab67616d0000b273")
+                } else {
+                    null
+                }
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Exception) {
             null
         }
-        return null
     }
 
     private suspend fun fetchTidal(name: String, artist: String): String? = withContext(Dispatchers.IO) {
@@ -237,44 +242,50 @@ class ArtworkRepository @Inject constructor(
         val query = if (artist.isNotBlank()) "$name $artist" else name
         val countryCode = java.util.Locale.getDefault().country.takeIf { it.length == 2 }?.uppercase(java.util.Locale.ROOT) ?: "US"
         val url = "https://api.tidal.com/v1/search?query=${java.net.URLEncoder.encode(query, "UTF-8")}&limit=5&types=TRACKS&countryCode=$countryCode"
-        try {
+        return try {
             val req = okhttp3.Request.Builder()
                 .url(url)
                 .header("X-Tidal-Token", "vNVdglQOjFJJGG2U")
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                 .build()
-            val body = http.newCall(req).awaitSuccessfulBodyOrNull() ?: return null
-            val root = json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject ?: return null
-            val tracks = root["tracks"] as? kotlinx.serialization.json.JsonObject ?: return null
-            val items = (tracks["items"] as? kotlinx.serialization.json.JsonArray)
-                ?.mapNotNull { it as? kotlinx.serialization.json.JsonObject }.orEmpty()
+            val body = http.newCall(req).awaitSuccessfulBodyOrNull()
+            if (body == null) {
+                null
+            } else {
+                val root = json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
+                val tracks = root?.get("tracks") as? kotlinx.serialization.json.JsonObject
+                val items = (tracks?.get("items") as? kotlinx.serialization.json.JsonArray)
+                    ?.mapNotNull { it as? kotlinx.serialization.json.JsonObject }.orEmpty()
 
-            for (item in items) {
-                val candTitle = (item["title"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull ?: continue
-                val candVersion = (item["version"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
-                val effectiveCandTitle = if (!candVersion.isNullOrBlank()) "$candTitle ($candVersion)" else candTitle
+                var foundUrl: String? = null
+                for (item in items) {
+                    val candTitle = (item["title"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull ?: continue
+                    val candVersion = (item["version"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+                    val effectiveCandTitle = if (!candVersion.isNullOrBlank()) "$candTitle ($candVersion)" else candTitle
 
-                if (!lyricsTitleOk(effectiveCandTitle, name)) continue
+                    if (!lyricsTitleOk(effectiveCandTitle, name)) continue
 
-                if (artist.isNotBlank()) {
-                    val artistsArray = (item["artists"] as? kotlinx.serialization.json.JsonArray)
-                        ?.mapNotNull { ((it as? kotlinx.serialization.json.JsonObject)?.get("name") as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull }
-                        .orEmpty()
-                    val artistMatches = artistsArray.any { lyricsArtistOk(it, artist) } ||
-                        lyricsArtistOk(artistsArray.joinToString(", "), artist)
-                    if (!artistMatches) continue
-                }
+                    if (artist.isNotBlank()) {
+                        val artistsArray = (item["artists"] as? kotlinx.serialization.json.JsonArray)
+                            ?.mapNotNull { ((it as? kotlinx.serialization.json.JsonObject)?.get("name") as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull }
+                            .orEmpty()
+                        val artistMatches = artistsArray.any { lyricsArtistOk(it, artist) } ||
+                            lyricsArtistOk(artistsArray.joinToString(", "), artist)
+                        if (!artistMatches) continue
+                    }
 
-                val album = item["album"] as? kotlinx.serialization.json.JsonObject
-                val coverUuid = (album?.get("cover") as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
-                if (!coverUuid.isNullOrBlank()) {
-                    val parts = coverUuid.split("-")
-                    if (parts.size == 5) {
-                        return "https://resources.tidal.com/images/${parts.joinToString("/")}/1280x1280.jpg"
+                    val album = item["album"] as? kotlinx.serialization.json.JsonObject
+                    val coverUuid = (album?.get("cover") as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+                    if (!coverUuid.isNullOrBlank()) {
+                        val parts = coverUuid.split("-")
+                        if (parts.size == 5) {
+                            foundUrl = "https://resources.tidal.com/images/${parts.joinToString("/")}/1280x1280.jpg"
+                            break
+                        }
                     }
                 }
+                foundUrl
             }
-            null
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Exception) {
@@ -295,21 +306,29 @@ class ArtworkRepository @Inject constructor(
     private suspend fun queryDeezer(name: String, artist: String): String? {
         val query = if (artist.isNotBlank()) "$name $artist" else name
         val url = "https://api.deezer.com/search?q=${java.net.URLEncoder.encode(query, "UTF-8")}&limit=5"
-        try {
+        return try {
             val req = okhttp3.Request.Builder()
                 .url(url)
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                 .build()
-            val body = http.newCall(req).awaitSuccessfulBodyOrNull() ?: return null
-            val jsonEl = json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
-            val data = jsonEl?.get("data") as? kotlinx.serialization.json.JsonArray
-            val items = data?.mapNotNull { it as? kotlinx.serialization.json.JsonObject }.orEmpty()
-            val best = items.maxByOrNull { deezerScore(it, name, artist) }
-                ?.takeIf { deezerVerified(it, name, artist) } ?: return null
-            val album = best.get("album") as? kotlinx.serialization.json.JsonObject
-            return (album?.get("cover_xl") as? kotlinx.serialization.json.JsonPrimitive)?.content
-                ?: (album?.get("cover_big") as? kotlinx.serialization.json.JsonPrimitive)?.content
-                ?: ((best.get("artist") as? kotlinx.serialization.json.JsonObject)?.get("picture_xl") as? kotlinx.serialization.json.JsonPrimitive)?.content
+            val body = http.newCall(req).awaitSuccessfulBodyOrNull()
+            if (body == null) {
+                null
+            } else {
+                val jsonEl = json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
+                val data = jsonEl?.get("data") as? kotlinx.serialization.json.JsonArray
+                val items = data?.mapNotNull { it as? kotlinx.serialization.json.JsonObject }.orEmpty()
+                val best = items.maxByOrNull { deezerScore(it, name, artist) }
+                    ?.takeIf { deezerVerified(it, name, artist) }
+                if (best == null) {
+                    null
+                } else {
+                    val album = best.get("album") as? kotlinx.serialization.json.JsonObject
+                    (album?.get("cover_xl") as? kotlinx.serialization.json.JsonPrimitive)?.content
+                        ?: (album?.get("cover_big") as? kotlinx.serialization.json.JsonPrimitive)?.content
+                        ?: ((best.get("artist") as? kotlinx.serialization.json.JsonObject)?.get("picture_xl") as? kotlinx.serialization.json.JsonPrimitive)?.content
+                }
+            }
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Exception) {
@@ -434,25 +453,25 @@ class ArtworkRepository @Inject constructor(
         if (!allowed) return
 
         try {
-            val fromSpotify = safeFetch("Spotify (force)", name, artist) { fetchSpotify(name, artist) }
-            val resolved = if (!fromSpotify.isNullOrBlank()) {
-                save(key, "spotify", fromSpotify)
-                fromSpotify
+            val fromItunes = safeFetch("Apple Music (force)", name, artist) { itunes.fetchArtworkUrl(name, artist) }
+            val resolved = if (!fromItunes.isNullOrBlank()) {
+                save(key, "itunes", fromItunes)
+                fromItunes
             } else {
-                val fromItunes = safeFetch("iTunes (force)", name, artist) { itunes.fetchArtworkUrl(name, artist) }
-                if (!fromItunes.isNullOrBlank()) {
-                    save(key, "itunes", fromItunes)
-                    fromItunes
+                val fromTidal = safeFetch("Tidal (force)", name, artist) { fetchTidal(name, artist) }
+                if (!fromTidal.isNullOrBlank()) {
+                    save(key, "tidal", fromTidal)
+                    fromTidal
                 } else {
-                    val fromTidal = safeFetch("Tidal (force)", name, artist) { fetchTidal(name, artist) }
-                    if (!fromTidal.isNullOrBlank()) {
-                        save(key, "tidal", fromTidal)
-                        fromTidal
+                    val fromDeezer = safeFetch("Deezer (force)", name, artist) { fetchDeezer(name, artist) }
+                    if (!fromDeezer.isNullOrBlank()) {
+                        save(key, "deezer", fromDeezer)
+                        fromDeezer
                     } else {
-                        val fromDeezer = safeFetch("Deezer (force)", name, artist) { fetchDeezer(name, artist) }
-                        if (!fromDeezer.isNullOrBlank()) {
-                            save(key, "deezer", fromDeezer)
-                            fromDeezer
+                        val fromSpotify = safeFetch("Spotify (force)", name, artist) { fetchSpotify(name, artist) }
+                        if (!fromSpotify.isNullOrBlank()) {
+                            save(key, "spotify", fromSpotify)
+                            fromSpotify
                         } else {
                             val fromYt = safeFetch("YouTube Music (force)", name, artist) { fetchYouTubeMusic(name, artist) }
                             if (!fromYt.isNullOrBlank()) {
