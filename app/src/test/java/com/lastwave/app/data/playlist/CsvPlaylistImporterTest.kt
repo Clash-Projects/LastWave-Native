@@ -164,13 +164,20 @@ class CsvPlaylistImporterTest {
         )
     }
 
+    /**
+     * Link rows are identified by a bare video id rather than a full URL:
+     * `youtubeVideoIdOrNull` needs `android.net.Uri` to parse a URL, and under
+     * `unitTests.isReturnDefaultValues` that returns null on the JVM, so URL
+     * rows cannot be exercised here. A bare id short-circuits before Uri and
+     * still covers the verification logic below.
+     */
     @Test
     fun dropsALinkThatDoesNotDescribeTheRowSong() = runBlocking {
         coEvery { api.fetchSongDetails("12345678901") } returns track("12345678901", "Someone Else Entirely", "Other Artist")
         coEvery { api.searchSongs(any(), any(), any()) } returns emptyList()
 
         val result = importer.parseAndMatchCsv(
-            "Track,Artist,URL\nSong,Artist,https://music.youtube.com/watch?v=12345678901".byteInputStream(),
+            "Track,Artist,URL\nSong,Artist,12345678901".byteInputStream(),
             "songs.csv",
         )
         assertEquals(1, result.totalRows)
@@ -183,12 +190,10 @@ class CsvPlaylistImporterTest {
         coEvery { api.fetchSongDetails("12345678901") } returns track("12345678901", "Real Song", "Real Artist")
         coEvery { api.searchSongs(any(), any(), any()) } returns emptyList()
 
-        val result = importer.parseAndMatchCsv(
-            "URL\nhttps://music.youtube.com/watch?v=12345678901".byteInputStream(),
-            "songs.csv",
-        )
+        val result = importer.parseAndMatchCsv("URL\n12345678901".byteInputStream(), "songs.csv")
         assertEquals(1, result.matchedCount)
         assertEquals("Real Song", result.tracks.single().name)
+        assertEquals("Real Artist", result.tracks.single().artist)
         assertEquals("https://music.youtube.com/watch?v=12345678901", result.tracks.single().url)
     }
 
@@ -198,7 +203,7 @@ class CsvPlaylistImporterTest {
         coEvery { api.searchSongs(any(), any(), any()) } returns emptyList()
 
         val result = importer.parseAndMatchCsv(
-            "Track,Artist,URL\nSong,Artist,https://music.youtube.com/watch?v=12345678901".byteInputStream(),
+            "Track,Artist,URL\nSong,Artist,12345678901".byteInputStream(),
             "songs.csv",
         )
         assertEquals(1, result.matchedCount)
@@ -299,7 +304,7 @@ class CsvPlaylistImporterTest {
         }
         coEvery { api.searchSongs(any(), any(), any()) } returns emptyList()
         val result = importer.parseAndMatchCsv(
-            "Track,Artist,URL\nSong,Artist,https://music.youtube.com/watch?v=12345678901".byteInputStream(),
+            "Track,Artist,URL\nSong,Artist,12345678901".byteInputStream(),
             "songs.csv",
         )
         assertEquals(1, result.matchedCount)

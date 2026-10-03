@@ -427,7 +427,7 @@ class CsvPlaylistImporter @Inject constructor(
             ?: return CsvRawTrack(cleaned, "")
         return CsvRawTrack(
             title = cleaned.substring(separator.range.last + 1).trim(),
-            artist = cleaned.substring(separator.range.first).trim(),
+            artist = cleaned.substring(0, separator.range.first).trim(),
         )
     }
 
