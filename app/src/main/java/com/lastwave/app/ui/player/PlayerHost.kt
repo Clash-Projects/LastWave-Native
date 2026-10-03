@@ -2220,16 +2220,20 @@ private fun FullPlayer(
                     targetState = currentTab,
                     modifier = Modifier.weight(1f).adaptiveContentWidth(maxWidth = 680.dp),
                     transitionSpec = {
+                        // Matched fade durations keep both layers visible
+                        // throughout the crossfade so the background never
+                        // flashes through between cover and canvas/lyrics.
+                        val dur = 280
                         if (targetState != FullPlayerTab.NOW_PLAYING) {
-                            (slideInVertically(animationSpec = ExpressiveMotion.smoothSpring()) { it / 6 } +
-                                fadeIn(tween(ExpressiveMotion.Standard))) togetherWith
-                                (slideOutVertically(animationSpec = tween(ExpressiveMotion.Quick)) { -it / 6 } +
-                                    fadeOut(tween(ExpressiveMotion.Quick)))
+                            (slideInVertically(tween(dur, easing = FastOutSlowInEasing)) { it / 12 } +
+                                fadeIn(tween(dur))) togetherWith
+                                (slideOutVertically(tween(dur, easing = FastOutSlowInEasing)) { -it / 12 } +
+                                    fadeOut(tween(dur)))
                         } else {
-                            (slideInVertically(animationSpec = ExpressiveMotion.smoothSpring()) { -it / 6 } +
-                                fadeIn(tween(ExpressiveMotion.Standard))) togetherWith
-                                (slideOutVertically(animationSpec = tween(ExpressiveMotion.Quick)) { it / 6 } +
-                                    fadeOut(tween(ExpressiveMotion.Quick)))
+                            (slideInVertically(tween(dur, easing = FastOutSlowInEasing)) { -it / 12 } +
+                                fadeIn(tween(dur))) togetherWith
+                                (slideOutVertically(tween(dur, easing = FastOutSlowInEasing)) { it / 12 } +
+                                    fadeOut(tween(dur)))
                         }
                     },
                     label = "playerTabContent",
