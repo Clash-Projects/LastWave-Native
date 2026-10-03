@@ -139,6 +139,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -267,6 +268,7 @@ import kotlin.time.Duration.Companion.seconds
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 enum class FullPlayerTab {
     NOW_PLAYING,
@@ -374,6 +376,11 @@ class PlayerViewModel @Inject constructor(
         /** Spinner only appears when loading actually takes time; cache
          *  hits resolve well inside this window with no flash. */
         const val LOADING_SPINNER_DELAY_MS = 250L
+        /** Next-track canvas warm-up waits this long after the current track's
+         *  lookup resolves. Rapid skips cancel the job inside this window, so a
+         *  prefetch never spends network/decoder time on a track the user has
+         *  already left behind. */
+        const val CANVAS_PREFETCH_DELAY_MS = 4_000L
     }
 
     init {
@@ -417,7 +424,34 @@ class PlayerViewModel @Inject constructor(
                         _canvasState.value = canvasRepository.cached(track)
                         canvasJob = viewModelScope.launch {
                             val result = canvasRepository.canvasFor(track, cellularAllowed = cellular)
+                            // A skip during the lookup cancels this job; only the
+                            // winner publishes.
+                            if (currentCanvasTrackKey != key) return@launch
                             _canvasState.value = result
+                            // Warm the next track's cache entry while this one plays,
+                            // so a skip usually lands on an in-memory hit instead of a
+                            // cold network waterfall. Chained in this same job, strictly
+                            // after the current lookup: the repository serializes on one
+                            // mutex, so a standalone prefetch job could otherwise hold
+                            // the lock inside a blocking HTTP call right when the next
+                            // track needs it. The delay means rapid skips cancel before
+                            // any prefetch traffic starts.
+                            val upcoming = player.state.value.let { snapshot ->
+                                if (snapshot.shuffleEnabled) {
+                                    // Engine shuffle order is not visible here; warming
+                                    // the wrong track would only spend lookups.
+                                    null
+                                } else {
+                                    snapshot.queue.getOrNull(snapshot.currentIndex + 1)
+                                }
+                            }?.takeIf {
+                                it.videoId != track.videoId || it.title != track.title || it.artist != track.artist
+                            } ?: return@launch
+                            delay(CANVAS_PREFETCH_DELAY_MS)
+                            if (currentCanvasTrackKey != key) return@launch
+                            // Result discarded: canvasFor caches it, which is the
+                            // whole point. Never published to _canvasState here.
+                            canvasRepository.canvasFor(upcoming, cellularAllowed = cellular)
                         }
                     } else {
                         _canvasState.value = null
@@ -1653,6 +1687,42 @@ private enum class SeekDirection { REWIND, FORWARD }
 
 private const val HERO_FADE_FRACTION = 0.42f
 
+/**
+ * The motion clip currently mounted in the tree, plus whether it is on its way out.
+ */
+private class CanvasMount(
+    val value: MutableState<com.lastwave.app.data.canvas.CanvasArtwork?>,
+    val retiring: MutableState<Boolean>,
+)
+
+/**
+ * Holds [next] in the tree for one [CANVAS_FADE_MS] crossfade after it turns null.
+ *
+ * The clip is the moving layer and the still cover is what fades up underneath it,
+ * so the clip has to outlive the request to unmount it. Dropping it on the same
+ * frame that `next` went null is exactly what turned every animated -> static song
+ * change into a pop followed by a full player/TextureView rebuild.
+ */
+@Composable
+private fun rememberRetiringCanvas(next: com.lastwave.app.data.canvas.CanvasArtwork?): CanvasMount {
+    val mount = remember { CanvasMount(mutableStateOf(next), mutableStateOf(false)) }
+    LaunchedEffect(next) {
+        if (next != null) {
+            mount.value.value = next
+            mount.retiring.value = false
+            return@LaunchedEffect
+        }
+        if (mount.value.value == null) return@LaunchedEffect
+        mount.retiring.value = true
+        // CANVAS_FADE_MS is an Int; delay() needs Long.
+        delay(CANVAS_FADE_MS.toLong())
+        // Unmount last and leave `retiring` set: clearing it first would briefly
+        // re-target the clip's fade back to full opacity on its way out.
+        mount.value.value = null
+    }
+    return mount
+}
+
 @Composable
 private fun FullPlayer(
     state: MusicPlayerState,
@@ -1701,8 +1771,14 @@ private fun FullPlayer(
             }
         }
     }
-    var canvasAspect by remember(activeCanvas?.url) { mutableFloatStateOf(0f) }
-    var canvasRendered by remember(activeCanvas?.url) { mutableStateOf(false) }
+    // Clip geometry is held across track changes: the hero sizes itself from the last
+    // reported aspect instead of collapsing to zero between clips.
+    var canvasAspect by remember { mutableFloatStateOf(0f) }
+    // The exact alpha CanvasArtworkPlayer is painting this frame. The still cover is
+    // simply its complement, so a single fade owns the whole crossfade and the pair
+    // always sums to full opacity.
+    var canvasFade by remember { mutableFloatStateOf(0f) }
+    val canvasMount = rememberRetiringCanvas(activeCanvas)
     var lyricsFullscreen by remember(currentTab) { mutableStateOf(false) }
     val view = LocalView.current
     DisposableEffect(view, lyricsFullscreen) {
@@ -1974,8 +2050,13 @@ private fun FullPlayer(
                     // Square-capped hero: a tall container forces Crop to zoom and eat
                     // the sides (the "stretch"). Clamp measured height near square so
                     // side-crop stays minimal. Tall portrait canvas keeps full-page.
-                    val isTallCanvas = activeCanvas != null && canvasRendered &&
-                        canvasAspect in 0.30f..0.82f
+                    //
+                    // Sized off reported geometry alone. Keying off the render flag
+                    // resized this box in the middle of every crossfade, because the
+                    // flag is false for the whole fade-in and flips true partway
+                    // through it - which is what made the swap advance a step at a
+                    // time instead of running as one motion.
+                    val isTallCanvas = canvasMount.value.value != null && canvasAspect in 0.30f..0.82f
                     val measuredPx = if (heroBottomPx > 0f) {
                         heroBottomPx + with(density) { 8.dp.toPx() }
                     } else {
@@ -1987,7 +2068,17 @@ private fun FullPlayer(
                         minOf(bgWidth * 1.08f, bgHeight * 0.62f)
                     }
                     val minPx = minOf(bgWidth * 0.92f, bgHeight * 0.50f)
-                    val heroPx = measuredPx.coerceIn(minPx, maxPx).coerceAtLeast(1f)
+                    // Whole pixels: heroBottomPx arrives from onGloballyPositioned, so
+                    // leaving sub-pixel noise in the target would keep this animation
+                    // chasing it forever and make the box shimmer.
+                    val heroTargetPx = measuredPx.coerceIn(minPx, maxPx).coerceAtLeast(1f).roundToInt().toFloat()
+                    // Animated so any remaining geometry change settles rather than
+                    // snapping under a clip that is already mid-fade.
+                    val heroPx by animateFloatAsState(
+                        targetValue = heroTargetPx,
+                        animationSpec = tween(CANVAS_FADE_MS),
+                        label = "heroPx",
+                    )
                     val heroHeight = with(density) { heroPx.toDp() }
                     val lyricsCanvasBlurDp by animateDpAsState(
                         targetValue = if (currentTab == FullPlayerTab.LYRICS) 32.dp else 0.dp,
@@ -1997,28 +2088,19 @@ private fun FullPlayer(
                     // Canvas wins over the static cover - never both. The cover is only a
                     // loading / decode-error placeholder, so once the motion canvas reports a
                     // real rendered frame (CanvasArtworkPlayer sets rendered from
-                    // onSurfaceTextureUpdated, i.e. after pixels exist) the cover fades out and
-                    // leaves the tree entirely. Both fade from the same trigger, so this is a
-                    // true crossfade with no gap: the cover fades out here while
-                    // CanvasArtworkPlayer fades itself in over the same window.
-                    val canvasCrossfadeAlpha by animateFloatAsState(
-                        targetValue = if (activeCanvas != null && canvasRendered) 1f else 0f,
-                        animationSpec = tween(400),
-                        label = "canvasCrossfadeAlpha",
-                    )
-                    val heroCoverAlpha = if (activeCanvas == null) 1f else 1f - canvasCrossfadeAlpha
+                    // onSurfaceTextureUpdated, i.e. after pixels exist) the cover fades out.
+                    //
+                    // The cover alpha is read straight off the clip's own reported fade
+                    // instead of running a second animation against it. Two fades of
+                    // different lengths that do not start on the same frame sum to less
+                    // than full opacity through the middle of the swap, which is what
+                    // let the backdrop bleed through the artwork box.
+                    val heroCoverAlpha = 1f - canvasFade
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .fillMaxWidth()
-                            .height(heroHeight)
-                            .then(
-                                if (lyricsCanvasBlurDp > 0.dp) {
-                                    Modifier.blur(lyricsCanvasBlurDp)
-                                } else {
-                                    Modifier
-                                }
-                            ),
+                            .height(heroHeight),
                     ) {
                         // The cover art banner dissolves over its bottom HERO_FADE_FRACTION (42%)
                         // into the underlying fluid/ambient backdrop via an offscreen DstIn blend mask.
@@ -2045,19 +2127,36 @@ private fun FullPlayer(
                                             ),
                                             blendMode = BlendMode.DstIn,
                                         )
-                                    },
+                                    }
+                                    // Lyrics blur belongs to the still cover only. On the
+                                    // parent Box it animated a RenderEffect over the clip's
+                                    // video surface, the same hazard that underflowed the
+                                    // canvas save stack before, and it hitched on every
+                                    // tab switch.
+                                    .then(
+                                        if (lyricsCanvasBlurDp > 0.dp) {
+                                            Modifier.blur(lyricsCanvasBlurDp)
+                                        } else {
+                                            Modifier
+                                        }
+                                    ),
                             )
                         }
-                        if (activeCanvas != null) {
+                        canvasMount.value.value?.let { mountedCanvas ->
                             CanvasArtworkPlayer(
-                                canvas = activeCanvas,
+                                canvas = mountedCanvas,
                                 isPlaying = state.isPlaying,
                                 contentMode = CanvasContentMode.CROP,
                                 alignPortraitTop = true,
                                 bottomFade = HERO_FADE_FRACTION,
                                 onAspectRatioChanged = { canvasAspect = it },
-                                onRenderedChanged = { canvasRendered = it },
-                                pausedForTransition = shownDismissY > 0f || currentTab != FullPlayerTab.NOW_PLAYING,
+                                onCoverChanged = { canvasFade = it },
+                                fadeOut = canvasMount.retiring.value,
+                                // Only an actual dismissal pauses the clip. Tying this to
+                                // the tab meant AnimatedContent's 280ms overlap flipped
+                                // playWhenReady mid-flight and left the clip frozen on a
+                                // stale frame right as it faded in.
+                                pausedForTransition = shownDismissY > 0f,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
@@ -2220,16 +2319,20 @@ private fun FullPlayer(
                     targetState = currentTab,
                     modifier = Modifier.weight(1f).adaptiveContentWidth(maxWidth = 680.dp),
                     transitionSpec = {
+                        // Matched fade durations keep both layers visible
+                        // throughout the crossfade so the background never
+                        // flashes through between cover and canvas/lyrics.
+                        val dur = 280
                         if (targetState != FullPlayerTab.NOW_PLAYING) {
-                            (slideInVertically(animationSpec = ExpressiveMotion.smoothSpring()) { it / 6 } +
-                                fadeIn(tween(ExpressiveMotion.Standard))) togetherWith
-                                (slideOutVertically(animationSpec = tween(ExpressiveMotion.Quick)) { -it / 6 } +
-                                    fadeOut(tween(ExpressiveMotion.Quick)))
+                            (slideInVertically(tween(dur, easing = FastOutSlowInEasing)) { it / 12 } +
+                                fadeIn(tween(dur))) togetherWith
+                                (slideOutVertically(tween(dur, easing = FastOutSlowInEasing)) { -it / 12 } +
+                                    fadeOut(tween(dur)))
                         } else {
-                            (slideInVertically(animationSpec = ExpressiveMotion.smoothSpring()) { -it / 6 } +
-                                fadeIn(tween(ExpressiveMotion.Standard))) togetherWith
-                                (slideOutVertically(animationSpec = tween(ExpressiveMotion.Quick)) { it / 6 } +
-                                    fadeOut(tween(ExpressiveMotion.Quick)))
+                            (slideInVertically(tween(dur, easing = FastOutSlowInEasing)) { -it / 12 } +
+                                fadeIn(tween(dur))) togetherWith
+                                (slideOutVertically(tween(dur, easing = FastOutSlowInEasing)) { it / 12 } +
+                                    fadeOut(tween(dur)))
                         }
                     },
                     label = "playerTabContent",
@@ -2491,7 +2594,7 @@ private fun FullPlayer(
                                                         corner = 32.dp,
                                                         canvas = if (showSleeveCanvas) canvas else null,
                                                         isPlaying = state.isPlaying,
-                                                        pausedForTransition = shownDismissY > 0f || currentTab != FullPlayerTab.NOW_PLAYING,
+                                                        pausedForTransition = shownDismissY > 0f,
                                                         onAspectRatioChanged = { canvasAspect = it },
                                                     )
                                                 }
@@ -3829,16 +3932,14 @@ private fun PlayerArtwork(
     onAspectRatioChanged: (Float) -> Unit = {},
 ) {
     // Same rule as the full-bleed hero: the canvas is the artwork, the static cover is
-    // only a loading / decode-error placeholder. Crossfade the cover out and drop it
-    // from the tree once the canvas has actually rendered, so the two are never both
-    // visible. With canvas == null this is exactly the old static-only behaviour.
-    var canvasRendered by remember(canvas?.url) { mutableStateOf(false) }
-    val canvasAlpha by animateFloatAsState(
-        targetValue = if (canvas != null && canvasRendered) 1f else 0f,
-        animationSpec = tween(400),
-        label = "sleeveCanvasAlpha",
-    )
-    val coverAlpha = if (canvas == null) 1f else 1f - canvasAlpha
+    // only a loading / decode-error placeholder. The clip reports the alpha it is
+    // painting and the cover is exactly its complement, so one fade owns the swap and
+    // the pair always sums to full opacity. The clip is held for one crossfade past
+    // the point [canvas] goes null, so animated -> static fades instead of popping.
+    // With canvas == null this is exactly the old static-only behaviour.
+    val canvasMount = rememberRetiringCanvas(canvas)
+    var canvasFade by remember { mutableFloatStateOf(0f) }
+    val coverAlpha = 1f - canvasFade
     Box(modifier.clip(RoundedCornerShape(corner)).background(MaterialTheme.colorScheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
         if (coverAlpha > 0.001f) {
             ArtworkImage(
@@ -3853,13 +3954,14 @@ private fun PlayerArtwork(
                 transformations = transformations,
             )
         }
-        if (canvas != null) {
+        canvasMount.value.value?.let { mountedCanvas ->
             CanvasArtworkPlayer(
-                canvas = canvas,
+                canvas = mountedCanvas,
                 isPlaying = isPlaying,
                 pausedForTransition = pausedForTransition,
                 onAspectRatioChanged = onAspectRatioChanged,
-                onRenderedChanged = { canvasRendered = it },
+                onCoverChanged = { canvasFade = it },
+                fadeOut = canvasMount.retiring.value,
                 contentMode = CanvasContentMode.CROP,
                 modifier = Modifier.fillMaxSize(),
             )
