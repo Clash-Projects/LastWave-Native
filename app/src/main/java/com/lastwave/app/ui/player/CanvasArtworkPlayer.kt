@@ -12,6 +12,7 @@ import android.graphics.Shader
 import android.graphics.SurfaceTexture
 import android.util.Log
 import android.view.TextureView
+import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.annotation.OptIn
@@ -270,7 +271,7 @@ fun CanvasArtworkPlayer(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
                 )
-                isOpaque = false
+                isOpaque = true
                 this.alpha = 0f
                 player.setVideoTextureView(this)
 
@@ -319,22 +320,34 @@ fun CanvasArtworkPlayer(
                     }
                 }
             }
+            val background = View(viewContext).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                )
+                setBackgroundColor(android.graphics.Color.BLACK)
+                this.alpha = 0f
+            }
             textureView = texture
             FadingBottomFrame(viewContext).apply {
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
                 )
+                addView(background)
                 addView(texture)
             }
         },
         update = { frame ->
-            val view = frame.getChildAt(0) as TextureView
-            view.alpha = if (contentMode == CanvasContentMode.FIT_PORTRAIT && clipAspect <= 0f) {
+            val bg = frame.getChildAt(0)
+            val view = frame.getChildAt(1) as TextureView
+            val effectiveAlpha = if (contentMode == CanvasContentMode.FIT_PORTRAIT && clipAspect <= 0f) {
                 0f
             } else {
                 alpha * presentationAlpha()
             }
+            bg.alpha = effectiveAlpha
+            view.alpha = effectiveAlpha
             view.applyContentTransform(clipAspect, contentMode, alignPortraitTop)
             // Fade the clip with a plain saveLayer + DST_IN gradient on the parent
             // FrameLayout, on every API level. The Android 12+ branch used to attach a

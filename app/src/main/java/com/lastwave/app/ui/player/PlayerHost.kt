@@ -2095,7 +2095,7 @@ private fun FullPlayer(
                     // different lengths that do not start on the same frame sum to less
                     // than full opacity through the middle of the swap, which is what
                     // let the backdrop bleed through the artwork box.
-                    val heroCoverAlpha = 1f - canvasFade
+                    val heroCoverAlpha = if (canvasFade >= 0.95f) 0f else (1f - canvasFade).coerceIn(0f, 1f)
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopStart)
@@ -3939,7 +3939,7 @@ private fun PlayerArtwork(
     // With canvas == null this is exactly the old static-only behaviour.
     val canvasMount = rememberRetiringCanvas(canvas)
     var canvasFade by remember { mutableFloatStateOf(0f) }
-    val coverAlpha = 1f - canvasFade
+    val coverAlpha = if (canvasFade >= 0.95f) 0f else (1f - canvasFade).coerceIn(0f, 1f)
     Box(modifier.clip(RoundedCornerShape(corner)).background(MaterialTheme.colorScheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
         if (coverAlpha > 0.001f) {
             ArtworkImage(
