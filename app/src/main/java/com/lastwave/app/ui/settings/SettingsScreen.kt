@@ -95,6 +95,7 @@ import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BubbleChart
@@ -446,6 +447,7 @@ fun SettingsScreen(
     val usbExclusiveEnabled by viewModel.usbExclusiveEnabled.collectAsStateWithLifecycle()
     val loudness by viewModel.loudness.collectAsStateWithLifecycle()
     val updateInfo by viewModel.updateInfo.collectAsStateWithLifecycle()
+    val discordPresenceEnabled by viewModel.discordPresenceEnabled.collectAsStateWithLifecycle()
     val isLastFmConnected by viewModel.isLastFmConnected.collectAsStateWithLifecycle()
     val hasApiKey by viewModel.hasApiKey.collectAsStateWithLifecycle()
     val lastFmAuthUrl by viewModel.lastFmAuthUrl.collectAsStateWithLifecycle()
@@ -1461,6 +1463,26 @@ fun SettingsScreen(
                                 viewModel.showToast("No browser available to open Last.fm")
                             }
                         },
+                    )
+                    // Discord presence, next to Last.fm because both are "tell
+                    // other services what I'm listening to" integrations and
+                    // neither is required for playback. Unlike Last.fm this
+                    // needs no account in LastWave — it publishes as the
+                    // LastWave application through the Discord app itself, so
+                    // the copy says exactly that.
+                    SettingsToggleCard(
+                        icon = Icons.Filled.Public,
+                        iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                        iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        title = "Discord Rich Presence",
+                        subtitle = if (discordPresenceEnabled) {
+                            "On • your track, quality and cover show on your Discord profile"
+                        } else {
+                            "Off • LastWave stays off your Discord profile"
+                        },
+                        checked = discordPresenceEnabled,
+                        onCheckedChange = viewModel::setDiscordPresenceEnabled,
+                        isHighlighted = (highlightedSettingId == "discord.presence"),
                     )
                 }
             }

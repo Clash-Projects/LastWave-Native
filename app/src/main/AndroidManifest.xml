@@ -26,6 +26,14 @@
         <intent>
             <action android:name="android.media.browse.MediaBrowserService" />
         </intent>
+        <!-- Discord Rich Presence IPC service and packages -->
+        <intent>
+            <action android:name="com.discord.socialsdk.rpc.IDiscordRpcService" />
+        </intent>
+        <package android:name="com.discord" />
+        <package android:name="com.discord.canary" />
+        <package android:name="com.discord.ptb" />
+        <package android:name="com.discord.debug" />
     </queries>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />

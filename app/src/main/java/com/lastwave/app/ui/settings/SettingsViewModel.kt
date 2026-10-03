@@ -95,6 +95,7 @@ class SettingsViewModel @Inject constructor(
     private val downloadManager: TrackDownloadManager,
     private val fileExportHelper: FileExportHelper,
     private val scrobblerPreferences: ScrobblerPreferences,
+    private val discordPresencePreferences: com.lastwave.app.presence.DiscordPresencePreferences,
     private val equalizerPreferences: com.lastwave.app.data.local.EqualizerPreferences,
     private val loudnessPrefs: com.lastwave.app.playback.LoudnessPrefs,
     private val ytAuthManager: com.lastwave.app.data.ytmusic.YtMusicAuthManager,
@@ -131,6 +132,24 @@ class SettingsViewModel @Inject constructor(
     val syncedPlaylistIds: StateFlow<Set<Long>?> = ytMusicPreferences.syncedPlaylistIds
         .withSettingsFallback("YouTube playlist selection", null)
         .stateIn(viewModelScope, SettingsSharing, null)
+    /**
+     * Discord Rich Presence switch. Defaults ON (see
+     * [com.lastwave.app.presence.DiscordPresencePreferences.enabled]).
+     *
+     * No nudge to the publisher is needed: DiscordPresenceManager observes this
+     * very preference, so writing it evaluates presence against the current
+     * playback state immediately — the card is hidden or shown now, not at the
+     * next track change.
+     */
+    val discordPresenceEnabled: StateFlow<Boolean> = discordPresencePreferences.enabled
+        .withSettingsFallback("Discord presence preference", true)
+        .stateIn(viewModelScope, SettingsSharing, true)
+
+    fun setDiscordPresenceEnabled(enabled: Boolean) {
+        launchSettingsAction("update Discord presence") {
+            discordPresencePreferences.setEnabled(enabled)
+        }
+    }
     val ytAccountPlaylists = ytMusicLibraryManager.accountPlaylists
     val hiddenYtLibraryPlaylistIds: StateFlow<Set<String>> = ytMusicPreferences.hiddenLibraryPlaylistIds
         .withSettingsFallback("YouTube library visibility", emptySet())
