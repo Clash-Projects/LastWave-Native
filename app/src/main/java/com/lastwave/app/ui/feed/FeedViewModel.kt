@@ -278,6 +278,25 @@ class FeedViewModel @Inject constructor(
         }
     }
 
+    fun playMyMix(tile: FeedQuickTile? = null) {
+        viewModelScope.launch {
+            val playlistId = tile?.playlistId
+            val tracks = if (!playlistId.isNullOrBlank()) {
+                runCatching { innerTube.fetchPlaylist(playlistId, maxTracks = 100) }.getOrNull()?.tracks.orEmpty()
+            } else emptyList()
+            val queue = tracks.ifEmpty {
+                val recents = _uiState.value.feedData.ytRecentSongs
+                val picks = _uiState.value.feedData.quickPicks
+                val liked = _uiState.value.feedData.ytLikedSongs
+                (recents + liked + picks).distinctBy { it.videoId }.shuffled()
+            }
+            if (queue.isNotEmpty()) {
+                val playable = queue.map { it.toPlayableTrack() }
+                musicPlayer.playQueue(playable, startIndex = 0, sourceLabel = "My Mix")
+            }
+        }
+    }
+
     fun handleQuickTileClick(tile: FeedQuickTile) {
         val videoId = tile.actionVideoId ?: return
         musicPlayer.play(

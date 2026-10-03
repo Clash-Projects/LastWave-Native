@@ -7,7 +7,10 @@
     android:background="@drawable/widget_ref_background"
     android:gravity="center_vertical"
     android:orientation="vertical"
-    android:padding="14dp">
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp"
+    android:paddingTop="6dp"
+    android:paddingBottom="6dp">
 
     <!-- Empty state -->
     <LinearLayout

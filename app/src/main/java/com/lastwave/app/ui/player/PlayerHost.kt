@@ -229,6 +229,10 @@ import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ArtworkViewModel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.combine
+import androidx.compose.material.icons.filled.Timer
 import com.lastwave.app.ui.common.ExpressiveInlineLoadingIndicator
 import com.lastwave.app.ui.common.ExpressiveMotion
 import com.lastwave.app.ui.common.PlaylistCover
@@ -323,6 +327,16 @@ class PlayerViewModel @Inject constructor(
     private var customPlaylistsLoaded = false
     val likedTrackKeys = likedSongsManager.likedTrackKeys
 
+    private val _toastMessage = MutableSharedFlow<String>()
+    val toastMessage = _toastMessage.asSharedFlow()
+
+    private val _liveLyricsOffsetMs = MutableStateFlow<Long?>(null)
+    val liveLyricsOffsetMs: StateFlow<Long> = combine(
+        _liveLyricsOffsetMs,
+        settingsPreferences.settings.map { it.lyricsOffsetMs },
+    ) { override, pref -> override ?: pref }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
+
     fun openArtist(name: String, browseId: String? = null) {
         navigator.openArtist(name, browseId)
     }
@@ -332,8 +346,10 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun setLyricsOffsetMs(offsetMs: Long) {
+        val clamped = offsetMs.coerceIn(-10000L, 10000L)
+        _liveLyricsOffsetMs.value = clamped
         viewModelScope.launch {
-            settingsPreferences.setLyricsOffsetMs(offsetMs.coerceIn(-3000L, 3000L))
+            settingsPreferences.setLyricsOffsetMs(clamped)
         }
     }
 
@@ -559,6 +575,7 @@ class PlayerViewModel @Inject constructor(
                     ytMusicLibraryManager.refresh()
                     refreshCustomPlaylists()
                 }
+                _toastMessage.emit("Added to playlist")
             }
         }
     }
@@ -591,6 +608,7 @@ class PlayerViewModel @Inject constructor(
             runCatching {
                 val playlist = playlistRepository.createCustom(title)
                 playlistRepository.addTrack(playlist.id, track.toGeneratedTrack())
+                _toastMessage.emit("Added to playlist")
             }
         }
     }
@@ -687,6 +705,11 @@ fun PlayerHost(
     val miniGlass = LocalLiquidGlass.current && isLiquidGlassBackdropSupported()
 
     val bottomNavSlot = remember { mutableStateOf<@Composable () -> Unit>({}) }
+    LaunchedEffect(viewModel) {
+        viewModel.toastMessage.collect { msg ->
+            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
     CompositionLocalProvider(
         LocalMusicPlayer provides viewModel.player,
         LocalAddToPlaylist provides requestAddToPlaylist,
@@ -784,7 +807,6 @@ fun PlayerHost(
                     onAdd = { playlistIds, duplicatePlaylistIds ->
                         viewModel.addToPlaylists(playlistIds, duplicatePlaylistIds, track)
                         playlistTrack = null
-                        android.widget.Toast.makeText(context, "Added to playlist", android.widget.Toast.LENGTH_SHORT).show()
                     },
                     onFindDuplicates = { playlistIds ->
                         viewModel.findDuplicatePlaylistIds(playlistIds, track)
@@ -822,6 +844,7 @@ private fun ExpandedPlayer(
     // whose spacing differs (e.g. trailing space from another source).
     val isLiked = currentTrack != null &&
         currentTrack.toGeneratedTrack().key in likedTrackKeys
+    val lyricsOffsetMs by viewModel.liveLyricsOffsetMs.collectAsStateWithLifecycle()
     FullPlayer(
         state = state,
         progressState = viewModel.progressState,
@@ -831,7 +854,7 @@ private fun ExpandedPlayer(
         lyricsAnimation = settings.lyricsAnimation,
         wavySeekbarEnabled = settings.wavySeekbarEnabled,
         rotatingBackgroundEnabled = settings.rotatingBackgroundEnabled,
-        lyricsOffsetMs = settings.lyricsOffsetMs,
+        lyricsOffsetMs = lyricsOffsetMs,
         onSetLyricsOffsetMs = viewModel::setLyricsOffsetMs,
         lyricsFontScale = settings.lyricsFontScale,
         onSetLyricsFontScale = viewModel::setLyricsFontScale,
@@ -2146,23 +2169,48 @@ private fun FullPlayer(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    IconButton(
-                        onClick = { showTrackMenu = true },
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls)
-                            .background(
-                                liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
-                            ),
+                    Row(
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Icon(
-                            Icons.Filled.MoreVert,
-                            "Song options",
-                            modifier = Modifier.size(22.dp),
-                            tint = Color.White.copy(alpha = 0.94f),
-                        )
+                        if (currentTab == FullPlayerTab.LYRICS && onSetLyricsOffsetMs != null) {
+                            IconButton(
+                                onClick = { showLyricsOffsetDialog = true },
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls)
+                                    .background(
+                                        if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                                        else liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
+                                    ),
+                            ) {
+                                Icon(
+                                    Icons.Filled.Timer,
+                                    contentDescription = "Lyrics sync offset",
+                                    modifier = Modifier.size(22.dp),
+                                    tint = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.94f),
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = { showTrackMenu = true },
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls)
+                                .background(
+                                    liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
+                                ),
+                        ) {
+                            Icon(
+                                Icons.Filled.MoreVert,
+                                "Song options",
+                                modifier = Modifier.size(22.dp),
+                                tint = Color.White.copy(alpha = 0.94f),
+                            )
+                        }
                     }
                 }
 

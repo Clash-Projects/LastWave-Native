@@ -300,7 +300,7 @@ class SettingsPreferences @Inject constructor(
                 wordByWordLyrics = p.readSafely(Keys.WORD_BY_WORD_LYRICS) ?: true,
                 lyricsAnimation = LyricsAnimation.fromId(p.readSafely(Keys.LYRICS_ANIMATION)),
                 lyricsProvider = LyricsProvider.fromId(p.readSafely(Keys.LYRICS_PROVIDER)),
-                lyricsOffsetMs = (p.readSafely(Keys.LYRICS_OFFSET_MS) ?: 0L).coerceIn(-3000L, 3000L),
+                lyricsOffsetMs = (p.readSafely(Keys.LYRICS_OFFSET_MS) ?: 0L).coerceIn(-10000L, 10000L),
                 lyricsFontScale = (p.readSafely(Keys.LYRICS_FONT_SCALE) ?: 1.0f).coerceIn(0.7f, 1.5f),
                 crossfadeEnabled = p.readSafely(Keys.CROSSFADE_ENABLED) ?: false,
                 crossfadeSeconds = (p.readSafely(Keys.CROSSFADE_SECONDS) ?: 5).coerceIn(1, 12),
@@ -430,7 +430,7 @@ class SettingsPreferences @Inject constructor(
     }
 
     suspend fun setLyricsOffsetMs(offsetMs: Long) {
-        dataStore.edit { it[Keys.LYRICS_OFFSET_MS] = offsetMs.coerceIn(-3000L, 3000L) }
+        dataStore.edit { it[Keys.LYRICS_OFFSET_MS] = offsetMs.coerceIn(-10000L, 10000L) }
     }
 
     suspend fun setLyricsFontScale(scale: Float) {

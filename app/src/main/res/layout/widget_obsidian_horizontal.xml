@@ -6,7 +6,10 @@
     android:background="@drawable/widget_obsidian_background"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:padding="16dp">
+    android:paddingStart="14dp"
+    android:paddingEnd="14dp"
+    android:paddingTop="6dp"
+    android:paddingBottom="6dp">
 
     <!-- Empty state -->
     <LinearLayout

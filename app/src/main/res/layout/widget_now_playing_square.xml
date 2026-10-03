@@ -7,7 +7,10 @@
     android:background="@drawable/widget_ref_background"
     android:gravity="center"
     android:orientation="vertical"
-    android:padding="14dp">
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp"
+    android:paddingTop="6dp"
+    android:paddingBottom="6dp">
 
     <!-- Empty state -->
     <LinearLayout
@@ -75,7 +78,7 @@
             android:id="@+id/widget_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="4dp"
             android:ellipsize="end"
             android:fontFamily="sans-serif-medium"
             android:gravity="center"
@@ -152,7 +155,7 @@
             android:id="@+id/widget_controls_group"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="11dp"
+            android:layout_marginTop="6dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 

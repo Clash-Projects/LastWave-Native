@@ -6,6 +6,8 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -18,6 +20,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material3.Slider
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import kotlin.math.roundToInt
 import androidx.compose.foundation.background
@@ -153,40 +156,36 @@ fun LyricsPanel(
         initialValue = PlaybackProgressState(positionMs = state.positionMs, durationMs = state.durationMs),
     )
 
-    // High-precision frame-level monotonic position clock for 60/120fps bit-perfect vocal sync
+    // High-precision hardware-synced position clock for 60/120/144fps+ bit-perfect vocal sync
+    var anchorProgressMs by remember(track) { mutableLongStateOf(progress.positionMs) }
+    var anchorNanos by remember(track) { mutableLongStateOf(System.nanoTime()) }
     var smoothedPositionMs by remember(track) { mutableLongStateOf(progress.positionMs) }
-    var lastReportedMs by remember(track) { mutableLongStateOf(progress.positionMs) }
-    var lastObservedAtMs by remember(track) { mutableLongStateOf(SystemClock.elapsedRealtime()) }
-    var wasPlaying by remember(track) { mutableStateOf(state.isPlaying) }
 
     LaunchedEffect(progress.positionMs, state.isPlaying, track) {
-        val now = SystemClock.elapsedRealtime()
-        val elapsedMs = (now - lastObservedAtMs).coerceAtLeast(0L)
-        val expectedMs = lastReportedMs + if (wasPlaying) elapsedMs else 0L
-        val discontinuity = !state.isPlaying || kotlin.math.abs(progress.positionMs - expectedMs) > 1_250L
+        val nowNanos = System.nanoTime()
+        val elapsedMs = if (state.isPlaying) (nowNanos - anchorNanos) / 1_000_000L else 0L
+        val estimatedMs = anchorProgressMs + elapsedMs
+        val drift = progress.positionMs - estimatedMs
 
-        lastReportedMs = progress.positionMs
-        lastObservedAtMs = now
-        wasPlaying = state.isPlaying
-
-        if (discontinuity) {
+        if (!state.isPlaying || kotlin.math.abs(drift) > 500L) {
+            // Hard seek, pause, or big drift: snap anchor immediately
+            anchorProgressMs = progress.positionMs
+            anchorNanos = nowNanos
             smoothedPositionMs = progress.positionMs
         } else {
-            smoothedPositionMs = maxOf(smoothedPositionMs, progress.positionMs)
+            // Micro-drift: gently steer anchor without any sudden jumping or stutter
+            anchorProgressMs += (drift * 0.25f).toLong()
+            anchorNanos = nowNanos
         }
     }
 
     LaunchedEffect(state.isPlaying, track) {
         if (!state.isPlaying) return@LaunchedEffect
-        var lastFrameTime = SystemClock.elapsedRealtime()
         while (isActive) {
-            withFrameMillis {
-                val now = SystemClock.elapsedRealtime()
-                val dt = (now - lastFrameTime).coerceIn(0L, 50L)
-                lastFrameTime = now
-
+            withFrameNanos { nowNanos ->
+                val elapsedMs = (nowNanos - anchorNanos) / 1_000_000L
                 val dur = progress.durationMs.takeIf { it > 0 } ?: state.durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE
-                smoothedPositionMs = (smoothedPositionMs + dt).coerceIn(0L, dur)
+                smoothedPositionMs = (anchorProgressMs + elapsedMs).coerceIn(0L, dur)
             }
         }
     }
@@ -248,7 +247,7 @@ fun LyricsPanel(
                         } else if (targetState.isSynced && targetState.lines.isNotEmpty()) {
                             SyncedLyricsList(
                                 lines = targetState.lines,
-                                currentPositionMs = smoothedPositionMs + lyricsOffsetMs,
+                                currentPositionMs = { smoothedPositionMs + lyricsOffsetMs },
                                 lyricsOffsetMs = lyricsOffsetMs,
                                 lyricsFontScale = lyricsFontScale,
                                 isPlaying = state.isPlaying,
@@ -280,7 +279,7 @@ fun LyricsPanel(
         // Transparent playback controls; no separate player-bar container.
         LyricsPlaybackControls(
             state = state,
-            currentPositionMs = smoothedPositionMs,
+            currentPositionMs = progress.positionMs,
             totalDurationMs = if (progress.durationMs > 0) progress.durationMs else state.durationMs,
             player = player,
             wavySeekbarEnabled = wavySeekbarEnabled,
@@ -304,7 +303,7 @@ fun LyricsPanel(
 @Composable
 private fun SyncedLyricsList(
     lines: List<LyricLine>,
-    currentPositionMs: Long,
+    currentPositionMs: () -> Long,
     isPlaying: Boolean,
     onSeek: (Long) -> Unit,
     animationStyle: LyricsAnimation,
@@ -322,37 +321,39 @@ private fun SyncedLyricsList(
         else meaningfulLines.count { it.isRtl } > meaningfulLines.size / 2
     }
 
-    // Active line detection, recomputed from the live position every frame:
-    // word-sync rows focus edge-to-edge on their own clock, rows without
-    // syllables hold until the next row (capped through long instrumentals).
-    val activeIndex = remember(lines, currentPositionMs) {
-        val pos = currentPositionMs
-        var match = -1
-        for (idx in lines.indices.reversed()) {
-            val line = lines[idx]
-            val nextStart = lines.getOrNull(idx + 1)?.timeMs
-            val effectiveDuration = when {
-                line.durationMs > 0 -> line.durationMs
-                line.syllables.isNotEmpty() -> {
-                    val lastSyl = line.syllables.maxByOrNull { it.timeMs + it.durationMs }
-                    if (lastSyl != null) {
-                        (lastSyl.timeMs + lastSyl.durationMs - line.timeMs).coerceAtLeast(1000L)
-                    } else 1000L
+    // Active line detection wrapped in derivedStateOf so SyncedLyricsList and its
+    // items only recompose when activeIndex actually changes between rows,
+    // avoiding per-frame recomposition churn on high-refresh-rate displays.
+    val activeIndex by remember(lines) {
+        derivedStateOf {
+            val pos = currentPositionMs()
+            var match = -1
+            for (idx in lines.indices.reversed()) {
+                val line = lines[idx]
+                val nextStart = lines.getOrNull(idx + 1)?.timeMs
+                val effectiveDuration = when {
+                    line.durationMs > 0 -> line.durationMs
+                    line.syllables.isNotEmpty() -> {
+                        val lastSyl = line.syllables.maxByOrNull { it.timeMs + it.durationMs }
+                        if (lastSyl != null) {
+                            (lastSyl.timeMs + lastSyl.durationMs - line.timeMs).coerceAtLeast(1000L)
+                        } else 1000L
+                    }
+                    nextStart != null && nextStart > line.timeMs -> {
+                        val gap = nextStart - line.timeMs
+                        if (gap <= 6000L) gap else 4500L
+                    }
+                    else -> 5000L
                 }
-                nextStart != null && nextStart > line.timeMs -> {
-                    val gap = nextStart - line.timeMs
-                    if (gap <= 6000L) gap else 4500L
+                val end = line.timeMs + effectiveDuration
+                if (pos >= line.timeMs && pos < end) {
+                    match = idx
+                    break
                 }
-                else -> 5000L
             }
-            val end = line.timeMs + effectiveDuration
-            if (pos >= line.timeMs && pos < end) {
-                match = idx
-                break
-            }
+            if (match >= 0) match
+            else lines.indexOfLast { it.timeMs <= pos }
         }
-        if (match >= 0) match
-        else lines.indexOfLast { it.timeMs <= pos }
     }
 
     if (listState.isScrollInProgress) {
@@ -458,12 +459,18 @@ private fun SyncedLyricsList(
                 label = "lyricScale_$index",
             )
 
-            // A short, position-locked vocal onset pulse. It settles cleanly
-            // when paused and does not need an infinite transition clock.
-            val onsetElapsedMs = (currentPositionMs - line.timeMs).coerceAtLeast(0L)
-            val onsetPhase = (onsetElapsedMs / 520f).coerceIn(0f, 1f)
-            val onsetWave = if (isActive && isPlaying && onsetPhase < 1f) {
-                kotlin.math.sin(Math.PI.toFloat() * onsetPhase)
+            // A short, position-locked vocal onset pulse animated smoothly via hardware clock
+            val onsetProgress = remember { Animatable(0f) }
+            LaunchedEffect(isActive, isPlaying) {
+                if (isActive && isPlaying) {
+                    onsetProgress.snapTo(0f)
+                    onsetProgress.animateTo(1f, tween(520, easing = FastOutSlowInEasing))
+                } else {
+                    onsetProgress.snapTo(0f)
+                }
+            }
+            val onsetWave = if (isActive && isPlaying && onsetProgress.value in 0.001f..0.999f) {
+                kotlin.math.sin(Math.PI.toFloat() * onsetProgress.value)
             } else 0f
             val pulseScale = when (animationStyle) {
                 LyricsAnimation.KARAOKE_PULSE -> 1f + 0.045f * onsetWave
@@ -1081,47 +1088,10 @@ private fun LyricsPlaybackControls(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 2.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (onOpenLyricsOffset != null) {
-                    val offsetInteraction = remember { MutableInteractionSource() }
-                    val isOffsetPressed by offsetInteraction.collectIsPressedAsState()
-                    val offsetScale by animateFloatAsState(
-                        targetValue = if (isOffsetPressed) 0.82f else 1.0f,
-                        animationSpec = ExpressiveMotion.spatialSpring(),
-                        label = "lyricsOffsetScale",
-                    )
-                    IconButton(
-                        onClick = onOpenLyricsOffset,
-                        interactionSource = offsetInteraction,
-                        modifier = Modifier
-                            .size(44.dp)
-                            .graphicsLayer {
-                                scaleX = offsetScale
-                                scaleY = offsetScale
-                            }
-                            .clip(CircleShape)
-                            .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = offsetInteraction)
-                            .background(
-                                liquidGlassContainerColor(
-                                    if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
-                                    else Color.White.copy(alpha = 0.14f)
-                                ),
-                            ),
-                    ) {
-                        Icon(
-                            Icons.Filled.Timer,
-                            contentDescription = "Lyrics sync offset",
-                            modifier = Modifier.size(22.dp),
-                            tint = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.90f),
-                        )
-                    }
-                } else {
-                    Spacer(Modifier.size(44.dp))
-                }
-
-                // Lyrics Font Scale toggle button
+                // Lyrics Font Scale toggle button placed immediately to the LEFT of Full Screen
                 val fontInteraction = remember { MutableInteractionSource() }
                 val isFontPressed by fontInteraction.collectIsPressedAsState()
                 val fontScaleAnim by animateFloatAsState(
@@ -1155,6 +1125,8 @@ private fun LyricsPlaybackControls(
                         tint = if (showFontSlider || isCustomFont) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.90f),
                     )
                 }
+
+                Spacer(Modifier.width(10.dp))
 
                 if (onToggleFullscreen != null) {
                     val playerInteraction = remember { MutableInteractionSource() }

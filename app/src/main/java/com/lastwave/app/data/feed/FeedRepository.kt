@@ -662,38 +662,79 @@ class FeedRepository @Inject constructor(
             }
 
         val quickTiles = buildList {
-            likedSongsId?.let {
+            if (isYtConnected) {
                 add(
                     FeedQuickTile(
-                        title = "Liked Songs",
-                        subtitle = "Your collection",
-                        localPlaylistId = it,
+                        title = "Liked on YouTube",
+                        subtitle = "",
+                        artworkUrl = ytLikedSongs.firstOrNull()?.artworkUrl,
+                        playlistId = "yt_liked",
+                        collection = "yt_liked",
                         isLiked = true,
                     ),
                 )
+            } else {
+                likedSongsId?.let {
+                    add(
+                        FeedQuickTile(
+                            title = "Liked Songs",
+                            subtitle = "Your collection",
+                            localPlaylistId = it,
+                            isLiked = true,
+                        ),
+                    )
+                }
             }
-            if (isYtConnected) {
-                add(FeedQuickTile(
-                    title = "Liked on YouTube",
-                    subtitle = "",
-                    artworkUrl = ytLikedSongs.firstOrNull()?.artworkUrl,
-                    playlistId = "yt_liked",
-                    collection = "yt_liked",
-                    isLiked = true,
-                ))
-            }
-            val savedDiscoverMix = homePlaylists.firstOrNull { it.title.contains("Discover Mix", ignoreCase = true) || it.title.equals("Discover", ignoreCase = true) }
-            add(savedDiscoverMix?.let {
-                FeedQuickTile(title = it.title, subtitle = it.author, artworkUrl = it.artworkUrl, playlistId = it.id)
-            } ?: FeedQuickTile(title = "Discover", subtitle = "Made for you",
-                artworkUrl = quickPicks.lastOrNull()?.artworkUrl ?: quickPicks.firstOrNull()?.artworkUrl, collection = "radio"))
 
+            // 2. "Discover" grid
+            add(
+                FeedQuickTile(
+                    title = "Discover",
+                    subtitle = "Made for you",
+                    artworkUrl = quickPicks.firstOrNull()?.artworkUrl,
+                    collection = "radio",
+                ),
+            )
+
+            // 3. "Discover Mix" grid
+            val savedDiscoverMix = homePlaylists.firstOrNull { it.title.contains("Discover Mix", ignoreCase = true) }
+            add(
+                savedDiscoverMix?.let {
+                    FeedQuickTile(
+                        title = "Discover Mix",
+                        subtitle = it.author.ifBlank { "Weekly mix" },
+                        artworkUrl = it.artworkUrl,
+                        playlistId = it.id,
+                        collection = "discover_mix",
+                    )
+                } ?: FeedQuickTile(
+                    title = "Discover Mix",
+                    subtitle = "Weekly mix",
+                    artworkUrl = quickPicks.lastOrNull()?.artworkUrl ?: quickPicks.firstOrNull()?.artworkUrl,
+                    collection = "discover_mix",
+                ),
+            )
+
+            // 4. "My Mix" grid
             val savedMyMix = homePlaylists.firstOrNull { it.title.equals("My Mix", ignoreCase = true) || it.title.equals("Mix", ignoreCase = true) }
-            add(savedMyMix?.let {
-                FeedQuickTile(title = it.title, subtitle = it.author, artworkUrl = it.artworkUrl, playlistId = it.id)
-            } ?: FeedQuickTile(title = "My Mix", subtitle = "Endless radio",
-                artworkUrl = ytRecentSongs.firstOrNull()?.artworkUrl ?: quickPicks.firstOrNull()?.artworkUrl, collection = "mix"))
+            add(
+                savedMyMix?.let {
+                    FeedQuickTile(
+                        title = "My Mix",
+                        subtitle = it.author.ifBlank { "Endless radio" },
+                        artworkUrl = it.artworkUrl,
+                        playlistId = it.id,
+                        collection = "mix",
+                    )
+                } ?: FeedQuickTile(
+                    title = "My Mix",
+                    subtitle = "Endless radio",
+                    artworkUrl = ytRecentSongs.firstOrNull()?.artworkUrl ?: quickPicks.firstOrNull()?.artworkUrl,
+                    collection = "mix",
+                ),
+            )
 
+            // 5. "New Releases" grid
             add(
                 FeedQuickTile(
                     title = "New Releases",
@@ -704,7 +745,8 @@ class FeedRepository @Inject constructor(
             )
         }
 
-        val tasteTags = tasteProfile?.topTags.orEmpty().take(8)
+        val defaultTasteTags = listOf("Rock", "Indie", "Pop", "Electronic", "Hip-Hop", "R&B", "Synthwave", "Alternative")
+        val tasteTags = tasteProfile?.topTags.orEmpty().take(8).ifEmpty { defaultTasteTags }
         val hasPersonalContent = tasteProfile?.hasPersonalSignals == true ||
             ytRecentSongs.isNotEmpty() || ytLikedSongs.isNotEmpty() || recentTracks.isNotEmpty()
 

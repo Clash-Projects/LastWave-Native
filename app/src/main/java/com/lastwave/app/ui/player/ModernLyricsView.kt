@@ -69,6 +69,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import com.lastwave.app.ui.theme.LocalLiquidGlass
 import com.lastwave.app.ui.theme.LiquidGlassPreset
@@ -136,41 +137,36 @@ fun ModernLyricsPanel(
         initialValue = PlaybackProgressState(positionMs = state.positionMs, durationMs = state.durationMs),
     )
 
-    // Keyed on the whole track: videoId is null for local/search tracks,
-    // and a null key would leak the previous song's smoothing state.
+    // High-precision hardware-synced position clock for 60/120/144fps+ bit-perfect vocal sync
+    var anchorProgressMs by remember(track) { mutableLongStateOf(progress.positionMs) }
+    var anchorNanos by remember(track) { mutableLongStateOf(System.nanoTime()) }
     var smoothedPositionMs by remember(track) { mutableLongStateOf(progress.positionMs) }
-    var lastReportedMs by remember(track) { mutableLongStateOf(progress.positionMs) }
-    var lastObservedAtMs by remember(track) { mutableLongStateOf(SystemClock.elapsedRealtime()) }
-    var wasPlaying by remember(track) { mutableStateOf(state.isPlaying) }
 
     LaunchedEffect(progress.positionMs, state.isPlaying, track) {
-        val now = SystemClock.elapsedRealtime()
-        val elapsedMs = (now - lastObservedAtMs).coerceAtLeast(0L)
-        val expectedMs = lastReportedMs + if (wasPlaying) elapsedMs else 0L
-        val discontinuity = !state.isPlaying || kotlin.math.abs(progress.positionMs - expectedMs) > 1_250L
+        val nowNanos = System.nanoTime()
+        val elapsedMs = if (state.isPlaying) (nowNanos - anchorNanos) / 1_000_000L else 0L
+        val estimatedMs = anchorProgressMs + elapsedMs
+        val drift = progress.positionMs - estimatedMs
 
-        lastReportedMs = progress.positionMs
-        lastObservedAtMs = now
-        wasPlaying = state.isPlaying
-
-        if (discontinuity) {
+        if (!state.isPlaying || kotlin.math.abs(drift) > 500L) {
+            // Hard seek, pause, or big drift: snap anchor immediately
+            anchorProgressMs = progress.positionMs
+            anchorNanos = nowNanos
             smoothedPositionMs = progress.positionMs
         } else {
-            smoothedPositionMs = maxOf(smoothedPositionMs, progress.positionMs)
+            // Micro-drift: gently steer anchor without any sudden jumping or stutter
+            anchorProgressMs += (drift * 0.25f).toLong()
+            anchorNanos = nowNanos
         }
     }
 
     LaunchedEffect(state.isPlaying, track) {
         if (!state.isPlaying) return@LaunchedEffect
-        var lastFrameTime = SystemClock.elapsedRealtime()
         while (isActive) {
-            withFrameMillis {
-                val now = SystemClock.elapsedRealtime()
-                val dt = (now - lastFrameTime).coerceIn(0L, 50L)
-                lastFrameTime = now
-
+            withFrameNanos { nowNanos ->
+                val elapsedMs = (nowNanos - anchorNanos) / 1_000_000L
                 val dur = progress.durationMs.takeIf { it > 0 } ?: state.durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE
-                smoothedPositionMs = (smoothedPositionMs + dt).coerceIn(0L, dur)
+                smoothedPositionMs = (anchorProgressMs + elapsedMs).coerceIn(0L, dur)
             }
         }
     }
@@ -252,16 +248,21 @@ fun ModernLyricsPanel(
                         // Shared style instances: the splitter below measures
                         // with exactly this style, so its fit verdict matches
                         // what the canvas will draw.
-                        val karaokeNormalStyle = LocalTextStyle.current.copy(
-                            fontSize = ((if (isAppleMusic) 28f else if (isWordSynced) 32f else 30f) * lyricsFontScale).sp,
-                            fontWeight = FontWeight.Bold,
-                            textMotion = TextMotion.Animated,
-                        )
-                        val karaokeAccompanimentStyle = LocalTextStyle.current.copy(
-                            fontSize = ((if (isAppleMusic) 22f else if (isWordSynced) 24f else 22f) * lyricsFontScale).sp,
-                            fontWeight = FontWeight.Bold,
-                            textMotion = TextMotion.Animated,
-                        )
+                        val currentTextStyle = LocalTextStyle.current
+                        val karaokeNormalStyle = remember(currentTextStyle, isAppleMusic, isWordSynced, lyricsFontScale) {
+                            currentTextStyle.copy(
+                                fontSize = ((if (isAppleMusic) 28f else if (isWordSynced) 32f else 30f) * lyricsFontScale).sp,
+                                fontWeight = FontWeight.Bold,
+                                textMotion = TextMotion.Animated,
+                            )
+                        }
+                        val karaokeAccompanimentStyle = remember(currentTextStyle, isAppleMusic, isWordSynced, lyricsFontScale) {
+                            currentTextStyle.copy(
+                                fontSize = ((if (isAppleMusic) 22f else if (isWordSynced) 24f else 22f) * lyricsFontScale).sp,
+                                fontWeight = FontWeight.Bold,
+                                textMotion = TextMotion.Animated,
+                            )
+                        }
 
                         val layoutDirection = if (isOverallRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
                         // Short provider badge: makes it visible why words
@@ -337,7 +338,7 @@ fun ModernLyricsPanel(
 
         ModernLyricsControls(
             state = state,
-            currentPositionMs = smoothedPositionMs,
+            currentPositionMs = progress.positionMs,
             totalDurationMs = if (progress.durationMs > 0) progress.durationMs else state.durationMs,
             player = player,
             wavySeekbarEnabled = wavySeekbarEnabled,
@@ -423,9 +424,6 @@ private fun KaraokeLineWrapScope(
             val idx = syncedLyrics.lines.indexOfFirst { time in it.start..it.end }
             if (idx != -1) idx else syncedLyrics.lines.indexOfFirst { it.start > time }.takeIf { it != -1 } ?: 0
         }
-        // Reset scroll state whenever the lyrics themselves change (new
-        // track or provider upgrade); otherwise the previous song's scroll
-        // offset leaks into this one until auto-scroll corrects it.
         val listState = key(syncedLyrics) {
             rememberLazyListState(initialFirstVisibleItemIndex = initialLineIndex)
         }
@@ -769,47 +767,10 @@ private fun ModernLyricsControls(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 2.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (onOpenLyricsOffset != null) {
-                val offsetInteraction = remember { MutableInteractionSource() }
-                val isOffsetPressed by offsetInteraction.collectIsPressedAsState()
-                val offsetScale by animateFloatAsState(
-                    targetValue = if (isOffsetPressed) 0.82f else 1.0f,
-                    animationSpec = ExpressiveMotion.spatialSpring(),
-                    label = "lyricsOffsetScale",
-                )
-                IconButton(
-                    onClick = onOpenLyricsOffset,
-                    interactionSource = offsetInteraction,
-                    modifier = Modifier
-                        .size(44.dp)
-                        .graphicsLayer {
-                            scaleX = offsetScale
-                            scaleY = offsetScale
-                        }
-                        .clip(CircleShape)
-                        .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = offsetInteraction)
-                        .background(
-                            liquidGlassContainerColor(
-                                if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
-                                else Color.White.copy(alpha = 0.14f)
-                            ),
-                        ),
-                ) {
-                    Icon(
-                        Icons.Filled.Timer,
-                        contentDescription = "Lyrics sync offset",
-                        modifier = Modifier.size(22.dp),
-                        tint = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.90f),
-                    )
-                }
-            } else {
-                Spacer(Modifier.size(44.dp))
-            }
-
-            // Lyrics Font Scale toggle button
+            // Lyrics Font Scale toggle button placed immediately to the LEFT of Full Screen
             val fontInteraction = remember { MutableInteractionSource() }
             val isFontPressed by fontInteraction.collectIsPressedAsState()
             val fontScaleAnim by animateFloatAsState(
@@ -843,6 +804,8 @@ private fun ModernLyricsControls(
                     tint = if (showFontSlider || isCustomFont) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.90f),
                 )
             }
+
+            Spacer(Modifier.width(10.dp))
 
             if (onToggleFullscreen != null) {
                 val playerInteraction = remember { MutableInteractionSource() }

@@ -6,7 +6,10 @@
     android:background="@drawable/widget_obsidian_background"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:padding="12dp">
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp"
+    android:paddingTop="6dp"
+    android:paddingBottom="6dp">
 
     <!-- Active player state -->
     <LinearLayout

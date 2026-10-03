@@ -323,15 +323,13 @@ fun FluidArtworkBackground(
     var seconds by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(Unit) {
         var last = 0L
-        var pending = 0f
         while (true) {
             withFrameNanos { now ->
-                if (last != 0L) pending += ((now - last) / 1_000_000_000f).coerceIn(0f, 0.1f)
+                if (last != 0L) {
+                    val dt = ((now - last) / 1_000_000_000f).coerceIn(0f, 0.05f)
+                    seconds += dt
+                }
                 last = now
-            }
-            if (pending >= FRAME_SECONDS) {
-                seconds += pending
-                pending = 0f
             }
         }
     }

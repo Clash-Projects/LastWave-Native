@@ -514,7 +514,7 @@ class SettingsViewModel @Inject constructor(
     fun setLyricsAnimation(animation: com.lastwave.app.data.local.LyricsAnimation) = launchSettingsAction("update lyrics animation") { settingsPreferences.setLyricsAnimation(animation) }
     fun setLyricsProvider(provider: com.lastwave.app.data.local.LyricsProvider) = launchSettingsAction("update lyrics provider") { settingsPreferences.setLyricsProvider(provider) }
     fun setLyricsOffsetMs(offsetMs: Long) = launchSettingsAction("update lyrics sync offset") {
-        settingsPreferences.setLyricsOffsetMs(offsetMs.coerceIn(-3000L, 3000L))
+        settingsPreferences.setLyricsOffsetMs(offsetMs.coerceIn(-10000L, 10000L))
     }
     fun setLyricsFontScale(scale: Float) = launchSettingsAction("update lyrics font scale") {
         settingsPreferences.setLyricsFontScale(scale)

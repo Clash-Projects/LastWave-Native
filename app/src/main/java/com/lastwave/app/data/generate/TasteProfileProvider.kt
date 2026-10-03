@@ -228,8 +228,7 @@ class TasteProfileProvider @Inject constructor(
         val topTrackKeys = (topTracksRaw + ytMusicLikedRaw).map { it.key }.toSet()
         val recentTrackKeys = (recentRaw + ytMusicRecentRaw).map { it.key }.toSet()
         val resolvedTags = topTags.ifEmpty {
-            if (hasPersonalSignals) emptySet()
-            else setOf("rock", "indie", "pop", "electronic", "hip-hop", "synthwave", "alternative", "rnb")
+            setOf("rock", "indie", "pop", "electronic", "hip-hop", "synthwave", "alternative", "rnb")
         }
 
         val profile = TasteProfile(

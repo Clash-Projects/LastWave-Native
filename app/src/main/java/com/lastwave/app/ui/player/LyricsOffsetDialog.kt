@@ -54,45 +54,77 @@ fun LyricsOffsetDialog(
                     fontWeight = FontWeight.Bold,
                 )
                 Slider(
-                    value = draftMs.toFloat(),
-                    onValueChange = { draftMs = it.roundToLong() },
-                    onValueChangeFinished = { onSelect(draftMs) },
-                    valueRange = -1000f..1000f,
-                    steps = 39,
+                    value = draftMs.toFloat().coerceIn(-5000f, 5000f),
+                    onValueChange = {
+                        val rounded = it.roundToLong()
+                        draftMs = rounded
+                        onSelect(rounded)
+                    },
+                    valueRange = -5000f..5000f,
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     OutlinedButton(
                         onClick = {
-                            draftMs = (draftMs - 100).coerceIn(-3000L, 3000L)
+                            draftMs = (draftMs - 1000).coerceIn(-10000L, 10000L)
                             onSelect(draftMs)
                         },
                         modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp),
+                        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                     ) {
                         Text(
-                            "−100",
+                            "−1s",
                             maxLines = 1,
                             softWrap = false,
-                            style = MaterialTheme.typography.labelMedium,
+                            style = MaterialTheme.typography.labelSmall,
                         )
                     }
                     OutlinedButton(
                         onClick = {
-                            draftMs = (draftMs + 100).coerceIn(-3000L, 3000L)
+                            draftMs = (draftMs - 250).coerceIn(-10000L, 10000L)
+                            onSelect(draftMs)
+                        },
+                        modifier = Modifier.weight(1.1f),
+                        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
+                    ) {
+                        Text(
+                            "−250ms",
+                            maxLines = 1,
+                            softWrap = false,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            draftMs = (draftMs + 250).coerceIn(-10000L, 10000L)
+                            onSelect(draftMs)
+                        },
+                        modifier = Modifier.weight(1.1f),
+                        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
+                    ) {
+                        Text(
+                            "+250ms",
+                            maxLines = 1,
+                            softWrap = false,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            draftMs = (draftMs + 1000).coerceIn(-10000L, 10000L)
                             onSelect(draftMs)
                         },
                         modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp),
+                        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                     ) {
                         Text(
-                            "+100",
+                            "+1s",
                             maxLines = 1,
                             softWrap = false,
-                            style = MaterialTheme.typography.labelMedium,
+                            style = MaterialTheme.typography.labelSmall,
                         )
                     }
                     FilledTonalButton(
@@ -100,20 +132,20 @@ fun LyricsOffsetDialog(
                             draftMs = 0L
                             onSelect(0L)
                         },
-                        modifier = Modifier.weight(1.1f),
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp),
+                        modifier = Modifier.weight(1.2f),
+                        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                     ) {
                         Icon(
                             imageVector = Icons.Filled.RestartAlt,
                             contentDescription = "Reset",
-                            modifier = Modifier.size(16.dp),
+                            modifier = Modifier.size(15.dp),
                         )
-                        Spacer(Modifier.width(4.dp))
+                        Spacer(Modifier.width(2.dp))
                         Text(
                             "Reset",
                             maxLines = 1,
                             softWrap = false,
-                            style = MaterialTheme.typography.labelMedium,
+                            style = MaterialTheme.typography.labelSmall,
                         )
                     }
                 }

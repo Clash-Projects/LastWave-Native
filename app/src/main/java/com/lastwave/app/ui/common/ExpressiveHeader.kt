@@ -115,7 +115,8 @@ fun ExpressiveHeader(
                             title,
                             style = if (onBack != null) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
-                            maxLines = 2,
+                            maxLines = 1,
+                            softWrap = false,
                             overflow = TextOverflow.Ellipsis,
                         )
                         subtitle?.let {
