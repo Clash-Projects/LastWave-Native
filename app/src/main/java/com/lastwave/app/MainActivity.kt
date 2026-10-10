@@ -50,6 +50,9 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     @Inject
     lateinit var appLocaleManager: AppLocaleManager
 
+    @Inject
+    lateinit var musicPlayer: dagger.Lazy<com.lastwave.app.playback.MusicPlayer>
+
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun attachBaseContext(newBase: Context) {
@@ -241,6 +244,36 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             return
         }
         val uri = intent?.data
+        val isLocalAudioFile = intent?.action == Intent.ACTION_VIEW && uri != null &&
+            (uri.scheme == "file" || uri.scheme == "content" || intent.type?.startsWith("audio/") == true)
+        if (isLocalAudioFile) {
+            runCatching {
+                val titleFallback = uri.lastPathSegment?.substringAfterLast('/')?.substringBeforeLast('.').orEmpty().ifBlank { "Local Track" }
+                var title = titleFallback
+                var artist = "Local Music"
+                var album: String? = null
+                var durationMs: Long? = null
+                runCatching {
+                    val retriever = android.media.MediaMetadataRetriever()
+                    retriever.setDataSource(this, uri)
+                    title = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_TITLE) ?: titleFallback
+                    artist = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: "Unknown Artist"
+                    album = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ALBUM)
+                    durationMs = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+                    retriever.release()
+                }
+                val playable = com.lastwave.app.playback.PlayableTrack(
+                    title = title,
+                    artist = artist,
+                    album = album,
+                    playbackUrl = uri.toString(),
+                    playbackMimeType = intent.type ?: "audio/*",
+                    durationMs = durationMs,
+                )
+                musicPlayer.get().play(playable, sourceLabel = "Local Audio", startRadio = false)
+            }.onFailure { android.util.Log.e(STARTUP_TAG, "Failed to play local audio intent", it) }
+            return
+        }
         val host = uri?.host.orEmpty().lowercase()
         val isSupportedMusicLink = intent?.action == Intent.ACTION_VIEW &&
             (uri?.scheme == "http" || uri?.scheme == "https") &&

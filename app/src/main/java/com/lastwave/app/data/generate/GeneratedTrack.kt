@@ -49,20 +49,62 @@ data class GeneratedTrack(
 fun String.normalizeTrackText(): String = trim().replace(WHITESPACE_RUN, " ")
 
 private val WHITESPACE_RUN = Regex("\\s+")
+private val TITLE_CLEAN_BRACKET_REGEX = Regex(
+    """[\(\[\{](?:feat\.?|featuring|with|remix|acoustic|live|unplugged|radio edit|radio mix|club mix|extended|version|ver\.|remaster|remastered|deluxe|anniversary|lo-?fi|slowed|reverb|sped up|speed up|karaoke|instrumental|cover|reprise|clean|explicit|bonus|official|audio|video|lyrics?|visualizer|original mix|mix)[^\)\]\}]*[\)\]\}]""",
+    RegexOption.IGNORE_CASE,
+)
+private val TITLE_CLEAN_HYPHEN_REGEX = Regex(
+    """\s*[-–—|/]\s*(?:feat\.?|remix|acoustic|live|unplugged|radio edit|extended|version|remaster.*|deluxe.*|lo-?fi.*|slowed.*|reverb.*|sped up.*|karaoke|instrumental|cover.*|reprise|bonus.*|official.*).*$""",
+    RegexOption.IGNORE_CASE,
+)
+private val ARTIST_CLEAN_PRIMARY_REGEX = Regex(
+    """^(.*?)(?:\s+(?:feat\.?|ft\.?|featuring|with|&|,|\/)\s+.*)$""",
+    RegexOption.IGNORE_CASE,
+)
+private val NON_ALPHANUMERIC_REGEX = Regex("""[^a-zA-Z0-9\p{L}\p{N}\s]""")
+
+fun String.cleanCoreTitle(): String {
+    var s = trim()
+    s = s.replace(TITLE_CLEAN_BRACKET_REGEX, "")
+    s = s.replace(TITLE_CLEAN_HYPHEN_REGEX, "")
+    s = s.replace(NON_ALPHANUMERIC_REGEX, " ")
+    return s.replace(WHITESPACE_RUN, " ").trim().lowercase()
+}
+
+fun String.cleanCoreArtist(): String {
+    var a = trim()
+    val match = ARTIST_CLEAN_PRIMARY_REGEX.find(a)
+    if (match != null) {
+        a = match.groupValues[1]
+    }
+    a = a.replace(Regex("""\s*-\s*Topic$""", RegexOption.IGNORE_CASE), "")
+    a = a.replace(NON_ALPHANUMERIC_REGEX, " ")
+    return a.replace(WHITESPACE_RUN, " ").trim().lowercase()
+}
 
 /**
  * Strong song identity: same YouTube videoId wins outright (covers equal
  * songs whose title/artist spelling drifted, e.g. "(Official Video)" or
- * "- Topic" suffixes); otherwise falls back to normalized [GeneratedTrack.key]
- * plus a trimmed case-insensitive name+artist comparison.
+ * "- Topic" suffixes); otherwise falls back to normalized [GeneratedTrack.key],
+ * trimmed case-insensitive name+artist comparison, or cleaned core title+artist.
  */
 fun GeneratedTrack.sameSongAs(other: GeneratedTrack): Boolean {
     val mine = youtubeVideoIdOrNull()
     val theirs = other.youtubeVideoIdOrNull()
     if (mine != null && mine == theirs) return true
     if (key == other.key) return true
-    return name.trim().equals(other.name.trim(), ignoreCase = true) &&
-        artist.trim().equals(other.artist.trim(), ignoreCase = true)
+    if (name.trim().equals(other.name.trim(), ignoreCase = true) &&
+        artist.trim().equals(other.artist.trim(), ignoreCase = true)) return true
+    val cTitleA = name.cleanCoreTitle()
+    val cTitleB = other.name.cleanCoreTitle()
+    if (cTitleA.isNotBlank() && cTitleA == cTitleB) {
+        val cArtistA = artist.cleanCoreArtist()
+        val cArtistB = other.artist.cleanCoreArtist()
+        if (cArtistA.isNotBlank() && (cArtistA == cArtistB || cArtistA.contains(cArtistB) || cArtistB.contains(cArtistA))) {
+            return true
+        }
+    }
+    return false
 }
 
 /** Keeps the first occurrence of each song, dropping later duplicates. */

@@ -80,6 +80,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.ArrowBack
@@ -788,11 +789,7 @@ fun SettingsScreen(
                     }
 
                     val isIgnored = BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)
-                    val totalAudioRows = if (misc.crossfadeEnabled) {
-                        if (isIgnored) 6 else 7
-                    } else {
-                        if (isIgnored) 5 else 6
-                    }
+                    val totalAudioRows = (if (misc.crossfadeEnabled) 6 else 5) + (if (isIgnored) 0 else 1)
                     SettingsGroup(rowCount = totalAudioRows) { index, position ->
                         when (index) {
                             0 -> SettingsActionCard(
@@ -856,6 +853,39 @@ fun SettingsScreen(
                                 )
                             } else {
                                 SettingsToggleCard(
+                                    icon = Icons.AutoMirrored.Filled.QueueMusic,
+                                    iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                    iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    title = "Autoplay similar tracks",
+                                    subtitle = if (misc.autoplayEnabled) {
+                                        "Similar tracks auto-queue and play when current music ends"
+                                    } else {
+                                        "Playback stops when your playlist or queue ends"
+                                    },
+                                    checked = misc.autoplayEnabled,
+                                    onCheckedChange = viewModel::setAutoplayEnabled,
+                                    position = position,
+                                    isHighlighted = (highlightedSettingId == "audio.autoplay"),
+                                )
+                            }
+                            5 -> if (misc.crossfadeEnabled) {
+                                SettingsToggleCard(
+                                    icon = Icons.AutoMirrored.Filled.QueueMusic,
+                                    iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                    iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    title = "Autoplay similar tracks",
+                                    subtitle = if (misc.autoplayEnabled) {
+                                        "Similar tracks auto-queue and play when current music ends"
+                                    } else {
+                                        "Playback stops when your playlist or queue ends"
+                                    },
+                                    checked = misc.autoplayEnabled,
+                                    onCheckedChange = viewModel::setAutoplayEnabled,
+                                    position = position,
+                                    isHighlighted = (highlightedSettingId == "audio.autoplay"),
+                                )
+                            } else {
+                                SettingsToggleCard(
                                     icon = Icons.Filled.Lyrics,
                                     iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                     iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -871,7 +901,7 @@ fun SettingsScreen(
                                     isHighlighted = (highlightedSettingId == "audio.download_lyrics"),
                                 )
                             }
-                            5 -> if (misc.crossfadeEnabled) {
+                            6 -> if (misc.crossfadeEnabled) {
                                 SettingsToggleCard(
                                     icon = Icons.Filled.Lyrics,
                                     iconContainer = MaterialTheme.colorScheme.secondaryContainer,
@@ -899,7 +929,7 @@ fun SettingsScreen(
                                     isHighlighted = (highlightedSettingId == "audio.battery_optimization"),
                                 )
                             }
-                            6 -> if (!isIgnored) {
+                            7 -> if (!isIgnored) {
                                 SettingsActionCard(
                                     icon = Icons.Filled.Bolt,
                                     iconContainer = MaterialTheme.colorScheme.errorContainer,

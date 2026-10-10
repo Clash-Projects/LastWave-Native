@@ -52,6 +52,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CloudSync
@@ -124,6 +125,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lastwave.app.data.generate.GeneratedTrack
+import com.lastwave.app.data.generate.sameSongAs
 import com.lastwave.app.data.playlist.LIKED_SONGS_MODE
 import com.lastwave.app.data.playlist.SavedPlaylist
 import com.lastwave.app.data.playlist.isYouTubeOnly
@@ -154,6 +156,16 @@ enum class PlaylistTrackSort(val label: String) {
 
 private fun formatDate(millis: Long): String =
     SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(millis))
+
+private data class DisplayTrackTarget(
+    val originalIndex: Int,
+    val track: GeneratedTrack,
+)
+
+private data class IndexedDisplayTrack(
+    val originalIndex: Int,
+    val track: GeneratedTrack,
+)
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -210,7 +222,7 @@ fun PlaylistDetailScreen(
         coverPickerPending = false
     }
 
-    var menuTarget by remember { mutableStateOf<GeneratedTrack?>(null) }
+    var menuTarget by remember { mutableStateOf<DisplayTrackTarget?>(null) }
     var overflowMenuOpen by remember { mutableStateOf(false) }
     val syncedPlaylistIds by viewModel.syncedPlaylistIds.collectAsStateWithLifecycle()
     var sortMenuOpen by remember { mutableStateOf(false) }
@@ -220,32 +232,37 @@ fun PlaylistDetailScreen(
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
 
-    val displayTracks = remember(playlist.tracks, currentSort, sortAscending, searchQuery) {
+    val displayIndexedTracks = remember(playlist.tracks, currentSort, sortAscending, searchQuery) {
+        val indexed = playlist.tracks.mapIndexed { index, track -> IndexedDisplayTrack(index, track) }
         val sorted = when (currentSort) {
-            PlaylistTrackSort.CUSTOM -> if (sortAscending) playlist.tracks else playlist.tracks.reversed()
-            PlaylistTrackSort.DATE_ADDED -> if (sortAscending) playlist.tracks else playlist.tracks.reversed()
+            PlaylistTrackSort.CUSTOM -> if (sortAscending) indexed else indexed.reversed()
+            PlaylistTrackSort.DATE_ADDED -> if (sortAscending) indexed else indexed.reversed()
             PlaylistTrackSort.NAME -> if (sortAscending) {
-                playlist.tracks.sortedBy { it.name.lowercase() }
+                indexed.sortedBy { it.track.name.lowercase() }
             } else {
-                playlist.tracks.sortedByDescending { it.name.lowercase() }
+                indexed.sortedByDescending { it.track.name.lowercase() }
             }
             PlaylistTrackSort.ARTIST -> if (sortAscending) {
-                playlist.tracks.sortedBy { it.artist.lowercase() }
+                indexed.sortedBy { it.track.artist.lowercase() }
             } else {
-                playlist.tracks.sortedByDescending { it.artist.lowercase() }
+                indexed.sortedByDescending { it.track.artist.lowercase() }
             }
             PlaylistTrackSort.PLAY_TIME -> if (sortAscending) {
-                playlist.tracks.sortedBy { it.playcount ?: it.listeners ?: 0L }
+                indexed.sortedBy { it.track.playcount ?: it.track.listeners ?: 0L }
             } else {
-                playlist.tracks.sortedByDescending { it.playcount ?: it.listeners ?: 0L }
+                indexed.sortedByDescending { it.track.playcount ?: it.track.listeners ?: 0L }
             }
         }
         if (searchQuery.isNotBlank()) {
             val q = searchQuery.lowercase()
-            sorted.filter { it.name.lowercase().contains(q) || it.artist.lowercase().contains(q) }
+            sorted.filter { it.track.name.lowercase().contains(q) || it.track.artist.lowercase().contains(q) }
         } else {
             sorted
         }
+    }
+
+    val displayTracks = remember(displayIndexedTracks) {
+        displayIndexedTracks.map { it.track }
     }
 
     val listState = rememberLazyListState()
@@ -749,7 +766,8 @@ fun PlaylistDetailScreen(
                             },
                             onMenu = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                menuTarget = track
+                                val origIndex = displayIndexedTracks.getOrNull(index)?.originalIndex ?: index
+                                menuTarget = DisplayTrackTarget(origIndex, track)
                             },
                             dragHandle = if (!reorderEnabled) {
                                 null
@@ -1095,6 +1113,16 @@ fun PlaylistDetailScreen(
                                 },
                             )
                             if (!playlist.isYouTubeOnly) {
+                                DropdownMenuItem(
+                                    text = { Text("Remove duplicates") },
+                                    leadingIcon = { Icon(Icons.Filled.AutoFixHigh, contentDescription = null) },
+                                    onClick = {
+                                        viewModel.deduplicatePlaylist(playlistId)
+                                        overflowMenuOpen = false
+                                    },
+                                )
+                            }
+                            if (!playlist.isYouTubeOnly) {
                                 val isSyncedToYt = syncedPlaylistIds == null || playlistId in (syncedPlaylistIds ?: emptySet())
                                 DropdownMenuItem(
                                     text = { Text(if (isSyncedToYt) "Syncing to YouTube Music" else "Sync to YouTube Music") },
@@ -1284,16 +1312,22 @@ fun PlaylistDetailScreen(
     }
 
     // Track Context Menu
-    menuTarget?.let { track ->
+    menuTarget?.let { target ->
+        val track = target.track
         TrackContextMenuSheet(
             target = TrackMenuTarget.Track(track.name, track.artist, track.url),
             capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = true),
             playbackSourceLabel = playlist.title,
             onDismiss = { menuTarget = null },
             onRemoveFromPlaylist = {
-                val realIndex = playlist.tracks.indexOfFirst {
-                    (it.url.isNotBlank() && it.url == track.url) ||
-                        (it.name.equals(track.name, ignoreCase = true) && it.artist.equals(track.artist, ignoreCase = true))
+                val realIndex = if (target.originalIndex in playlist.tracks.indices &&
+                    playlist.tracks[target.originalIndex].sameSongAs(track)) {
+                    target.originalIndex
+                } else {
+                    playlist.tracks.indexOfFirst {
+                        (it.url.isNotBlank() && it.url == track.url) ||
+                            (it.name.equals(track.name, ignoreCase = true) && it.artist.equals(track.artist, ignoreCase = true))
+                    }
                 }
                 if (realIndex >= 0) {
                     viewModel.removeTrack(playlistId, realIndex)

@@ -327,6 +327,7 @@ class MusicPlayer @Inject constructor(
     private var radioQueueLoadJob: Job? = null
     private var radioQueueActive = false
     private val radioUsedSeeds = ConcurrentHashMap.newKeySet<String>()
+    @Volatile private var autoplayEnabled = false
     private var unavailableSkipJob: Job? = null
     private val unavailableMediaIds = mutableSetOf<String>()
     /**
@@ -1639,6 +1640,7 @@ class MusicPlayer @Inject constructor(
 
         applicationScope.launch {
             settingsPreferences.settings.collect { settings ->
+                autoplayEnabled = settings.autoplayEnabled
                 crossfadeEnabled = settings.crossfadeEnabled
                 crossfadeDurationMs = settings.crossfadeSeconds.coerceIn(1, 12) * 1000L
                 val wasBitPerfect = bitPerfectEnabled
@@ -1717,7 +1719,7 @@ class MusicPlayer @Inject constructor(
     fun play(
         track: PlayableTrack,
         sourceLabel: String = "LastWave",
-        startRadio: Boolean = true,
+        startRadio: Boolean = autoplayEnabled,
     ) {
         pendingRestoredSession = null
         disableDiscoverQueue()
@@ -4728,7 +4730,7 @@ class MusicPlayer @Inject constructor(
                 }
             } else {
                 val currentTrack = player.currentMediaItem?.toPlayableTrack()
-                if (currentTrack != null && player.repeatMode != Player.REPEAT_MODE_ONE) {
+                if (autoplayEnabled && currentTrack != null && player.repeatMode != Player.REPEAT_MODE_ONE) {
                     radioQueueActive = true
                     _state.update { it.copy(isEndlessQueue = true) }
                     startRadioQueue(currentTrack, resumePlaybackImmediately = true)

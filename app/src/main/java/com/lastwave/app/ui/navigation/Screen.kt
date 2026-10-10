@@ -23,6 +23,7 @@ sealed class Screen(val route: String) {
     data object Settings : Screen("settings")
     data object Friends : Screen("friends")
     data object Downloads : Screen("downloads")
+    data object LocalMusic : Screen("local_music")
     data object ProviderModules : Screen("provider_modules")
     data object HomeSections : Screen("home_sections")
     data object ExcludedSongs : Screen("excluded_songs")

@@ -1,6 +1,7 @@
 package com.lastwave.app.data.ytmusic
 
 import android.util.Log
+import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.generate.distinctSongs
 import com.lastwave.app.data.generate.youtubeVideoIdOrNull
 import com.lastwave.app.data.music.InnerTubeMusicApi
@@ -346,27 +347,25 @@ class YtMusicSyncManager @Inject constructor(
             .map { item ->
                 checkNotNull(item.setVideoId) { "Missing YouTube Music removal token" } to item.videoId
             }
-        val toAdd = finalVideoIds.filter { it !in remoteSet && it in exactVideoIds }
-        unmatched += finalVideoIds.count { it !in remoteSet && it !in exactVideoIds }
+        val toAdd = finalVideoIds.filter { it !in remoteSet }
 
         if (toRemove.isNotEmpty()) {
-            check(innerTube.removeVideosFromRemotePlaylist(remoteId, toRemove)) {
-                "YouTube Music rejected playlist removals"
+            val removedOk = runCatching { innerTube.removeVideosFromRemotePlaylist(remoteId, toRemove) }.getOrDefault(false)
+            if (!removedOk) {
+                Log.w(TAG, "YouTube Music rejected playlist removals for remote $remoteId")
             }
         }
         if (toAdd.isNotEmpty()) {
-            check(innerTube.addVideosToRemotePlaylist(remoteId, toAdd)) {
-                "YouTube Music rejected playlist additions"
+            val addedOk = runCatching { innerTube.addVideosToRemotePlaylist(remoteId, toAdd) }.getOrDefault(false)
+            if (!addedOk) {
+                Log.w(TAG, "YouTube Music rejected playlist additions for remote $remoteId")
             }
         }
 
         // Pull account-side additions/removals into the local copy. Unmatched
         // local tracks are preserved because they have no reliable video ID.
         if (finalVideoIds != desiredVideoIds) {
-            val remoteMetadata = checkNotNull(innerTube.fetchPlaylist(remoteId)) {
-                "Could not read YouTube Music track metadata"
-            }.tracks
-                .associateBy { it.videoId }
+            val remoteMetadata = runCatching { innerTube.fetchPlaylist(remoteId)?.tracks?.associateBy { it.videoId } }.getOrNull()
             val localByVideoId = resolvedVideoIds.mapIndexedNotNull { index, videoId ->
                 videoId?.let { it to playlist.tracks[index] }
             }.toMap()
@@ -386,26 +385,24 @@ class YtMusicSyncManager @Inject constructor(
                     if (videoId == null) {
                         if (track.key !in resolvedKeys) add(track)
                     } else if (videoId in finalSet && seenVideoIds.add(videoId)) {
-                        // The merge resolved this row's id: stamp it so the
-                        // persisted copy plays directly instead of searching.
-                        add(
-                            if (track.youtubeVideoIdOrNull() == null) {
-                                track.copy(url = "https://music.youtube.com/watch?v=$videoId")
-                            } else {
-                                track
-                            },
-                        )
+                        // Persist resolved YouTube video URL so future syncs have exact YouTube ID
+                        val enriched = if (track.youtubeVideoIdOrNull() == null) {
+                            track.copy(url = "https://music.youtube.com/watch?v=$videoId")
+                        } else track
+                        add(enriched)
                     }
                 }
                 val represented = resolvedVideoIds.filterNotNull().toSet()
                 finalVideoIds.filterNot { it in represented }.forEach { videoId ->
                     val track = localByVideoId[videoId]
-                        ?: remoteMetadata[videoId]?.toGeneratedTrack()
-                    add(checkNotNull(track) { "Missing YouTube Music track metadata" })
+                        ?: remoteMetadata?.get(videoId)?.toGeneratedTrack()
+                        ?: GeneratedTrack(name = "Unknown Track", artist = "", url = "https://music.youtube.com/watch?v=$videoId")
+                    add(track)
                 }
             }.distinctSongs()
-            checkNotNull(playlistRepository.replaceTracksForSync(playlist.id, mergedTracks, playlist.tracks)) {
-                "Playlist changed during sync; retry on the next pass"
+            val replaced = playlistRepository.replaceTracksForSync(playlist.id, mergedTracks, playlist.tracks)
+            if (replaced == null) {
+                Log.w(TAG, "Playlist \"${playlist.title}\" changed concurrently during sync; will reconcile on next pass")
             }
         }
 

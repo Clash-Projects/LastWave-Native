@@ -79,4 +79,21 @@ class TrackIdentityTest {
         val b = GeneratedTrack(name = "A (Official Video)", artist = "X", url = "dQw4w9WgXcQ")
         assertEquals(listOf(a), listOf(a, b).distinctSongs())
     }
+
+    @Test
+    fun sameSongWithoutVideoIdMatchesCoreTitleAndArtist() {
+        val ytTitle = GeneratedTrack(name = "Starboy (Official Music Video)", artist = "The Weeknd - Topic")
+        val plainTitle = GeneratedTrack(name = "Starboy", artist = "The Weeknd")
+        assertTrue(ytTitle.sameSongAs(plainTitle))
+        assertTrue(plainTitle.sameSongAs(ytTitle))
+    }
+
+    @Test
+    fun distinctSongsCollapsesCoreTitleVariantsWithoutVideoId() {
+        val plain = GeneratedTrack(name = "Starboy", artist = "The Weeknd")
+        val video = GeneratedTrack(name = "Starboy (Official Audio)", artist = "The Weeknd")
+        val other = GeneratedTrack(name = "Blinding Lights", artist = "The Weeknd")
+        val result = listOf(plain, video, other).distinctSongs()
+        assertEquals(listOf(plain, other), result)
+    }
 }

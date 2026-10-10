@@ -6,6 +6,7 @@ import com.lastwave.app.data.local.db.SavedPlaylistDao
 import com.lastwave.app.data.local.db.SavedPlaylistEntity
 import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.generate.StoredTrack
+import com.lastwave.app.data.generate.distinctSongs
 import com.lastwave.app.data.generate.pinnedWithVideoIds
 import com.lastwave.app.data.generate.sameSongAs
 import com.lastwave.app.data.generate.toGenerated
@@ -372,6 +373,26 @@ class PlaylistRepository @Inject constructor(
             syncPublicMirror()
             _changes.tryEmit(Unit)
             updated.toDomain()
+        }
+    }
+
+    /**
+     * Collapses duplicate tracks in a playlist, keeping the first occurrence.
+     * Returns the count of removed duplicate entries.
+     */
+    suspend fun deduplicate(id: Long): Int {
+        awaitStartupSync()
+        return saveMutex.withLock {
+            val entity = dao.getById(id) ?: return@withLock 0
+            val playlist = entity.toDomain()
+            val healed = playlist.tracks.distinctSongs()
+            val removed = playlist.tracks.size - healed.size
+            if (removed <= 0) return@withLock 0
+            val updated = entity.copy(tracksJson = json.encodeToString(healed.map { it.toStored() }))
+            dao.upsert(updated)
+            syncPublicMirror()
+            _changes.tryEmit(Unit)
+            removed
         }
     }
 

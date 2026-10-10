@@ -211,6 +211,7 @@ import coil.request.ImageRequest
 import coil.request.SuccessResult
 import androidx.media3.common.Player
 import com.lastwave.app.data.generate.GeneratedTrack
+import com.lastwave.app.data.generate.sameSongAs
 import com.lastwave.app.data.lyrics.LyricsRepository
 import com.lastwave.app.data.lyrics.LyricsResult
 import com.lastwave.app.data.playlist.PlaylistRepository
@@ -656,10 +657,7 @@ class PlayerViewModel @Inject constructor(
             .filter { playlist ->
                 playlist.id in playlistIds &&
                     playlist.remotePlaylistId == null &&
-                    playlist.tracks.any {
-                        it.key == generatedTrack.key ||
-                            (it.name.equals(generatedTrack.name, ignoreCase = true) && it.artist.equals(generatedTrack.artist, ignoreCase = true))
-                    }
+                    playlist.tracks.any { it.sameSongAs(generatedTrack) }
             }
             .mapTo(mutableSetOf(), SavedPlaylist::id)
         val remoteIds = playlistIds.filterTo(mutableSetOf()) { it < 0L }

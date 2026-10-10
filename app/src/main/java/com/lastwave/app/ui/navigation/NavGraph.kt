@@ -280,6 +280,9 @@ fun LastWaveNavHost(
                 onOpenDownloads = {
                     navController.navigate(Screen.Downloads.route)
                 },
+                onOpenLocalMusic = {
+                    navController.navigate(Screen.LocalMusic.route)
+                },
             )
         }
 
@@ -440,6 +443,12 @@ fun LastWaveNavHost(
         composable(Screen.Downloads.route) {
             PredictiveBackScreen(onBack = { navController.popBackStack() }) {
                 com.lastwave.app.ui.settings.DownloadsScreen(onBack = { navController.popBackStack() })
+            }
+        }
+
+        composable(Screen.LocalMusic.route) {
+            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+                com.lastwave.app.ui.local.LocalMusicScreen(onBack = { navController.popBackStack() })
             }
         }
 

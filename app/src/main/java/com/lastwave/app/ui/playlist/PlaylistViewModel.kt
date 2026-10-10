@@ -267,8 +267,21 @@ class PlaylistViewModel @Inject constructor(
         }
     }
 
-    private fun sortPlaylists(playlists: List<SavedPlaylist>, mode: PlaylistSortMode): List<SavedPlaylist> =
-        playlists.sortedWith(
+    private fun sortPlaylists(playlists: List<SavedPlaylist>, mode: PlaylistSortMode): List<SavedPlaylist> {
+        val hasLocalLiked = playlists.any { it.mode == LIKED_SONGS_MODE }
+        val seenTitles = mutableSetOf<String>()
+        val distinctPlaylists = playlists.filter { playlist ->
+            val cleanTitle = playlist.title.trim().lowercase()
+            if (playlist.isYouTubeOnly) {
+                if (hasLocalLiked && (cleanTitle == "liked music" || cleanTitle == "liked songs" || playlist.remotePlaylistId == "LM")) {
+                    return@filter false
+                }
+                if (cleanTitle in seenTitles) return@filter false
+            }
+            seenTitles.add(cleanTitle)
+            true
+        }
+        return distinctPlaylists.sortedWith(
             when (mode) {
                 PlaylistSortMode.DATE_DESC -> compareByDescending<SavedPlaylist> { it.mode == LIKED_SONGS_MODE && it.isPinned }
                     .thenByDescending { it.isPinned }
@@ -284,6 +297,7 @@ class PlaylistViewModel @Inject constructor(
                     .thenByDescending { it.remoteTrackCount ?: it.tracks.size }
             },
         )
+    }
 
     fun regenerateLatest() {
         val newest = _uiState.value.playlists.maxByOrNull { it.createdAtMillis } ?: return
@@ -370,7 +384,7 @@ class PlaylistViewModel @Inject constructor(
                 val sorted = sortPlaylists(updatedPlaylists, current.sortMode)
                 current.copy(
                     playlists = sorted,
-                    detailPlaylist = if (current.detailPlaylist?.id == id) current.detailPlaylist?.copy(isPinned = willBePinned) else current.detailPlaylist,
+                    detailPlaylist = if (current.detailPlaylist?.id == id) current.detailPlaylist.copy(isPinned = willBePinned) else current.detailPlaylist,
                     toastMessage = if (willBePinned) "Playlist pinned to top" else "Playlist unpinned",
                 )
             }
@@ -380,7 +394,7 @@ class PlaylistViewModel @Inject constructor(
 
     fun removeTrack(playlistId: Long, index: Int) {
         val before = _uiState.value.detailPlaylist?.takeIf { it.id == playlistId }
-        if (playlistId < 0L && before != null && index in before.tracks.indices) {
+        if (before != null && index in before.tracks.indices) {
             _uiState.update { current ->
                 current.copy(
                     detailPlaylist = before.copy(
@@ -404,6 +418,22 @@ class PlaylistViewModel @Inject constructor(
                 )
             }
             if (playlistId >= 0L) load()
+        }
+    }
+
+    fun deduplicatePlaylist(playlistId: Long) {
+        viewModelScope.launch {
+            if (playlistId < 0L) {
+                _uiState.update { it.copy(toastMessage = "Cannot deduplicate YouTube playlists directly") }
+                return@launch
+            }
+            val count = playlistRepository.deduplicate(playlistId)
+            _uiState.update {
+                it.copy(
+                    toastMessage = if (count > 0) "Removed $count duplicate ${if (count == 1) "song" else "songs"}" else "No duplicate songs found",
+                )
+            }
+            load()
         }
     }
 

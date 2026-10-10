@@ -85,9 +85,16 @@ class YtMusicLibraryManager @Inject constructor(
         playlistRepository.playlists,
     ) { account, hiddenIds, pinnedIds, mappings, local ->
         val localIds = local.mapTo(mutableSetOf()) { it.id }
+        val localTitles = local.mapTo(mutableSetOf()) { it.title.trim().lowercase() }
         val linkedRemoteIds = mappings.filterKeys { it in localIds }.values
             .mapTo(mutableSetOf()) { it.remotePlaylistId.removePrefix("VL") }
-        account.filterNot { it.id in hiddenIds || it.id.removePrefix("VL") in linkedRemoteIds }.map { summary ->
+        account.filterNot { summary ->
+            val cleanId = summary.id.removePrefix("VL")
+            summary.id in hiddenIds ||
+                cleanId in linkedRemoteIds ||
+                (cleanId == LIKED_MUSIC_REMOTE_ID && local.any { it.mode == "liked" }) ||
+                summary.title.trim().lowercase() in localTitles
+        }.map { summary ->
             summaryToPlaylist(summary).copy(isPinned = summary.id in pinnedIds)
         }
     }.stateIn(applicationScope, SharingStarted.Eagerly, emptyList())
@@ -537,9 +544,12 @@ class YtMusicLibraryManager @Inject constructor(
         val playlist = loadDetail(localId) ?: return@withContext null
         val remoteId = playlist.remotePlaylistId ?: return@withContext null
         val target = playlist.tracks.getOrNull(index) ?: return@withContext playlist
-        val targetVideoId = target.youtubeVideoIdOrNull() ?: return@withContext playlist
+        val targetVideoId = target.youtubeVideoIdOrNull()
+            ?: innerTube.findBestMatchOrNull(target.name, target.artist)?.videoId
+            ?: return@withContext playlist
         val owned = getOwnedPlaylist(localId, remoteId, targetVideoId) ?: return@withContext playlist
-        val item = owned.items.firstOrNull { it.videoId == targetVideoId && it.setVideoId != null }
+        val item = owned.items.getOrNull(index)?.takeIf { it.videoId == targetVideoId && it.setVideoId != null }
+            ?: owned.items.firstOrNull { it.videoId == targetVideoId && it.setVideoId != null }
             ?: return@withContext playlist
         if (!innerTube.removeVideosFromRemotePlaylist(remoteId, listOf(item.setVideoId!! to item.videoId))) {
             return@withContext playlist
