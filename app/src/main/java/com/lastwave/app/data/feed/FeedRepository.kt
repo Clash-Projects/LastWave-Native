@@ -278,14 +278,14 @@ class FeedRepository @Inject constructor(
         }
 
         val familiarCandidates = buildList {
-            ytQuickPicks.forEachIndexed { i, t -> add(it to trackScore(t, i, 3.0)) }
-            ytLikedSongs.forEachIndexed { i, t -> add(it to trackScore(t, i, 2.2)) }
-            ytRecentSongs.forEachIndexed { i, t -> add(it to trackScore(t, i, 1.6)) }
-            regularPicks.forEachIndexed { i, t -> add(it to trackScore(t, i, 2.6)) }
+            ytQuickPicks.forEachIndexed { i, t -> add(t to trackScore(t, i, 3.0)) }
+            ytLikedSongs.forEachIndexed { i, t -> add(t to trackScore(t, i, 2.2)) }
+            ytRecentSongs.forEachIndexed { i, t -> add(t to trackScore(t, i, 1.6)) }
+            regularPicks.forEachIndexed { i, t -> add(t to trackScore(t, i, 2.6)) }
             // Local-first: liked + saved Room tracks score as personal picks
             // for guest/disconnected so Quick Picks never looks generic.
-            localQuickPicks.forEachIndexed { i, t -> add(it to trackScore(t, i, 2.4)) }
-            homeSongs.forEachIndexed { i, t -> add(it to trackScore(t, i, 1.2)) }
+            localQuickPicks.forEachIndexed { i, t -> add(t to trackScore(t, i, 2.4)) }
+            homeSongs.forEachIndexed { i, t -> add(t to trackScore(t, i, 1.2)) }
             charts.forEachIndexed { i, t -> add(t to trackScore(t, i, 1.0)) }
         }
             .distinctBy { (t, _) -> t.artist.trim().lowercase() to t.title.trim().lowercase() }
