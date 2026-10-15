@@ -11,6 +11,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import com.lastwave.app.ui.tv.focus.tvFocusHighlight
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -582,6 +584,7 @@ private fun PlaylistCard(
 
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    val isFocused by interactionSource.collectIsFocusedAsState()
     // Hoisted above the tracks-empty branch: remember calls must run
     // unconditionally so slot-table positions stay stable when YTM sync
     // flips tracks between empty and non-empty.
@@ -599,6 +602,7 @@ private fun PlaylistCard(
     )
     val cardBackground by animateColorAsState(
         targetValue = when {
+            isFocused -> MaterialTheme.colorScheme.primaryContainer
             isSelected -> MaterialTheme.colorScheme.primaryContainer
             isThisPlaylistPlaying -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
             else -> MaterialTheme.colorScheme.surfaceContainerHigh
@@ -613,6 +617,7 @@ private fun PlaylistCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier
             .fillMaxWidth()
+            .tvFocusHighlight(scale = 1.02f, shape = com.lastwave.app.ui.common.groupShape(position))
             .graphicsLayer {
                 scaleX = cardScale
                 scaleY = cardScale

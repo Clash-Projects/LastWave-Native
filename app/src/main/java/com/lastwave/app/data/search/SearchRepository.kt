@@ -92,49 +92,51 @@ class SearchRepository @Inject constructor(
             searchCache[cacheKey]?.let { return it }
         }
 
-        val results = when (tab) {
-            SearchTab.TRACKS -> innerTube.searchSongs(trimmed).map { track ->
-                SearchResultItem(
-                    name = track.title,
-                    artist = track.artist,
-                    artworkUrl = track.artworkUrl,
-                    subtitle = track.album,
-                    videoId = track.videoId,
-                    entityId = track.videoId,
-                )
-            }
-            SearchTab.ARTISTS -> innerTube.searchArtists(trimmed).map { artist ->
-                SearchResultItem(
-                    name = artist.name,
-                    artworkUrl = artist.artworkUrl,
-                    subtitle = artist.subtitle,
-                    entityId = artist.browseId,
-                )
-            }
-            SearchTab.ALBUMS -> innerTube.searchAlbums(trimmed).map { album ->
-                SearchResultItem(
-                    name = album.name,
-                    artist = album.artist,
-                    artworkUrl = album.artworkUrl,
-                    subtitle = album.subtitle,
-                    entityId = album.browseId,
-                )
-            }
-            SearchTab.PLAYLISTS -> innerTube.searchPlaylists(trimmed).map { playlist ->
-                SearchResultItem(
-                    name = playlist.title,
-                    artist = playlist.author,
-                    artworkUrl = playlist.artworkUrl,
-                    subtitle = playlist.author?.takeIf(String::isNotBlank) ?: "YouTube Music playlist",
-                    entityId = playlist.id,
-                )
-            }
-            // No shared key: user search needs a personal key, otherwise empty.
-            SearchTab.USERS -> {
-                val key = sessionPreferences.session.first().apiKey
-                if (key.isBlank()) emptyList() else lookupUser(key, trimmed)
-            }
-        }.filter { it.name.isNotBlank() }
+        val results = runCatching {
+            when (tab) {
+                SearchTab.TRACKS -> innerTube.searchSongs(trimmed).take(25).map { track ->
+                    SearchResultItem(
+                        name = track.title,
+                        artist = track.artist,
+                        artworkUrl = track.artworkUrl,
+                        subtitle = track.album,
+                        videoId = track.videoId,
+                        entityId = track.videoId,
+                    )
+                }
+                SearchTab.ARTISTS -> innerTube.searchArtists(trimmed).take(20).map { artist ->
+                    SearchResultItem(
+                        name = artist.name,
+                        artworkUrl = artist.artworkUrl,
+                        subtitle = artist.subtitle,
+                        entityId = artist.browseId,
+                    )
+                }
+                SearchTab.ALBUMS -> innerTube.searchAlbums(trimmed).take(20).map { album ->
+                    SearchResultItem(
+                        name = album.name,
+                        artist = album.artist,
+                        artworkUrl = album.artworkUrl,
+                        subtitle = album.subtitle,
+                        entityId = album.browseId,
+                    )
+                }
+                SearchTab.PLAYLISTS -> innerTube.searchPlaylists(trimmed).take(20).map { playlist ->
+                    SearchResultItem(
+                        name = playlist.title,
+                        artist = playlist.author,
+                        artworkUrl = playlist.artworkUrl,
+                        subtitle = playlist.author?.takeIf(String::isNotBlank) ?: "YouTube Music playlist",
+                        entityId = playlist.id,
+                    )
+                }
+                // No shared key: user search needs a personal key, otherwise empty.
+                SearchTab.USERS -> {
+                    val key = sessionPreferences.session.first().apiKey
+                    if (key.isBlank()) emptyList() else lookupUser(key, trimmed).take(15)
+                }
+            }.filter { it.name.isNotBlank() }
+        }.getOrDefault(emptyList())
 
         if (results.isNotEmpty()) {
             synchronized(cacheLock) {

@@ -1435,6 +1435,7 @@ private fun QuickPicksRows(
         WindowSizeClass.COMPACT -> 0.88f
         WindowSizeClass.MEDIUM -> 0.48f
         WindowSizeClass.EXPANDED -> 0.32f
+        WindowSizeClass.TV -> 0.28f
     }
     val columns = remember(tracks) { tracks.chunked(3) }
     LazyRow(

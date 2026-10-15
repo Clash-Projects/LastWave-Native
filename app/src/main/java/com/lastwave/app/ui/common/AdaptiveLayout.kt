@@ -8,20 +8,25 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
+import com.lastwave.app.util.rememberIsTv
+
 /**
  * Standard Material 3 window size classes based on viewport width breakpoints.
  * - COMPACT: Standard phones in portrait (< 600dp)
  * - MEDIUM: Foldables unfolded, 7-8" tablets, portrait 10" tablets (600dp..839dp)
  * - EXPANDED: Large tablets (10"+), landscape tablets, desktop/Chromebook (>= 840dp)
+ * - TV: Television display / 10-foot UI
  */
 enum class WindowSizeClass {
     COMPACT,
     MEDIUM,
     EXPANDED,
+    TV,
 }
 
 @Composable
 fun rememberWindowSizeClass(): WindowSizeClass {
+    if (rememberIsTv()) return WindowSizeClass.TV
     val screenWidth = LocalConfiguration.current.screenWidthDp
     return when {
         screenWidth < 600 -> WindowSizeClass.COMPACT
