@@ -387,6 +387,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     init {
+        player.restoreSessionIfNeeded()
         viewModelScope.launch {
             playlistRepository.changes.collect {
                 if (customPlaylistsLoaded) refreshCustomPlaylists()

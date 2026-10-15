@@ -4257,9 +4257,13 @@ class MusicPlayer @Inject constructor(
         // fresh state says off — until the first refresh() flips it back on.
         player.shuffleModeEnabled = false
         preparedStreams.clear()
-        _state.value = MusicPlayerState()
-        if (clearSession) clearPersistedPlaybackSession()
-        applicationScope.launch(Dispatchers.IO) { WidgetUpdater.clear(appContext) }
+        if (clearSession) {
+            _state.value = MusicPlayerState()
+            clearPersistedPlaybackSession()
+            applicationScope.launch(Dispatchers.IO) { WidgetUpdater.clear(appContext) }
+        } else {
+            _state.update { it.copy(isPlaying = false, isBuffering = false) }
+        }
         appContext.stopService(Intent(appContext, MusicPlaybackService::class.java))
     }
     fun removeQueueItem(index: Int) = onMain {
@@ -7551,6 +7555,11 @@ class MusicPlayer @Inject constructor(
         }.onFailure {
             android.util.Log.w("MusicPlayer", "Foreground service start rejected", it)
         }
+    }
+
+    fun restoreSessionIfNeeded(): Boolean {
+        if (_state.value.current != null) return false
+        return restorePlaybackSession()
     }
 
     private fun restorePlaybackSession(): Boolean {
