@@ -536,15 +536,8 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
 
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Promote to foreground only when playback is actually active. A
-        // pause/stop/no-op command must not force a media-playback FGS; when an
-        // action such as PLAY starts playback the state collector promotes the
-        // service on the isPlaying edge. If we do promote while active and the
-        // system refuses, bail with START_NOT_STICKY as before.
-        val state = musicPlayer.state.value
-        if (state.isPlaying || state.isBuffering) {
-            if (!promoteForPlayback()) return START_NOT_STICKY
-        }
+        // Satisfy startForegroundService() contract immediately to prevent fatal ANR
+        promoteForPlayback()
         when (intent?.action) {
             Intent.ACTION_MEDIA_BUTTON -> androidx.media.session.MediaButtonReceiver.handleIntent(mediaSession, intent)
             MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH -> playCarSearch(

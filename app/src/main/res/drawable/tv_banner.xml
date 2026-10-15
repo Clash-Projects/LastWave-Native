@@ -1,0 +1,60 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+
+    <!-- Background card -->
+    <path
+        android:pathData="M0,0h320v180h-320z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="0"
+                android:startY="0"
+                android:endX="320"
+                android:endY="180"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FF0D131A" />
+                <item android:offset="1.0" android:color="#FF03070A" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Subtle accent wave in background -->
+    <path
+        android:pathData="M-20,140 C60,110 140,170 220,130 C270,105 310,125 340,115 L340,190 L-20,190 Z"
+        android:fillAlpha="0.08"
+        android:fillColor="#FFC6F100" />
+
+    <!-- Centered Logo Mark (Scale 0.9, Centered at x=160, y=90) -->
+    <!-- Circle at (160, 90), radius 48 -->
+    <group
+        android:translateX="160"
+        android:translateY="90"
+        android:scaleX="0.888"
+        android:scaleY="0.888">
+        <path
+            android:fillColor="#FFC6F100"
+            android:pathData="M-54,-54 m0,54 a54,54 0 1,0 108,0 a54,54 0 1,0 -108,0" />
+
+        <!-- Bars translated from [0..108] to [-54..54] -->
+        <group
+            android:translateX="-54"
+            android:translateY="-54">
+            <path
+                android:fillColor="#FF012226"
+                android:pathData="M12.92,36.47 A5.99,5.99 0 0 1 24.89,36.47 L24.89,78.39 A5.99,5.99 0 0 1 12.92,78.39 Z" />
+            <path
+                android:fillColor="#FF012226"
+                android:pathData="M36.86,16.58 A6.14,6.14 0 0 1 49.15,16.58 L49.15,92.58 A6.14,6.14 0 0 1 36.86,92.58 Z" />
+            <path
+                android:fillColor="#FF012226"
+                android:pathData="M60.54,23.12 A6.25,6.25 0 0 1 73.04,23.12 L73.04,84.82 A6.25,6.25 0 0 1 60.54,84.82 Z" />
+            <path
+                android:fillColor="#FF012226"
+                android:pathData="M80.74,33.72 A6.72,6.72 0 0 1 94.18,33.72 L94.18,74.17 A6.72,6.72 0 0 1 80.74,74.17 Z" />
+        </group>
+    </group>
+
+</vector>

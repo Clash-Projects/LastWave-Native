@@ -164,19 +164,19 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
      *  - Hardware acceleration enabled for fast GPU texture uploading.
      */
     override fun newImageLoader(): ImageLoader {
-        val lowRamDevice = runCatching {
+        val isTv = runCatching {
+            packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+        }.getOrDefault(false)
+        val lowRamDevice = isTv || runCatching {
             (getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.isLowRamDevice == true
         }.getOrDefault(false)
         val imageClient = try {
             okHttpClient.get().newBuilder()
             .dispatcher(okhttp3.Dispatcher().apply {
-                // Bound decode/network bursts: artwork hosts are shared by
-                // many visible rows, and 128 simultaneous responses can turn
-                // into a GC/decode storm on mobile CPUs.
-                maxRequests = if (lowRamDevice) 16 else 48
-                maxRequestsPerHost = if (lowRamDevice) 4 else 8
+                maxRequests = if (lowRamDevice) 8 else 48
+                maxRequestsPerHost = if (lowRamDevice) 3 else 8
             })
-            .connectionPool(okhttp3.ConnectionPool(if (lowRamDevice) 8 else 16, 5, java.util.concurrent.TimeUnit.MINUTES))
+            .connectionPool(okhttp3.ConnectionPool(if (lowRamDevice) 4 else 16, 3, java.util.concurrent.TimeUnit.MINUTES))
             .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
             .build()
@@ -192,22 +192,24 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
             .okHttpClient(imageClient)
             .memoryCache {
                 MemoryCache.Builder(this)
-                    .maxSizePercent(if (lowRamDevice) 0.08 else 0.18)
+                    .maxSizePercent(if (lowRamDevice) 0.06 else 0.18)
                     .build()
             }
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache"))
-                    // Enough for hundreds of compressed covers without
-                    // allowing artwork to dominate the app's storage usage.
                     .maxSizeBytes(if (lowRamDevice) LOW_RAM_IMAGE_DISK_CACHE_BYTES else IMAGE_DISK_CACHE_BYTES)
                     .build()
             }
             .respectCacheHeaders(false)
-            .allowHardware(true)
-            .crossfade(150)
+            .allowHardware(!lowRamDevice)
+            .crossfade(if (lowRamDevice) 0 else 150)
+            .apply {
+                if (lowRamDevice) {
+                    bitmapConfig(android.graphics.Bitmap.Config.RGB_565)
+                }
+            }
             .build()
-
     }
 
     private companion object {

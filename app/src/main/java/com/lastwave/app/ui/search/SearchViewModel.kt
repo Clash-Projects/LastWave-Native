@@ -61,7 +61,7 @@ class SearchViewModel @Inject constructor(
         }
     }
 
-    fun setQuery(query: String) {
+    fun setQuery(query: String, autoSearch: Boolean = true) {
         _uiState.update { it.copy(query = query, isShowingSuggestions = query.isNotBlank()) }
         debounceJob?.cancel()
         suggestionsJob?.cancel()
@@ -79,19 +79,23 @@ class SearchViewModel @Inject constructor(
             return
         }
 
-        // Fast suggestions debounce (120ms)
-        suggestionsJob = viewModelScope.launch {
-            delay(120)
-            val suggestions = repository.getSuggestions(query)
-            if (_uiState.value.query == query) {
-                _uiState.update { it.copy(suggestions = suggestions) }
+        // Suggestions debounce (350ms, guarded by min length 2 to prevent TV memory pressure)
+        if (query.trim().length >= 2) {
+            suggestionsJob = viewModelScope.launch {
+                delay(350)
+                val suggestions = runCatching { repository.getSuggestions(query) }.getOrDefault(emptyList())
+                if (_uiState.value.query == query) {
+                    _uiState.update { it.copy(suggestions = suggestions) }
+                }
             }
         }
 
-        // Full search results debounce (350ms)
-        debounceJob = viewModelScope.launch {
-            delay(350)
-            triggerSearch(query, saveToHistory = false)
+        if (autoSearch) {
+            // Full search results debounce (500ms)
+            debounceJob = viewModelScope.launch {
+                delay(500)
+                triggerSearch(query, saveToHistory = false)
+            }
         }
     }
 
@@ -205,8 +209,9 @@ class SearchViewModel @Inject constructor(
                     results = results,
                 )
             }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
             if (lastIssuedQuery != query || _uiState.value.query.trim() != query.trim() || _uiState.value.tab != tab) return
             _uiState.update { it.copy(status = SearchStatus.EMPTY, results = emptyList()) }
         }

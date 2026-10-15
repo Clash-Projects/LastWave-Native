@@ -6,6 +6,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.InputDevice
+import android.view.KeyEvent
+import android.view.MotionEvent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -28,12 +31,17 @@ import com.lastwave.app.ui.navigation.Screen
 import com.lastwave.app.ui.player.PlayerHost
 import com.lastwave.app.ui.theme.LastWaveTheme
 import com.lastwave.app.ui.theme.ThemeViewModel
+import com.lastwave.app.ui.tv.TvAppRoot
+import com.lastwave.app.util.TvDetector
+import com.lastwave.app.util.rememberIsTv
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
 // Last.fm redirects its Custom Tab to this Activity after approval.
 @AndroidEntryPoint
 class MainActivity : androidx.fragment.app.FragmentActivity() {
+
+    private val isTvDevice by lazy { TvDetector.detectIsTv(this) }
 
     @Inject
     lateinit var lastFmAuthCallback: LastFmAuthCallbackCoordinator
@@ -131,26 +139,32 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 .onFailure { android.util.Log.w(STARTUP_TAG, "Notification permission request skipped", it) }
         }
 
+
         setContent {
             val themeViewModel: ThemeViewModel = hiltViewModel()
             val themeState by themeViewModel.uiState.collectAsStateWithLifecycle()
 
             LastWaveTheme(themeState = themeState) {
-                val currentConfig = androidx.compose.ui.platform.LocalViewConfiguration.current
-                androidx.compose.runtime.CompositionLocalProvider(
-                    androidx.compose.ui.platform.LocalViewConfiguration provides object : androidx.compose.ui.platform.ViewConfiguration by currentConfig {
-                        override val touchSlop: Float
-                            get() = currentConfig.touchSlop * 1.5f
-                        override val minimumTouchTargetSize: androidx.compose.ui.unit.DpSize
-                            get() = androidx.compose.ui.unit.DpSize(48.dp, 48.dp)
-                    }
-                ) {
-                    val navController = rememberNavController()
-                    val backStackEntry by navController.currentBackStackEntryAsState()
-                    val hasBottomNavigation = backStackEntry?.destination?.route == Screen.MainShell.route
+                val isTv = rememberIsTv()
+                if (isTv) {
+                    TvAppRoot()
+                } else {
+                    val currentConfig = androidx.compose.ui.platform.LocalViewConfiguration.current
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        androidx.compose.ui.platform.LocalViewConfiguration provides object : androidx.compose.ui.platform.ViewConfiguration by currentConfig {
+                            override val touchSlop: Float
+                                get() = currentConfig.touchSlop * 1.5f
+                            override val minimumTouchTargetSize: androidx.compose.ui.unit.DpSize
+                                get() = androidx.compose.ui.unit.DpSize(48.dp, 48.dp)
+                        }
+                    ) {
+                        val navController = rememberNavController()
+                        val backStackEntry by navController.currentBackStackEntryAsState()
+                        val hasBottomNavigation = backStackEntry?.destination?.route == Screen.MainShell.route
 
-                    PlayerHost(hasBottomNavigation = hasBottomNavigation) {
-                        LastWaveNavHost(navController)
+                        PlayerHost(hasBottomNavigation = hasBottomNavigation) {
+                            LastWaveNavHost(navController)
+                        }
                     }
                 }
             }
@@ -236,6 +250,57 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 window.attributes = attributes
             }
         }
+    }
+
+    private var lastMouseBackTime = 0L
+
+    private fun handleMouseBackPress(): Boolean {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastMouseBackTime > 350L) {
+            lastMouseBackTime = now
+            onBackPressedDispatcher.onBackPressed()
+        }
+        return true
+    }
+
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        if (event.actionButton == MotionEvent.BUTTON_BACK ||
+            (event.buttonState and MotionEvent.BUTTON_BACK) != 0 ||
+            (event.buttonState and MotionEvent.BUTTON_SECONDARY) != 0
+        ) {
+            if (event.action == MotionEvent.ACTION_UP || event.action == MotionEvent.ACTION_BUTTON_RELEASE) {
+                return handleMouseBackPress()
+            }
+            return true
+        }
+
+        return super.dispatchGenericMotionEvent(event)
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.isFromSource(InputDevice.SOURCE_MOUSE) || event.isFromSource(InputDevice.SOURCE_MOUSE_RELATIVE)) {
+            if (event.actionButton == MotionEvent.BUTTON_BACK ||
+                (event.buttonState and MotionEvent.BUTTON_BACK) != 0 ||
+                (event.buttonState and MotionEvent.BUTTON_SECONDARY) != 0
+            ) {
+                if (event.action == MotionEvent.ACTION_UP || event.action == MotionEvent.ACTION_BUTTON_RELEASE) {
+                    return handleMouseBackPress()
+                }
+                return true
+            }
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_ESCAPE) {
+            if (event.action == KeyEvent.ACTION_UP) {
+                onBackPressedDispatcher.onBackPressed()
+            }
+            return true
+        }
+
+        return super.dispatchKeyEvent(event)
     }
 
     private fun handlePlaybackIntent(intent: Intent?) {
