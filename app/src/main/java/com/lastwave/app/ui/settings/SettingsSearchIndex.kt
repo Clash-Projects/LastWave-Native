@@ -182,6 +182,23 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "audio.keep_lyrics_screen_awake",
+                    title = "Keep Screen Awake on Lyrics",
+                    subtitle = "Prevent screen from turning off while viewing lyrics",
+                    keywords = listOf(
+                        "keep screen awake", "keep screen on", "lyrics sleep", "screen timeout",
+                        "display awake", "lyrics screen"
+                    ),
+                    icon = Icons.Filled.Lyrics,
+                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Audio & Playback",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "audio.download_lyrics",
                     title = "Download Lyrics",
                     subtitle = "Save .lrc companion files & embed lyrics in downloaded tracks",

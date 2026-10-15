@@ -793,9 +793,9 @@ fun SettingsScreen(
 
                     val isIgnored = BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)
                     val totalAudioRows = if (misc.crossfadeEnabled) {
-                        if (isIgnored) 6 else 7
+                        if (isIgnored) 7 else 8
                     } else {
-                        if (isIgnored) 5 else 6
+                        if (isIgnored) 6 else 7
                     }
                     SettingsGroup(rowCount = totalAudioRows) { index, position ->
                         when (index) {
@@ -863,6 +863,31 @@ fun SettingsScreen(
                                     icon = Icons.Filled.Lyrics,
                                     iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                     iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    title = stringResource(R.string.settings_keep_lyrics_screen_awake),
+                                    subtitle = stringResource(R.string.settings_keep_lyrics_screen_awake_desc),
+                                    checked = misc.keepLyricsScreenAwake,
+                                    onCheckedChange = viewModel::setKeepLyricsScreenAwake,
+                                    position = position,
+                                    isHighlighted = (highlightedSettingId == "audio.keep_lyrics_screen_awake"),
+                                )
+                            }
+                            5 -> if (misc.crossfadeEnabled) {
+                                SettingsToggleCard(
+                                    icon = Icons.Filled.Lyrics,
+                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    title = stringResource(R.string.settings_keep_lyrics_screen_awake),
+                                    subtitle = stringResource(R.string.settings_keep_lyrics_screen_awake_desc),
+                                    checked = misc.keepLyricsScreenAwake,
+                                    onCheckedChange = viewModel::setKeepLyricsScreenAwake,
+                                    position = position,
+                                    isHighlighted = (highlightedSettingId == "audio.keep_lyrics_screen_awake"),
+                                )
+                            } else {
+                                SettingsToggleCard(
+                                    icon = Icons.Filled.Lyrics,
+                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                                     title = stringResource(R.string.settings_download_lyrics),
                                     subtitle = if (misc.downloadLyrics) {
                                         "Save .lrc companion files & embed lyrics in downloads"
@@ -875,7 +900,7 @@ fun SettingsScreen(
                                     isHighlighted = (highlightedSettingId == "audio.download_lyrics"),
                                 )
                             }
-                            5 -> if (misc.crossfadeEnabled) {
+                            6 -> if (misc.crossfadeEnabled) {
                                 SettingsToggleCard(
                                     icon = Icons.Filled.Lyrics,
                                     iconContainer = MaterialTheme.colorScheme.secondaryContainer,
@@ -903,7 +928,7 @@ fun SettingsScreen(
                                     isHighlighted = (highlightedSettingId == "audio.battery_optimization"),
                                 )
                             }
-                            6 -> if (!isIgnored) {
+                            7 -> if (!isIgnored) {
                                 SettingsActionCard(
                                     icon = Icons.Filled.Bolt,
                                     iconContainer = MaterialTheme.colorScheme.errorContainer,

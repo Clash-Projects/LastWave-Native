@@ -3,6 +3,8 @@
     <string name="app_name">LastWave</string>
     <string name="widget_name">LastWave Oynatıcı</string>
     <string name="widget_description">Tüm medya uygulamaları için kapak, parça bilgisi ve oynatma kontrolleri</string>
+    <string name="widget_obsidian_name">LastWave Obsidian Glass</string>
+    <string name="widget_obsidian_description">Yarı saydam derinlikli ve kristal çerçeveli buzlu obsidyen cam oynatıcı</string>
 
     <!-- Alt gezinti -->
     <string name="nav_feed">Akış</string>
@@ -35,10 +37,25 @@
     <string name="settings_yt_history">Dinlemeleri YouTube Music Geçmişine İşle</string>
 
     <string name="settings_downloads_title">İndirilenler ve Çevrimdışı Müzik</string>
+    <string name="settings_downloads_sub_custom">%1$d şarkı • %2$s • %3$s</string>
+    <string name="settings_downloads_sub_structured_custom">%1$d şarkı • %2$s • %3$s • %4$s</string>
+
+    <string name="settings_modules_title">Sağlayıcı Modülleri</string>
+    <string name="settings_modules_sub">Eklentinin yanında sorgulanan ek kaynaklar</string>
+    <string name="settings_modules_query_title">Oynatma sırasında modülleri sorgula</string>
+    <string name="settings_modules_query_sub">Açık • eklenti bulamadığında modül sonuçları anında çalar</string>
+    <string name="settings_modules_add">Modül ekle</string>
+    <string name="settings_modules_add_sub">Şifreli bir .lwp paketi kurun</string>
+    <string name="settings_modules_empty">Kurulu modül yok</string>
 
     <string name="settings_section_appearance">Görünüm</string>
+    <string name="settings_theme_mode">Tema</string>
+    <string name="settings_theme_mode_sub">Sistem varsayılanı, açık veya koyu arasından seçin</string>
+    <string name="theme_mode_system">Sistem</string>
+    <string name="theme_mode_light">Açık</string>
+    <string name="theme_mode_dark">Koyu</string>
     <string name="settings_amoled">AMOLED Modu</string>
-    <string name="settings_amoled_sub">Saf siyah arka plan</string>
+    <string name="settings_amoled_sub">Saf siyah arka plan (yalnızca Koyu modda)</string>
     <string name="settings_dynamic_color">Dinamik Renk</string>
     <string name="settings_dynamic_color_sub">Duvar kağıdınızın renklerini kullanın</string>
     <string name="settings_dynamic_now_playing">Dinamik Çalan Parça</string>
@@ -51,20 +68,34 @@
     <string name="settings_liquid_glass">Sıvı Cam</string>
     <string name="settings_liquid_glass_sub">Uygulamada iOS tarzı yarı saydam malzemeler</string>
     <string name="settings_lyrics_animation">Şarkı Sözü Animasyonu</string>
+    <string name="settings_lyrics_provider">Şarkı sözü sağlayıcı</string>
+    <string name="settings_lyrics_provider_desc">Her şarkı için önce bu denenir. Hiçbir şey döndürmezse uygulama otomatik olarak diğer sağlayıcılara geçer.</string>
     <string name="settings_equalizer">Ekolayzer</string>
     <string name="settings_equalizer_sub">15 bantta sesinizi şekillendirin</string>
     <string name="settings_wavy_seekbar">Dalgalı İlerleme Çubuğu</string>
     <string name="settings_wavy_seekbar_on">Çok katmanlı akıcı dalgalı kaydırıcı</string>
     <string name="settings_wavy_seekbar_off">Klasik standart ilerleme kaydırıcısı</string>
+    <string name="settings_rotating_background">Dönen Arka Plan</string>
+    <string name="settings_rotating_background_on">Oynatıcı ve şarkı sözü görünümünde akıcı dönen kapak animasyonu</string>
+    <string name="settings_rotating_background_off">Statik bulanık arka plan (Android 11 ve altı için önerilir)</string>
     <string name="settings_studio_clarity">Stüdyo Master Netliği</string>
     <string name="settings_studio_clarity_on">Kristal netliğinde açık ses • havadar detay • derin temiz ayrım</string>
     <string name="settings_studio_clarity_off">Orijinal işlenmemiş çıkış</string>
+    <string name="settings_canvas_enabled">Hareketli Albüm Canvas</string>
+    <string name="settings_canvas_enabled_sub">Apple Music, Tidal ve topluluktan hareketli kapak döngüleri aktar</string>
+    <string name="settings_canvas_full_bleed">Tam Ekran Kapak</string>
+    <string name="settings_canvas_full_bleed_sub">Statik ve hareketli parçalar için uçtan uca tam ekran kapak</string>
+    <string name="settings_canvas_cellular">Hücresel Veride Canvas</string>
+    <string name="settings_canvas_cellular_sub">Hareketli kapakları mobil veriyle indir (ilk döngüden sonra önbelleğe alınır)</string>
 
     <string name="settings_section_audio">Ses ve Akış</string>
     <string name="settings_streaming_quality">Akış Kalitesi</string>
     <string name="settings_download_quality">İndirme Kalitesi</string>
     <string name="settings_bit_perfect">Bit-Perfect Modu (Doğrudan Geçiş)</string>
     <string name="settings_bit_perfect_sub">Bit-bit aynı üretim için tüm DSP, EQ ve ses işlemeyi atla</string>
+    <string name="settings_force_sw_volume">Yazılım sesi (USB DAC)</string>
+    <string name="settings_force_sw_volume_on">Uygulama PCM ölçer • DAC donanım seviyesi 0 dB’de sabit</string>
+    <string name="settings_force_sw_volume_off">Mümkünse DAC donanım sesi, yoksa yazılım</string>
     <string name="settings_crossfade">Geçiş (Crossfade)</string>
     <string name="settings_crossfade_sub">Parça sonunu sonraki parçayla yumuşakça birleştir</string>
     <string name="settings_download_lyrics">Eşitlenmiş Şarkı Sözlerini İndir</string>
@@ -114,9 +145,19 @@
     <string name="common_show_all">Tümünü Göster</string>
     <string name="common_hide_all">Tümünü Gizle</string>
     <string name="common_selected">Seçildi</string>
+    <string name="settings_search_hint">Ayarlarda ara…</string>
+    <string name="settings_search_no_results">“%1$s” için ayar bulunamadı</string>
+    <string name="settings_search_no_results_sub">Yazımı denetleyin veya farklı anahtar sözcüklerle aramayı deneyin</string>
+    <string name="settings_search_clear">Aramayı temizle</string>
+    <string name="settings_search_title">Ayarlarda ara</string>
+    <string name="settings_internal_direct">Dahili doğrudan çıkış</string>
+    <string name="settings_internal_direct_on">Android mikserini atlar (hoparlör, jak, Bluetooth) • Bit-Perfect’i açar</string>
+    <string name="settings_internal_direct_off">Kapalı • USB DAC olmadan UAPP HiRes Direct gibi</string>
+    <string name="settings_internal_direct_inactive">Açık, burada etkin değil — %1$s</string>
+    <string name="settings_internal_direct_enabled_toast">Dahili doğrudan çıkış açık — Bit-Perfect de etkinleştirildi</string>
 
     <string name="dialog_clear_all_title">Tüm veriler silinsin mi?</string>
-    <string name="dialog_clear_all_text">Kimlik bilgileriniz, listeleriniz ve önbelleğe alınmış veriler kaldırılır. Bu işlem geri alınamaz.</string>
+    <string name="dialog_clear_all_text">Kimlik bilgileriniz, listeleriniz, indirilen şarkılarınız ve önbelleğe alınmış veriler kaldırılır. Bu işlem geri alınamaz.</string>
     <string name="dialog_clear_all_confirm">Her Şeyi Temizle</string>
     <string name="dialog_disconnect_yt_title">YouTube Music bağlantısı kesilsin mi?</string>
     <string name="dialog_disconnect_yt_text">Hesabınıza yansıtılan listeler orada kalır, ancak LastWave eşitlemeyi durdurur ve bağlantıyı unutur.</string>
@@ -176,11 +217,20 @@
     <string name="dl_primary_only">Yalnızca ana sanatçı</string>
     <string name="dl_primary_only_sub">Klasör adlarından feat. ve konukları temizle</string>
     <string name="dl_change_folder">Klasörü değiştir</string>
+    <string name="dl_location">İndirme konumu</string>
+    <string name="dl_location_desc">Yeni indirmeler doğrudan bu klasöre kaydedilir — SD kartınızdaki klasörler dahil. Mevcut dosyalar yerinde kalır ve çalınmaya devam eder.</string>
+    <string name="dl_location_default">Music/%1$s • dahili depolama</string>
+    <string name="dl_location_choose">Klasör seç…</string>
+    <string name="dl_location_reset">Varsayılana sıfırla</string>
+    <string name="dl_location_unavailable">Önceden seçilen klasör kullanılamıyor (SD kart çıkarıldı veya izin geri alındı). Yeniden klasör seçene kadar indirmeler duraklatılır.</string>
+    <string name="dl_location_unavailable_short">Kullanılamıyor — yeniden seçmek için dokunun</string>
+    <string name="dl_saved_custom">%1$s konumuna kaydedildi • %2$d şarkı</string>
+    <string name="dl_open_location">%1$s konumunu aç</string>
     <string name="dl_saved_flat">Music/%1$s/ konumuna kaydedildi • %2$d şarkı</string>
     <string name="dl_saved_structured">Music/%1$s/ • %2$s • %3$d şarkı</string>
     <string name="dl_clear_history">Bu işlem uygulamadaki geçmiş listesini temizler. Music/%1$s içindeki ses dosyalarınız cihazınızda güvenle kalır.</string>
     <string name="dl_delete_all">Bu işlem Music/%2$s içindeki %1$d indirilmiş ses dosyasını kalıcı olarak siler ve %3$s depolama alanı açar.</string>
-    <string name="dl_empty_hint">Herhangi bir şarkıda 3 nokta menüsüne dokunun ve \"Download (Max Quality)\" seçin. Kayıpsız FLAC parçalar ve YouTube sesleri, gömülü meta veriler ve eşitlenmiş LRCLIB sözleriyle doğrudan cihazınızın Music klasörüne kaydedilir (⋮ menüsünde İndirme klasörüne bakın).</string>
+    <string name="dl_empty_hint">Herhangi bir şarkıda 3 nokta menüsüne dokunun ve \"Download\" seçeneğini belirleyin. Parçalar, Ayarlar → Ses ve Akış → İndirme Kalitesi’nde seçtiğiniz kalitede gömülü meta veriler ve eşitlenmiş LRCLIB sözleriyle doğrudan cihazınızın Music klasörüne kaydedilir (⋮ menüsündeki İndirme klasörüne bakın).</string>
     <string name="dl_open_folder">Music/%1$s aç</string>
     <string name="dl_open_manager">Dosya Yöneticisinde aç</string>
     <string name="dl_clear_history_only">Yalnızca İndirme Geçmişini Temizle</string>
@@ -218,7 +268,9 @@
     <string name="signal_grant_usb">USB erişimine izin ver</string>
     <string name="signal_bit_perfect">BIT-PERFECT</string>
     <string name="signal_check_path">YOLU DENETLE</string>
+    <string name="signal_resampled_dac">DAC YENİDEN ÖRNEKLEDİ</string>
     <string name="signal_shared_track">Paylaşımlı AudioTrack</string>
+    <string name="signal_direct_track">Doğrudan USB çıkışı</string>
     <string name="signal_verdict_ok">Bit-perfect yol doğrulandı — DAC\'a kadar PCM bozulmadı</string>
     <string name="signal_label_source">Kaynak</string>
     <string name="signal_label_resampler">Uygulama örnekleyici</string>
@@ -234,6 +286,7 @@
     <string name="signal_detail_src_unknown">Bilinmeyen kaynak örnekleme hızı</string>
     <string name="signal_detail_resample_bypass">Atlandı — %1$d Hz giriş / çıkış</string>
     <string name="signal_detail_resample_active">Etkin — %1$d Hz → %2$d Hz</string>
+    <string name="signal_detail_resample_dac_unsupported">DAC desteklemiyor (%1$d Hz) → %2$d Hz’e yeniden örneklendi (libsoxr)</string>
     <string name="signal_detail_resample_unresolved">Çıkış hızı çözümlenemedi</string>
     <string name="signal_detail_dsp_off">Bit-Perfect kapalı — Ayarlardan açın</string>
     <string name="signal_detail_dsp_crossfade">Crossfade iki akışı karıştırıyor</string>
@@ -247,8 +300,22 @@
     <string name="signal_detail_sysvol_scaled">%1$d/%2$d — DAC öncesi dijital zayıflatma</string>
     <string name="signal_detail_unreadable">Okunamıyor</string>
     <string name="signal_detail_mixer_ok">Platform SRC yok — mikser %1$d Hz</string>
-    <string name="signal_detail_mixer_src">%1$d Hz → %2$d Hz yeniden örneklıyor</string>
+    <string name="signal_detail_mixer_src">%1$d Hz → %2$d Hz yeniden örnekliyor</string>
     <string name="signal_detail_mixer_unreadable">Mikser hızı okunamıyor</string>
+    <string name="signal_detail_bit_perfect_unavailable">Nominal mikser hızı %1$d Hz — bit-perfect modu yapılandırılmadı</string>
+    <string name="signal_detail_bit_perfect_configured">Android bit-perfect USB çıkış yapılandırmasını kabul etti</string>
+    <string name="signal_detail_usb_exclusive">USB özel — mikser atlandı, saat DAC’ta</string>
+    <string name="signal_detail_mixer_not_exclusive">Android mikser yolu — özel usbdevfs değil</string>
+    <string name="signal_detail_usb_exclusive_route">Özel usbdevfs — %1$s</string>
+    <string name="signal_detail_usb_clock_ok">DAC saati kaynak hızıyla eşleşiyor (GET_CUR)</string>
+    <string name="signal_detail_usb_clock_fallback">DAC saati yedeği (%1$d Hz desteklenmiyor → %2$d Hz)</string>
+    <string name="signal_detail_usb_clock_mismatch">DAC saati kaynak hızını doğrulamadı</string>
+    <string name="signal_detail_usb_hw_vol">UAC Özellik Birimi sesi — PCM ölçeksiz</string>
+    <string name="signal_detail_usb_sysvol_unused">USB özel — Android mikser sesi kullanılmıyor</string>
+    <string name="signal_detail_route_unverified">DAC yönlendirme istendi; gerçek çıkış yolu doğrulanmadı</string>
+    <string name="signal_detail_exclusive_failed">Özel başarısız: %1$s — paylaşımlı mikser kullanılıyor</string>
+    <string name="settings_bit_perfect_on_detail">DSP atlandı; USB DAC’ler özel usbdevfs kullanır (DAC saati eşleştiğinde altın rozet)</string>
+    <string name="settings_bit_perfect_off_detail">DSP’yi atla ve USB DAC ile cihaza özel usbdevfs akışı yap</string>
     <string name="signal_detail_no_dac">USB DAC bağlı değil</string>
     <string name="signal_detail_usb_perm">USB izni eksik — aşağıdan verin</string>
     <string name="signal_detail_not_routed">%1$s adlı cihaza yönlendirilmedi</string>
@@ -261,4 +328,73 @@
     <string name="desc_shuffle">Karıştır</string>
     <string name="desc_repeat">Tekrarla</string>
     <string name="desc_play_pause">Çal veya duraklat</string>
+    <string name="desc_previous">Önceki</string>
+    <string name="desc_next">Sonraki</string>
+
+    <!-- Yerel şarkılar -->
+    <string name="local_add_to_playlist">Listeye ekle</string>
+    <string name="local_panel_title">Bu cihazdaki şarkılar</string>
+    <string name="local_panel_hint">Bir klasör seçin: içindeki her MP3, FLAC, WAV, OGG/Opus, M4A/ALAC veya AAC dosyası (alt klasörler dahil) etiketleri, kapağı ve .lrc sözleriyle uygulamaya kopyalanır.</string>
+    <string name="local_no_folder">Henüz klasör seçilmedi.</string>
+    <string name="local_forget_folder">Bu klasörü unut (kopyalanan şarkılar kalır)</string>
+    <string name="local_choose_folder">Klasör seç</string>
+    <string name="local_rescan">Yeniden tara</string>
+    <string name="local_scanning">Aranıyor… %1$d dosya bulundu</string>
+    <string name="local_copying">Kopyalanıyor %1$d/%2$d — %3$s</string>
+    <string name="local_report_space">Bu şarkıları kopyalamak için yeterli boş alan yok.</string>
+    <string name="local_report_summary">%1$d eklendi · %2$d güncellendi · %3$d değişmedi</string>
+    <plurals name="local_report_unsupported">
+        <item quantity="one">%1$d dosya atlandı (desteklenmeyen biçim: %2$s)</item>
+        <item quantity="other">%1$d dosya atlandı (desteklenmeyen biçim: %2$s)</item>
+    </plurals>
+    <string name="local_report_failed">%1$d dosya kopyalanamadı</string>
+    <string name="local_report_unreachable">%1$d klasöre artık erişilemiyor — yeniden seçin</string>
+    <string name="local_storage_used">Yerel şarkıların kullandığı alan: %1$s</string>
+
+    <!-- Dahili doğrudan çıkış (USB DAC olmadan mikser atlama) -->
+    <string name="signal_label_internal">Dahili doğrudan çıkış</string>
+    <string name="signal_detail_internal_resampled">Çıkış %2$d Hz’e sabitlendi — %1$d Hz uygulama içinde yeniden örneklendi (libsoxr)</string>
+    <string name="signal_detail_internal_mixer_bypassed">Atlandı — özel AAudio akışı (MMAP), AudioFlinger hiç karıştırmıyor</string>
+    <string name="signal_detail_internal_mixer_bypassed_nommap">Özel AAudio akışı verildi (cihaz MMAP’i doğrulamadı)</string>
+    <string name="signal_detail_internal_route">%1$s — %2$d Hz • %3$s, örnekler HAL’e değişmeden girer</string>
+    <string name="signal_detail_internal_route_widened">%1$s — %2$d Hz • %3$s, %4$s olarak kayıpsız taşınıyor</string>
+    <string name="signal_detail_internal_route_lossy">%1$s — %2$d Hz • çıkış yalnızca %3$s alıyor: hassasiyet azaldı</string>
+    <string name="internal_reason_bluetooth">Bluetooth: denendi, ancak doğrudan çıkış verilmedi</string>
+    <string name="internal_reason_usb">USB DAC bağlı: USB özel çıkışıyla yönetiliyor</string>
+    <string name="internal_reason_exclusive_refused">Bu telefon bu çıkışta özel (MMAP) erişimi reddediyor — paylaşımlı mikser korundu</string>
+    <string name="internal_reason_no_aaudio">Bu yolda özel AAudio çıkışı yok</string>
+    <string name="internal_reason_android_old">Android 9 veya üstü gerekir</string>
+    <string name="internal_reason_native_missing">Yerel ses kitaplığı kullanılamıyor</string>
+    <string name="internal_reason_checking">Bu çıkışın kabul ettikleri denetleniyor…</string>
+    <string name="internal_reason_available">Bu çıkışta kullanılabilir</string>
+    <string name="internal_reason_active">Etkin</string>
+    <string name="internal_reason_mixed">Android akışı bu çıkışta karıştırdı — burada doğrudan yol yok</string>
+    <string name="signal_direct_hal">DOĞRUDAN → HAL</string>
+    <string name="signal_verdict_direct_hal">Android mikseri atlandı — örnekler HAL’e değişmeden girer. HAL sonrası üretici DSP’si Android’den doğrulanamaz.</string>
+    <string name="signal_internal_track">Özel AAudio (dahili)</string>
+    <string name="signal_internal_section">Dahili çıkış</string>
+    <string name="signal_internal_route">Yol</string>
+    <string name="signal_internal_status">Doğrudan çıkış</string>
+    <string name="signal_internal_endpoint">Özel uç nokta</string>
+    <string name="signal_internal_endpoint_value">%1$d Hz • %2$s</string>
+    <string name="signal_internal_not_checked">Denetlenmedi</string>
+    <string name="signal_internal_underruns">Kesikler</string>
+    <string name="signal_internal_off">Kapalı — Ayarlar › Çıkış’tan açın</string>
+    <string name="signal_detail_internal_mixer_direct_track">Atlandı — Android DOĞRUDAN çıkış verdi (karıştırma ve yeniden örnekleme yok)</string>
+    <string name="signal_detail_internal_mixer_direct_unverified">Doğrudan çıkış istendi — Android doğrulamadı</string>
+    <string name="signal_label_bt_codec">Bluetooth codec</string>
+    <string name="signal_detail_bt_codec">Atlamadan sonra Bluetooth codec (LDAC, aptX…) ile yeniden kodlandı — kulaklığa bit-perfect değil</string>
+    <string name="signal_internal_backend_direct">DOĞRUDAN çıkış</string>
+    <string name="signal_usb_diag_copy">USB tanılamayı kopyala</string>
+    <string name="signal_usb_diag_copied">USB tanılama kopyalandı — iletiye yapıştırın</string>
+
+    <string name="route_speaker">Hoparlör</string>
+    <string name="route_wired">Kablolu</string>
+    <string name="route_bluetooth">Bluetooth</string>
+    <string name="route_usb">USB</string>
+    <string name="route_other">Diğer</string>
+    <string name="route_unknown">Bilinmiyor</string>
+    <string name="badge_mode_bit_perfect">Bit-perfect</string>
+    <string name="badge_mode_direct">Doğrudan</string>
+    <string name="badge_mode_mixer">Mikser</string>
 </resources>

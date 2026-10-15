@@ -150,6 +150,8 @@ data class MiscSettings(
     /** When true (default), animates fluid rotating artwork in the player and lyrics background.
      *  When false, uses a calm static blurred artwork background (especially recommended for Android 11 and below). */
     val rotatingBackgroundEnabled: Boolean = true,
+    /** When true, keeps the screen from turning off when the user has the lyrics view open. */
+    val keepLyricsScreenAwake: Boolean = false,
     /** When true (default), downloads fetch and save synced lyrics (.lrc companion files and embedded tags). */
     val downloadLyrics: Boolean = true,
     /** Stable ids for the last sort selected on each Downloads tab. */
@@ -278,6 +280,7 @@ class SettingsPreferences @Inject constructor(
         val CROSSFADE_SECONDS = intPreferencesKey("lw_crossfade_seconds")
         val WAVY_SEEKBAR_ENABLED = booleanPreferencesKey("lw_wavy_seekbar_enabled")
         val ROTATING_BACKGROUND_ENABLED = booleanPreferencesKey("lw_rotating_background_enabled")
+        val KEEP_LYRICS_SCREEN_AWAKE = booleanPreferencesKey("lw_keep_lyrics_screen_awake")
         val DOWNLOAD_LYRICS = booleanPreferencesKey("lw_download_lyrics")
         val DOWNLOAD_SONG_SORT = stringPreferencesKey("lw_download_song_sort")
         val DOWNLOAD_ARTIST_SORT = stringPreferencesKey("lw_download_artist_sort")
@@ -350,6 +353,7 @@ class SettingsPreferences @Inject constructor(
                 crossfadeSeconds = (p.readSafely(Keys.CROSSFADE_SECONDS) ?: 5).coerceIn(1, 12),
                 wavySeekbarEnabled = p.readSafely(Keys.WAVY_SEEKBAR_ENABLED) ?: true,
                 rotatingBackgroundEnabled = p.readSafely(Keys.ROTATING_BACKGROUND_ENABLED) ?: true,
+                keepLyricsScreenAwake = p.readSafely(Keys.KEEP_LYRICS_SCREEN_AWAKE) ?: false,
                 downloadLyrics = p.readSafely(Keys.DOWNLOAD_LYRICS) ?: true,
                 downloadSongSort = p.readSafely(Keys.DOWNLOAD_SONG_SORT) ?: "recent",
                 downloadArtistSort = p.readSafely(Keys.DOWNLOAD_ARTIST_SORT) ?: "name_az",
@@ -611,6 +615,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setRotatingBackgroundEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.ROTATING_BACKGROUND_ENABLED] = enabled }
+    }
+
+    suspend fun setKeepLyricsScreenAwake(enabled: Boolean) {
+        dataStore.edit { it[Keys.KEEP_LYRICS_SCREEN_AWAKE] = enabled }
     }
 
     suspend fun setDownloadLyrics(enabled: Boolean) {

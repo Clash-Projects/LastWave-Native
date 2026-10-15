@@ -772,6 +772,19 @@ fun PlayerHost(
     var expanded by rememberSaveable { mutableStateOf(false) }
     var currentTab by rememberSaveable { mutableStateOf(FullPlayerTab.NOW_PLAYING) }
     var playlistTrack by remember { mutableStateOf<PlayableTrack?>(null) }
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val keepLyricsAwake = expanded && currentTab == FullPlayerTab.LYRICS && settings.keepLyricsScreenAwake
+    val currentView = androidx.compose.ui.platform.LocalView.current
+    DisposableEffect(keepLyricsAwake) {
+        if (keepLyricsAwake) {
+            currentView.keepScreenOn = true
+        }
+        onDispose {
+            if (keepLyricsAwake) {
+                currentView.keepScreenOn = false
+            }
+        }
+    }
     val context = androidx.compose.ui.platform.LocalContext.current
     val requestAddToPlaylist = remember(viewModel) {
         { track: PlayableTrack ->

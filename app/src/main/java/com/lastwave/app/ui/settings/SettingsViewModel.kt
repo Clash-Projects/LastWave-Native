@@ -587,6 +587,9 @@ class SettingsViewModel @Inject constructor(
     fun setRotatingBackgroundEnabled(enabled: Boolean) = launchSettingsAction("update rotating background") {
         settingsPreferences.setRotatingBackgroundEnabled(enabled)
     }
+    fun setKeepLyricsScreenAwake(enabled: Boolean) = launchSettingsAction("update keep lyrics screen awake") {
+        settingsPreferences.setKeepLyricsScreenAwake(enabled)
+    }
     fun setCanvasEnabled(enabled: Boolean) = launchSettingsAction("update canvas enabled setting") {
         settingsPreferences.setCanvasEnabled(enabled)
     }
