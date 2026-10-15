@@ -371,45 +371,53 @@ private fun Modifier.settingHighlightGlow(
  */
 
 enum class SettingsTab(
-    val title: String,
-    val subtitle: String,
+    @androidx.annotation.StringRes val titleRes: Int,
+    @androidx.annotation.StringRes val subtitleRes: Int,
     val icon: androidx.compose.ui.graphics.vector.ImageVector,
 ) {
     AUDIO(
-        title = stringResource(R.string.set_cat_audio),
-        subtitle = stringResource(R.string.set_cat_audio_sub),
+        titleRes = R.string.set_cat_audio,
+        subtitleRes = R.string.set_cat_audio_sub,
         icon = Icons.Filled.GraphicEq,
     ),
     APPEARANCE(
-        title = stringResource(R.string.set_cat_appear),
-        subtitle = stringResource(R.string.set_cat_appear_sub),
+        titleRes = R.string.set_cat_appear,
+        subtitleRes = R.string.set_cat_appear_sub,
         icon = Icons.Filled.Palette,
     ),
     YOUTUBE(
-        title = stringResource(R.string.set_cat_yt),
-        subtitle = stringResource(R.string.set_cat_yt_sub),
+        titleRes = R.string.set_cat_yt,
+        subtitleRes = R.string.set_cat_yt_sub,
         icon = Icons.Filled.CloudSync,
     ),
     LAST_FM(
-        title = stringResource(R.string.set_cat_lfm),
-        subtitle = stringResource(R.string.set_cat_lfm_sub),
+        titleRes = R.string.set_cat_lfm,
+        subtitleRes = R.string.set_cat_lfm_sub,
         icon = Icons.Filled.Album,
     ),
     LIBRARY(
-        title = stringResource(R.string.set_cat_lib),
-        subtitle = stringResource(R.string.set_cat_lib_sub),
+        titleRes = R.string.set_cat_lib,
+        subtitleRes = R.string.set_cat_lib_sub,
         icon = Icons.Filled.QueueMusic,
     ),
     DATA_BACKUP(
-        title = stringResource(R.string.set_cat_data),
-        subtitle = stringResource(R.string.set_cat_data_sub),
+        titleRes = R.string.set_cat_data,
+        subtitleRes = R.string.set_cat_data_sub,
         icon = Icons.Filled.Backup,
     ),
     ABOUT(
-        title = stringResource(R.string.set_cat_about),
-        subtitle = stringResource(R.string.set_cat_about_sub),
+        titleRes = R.string.set_cat_about,
+        subtitleRes = R.string.set_cat_about_sub,
         icon = Icons.Filled.AutoAwesome,
-    ),
+    );
+
+    val title: String
+        @Composable
+        get() = stringResource(titleRes)
+
+    val subtitle: String
+        @Composable
+        get() = stringResource(subtitleRes)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
