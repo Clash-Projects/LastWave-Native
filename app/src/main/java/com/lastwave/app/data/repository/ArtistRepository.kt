@@ -24,6 +24,7 @@ import javax.inject.Singleton
 @Singleton
 class ArtistRepository @Inject constructor(
     private val innerTube: InnerTubeMusicApi,
+    private val relatedGraph: RelatedGraphRepository,
     private val lastFmApi: LastFmApiService,
     private val sessionPreferences: SessionPreferences,
 ) {
@@ -235,7 +236,7 @@ class ArtistRepository @Inject constructor(
 
         val related = if (!seedVideoId.isNullOrBlank()) {
             runCatching {
-                innerTube.fetchRelatedSongs(seedVideoId, limit = 30, prefetchStreams = false)
+                relatedGraph.relatedFor(seedVideoId, limit = 30, prefetchStreams = false, forceNetwork = true)
             }.getOrDefault(emptyList())
         } else {
             emptyList()

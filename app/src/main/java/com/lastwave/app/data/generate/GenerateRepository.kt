@@ -52,6 +52,7 @@ class GenerateRepository @Inject constructor(
     private val playlistRepository: PlaylistRepository,
     private val viewingProfileState: com.lastwave.app.data.repository.ViewingProfileState,
     private val innerTube: com.lastwave.app.data.music.InnerTubeMusicApi,
+    private val relatedGraph: com.lastwave.app.data.repository.RelatedGraphRepository,
     private val songPlayStatsDao: SongPlayStatsDao,
     private val downloadedTrackDao: DownloadedTrackDao,
 ) {
@@ -396,7 +397,7 @@ class GenerateRepository @Inject constructor(
         limit: Int,
     ): List<GeneratedTrack> {
         val seed = resolveSeedVideoId(track, artist, seedVideoId) ?: return emptyList()
-        return innerTube.fetchRelatedSongs(seed, limit, prefetchStreams = false)
+        return relatedGraph.relatedFor(seed, limit, prefetchStreams = false)
             .map { it.toGeneratedTrack() }
     }
 
@@ -627,7 +628,7 @@ class GenerateRepository @Inject constructor(
         var youtubeTracks: List<YouTubeMusicTrack> = emptyList()
         if (resolvedVideoId != null) {
             try {
-                val primaryRadio = innerTube.fetchRelatedSongs(
+                val primaryRadio = relatedGraph.relatedFor(
                     videoId = resolvedVideoId,
                     limit = maxOf(targetSize * 2, 50),
                     prefetchStreams = false,
@@ -636,7 +637,7 @@ class GenerateRepository @Inject constructor(
                 if (list.size < 40 && list.isNotEmpty()) {
                     val branchSeed = list.firstOrNull { it.videoId != resolvedVideoId }?.videoId
                     if (branchSeed != null) {
-                        val branchRadio = innerTube.fetchRelatedSongs(
+                        val branchRadio = relatedGraph.relatedFor(
                             videoId = branchSeed,
                             limit = 35,
                             prefetchStreams = false,
@@ -771,7 +772,7 @@ class GenerateRepository @Inject constructor(
             try {
                 val seed = innerTube.searchSongs("$artist songs", limit = 3, prefetchStreams = false).firstOrNull()
                     ?: return@async emptyList()
-                val related = innerTube.fetchRelatedSongs(seed.videoId, minOf(limit * 2, 75), prefetchStreams = false)
+                val related = relatedGraph.relatedFor(seed.videoId, minOf(limit * 2, 75), prefetchStreams = false)
                 related.map { it.toGeneratedTrack() }
             } catch (cancellation: CancellationException) {
                 throw cancellation

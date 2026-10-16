@@ -6,6 +6,7 @@ import com.lastwave.app.data.local.db.SongPlayStatsEntity
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.playlist.PlaylistRepository
+import com.lastwave.app.data.repository.RelatedGraphRepository
 import java.time.LocalTime
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -40,6 +41,7 @@ class LocalTasteSuggestionEngine @Inject constructor(
     private val recommendationExclusionDao: RecommendationExclusionDao,
     private val playlistRepository: PlaylistRepository,
     private val innerTube: InnerTubeMusicApi,
+    private val relatedGraph: RelatedGraphRepository,
 ) {
     private fun YouTubeMusicTrack.toGeneratedTrack() = GeneratedTrack(
         name = title,
@@ -147,7 +149,7 @@ class LocalTasteSuggestionEngine @Inject constructor(
         for (seedVideoId in seedVideoIds) {
             if (suggestions.size >= total) break
             val related = runCatching {
-                innerTube.fetchRelatedSongs(seedVideoId, limit = 40, prefetchStreams = false)
+                relatedGraph.relatedFor(seedVideoId, limit = 40, prefetchStreams = false)
             }.getOrDefault(emptyList())
             val filtered = related
                 .map { it.toGeneratedTrack() }
@@ -177,7 +179,7 @@ class LocalTasteSuggestionEngine @Inject constructor(
                 if (suggestions.size >= total) break
                 val likedVid = liked.youtubeVideoIdOrNull() ?: continue
                 val related = runCatching {
-                    innerTube.fetchRelatedSongs(likedVid, limit = 30, prefetchStreams = false)
+                    relatedGraph.relatedFor(likedVid, limit = 30, prefetchStreams = false)
                 }.getOrDefault(emptyList())
                 val filtered = related
                     .map { it.toGeneratedTrack() }
