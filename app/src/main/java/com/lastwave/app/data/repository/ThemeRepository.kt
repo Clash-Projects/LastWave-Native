@@ -49,7 +49,8 @@ data class ThemeUiState(
     /** Experimental liquid-glass materials (Settings → Experimental). When
      *  true, container roles in [colorScheme] are semi-translucent and the
      *  chrome surfaces get specular glass dressing. */
-    val liquidGlass: Boolean = false,
+    val liquidGlass: Boolean = true,
+    val md3NavBar: Boolean = false,
     /** True when the "Dynamic Now Playing" artwork override is currently
      *  driving the schemes. LastWaveTheme uses this so S+ system dynamic
      *  (wallpaper) only takes over when no now-playing color is active:
@@ -250,21 +251,23 @@ class ThemeRepository @Inject constructor(
             accentColorHex = prefs.accentColor,
             useCustomFont = misc.useCustomFont,
             liquidGlass = isGlass,
+            md3NavBar = prefs.md3NavBar,
             isNowPlayingThemed = nowPlayingActive,
         )
     }.stateIn(
         applicationScope,
         SharingStarted.Eagerly,
         ThemeUiState(
-            darkColorScheme = Md3SchemeBuilder.buildDarkScheme("#E03030", false),
-            lightColorScheme = Md3SchemeBuilder.buildLightScheme("#E03030", false),
+            darkColorScheme = Md3SchemeBuilder.buildDarkScheme("#E03030", false, true),
+            lightColorScheme = Md3SchemeBuilder.buildLightScheme("#E03030", true),
             themeMode = ThemeMode.SYSTEM,
-            colorScheme = Md3SchemeBuilder.buildDarkScheme("#E03030", false),
+            colorScheme = Md3SchemeBuilder.buildDarkScheme("#E03030", false, true),
             amoled = false,
             mode = AccentMode.MANUAL,
             accentColorHex = "#E03030",
             useCustomFont = true,
-            liquidGlass = false,
+            liquidGlass = true,
+            md3NavBar = false,
         ),
     )
 
@@ -287,6 +290,8 @@ class ThemeRepository @Inject constructor(
     suspend fun setAmoled(enabled: Boolean) = themePreferences.setAmoled(enabled)
 
     suspend fun setLiquidGlass(enabled: Boolean) = themePreferences.setLiquidGlass(enabled)
+
+    suspend fun setMd3NavBar(enabled: Boolean) = themePreferences.setMd3NavBar(enabled)
 
     /** Turning this on used to just flip the DataStore flag and wait for
      *  Home's own poll loop to eventually call updateNowPlayingArtwork() —

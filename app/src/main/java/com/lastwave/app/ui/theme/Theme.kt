@@ -97,6 +97,7 @@ fun LastWaveTheme(
         ) {
             CompositionLocalProvider(
                 LocalLiquidGlass provides themeState.liquidGlass,
+                LocalMd3NavBar provides themeState.md3NavBar,
                 LocalIsDarkTheme provides isDark,
             ) {
                 content()

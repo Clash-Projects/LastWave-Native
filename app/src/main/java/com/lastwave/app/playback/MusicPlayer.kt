@@ -3604,7 +3604,10 @@ class MusicPlayer @Inject constructor(
         }
         cancelCrossfade()
         val pendingState = _state.value
-        if (player.currentPosition > 5_000) {
+        val isResolvingCurrent = pendingState.currentIndex != player.currentMediaItemIndex ||
+            playRequest?.isActive == true
+        val pos = if (isResolvingCurrent) 0L else player.currentPosition
+        if (pos > 5_000) {
             seekTo(0)
         } else {
             // Under shuffle, walk the explicit listening history first:
@@ -3617,15 +3620,32 @@ class MusicPlayer @Inject constructor(
                 seekTo(0)
                 return@onMain
             }
-            // Under REPEAT_ONE the engine loops previous onto the current
-            // item, so a manual previous would replay the same track and
-            // look dead. Fall through to the logical queue order instead;
-            // a single-track loop (no logical previous) still replays.
-            val enginePrev = player.previousMediaItemIndex.takeIf { it != C.INDEX_UNSET }
+            val timeline = player.currentTimeline
+            val fromIndex = if (pendingState.currentIndex in 0 until player.mediaItemCount) {
+                pendingState.currentIndex
+            } else {
+                player.currentMediaItemIndex
+            }
             val repeatOne = player.repeatMode == Player.REPEAT_MODE_ONE ||
                 pendingState.repeatMode == Player.REPEAT_MODE_ONE
+            var candidatePrev = if (!timeline.isEmpty && fromIndex in 0 until player.mediaItemCount) {
+                timeline.getPreviousWindowIndex(fromIndex, player.repeatMode, player.shuffleModeEnabled).takeIf { it != C.INDEX_UNSET }
+            } else {
+                player.previousMediaItemIndex.takeIf { it != C.INDEX_UNSET }
+            }
+            var guard = 0
+            while (candidatePrev != null &&
+                guard++ < player.mediaItemCount &&
+                (candidatePrev == fromIndex ||
+                 candidatePrev == pendingState.currentIndex ||
+                 (candidatePrev in 0 until player.mediaItemCount && player.getMediaItemAt(candidatePrev).mediaId in unavailableMediaIds))
+            ) {
+                if (repeatOne) break
+                candidatePrev = timeline.getPreviousWindowIndex(candidatePrev, player.repeatMode, player.shuffleModeEnabled).takeIf { it != C.INDEX_UNSET }
+            }
+            val enginePrev = candidatePrev
             val index = historyIndex
-                ?: if (enginePrev == null || (repeatOne && enginePrev == player.currentMediaItemIndex)) {
+                ?: if (enginePrev == null || enginePrev == fromIndex || enginePrev == pendingState.currentIndex || (repeatOne && enginePrev == player.currentMediaItemIndex)) {
                     val logical = previousQueueIndex(pendingState)
                     if (logical != C.INDEX_UNSET) logical else enginePrev
                 } else {
@@ -3644,14 +3664,35 @@ class MusicPlayer @Inject constructor(
         }
         val pendingState = _state.value
         recordHistory(pendingState.current?.mediaIdKey())
-        val engineNext = player.nextMediaItemIndex.takeIf { it != C.INDEX_UNSET }
+        val timeline = player.currentTimeline
+        val fromIndex = if (pendingState.currentIndex in 0 until player.mediaItemCount) {
+            pendingState.currentIndex
+        } else {
+            player.currentMediaItemIndex
+        }
+        val repeatOne = player.repeatMode == Player.REPEAT_MODE_ONE ||
+            pendingState.repeatMode == Player.REPEAT_MODE_ONE
+        var candidateNext = if (!timeline.isEmpty && fromIndex in 0 until player.mediaItemCount) {
+            timeline.getNextWindowIndex(fromIndex, player.repeatMode, player.shuffleModeEnabled).takeIf { it != C.INDEX_UNSET }
+        } else {
+            player.nextMediaItemIndex.takeIf { it != C.INDEX_UNSET }
+        }
+        var guard = 0
+        while (candidateNext != null &&
+            guard++ < player.mediaItemCount &&
+            (candidateNext == fromIndex ||
+             candidateNext == pendingState.currentIndex ||
+             (candidateNext in 0 until player.mediaItemCount && player.getMediaItemAt(candidateNext).mediaId in unavailableMediaIds))
+        ) {
+            if (repeatOne) break
+            candidateNext = timeline.getNextWindowIndex(candidateNext, player.repeatMode, player.shuffleModeEnabled).takeIf { it != C.INDEX_UNSET }
+        }
+        val engineNext = candidateNext
         // Under REPEAT_ONE the engine loops next/previous onto the current
         // item, so a manual next would replay the same track and look dead.
         // Fall through to the logical queue order instead; a single-track
         // loop (no logical next) still replays via the engine index.
-        val repeatOne = player.repeatMode == Player.REPEAT_MODE_ONE ||
-            pendingState.repeatMode == Player.REPEAT_MODE_ONE
-        val index = if (engineNext == null || (repeatOne && engineNext == player.currentMediaItemIndex)) {
+        val index = if (engineNext == null || engineNext == fromIndex || engineNext == pendingState.currentIndex || (repeatOne && engineNext == player.currentMediaItemIndex)) {
             val logical = nextQueueIndex(pendingState)
             if (logical != C.INDEX_UNSET) logical else engineNext
         } else {

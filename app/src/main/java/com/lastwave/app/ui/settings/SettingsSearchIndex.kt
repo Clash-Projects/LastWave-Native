@@ -457,6 +457,23 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "appearance.md3_nav_bar",
+                    title = "Material 3 Navigation Bar",
+                    subtitle = "Classic full-width bottom navigation bar instead of the floating dock",
+                    keywords = listOf(
+                        "md3", "material 3", "navigation bar", "bottom bar", "nav bar",
+                        "dock", "floating dock", "full width nav"
+                    ),
+                    icon = Icons.Filled.Apps,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Appearance",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "appearance.dynamic_now_playing",
                     title = "Dynamic Now Playing Screen",
                     subtitle = "Adaptive color background on the now playing screen driven by album art",

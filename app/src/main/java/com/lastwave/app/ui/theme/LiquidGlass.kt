@@ -83,6 +83,9 @@ import com.kyant.backdrop.backdrops.layerBackdrop as nativeBackdrop
 /** Shared opt-in flag for Settings > Experimental > Liquid Glass. */
 val LocalLiquidGlass = staticCompositionLocalOf { false }
 
+/** Shared toggle for classic Material 3 full-width bottom navigation bar. */
+val LocalMd3NavBar = staticCompositionLocalOf { false }
+
 /** Background-only source for surfaces inside the captured scrolling content. */
 val LocalLiquidGlassBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 

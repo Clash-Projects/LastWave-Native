@@ -11,6 +11,7 @@
     <string name="nav_stats">Stats</string>
     <string name="nav_playlists">Playlists</string>
     <string name="nav_create_playlist">Create / Generate Playlist</string>
+    <string name="nav_generator">Generator</string>
     <string name="update_available">Update Available</string>
     <string name="update">Update</string>
     <string name="dismiss_update">Dismiss update</string>
@@ -70,6 +71,8 @@
     <string name="settings_section_experimental">Experimental</string>
     <string name="settings_liquid_glass">Liquid Glass</string>
     <string name="settings_liquid_glass_sub">iOS-style translucent materials across the app</string>
+    <string name="settings_md3_nav_bar">Material 3 Navigation Bar</string>
+    <string name="settings_md3_nav_bar_sub">Use classic full-width bottom navigation instead of the floating dock</string>
     <string name="settings_lyrics_animation">Lyrics Animation</string>
     <string name="settings_lyrics_provider">Lyrics provider</string>
     <string name="settings_lyrics_provider_desc">Tried first for every song. If it returns nothing, the app automatically falls through to the other providers.</string>
