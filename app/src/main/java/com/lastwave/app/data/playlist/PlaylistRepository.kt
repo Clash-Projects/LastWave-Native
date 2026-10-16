@@ -556,6 +556,42 @@ class PlaylistRepository @Inject constructor(
         return updated.toDomain()
     }
 
+    /**
+     * Persists a YouTube videoId learned at playback time onto stored rows
+     * holding the same song (Liked Songs, saved playlists). Blank-id rows
+     * always take the id; rows pinned to [replaceVideoId] take it only when
+     * that is exactly the dead id being replaced. Other existing ids are
+     * never overwritten, and the queue is never reordered or dropped.
+     * Serialized through [saveMutex]; best-effort — returns rows updated.
+     */
+    suspend fun pinVideoIdForSong(
+        song: GeneratedTrack,
+        videoId: String,
+        replaceVideoId: String? = null,
+    ): Int {
+        if (videoId.isBlank() || song.name.isBlank()) return 0
+        awaitStartupSync()
+        return saveMutex.withLock {
+            var changed = 0
+            for (entity in dao.getAll()) {
+                val domain = runCatching { entity.toDomain() }.getOrNull() ?: continue
+                val pinned = domain.tracks.map { track ->
+                    val existingId = track.youtubeVideoIdOrNull()
+                    val eligible = !track.isLocalFile() && track.sameSongAs(song) &&
+                        (existingId == null || (replaceVideoId != null && existingId == replaceVideoId))
+                    if (eligible) {
+                        track.copy(url = "https://music.youtube.com/watch?v=$videoId")
+                    } else {
+                        track
+                    }
+                }
+                if (pinned == domain.tracks) continue
+                if (replaceTracksForSync(entity.id, pinned, domain.tracks) != null) changed++
+            }
+            changed
+        }
+    }
+
     suspend fun delete(id: Long) {
         awaitStartupSync()
         dao.deleteById(id)

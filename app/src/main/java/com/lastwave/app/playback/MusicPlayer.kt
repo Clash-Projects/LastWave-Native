@@ -68,6 +68,7 @@ import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YOUTUBE_WEB_USER_AGENT
 import com.lastwave.app.data.lossless.LosslessAudioStream
 import com.lastwave.app.data.lossless.LosslessMusicApi
+import com.lastwave.app.data.playlist.PlaylistRepository
 import com.lastwave.app.data.plugin.ModuleDrmFactory
 import com.lastwave.app.data.plugin.SegmentedDashBridge
 import com.lastwave.app.data.plugin.stableCacheKey
@@ -211,6 +212,7 @@ class MusicPlayer @Inject constructor(
     private val settingsPreferences: SettingsPreferences,
     private val equalizerPreferences: EqualizerPreferences,
     private val discoverRepository: DiscoverRepository,
+    private val playlistRepository: PlaylistRepository,
     private val nativeAudioEngine: dagger.Lazy<NativeAudioEngine>,
     private val audioEffectsEngine: AudioEffectsEngine,
     private val applicationScope: CoroutineScope,
@@ -978,6 +980,7 @@ class MusicPlayer @Inject constructor(
                                 applyDacRoutingFor(dacRateFor(stream))
                                 logStreamEvent("player-retry", stream, retry = retry)
                                 cacheCurrentTrackStream(stream)
+                                learnQueueVideoId(failedIndex, updated, stream.youtubeCandidate?.videoId, stream.rematchedFromVideoId)
                                 replaceMediaItemPreservingShuffle(failedIndex, updated.toMediaItem(stream))
                                 lastSeekTargetMs = currentPos
                                 lastSeekAtElapsedMs = SystemClock.elapsedRealtime()
@@ -1144,6 +1147,7 @@ class MusicPlayer @Inject constructor(
                                     if (isCurrentlyPlaying) {
                                         publishResolvedQuality(resolved, expectedMediaId = track.mediaIdKey())
                                     }
+                                    learnQueueVideoId(-1, track, resolved.youtubeCandidate?.videoId, resolved.rematchedFromVideoId)
                                 }
                             }
                         }
@@ -2072,13 +2076,7 @@ class MusicPlayer @Inject constructor(
                     } else {
                         selectedTrack
                     }
-                    if (playbackTrack !== selectedTrack) {
-                        _state.update { state ->
-                            val queue = state.queue.toMutableList()
-                            if (selectedIndex in queue.indices) queue[selectedIndex] = playbackTrack
-                            state.copy(current = playbackTrack, queue = queue)
-                        }
-                    }
+                    learnQueueVideoId(selectedIndex, selectedTrack, learnedVideoId, resolved?.rematchedFromVideoId)
                     val mediaItems = tracks.mapIndexed { index, track ->
                         val itemTrack = if (index == selectedIndex) playbackTrack else track
                         itemTrack.toMediaItem(if (index == selectedIndex) resolved else null)
@@ -4023,6 +4021,7 @@ class MusicPlayer @Inject constructor(
                     applyDacRoutingFor(dacRateFor(resolved))
                     logStreamEvent("queue-prepare", resolved, retry = 0)
                     cacheCurrentTrackStream(resolved)
+                    learnQueueVideoId(index, track, resolved.youtubeCandidate?.videoId, resolved.rematchedFromVideoId)
                     replaceMediaItemPreservingShuffle(index, track.toMediaItem(resolved))
                     takeOverPlayback(index, expectedMediaId)
                     enrichUpcomingQueue(index)
@@ -4446,7 +4445,42 @@ class MusicPlayer @Inject constructor(
 
     private fun preloadNextTrack(nextIndex: Int, nextTrack: PlayableTrack?) {
         if (nextTrack == null || nextTrack.playbackUrl != null) return
-        val identity = nextTrack.playbackIdentity() ?: return
+        val identity = nextTrack.playbackIdentity()
+        if (identity == null) {
+            // No videoId yet (imported/legacy row): the next item must still
+            // warm up or the transition lands on an unresolved placeholder.
+            // Match an id now, save it onto the source playlist, then run the
+            // normal preload flow with a concrete identity.
+            if (nextTrack.title.isBlank()) return
+            preloadJob?.cancel()
+            preloadJob = applicationScope.launch(Dispatchers.IO) {
+                val matchId = runCatching {
+                    innerTube.findBestMatchOrNull(nextTrack.title, nextTrack.artist, prefetchStreams = false)?.videoId
+                }.getOrNull()?.takeIf { it.isNotBlank() } ?: return@launch
+                currentCoroutineContext().ensureActive()
+                withContext(Dispatchers.Main.immediate) {
+                    if (nextIndex !in 0 until player.mediaItemCount ||
+                        nextIndex == player.currentMediaItemIndex
+                    ) {
+                        return@withContext
+                    }
+                    val queuedTrack = player.getMediaItemAt(nextIndex).toPlayableTrack()
+                    if (!queuedTrack.videoId.isNullOrBlank() ||
+                        queuedTrack.mediaIdKey() != nextTrack.mediaIdKey()
+                    ) {
+                        return@withContext
+                    }
+                    learnQueueVideoId(nextIndex, queuedTrack, matchId)
+                    val identified = queuedTrack.copy(videoId = matchId, internalTrackId = matchId)
+                    replaceMediaItemPreservingShuffle(nextIndex, identified.toMediaItem())
+                    // Detach before recursing: the follow-up preload cancels
+                    // the current preload job, and we are running inside it.
+                    preloadJob = null
+                    preloadNextTrack(nextIndex, identified)
+                }
+            }
+            return
+        }
         if (streamResolver.playback.requested == identity) return
         warmArtwork(nextTrack)
         preloadJob?.cancel()
@@ -5674,6 +5708,10 @@ class MusicPlayer @Inject constructor(
          *  `expire`); null = unknown or never expires. Stale prefetches are
          *  re-resolved instead of handed dead to ExoPlayer. */
         val expiresAtEpochMs: Long? = null,
+        /** The stored videoId this stream replaced after it turned out
+         *  unplayable. Set only by the title/artist rematch fallback; used
+         *  to heal stored rows that pinned the dead id. */
+        val rematchedFromVideoId: String? = null,
     )
 
     private fun isNetworkException(error: Throwable): Boolean {
@@ -6487,7 +6525,21 @@ class MusicPlayer @Inject constructor(
                 trackId = track.internalTrackId?.takeIf { it.isNotBlank() } ?: directId,
                 youtubeVideoId = directId,
             )
-            val entry = streamResolver.resolvePlayback(identity, track.durationMs)
+            val entry = try {
+                streamResolver.resolvePlayback(identity, track.durationMs)
+            } catch (failure: Throwable) {
+                if (failure is kotlinx.coroutines.CancellationException ||
+                    failure is com.lastwave.app.playback.resolve.StaleResolveException ||
+                    !isDeadVideoIdFailure(failure) ||
+                    track.title.isBlank()
+                ) {
+                    throw failure
+                }
+                // The stored id itself is unplayable (removed / region-locked).
+                // Rows that pinned it would otherwise fail forever, so fall
+                // back to a fresh search and remember the replacement.
+                return resolveRematchedYoutubeStream(track, deadVideoId = directId)
+            }
             return acceptResolvedIdentity(track, identity, entry)
         }
         if (track.title.isBlank()) {
@@ -6513,10 +6565,68 @@ class MusicPlayer @Inject constructor(
         return entry.toPlayerStream()
     }
 
+    /**
+     * A stored videoId failed as explicitly unplayable. Retry once through a
+     * fresh title/artist search; the resolved stream records the dead id so
+     * callers can persist the replacement onto stored playlists.
+     */
+    private suspend fun resolveRematchedYoutubeStream(
+        track: PlayableTrack,
+        deadVideoId: String,
+    ): ResolvedStream {
+        val deadIdentity = TrackIdentity(
+            trackId = track.internalTrackId?.takeIf { it.isNotBlank() } ?: deadVideoId,
+            youtubeVideoId = deadVideoId,
+        )
+        PlaybackStartupLog.videoIdLookupStart()
+        val matchId = try {
+            innerTube.findBestMatch(
+                title = track.title,
+                artist = track.artist,
+                prefetchStreams = false,
+            ).videoId.takeIf { it.isNotBlank() }
+        } catch (failure: Throwable) {
+            if (failure is kotlinx.coroutines.CancellationException) throw failure
+            null
+        } finally {
+            PlaybackStartupLog.videoIdLookupEnd()
+        }
+        // Search failed or landed on the same dead video: nothing improved.
+        if (matchId == null || matchId == deadVideoId) {
+            throw java.io.IOException("Unable to resolve a playable audio stream for $deadVideoId")
+        }
+        val identity = TrackIdentity(matchId, matchId)
+        // Re-point the active claim at the replacement so the resolve below
+        // is not rejected as stale (same handshake as cached-identity hits).
+        streamResolver.playback.begin(identity)
+        val entry = try {
+            streamResolver.resolvePlayback(identity, track.durationMs)
+        } catch (failure: Throwable) {
+            // Hand the claim back to the stored identity when it is still
+            // ours: the normal retry path re-resolves with it and must not
+            // be treated as a stale selection.
+            if (streamResolver.playback.requested == identity) {
+                streamResolver.playback.begin(deadIdentity)
+            }
+            throw failure
+        }
+        if (entry.youtubeVideoId != matchId) {
+            streamResolver.cache.invalidate(identity)
+        }
+        val resolved = acceptResolvedIdentity(
+            track = track,
+            identity = identity,
+            entry = entry,
+            requestedIdOverride = matchId,
+        )
+        return resolved.copy(rematchedFromVideoId = deadVideoId)
+    }
+
     private fun acceptResolvedIdentity(
         track: PlayableTrack,
         identity: TrackIdentity,
         entry: StreamCache,
+        requestedIdOverride: String? = null,
     ): ResolvedStream {
         if (!entry.matches(identity)) {
             streamResolver.cache.invalidate(identity)
@@ -6530,7 +6640,9 @@ class MusicPlayer @Inject constructor(
         }
         return entry.toPlayerStream().also { resolved ->
             val resolvedId = resolved.youtubeCandidate?.videoId
-            val requestedId = track.videoId?.takeIf { it.isNotBlank() } ?: identity.youtubeVideoId
+            val requestedId = requestedIdOverride
+                ?: track.videoId?.takeIf { it.isNotBlank() }
+                ?: identity.youtubeVideoId
             if (resolvedId != null && resolvedId != requestedId) {
                 streamResolver.cache.invalidate(identity)
                 preparedStreams.remove(resolved.cacheKey)
@@ -7272,6 +7384,50 @@ class MusicPlayer @Inject constructor(
         )
     }
 
+    /**
+     * A queue item resolved to a concrete YouTube videoId this session. The
+     * id is stamped onto the in-memory queue and current track so the rest
+     * of the session works with a direct identity, and persisted onto stored
+     * playlists that hold the same song — blank-id rows get the id so the
+     * next play resolves directly, and rows that pinned a now-dead id get
+     * the replacement (only when [rematchedFromVideoId] names exactly the id
+     * that failed). No-op when the learned id already matches.
+     */
+    private fun learnQueueVideoId(
+        index: Int,
+        track: PlayableTrack,
+        learnedVideoId: String?,
+        rematchedFromVideoId: String? = null,
+    ) {
+        val videoId = learnedVideoId?.takeIf { it.isNotBlank() } ?: return
+        val previousVideoId = track.videoId?.takeIf { it.isNotBlank() }
+        if (previousVideoId == videoId) return
+        if (previousVideoId != null && previousVideoId != rematchedFromVideoId) return
+        val learned = track.copy(videoId = videoId, internalTrackId = videoId)
+        _state.update { state ->
+            val queue = state.queue.toMutableList()
+            val queueIndex = if (index in queue.indices && queue[index].mediaIdKey() == track.mediaIdKey()) {
+                index
+            } else {
+                queue.indexOfFirst { it.mediaIdKey() == track.mediaIdKey() }
+            }
+            if (queueIndex >= 0) queue[queueIndex] = learned
+            state.copy(
+                queue = queue,
+                current = if (state.current?.mediaIdKey() == track.mediaIdKey()) learned else state.current,
+            )
+        }
+        applicationScope.launch(Dispatchers.IO) {
+            runCatching {
+                playlistRepository.pinVideoIdForSong(
+                    GeneratedTrack(name = track.title, artist = track.artist),
+                    videoId,
+                    replaceVideoId = previousVideoId,
+                )
+            }
+        }
+    }
+
     private fun findPreparedStreamFor(
         track: PlayableTrack,
         videoId: String?,
@@ -7284,7 +7440,7 @@ class MusicPlayer @Inject constructor(
         // 1. Prefer prepared lossless stream if lossless is allowed
         if (!bypassLossless) {
             val losslessHit = preparedStreams.values.firstOrNull { stream ->
-                !stream.isExpired() && (stream.cacheKey.startsWith(losslessPrefix) || stream.isLossless)
+                !stream.isExpired() && stream.cacheKey.startsWith(losslessPrefix)
             }
             if (losslessHit != null) return losslessHit
         }
@@ -7649,6 +7805,18 @@ class MusicPlayer @Inject constructor(
         )
         return true
     }
+
+    /**
+     * Narrow gate for the dead-videoId rematch: only explicit unplayability
+     * (video removed, region-locked, no playable format) — never transient
+     * network trouble, which must reach the normal retry path untouched.
+     */
+    private fun isDeadVideoIdFailure(error: Throwable): Boolean =
+        error.causeChain().any { cause ->
+            cause is ConfirmedUnplayableMediaException ||
+                (cause is java.io.IOException &&
+                    cause.message?.contains("Unable to resolve a playable audio stream") == true)
+        }
 
     private fun isExplicitlyUnplayableFailure(error: Throwable): Boolean =
         error.causeChain().filterIsInstance<java.io.IOException>().firstOrNull() is ConfirmedUnplayableMediaException
