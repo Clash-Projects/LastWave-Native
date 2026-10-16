@@ -14,6 +14,7 @@ import com.lastwave.app.data.naming.PlaylistNamer
 import com.lastwave.app.data.network.LastFmApiService
 import com.lastwave.app.data.playlist.PlaylistRepository
 import com.lastwave.app.data.playlist.SavedPlaylist
+import com.lastwave.app.data.repository.RelatedGraphRepository
 import com.lastwave.app.data.repository.ViewingProfileState
 import com.lastwave.app.ui.generate.GenerateMode
 import io.mockk.coEvery
@@ -177,6 +178,11 @@ class NeverHeardGenerationTest {
             playlistRepository = playlistRepository,
             viewingProfileState = viewingProfileState,
             innerTube = innerTube,
+            relatedGraph = RelatedGraphRepository(
+                innerTube = innerTube,
+                dao = mockk(relaxed = true),
+                scope = backgroundScope,
+            ),
             songPlayStatsDao = songPlayStatsDao,
             downloadedTrackDao = downloadedTrackDao,
         )

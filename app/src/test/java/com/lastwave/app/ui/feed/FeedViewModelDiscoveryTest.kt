@@ -11,6 +11,7 @@ import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.repository.HomeRepository
+import com.lastwave.app.data.repository.RelatedGraphRepository
 import com.lastwave.app.data.ytmusic.YtConnection
 import com.lastwave.app.data.ytmusic.YtMusicAuthManager
 import com.lastwave.app.playback.MusicPlayer
@@ -42,6 +43,7 @@ class FeedViewModelDiscoveryTest {
     private val settingsPreferences: SettingsPreferences = mockk(relaxed = true)
     private val musicPlayer: MusicPlayer = mockk(relaxed = true)
     private val innerTube: InnerTubeMusicApi = mockk(relaxed = true)
+    private val relatedGraph: RelatedGraphRepository = mockk(relaxed = true)
     private val ytAuth: YtMusicAuthManager = mockk(relaxed = true)
     private val homeRepository: HomeRepository = mockk(relaxed = true)
     private val discoverRepository: DiscoverRepository = mockk(relaxed = true)
@@ -72,6 +74,7 @@ class FeedViewModelDiscoveryTest {
             settingsPreferences,
             musicPlayer,
             innerTube,
+            relatedGraph,
             ytAuth,
             homeRepository,
             discoverRepository,
@@ -92,6 +95,7 @@ class FeedViewModelDiscoveryTest {
             settingsPreferences,
             musicPlayer,
             innerTube,
+            relatedGraph,
             ytAuth,
             homeRepository,
             discoverRepository,
