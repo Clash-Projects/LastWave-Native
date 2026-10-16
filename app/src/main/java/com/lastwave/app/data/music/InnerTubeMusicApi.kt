@@ -245,6 +245,11 @@ class InnerTubeMusicApi @Inject constructor(
     /** Last wall-clock attempt to (re)bootstrap visitor data: the fast path
      *  must not re-fetch on every song when the config endpoint is down. */
     @Volatile private var lastVisitorBootstrapAttemptMs = 0L
+    /** Last wall-clock attempt to fetch the web config from the network.
+     *  Unlike [lastVisitorBootstrapAttemptMs] this also paces re-fetches
+     *  after a synthetic-visitor config was cached, so one early scrape
+     *  miss cannot pin the placeholder for the whole session. */
+    @Volatile private var lastConfigFetchAttemptMs = 0L
 
     fun invalidateCache(videoId: String) {
         streamCache.keys.removeIf { it.videoId == videoId }
@@ -2301,8 +2306,10 @@ class InnerTubeMusicApi @Inject constructor(
         // Visitor data is mandatory, not best-effort: VISIONOS/ANDROID_VR
         // answer LOGIN_REQUIRED with zero formats when it is missing, so a
         // resolve without it burns the fast-path budget on misses. Bootstrap
-        // it here (bounded, throttled) when the startup pre-warm hasn't.
-        var visitorData = webConfig?.visitorData
+        // it here (bounded, throttled) when the startup pre-warm hasn't —
+        // including when the cached value is only the synthetic placeholder,
+        // so a transient scrape miss self-heals instead of sticking.
+        var visitorData = webConfig?.visitorData?.takeIf { it != FALLBACK_TOKEN_SESSION }
         if (visitorData.isNullOrBlank()) {
             val now = System.currentTimeMillis()
             if (now - lastVisitorBootstrapAttemptMs >= VISITOR_BOOTSTRAP_RETRY_COOLDOWN_MS) {
@@ -3005,21 +3012,65 @@ class InnerTubeMusicApi @Inject constructor(
     }
 
     private suspend fun getWebConfig(): WebConfig {
-        webConfig?.takeIf { it.visitorData != null }?.let { return it }
+        // A config whose visitor data is only the synthetic placeholder is
+        // usable but NOT final: the homepage scrape can miss once (network
+        // not yet up at startup, consent interstitial, transient block) and
+        // keeping that placeholder cached for the whole session degrades
+        // every later search/resolve call. Re-fetch it once the retry
+        // cooldown elapses; keep serving the stale value meanwhile.
+        webConfig?.takeIf { it.hasRealVisitorData() }?.let { return it }
         return configMutex.withLock {
-            webConfig?.takeIf { it.visitorData != null }?.let { return@withLock it }
-            val config = runCatching { fetchWebConfig() }
-                .getOrElse {
-                    WebConfig(
-                        FALLBACK_WEB_KEY,
-                        FALLBACK_WEB_VERSION,
-                        webConfig?.visitorData ?: FALLBACK_TOKEN_SESSION,
-                    )
+            webConfig?.takeIf { it.hasRealVisitorData() }?.let { return@withLock it }
+            val now = System.currentTimeMillis()
+            if (now - lastConfigFetchAttemptMs >= WEB_CONFIG_RETRY_COOLDOWN_MS) {
+                lastConfigFetchAttemptMs = now
+                val cachedPlaceholder = webConfig
+                if (cachedPlaceholder == null) {
+                    // First config of the session: block — callers cannot
+                    // proceed without any visitor data at all.
+                    val fetched = try {
+                        fetchWebConfig()
+                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                        throw cancellation
+                    } catch (error: Exception) {
+                        null
+                    }
+                    if (fetched != null) {
+                        webConfig = fetched
+                        return@withLock fetched
+                    }
+                } else {
+                    // Placeholder in hand: refresh off the critical path so a
+                    // slow homepage fetch never stalls search/resolve calls
+                    // holding this mutex. The result lands for the next caller.
+                    apiScope.launch {
+                        val fetched = try {
+                            fetchWebConfig()
+                        } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                            throw cancellation
+                        } catch (error: Exception) {
+                            null
+                        }
+                        if (fetched != null && fetched.hasRealVisitorData() &&
+                            webConfig?.hasRealVisitorData() != true
+                        ) {
+                            webConfig = fetched
+                        }
+                    }
+                    return@withLock cachedPlaceholder
                 }
-            webConfig = config
-            config
+            }
+            val fallback = webConfig
+                ?: WebConfig(FALLBACK_WEB_KEY, FALLBACK_WEB_VERSION, FALLBACK_TOKEN_SESSION)
+            webConfig = fallback
+            fallback
         }
     }
+
+    /** True when the config's visitor data came from an actual homepage
+     *  scrape rather than the synthetic placeholder. */
+    private fun WebConfig.hasRealVisitorData(): Boolean =
+        !visitorData.isNullOrBlank() && visitorData != FALLBACK_TOKEN_SESSION
 
     private suspend fun fetchWebConfig(): WebConfig {
         val request = Request.Builder()
@@ -3794,13 +3845,15 @@ class InnerTubeMusicApi @Inject constructor(
         const val WRITE_ACTIONS_PER_REQUEST = 50
 
         const val HEDGED_CLIENT_STAGGER_DELAY_MS = 300L
-        /** Per-client bound for the direct-URL fast path (single POST, no extras). */
-        const val DIRECT_FAST_CLIENT_TIMEOUT_MS = 2_500L
+        /** Per-client bound for the direct-URL fast path (single POST, no
+         *  extras). Relaxed for slow devices: a fast first success still
+         *  wins the race, only the worst case waits longer. */
+        const val DIRECT_FAST_CLIENT_TIMEOUT_MS = 4_000L
         /** Bound for the mandatory visitor-data bootstrap on the fast path.
          *  VISIONOS/ANDROID_VR answer LOGIN_REQUIRED with zero formats when
          *  visitor data is missing, so a resolve without it burns the whole
          *  fast-path budget on guaranteed misses. */
-        const val VISITOR_BOOTSTRAP_BUDGET_MS = 1_500L
+        const val VISITOR_BOOTSTRAP_BUDGET_MS = 3_000L
         /** Cooldown before the fast path retries a failed visitor bootstrap. */
         const val VISITOR_BOOTSTRAP_RETRY_COOLDOWN_MS = 60_000L
         /** Bound for a warm PoToken mint on the fast path. The engine is
@@ -3808,17 +3861,17 @@ class InnerTubeMusicApi @Inject constructor(
          *  anything slower proceeds without a token. */
         const val POTOKEN_FAST_BUDGET_MS = 1_000L
         /** Whole fast path must settle inside this budget before heavier stages run. */
-        const val DIRECT_FAST_PATH_BUDGET_MS = 4_000L
+        const val DIRECT_FAST_PATH_BUDGET_MS = 6_000L
         /** Whole-call cap for one player-API POST (connect + read + body). */
-        const val PLAYER_REQUEST_CALL_TIMEOUT_MS = 6_000L
+        const val PLAYER_REQUEST_CALL_TIMEOUT_MS = 8_000L
         /** Max wait on the direct-client/NewPipe race before the last-resort stage. */
         const val CLIENT_RACE_TIMEOUT_MS = 8_000L
         /** Hard cap for one full stream resolution; callers retry with fresh state. */
-        const val STREAM_RESOLVE_TOTAL_TIMEOUT_MS = 12_000L
+        const val STREAM_RESOLVE_TOTAL_TIMEOUT_MS = 20_000L
         /** Bound for the InnerTubeX cipher stage so a hung resolve fails fast. */
-        const val INNERTUBEX_STAGE_TIMEOUT_MS = 4_000L
+        const val INNERTUBEX_STAGE_TIMEOUT_MS = 7_000L
         /** Bound for the last-resort NewPipe stage. */
-        const val NEWPIPE_FALLBACK_TIMEOUT_MS = 6_000L
+        const val NEWPIPE_FALLBACK_TIMEOUT_MS = 9_000L
         /** Overall budget for promoting a staged YouTube stream from MusicPlayer. */
         const val YOUTUBE_PROMOTE_BUDGET_MS = 12_000L
         /** No-cipher clients tried first, in order (mirrors limusic's fallback order). */
@@ -3826,6 +3879,8 @@ class InnerTubeMusicApi @Inject constructor(
         const val MAX_FORMAT_PROBES_PER_CLIENT = 2
         const val MAX_PLAYER_REQUEST_ATTEMPTS = 2
         const val CONFIG_REQUEST_TIMEOUT_MS = 6_000L
+        /** Cooldown before a cached-but-synthetic web config is re-fetched. */
+        const val WEB_CONFIG_RETRY_COOLDOWN_MS = 30_000L
         const val RELATED_REQUEST_TIMEOUT_MS = 8_000L
         /** Per-call cap for interactive search POSTs: without it a hanging
          *  search burns both socket timeouts per attempt and stalls playback
@@ -3833,7 +3888,7 @@ class InnerTubeMusicApi @Inject constructor(
         const val SEARCH_REQUEST_TIMEOUT_MS = 10_000L
         const val ACCOUNT_SWITCHER_TIMEOUT_MS = 15_000L
         /** Per-probe socket timeout for the 0-1 byte stream validity check. */
-        const val STREAM_PROBE_TIMEOUT_MS = 4_000L
+        const val STREAM_PROBE_TIMEOUT_MS = 6_000L
         const val HISTORY_PING_TIMEOUT_MS = 15_000L
         const val URL_EXPIRY_MARGIN_MS = 2 * 60 * 1000L
         const val REQUEST_RETRY_BASE_DELAY_MS = 250L
