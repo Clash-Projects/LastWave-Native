@@ -138,15 +138,13 @@ class DiscordPresenceTest {
     }
 
     @Test
-    fun assetsCarryAlbumAndPlayState() {
+    fun assetsCarryOnlyTheCoverAndAlbumText() {
         val playing = DiscordPresence.buildActivity(state(isPlaying = true), NOW_MS)["assets"]!!.jsonObject
         assertEquals("Afterglow", playing["large_text"]?.jsonPrimitive?.content)
-        assertEquals("play", playing["small_image"]?.jsonPrimitive?.content)
-        assertEquals("Playing", playing["small_text"]?.jsonPrimitive?.content)
-
-        val paused = DiscordPresence.buildActivity(state(isPlaying = false), NOW_MS)["assets"]!!.jsonObject
-        assertEquals("pause", paused["small_image"]?.jsonPrimitive?.content)
-        assertEquals("Paused", paused["small_text"]?.jsonPrimitive?.content)
+        assertEquals("https://lh3.googleusercontent.com/cover=abc", playing["large_image"]?.jsonPrimitive?.content)
+        // No play/pause badge: one cover art, nothing else.
+        assertNull(playing["small_image"])
+        assertNull(playing["small_text"])
 
         // No album: the title stands in, exactly as on desktop.
         val noAlbum = DiscordPresence.buildActivity(state(track = track(album = null)), NOW_MS)["assets"]!!.jsonObject
@@ -317,8 +315,8 @@ class DiscordPresenceTest {
         val stalled = state(isPlaying = false, isBuffering = true)
         val activity = DiscordPresence.buildActivity(stalled, NOW_MS)
         val assets = activity["assets"]!!.jsonObject
-        assertEquals("play", assets["small_image"]?.jsonPrimitive?.content)
-        assertEquals("Playing", assets["small_text"]?.jsonPrimitive?.content)
+        assertNull(assets["small_image"])
+        assertNull(assets["small_text"])
         // The countdown bar stays up while the buffer refills, so the card
         // never reads as a frozen "paused" one in the middle of a stall.
         assertTrue(activity.containsKey("timestamps"))
@@ -341,9 +339,6 @@ class DiscordPresenceTest {
         // "waiting for data while playing" apart from "the user paused".
         val paused = state(isPlaying = false, isBuffering = false)
         val activity = DiscordPresence.buildActivity(paused, NOW_MS)
-        val assets = activity["assets"]!!.jsonObject
-        assertEquals("pause", assets["small_image"]?.jsonPrimitive?.content)
-        assertEquals("Paused", assets["small_text"]?.jsonPrimitive?.content)
         assertNull(activity["timestamps"])
         assertFalse(
             DiscordPresence.signature(paused) == DiscordPresence.signature(state()),

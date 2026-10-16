@@ -33,6 +33,8 @@ import kotlinx.serialization.json.putJsonArray
  *   [ Get LastWave ]                 <- opens this project's releases
  * ```
  *
+ * One cover art only: no small_image/small_text play/pause badge is ever sent.
+ *
  * Deliberately free of Android and Discord SDK types: every rule here is pure,
  * so the format is unit-testable on the JVM and can never drift from the
  * desktop client's without a test failing.
@@ -244,8 +246,6 @@ object DiscordPresence {
             put("assets", buildJsonObject {
                 put("large_image", largeImage)
                 put("large_text", if (album.isEmpty()) title else clip(album))
-                put("small_image", if (playing) "play" else "pause")
-                put("small_text", if (playing) "Playing" else "Paused")
             })
             putJsonArray("buttons") {
                 // Buttons are plain URLs and cannot detect the app, so the
