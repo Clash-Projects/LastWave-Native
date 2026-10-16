@@ -10,8 +10,9 @@ import androidx.room.RoomDatabase
         SavedPlaylistEntity::class,
         DownloadedTrackEntity::class,
         SongPlayStatsEntity::class,
+        RelatedGraphEdgeEntity::class,
     ],
-    version = 13,
+    version = 14,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -20,4 +21,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun savedPlaylistDao(): SavedPlaylistDao
     abstract fun downloadedTrackDao(): DownloadedTrackDao
     abstract fun songPlayStatsDao(): SongPlayStatsDao
+    abstract fun relatedGraphDao(): RelatedGraphDao
 }

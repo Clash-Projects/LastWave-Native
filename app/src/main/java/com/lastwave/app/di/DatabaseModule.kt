@@ -7,6 +7,7 @@ import com.lastwave.app.data.local.db.AppDatabase
 import com.lastwave.app.data.local.db.ArtworkCacheDao
 import com.lastwave.app.data.local.db.SavedPlaylistDao
 import com.lastwave.app.data.local.db.RecommendationExclusionDao
+import com.lastwave.app.data.local.db.RelatedGraphDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -260,6 +261,34 @@ object DatabaseModule {
         }
     }
 
+    private val migration13To14 = object : Migration(13, 14) {
+        override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `related_graph_edges` (
+                    `sourceVideoId` TEXT NOT NULL,
+                    `relatedVideoId` TEXT NOT NULL,
+                    `title` TEXT NOT NULL DEFAULT '',
+                    `artist` TEXT NOT NULL DEFAULT '',
+                    `album` TEXT,
+                    `artworkUrl` TEXT,
+                    `durationSeconds` INTEGER,
+                    `seenCount` INTEGER NOT NULL DEFAULT 1,
+                    `firstSeenAtMillis` INTEGER NOT NULL,
+                    `lastSeenAtMillis` INTEGER NOT NULL,
+                    PRIMARY KEY(`sourceVideoId`, `relatedVideoId`)
+                )
+                """.trimIndent(),
+            )
+            database.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_related_graph_edges_relatedVideoId` ON `related_graph_edges` (`relatedVideoId`)",
+            )
+            database.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_related_graph_edges_lastSeenAtMillis` ON `related_graph_edges` (`lastSeenAtMillis`)",
+            )
+        }
+    }
+
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase =
@@ -279,6 +308,7 @@ object DatabaseModule {
                 migration10To11,
                 migration11To12,
                 migration12To13,
+                migration13To14,
             )
             .build()
 
@@ -304,4 +334,9 @@ object DatabaseModule {
     @Singleton
     fun provideSongPlayStatsDao(database: AppDatabase): com.lastwave.app.data.local.db.SongPlayStatsDao =
         database.songPlayStatsDao()
+
+    @Provides
+    @Singleton
+    fun provideRelatedGraphDao(database: AppDatabase): RelatedGraphDao =
+        database.relatedGraphDao()
 }
