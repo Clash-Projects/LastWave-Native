@@ -102,10 +102,17 @@ class YtMusicAuthManager @Inject constructor(
         )
     }
 
-    /** Clears cookies + identity AND the local→remote mapping table, so a
-     *  later reconnect starts clean instead of writing into stale playlists
-     *  owned by whoever signed in previously. */
-    suspend fun signOut() = preferences.clearConnection()
+    /** Clears cookies + identity AND the local→remote mapping table, and
+     *  wipes the WebView's own cookie jar so a later sign-in can never
+     *  auto-capture the previous account's stale session. */
+    suspend fun signOut() {
+        preferences.clearConnection()
+        runCatching {
+            val cm = android.webkit.CookieManager.getInstance()
+            cm.removeAllCookies(null)
+            cm.flush()
+        }
+    }
 
     /**
      * Attempts to read updated session cookies from Android's system CookieManager.

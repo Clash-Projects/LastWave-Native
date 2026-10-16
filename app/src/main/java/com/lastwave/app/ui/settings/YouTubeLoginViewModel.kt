@@ -33,19 +33,18 @@ class YouTubeLoginViewModel @Inject constructor(
     val uiState: StateFlow<YouTubeLoginUiState> = _uiState.asStateFlow()
 
     /**
-     * Persists the cookies captured from the sign-in WebView, then verifies
-     * the session with an authenticated browse (authoritative — no HTML
-     * scraping) before reporting success. Atomic: the previous session is
-     * restored when verification fails, so a bad paste can never disconnect
-     * a working account. Sync kicks off immediately so the user sees their
+     * Persists the cookies captured from the sign-in WebView and reports
+     * success as soon as they carry a real YouTube session (4.1.0 behavior).
+     * Resolving the account name via InnerTube is best-effort enrichment —
+     * a slow or unavailable account_menu must never reject a sign-in whose
+     * cookies are valid. Sync kicks off immediately so the user sees their
      * playlists appear right away.
      */
     fun attemptConnect(rawCookieHeader: String?) {
         if (_uiState.value.verifying) return
         val cookies = rawCookieHeader.orEmpty()
         val hasSapisid = listOf("__Secure-3PAPISID=", "SAPISID=", "APISID=").any { it in cookies }
-        val hasSession = listOf("LOGIN_INFO=", "SID=", "__Secure-1PSID=", "SSID=").any { it in cookies }
-        if (!hasSapisid || !hasSession) {
+        if (!hasSapisid) {
             _uiState.update {
                 it.copy(errorMessage = "Sign-in incomplete — finish signing in, then tap \"I'm signed in\".")
             }
@@ -65,11 +64,12 @@ class YouTubeLoginViewModel @Inject constructor(
                 // A successful YouTube Music login ends guest mode: the
                 // LaunchGate then routes on the YT connection itself.
                 runCatching { sessionPreferences.exitGuestMode() }
-                // Verify the session is really authenticated before reporting
-                // success. Retried with backoff: right after sign-in Google is
-                // still finishing its cookie redirect chain and the WebView may
-                // not have flushed the final SAPISID/LOGIN_INFO yet, so re-read
-                // cookies between attempts instead of hammering instantly.
+                // Resolve the account name for the connected badge. Retried
+                // with backoff: right after sign-in Google is still finishing
+                // its cookie redirect chain and the WebView may not have
+                // flushed the final cookies yet, so re-read cookies between
+                // attempts instead of hammering instantly. Failure to resolve
+                // the name does NOT fail the connection.
                 var info: com.lastwave.app.data.music.YtAccountInfo? = null
                 for ((attempt, waitMs) in longArrayOf(0L, 1_200L, 2_500L, 4_000L).withIndex()) {
                     if (waitMs > 0L) kotlinx.coroutines.delay(waitMs)
@@ -82,9 +82,13 @@ class YouTubeLoginViewModel @Inject constructor(
                     info = runCatching { innerTube.fetchAccountInfo() }.getOrNull()
                     if (info != null) break
                 }
-                val verified = info ?: throw java.io.IOException("YouTube rejected the session — sign in again.")
-                val displayName = verified.accountName.ifBlank { "Google account" }
-                ytAuthManager.updateAccountIdentity(verified.accountName, verified.channelHandle, verified.photoUrl)
+                // Best-effort identity (4.1.0 behavior): the session is already
+                // persisted, so an account_menu miss only means the display
+                // name falls back — it never rejects the sign-in.
+                val displayName = info?.accountName?.takeIf { it.isNotBlank() } ?: "Google account"
+                if (info != null) {
+                    ytAuthManager.updateAccountIdentity(info.accountName, info.channelHandle, info.photoUrl)
+                }
                 _uiState.update { it.copy(verifying = false, connectedName = displayName) }
                 viewModelScope.launch {
                     runCatching { syncManager.syncNow("connected") }

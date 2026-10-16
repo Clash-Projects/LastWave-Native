@@ -296,22 +296,21 @@ private const val LOGIN_URL =
 
 private fun hasSessionTokens(cookies: String?): Boolean {
     if (cookies == null) return false
-    val hasSapisid = listOf("__Secure-3PAPISID=", "SAPISID=", "APISID=").any { cookies.contains(it) }
-    val hasSession = listOf("LOGIN_INFO=", "SID=", "__Secure-1PSID=", "SSID=").any { cookies.contains(it) }
-    return hasSapisid && hasSession
+    // 4.1.0 rule: a real YouTube session is proven by its SAPISID alone.
+    return listOf("__Secure-3PAPISID=", "SAPISID=", "APISID=").any { cookies.contains(it) }
 }
 
 private fun readYouTubeCookies(): String? = try {
     val cm = CookieManager.getInstance()
     cm.flush()
-    val domains = listOf(
+    // First YouTube-domain jar wins — never concatenate domains: a later
+    // .google.com set would overwrite the YouTube session cookies in the
+    // parsed map, producing a mixed session the APIs reject.
+    listOf(
         "https://music.youtube.com",
         "https://www.youtube.com",
         "https://youtube.com",
-        "https://accounts.google.com",
-    )
-    val cookies = domains.mapNotNull { cm.getCookie(it)?.takeIf(String::isNotBlank) }
-    if (cookies.isEmpty()) null else cookies.distinct().joinToString("; ")
+    ).firstNotNullOfOrNull { cm.getCookie(it)?.takeIf(String::isNotBlank) }
 } catch (error: Exception) {
     null
 } catch (error: LinkageError) {
