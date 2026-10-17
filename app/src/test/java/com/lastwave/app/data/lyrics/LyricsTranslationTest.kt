@@ -196,7 +196,7 @@ class LyricsTranslationTest {
     fun translationWireTarget_passesConfiguredCodeThrough() {
         assertThat(translationWireTarget(" fr ")).isEqualTo("fr")
         assertThat(translationWireTarget("zh-TW")).isEqualTo("zh-TW")
-        assertThat(translationWireTarget("")).isNotBlank()
+        assertThat(translationWireTarget("").isNotBlank()).isTrue()
     }
 
     @Test
