@@ -279,7 +279,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-dash:1.2.1")
     // MediaBrowserServiceCompat/MediaSessionCompat bridge used by Android
     // Auto to browse the LastWave library and control the same player.
-    implementation("androidx.media:media:1.7.0")
+    implementation("androidx.media:media:1.8.0")
 
     // GPLv3 Media3-matched FFmpeg software decoder (distribution must comply).
     // The renderer factory prefers FFmpeg for every codec it supports so all
