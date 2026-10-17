@@ -1090,4 +1090,33 @@
     <string name="login_guest_desc">Guest mode works fully offline with local recommendations. Connect Last.fm anytime in Settings to sync scrobbles.</string>
     <string name="login_restore">Restore backup</string>
     <string name="login_downloads">Open Offline Downloads</string>
+
+    <!-- Lyrics Share -->
+    <string name="lyshare_title">Share lyrics</string>
+    <string name="lyshare_select_lyrics">Select lyrics</string>
+    <string name="lyshare_lines_selected">%1$d lines selected</string>
+    <string name="lyshare_line_selected_single">1 line selected</string>
+    <string name="lyshare_max_lines_reached">You can share up to 5 lines</string>
+    <string name="lyshare_continue">Continue</string>
+    <string name="lyshare_mode_song">Song</string>
+    <string name="lyshare_mode_lyrics">Lyrics</string>
+    <string name="lyshare_action_share">Share</string>
+    <string name="lyshare_action_save">Save</string>
+    <string name="lyshare_saved_to_gallery">Saved to Pictures/LastWave</string>
+    <string name="lyshare_save_failed">Couldn\'t save image</string>
+    <string name="lyshare_share_failed">Couldn\'t share image</string>
+    <string name="lyshare_button_cd">Share lyrics</string>
+    <string name="lyshare_close_cd">Close</string>
+    <string name="lyshare_back_cd">Back</string>
+    <string name="lyshare_color_picker_cd">Color palette</string>
+    <string name="lyshare_color_song">Song color</string>
+    <string name="lyshare_color_muted">Muted</string>
+    <string name="lyshare_color_dominant">Dominant</string>
+    <string name="lyshare_color_dark">Dark</string>
+    <string name="lyshare_color_white">White</string>
+    <string name="lyshare_color_black">Black</string>
+    <string name="lyshare_color_accent">Accent</string>
+    <string name="lyshare_color_brand">LastWave Lime</string>
+    <string name="lyshare_accessibility_line_selected">Selected, line %1$d of %2$d</string>
+    <string name="lyshare_accessibility_line_unselected">Line %1$d of %2$d</string>
 </resources>

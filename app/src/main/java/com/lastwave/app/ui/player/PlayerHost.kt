@@ -2420,6 +2420,7 @@ private fun FullPlayer(
                                     primaryColor = ambientColor,
                                     secondaryColor = ambientCompanion,
                                     tertiaryColor = ambientDeep,
+                                    resolvedArtworkUrl = resolvedAmbientUrl,
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .adaptiveContentWidth(maxWidth = if (isTabletLandscape) 960.dp else 720.dp),

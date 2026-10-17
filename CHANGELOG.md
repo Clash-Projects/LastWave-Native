@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Lyrics Share:** Export and share styled lyric cards (Song and Lyrics modes) with dynamic palette extraction, customizable color swatches, full multilingual support (Latin, Devanagari, Arabic, CJK), and system share sheet & MediaStore gallery export.
+
 ## [4.2.4] - 2026-10-05
 
 ### Added & Improved

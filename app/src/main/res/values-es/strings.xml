@@ -258,4 +258,33 @@
     <string name="desc_shuffle">Aleatorio</string>
     <string name="desc_repeat">Repetir</string>
     <string name="desc_play_pause">Reproducir o pausar</string>
+
+    <!-- Compartir letras -->
+    <string name="lyshare_title">Compartir letras</string>
+    <string name="lyshare_select_lyrics">Seleccionar letras</string>
+    <string name="lyshare_lines_selected">%1$d líneas seleccionadas</string>
+    <string name="lyshare_line_selected_single">1 línea seleccionada</string>
+    <string name="lyshare_max_lines_reached">Puedes compartir hasta 5 líneas</string>
+    <string name="lyshare_continue">Continuar</string>
+    <string name="lyshare_mode_song">Canción</string>
+    <string name="lyshare_mode_lyrics">Letras</string>
+    <string name="lyshare_action_share">Compartir</string>
+    <string name="lyshare_action_save">Guardar</string>
+    <string name="lyshare_saved_to_gallery">Guardado en Imágenes/LastWave</string>
+    <string name="lyshare_save_failed">No se pudo guardar la imagen</string>
+    <string name="lyshare_share_failed">No se pudo compartir la imagen</string>
+    <string name="lyshare_button_cd">Compartir letras</string>
+    <string name="lyshare_close_cd">Cerrar</string>
+    <string name="lyshare_back_cd">Atrás</string>
+    <string name="lyshare_color_picker_cd">Paleta de colores</string>
+    <string name="lyshare_color_song">Color de la canción</string>
+    <string name="lyshare_color_muted">Apagado</string>
+    <string name="lyshare_color_dominant">Dominante</string>
+    <string name="lyshare_color_dark">Oscuro</string>
+    <string name="lyshare_color_white">Blanco</string>
+    <string name="lyshare_color_black">Negro</string>
+    <string name="lyshare_color_accent">Acento</string>
+    <string name="lyshare_color_brand">Lima LastWave</string>
+    <string name="lyshare_accessibility_line_selected">Seleccionada, línea %1$d de %2$d</string>
+    <string name="lyshare_accessibility_line_unselected">Línea %1$d de %2$d</string>
 </resources>

@@ -258,4 +258,33 @@
     <string name="desc_shuffle">셔플</string>
     <string name="desc_repeat">반복</string>
     <string name="desc_play_pause">재생 또는 일시정지</string>
+
+    <!-- 가사 공유 -->
+    <string name="lyshare_title">가사 공유</string>
+    <string name="lyshare_select_lyrics">가사 선택</string>
+    <string name="lyshare_lines_selected">%1$d줄 선택됨</string>
+    <string name="lyshare_line_selected_single">1줄 선택됨</string>
+    <string name="lyshare_max_lines_reached">최대 5줄까지 공유할 수 있습니다</string>
+    <string name="lyshare_continue">계속</string>
+    <string name="lyshare_mode_song">곡</string>
+    <string name="lyshare_mode_lyrics">가사</string>
+    <string name="lyshare_action_share">공유</string>
+    <string name="lyshare_action_save">저장</string>
+    <string name="lyshare_saved_to_gallery">Pictures/LastWave에 저장되었습니다</string>
+    <string name="lyshare_save_failed">이미지를 저장하지 못했습니다</string>
+    <string name="lyshare_share_failed">이미지를 공유하지 못했습니다</string>
+    <string name="lyshare_button_cd">가사 공유</string>
+    <string name="lyshare_close_cd">닫기</string>
+    <string name="lyshare_back_cd">뒤로</string>
+    <string name="lyshare_color_picker_cd">색상 팔레트</string>
+    <string name="lyshare_color_song">곡 색상</string>
+    <string name="lyshare_color_muted">뮤트</string>
+    <string name="lyshare_color_dominant">도미넌트</string>
+    <string name="lyshare_color_dark">다크</string>
+    <string name="lyshare_color_white">화이트</string>
+    <string name="lyshare_color_black">블랙</string>
+    <string name="lyshare_color_accent">강조 색상</string>
+    <string name="lyshare_color_brand">라스트웨이브 라임</string>
+    <string name="lyshare_accessibility_line_selected">선택됨, %2$d줄 중 %1$d번째 줄</string>
+    <string name="lyshare_accessibility_line_unselected">%2$d줄 중 %1$d번째 줄</string>
 </resources>

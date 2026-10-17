@@ -258,4 +258,33 @@
     <string name="desc_shuffle">عشوائي</string>
     <string name="desc_repeat">تكرار</string>
     <string name="desc_play_pause">تشغيل أو إيقاف</string>
+
+    <!-- مشاركة الكلمات -->
+    <string name="lyshare_title">مشاركة الكلمات</string>
+    <string name="lyshare_select_lyrics">تحديد الكلمات</string>
+    <string name="lyshare_lines_selected">تم تحديد %1$d أسطر</string>
+    <string name="lyshare_line_selected_single">تم تحديد سطر واحد</string>
+    <string name="lyshare_max_lines_reached">يمكنك مشاركة ما يصل إلى 5 أسطر</string>
+    <string name="lyshare_continue">متابعة</string>
+    <string name="lyshare_mode_song">أغنية</string>
+    <string name="lyshare_mode_lyrics">كلمات</string>
+    <string name="lyshare_action_share">مشاركة</string>
+    <string name="lyshare_action_save">حفظ</string>
+    <string name="lyshare_saved_to_gallery">تم الحفظ في Pictures/LastWave</string>
+    <string name="lyshare_save_failed">تعذر حفظ الصورة</string>
+    <string name="lyshare_share_failed">تعذر مشاركة الصورة</string>
+    <string name="lyshare_button_cd">مشاركة الكلمات</string>
+    <string name="lyshare_close_cd">إغلاق</string>
+    <string name="lyshare_back_cd">رجوع</string>
+    <string name="lyshare_color_picker_cd">لوحة الألوان</string>
+    <string name="lyshare_color_song">لون الأغنية</string>
+    <string name="lyshare_color_muted">خافت</string>
+    <string name="lyshare_color_dominant">سائد</string>
+    <string name="lyshare_color_dark">داكن</string>
+    <string name="lyshare_color_white">أبيض</string>
+    <string name="lyshare_color_black">أسود</string>
+    <string name="lyshare_color_accent">لون مميز</string>
+    <string name="lyshare_color_brand">ليموني LastWave</string>
+    <string name="lyshare_accessibility_line_selected">محدد، السطر %1$d من %2$d</string>
+    <string name="lyshare_accessibility_line_unselected">السطر %1$d من %2$d</string>
 </resources>
