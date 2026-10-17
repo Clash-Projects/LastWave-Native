@@ -19,6 +19,7 @@ data class ShareCardSpec(
     val blurredBackgroundBitmap: Bitmap? = null,
     val swatchColor: Int = ColorContrastHelper.BRAND_LIME,
     val derivedColors: DerivedCardColors = ColorContrastHelper.deriveTextColors(swatchColor),
+    val isCoverBackground: Boolean = false,
     val isRtl: Boolean = false,
     val targetWidth: Int = 1080,
     val scaleFactor: Float = 1.0f,

@@ -98,6 +98,8 @@ fun SharePreviewScreen(
         else snapshot.lines.slice(selectedRange.first..selectedRange.last)
     }
 
+    val isCoverSelected = selectedSwatchColor == ColorContrastHelper.SWATCH_COVER_ART && selectedMode == CardMode.Lyrics
+
     // Build specification for renderer
     val spec = remember(
         selectedMode,
@@ -105,8 +107,9 @@ fun SharePreviewScreen(
         snapshot.trackInfo,
         artworkResolution,
         selectedSwatchColor,
+        isCoverSelected,
     ) {
-        val derived = ColorContrastHelper.deriveTextColors(selectedSwatchColor)
+        val derived = ColorContrastHelper.deriveTextColors(selectedSwatchColor, isCoverScrim = isCoverSelected)
         val hasRtl = selectedLines.any { it.isRtl }
         ShareCardSpec(
             mode = selectedMode,
@@ -117,10 +120,19 @@ fun SharePreviewScreen(
             blurredBackgroundBitmap = artworkResolution.blurredBitmap,
             swatchColor = selectedSwatchColor,
             derivedColors = derived,
+            isCoverBackground = isCoverSelected,
             isRtl = hasRtl,
             targetWidth = ShareCardRenderer.BASE_WIDTH,
             scaleFactor = 0.50f, // Scaled for fast live preview
         )
+    }
+
+    // Auto-revert cover swatch to color swatch if user switches to Song mode
+    LaunchedEffect(selectedMode) {
+        if (selectedMode == CardMode.Song && selectedSwatchColor == ColorContrastHelper.SWATCH_COVER_ART) {
+            val fallback = swatches.firstOrNull { !it.isCoverArt }?.color ?: ColorContrastHelper.BRAND_LIME
+            onSwatchChange(fallback)
+        }
     }
 
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -301,7 +313,22 @@ fun SharePreviewScreen(
                 )
             }
 
-            // YT Music Style Color Swatches Picker
+            val displaySwatches = remember(swatches, selectedMode, artworkResolution.coverBitmap) {
+                if (selectedMode == CardMode.Lyrics && artworkResolution.coverBitmap != null) {
+                    listOf(
+                        ColorSwatch(
+                            id = "cover_art",
+                            nameRes = R.string.lyshare_color_cover,
+                            color = ColorContrastHelper.SWATCH_COVER_ART,
+                            isCoverArt = true,
+                        )
+                    ) + swatches.filter { !it.isCoverArt }
+                } else {
+                    swatches.filter { !it.isCoverArt }
+                }
+            }
+
+            // YT Music Style Color Swatches Picker (with Cover swatch as first item in Lyrics mode)
             LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -311,7 +338,7 @@ fun SharePreviewScreen(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                items(swatches, key = { it.id }) { swatch ->
+                items(displaySwatches, key = { it.id }) { swatch ->
                     val isSelected = swatch.color == selectedSwatchColor
                     val swatchName = stringResource(swatch.nameRes)
 
@@ -319,7 +346,13 @@ fun SharePreviewScreen(
                         modifier = Modifier
                             .size(44.dp)
                             .clip(CircleShape)
-                            .background(Color(swatch.color))
+                            .then(
+                                if (swatch.isCoverArt) {
+                                    Modifier
+                                } else {
+                                    Modifier.background(Color(swatch.color))
+                                }
+                            )
                             .then(
                                 if (isSelected) {
                                     Modifier.border(BorderStroke(3.dp, Color.White), CircleShape)
@@ -335,6 +368,16 @@ fun SharePreviewScreen(
                             },
                         contentAlignment = Alignment.Center,
                     ) {
+                        if (swatch.isCoverArt && artworkResolution.coverBitmap != null) {
+                            Image(
+                                bitmap = artworkResolution.coverBitmap.asImageBitmap(),
+                                contentDescription = null,
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape),
+                            )
+                        }
                         if (isSelected) {
                             Box(
                                 modifier = Modifier
