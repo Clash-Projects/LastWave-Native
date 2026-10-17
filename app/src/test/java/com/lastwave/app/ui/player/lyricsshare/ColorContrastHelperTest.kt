@@ -25,59 +25,131 @@ class ColorContrastHelperTest {
     }
 
     @Test
-    fun deriveTextColors_onPureBlack_meetsWcagAaRequirements() {
+    fun deriveTextColors_onPureBlack_meetsWcagRequirements() {
         val derived = ColorContrastHelper.deriveTextColors(ColorContrastHelper.PURE_BLACK)
 
         assertThat(derived.isDarkBackground).isTrue()
 
-        // Lyrics contrast must be >= 4.5:1 (WCAG AA)
+        // Lyrics contrast must be >= 7.0:1 (Enhanced Contrast)
         val lyricsContrast = ColorContrastHelper.contrastRatio(derived.lyricsTextColor, derived.backgroundColor)
-        assertThat(lyricsContrast).isAtLeast(4.5)
+        assertThat(lyricsContrast).isAtLeast(7.0)
 
-        // Secondary text contrast must be >= 3.0:1
+        // Secondary & Brand text contrast must be >= 4.5:1
         val secondaryContrast = ColorContrastHelper.contrastRatio(derived.secondaryTextColor, derived.backgroundColor)
-        assertThat(secondaryContrast).isAtLeast(3.0)
+        assertThat(secondaryContrast).isAtLeast(4.5)
+
+        val brandContrast = ColorContrastHelper.contrastRatio(derived.brandTextColor, derived.backgroundColor)
+        assertThat(brandContrast).isAtLeast(4.5)
     }
 
     @Test
-    fun deriveTextColors_onPureWhite_meetsWcagAaRequirements() {
+    fun deriveTextColors_onPureWhite_meetsWcagRequirements() {
         val derived = ColorContrastHelper.deriveTextColors(ColorContrastHelper.PURE_WHITE)
 
         assertThat(derived.isDarkBackground).isFalse()
 
         val lyricsContrast = ColorContrastHelper.contrastRatio(derived.lyricsTextColor, derived.backgroundColor)
-        assertThat(lyricsContrast).isAtLeast(4.5)
+        assertThat(lyricsContrast).isAtLeast(7.0)
 
         val secondaryContrast = ColorContrastHelper.contrastRatio(derived.secondaryTextColor, derived.backgroundColor)
-        assertThat(secondaryContrast).isAtLeast(3.0)
+        assertThat(secondaryContrast).isAtLeast(4.5)
+
+        val brandContrast = ColorContrastHelper.contrastRatio(derived.brandTextColor, derived.backgroundColor)
+        assertThat(brandContrast).isAtLeast(4.5)
     }
 
     @Test
-    fun deriveTextColors_onBrandLime_meetsWcagAaRequirements() {
-        // Brand lime is 0xFFC9FB00, high luminance (light background)
+    fun deriveTextColors_onBrandLime_meetsWcagRequirements() {
         val derived = ColorContrastHelper.deriveTextColors(ColorContrastHelper.BRAND_LIME)
 
-        assertThat(derived.isDarkBackground).isFalse()
-
         val lyricsContrast = ColorContrastHelper.contrastRatio(derived.lyricsTextColor, derived.backgroundColor)
-        assertThat(lyricsContrast).isAtLeast(4.5)
+        assertThat(lyricsContrast).isAtLeast(7.0)
 
         val secondaryContrast = ColorContrastHelper.contrastRatio(derived.secondaryTextColor, derived.backgroundColor)
-        assertThat(secondaryContrast).isAtLeast(3.0)
+        assertThat(secondaryContrast).isAtLeast(4.5)
+
+        val brandContrast = ColorContrastHelper.contrastRatio(derived.brandTextColor, derived.backgroundColor)
+        assertThat(brandContrast).isAtLeast(4.5)
     }
 
     @Test
-    fun deriveTextColors_onDarkSlate_meetsWcagAaRequirements() {
+    fun deriveTextColors_onDarkSlate_meetsWcagRequirements() {
         val darkSlate = 0xFF1E293B.toInt()
         val derived = ColorContrastHelper.deriveTextColors(darkSlate)
+
+        val lyricsContrast = ColorContrastHelper.contrastRatio(derived.lyricsTextColor, derived.backgroundColor)
+        assertThat(lyricsContrast).isAtLeast(7.0)
+
+        val secondaryContrast = ColorContrastHelper.contrastRatio(derived.secondaryTextColor, derived.backgroundColor)
+        assertThat(secondaryContrast).isAtLeast(4.5)
+
+        val brandContrast = ColorContrastHelper.contrastRatio(derived.brandTextColor, derived.backgroundColor)
+        assertThat(brandContrast).isAtLeast(4.5)
+    }
+
+    @Test
+    fun deriveTextColors_onWarmBrownAndSaturatedColors_meetsWcagRequirements() {
+        // Deep amber/brown like YouTube Music screenshot
+        val colors = listOf(
+            0xFF78350F.toInt(), // Warm Amber / Brown
+            0xFFDC2626.toInt(), // Vibrant Crimson / Red
+            0xFF2563EB.toInt(), // Vivid Blue
+            0xFF059669.toInt(), // Emerald Green
+            0xFF7C3AED.toInt(), // Purple
+        )
+
+        for (c in colors) {
+            val derived = ColorContrastHelper.deriveTextColors(c)
+            val lyricsContrast = ColorContrastHelper.contrastRatio(derived.lyricsTextColor, derived.backgroundColor)
+            assertThat(lyricsContrast).isAtLeast(7.0)
+
+            val secondaryContrast = ColorContrastHelper.contrastRatio(derived.secondaryTextColor, derived.backgroundColor)
+            assertThat(secondaryContrast).isAtLeast(4.5)
+
+            val brandContrast = ColorContrastHelper.contrastRatio(derived.brandTextColor, derived.backgroundColor)
+            assertThat(brandContrast).isAtLeast(4.5)
+        }
+    }
+
+    @Test
+    fun deriveTextColors_coverScrim_meetsWcagRequirements() {
+        val derived = ColorContrastHelper.deriveTextColors(
+            backgroundColor = ColorContrastHelper.SWATCH_COVER_ART,
+            isCoverScrim = true,
+        )
 
         assertThat(derived.isDarkBackground).isTrue()
 
         val lyricsContrast = ColorContrastHelper.contrastRatio(derived.lyricsTextColor, derived.backgroundColor)
-        assertThat(lyricsContrast).isAtLeast(4.5)
+        assertThat(lyricsContrast).isAtLeast(7.0)
 
         val secondaryContrast = ColorContrastHelper.contrastRatio(derived.secondaryTextColor, derived.backgroundColor)
-        assertThat(secondaryContrast).isAtLeast(3.0)
+        assertThat(secondaryContrast).isAtLeast(4.5)
+
+        val brandContrast = ColorContrastHelper.contrastRatio(derived.brandTextColor, derived.backgroundColor)
+        assertThat(brandContrast).isAtLeast(4.5)
+    }
+
+    @Test
+    fun getSelectScreenGradientColors_returnsRichHueGradient() {
+        val red = 0xFFEF4444.toInt()
+        val (top, bottom) = ColorContrastHelper.getSelectScreenGradientColors(red)
+
+        // Neither top nor bottom should be black or grey
+        val topLum = ColorContrastHelper.relativeLuminance(top)
+        val bottomLum = ColorContrastHelper.relativeLuminance(bottom)
+
+        assertThat(topLum).isGreaterThan(0.01)
+        assertThat(bottomLum).isGreaterThan(topLum) // bottom is slightly lighter shade of the same hue
+    }
+
+    @Test
+    fun getSelectedPillTextColor_hasHighContrastOnWhite() {
+        val red = 0xFFEF4444.toInt()
+        val textColor = ColorContrastHelper.getSelectedPillTextColor(red)
+        val contrastOnWhite = ColorContrastHelper.contrastRatio(textColor, ColorContrastHelper.PURE_WHITE)
+
+        assertThat(contrastOnWhite).isAtLeast(7.0)
     }
 
     @Test
@@ -101,7 +173,6 @@ class ColorContrastHelperTest {
             "brand",
         ).inOrder()
 
-        // Brand Lime and Accent swatch colors present
         val brandSwatch = swatches.first { it.id == "brand" }
         assertThat(brandSwatch.color).isEqualTo(ColorContrastHelper.BRAND_LIME)
 
@@ -112,7 +183,7 @@ class ColorContrastHelperTest {
     @Test
     fun extractSwatches_withBitmap_extractsColorsSafely() {
         val bitmap = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
-        bitmap.eraseColor(0xFFFF5722.toInt()) // Deep orange
+        bitmap.eraseColor(0xFFFF5722.toInt())
 
         val swatches = ColorContrastHelper.extractSwatches(
             artBitmap = bitmap,
