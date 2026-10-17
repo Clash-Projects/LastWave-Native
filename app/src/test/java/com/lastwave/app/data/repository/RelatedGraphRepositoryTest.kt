@@ -42,7 +42,10 @@ class RelatedGraphRepositoryTest {
         db = Room.inMemoryDatabaseBuilder(
             RuntimeEnvironment.getApplication(),
             AppDatabase::class.java,
-        ).allowMainThreadQueries().build()
+        ).allowMainThreadQueries()
+            .setQueryExecutor { it.run() }
+            .setTransactionExecutor { it.run() }
+            .build()
         dao = db.relatedGraphDao()
         refreshScope = TestScope(StandardTestDispatcher())
         repository = RelatedGraphRepository(api, dao, refreshScope)
