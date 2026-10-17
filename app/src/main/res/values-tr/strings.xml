@@ -1065,4 +1065,27 @@
     <string name="login_guest_desc">Misafir modu yerel önerilerle tamamen çevrimdışı çalışır. Scrobble’ları eşitlemek için Ayarlardan istediğiniz zaman Last.fm bağlayın.</string>
     <string name="login_restore">Yedeği geri yükle</string>
     <string name="login_downloads">Çevrimdışı İndirilenleri Aç</string>
+
+    <string name="nav_generator">jeneratör</string>
+    <string name="settings_md3_nav_bar">Material 3 Gezinme Çubuğu</string>
+    <string name="settings_md3_nav_bar_sub">Yüzer iskele yerine klasik tam genişlikte alt gezinmeyi kullanın</string>
+    <string name="settings_lyrics_rotating_background">Şarkı Sözleri Arka Plan Hareketi</string>
+    <string name="settings_lyrics_rotating_background_on">Şarkı sözü görünümünde akıcı şekilde dönen sanat eserlerini canlandırın</string>
+    <string name="settings_lyrics_rotating_background_off">Şarkı sözleri görünümünde statik bulanık kapak arka planı</string>
+    <string name="set_lyrics_autohide_title">Şarkı sözü düğmelerini gizle</string>
+    <string name="set_lyrics_autohide_never">Asla</string>
+    <string name="set_lyrics_autohide_value">%1$d saniye sonra</string>
+    <string name="set_lyrics_autohide_seconds">%1$d saniye</string>
+    <string name="set_lyrics_autohide_desc">Şarkı Sözleri ekranındaki kayan yazı tipi boyutu ve tam ekran düğmeleri, bu boşta kalma süresinden sonra kaybolur. Onları geri getirmek için şarkı sözlerine dokunun.</string>
+    <string name="set_translation_language_title">Çeviri dili</string>
+    <string name="set_translation_language_app">Uygulama dili</string>
+    <string name="set_translation_language_follows">Uygulama dilini takip eder</string>
+    <string name="set_translation_language_desc">Şarkı Sözleri ekranındaki tercüme düğmesinin şarkıları çevirdiği dil.</string>
+    <string name="ly_translate_cd">Şarkı sözlerini çevir</string>
+    <string name="ly_romanize_cd">Şarkı sözlerini romanlaştır</string>
+    <string name="ly_show_original_cd">Orijinal şarkı sözlerini göster</string>
+    <string name="ly_toast_already_language">Bu şarkı sözleri zaten %1$s\'da</string>
+    <string name="ly_toast_already_romanized">Bu şarkı sözlerinde zaten Latin karakterleri kullanılıyor</string>
+    <string name="ly_toast_romanization_unavailable">Romanizasyon kullanılamıyor</string>
+    <string name="ly_toast_translation_unavailable">Çeviri kullanılamıyor</string>
 </resources>
