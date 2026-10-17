@@ -107,7 +107,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.TransformOrigin
@@ -184,9 +187,10 @@ fun ModernLyricsPanel(
     /** Manual sync correction (ms, + = lyrics earlier). Applies to lyric
      *  focus/highlight only — the seekbar below keeps true position. */
     lyricsOffsetMs: Long = 0L,
-    /** Seconds of inactivity before the floating font-size/fullscreen buttons
-     *  fade out; 0 = Never (always visible). Tap the lyrics to bring them back. */
     controlsAutoHideSeconds: Int = 5,
+    /** Controls auto-hide visibility state (hoisted or internally managed). */
+    controlsVisibleState: Boolean? = null,
+    onControlsVisibleChange: ((Boolean) -> Unit)? = null,
     /** Language the translate button targets; blank = follow the app language. */
     translationLanguage: String = "",
     primaryColor: Color = MaterialTheme.colorScheme.primary,
@@ -204,16 +208,21 @@ fun ModernLyricsPanel(
 
     // Floating buttons over the lyrics stay only while the user is active:
     // hide after the configured idle time and bring them back on the first tap.
-    var controlsVisible by remember { mutableStateOf(true) }
+    var internalControlsVisible by remember { mutableStateOf(true) }
+    val controlsVisible = controlsVisibleState ?: internalControlsVisible
+    val setControlsVisible: (Boolean) -> Unit = { visible ->
+        internalControlsVisible = visible
+        onControlsVisibleChange?.invoke(visible)
+    }
     var fontSliderOpen by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(controlsVisible, controlsAutoHideSeconds, fontSliderOpen, isFullscreen) {
         if (controlsVisible && controlsAutoHideSeconds > 0 && !fontSliderOpen) {
             delay(controlsAutoHideSeconds * 1000L)
-            controlsVisible = false
+            setControlsVisible(false)
         }
     }
     // Entering or leaving lyrics fullscreen starts a fresh visible period.
-    LaunchedEffect(isFullscreen) { controlsVisible = true }
+    LaunchedEffect(isFullscreen) { setControlsVisible(true) }
 
     // On-demand lyric translation / romanization. Work is batched and cached
     // per track and language inside [LyricsTranslation]; the panel owns only
@@ -562,7 +571,7 @@ fun ModernLyricsPanel(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pointerInput(Unit) { detectTapGestures { controlsVisible = true } },
+                        .pointerInput(Unit) { detectTapGestures { setControlsVisible(true) } },
                 )
             }
         }
@@ -604,6 +613,36 @@ fun ModernLyricsPanel(
         )
     }
 }
+
+/**
+ * Smoothly melts the top and bottom edges of the lyrics viewport using a hardware-accelerated
+ * offscreen alpha gradient mask (BlendMode.DstIn). Eliminates abrupt hard-edge clipping as
+ * lyrics scroll down toward the bottom player controls.
+ */
+private fun Modifier.lyricsFadingEdge(
+    topFadeDp: androidx.compose.ui.unit.Dp = 36.dp,
+    bottomFadeDp: androidx.compose.ui.unit.Dp = 110.dp,
+): Modifier = this
+    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        val topFadePx = topFadeDp.toPx()
+        val bottomFadePx = bottomFadeDp.toPx()
+        val height = size.height
+        if (height > topFadePx + bottomFadePx) {
+            drawRect(
+                brush = Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    (topFadePx / height) to Color.Black,
+                    ((height - bottomFadePx) / height) to Color.Black,
+                    1f to Color.Transparent,
+                    startY = 0f,
+                    endY = height,
+                ),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+    }
 
 /**
  * Reference lyrics sync list (Metrolist/SimpMusic parity, no gradle canvas).
@@ -687,7 +726,7 @@ private fun ModernSyncedLyricsList(
 
     LazyColumn(
         state = listState,
-        modifier = modifier.clipToBounds(),
+        modifier = modifier.lyricsFadingEdge(topFadeDp = 36.dp, bottomFadeDp = 110.dp),
         contentPadding = PaddingValues(top = 40.dp, bottom = 130.dp, start = 16.dp, end = 16.dp),
         verticalArrangement = Arrangement.spacedBy(26.dp),
     ) {
@@ -1152,6 +1191,7 @@ private fun ModernPlainLyricsView(
         val scrollState = rememberScrollState()
         Column(
             modifier = modifier
+                .lyricsFadingEdge(topFadeDp = 24.dp, bottomFadeDp = 100.dp)
                 .verticalScroll(scrollState)
                 .padding(top = 24.dp, bottom = 90.dp, start = 16.dp, end = 16.dp),
         ) {

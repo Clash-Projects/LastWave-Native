@@ -596,6 +596,23 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "appearance.lyrics_rotating_background",
+                    title = "Lyrics Background Motion",
+                    subtitle = "Animate fluid rotating artwork in lyrics view (disable for static background)",
+                    keywords = listOf(
+                        "lyrics background motion", "lyrics rotating background", "lyrics fluid background",
+                        "lyrics motion", "lyrics background"
+                    ),
+                    icon = Icons.Filled.RestartAlt,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Experimental & Features",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "appearance.lyrics_provider",
                     title = "Lyrics Provider",
                     subtitle = "Choose preferred synced lyrics provider (LRCLIB, Musixmatch, etc.)",

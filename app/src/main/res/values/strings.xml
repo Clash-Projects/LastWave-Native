@@ -84,6 +84,9 @@
     <string name="settings_rotating_background">Rotating Background</string>
     <string name="settings_rotating_background_on">Animate fluid rotating artwork in player and lyrics view</string>
     <string name="settings_rotating_background_off">Static blurred background (recommended for Android 11 and below)</string>
+    <string name="settings_lyrics_rotating_background">Lyrics Background Motion</string>
+    <string name="settings_lyrics_rotating_background_on">Animate fluid rotating artwork in lyrics view</string>
+    <string name="settings_lyrics_rotating_background_off">Static blurred cover background in lyrics view</string>
     <string name="settings_studio_clarity">Studio Master Clarity</string>
     <string name="settings_studio_clarity_on">Crystal-clear open sound • airy detail • deep clean separation</string>
     <string name="settings_studio_clarity_off">Original unshaped output</string>

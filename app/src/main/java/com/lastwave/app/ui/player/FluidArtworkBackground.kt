@@ -298,11 +298,13 @@ fun FluidArtworkBackground(
     modifier: Modifier = Modifier,
     extraBlur: Boolean = false,
     rotatingBackgroundEnabled: Boolean = true,
+    lyricsRotatingBackgroundEnabled: Boolean = true,
     artworkViewModel: ArtworkViewModel = hiltViewModel(),
     fallback: @Composable () -> Unit,
 ) {
     val fluidSupported = isFluidSupported()
-    if (!rotatingBackgroundEnabled || !fluidSupported) {
+    val isEnabled = if (extraBlur) lyricsRotatingBackgroundEnabled && rotatingBackgroundEnabled else rotatingBackgroundEnabled
+    if (!isEnabled || !fluidSupported) {
         Box(modifier) {
             fallback()
         }
@@ -360,8 +362,9 @@ fun FluidArtworkBackground(
     }
 
     var seconds by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(!extraBlur) {
-        if (extraBlur) return@LaunchedEffect
+    val shouldPauseLoop = extraBlur && !lyricsRotatingBackgroundEnabled
+    LaunchedEffect(!shouldPauseLoop) {
+        if (shouldPauseLoop) return@LaunchedEffect
         var last = 0L
         var pending = 0f
         while (true) {

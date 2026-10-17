@@ -128,9 +128,10 @@ data class MiscSettings(
     /** When true (default), uses the multi-layer dynamic wavy seekbar.
      *  When false, uses the classic standard progress slider in the player tab. */
     val wavySeekbarEnabled: Boolean = true,
-    /** When true (default), animates fluid rotating artwork in the player and lyrics background.
-     *  When false, uses a calm static blurred artwork background (especially recommended for Android 11 and below). */
     val rotatingBackgroundEnabled: Boolean = true,
+    /** When true (default), animates fluid rotating artwork in the lyrics background.
+     *  When false, uses static blurred artwork background in the lyrics view. */
+    val lyricsRotatingBackgroundEnabled: Boolean = true,
     /** When true, keeps the screen from turning off when the user has the lyrics view open. */
     val keepLyricsScreenAwake: Boolean = false,
     /** Seconds of inactivity before the floating lyrics buttons (font size,
@@ -276,6 +277,7 @@ class SettingsPreferences @Inject constructor(
         val CROSSFADE_SECONDS = intPreferencesKey("lw_crossfade_seconds")
         val WAVY_SEEKBAR_ENABLED = booleanPreferencesKey("lw_wavy_seekbar_enabled")
         val ROTATING_BACKGROUND_ENABLED = booleanPreferencesKey("lw_rotating_background_enabled")
+        val LYRICS_ROTATING_BACKGROUND_ENABLED = booleanPreferencesKey("lw_lyrics_rotating_background_enabled")
         val KEEP_LYRICS_SCREEN_AWAKE = booleanPreferencesKey("lw_keep_lyrics_screen_awake")
         val LYRICS_BUTTONS_AUTO_HIDE_SECONDS = intPreferencesKey("lw_lyrics_buttons_auto_hide_seconds")
         val TRANSLATION_LANGUAGE = stringPreferencesKey("lw_translation_language")
@@ -350,6 +352,7 @@ class SettingsPreferences @Inject constructor(
                 crossfadeSeconds = (p.readSafely(Keys.CROSSFADE_SECONDS) ?: 5).coerceIn(1, 12),
                 wavySeekbarEnabled = p.readSafely(Keys.WAVY_SEEKBAR_ENABLED) ?: true,
                 rotatingBackgroundEnabled = p.readSafely(Keys.ROTATING_BACKGROUND_ENABLED) ?: true,
+                lyricsRotatingBackgroundEnabled = p.readSafely(Keys.LYRICS_ROTATING_BACKGROUND_ENABLED) ?: true,
                 keepLyricsScreenAwake = p.readSafely(Keys.KEEP_LYRICS_SCREEN_AWAKE) ?: false,
                 lyricsButtonsAutoHideSeconds =
                     sanitizeLyricsButtonsAutoHideSeconds(p.readSafely(Keys.LYRICS_BUTTONS_AUTO_HIDE_SECONDS)),
@@ -608,6 +611,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setRotatingBackgroundEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.ROTATING_BACKGROUND_ENABLED] = enabled }
+    }
+
+    suspend fun setLyricsRotatingBackgroundEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.LYRICS_ROTATING_BACKGROUND_ENABLED] = enabled }
     }
 
     suspend fun setKeepLyricsScreenAwake(enabled: Boolean) {

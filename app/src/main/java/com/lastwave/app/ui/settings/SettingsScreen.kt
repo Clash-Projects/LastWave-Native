@@ -1259,7 +1259,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_experimental))
-                    SettingsGroup(rowCount = 8) { index, position ->
+                    SettingsGroup(rowCount = 9) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.Lyrics,
@@ -1306,7 +1306,22 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.rotating_background"),
                             )
-                            3 -> SettingsActionCard(
+                            3 -> SettingsToggleCard(
+                                icon = Icons.Filled.RestartAlt,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.settings_lyrics_rotating_background),
+                                subtitle = if (misc.lyricsRotatingBackgroundEnabled) {
+                                    stringResource(R.string.settings_lyrics_rotating_background_on)
+                                } else {
+                                    stringResource(R.string.settings_lyrics_rotating_background_off)
+                                },
+                                checked = misc.lyricsRotatingBackgroundEnabled,
+                                onCheckedChange = viewModel::setLyricsRotatingBackgroundEnabled,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.lyrics_rotating_background"),
+                            )
+                            4 -> SettingsActionCard(
                                 icon = Icons.Filled.Lyrics,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1316,7 +1331,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.lyrics_provider"),
                             )
-                            4 -> SettingsActionCard(
+                            5 -> SettingsActionCard(
                                 icon = Icons.Filled.Timer,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1334,7 +1349,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.lyrics_offset"),
                             )
-                            5 -> SettingsActionCard(
+                            6 -> SettingsActionCard(
                                 icon = Icons.Filled.FormatSize,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1353,7 +1368,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.lyrics_size"),
                             )
-                            6 -> SettingsActionCard(
+                            7 -> SettingsActionCard(
                                 icon = Icons.Filled.VisibilityOff,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1370,7 +1385,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.lyrics_autohide"),
                             )
-                            7 -> SettingsActionCard(
+                            8 -> SettingsActionCard(
                                 icon = Icons.Filled.Translate,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
