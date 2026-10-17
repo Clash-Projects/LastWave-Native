@@ -185,3 +185,30 @@ These were fixed in an isolated commit (`7fe43b9`) so the repository could build
 
 1. **Hardware Bitmaps:** Canvas rendering and palette extraction on Android cannot operate directly on hardware bitmaps; `ArtworkResolver` strictly enforces software decoding via `allowHardware(false)` and bitmap copying if needed.
 2. **Release Signing Keys:** Production CI builds must inject `SIGNING_KEY` (base64 keystore) or `RELEASE_STORE_FILE` + credentials via environment variables as enforced by `build.gradle.kts`. Local testing validated the release pipeline using a temporary key with identical R8 configurations.
+
+---
+
+## 7. UI Polish & Visual Redesign (v2)
+
+Following design references from YouTube Music and Spotify, the feature visuals were overhauled while preserving 100% of the underlying business logic:
+
+### 7.1 Select Lyrics Screen (Spotify Visual Target)
+- **Vivid Hue Gradient Background:** Replaced dark mud/grey fades with a saturated, rich vertical gradient derived from the song's primary color, smoothly transitioning from a deep tone to a slightly lighter shade of the same hue (`ColorContrastHelper.getSelectScreenGradientColors`).
+- **Centered Header:** Clean header with centered `"Select lyrics"` title and `"N lines selected"` subtitle within safe window insets.
+- **Bold Lyrics Typography:** Google Sans Flex (`wght 700`), 15% larger size (`21sp`, `lineHeight 27sp`, `letterSpacing -0.2sp`). Unselected lines render in bright crisp white.
+- **Solid White Rounded Pills:** Consecutive selected lines each receive their own solid white rounded pill (`26dp` corner radius) with dark text tinted from the song's hue (`ColorContrastHelper.getSelectedPillTextColor`).
+- **Extendable Neighbors:** Lines directly adjacent (index $\pm 1$) to the active selection block receive a subtle 16% alpha white pill that smoothly animates during selection changes without layout jumps.
+- **Compact Continue Pill:** Replaced full-width bottom button with a compact floating pill (`152dp` wide, `50dp` tall) with white fill and bold dark label, positioned above the nav bar inset with a soft vertical gradient fade behind it.
+
+### 7.2 Share Card Visuals (YouTube Music & Spotify Card Target)
+- **Natural Word Wrapping:** Fixed line shrinking bug. Each lyric renders at a large bold size (`84px` base in Lyrics tab, `64px` in Song tab) and wraps naturally at word boundaries within card margins. Spacing between wrapped rows is tight (`1.18x`), while spacing between distinct lyrics lines is generous (`0.45 * fontSize`).
+- **Dynamic Content Hugging (1:1 to 9:16):** Removed the rigid 4:5 minimum clamp that left awkward empty gaps. Cards hug content between a minimum 1:1 square (`1080x1080`) and maximum 9:16 story (`1080x1920`), scaling down to a `52px` floor only when 5 long lines demand it.
+- **YouTube Music Header (Lyrics Tab):** Left-aligned rounded cover thumbnail (`180px`), title and artist to its right, followed by a thin divider line before the lyrics block.
+- **Rich Saturated Backgrounds & Tinted Text:** Saturated flat / subtle same-hue gradient backgrounds (like YouTube Music's dark chocolate brown). Text uses a light tint of the hue (peach/cream on brown) maintaining WCAG $\ge 7:1$ for lyrics and $\ge 4.5:1$ for secondary and brand elements.
+- **Prominent Bottom-Left Brand Lockup:** Aligned to the same left margin as the lyrics and header (`hPadding`), featuring a tintable logo mark (`64px`) and `"LastWave"` bold typography (`62-64px`).
+- **Hero Cover (Song Tab):** Left-aligned hero cover (`680px`, `32px` corner radius) without dark offset shadow strips, consistent with the left-aligned design language.
+- **Cover Background Swatch:** Added a "Cover" swatch as the first option in the palette row when artwork is available on the Lyrics tab, rendering a center-cropped full-bleed cover with a 50% dark scrim and gradient protection.
+
+### 7.3 Test Suite Status
+- **Lyricsshare Unit Tests:** **50 tests passed**, 0 failed (**100% pass rate**).
+
