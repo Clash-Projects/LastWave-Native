@@ -676,7 +676,7 @@ private fun ModernSyncedLyricsList(
                 if (targetItem != null && viewportHeight > 0) {
                     val targetY = viewportHeight / 3
                     val delta = targetItem.offset - targetY
-                    listState.animateScrollBy(delta.toFloat(), lyricScrollDurationMs(delta))
+                    listState.animateScrollBy(delta.toFloat(), lyricScrollDurationMs(delta.toFloat()))
                 } else {
                     val targetIndex = (activeIndex - 1).coerceAtLeast(0)
                     listState.animateScrollToItem(index = targetIndex, scrollOffset = 0)

@@ -212,7 +212,7 @@ class GeniusLyricsApi @Inject constructor(
         return cleaned.ifBlank { text.trim() }
     }
 
-    private fun httpGet(url: String): String? {
+    private suspend fun httpGet(url: String): String? {
         val request = Request.Builder()
             .url(url)
             .header("User-Agent", USER_AGENT)

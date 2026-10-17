@@ -1364,7 +1364,13 @@ class GenerateRepository @Inject constructor(
         val blended = if (lastFmAvailable) {
             youtubeFirstBlend(youtube = youtubeFresh, lastFm = recommended)
         } else {
-            val localEngine = LocalTasteSuggestionEngine(songPlayStatsDao, recommendationExclusionDao, playlistRepository, innerTube)
+            val localEngine = LocalTasteSuggestionEngine(
+                songPlayStatsDao,
+                recommendationExclusionDao,
+                playlistRepository,
+                innerTube,
+                relatedGraph,
+            )
             val tasteSuggestions = runCatching { localEngine.run(total) }.getOrDefault(emptyList()).filterNot { it.key in blacklist }
             val fallback = if (youtubeFresh.size + tasteSuggestions.size < total) {
                 fetchLocalFallbackMix(total).filterNot { it.key in blacklist }
