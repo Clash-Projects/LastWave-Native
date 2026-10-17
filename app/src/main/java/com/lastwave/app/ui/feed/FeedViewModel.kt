@@ -18,6 +18,7 @@ import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistSummary
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.PlayableTrack
+import com.lastwave.app.data.repository.RelatedGraphRepository
 import com.lastwave.app.data.ytmusic.YtMusicAuthManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -55,6 +56,7 @@ class FeedViewModel @Inject constructor(
     private val settingsPreferences: SettingsPreferences,
     private val musicPlayer: MusicPlayer,
     private val innerTube: InnerTubeMusicApi,
+    private val relatedGraph: RelatedGraphRepository,
     private val ytAuth: YtMusicAuthManager,
     private val homeRepository: com.lastwave.app.data.repository.HomeRepository,
     private val discoverRepository: com.lastwave.app.data.discover.DiscoverRepository,
@@ -254,7 +256,7 @@ class FeedViewModel @Inject constructor(
             } ?: seeds.firstOrNull()
             val related = seed?.let {
                 try {
-                    innerTube.fetchRelatedSongs(it.videoId, limit = 25, prefetchStreams = false)
+                    relatedGraph.relatedFor(it.videoId, limit = 25, prefetchStreams = false)
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Exception) {
@@ -283,7 +285,7 @@ class FeedViewModel @Inject constructor(
                 val seed = seeds.take(5).randomOrNull()
                 val related = seed?.let {
                     try {
-                        innerTube.fetchRelatedSongs(it.videoId, limit = 24, prefetchStreams = false)
+                        relatedGraph.relatedFor(it.videoId, limit = 24, prefetchStreams = false)
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Exception) {

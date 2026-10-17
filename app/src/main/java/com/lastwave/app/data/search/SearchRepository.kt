@@ -7,6 +7,7 @@ import com.lastwave.app.data.local.SessionPreferences
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.network.LastFmApiService
+import com.lastwave.app.data.repository.RelatedGraphRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
@@ -45,6 +46,7 @@ class SearchRepository @Inject constructor(
     private val api: LastFmApiService,
     private val sessionPreferences: SessionPreferences,
     private val innerTube: InnerTubeMusicApi,
+    private val relatedGraph: RelatedGraphRepository,
     private val http: OkHttpClient,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
@@ -164,7 +166,7 @@ class SearchRepository @Inject constructor(
 
             val related = if (!videoId.isNullOrBlank()) {
                 try {
-                    innerTube.fetchRelatedSongs(videoId, limit = limit * 2, prefetchStreams = false)
+                    relatedGraph.relatedFor(videoId, limit = limit * 2, prefetchStreams = false, forceNetwork = true)
                 } catch (_: Exception) {
                     emptyList()
                 }

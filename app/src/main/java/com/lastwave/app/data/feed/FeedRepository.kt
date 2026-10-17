@@ -17,6 +17,7 @@ import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistSummary
 import com.lastwave.app.data.playlist.PlaylistRepository
 import com.lastwave.app.data.repository.HomeRepository
+import com.lastwave.app.data.repository.RelatedGraphRepository
 import com.lastwave.app.data.ytmusic.YtMusicAuthManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -104,6 +105,7 @@ data class FeedData(
 @Singleton
 class FeedRepository @Inject constructor(
     private val innerTube: InnerTubeMusicApi,
+    private val relatedGraph: RelatedGraphRepository,
     private val homeRepository: HomeRepository,
     private val tasteProfileProvider: TasteProfileProvider,
     private val ytAuth: YtMusicAuthManager,
@@ -267,7 +269,7 @@ class FeedRepository @Inject constructor(
             discoverySeeds.map { seed ->
                 async {
                     try {
-                        innerTube.fetchRelatedSongs(seed.videoId, limit = 30, prefetchStreams = false)
+                        relatedGraph.relatedFor(seed.videoId, limit = 30, prefetchStreams = false)
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Exception) {
@@ -683,7 +685,7 @@ class FeedRepository @Inject constructor(
             ?.takeIf { it.isNotEmpty() }
             ?: radioSeed?.takeIf { it.videoId.isNotBlank() }?.let { seed ->
                 try {
-                    innerTube.fetchRelatedSongs(seed.videoId, limit = 15, prefetchStreams = false)
+                    relatedGraph.relatedFor(seed.videoId, limit = 15, prefetchStreams = false)
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Exception) {

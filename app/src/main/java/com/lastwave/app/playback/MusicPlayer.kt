@@ -72,6 +72,7 @@ import com.lastwave.app.data.playlist.PlaylistRepository
 import com.lastwave.app.data.plugin.ModuleDrmFactory
 import com.lastwave.app.data.plugin.SegmentedDashBridge
 import com.lastwave.app.data.plugin.stableCacheKey
+import com.lastwave.app.data.repository.RelatedGraphRepository
 import com.lastwave.app.playback.resolve.MetadataLog
 import com.lastwave.app.playback.resolve.PlaybackStartupLog
 import com.lastwave.app.playback.resolve.StreamCache
@@ -204,6 +205,7 @@ data class PlaybackProgressState(
 class MusicPlayer @Inject constructor(
     @ApplicationContext context: Context,
     private val innerTube: InnerTubeMusicApi,
+    private val relatedGraph: RelatedGraphRepository,
     private val losslessMusicApi: LosslessMusicApi,
     private val moduleDrmFactory: ModuleDrmFactory,
     private val moduleManager: com.lastwave.app.data.plugin.ModuleManager,
@@ -4893,7 +4895,7 @@ class MusicPlayer @Inject constructor(
         if (primarySeedVideoId != null) {
             radioUsedSeeds.add(primarySeedVideoId)
             val related = runCatching {
-                innerTube.fetchRelatedSongs(primarySeedVideoId, limit = batchSize, prefetchStreams = false)
+                relatedGraph.relatedFor(primarySeedVideoId, limit = batchSize, prefetchStreams = false)
             }.getOrDefault(emptyList())
             addCandidates(related)
         }
@@ -4908,7 +4910,7 @@ class MusicPlayer @Inject constructor(
                 if (seedVideoId != null && seedVideoId !in radioUsedSeeds) {
                     radioUsedSeeds.add(seedVideoId)
                     val related = runCatching {
-                        innerTube.fetchRelatedSongs(seedVideoId, limit = 25, prefetchStreams = false)
+                        relatedGraph.relatedFor(seedVideoId, limit = 25, prefetchStreams = false)
                     }.getOrDefault(emptyList())
                     addCandidates(related)
                 }
