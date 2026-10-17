@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LastWave</string>
     <string name="widget_name">Lecteur LastWave</string>
@@ -1044,4 +1044,34 @@
     <string name="ly_try_another_source">Essayer une autre source</string>
     <string name="ly_try_another_source_sub">Exclut le fournisseur actuel et recherche les paroles auprès d\'autres sources</string>
     <string name="ly_source_all_header">Ou choisir directement un fournisseur</string>
+
+    <!-- Partager les paroles -->
+    <string name="lyshare_title">Partager les paroles</string>
+    <string name="lyshare_select_lyrics">Sélectionner les paroles</string>
+    <string name="lyshare_lines_selected">%1$d lignes sélectionnées</string>
+    <string name="lyshare_line_selected_single">1 ligne sélectionnée</string>
+    <string name="lyshare_max_lines_reached">Vous pouvez partager jusqu\'à 5 lignes</string>
+    <string name="lyshare_continue">Continuer</string>
+    <string name="lyshare_mode_song">Titre</string>
+    <string name="lyshare_mode_lyrics">Paroles</string>
+    <string name="lyshare_action_share">Partager</string>
+    <string name="lyshare_action_save">Enregistrer</string>
+    <string name="lyshare_saved_to_gallery">Enregistré dans Images/LastWave</string>
+    <string name="lyshare_save_failed">Impossible d\'enregistrer l\'image</string>
+    <string name="lyshare_share_failed">Impossible de partager l\'image</string>
+    <string name="lyshare_button_cd">Partager les paroles</string>
+    <string name="lyshare_close_cd">Fermer</string>
+    <string name="lyshare_back_cd">Retour</string>
+    <string name="lyshare_color_picker_cd">Palette de couleurs</string>
+    <string name="lyshare_color_cover">Pochette</string>
+    <string name="lyshare_color_song">Couleur du morceau</string>
+    <string name="lyshare_color_muted">Atténuée</string>
+    <string name="lyshare_color_dominant">Dominante</string>
+    <string name="lyshare_color_dark">Sombre</string>
+    <string name="lyshare_color_white">Blanc</string>
+    <string name="lyshare_color_black">Noir</string>
+    <string name="lyshare_color_accent">Accent</string>
+    <string name="lyshare_color_brand">Citron vert LastWave</string>
+    <string name="lyshare_accessibility_line_selected">Sélectionnée, ligne %1$d sur %2$d</string>
+    <string name="lyshare_accessibility_line_unselected">Ligne %1$d sur %2$d</string>
 </resources>

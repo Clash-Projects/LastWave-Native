@@ -3,6 +3,7 @@
 ## [4.3.0] - 2026-10-17
 
 ### Added & Improved
+- **Lyrics Share:** Export and share styled lyric cards (Song and Lyrics modes) with dynamic palette extraction, customizable color swatches, full multilingual support (Latin, Devanagari, Arabic, CJK), and system share sheet & MediaStore gallery export.
 - **On-Spot Lyrics Provider Switching:** Added a dedicated lyrics provider icon in lyrics controls to switch provider or exclude current source on the fly with smooth auto-hide controls integration.
 - **100% Localization Coverage:** Complete translation across all 12 supported locales.
 - **Dynamic APK Variant Selection:** Automatically detects device architecture and system version to download the appropriate APK variant (universal, uncompressed, or android7).
@@ -14,6 +15,7 @@
 ## [4.2.4] - 2026-10-05
 
 ### Added & Improved
+- **Lyrics Share:** Export and share styled lyric cards (Song and Lyrics modes) with dynamic palette extraction, customizable color swatches, full multilingual support (Latin, Devanagari, Arabic, CJK), and system share sheet & MediaStore gallery export.
 - **Resource Usage & Smooth UI:** Optimized rendering pipelines, reduced background resource contention, and smoothed UI interactions.
 - **Fast YouTube Search:** Restored instant 2-pass YouTube search resolution, eliminating multi-stage search fallback delays.
 - **Dolby Atmos Downloads:** Aligned spatial audio capability detection in `TrackDownloadManager` with `MusicPlayer`'s system `Spatializer` check, resolving Atmos download skips on Android 12L+ devices.

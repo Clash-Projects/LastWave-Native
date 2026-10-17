@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LastWave</string>
     <string name="widget_name">LastWave Oynatıcı</string>
@@ -1094,4 +1094,34 @@
     <string name="ly_try_another_source">Başka Kaynak Dene</string>
     <string name="ly_try_another_source_sub">Mevcut sağlayıcıyı hariç tutar ve diğer kaynaklardan sözleri arar</string>
     <string name="ly_source_all_header">Veya doğrudan bir sağlayıcı seçin</string>
+
+    <!-- Şarkı Sözü Paylaş -->
+    <string name="lyshare_title">Şarkı sözü paylaş</string>
+    <string name="lyshare_select_lyrics">Sözleri seç</string>
+    <string name="lyshare_lines_selected">%1$d satır seçildi</string>
+    <string name="lyshare_line_selected_single">1 satır seçildi</string>
+    <string name="lyshare_max_lines_reached">En fazla 5 satır paylaşabilirsiniz</string>
+    <string name="lyshare_continue">Devam et</string>
+    <string name="lyshare_mode_song">Şarkı</string>
+    <string name="lyshare_mode_lyrics">Sözler</string>
+    <string name="lyshare_action_share">Paylaş</string>
+    <string name="lyshare_action_save">Kaydet</string>
+    <string name="lyshare_saved_to_gallery">Pictures/LastWave klasörüne kaydedildi</string>
+    <string name="lyshare_save_failed">Görsel kaydedilemedi</string>
+    <string name="lyshare_share_failed">Görsel paylaşılamadı</string>
+    <string name="lyshare_button_cd">Şarkı sözü paylaş</string>
+    <string name="lyshare_close_cd">Kapat</string>
+    <string name="lyshare_back_cd">Geri</string>
+    <string name="lyshare_color_picker_cd">Renk paleti</string>
+    <string name="lyshare_color_cover">Kapak</string>
+    <string name="lyshare_color_song">Şarkı rengi</string>
+    <string name="lyshare_color_muted">Sakin</string>
+    <string name="lyshare_color_dominant">Baskın</string>
+    <string name="lyshare_color_dark">Koyu</string>
+    <string name="lyshare_color_white">Beyaz</string>
+    <string name="lyshare_color_black">Siyah</string>
+    <string name="lyshare_color_accent">Vurgu</string>
+    <string name="lyshare_color_brand">LastWave Limon Yeşili</string>
+    <string name="lyshare_accessibility_line_selected">Seçildi, %1$d / %2$d. satır</string>
+    <string name="lyshare_accessibility_line_unselected">%1$d / %2$d. satır</string>
 </resources>

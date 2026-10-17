@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LastWave</string>
     <string name="widget_name">LastWave 播放器</string>
@@ -1044,4 +1044,34 @@
     <string name="ly_try_another_source">尝试其他来源</string>
     <string name="ly_try_another_source_sub">排除当前来源并从其他来源查找歌词</string>
     <string name="ly_source_all_header">或直接选择歌词源</string>
+
+    <!-- 分享歌词 -->
+    <string name="lyshare_title">分享歌词</string>
+    <string name="lyshare_select_lyrics">选择歌词</string>
+    <string name="lyshare_lines_selected">已选 %1$d 行</string>
+    <string name="lyshare_line_selected_single">已选 1 行</string>
+    <string name="lyshare_max_lines_reached">最多可分享 5 行歌词</string>
+    <string name="lyshare_continue">继续</string>
+    <string name="lyshare_mode_song">歌曲</string>
+    <string name="lyshare_mode_lyrics">歌词</string>
+    <string name="lyshare_action_share">分享</string>
+    <string name="lyshare_action_save">保存</string>
+    <string name="lyshare_saved_to_gallery">已保存至 Pictures/LastWave</string>
+    <string name="lyshare_save_failed">保存图片失败</string>
+    <string name="lyshare_share_failed">分享图片失败</string>
+    <string name="lyshare_button_cd">分享歌词</string>
+    <string name="lyshare_close_cd">关闭</string>
+    <string name="lyshare_back_cd">返回</string>
+    <string name="lyshare_color_picker_cd">调色盘</string>
+    <string name="lyshare_color_cover">封面</string>
+    <string name="lyshare_color_song">歌曲颜色</string>
+    <string name="lyshare_color_muted">柔和</string>
+    <string name="lyshare_color_dominant">主色</string>
+    <string name="lyshare_color_dark">深色</string>
+    <string name="lyshare_color_white">白色</string>
+    <string name="lyshare_color_black">黑色</string>
+    <string name="lyshare_color_accent">强调色</string>
+    <string name="lyshare_color_brand">LastWave 青柠</string>
+    <string name="lyshare_accessibility_line_selected">已选中，第 %1$d 行（共 %2$d 行）</string>
+    <string name="lyshare_accessibility_line_unselected">第 %1$d 行（共 %2$d 行）</string>
 </resources>

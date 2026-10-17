@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LastWave</string>
     <string name="widget_name">LastWave Player</string>
@@ -1041,4 +1041,34 @@
     <string name="ly_try_another_source">Tentar outra fonte</string>
     <string name="ly_try_another_source_sub">Exclui o provedor atual e busca letras de outras fontes</string>
     <string name="ly_source_all_header">Ou escolha um provedor diretamente</string>
+
+    <!-- Compartilhar Letra -->
+    <string name="lyshare_title">Compartilhar letra</string>
+    <string name="lyshare_select_lyrics">Selecionar letra</string>
+    <string name="lyshare_lines_selected">%1$d linhas selecionadas</string>
+    <string name="lyshare_line_selected_single">1 linha selecionada</string>
+    <string name="lyshare_max_lines_reached">Você pode compartilhar até 5 linhas</string>
+    <string name="lyshare_continue">Continuar</string>
+    <string name="lyshare_mode_song">Música</string>
+    <string name="lyshare_mode_lyrics">Letra</string>
+    <string name="lyshare_action_share">Compartilhar</string>
+    <string name="lyshare_action_save">Salvar</string>
+    <string name="lyshare_saved_to_gallery">Salvo em Pictures/LastWave</string>
+    <string name="lyshare_save_failed">Não foi possível salvar a imagem</string>
+    <string name="lyshare_share_failed">Não foi possível compartilhar a imagem</string>
+    <string name="lyshare_button_cd">Compartilhar letra</string>
+    <string name="lyshare_close_cd">Fechar</string>
+    <string name="lyshare_back_cd">Voltar</string>
+    <string name="lyshare_color_picker_cd">Paleta de cores</string>
+    <string name="lyshare_color_cover">Capa</string>
+    <string name="lyshare_color_song">Cor da música</string>
+    <string name="lyshare_color_muted">Suave</string>
+    <string name="lyshare_color_dominant">Dominante</string>
+    <string name="lyshare_color_dark">Escuro</string>
+    <string name="lyshare_color_white">Branco</string>
+    <string name="lyshare_color_black">Preto</string>
+    <string name="lyshare_color_accent">Destaque</string>
+    <string name="lyshare_color_brand">Lima LastWave</string>
+    <string name="lyshare_accessibility_line_selected">Selecionada, linha %1$d de %2$d</string>
+    <string name="lyshare_accessibility_line_unselected">Linha %1$d de %2$d</string>
 </resources>

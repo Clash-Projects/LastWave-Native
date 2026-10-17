@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LastWave</string>
     <string name="widget_name">Pemutar LastWave</string>
@@ -1041,4 +1041,34 @@
     <string name="ly_try_another_source">Coba Sumber Lain</string>
     <string name="ly_try_another_source_sub">Kecualikan penyedia saat ini dan cari lirik dari sumber lain</string>
     <string name="ly_source_all_header">Atau pilih penyedia langsung</string>
+
+    <!-- Bagikan Lirik -->
+    <string name="lyshare_title">Bagikan Lirik</string>
+    <string name="lyshare_select_lyrics">Pilih Lirik</string>
+    <string name="lyshare_lines_selected">%1$d baris dipilih</string>
+    <string name="lyshare_line_selected_single">1 baris dipilih</string>
+    <string name="lyshare_max_lines_reached">Anda dapat membagikan hingga 5 baris</string>
+    <string name="lyshare_continue">Lanjutkan</string>
+    <string name="lyshare_mode_song">Lagu</string>
+    <string name="lyshare_mode_lyrics">Lirik</string>
+    <string name="lyshare_action_share">Bagikan</string>
+    <string name="lyshare_action_save">Simpan</string>
+    <string name="lyshare_saved_to_gallery">Disimpan ke Pictures/LastWave</string>
+    <string name="lyshare_save_failed">Gagal menyimpan gambar</string>
+    <string name="lyshare_share_failed">Gagal membagikan gambar</string>
+    <string name="lyshare_button_cd">Bagikan lirik</string>
+    <string name="lyshare_close_cd">Tutup</string>
+    <string name="lyshare_back_cd">Kembali</string>
+    <string name="lyshare_color_picker_cd">Palet warna</string>
+    <string name="lyshare_color_cover">Sampul</string>
+    <string name="lyshare_color_song">Warna lagu</string>
+    <string name="lyshare_color_muted">Lembut</string>
+    <string name="lyshare_color_dominant">Dominan</string>
+    <string name="lyshare_color_dark">Gelap</string>
+    <string name="lyshare_color_white">Putih</string>
+    <string name="lyshare_color_black">Hitam</string>
+    <string name="lyshare_color_accent">Aksen</string>
+    <string name="lyshare_color_brand">LastWave Lime</string>
+    <string name="lyshare_accessibility_line_selected">Dipilih, baris %1$d dari %2$d</string>
+    <string name="lyshare_accessibility_line_unselected">Baris %1$d dari %2$d</string>
 </resources>

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LastWave</string>
     <string name="widget_name">LastWave Player</string>
@@ -1041,4 +1041,34 @@
     <string name="ly_try_another_source">Andere Quelle versuchen</string>
     <string name="ly_try_another_source_sub">Schließt den aktuellen Anbieter aus und sucht Songtexte aus anderen Quellen</string>
     <string name="ly_source_all_header">Oder einen Anbieter direkt wählen</string>
+
+    <!-- Songtext teilen -->
+    <string name="lyshare_title">Songtext teilen</string>
+    <string name="lyshare_select_lyrics">Songtext auswählen</string>
+    <string name="lyshare_lines_selected">%1$d Zeilen ausgewählt</string>
+    <string name="lyshare_line_selected_single">1 Zeile ausgewählt</string>
+    <string name="lyshare_max_lines_reached">Du kannst bis zu 5 Zeilen teilen</string>
+    <string name="lyshare_continue">Weiter</string>
+    <string name="lyshare_mode_song">Titel</string>
+    <string name="lyshare_mode_lyrics">Songtext</string>
+    <string name="lyshare_action_share">Teilen</string>
+    <string name="lyshare_action_save">Speichern</string>
+    <string name="lyshare_saved_to_gallery">In Bilder/LastWave gespeichert</string>
+    <string name="lyshare_save_failed">Bild konnte nicht gespeichert werden</string>
+    <string name="lyshare_share_failed">Bild konnte nicht geteilt werden</string>
+    <string name="lyshare_button_cd">Songtext teilen</string>
+    <string name="lyshare_close_cd">Schließen</string>
+    <string name="lyshare_back_cd">Zurück</string>
+    <string name="lyshare_color_picker_cd">Farbpalette</string>
+    <string name="lyshare_color_cover">Cover</string>
+    <string name="lyshare_color_song">Titelfarbe</string>
+    <string name="lyshare_color_muted">Dezente Farbe</string>
+    <string name="lyshare_color_dominant">Dominante Farbe</string>
+    <string name="lyshare_color_dark">Dunkel</string>
+    <string name="lyshare_color_white">Weiß</string>
+    <string name="lyshare_color_black">Schwarz</string>
+    <string name="lyshare_color_accent">Akzent</string>
+    <string name="lyshare_color_brand">LastWave Limette</string>
+    <string name="lyshare_accessibility_line_selected">Ausgewählt, Zeile %1$d von %2$d</string>
+    <string name="lyshare_accessibility_line_unselected">Zeile %1$d von %2$d</string>
 </resources>

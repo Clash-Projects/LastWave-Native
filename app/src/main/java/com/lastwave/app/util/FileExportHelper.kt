@@ -9,6 +9,10 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.app.Activity
+import android.content.ClipData
+import android.content.ContextWrapper
+import android.graphics.Bitmap
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.lastwave.app.data.generate.GeneratedTrack
@@ -160,6 +164,139 @@ class FileExportHelper @Inject constructor(
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(Intent.createChooser(intent, "Share").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    /**
+     * Unwraps [Context] hierarchy to find an [Activity] context for launching share dialogs.
+     */
+    private fun findActivity(context: Context): Activity? {
+        var ctx = context
+        while (ctx is ContextWrapper) {
+            if (ctx is Activity) return ctx
+            ctx = ctx.baseContext
+        }
+        return null
+    }
+
+    /**
+     * Cache hygiene for share cards: purges files older than 24h and enforces a 10-file cap.
+     */
+    fun cleanLyricsCardCache(cacheDir: File) {
+        val dir = File(cacheDir, "shared/lyrics_cards")
+        if (!dir.exists()) return
+        val files = dir.listFiles() ?: return
+        val now = System.currentTimeMillis()
+        val maxAge = 24 * 60 * 60 * 1000L
+
+        for (file in files) {
+            if (now - file.lastModified() > maxAge) {
+                file.delete()
+            }
+        }
+
+        val remaining = dir.listFiles() ?: return
+        if (remaining.size > 10) {
+            val sorted = remaining.sortedBy { it.lastModified() }
+            val excess = remaining.size - 10
+            for (i in 0 until excess) {
+                sorted[i].delete()
+            }
+        }
+    }
+
+    /**
+     * Exports a rendered bitmap to cacheDir/shared/lyrics_cards and triggers the system
+     * share sheet via FileProvider with image/png and ClipData uri grant.
+     */
+    suspend fun shareImage(
+        activityContext: Context,
+        bitmap: Bitmap,
+        title: String,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            cleanLyricsCardCache(context.cacheDir)
+            val dir = File(context.cacheDir, "shared/lyrics_cards")
+            if (!dir.exists()) dir.mkdirs()
+
+            val sanitized = sanitizeFilename(title)
+            val timestamp = System.currentTimeMillis()
+            val file = File(dir, "lyrics_${sanitized}_$timestamp.png")
+
+            file.outputStream().use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                out.flush()
+            }
+
+            val authority = "${context.packageName}.provider"
+            val uri = FileProvider.getUriForFile(context, authority, file)
+
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                clipData = ClipData.newRawUri("Lyrics Card", uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
+            val chooser = Intent.createChooser(intent, "Share lyrics").apply {
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+
+            val activity = findActivity(activityContext)
+            if (activity != null) {
+                activity.startActivity(chooser)
+            } else {
+                context.startActivity(chooser)
+            }
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Saves a rendered card bitmap to Pictures/LastWave via MediaStore.Images
+     * with IS_PENDING handling for API 29+.
+     */
+    suspend fun saveImageToGallery(
+        bitmap: Bitmap,
+        title: String,
+    ): Result<Uri> = withContext(Dispatchers.IO) {
+        try {
+            val resolver = context.contentResolver
+            val sanitized = sanitizeFilename(title)
+            val filename = "lyrics_${sanitized}_${System.currentTimeMillis()}.png"
+            val relativePath = "${Environment.DIRECTORY_PICTURES}/LastWave"
+
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(MediaStore.Images.Media.RELATIVE_PATH, relativePath)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+            }
+
+            val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                ?: throw IOException("Failed to create MediaStore entry for $filename")
+
+            resolver.openOutputStream(uri)?.use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                out.flush()
+            } ?: throw IOException("Failed to open output stream for $uri")
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val updateValues = ContentValues().apply {
+                    put(MediaStore.Images.Media.IS_PENDING, 0)
+                }
+                resolver.update(uri, updateValues, null, null)
+            }
+
+            Result.success(uri)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     fun sanitizeFilename(title: String): String =

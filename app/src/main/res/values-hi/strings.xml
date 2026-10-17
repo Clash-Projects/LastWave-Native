@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LastWave</string>
     <string name="widget_name">LastWave प्लेयर</string>
@@ -1041,4 +1041,34 @@
     <string name="ly_try_another_source">दूसरा स्रोत आज़माएं</string>
     <string name="ly_try_another_source_sub">वर्तमान प्रदाता को छोड़कर अन्य स्रोतों से बोल खोजता है</string>
     <string name="ly_source_all_header">या सीधे कोई प्रदाता चुनें</string>
+
+    <!-- बोल साझा करें -->
+    <string name="lyshare_title">बोल साझा करें</string>
+    <string name="lyshare_select_lyrics">बोल चुनें</string>
+    <string name="lyshare_lines_selected">%1$d पंक्तियाँ चुनी गईं</string>
+    <string name="lyshare_line_selected_single">1 पंक्ति चुनी गई</string>
+    <string name="lyshare_max_lines_reached">आप अधिकतम 5 पंक्तियाँ साझा कर सकते हैं</string>
+    <string name="lyshare_continue">आगे बढ़ें</string>
+    <string name="lyshare_mode_song">गाना</string>
+    <string name="lyshare_mode_lyrics">बोल</string>
+    <string name="lyshare_action_share">साझा करें</string>
+    <string name="lyshare_action_save">सहेजें</string>
+    <string name="lyshare_saved_to_gallery">Pictures/LastWave में सहेजा गया</string>
+    <string name="lyshare_save_failed">छवि सहेजी नहीं जा सकी</string>
+    <string name="lyshare_share_failed">छवि साझा नहीं की जा सकी</string>
+    <string name="lyshare_button_cd">बोल साझा करें</string>
+    <string name="lyshare_close_cd">बंद करें</string>
+    <string name="lyshare_back_cd">वापस</string>
+    <string name="lyshare_color_picker_cd">रंग पैलेट</string>
+    <string name="lyshare_color_cover">कवर</string>
+    <string name="lyshare_color_song">गाने का रंग</string>
+    <string name="lyshare_color_muted">हल्का</string>
+    <string name="lyshare_color_dominant">प्रमुख</string>
+    <string name="lyshare_color_dark">गहरा</string>
+    <string name="lyshare_color_white">सफ़ेद</string>
+    <string name="lyshare_color_black">काला</string>
+    <string name="lyshare_color_accent">एक्सेंट</string>
+    <string name="lyshare_color_brand">लास्टवेव लाइम</string>
+    <string name="lyshare_accessibility_line_selected">चयनित, पंक्ति %1$d / %2$d</string>
+    <string name="lyshare_accessibility_line_unselected">पंक्ति %1$d / %2$d</string>
 </resources>

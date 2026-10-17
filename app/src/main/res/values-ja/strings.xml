@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LastWave</string>
     <string name="widget_name">LastWave プレーヤー</string>
@@ -1041,4 +1041,34 @@
     <string name="ly_try_another_source">別のソースを試す</string>
     <string name="ly_try_another_source_sub">現在のプロバイダーを除外して他のソースから歌詞を検索</string>
     <string name="ly_source_all_header">またはプロバイダーを直接選択</string>
+
+    <!-- 歌詞を共有 -->
+    <string name="lyshare_title">歌詞を共有</string>
+    <string name="lyshare_select_lyrics">歌詞を選択</string>
+    <string name="lyshare_lines_selected">%1$d 行選択中</string>
+    <string name="lyshare_line_selected_single">1 行選択中</string>
+    <string name="lyshare_max_lines_reached">最大5行まで共有できます</string>
+    <string name="lyshare_continue">次へ</string>
+    <string name="lyshare_mode_song">楽曲</string>
+    <string name="lyshare_mode_lyrics">歌詞</string>
+    <string name="lyshare_action_share">共有</string>
+    <string name="lyshare_action_save">保存</string>
+    <string name="lyshare_saved_to_gallery">Pictures/LastWave に保存しました</string>
+    <string name="lyshare_save_failed">画像を保存できませんでした</string>
+    <string name="lyshare_share_failed">画像を共有できませんでした</string>
+    <string name="lyshare_button_cd">歌詞を共有</string>
+    <string name="lyshare_close_cd">閉じる</string>
+    <string name="lyshare_back_cd">戻る</string>
+    <string name="lyshare_color_picker_cd">カラーパレット</string>
+    <string name="lyshare_color_cover">カバー</string>
+    <string name="lyshare_color_song">楽曲カラー</string>
+    <string name="lyshare_color_muted">落ち着いた色</string>
+    <string name="lyshare_color_dominant">メインカラー</string>
+    <string name="lyshare_color_dark">ダーク</string>
+    <string name="lyshare_color_white">ホワイト</string>
+    <string name="lyshare_color_black">ブラック</string>
+    <string name="lyshare_color_accent">アクセント</string>
+    <string name="lyshare_color_brand">LastWave ライム</string>
+    <string name="lyshare_accessibility_line_selected">選択中、%1$d / %2$d 行目</string>
+    <string name="lyshare_accessibility_line_unselected">%1$d / %2$d 行目</string>
 </resources>

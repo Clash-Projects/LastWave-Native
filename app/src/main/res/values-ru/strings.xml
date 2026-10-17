@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LastWave</string>
     <string name="widget_name">LastWave Плеер</string>
@@ -1041,4 +1041,34 @@
     <string name="ly_try_another_source">Попробовать другой источник</string>
     <string name="ly_try_another_source_sub">Исключить текущий источник и искать текст в других</string>
     <string name="ly_source_all_header">Или выберите источник напрямую</string>
+
+    <!-- Поделиться текстом -->
+    <string name="lyshare_title">Поделиться текстом</string>
+    <string name="lyshare_select_lyrics">Выбрать строки</string>
+    <string name="lyshare_lines_selected">Выбрано строк: %1$d</string>
+    <string name="lyshare_line_selected_single">Выбрана 1 строка</string>
+    <string name="lyshare_max_lines_reached">Можно поделиться не более чем 5 строками</string>
+    <string name="lyshare_continue">Продолжить</string>
+    <string name="lyshare_mode_song">Трек</string>
+    <string name="lyshare_mode_lyrics">Текст</string>
+    <string name="lyshare_action_share">Поделиться</string>
+    <string name="lyshare_action_save">Сохранить</string>
+    <string name="lyshare_saved_to_gallery">Сохранено в Pictures/LastWave</string>
+    <string name="lyshare_save_failed">Не удалось сохранить изображение</string>
+    <string name="lyshare_share_failed">Не удалось поделиться изображением</string>
+    <string name="lyshare_button_cd">Поделиться текстом</string>
+    <string name="lyshare_close_cd">Закрыть</string>
+    <string name="lyshare_back_cd">Назад</string>
+    <string name="lyshare_color_picker_cd">Цветовая палитра</string>
+    <string name="lyshare_color_cover">Обложка</string>
+    <string name="lyshare_color_song">Цвет трека</string>
+    <string name="lyshare_color_muted">Приглушённый</string>
+    <string name="lyshare_color_dominant">Основной</string>
+    <string name="lyshare_color_dark">Тёмный</string>
+    <string name="lyshare_color_white">Белый</string>
+    <string name="lyshare_color_black">Чёрный</string>
+    <string name="lyshare_color_accent">Акцент</string>
+    <string name="lyshare_color_brand">Лайм LastWave</string>
+    <string name="lyshare_accessibility_line_selected">Выбрана, строка %1$d из %2$d</string>
+    <string name="lyshare_accessibility_line_unselected">Строка %1$d из %2$d</string>
 </resources>

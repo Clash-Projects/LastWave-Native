@@ -23,6 +23,10 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.FormatSize
+import androidx.compose.material.icons.filled.Share
+import com.lastwave.app.ui.player.lyricsshare.ShareLyricsDialog
+import com.lastwave.app.ui.player.lyricsshare.TrackInfo
+import com.lastwave.app.ui.player.lyricsshare.buildLyricsSnapshot
 import kotlin.math.roundToInt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -200,8 +204,14 @@ fun ModernLyricsPanel(
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
     onSelectLyricsProvider: ((LyricsProvider) -> Unit)? = null,
     onTryAnotherLyricsSource: (() -> Unit)? = null,
+    resolvedArtworkUrl: String? = null,
 ) {
     state.current ?: return
+
+    var showShareDialog by rememberSaveable { mutableStateOf(false) }
+    val canShareLyrics = lyricsState is LyricsUiState.Success &&
+        !lyricsState.isInstrumental &&
+        (lyricsState.lines.any { it.text.isNotBlank() } || !lyricsState.plainLyrics.isNullOrBlank())
 
     // High-frequency progress is collected ONLY in the leaf hosts below
     // (lyrics list + controls). Collecting it here would recompose the whole
@@ -614,6 +624,8 @@ fun ModernLyricsPanel(
             primaryColor = primaryColor,
             secondaryColor = secondaryColor,
             tertiaryColor = tertiaryColor,
+            canShareLyrics = canShareLyrics,
+            onShareLyrics = { showShareDialog = true },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
@@ -636,6 +648,38 @@ fun ModernLyricsPanel(
                 },
                 onDismiss = { sourceDialogOpen = false },
             )
+        }
+    }
+
+    if (showShareDialog) {
+        val currentTrack = state.current
+        if (currentTrack != null) {
+            val trackInfo = remember(currentTrack, resolvedArtworkUrl) {
+                TrackInfo(
+                    title = currentTrack.title,
+                    artist = currentTrack.artist,
+                    artworkUrl = currentTrack.artworkUrl,
+                    resolvedArtworkUrl = resolvedArtworkUrl,
+                )
+            }
+            val activeIndex = remember(lyricsState, lyricsOffsetMs) {
+                val lines = (lyricsState as? LyricsUiState.Success)?.lines.orEmpty()
+                if (lines.isNotEmpty()) {
+                    activeLineIndex(lines, progressFlow.value.positionMs + lyricsOffsetMs)
+                } else {
+                    -1
+                }
+            }
+            val snapshot = remember(lyricsState, trackInfo) {
+                buildLyricsSnapshot(lyricsState, trackInfo, activeIndex)
+            }
+            if (snapshot != null) {
+                ShareLyricsDialog(
+                    snapshot = snapshot,
+                    onDismiss = { showShareDialog = false },
+                    primaryColor = primaryColor,
+                )
+            }
         }
     }
 }
@@ -1420,6 +1464,8 @@ private fun ModernLyricsControlsHost(
     primaryColor: Color = MaterialTheme.colorScheme.primary,
     secondaryColor: Color = MaterialTheme.colorScheme.secondary,
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
+    canShareLyrics: Boolean = false,
+    onShareLyrics: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val progress by progressFlow.collectAsStateWithLifecycle(initialValue = progressInitial)
@@ -1449,6 +1495,8 @@ private fun ModernLyricsControlsHost(
         primaryColor = primaryColor,
         secondaryColor = secondaryColor,
         tertiaryColor = tertiaryColor,
+        canShareLyrics = canShareLyrics,
+        onShareLyrics = onShareLyrics,
         modifier = modifier,
     )
 }
@@ -1480,6 +1528,8 @@ private fun ModernLyricsControls(
     primaryColor: Color = MaterialTheme.colorScheme.primary,
     secondaryColor: Color = MaterialTheme.colorScheme.secondary,
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
+    canShareLyrics: Boolean = false,
+    onShareLyrics: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var sliderPosition by remember(lyricsFontScale) { mutableFloatStateOf(lyricsFontScale) }
@@ -1719,6 +1769,41 @@ private fun ModernLyricsControls(
             }
 
             Spacer(Modifier.width(10.dp))
+
+            if (canShareLyrics) {
+                val shareInteraction = remember { MutableInteractionSource() }
+                val isSharePressed by shareInteraction.collectIsPressedAsState()
+                val sharePressScale by animateFloatAsState(
+                    targetValue = if (isSharePressed) 0.82f else 1.0f,
+                    animationSpec = ExpressiveMotion.spatialSpring(),
+                    label = "shareBtnScale",
+                )
+                IconButton(
+                    onClick = onShareLyrics,
+                    enabled = controlsVisible,
+                    interactionSource = shareInteraction,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .graphicsLayer {
+                            scaleX = sharePressScale
+                            scaleY = sharePressScale
+                        }
+                        .clip(CircleShape)
+                        .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = shareInteraction)
+                        .background(
+                            liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
+                        ),
+                ) {
+                    Icon(
+                        Icons.Filled.Share,
+                        contentDescription = stringResource(R.string.lyshare_button_cd),
+                        modifier = Modifier.size(22.dp),
+                        tint = Color.White.copy(alpha = 0.90f),
+                    )
+                }
+
+                Spacer(Modifier.width(10.dp))
+            }
 
             // Lyrics Font Scale toggle button placed immediately to the LEFT of Full Screen
             val fontInteraction = remember { MutableInteractionSource() }
