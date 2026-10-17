@@ -1035,4 +1035,10 @@
         <item quantity="one">%1$d ファイルはスキップされました (サポートされていない形式: %2$s)</item>
         <item quantity="other">%1$d ファイルがスキップされました (サポートされていない形式: %2$s)</item>
     </plurals>
+    <string name="ly_source_cd">歌詞プロバイダーを変更</string>
+    <string name="ly_source_title">歌詞プロバイダー</string>
+    <string name="ly_source_current">現在: %1$s</string>
+    <string name="ly_try_another_source">別のソースを試す</string>
+    <string name="ly_try_another_source_sub">現在のプロバイダーを除外して他のソースから歌詞を検索</string>
+    <string name="ly_source_all_header">またはプロバイダーを直接選択</string>
 </resources>

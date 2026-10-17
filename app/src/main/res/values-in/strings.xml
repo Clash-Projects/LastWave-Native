@@ -1035,4 +1035,10 @@
         <item quantity="one">File %1$d dilewati (format tidak didukung: %2$s)</item>
         <item quantity="other">%1$d file dilewati (format tidak didukung: %2$s)</item>
     </plurals>
+    <string name="ly_source_cd">Ubah penyedia lirik</string>
+    <string name="ly_source_title">Penyedia Lirik</string>
+    <string name="ly_source_current">Saat ini: %1$s</string>
+    <string name="ly_try_another_source">Coba Sumber Lain</string>
+    <string name="ly_try_another_source_sub">Kecualikan penyedia saat ini dan cari lirik dari sumber lain</string>
+    <string name="ly_source_all_header">Atau pilih penyedia langsung</string>
 </resources>

@@ -1035,4 +1035,10 @@
         <item quantity="one">Файл %1$d пропущен (неподдерживаемый формат: %2$s)</item>
         <item quantity="other">Файлы %1$d пропущены (неподдерживаемый формат: %2$s).</item>
     </plurals>
+    <string name="ly_source_cd">Сменить источник текста песни</string>
+    <string name="ly_source_title">Источник текста песни</string>
+    <string name="ly_source_current">Текущий: %1$s</string>
+    <string name="ly_try_another_source">Попробовать другой источник</string>
+    <string name="ly_try_another_source_sub">Исключить текущий источник и искать текст в других</string>
+    <string name="ly_source_all_header">Или выберите источник напрямую</string>
 </resources>

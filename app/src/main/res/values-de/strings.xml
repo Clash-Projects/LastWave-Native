@@ -1035,4 +1035,10 @@
         <item quantity="one">%1$d-Datei übersprungen (nicht unterstütztes Format: %2$s)</item>
         <item quantity="other">%1$d Dateien übersprungen (nicht unterstütztes Format: %2$s)</item>
     </plurals>
+    <string name="ly_source_cd">Songtext-Anbieter ändern</string>
+    <string name="ly_source_title">Songtext-Anbieter</string>
+    <string name="ly_source_current">Aktuell: %1$s</string>
+    <string name="ly_try_another_source">Andere Quelle versuchen</string>
+    <string name="ly_try_another_source_sub">Schließt den aktuellen Anbieter aus und sucht Songtexte aus anderen Quellen</string>
+    <string name="ly_source_all_header">Oder einen Anbieter direkt wählen</string>
 </resources>

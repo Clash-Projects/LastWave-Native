@@ -1038,4 +1038,10 @@
         <item quantity="one">跳过 %1$d 文件（不支持的格式：%2$s）</item>
         <item quantity="other">跳过 %1$d 文件（不支持的格式：%2$s）</item>
     </plurals>
+    <string name="ly_source_cd">更改歌词源</string>
+    <string name="ly_source_title">歌词源</string>
+    <string name="ly_source_current">当前：%1$s</string>
+    <string name="ly_try_another_source">尝试其他来源</string>
+    <string name="ly_try_another_source_sub">排除当前来源并从其他来源查找歌词</string>
+    <string name="ly_source_all_header">或直接选择歌词源</string>
 </resources>

@@ -1038,4 +1038,10 @@
     <string name="login_guest_desc">Le mode Invité fonctionne entièrement hors ligne avec des recommandations locales. Connectez Last.fm à tout moment dans Paramètres pour synchroniser les scrobbles.</string>
     <string name="login_restore">Restaurer la sauvegarde</string>
     <string name="login_downloads">Ouvrir les téléchargements hors ligne</string>
+    <string name="ly_source_cd">Changer de fournisseur de paroles</string>
+    <string name="ly_source_title">Fournisseur de paroles</string>
+    <string name="ly_source_current">Actuel : %1$s</string>
+    <string name="ly_try_another_source">Essayer une autre source</string>
+    <string name="ly_try_another_source_sub">Exclut le fournisseur actuel et recherche les paroles auprès d\'autres sources</string>
+    <string name="ly_source_all_header">Ou choisir directement un fournisseur</string>
 </resources>

@@ -1035,4 +1035,10 @@
         <item quantity="one">%1$d 파일을 건너뛰었습니다(지원되지 않는 형식: %2$s).</item>
         <item quantity="other">%1$d 파일을 건너뛰었습니다(지원되지 않는 형식: %2$s).</item>
     </plurals>
+    <string name="ly_source_cd">가사 제공자 변경</string>
+    <string name="ly_source_title">가사 제공자</string>
+    <string name="ly_source_current">현재: %1$s</string>
+    <string name="ly_try_another_source">다른 출처 시도</string>
+    <string name="ly_try_another_source_sub">현재 제공자를 제외하고 다른 출처에서 가사를 검색합니다</string>
+    <string name="ly_source_all_header">또는 제공자를 직접 선택</string>
 </resources>

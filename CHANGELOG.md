@@ -1,5 +1,16 @@
 # Changelog
 
+## [4.3.0] - 2026-10-17
+
+### Added & Improved
+- **On-Spot Lyrics Provider Switching:** Added a dedicated lyrics provider icon in lyrics controls to switch provider or exclude current source on the fly with smooth auto-hide controls integration.
+- **100% Localization Coverage:** Complete translation across all 12 supported locales.
+- **Dynamic APK Variant Selection:** Automatically detects device architecture and system version to download the appropriate APK variant (universal, uncompressed, or android7).
+- **Audio Fallback:** Falls back to stereo lossless when Dolby Atmos is unavailable.
+
+### Changed & Fixed
+- **Version Bump:** Bumped version to 4.3.0 (versionCode 25).
+
 ## [4.2.4] - 2026-10-05
 
 ### Added & Improved

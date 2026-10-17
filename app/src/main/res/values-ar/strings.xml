@@ -1035,4 +1035,10 @@
         <item quantity="one">تم تخطي ملف %1$d (تنسيق غير مدعوم: %2$s)</item>
         <item quantity="other">تم تخطي ملفات %1$d (تنسيق غير مدعوم: %2$s)</item>
     </plurals>
+    <string name="ly_source_cd">تغيير مزود كلمات الأغاني</string>
+    <string name="ly_source_title">مزود كلمات الأغاني</string>
+    <string name="ly_source_current">الحالي: %1$s</string>
+    <string name="ly_try_another_source">تجربة مصدر آخر</string>
+    <string name="ly_try_another_source_sub">استبعاد المزود الحالي والبحث عن كلمات الأغاني من مصادر أخرى</string>
+    <string name="ly_source_all_header">أو اختر مزوداً مباشرةً</string>
 </resources>

@@ -60,8 +60,8 @@ android {
         applicationId = "com.lastwave.app"
         minSdk = (project.findProperty("minSdk") as? String)?.toIntOrNull() ?: 29
         targetSdk = 35
-        versionCode = 24
-        versionName = "4.2.4"
+        versionCode = 25
+        versionName = "4.3.0"
 
         val lastWaveLyricsToken = resolveSecret("LASTWAVE_LYRICS_TOKEN")
         val lastWaveLyricsUrl = resolveSecret("LASTWAVE_LYRICS_URL")

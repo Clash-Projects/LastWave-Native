@@ -1035,4 +1035,10 @@
         <item quantity="one">%1$d फ़ाइल छोड़ दी गई (असमर्थित प्रारूप: %2$s)</item>
         <item quantity="other">%1$d फ़ाइलें छोड़ दी गईं (असमर्थित प्रारूप: %2$s)</item>
     </plurals>
+    <string name="ly_source_cd">गीत के बोल प्रदाता बदलें</string>
+    <string name="ly_source_title">गीत के बोल प्रदाता</string>
+    <string name="ly_source_current">वर्तमान: %1$s</string>
+    <string name="ly_try_another_source">दूसरा स्रोत आज़माएं</string>
+    <string name="ly_try_another_source_sub">वर्तमान प्रदाता को छोड़कर अन्य स्रोतों से बोल खोजता है</string>
+    <string name="ly_source_all_header">या सीधे कोई प्रदाता चुनें</string>
 </resources>

@@ -1090,4 +1090,10 @@
     <string name="login_guest_desc">Guest mode works fully offline with local recommendations. Connect Last.fm anytime in Settings to sync scrobbles.</string>
     <string name="login_restore">Restore backup</string>
     <string name="login_downloads">Open Offline Downloads</string>
+    <string name="ly_source_cd">Change lyrics provider</string>
+    <string name="ly_source_title">Lyrics Provider</string>
+    <string name="ly_source_current">Current: %1$s</string>
+    <string name="ly_try_another_source">Try Another Source</string>
+    <string name="ly_try_another_source_sub">Excludes current provider and finds lyrics from other sources</string>
+    <string name="ly_source_all_header">Or choose a provider directly</string>
 </resources>

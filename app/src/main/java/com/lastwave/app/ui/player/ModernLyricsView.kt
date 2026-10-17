@@ -131,10 +131,12 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lastwave.app.data.local.LyricsProvider
 import com.lastwave.app.data.lyrics.LyricLine
 import com.lastwave.app.data.lyrics.LyricSyllable
 import com.lastwave.app.data.lyrics.LyricsTranslation
 import com.lastwave.app.data.lyrics.isRtlText
+import com.lastwave.app.data.lyrics.providerForSource
 import com.lastwave.app.data.lyrics.translationLanguageName
 import com.lastwave.app.data.lyrics.translationWireTarget
 import com.lastwave.app.playback.MusicPlayer
@@ -196,6 +198,8 @@ fun ModernLyricsPanel(
     primaryColor: Color = MaterialTheme.colorScheme.primary,
     secondaryColor: Color = MaterialTheme.colorScheme.secondary,
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
+    onSelectLyricsProvider: ((LyricsProvider) -> Unit)? = null,
+    onTryAnotherLyricsSource: (() -> Unit)? = null,
 ) {
     state.current ?: return
 
@@ -215,8 +219,9 @@ fun ModernLyricsPanel(
         onControlsVisibleChange?.invoke(visible)
     }
     var fontSliderOpen by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(controlsVisible, controlsAutoHideSeconds, fontSliderOpen, isFullscreen) {
-        if (controlsVisible && controlsAutoHideSeconds > 0 && !fontSliderOpen) {
+    var sourceDialogOpen by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(controlsVisible, controlsAutoHideSeconds, fontSliderOpen, sourceDialogOpen, isFullscreen) {
+        if (controlsVisible && controlsAutoHideSeconds > 0 && !fontSliderOpen && !sourceDialogOpen) {
             delay(controlsAutoHideSeconds * 1000L)
             setControlsVisible(false)
         }
@@ -595,6 +600,9 @@ fun ModernLyricsPanel(
             onToggleRomanization = onToggleRomanization,
             showFontSlider = fontSliderOpen,
             onShowFontSliderChange = { fontSliderOpen = it },
+            onOpenLyricsSource = if (onSelectLyricsProvider != null || onTryAnotherLyricsSource != null) {
+                { sourceDialogOpen = true }
+            } else null,
             lyricsFontScale = effectiveFontScale,
             onLyricsFontScaleChange = { newScale ->
                 effectiveFontScale = newScale
@@ -611,6 +619,24 @@ fun ModernLyricsPanel(
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 16.dp, top = 6.dp),
         )
+
+        if (sourceDialogOpen) {
+            val currentSource = (lyricsState as? LyricsUiState.Success)?.source
+            val currentProvider = remember(currentSource) { providerForSource(currentSource) }
+            LyricsSourceDialog(
+                currentSource = currentSource,
+                currentProvider = currentProvider,
+                onSelectProvider = { provider ->
+                    sourceDialogOpen = false
+                    onSelectLyricsProvider?.invoke(provider)
+                },
+                onTryAnotherSource = {
+                    sourceDialogOpen = false
+                    onTryAnotherLyricsSource?.invoke()
+                },
+                onDismiss = { sourceDialogOpen = false },
+            )
+        }
     }
 }
 
@@ -1387,6 +1413,7 @@ private fun ModernLyricsControlsHost(
     onToggleRomanization: () -> Unit = {},
     showFontSlider: Boolean = false,
     onShowFontSliderChange: (Boolean) -> Unit = {},
+    onOpenLyricsSource: (() -> Unit)? = null,
     lyricsFontScale: Float = 1f,
     onLyricsFontScaleChange: (Float) -> Unit = {},
     onLyricsFontScalePreview: (Float) -> Unit = {},
@@ -1415,6 +1442,7 @@ private fun ModernLyricsControlsHost(
         onToggleRomanization = onToggleRomanization,
         showFontSlider = showFontSlider,
         onShowFontSliderChange = onShowFontSliderChange,
+        onOpenLyricsSource = onOpenLyricsSource,
         lyricsFontScale = lyricsFontScale,
         onLyricsFontScaleChange = onLyricsFontScaleChange,
         onLyricsFontScalePreview = onLyricsFontScalePreview,
@@ -1445,6 +1473,7 @@ private fun ModernLyricsControls(
     onToggleRomanization: () -> Unit = {},
     showFontSlider: Boolean = false,
     onShowFontSliderChange: (Boolean) -> Unit = {},
+    onOpenLyricsSource: (() -> Unit)? = null,
     lyricsFontScale: Float = 1f,
     onLyricsFontScaleChange: (Float) -> Unit = {},
     onLyricsFontScalePreview: (Float) -> Unit = {},
@@ -1558,6 +1587,41 @@ private fun ModernLyricsControls(
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (onOpenLyricsSource != null) {
+                val sourceInteraction = remember { MutableInteractionSource() }
+                val isSourcePressed by sourceInteraction.collectIsPressedAsState()
+                val sourceScale by animateFloatAsState(
+                    targetValue = if (isSourcePressed) 0.82f else 1.0f,
+                    animationSpec = ExpressiveMotion.spatialSpring(),
+                    label = "sourceBtnScale",
+                )
+                IconButton(
+                    onClick = onOpenLyricsSource,
+                    enabled = controlsVisible,
+                    interactionSource = sourceInteraction,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .graphicsLayer {
+                            scaleX = sourceScale
+                            scaleY = sourceScale
+                        }
+                        .clip(CircleShape)
+                        .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = sourceInteraction)
+                        .background(
+                            liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
+                        ),
+                ) {
+                    Icon(
+                        Icons.Filled.Lyrics,
+                        contentDescription = stringResource(R.string.ly_source_cd),
+                        modifier = Modifier.size(22.dp),
+                        tint = Color.White.copy(alpha = 0.90f),
+                    )
+                }
+
+                Spacer(Modifier.width(10.dp))
+            }
+
             // Translation and romanization toggles sit left of the size
             // controls. The active mode's button tints with the theme colour
             // and turns itself off on a second tap; while its request is in

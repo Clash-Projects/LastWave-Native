@@ -1035,4 +1035,10 @@
         <item quantity="one">Arquivo %1$d ignorado (formato não suportado: %2$s)</item>
         <item quantity="other">%1$d arquivos ignorados (formato não suportado: %2$s)</item>
     </plurals>
+    <string name="ly_source_cd">Alterar provedor de letras</string>
+    <string name="ly_source_title">Provedor de letras</string>
+    <string name="ly_source_current">Atual: %1$s</string>
+    <string name="ly_try_another_source">Tentar outra fonte</string>
+    <string name="ly_try_another_source_sub">Exclui o provedor atual e busca letras de outras fontes</string>
+    <string name="ly_source_all_header">Ou escolha um provedor diretamente</string>
 </resources>

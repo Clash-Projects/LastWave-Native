@@ -1088,4 +1088,10 @@
     <string name="ly_toast_already_romanized">Bu şarkı sözlerinde zaten Latin karakterleri kullanılıyor</string>
     <string name="ly_toast_romanization_unavailable">Romanizasyon kullanılamıyor</string>
     <string name="ly_toast_translation_unavailable">Çeviri kullanılamıyor</string>
+    <string name="ly_source_cd">Şarkı sözü sağlayıcısını değiştir</string>
+    <string name="ly_source_title">Şarkı Sözü Sağlayıcısı</string>
+    <string name="ly_source_current">Geçerli: %1$s</string>
+    <string name="ly_try_another_source">Başka Kaynak Dene</string>
+    <string name="ly_try_another_source_sub">Mevcut sağlayıcıyı hariç tutar ve diğer kaynaklardan sözleri arar</string>
+    <string name="ly_source_all_header">Veya doğrudan bir sağlayıcı seçin</string>
 </resources>
