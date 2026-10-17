@@ -3,6 +3,8 @@ package com.lastwave.app.data.update
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import com.lastwave.app.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,9 +29,21 @@ data class UpdateInfo(
     val releaseNotes: String = "",
     val releaseUrl: String = "",
     val downloadUrl: String? = null,
+    val downloadFileName: String? = null,
     val isDismissed: Boolean = false,
     val message: String? = null,
 )
+
+data class ReleaseAsset(
+    val name: String,
+    val downloadUrl: String,
+)
+
+enum class ApkVariant {
+    UNCOMPRESSED,
+    ANDROID7,
+    UNIVERSAL,
+}
 
 @Singleton
 class AppUpdateManager @Inject constructor(
@@ -47,6 +61,28 @@ class AppUpdateManager @Inject constructor(
     val updateInfo: StateFlow<UpdateInfo> = _updateInfo.asStateFlow()
 
     init {
+        checkForUpdate(isSilent = true)
+    }
+
+    fun isUncompressedBuild(): Boolean {
+        val pref = prefs.getString("preferred_variant", null)
+        if (pref != null) {
+            return pref.equals("uncompressed", ignoreCase = true) || pref.equals("raw", ignoreCase = true)
+        }
+        val buildType = runCatching { BuildConfig.BUILD_TYPE }.getOrDefault("")
+        return buildType.equals("rawRelease", ignoreCase = true) ||
+               buildType.contains("raw", ignoreCase = true) ||
+               buildType.contains("uncompressed", ignoreCase = true)
+    }
+
+    fun getPreferredVariant(): String? = prefs.getString("preferred_variant", null)
+
+    fun setPreferredVariant(variant: String?) {
+        if (variant == null) {
+            prefs.edit().remove("preferred_variant").apply()
+        } else {
+            prefs.edit().putString("preferred_variant", variant).apply()
+        }
         checkForUpdate(isSilent = true)
     }
 
@@ -92,18 +128,26 @@ class AppUpdateManager @Inject constructor(
                 val releaseUrl = json.optString("html_url", "https://github.com/Clash-Projects/LastWave-native/releases")
                 val releaseNotes = json.optString("body", "")
 
-                var downloadUrl: String? = null
+                val apkAssets = mutableListOf<ReleaseAsset>()
                 val assets = json.optJSONArray("assets")
                 if (assets != null) {
                     for (i in 0 until assets.length()) {
-                        val asset = assets.optJSONObject(i)
-                        val name = asset?.optString("name", "").orEmpty()
-                        if (name.endsWith(".apk", ignoreCase = true)) {
-                            downloadUrl = asset?.optString("browser_download_url")
-                            break
+                        val asset = assets.optJSONObject(i) ?: continue
+                        val name = asset.optString("name", "").trim()
+                        val download = asset.optString("browser_download_url", "").trim()
+                        if (name.endsWith(".apk", ignoreCase = true) && download.isNotBlank()) {
+                            apkAssets.add(ReleaseAsset(name = name, downloadUrl = download))
                         }
                     }
                 }
+
+                val bestAsset = selectBestAsset(
+                    assets = apkAssets,
+                    isUncompressed = isUncompressedBuild(),
+                    sdkInt = Build.VERSION.SDK_INT,
+                )
+                val downloadUrl = bestAsset?.downloadUrl ?: releaseUrl
+                val downloadFileName = bestAsset?.name
 
                 val currentVersion = getCurrentVersion()
                 val hasNewer = isNewerVersion(tagName, currentVersion)
@@ -119,7 +163,8 @@ class AppUpdateManager @Inject constructor(
                         currentVersion = currentVersion,
                         releaseNotes = releaseNotes,
                         releaseUrl = releaseUrl,
-                        downloadUrl = downloadUrl ?: releaseUrl,
+                        downloadUrl = downloadUrl,
+                        downloadFileName = downloadFileName,
                         isDismissed = isDismissed,
                         message = if (!isSilent) {
                             if (hasNewer) "New version $cleanTag available!" else "You're on the latest version ($currentVersion)"
@@ -172,5 +217,62 @@ class AppUpdateManager @Inject constructor(
             if (r < c) return false
         }
         return false
+    }
+
+    companion object {
+        fun classifyAsset(name: String): ApkVariant {
+            val lower = name.lowercase()
+            return when {
+                lower.contains("uncompressed") || lower.contains("-raw") || lower.contains("_raw") -> ApkVariant.UNCOMPRESSED
+                lower.contains("android7") || lower.contains("legacy") -> ApkVariant.ANDROID7
+                else -> ApkVariant.UNIVERSAL
+            }
+        }
+
+        fun selectBestAsset(
+            assets: List<ReleaseAsset>,
+            isUncompressed: Boolean,
+            sdkInt: Int,
+        ): ReleaseAsset? {
+            val apkAssets = assets.filter { it.name.endsWith(".apk", ignoreCase = true) && it.downloadUrl.isNotBlank() }
+            if (apkAssets.isEmpty()) return null
+
+            val target = when {
+                sdkInt < 29 -> ApkVariant.ANDROID7
+                isUncompressed -> ApkVariant.UNCOMPRESSED
+                else -> ApkVariant.UNIVERSAL
+            }
+
+            // Direct match for target variant, preferring "universal" naming if present
+            val matches = apkAssets.filter { classifyAsset(it.name) == target }
+            if (matches.isNotEmpty()) {
+                return matches.maxByOrNull { asset ->
+                    val lower = asset.name.lowercase()
+                    when (target) {
+                        ApkVariant.UNIVERSAL -> if (lower.contains("universal")) 2 else 1
+                        ApkVariant.UNCOMPRESSED -> if (lower.contains("universal")) 2 else 1
+                        ApkVariant.ANDROID7 -> if (lower.contains("android7")) 2 else 1
+                    }
+                }
+            }
+
+            // Fallback hierarchy if target variant was not present in this release:
+            return when (target) {
+                ApkVariant.UNCOMPRESSED -> {
+                    apkAssets.firstOrNull { classifyAsset(it.name) == ApkVariant.UNIVERSAL }
+                        ?: apkAssets.firstOrNull { classifyAsset(it.name) == ApkVariant.ANDROID7 }
+                        ?: apkAssets.firstOrNull()
+                }
+                ApkVariant.UNIVERSAL -> {
+                    apkAssets.firstOrNull { classifyAsset(it.name) == ApkVariant.UNCOMPRESSED }
+                        ?: apkAssets.firstOrNull { classifyAsset(it.name) == ApkVariant.ANDROID7 }
+                        ?: apkAssets.firstOrNull()
+                }
+                ApkVariant.ANDROID7 -> {
+                    apkAssets.firstOrNull { classifyAsset(it.name) == ApkVariant.UNIVERSAL }
+                        ?: apkAssets.firstOrNull()
+                }
+            }
+        }
     }
 }

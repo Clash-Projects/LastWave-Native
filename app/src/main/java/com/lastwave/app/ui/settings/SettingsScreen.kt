@@ -2011,7 +2011,10 @@ fun SettingsScreen(
                         title = if (updateInfo.isUpdateAvailable) "Update Ready (${updateInfo.latestVersion})" else "Check for Updates",
                         subtitle = when {
                             updateInfo.isChecking -> "Checking GitHub releases..."
-                            updateInfo.isUpdateAvailable -> "Tap to download new version"
+                            updateInfo.isUpdateAvailable -> {
+                                val fileName = updateInfo.downloadFileName
+                                if (!fileName.isNullOrBlank()) "Tap to download $fileName" else "Tap to download new version"
+                            }
                             !updateInfo.message.isNullOrBlank() -> updateInfo.message.orEmpty()
                             else -> "Current version: ${appVersionName(context)}"
                         },
