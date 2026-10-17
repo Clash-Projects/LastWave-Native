@@ -355,46 +355,46 @@ class LyricsRepository @Inject constructor(
                 coroutineScope {
                     val requests = mutableListOf<Deferred<LyricsResult.Success?>>()
                     if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.LASTWAVE)) {
-                        requests.add(async { fetchWordFromLastWave(title, artist, album, durationSeconds, recordingIsrc, effectiveVideoId) })
+                        requests.add(async<LyricsResult.Success?> { fetchWordFromLastWave(title, artist, album, durationSeconds, recordingIsrc, effectiveVideoId) })
                     }
                     if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.LRC_RED)) {
-                        requests.add(async { fetchWordFromLrcRed(title, artist, album, durationSeconds, recordingIsrc, biniHit, effectiveVideoId) })
+                        requests.add(async<LyricsResult.Success?> { fetchWordFromLrcRed(title, artist, album, durationSeconds, recordingIsrc, biniHit, effectiveVideoId) })
                     }
                     if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.APPLE_MUSIC)) {
-                        requests.add(async { fetchWordFromAppleMusic(title, artist, album, durationSeconds) })
+                        requests.add(async<LyricsResult.Success?> { fetchWordFromAppleMusic(title, artist, album, durationSeconds) })
                     }
                     if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.BINI_LYRICS)) {
-                        requests.add(async { fetchWordFromBini(title, artist, album, durationSeconds, recordingIsrc, biniHit, effectiveVideoId) })
+                        requests.add(async<LyricsResult.Success?> { fetchWordFromBini(title, artist, album, durationSeconds, recordingIsrc, biniHit, effectiveVideoId) })
                     }
                     if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.BETTER_LYRICS)) {
-                        requests.add(async { fetchWordFromBetterLyrics(title, artist, album, durationSeconds) })
+                        requests.add(async<LyricsResult.Success?> { fetchWordFromBetterLyrics(title, artist, album, durationSeconds) })
                     }
                     if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.KUGOU)) {
-                        requests.add(async { fetchWordFromKugou(title, artist, durationSeconds) })
+                        requests.add(async<LyricsResult.Success?> { fetchWordFromKugou(title, artist, durationSeconds) })
                     }
                     if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.SIMP_MUSIC)) {
-                        requests.add(async { fetchWordFromSimpMusic(effectiveVideoId, durationSeconds) })
+                        requests.add(async<LyricsResult.Success?> { fetchWordFromSimpMusic(effectiveVideoId, durationSeconds) })
                     }
                     if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.BETTER_LYRICS_PORTATO)) {
-                        requests.add(async { fetchWordFromPortato(title, artist, album, durationSeconds) })
+                        requests.add(async<LyricsResult.Success?> { fetchWordFromPortato(title, artist, album, durationSeconds) })
                     }
                     if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.LYRICS_PLUS)) {
-                        requests.add(async { fetchWordFromLyricsPlus(title, artist, album, durationSeconds, recordingIsrc) })
+                        requests.add(async<LyricsResult.Success?> { fetchWordFromLyricsPlus(title, artist, album, durationSeconds, recordingIsrc) })
                     }
                     if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.UNISON)) {
-                        requests.add(async { fetchWordFromUnison(title, artist, album, durationSeconds) })
+                        requests.add(async<LyricsResult.Success?> { fetchWordFromUnison(title, artist, album, durationSeconds) })
                     }
                     if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.YOUTUBE_CAPTIONS)) {
-                        requests.add(async { fetchWordFromYouTubeCaptions(effectiveVideoId, durationSeconds) })
+                        requests.add(async<LyricsResult.Success?> { fetchWordFromYouTubeCaptions(effectiveVideoId, durationSeconds) })
                     }
                     if (requests.isEmpty()) {
                         return@coroutineScope null
                     }
                     try {
                         while (requests.isNotEmpty()) {
-                            val (request, result) = select {
-                                requests.forEach { request ->
-                                    request.onAwait { request to it }
+                            val (request, result) = select<Pair<Deferred<LyricsResult.Success?>, LyricsResult.Success?>> {
+                                requests.forEach { req ->
+                                    req.onAwait { res -> req to res }
                                 }
                             }
                             requests.remove(request)

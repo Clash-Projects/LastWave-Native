@@ -1033,6 +1033,8 @@ private fun ExpandedPlayer(
         onToggleLiked = { currentTrack?.let(viewModel::toggleLiked) },
         onDoubleTapLike = { currentTrack?.let(viewModel::like) },
         onDragStatusChange = onDragStatusChange,
+        onSelectLyricsProvider = viewModel::selectLyricsProvider,
+        onTryAnotherLyricsSource = viewModel::tryAnotherLyricsSource,
     )
 }
 
@@ -1846,6 +1848,8 @@ private fun FullPlayer(
     onToggleLiked: () -> Unit = {},
     onDoubleTapLike: () -> Unit = {},
     onDragStatusChange: (Boolean) -> Unit = {},
+    onSelectLyricsProvider: ((com.lastwave.app.data.local.LyricsProvider) -> Unit)? = null,
+    onTryAnotherLyricsSource: (() -> Unit)? = null,
 ) {
     val track = state.current ?: return
     var showLyricsOffsetDialog by remember { mutableStateOf(false) }
@@ -2442,8 +2446,8 @@ private fun FullPlayer(
                                     onControlsVisibleChange = { lyricsControlsVisible = it },
                                     translationLanguage = translationLanguage,
                                     onRetry = onRetryLyrics,
-                                    onSelectLyricsProvider = viewModel::selectLyricsProvider,
-                                    onTryAnotherLyricsSource = viewModel::tryAnotherLyricsSource,
+                                    onSelectLyricsProvider = onSelectLyricsProvider,
+                                    onTryAnotherLyricsSource = onTryAnotherLyricsSource,
                                     onToggleFullscreen = { lyricsFullscreen = !lyricsFullscreen },
                                     isFullscreen = lyricsFullscreen,
                                     onOpenLyricsOffset = { showLyricsOffsetDialog = true },
