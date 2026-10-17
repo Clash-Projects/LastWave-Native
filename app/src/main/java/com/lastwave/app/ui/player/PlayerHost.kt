@@ -988,6 +988,8 @@ private fun ExpandedPlayer(
         onSetLyricsOffsetMs = viewModel::setLyricsOffsetMs,
         lyricsFontScale = settings.lyricsFontScale,
         onSetLyricsFontScale = viewModel::setLyricsFontScale,
+        lyricsButtonsAutoHideSeconds = settings.lyricsButtonsAutoHideSeconds,
+        translationLanguage = settings.translationLanguage,
         canvas = canvas,
         canvasEnabled = settings.canvasEnabled,
         canvasFullBleedEnabled = settings.canvasFullBleed,
@@ -1796,6 +1798,10 @@ private fun FullPlayer(
     onSetLyricsOffsetMs: ((Long) -> Unit)? = null,
     lyricsFontScale: Float = 1.0f,
     onSetLyricsFontScale: ((Float) -> Unit)? = null,
+    /** 0 = floating lyrics buttons never auto-hide; 2..10 = idle seconds. */
+    lyricsButtonsAutoHideSeconds: Int = 5,
+    /** Language the lyric translate button targets; blank = app language. */
+    translationLanguage: String = "",
     canvas: com.lastwave.app.data.canvas.CanvasArtwork? = null,
     canvasEnabled: Boolean = true,
     canvasFullBleedEnabled: Boolean = true,
@@ -1991,14 +1997,22 @@ private fun FullPlayer(
             val bgMaxDimension = maxOf(bgWidth, bgHeight, 1f)
             var heroBottomPx by remember { mutableFloatStateOf(0f) }
 
+            // Drives the Now Playing <-> Lyrics backdrop hand-over: the fluid
+            // layer fades out while the full-bleed cover backdrop fades in.
+            val lyricsVeil by animateFloatAsState(
+                targetValue = if (currentTab == FullPlayerTab.LYRICS) 1f else 0f,
+                animationSpec = tween(350),
+                label = "lyricsVeil",
+            )
             Box(Modifier.matchParentSize().liquidGlassSource(if (fullGlass) playerBackdrop else null)) {
                 FluidArtworkBackground(
                     track = track,
-                    modifier = Modifier.fillMaxSize(),
-                    // Lyrics legibility lives or dies on background
-                    // suppression; the Now Playing tab keeps its light blur.
-                    // When extraBlur is active, the fluid animation loop pauses
-                    // to keep 120Hz scrolling perfectly fluid without tearing down shader state.
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = (1f - lyricsVeil).coerceIn(0f, 1f) },
+                    // The lyrics tab crossfades the fluid out for a dedicated
+                    // cover backdrop (below); freezing the loop there keeps the
+                    // shader idle while the lyrics tab is up.
                     extraBlur = currentTab == FullPlayerTab.LYRICS,
                     rotatingBackgroundEnabled = rotatingBackgroundEnabled,
                     fallback = {
@@ -2157,27 +2171,49 @@ private fun FullPlayer(
                     }
                 }
 
-                // Lyrics-only readability veil: heavy blur still can't tame a
-                // bright face behind small text, so fade in extra dim on the
-                // lyrics tab. Now Playing tab is untouched.
-                val lyricsVeil by animateFloatAsState(
-                    targetValue = if (currentTab == FullPlayerTab.LYRICS) 1f else 0f,
-                    animationSpec = tween(350),
-                    label = "lyricsVeil",
-                )
+                // Lyrics tab backdrop: instead of stacking ever more dim over
+                // the fluid, the artwork itself takes over — a full-bleed
+                // blurred cover under a soft scrim, so the backdrop keeps the
+                // album's colours and composition (a touch darker than the
+                // reference progression for a calmer read).
                 if (lyricsVeil > 0.01f) {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    0.00f to Color.Black.copy(alpha = 0.62f * lyricsVeil),
-                                    0.35f to Color.Black.copy(alpha = 0.52f * lyricsVeil),
-                                    0.70f to Color.Black.copy(alpha = 0.58f * lyricsVeil),
-                                    1.00f to Color.Black.copy(alpha = 0.72f * lyricsVeil),
+                    Box(Modifier.fillMaxSize().graphicsLayer { alpha = lyricsVeil }) {
+                        PlayerArtwork(
+                            track = track,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    scaleX = 1.35f
+                                    scaleY = 1.35f
+                                }
+                                .then(
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                        Modifier.blur(36.dp)
+                                    } else {
+                                        Modifier
+                                    }
+                                ),
+                            corner = 0.dp,
+                            decodeSizePx = 200,
+                            transformations = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                                listOf(BlurTransformation(radius = 25, maxDimension = 100))
+                            } else {
+                                emptyList()
+                            },
+                        )
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        0.00f to Color.Black.copy(alpha = 0.37f),
+                                        0.35f to Color.Black.copy(alpha = 0.47f),
+                                        0.70f to Color.Black.copy(alpha = 0.64f),
+                                        1.00f to Color.Black.copy(alpha = 0.67f),
+                                    )
                                 )
-                            )
-                    )
+                        )
+                    }
                 }
             }
             Column(
@@ -2354,6 +2390,8 @@ private fun FullPlayer(
                                     lyricsOffsetMs = lyricsOffsetMs,
                                     lyricsFontScale = lyricsFontScale,
                                     onLyricsFontScaleChange = onSetLyricsFontScale ?: {},
+                                    controlsAutoHideSeconds = lyricsButtonsAutoHideSeconds,
+                                    translationLanguage = translationLanguage,
                                     onRetry = onRetryLyrics,
                                     onToggleFullscreen = { lyricsFullscreen = !lyricsFullscreen },
                                     isFullscreen = lyricsFullscreen,

@@ -33,10 +33,12 @@ import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.SwitchAccount
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.SpeakerPhone
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.MaterialTheme
@@ -636,6 +638,40 @@ object SettingsSearchIndex {
                         "bigger lyrics", "smaller lyrics", "lyrics scale", "lyrics zoom"
                     ),
                     icon = Icons.Filled.FormatSize,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Experimental & Features",
+                    type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "appearance.lyrics_autohide",
+                    title = "Hide Lyrics Buttons",
+                    subtitle = "Idle time before the floating lyrics buttons fade out (2-10 s or Never)",
+                    keywords = listOf(
+                        "hide lyrics buttons", "auto hide", "idle", "fade out", "lyrics controls",
+                        "font size button", "fullscreen button", "never", "seconds", "timeout"
+                    ),
+                    icon = Icons.Filled.VisibilityOff,
+                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Experimental & Features",
+                    type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "appearance.translation_language",
+                    title = "Translation Language",
+                    subtitle = "Language the lyrics translate button turns songs into (blank follows the app language)",
+                    keywords = listOf(
+                        "translation language", "translate lyrics", "lyrics language", "romanization",
+                        "romanize", "language of lyrics", "translate to", "lyrics translate"
+                    ),
+                    icon = Icons.Filled.Translate,
                     iconContainer = { MaterialTheme.colorScheme.primaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
                     parentTab = SettingsTab.APPEARANCE,

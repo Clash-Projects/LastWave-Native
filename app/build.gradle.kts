@@ -253,6 +253,7 @@ dependencies {
     implementation(libs.retrofit.kotlinx.serialization)
     implementation(libs.okhttp.core)
     implementation(libs.okhttp.logging)
+    implementation(libs.jsoup)
 
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)

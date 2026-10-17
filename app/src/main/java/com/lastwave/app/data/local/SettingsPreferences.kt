@@ -47,15 +47,24 @@ enum class LyricsProvider(val id: String, val title: String, val subtitle: Strin
     LRC_RED("lrc_red", "lrc.red", "ISRC-indexed syllable TTML & LRC first"),
     APPLE_MUSIC("apple_music", "Apple Music", "Syllable-synced Apple Music lyrics first"),
     BETTER_LYRICS("better_lyrics", "BetterLyrics", "Word-synced lyrics first"),
+    BETTER_LYRICS_PORTATO("better_lyrics_portato", "QQ Karaoke", "QQ Music karaoke word timings first"),
     KUGOU("kugou", "Kugou", "KRC word-synced lyrics first"),
     BINI_LYRICS("bini_lyrics", "Syllable-Sync", "Recording-matched syllable lyrics first"),
     SIMP_MUSIC("simp_music", "Video-Match", "Matched on the playing video first"),
     MUSIXMATCH("musixmatch", "Catalog", "Largest catalogue line-sync first"),
-    LRCLIB("lrclib", "LRCLIB", "Line-synced community lyrics first");
+    LRCLIB("lrclib", "LRCLIB", "Line-synced community lyrics first"),
+    LYRICS_PLUS("lyrics_plus", "LyricsPlus", "Syllable-synced on community mirrors first"),
+    UNISON("unison", "Unison", "Community-submitted synced lyrics first"),
+    YOUTUBE_CAPTIONS("youtube_captions", "YouTube Captions", "Timed captions from the playing video first"),
+    YOUTUBE_MUSIC("youtube_music", "YouTube Music", "Plain lyrics from the video's Lyrics tab first"),
+    MEGALOBIZ("megalobiz", "Megalobiz", "Community line-synced LRC first"),
+    GENIUS("genius", "Genius", "Plain-text web catalogue, tried last");
 
     val isWordProvider: Boolean get() =
         this == LASTWAVE || this == LRC_RED || this == APPLE_MUSIC || this == BETTER_LYRICS || this == KUGOU ||
-            this == BINI_LYRICS || this == SIMP_MUSIC || this == MUSIXMATCH
+            this == BINI_LYRICS || this == SIMP_MUSIC || this == MUSIXMATCH ||
+            this == BETTER_LYRICS_PORTATO || this == LYRICS_PLUS || this == UNISON ||
+            this == YOUTUBE_CAPTIONS || this == YOUTUBE_MUSIC || this == MEGALOBIZ || this == GENIUS
 
     companion object {
         fun fromId(id: String?): LyricsProvider =
@@ -124,6 +133,13 @@ data class MiscSettings(
     val rotatingBackgroundEnabled: Boolean = true,
     /** When true, keeps the screen from turning off when the user has the lyrics view open. */
     val keepLyricsScreenAwake: Boolean = false,
+    /** Seconds of inactivity before the floating lyrics buttons (font size,
+     *  fullscreen) fade out on the Lyrics screen; 0 = Never. Default 5. */
+    val lyricsButtonsAutoHideSeconds: Int = 5,
+    /** Language the lyric translate button turns songs into, spelled as the
+     *  translation service expects ("fr", "ja", "zh-TW"…). Blank = follow the
+     *  app language. */
+    val translationLanguage: String = "",
     /** When true (default), downloads fetch and save synced lyrics (.lrc companion files and embedded tags). */
     val downloadLyrics: Boolean = true,
     /** Stable ids for the last sort selected on each Downloads tab. */
@@ -225,6 +241,14 @@ fun sanitizeDownloadFolderName(raw: String?): String {
     return name
 }
 
+/** Clamps the lyrics-buttons auto-hide delay: 0 keeps "Never", everything
+ *  else is forced into the offered 2..10 second range, null = 5 s default. */
+fun sanitizeLyricsButtonsAutoHideSeconds(raw: Int?): Int = when {
+    raw == null -> 5
+    raw == 0 -> 0
+    else -> raw.coerceIn(2, 10)
+}
+
 /** Small dedicated prefs object for settings that don't fit ThemePreferences
  *  or SessionPreferences semantically — shares the app's single DataStore. */
 @Singleton
@@ -253,6 +277,8 @@ class SettingsPreferences @Inject constructor(
         val WAVY_SEEKBAR_ENABLED = booleanPreferencesKey("lw_wavy_seekbar_enabled")
         val ROTATING_BACKGROUND_ENABLED = booleanPreferencesKey("lw_rotating_background_enabled")
         val KEEP_LYRICS_SCREEN_AWAKE = booleanPreferencesKey("lw_keep_lyrics_screen_awake")
+        val LYRICS_BUTTONS_AUTO_HIDE_SECONDS = intPreferencesKey("lw_lyrics_buttons_auto_hide_seconds")
+        val TRANSLATION_LANGUAGE = stringPreferencesKey("lw_translation_language")
         val DOWNLOAD_LYRICS = booleanPreferencesKey("lw_download_lyrics")
         val DOWNLOAD_SONG_SORT = stringPreferencesKey("lw_download_song_sort")
         val DOWNLOAD_ARTIST_SORT = stringPreferencesKey("lw_download_artist_sort")
@@ -325,6 +351,9 @@ class SettingsPreferences @Inject constructor(
                 wavySeekbarEnabled = p.readSafely(Keys.WAVY_SEEKBAR_ENABLED) ?: true,
                 rotatingBackgroundEnabled = p.readSafely(Keys.ROTATING_BACKGROUND_ENABLED) ?: true,
                 keepLyricsScreenAwake = p.readSafely(Keys.KEEP_LYRICS_SCREEN_AWAKE) ?: false,
+                lyricsButtonsAutoHideSeconds =
+                    sanitizeLyricsButtonsAutoHideSeconds(p.readSafely(Keys.LYRICS_BUTTONS_AUTO_HIDE_SECONDS)),
+                translationLanguage = p.readSafely(Keys.TRANSLATION_LANGUAGE)?.trim().orEmpty(),
                 downloadLyrics = p.readSafely(Keys.DOWNLOAD_LYRICS) ?: true,
                 downloadSongSort = p.readSafely(Keys.DOWNLOAD_SONG_SORT) ?: "recent",
                 downloadArtistSort = p.readSafely(Keys.DOWNLOAD_ARTIST_SORT) ?: "name_az",
@@ -583,6 +612,16 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setKeepLyricsScreenAwake(enabled: Boolean) {
         dataStore.edit { it[Keys.KEEP_LYRICS_SCREEN_AWAKE] = enabled }
+    }
+
+    suspend fun setLyricsButtonsAutoHideSeconds(seconds: Int) {
+        dataStore.edit {
+            it[Keys.LYRICS_BUTTONS_AUTO_HIDE_SECONDS] = sanitizeLyricsButtonsAutoHideSeconds(seconds)
+        }
+    }
+
+    suspend fun setTranslationLanguage(language: String) {
+        dataStore.edit { it[Keys.TRANSLATION_LANGUAGE] = language.trim() }
     }
 
     suspend fun setDownloadLyrics(enabled: Boolean) {

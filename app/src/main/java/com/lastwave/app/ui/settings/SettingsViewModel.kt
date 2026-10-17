@@ -596,6 +596,12 @@ class SettingsViewModel @Inject constructor(
     fun setKeepLyricsScreenAwake(enabled: Boolean) = launchSettingsAction("update keep lyrics screen awake") {
         settingsPreferences.setKeepLyricsScreenAwake(enabled)
     }
+    fun setLyricsButtonsAutoHideSeconds(seconds: Int) = launchSettingsAction("update lyrics buttons auto-hide") {
+        settingsPreferences.setLyricsButtonsAutoHideSeconds(seconds)
+    }
+    fun setTranslationLanguage(language: String) = launchSettingsAction("update translation language") {
+        settingsPreferences.setTranslationLanguage(language)
+    }
     fun setCanvasEnabled(enabled: Boolean) = launchSettingsAction("update canvas enabled setting") {
         settingsPreferences.setCanvasEnabled(enabled)
     }

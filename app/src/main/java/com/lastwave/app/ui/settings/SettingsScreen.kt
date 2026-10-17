@@ -111,6 +111,7 @@ import com.lastwave.app.ui.player.LyricsSizeDialog
 import androidx.compose.material.icons.filled.FormatSize
 import kotlin.math.roundToInt
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.RestartAlt
@@ -122,6 +123,7 @@ import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.SwitchAccount
@@ -176,6 +178,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import com.lastwave.app.data.local.AppLanguage
 import com.lastwave.app.data.local.nativeDisplayName
+import com.lastwave.app.data.lyrics.TRANSLATION_LANGUAGES
+import com.lastwave.app.data.lyrics.translationLanguageName
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
@@ -199,6 +203,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
+import java.util.Locale
 
 import com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance
 import com.lastwave.app.R
@@ -491,6 +496,8 @@ fun SettingsScreen(
     var showLyricsProviderDialog by remember { mutableStateOf(false) }
     var showLyricsOffsetDialog by remember { mutableStateOf(false) }
     var showLyricsSizeDialog by remember { mutableStateOf(false) }
+    var showLyricsAutoHideDialog by remember { mutableStateOf(false) }
+    var showTranslationLanguageDialog by remember { mutableStateOf(false) }
     var showLoudnessDialog by remember { mutableStateOf(false) }
     var showClarityPresetDialog by remember { mutableStateOf(false) }
     var showSyncPlaylistsSheet by remember { mutableStateOf(false) }
@@ -1252,7 +1259,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_experimental))
-                    SettingsGroup(rowCount = 6) { index, position ->
+                    SettingsGroup(rowCount = 8) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.Lyrics,
@@ -1345,6 +1352,37 @@ fun SettingsScreen(
                                 onClick = { showLyricsSizeDialog = true },
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.lyrics_size"),
+                            )
+                            6 -> SettingsActionCard(
+                                icon = Icons.Filled.VisibilityOff,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.set_lyrics_autohide_title),
+                                subtitle = if (misc.lyricsButtonsAutoHideSeconds == 0) {
+                                    stringResource(R.string.set_lyrics_autohide_never)
+                                } else {
+                                    stringResource(
+                                        R.string.set_lyrics_autohide_value,
+                                        misc.lyricsButtonsAutoHideSeconds,
+                                    )
+                                },
+                                onClick = { showLyricsAutoHideDialog = true },
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.lyrics_autohide"),
+                            )
+                            7 -> SettingsActionCard(
+                                icon = Icons.Filled.Translate,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.set_translation_language_title),
+                                subtitle = if (misc.translationLanguage.isBlank()) {
+                                    stringResource(R.string.set_translation_language_follows)
+                                } else {
+                                    translationLanguageName(misc.translationLanguage, Locale.getDefault())
+                                },
+                                onClick = { showTranslationLanguageDialog = true },
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.translation_language"),
                             )
                         }
                     }
@@ -2186,6 +2224,30 @@ fun SettingsScreen(
             currentScale = misc.lyricsFontScale,
             onSelect = { viewModel.setLyricsFontScale(it) },
             onDismiss = { showLyricsSizeDialog = false },
+        )
+    }
+
+    // -- Floating lyrics buttons: idle time before they fade out --
+    if (showLyricsAutoHideDialog) {
+        LyricsAutoHideDialog(
+            currentSeconds = misc.lyricsButtonsAutoHideSeconds,
+            onSelect = {
+                viewModel.setLyricsButtonsAutoHideSeconds(it)
+                showLyricsAutoHideDialog = false
+            },
+            onDismiss = { showLyricsAutoHideDialog = false },
+        )
+    }
+
+    // -- Language the lyrics translate button turns songs into --
+    if (showTranslationLanguageDialog) {
+        TranslationLanguageDialog(
+            current = misc.translationLanguage,
+            onSelect = {
+                viewModel.setTranslationLanguage(it)
+                showTranslationLanguageDialog = false
+            },
+            onDismiss = { showTranslationLanguageDialog = false },
         )
     }
 
@@ -4971,6 +5033,112 @@ private fun LyricsProviderDialog(
                             )
                         }
                     }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_done)) }
+        },
+    )
+}
+
+@Composable
+private fun LyricsAutoHideDialog(
+    currentSeconds: Int,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.set_lyrics_autohide_title)) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    stringResource(R.string.set_lyrics_autohide_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                SettingsRadioOption(
+                    label = stringResource(R.string.set_lyrics_autohide_never),
+                    selected = currentSeconds == 0,
+                    onClick = { onSelect(0) },
+                )
+                for (seconds in 2..10) {
+                    SettingsRadioOption(
+                        label = stringResource(R.string.set_lyrics_autohide_seconds, seconds),
+                        selected = currentSeconds == seconds,
+                        onClick = { onSelect(seconds) },
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_done)) }
+        },
+    )
+}
+
+@Composable
+private fun SettingsRadioOption(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onClick() }
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Spacer(Modifier.width(8.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+        )
+    }
+}
+
+@Composable
+private fun TranslationLanguageDialog(
+    current: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val locale = remember { Locale.getDefault() }
+    val languages = remember { TRANSLATION_LANGUAGES }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.set_translation_language_title)) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    stringResource(R.string.set_translation_language_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                SettingsRadioOption(
+                    label = stringResource(R.string.set_translation_language_app),
+                    selected = current.isBlank(),
+                    onClick = { onSelect("") },
+                )
+                for (language in languages) {
+                    SettingsRadioOption(
+                        label = translationLanguageName(language.code, locale),
+                        selected = current.equals(language.code, ignoreCase = true),
+                        onClick = { onSelect(language.code) },
+                    )
                 }
             }
         },

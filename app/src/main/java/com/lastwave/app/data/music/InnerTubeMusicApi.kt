@@ -2,6 +2,7 @@ package com.lastwave.app.data.music
 
 import android.net.Uri
 import android.os.SystemClock
+import android.util.Base64
 import com.lastwave.app.data.local.AppLanguage
 import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.local.appLocale
@@ -569,6 +570,116 @@ class InnerTubeMusicApi @Inject constructor(
         // Sanity-check: the response must contain at least one track renderer.
         val hasTracks = parseSongRenderers(root).isNotEmpty()
         return if (hasTracks) root else null
+    }
+
+    /**
+     * Plain lyrics from a video's YouTube Music "Lyrics" tab, when it has
+     * one: `next` names the tab's browse endpoint, `browse` answers with a
+     * description shelf holding the text.
+     */
+    suspend fun fetchLyricsTabText(videoId: String): String? {
+        val id = videoId.trim()
+        if (!VIDEO_ID_PATTERN.matches(id)) return null
+        val config = getWebConfig()
+        val next = post(
+            url = "$MUSIC_API/next?key=${config.apiKey}&prettyPrint=false",
+            body = buildJsonObject {
+                put("context", context("WEB_REMIX", config.clientVersion, config.visitorData))
+                put("videoId", id)
+                put("isAudioOnly", true)
+            },
+            clientName = "WEB_REMIX",
+            clientVersion = config.clientVersion,
+            userAgent = WEB_USER_AGENT,
+            callTimeoutMs = RELATED_REQUEST_TIMEOUT_MS,
+        )
+        val tabs = mutableListOf<JsonObject>()
+        collectObjects(next, "tabRenderer", tabs)
+        val lyricsTab = tabs.firstOrNull { tab ->
+            val title = tab.obj("title")?.array("runs")
+                ?.joinToString("") { it.asObject()?.string("text").orEmpty() }
+                ?.takeIf { it.isNotBlank() }
+                ?: tab.string("title")
+            title?.contains("lyrics", ignoreCase = true) == true
+        }
+        // A localized page names the tab in its own language: fall back to
+        // whatever tab follows the first one and offers a browse endpoint.
+        val endpoint = lyricsTab?.let(::firstBrowseEndpoint)
+            ?: tabs.drop(1).firstNotNullOfOrNull(::firstBrowseEndpoint)
+            ?: return null
+        val browseId = endpoint.string("browseId")?.takeIf { it.isNotBlank() } ?: return null
+        val params = endpoint.string("params")
+        val page = post(
+            url = "$MUSIC_API/browse?key=${config.apiKey}&prettyPrint=false",
+            body = buildJsonObject {
+                put("context", context("WEB_REMIX", config.clientVersion, config.visitorData))
+                put("browseId", browseId)
+                params?.takeIf { it.isNotBlank() }?.let { put("params", it) }
+            },
+            clientName = "WEB_REMIX",
+            clientVersion = config.clientVersion,
+            userAgent = WEB_USER_AGENT,
+            callTimeoutMs = RELATED_REQUEST_TIMEOUT_MS,
+        )
+        val shelves = mutableListOf<JsonObject>()
+        collectObjects(page, "musicDescriptionShelfRenderer", shelves)
+        return shelves.firstNotNullOfOrNull { shelf ->
+            youtubeText(shelf["description"])?.trim()?.takeIf { it.isNotBlank() }
+        }
+    }
+
+    /**
+     * The video's timed captions, in start order (the transcript panel's
+     * cues). `get_transcript` takes one tiny protobuf param: field 1,
+     * length, video id.
+     */
+    suspend fun fetchTranscriptCues(videoId: String): List<Pair<Long, String>>? {
+        val id = videoId.trim()
+        if (!VIDEO_ID_PATTERN.matches(id)) return null
+        val config = getWebConfig()
+        val idBytes = id.toByteArray(Charsets.UTF_8)
+        val params = Base64.encodeToString(
+            byteArrayOf(0x0A, idBytes.size.toByte()) + idBytes,
+            Base64.NO_WRAP,
+        )
+        val response = post(
+            url = "$MUSIC_API/get_transcript?key=${config.apiKey}&prettyPrint=false",
+            body = buildJsonObject {
+                put("context", context("WEB_REMIX", config.clientVersion, config.visitorData))
+                put("params", params)
+            },
+            clientName = "WEB_REMIX",
+            clientVersion = config.clientVersion,
+            userAgent = WEB_USER_AGENT,
+            callTimeoutMs = RELATED_REQUEST_TIMEOUT_MS,
+        )
+        val cues = mutableListOf<JsonObject>()
+        collectObjects(response, "transcriptCueRenderer", cues)
+        val lines = cues.mapNotNull { cue ->
+            val startMs = (cue["startOffsetMs"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull()
+                ?: return@mapNotNull null
+            val text = youtubeText(cue["cue"])?.trim(' ', '\n', '\t', '♪').orEmpty()
+            text.takeIf { it.isNotEmpty() }?.let { startMs to it }
+        }.sortedBy { it.first }
+        return lines.takeIf { it.isNotEmpty() }
+    }
+
+    private fun firstBrowseEndpoint(tab: JsonObject): JsonObject? {
+        val endpoints = mutableListOf<JsonObject>()
+        collectObjects(tab, "browseEndpoint", endpoints)
+        return endpoints.firstOrNull()
+    }
+
+    /** The text of a YouTube renderer: `runs`, `simpleText`, or a plain string. */
+    private fun youtubeText(element: JsonElement?): String? = when (element) {
+        null -> null
+        is JsonPrimitive -> element.contentOrNull
+        is JsonArray -> element.mapNotNull(::youtubeText).joinToString("").takeIf { it.isNotBlank() }
+        is JsonObject -> {
+            val direct = (element["text"] as? JsonPrimitive)?.contentOrNull
+                ?: (element["simpleText"] as? JsonPrimitive)?.contentOrNull
+            direct ?: element.values.mapNotNull(::youtubeText).joinToString("").takeIf { it.isNotBlank() }
+        }
     }
 
     private fun playlistHeader(root: JsonElement): JsonObject? {
@@ -3835,6 +3946,7 @@ class InnerTubeMusicApi @Inject constructor(
         const val YOUTUBE_ORIGIN = "https://www.youtube.com"
         const val MUSIC_API = "https://music.youtube.com/youtubei/v1"
         const val YOUTUBE_API = "https://www.youtube.com/youtubei/v1"
+        private val VIDEO_ID_PATTERN = Regex("[A-Za-z0-9_-]{11}")
         const val LIBRARY_PLAYLISTS_BROWSE_ID = "FEmusic_liked_playlists"
         const val YT_HISTORY_BROWSE_ID = "FEmusic_history"
         const val YT_LIKED_BROWSE_ID = "VLLM"
