@@ -408,8 +408,11 @@ private fun FloatingNavBar(
                 .fillMaxWidth()
                 .then(
                     if (liquidGlass) {
+                        // Zero-radius CornerBasedShape, NOT RectangleShape: the
+                        // glass lens SDF only accepts corner-based shapes and
+                        // crashes the render pass for a plain rectangle.
                         Modifier.liquidGlassChrome(
-                            androidx.compose.ui.graphics.RectangleShape,
+                            RoundedCornerShape(0.dp),
                             liquidGlass,
                             LiquidGlassPreset.BottomNavigation,
                             backdrop,

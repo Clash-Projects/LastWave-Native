@@ -459,7 +459,7 @@ fun Modifier.drawInteractiveGlass(
     this
         .drawBackdrop(
             backdrop = backdrop,
-            shape = { shape },
+            shape = { lensSafeGlassShape(shape) },
             highlight = { highlight },
             effects = {
                 val l = (luminanceAnimation * 2f - 1f).let { sign(it) * it * it }
@@ -519,6 +519,17 @@ fun Modifier.drawInteractiveGlass(
                 Modifier
             },
         )
+
+/**
+ * lens-safe shape guard: kyant's lens effect (used by every interactive
+ * glass surface) only accepts corner-based shapes — its SDF shader throws
+ * "Only RoundedRectangularShape or CornerBasedShape is supported" for a
+ * plain [RectangleShape], which took the render pass down with it (the
+ * MD3 navigation bar's glass chrome). Square shapes map to a zero-radius
+ * [RoundedCornerShape]: identical rectangle visuals, valid lens input.
+ */
+internal fun lensSafeGlassShape(shape: Shape): Shape =
+    if (shape == RectangleShape) RoundedCornerShape(0.dp) else shape
 
 /** Interactive liquidGlass: static surfaces use fixed mid-luminance. */
 @Composable
