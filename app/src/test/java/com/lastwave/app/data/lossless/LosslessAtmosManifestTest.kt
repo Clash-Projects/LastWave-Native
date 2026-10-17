@@ -80,4 +80,17 @@ class LosslessAtmosManifestTest {
         assertFalse(LosslessMusicApi.isAtmosStreamUrl("https://cdn.example/track.flac"))
         assertFalse(LosslessMusicApi.isAtmosStreamUrl(""))
     }
+
+    @Test
+    fun atmosQualityFallsBackToStereoLosslessBeforeLossy() {
+        val tiers = LosslessMusicApi.getQualityAttemptOrder(LosslessMusicApi.QUALITY_DOLBY_ATMOS)
+        assertTrue(tiers.first() == LosslessMusicApi.QUALITY_DOLBY_ATMOS)
+        assertTrue(tiers.contains(LosslessMusicApi.QUALITY_MAX_HI_RES))
+        assertTrue(tiers.contains(LosslessMusicApi.QUALITY_CD_LOSSLESS))
+        val hiResIndex = tiers.indexOf(LosslessMusicApi.QUALITY_MAX_HI_RES)
+        val cdIndex = tiers.indexOf(LosslessMusicApi.QUALITY_CD_LOSSLESS)
+        val mp3Index = tiers.indexOf(LosslessMusicApi.QUALITY_MP3_320)
+        assertTrue(hiResIndex in 0 until mp3Index)
+        assertTrue(cdIndex in 0 until mp3Index)
+    }
 }

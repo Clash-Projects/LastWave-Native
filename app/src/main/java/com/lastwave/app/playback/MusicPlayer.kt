@@ -6314,7 +6314,22 @@ class MusicPlayer @Inject constructor(
             expectedAlbum = track.album,
             preferredQuality = effectiveQuality,
             excludedUrls = excludedLosslessUrls,
-        ) ?: return null
+        ) ?: if (effectiveQuality == LosslessMusicApi.QUALITY_DOLBY_ATMOS) {
+            android.util.Log.i(
+                "MusicPlayer",
+                "[LOSSLESS] Atmos resolve returned null for '${track.title}'; trying stereo hi-res fallback",
+            )
+            losslessMusicApi.resolveStream(
+                title = track.title,
+                artist = track.artist,
+                expectedDurationSeconds = expectedDurationSeconds,
+                expectedAlbum = track.album,
+                preferredQuality = LosslessMusicApi.QUALITY_MAX_HI_RES,
+                excludedUrls = excludedLosslessUrls,
+            )
+        } else {
+            null
+        } ?: return null
 
         if (stream.url.isBlank() || stream.url in excludedLosslessUrls) return null
 

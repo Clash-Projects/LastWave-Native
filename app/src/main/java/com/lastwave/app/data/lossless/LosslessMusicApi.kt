@@ -685,8 +685,25 @@ class LosslessMusicApi @Inject constructor(
                     isDownload = isDownload,
                 )
             }.getOrNull()
-            if (resolved == null) noteBackendFailure()
-            return@withContext resolved
+            if (resolved != null) return@withContext resolved
+
+            // Atmos fallback: if Dolby Atmos was selected but not found on the track,
+            // fall back to stereo hi-res / lossless rather than failing and cooling down the backend.
+            if (preferredQuality == QUALITY_DOLBY_ATMOS) {
+                Log.i(TAG, "resolveStream: Dolby Atmos not found for '$title' by '$artist', falling back to stereo lossless")
+                return@withContext resolveStream(
+                    title = title,
+                    artist = artist,
+                    expectedDurationSeconds = expectedDurationSeconds,
+                    expectedAlbum = expectedAlbum,
+                    preferredQuality = QUALITY_MAX_HI_RES,
+                    excludedUrls = excludedUrls,
+                    isDownload = isDownload,
+                )
+            }
+
+            noteBackendFailure()
+            return@withContext null
         }
 
         Log.i(TAG, "resolveStream racing for '$title' by '$artist' across ${allCreds.size} addons concurrently (preferredQuality=$preferredQuality, isDownload=$isDownload)")
@@ -709,6 +726,21 @@ class LosslessMusicApi @Inject constructor(
 
         val candidates = deferreds.awaitAll().filterNotNull()
         if (candidates.isEmpty()) {
+            // Atmos fallback: if Dolby Atmos was selected but not found across addons,
+            // fall back to stereo hi-res / lossless rather than failing and cooling down the backend.
+            if (preferredQuality == QUALITY_DOLBY_ATMOS) {
+                Log.i(TAG, "resolveStream: Dolby Atmos not found across addons for '$title' by '$artist', falling back to stereo lossless")
+                return@withContext resolveStream(
+                    title = title,
+                    artist = artist,
+                    expectedDurationSeconds = expectedDurationSeconds,
+                    expectedAlbum = expectedAlbum,
+                    preferredQuality = QUALITY_MAX_HI_RES,
+                    excludedUrls = excludedUrls,
+                    isDownload = isDownload,
+                )
+            }
+
             noteBackendFailure()
             return@withContext null
         }
