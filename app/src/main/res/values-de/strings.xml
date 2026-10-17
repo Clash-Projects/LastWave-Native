@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LastWave</string>
     <string name="widget_name">LastWave Player</string>
@@ -277,6 +277,7 @@
     <string name="lyshare_close_cd">Schließen</string>
     <string name="lyshare_back_cd">Zurück</string>
     <string name="lyshare_color_picker_cd">Farbpalette</string>
+    <string name="lyshare_color_cover">Cover</string>
     <string name="lyshare_color_song">Titelfarbe</string>
     <string name="lyshare_color_muted">Dezente Farbe</string>
     <string name="lyshare_color_dominant">Dominante Farbe</string>

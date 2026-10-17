@@ -1109,6 +1109,7 @@
     <string name="lyshare_close_cd">Close</string>
     <string name="lyshare_back_cd">Back</string>
     <string name="lyshare_color_picker_cd">Color palette</string>
+    <string name="lyshare_color_cover">Cover</string>
     <string name="lyshare_color_song">Song color</string>
     <string name="lyshare_color_muted">Muted</string>
     <string name="lyshare_color_dominant">Dominant</string>

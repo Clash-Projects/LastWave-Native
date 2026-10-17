@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LastWave</string>
     <string name="widget_name">LastWave 播放器</string>
@@ -280,6 +280,7 @@
     <string name="lyshare_close_cd">关闭</string>
     <string name="lyshare_back_cd">返回</string>
     <string name="lyshare_color_picker_cd">调色盘</string>
+    <string name="lyshare_color_cover">封面</string>
     <string name="lyshare_color_song">歌曲颜色</string>
     <string name="lyshare_color_muted">柔和</string>
     <string name="lyshare_color_dominant">主色</string>

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LastWave</string>
     <string name="widget_name">Pemutar LastWave</string>
@@ -277,6 +277,7 @@
     <string name="lyshare_close_cd">Tutup</string>
     <string name="lyshare_back_cd">Kembali</string>
     <string name="lyshare_color_picker_cd">Palet warna</string>
+    <string name="lyshare_color_cover">Sampul</string>
     <string name="lyshare_color_song">Warna lagu</string>
     <string name="lyshare_color_muted">Lembut</string>
     <string name="lyshare_color_dominant">Dominan</string>

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LastWave</string>
     <string name="widget_name">LastWave प्लेयर</string>
@@ -277,6 +277,7 @@
     <string name="lyshare_close_cd">बंद करें</string>
     <string name="lyshare_back_cd">वापस</string>
     <string name="lyshare_color_picker_cd">रंग पैलेट</string>
+    <string name="lyshare_color_cover">कवर</string>
     <string name="lyshare_color_song">गाने का रंग</string>
     <string name="lyshare_color_muted">हल्का</string>
     <string name="lyshare_color_dominant">प्रमुख</string>
