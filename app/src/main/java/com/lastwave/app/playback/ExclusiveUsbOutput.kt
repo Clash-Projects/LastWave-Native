@@ -254,6 +254,11 @@ class ExclusiveUsbOutput @Inject constructor(
 
     fun syncListeningGain() {
         val stream = readStreamMusicGain() ?: return
+        // While the attach-time 100% pin is held off with the remembered
+        // level, keep ignoring pinned max readings. The next real sub-max
+        // change (a volume key press) ends the hold and applies normally.
+        if (ignoreStreamMusicMax && stream >= ATTACH_MAX_PIN_GAIN) return
+        if (stream < ATTACH_MAX_PIN_GAIN) ignoreStreamMusicMax = false
         val next = stream
         if (lastAppliedCombined.isFinite() &&
             kotlin.math.abs(next - listeningGain) < 1e-4f
@@ -772,15 +777,24 @@ class ExclusiveUsbOutput @Inject constructor(
     }
 
     private fun rememberStreamGain(gain: Float?) {
-        if (gain != null && gain in 0.01f..0.999f) {
+        if (gain != null && gain in MIN_REMEMBERED_GAIN..ATTACH_MAX_PIN_GAIN) {
             lastNonMaxListeningGain = gain
             runCatching { volumePrefs.edit().putFloat(KEY_LAST_NON_MAX_GAIN, gain).apply() }
         }
     }
 
     private fun listeningGainForDac(): Float {
+        val stream = readStreamMusicGain() ?: return listeningGain
+        attachMaxPinFallbackGain(stream, lastNonMaxListeningGain)?.let { remembered ->
+            ignoreStreamMusicMax = true
+            Log.i(
+                TAG,
+                "STREAM_MUSIC pinned at max on attach; using remembered listening gain $remembered",
+            )
+            return remembered
+        }
         ignoreStreamMusicMax = false
-        return readStreamMusicGain() ?: listeningGain
+        return stream
     }
 
     private fun syncListeningGainLocked() {
@@ -976,3 +990,26 @@ class ExclusiveUsbOutput @Inject constructor(
         }
     }
 }
+
+/**
+ * Gain to use when a raw STREAM_MUSIC read is the attach-time 100% pin.
+ *
+ * Android reports the media volume pinned at max the moment a USB DAC
+ * attaches, while the user's real level is still the last non-max volume-key
+ * press. Applying the pinned reading at full scale is what boosted the
+ * volume to 100 on every remove/re-attach. The remembered level is what the
+ * user hears on their next key press, so it wins while the read is pinned.
+ * Null means the raw reading is trustworthy.
+ */
+internal fun attachMaxPinFallbackGain(streamGain: Float, rememberedGain: Float): Float? {
+    if (streamGain < ATTACH_MAX_PIN_GAIN) return null
+    if (!rememberedGain.isFinite()) return null
+    if (rememberedGain < MIN_REMEMBERED_GAIN || rememberedGain > ATTACH_MAX_PIN_GAIN) return null
+    return rememberedGain
+}
+
+/** Raw readings at/above this are the attach-time pin, not a chosen level. */
+private const val ATTACH_MAX_PIN_GAIN = 0.999f
+
+/** Quietest level remembered as the user's real listening gain. */
+private const val MIN_REMEMBERED_GAIN = 0.01f
