@@ -925,6 +925,39 @@ object SettingsSearchIndex {
                     type = EntryType.TOGGLE,
                 )
             )
+            add(
+                SettingsEntry(
+                    id = "telemetry.enabled",
+                    title = "Global Live Map Telemetry",
+                    subtitle = "Broadcast listening ticks anonymously to the live world map or keep completely local",
+                    keywords = listOf(
+                        "telemetry", "live map", "tracking", "privacy", "analytics",
+                        "global map", "listener map", "broadcast", "disable telemetry", "turn off telemetry"
+                    ),
+                    icon = Icons.Filled.Public,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                    parentTab = SettingsTab.LAST_FM,
+                    section = "Global Live Telemetry & Map",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "telemetry.open_map",
+                    title = "Open Global Live Map",
+                    subtitle = "Real-time vector map of global listeners at telemetry.clashprojects.qd.je",
+                    keywords = listOf(
+                        "telemetry map", "live map", "world map", "listeners map", "global map"
+                    ),
+                    icon = Icons.Filled.Public,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    parentTab = SettingsTab.LAST_FM,
+                    section = "Global Live Telemetry & Map",
+                    type = EntryType.ACTION,
+                )
+            )
 
             // ==========================================
             // TAB: NOTIFICATION SCROBBLER
