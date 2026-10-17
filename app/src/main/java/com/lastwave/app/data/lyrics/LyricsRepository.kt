@@ -1,5 +1,6 @@
 package com.lastwave.app.data.lyrics
 
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
