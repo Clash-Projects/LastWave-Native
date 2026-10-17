@@ -2,6 +2,8 @@ package com.lastwave.app.ui.player.lyricsshare
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Paint
+import android.text.TextPaint
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
@@ -9,8 +11,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ShareCardRendererTest {
 
     private lateinit var context: Context
@@ -47,8 +51,8 @@ class ShareCardRendererTest {
 
         assertThat(bitmap).isNotNull()
         assertThat(bitmap.width).isEqualTo(720)
-        assertThat(bitmap.height).isAtLeast(720 * 5 / 4)
-        assertThat(bitmap.height).isAtMost(720 * 16 / 9)
+        assertThat(bitmap.height).isAtLeast(720) // 1:1 minimum
+        assertThat(bitmap.height).isAtMost(720 * 16 / 9) // 9:16 maximum
     }
 
     @Test
@@ -70,7 +74,7 @@ class ShareCardRendererTest {
 
         assertThat(bitmap).isNotNull()
         assertThat(bitmap.width).isEqualTo(720)
-        assertThat(bitmap.height).isAtLeast(720 * 5 / 4)
+        assertThat(bitmap.height).isAtLeast(720)
     }
 
     @Test
@@ -92,22 +96,22 @@ class ShareCardRendererTest {
 
         assertThat(bitmap).isNotNull()
         assertThat(bitmap.width).isEqualTo(720)
+        assertThat(bitmap.height).isAtLeast(720)
     }
 
     @Test
-    fun renderLyricsCard_withBlurredBackground_rendersSuccessfully() = runTest {
+    fun renderLyricsCard_withHeaderThumbnail_rendersSuccessfully() = runTest {
         val spec = ShareCardSpec(
             mode = CardMode.Lyrics,
             lines = listOf(
-                ShareLine("First verse line", isRtl = false),
-                ShareLine("Second verse line", isRtl = false),
-                ShareLine("Chorus climax line", isRtl = false),
+                ShareLine("I can't see clearly when you're gone", isRtl = false),
+                ShareLine("I said, \"Ooh, I'm blinded by the lights\"", isRtl = false),
+                ShareLine("No, I can't sleep until I feel your touch\"", isRtl = false),
             ),
             title = "Blinding Lights",
             artist = "The Weeknd",
             coverBitmap = sampleCover,
-            blurredBackgroundBitmap = sampleBlur,
-            swatchColor = ColorContrastHelper.BRAND_LIME,
+            swatchColor = 0xFF78350F.toInt(), // Warm Amber / Brown like YT Music
             targetWidth = 720,
         )
 
@@ -115,7 +119,8 @@ class ShareCardRendererTest {
 
         assertThat(bitmap).isNotNull()
         assertThat(bitmap.width).isEqualTo(720)
-        assertThat(bitmap.height).isAtLeast(720 * 5 / 4)
+        assertThat(bitmap.height).isAtLeast(720)
+        assertThat(bitmap.height).isAtMost(720 * 16 / 9)
     }
 
     @Test
@@ -128,7 +133,6 @@ class ShareCardRendererTest {
             title = "Acoustic Solo",
             artist = "Guitarist",
             coverBitmap = null,
-            blurredBackgroundBitmap = null,
             swatchColor = 0xFF0F172A.toInt(),
             targetWidth = 720,
         )
@@ -137,22 +141,24 @@ class ShareCardRendererTest {
 
         assertThat(bitmap).isNotNull()
         assertThat(bitmap.width).isEqualTo(720)
-        assertThat(bitmap.height).isAtLeast(720 * 5 / 4)
+        assertThat(bitmap.height).isAtLeast(720)
     }
 
     @Test
-    fun renderLyricsCard_failedArt_usesBrandFallbackGradient() = runTest {
-        val fallbackGradient = ArtworkResolver.createBrandFallbackGradient(ColorContrastHelper.DEFAULT_DARK, 200, 200)
+    fun renderLyricsCard_coverBackground_rendersSuccessfullyWithDimmedScrim() = runTest {
         val spec = ShareCardSpec(
             mode = CardMode.Lyrics,
             lines = listOf(
-                ShareLine("Failed backdrop resolution line", isRtl = false),
+                ShareLine("No one's around to judge me (oh)", isRtl = false),
+                ShareLine("I can't see clearly when you're gone", isRtl = false),
+                ShareLine("I said, \"Ooh, I'm blinded by the lights\"", isRtl = false),
             ),
-            title = "Uncached Song",
-            artist = "Indie Band",
-            coverBitmap = null,
-            blurredBackgroundBitmap = fallbackGradient,
-            swatchColor = ColorContrastHelper.DEFAULT_DARK,
+            title = "Blinding Lights",
+            artist = "The Weeknd",
+            coverBitmap = sampleCover,
+            swatchColor = ColorContrastHelper.SWATCH_COVER_ART,
+            derivedColors = ColorContrastHelper.deriveTextColors(ColorContrastHelper.SWATCH_COVER_ART, isCoverScrim = true),
+            isCoverBackground = true,
             targetWidth = 720,
         )
 
@@ -160,6 +166,72 @@ class ShareCardRendererTest {
 
         assertThat(bitmap).isNotNull()
         assertThat(bitmap.width).isEqualTo(720)
+        assertThat(bitmap.height).isAtLeast(720)
+        assertThat(bitmap.height).isAtMost(720 * 16 / 9)
+    }
+
+    @Test
+    fun lyricWrapping_longLineProducesMultipleRows_shortLineProducesSingleRow() {
+        val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = 84f
+        }
+        val contentWidth = 60
+
+        val shortText = "I feel"
+        val shortLayout = ShareCardRenderer.createStaticLayout(shortText, paint, contentWidth, isRtl = false)
+        val longText = "This is an exceptionally long lyric line that definitely wraps onto multiple distinct rows within the card boundaries"
+        val longLayout = ShareCardRenderer.createStaticLayout(longText, paint, contentWidth, isRtl = false)
+        assertThat(shortLayout.lineCount).isEqualTo(1)
+        assertThat(longLayout.lineCount).isGreaterThan(1)
+    }
+
+    @Test
+    fun lyricSpacing_gapBetweenDifferentLyricsIsGreaterThanWrappedRowSpacing() {
+        val fontSize = 84f
+        val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = fontSize
+        }
+        val contentWidth = 40
+
+        val multiRowLyric = "I said, \"Ooh, I'm blinded by the lights, no I can't sleep until I feel your touch\""
+        val layout = ShareCardRenderer.createStaticLayout(multiRowLyric, paint, contentWidth, isRtl = false)
+        assertThat(layout.lineCount).isGreaterThan(1)
+
+        val row0Bottom = layout.getLineBottom(0)
+        val row1Top = layout.getLineTop(1)
+        val wrappedRowGap = (row1Top - row0Bottom).coerceAtLeast(0)
+
+        val blockGap = fontSize * ShareCardRenderer.LYRIC_BLOCK_GAP_FACTOR
+        assertThat(blockGap).isGreaterThan(wrappedRowGap.toFloat())
+    }
+
+    @Test
+    fun heightClamp_shortCardClampsToSquare1to1_longCardClampsTo9to16() = runTest {
+        val shortSpec = ShareCardSpec(
+            mode = CardMode.Lyrics,
+            lines = listOf(ShareLine("Single line", isRtl = false)),
+            title = "Title",
+            artist = "Artist",
+            targetWidth = 720,
+        )
+        val shortBitmap = ShareCardRenderer.renderCard(context, shortSpec)
+        assertThat(shortBitmap.width).isEqualTo(720)
+        assertThat(shortBitmap.height).isEqualTo(720) // 1:1 minimum
+
+        val veryLongText = "This is an exceptionally long lyric line designed to wrap onto multiple rows to test vertical clamping and font scaling under tight constraints"
+        val longSpec = ShareCardSpec(
+            mode = CardMode.Lyrics,
+            lines = (1..10).map {
+                ShareLine("$veryLongText (stanza $it)", isRtl = false)
+            },
+            title = "Long Song Title That Wraps Across Rows",
+            artist = "Long Artist Name",
+            targetWidth = 720,
+        )
+        val longBitmap = ShareCardRenderer.renderCard(context, longSpec)
+        assertThat(longBitmap.width).isEqualTo(720)
+        assertThat(longBitmap.height).isAtMost(720 * 16 / 9) // 9:16 maximum bound
+        assertThat(longBitmap.height).isAtLeast(1200)
     }
 
     @Test
@@ -233,27 +305,5 @@ class ShareCardRendererTest {
         val bitmap = ShareCardRenderer.renderCard(context, spec)
         assertThat(bitmap).isNotNull()
         assertThat(bitmap.width).isEqualTo(720)
-    }
-
-    @Test
-    fun renderText_longMultilineLines_wrapWithoutClipping() = runTest {
-        val spec = ShareCardSpec(
-            mode = CardMode.Lyrics,
-            lines = listOf(
-                ShareLine(
-                    "This is an exceptionally long lyric line designed specifically to wrap onto multiple distinct rows within StaticLayout to ensure that boundary measurement and vertical clamping do not cause text clipping or crash under tight constraints.",
-                    isRtl = false,
-                ),
-            ),
-            title = "Long Text Wrap Song",
-            artist = "Progressive Composer",
-            targetWidth = 720,
-        )
-
-        val bitmap = ShareCardRenderer.renderCard(context, spec)
-        assertThat(bitmap).isNotNull()
-        assertThat(bitmap.width).isEqualTo(720)
-        assertThat(bitmap.height).isAtLeast(720 * 5 / 4)
-        assertThat(bitmap.height).isAtMost(720 * 16 / 9)
     }
 }
