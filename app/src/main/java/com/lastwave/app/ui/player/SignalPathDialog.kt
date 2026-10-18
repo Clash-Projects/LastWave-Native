@@ -332,53 +332,6 @@ fun SignalPathDialog(
                     }
                 }
 
-                // Collapsible Verification Checklist
-                var showChecks by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-                TextButton(
-                    onClick = { showChecks = !showChecks },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        if (showChecks) "Hide verification checks" else "Show verification checks (${report.checks.count { it.passed }}/${report.checks.size} passed)",
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                }
-
-                if (showChecks) {
-                    report.checks.forEach { check ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.Top,
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .padding(top = 5.dp)
-                                    .size(8.dp)
-                                    .background(
-                                        if (check.passed) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.error,
-                                        CircleShape,
-                                    ),
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    stringResource(check.labelRes),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                                Text(
-                                    stringResource(check.detailRes, *check.detailArgs.toTypedArray()),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
 
                 Spacer(Modifier.height(8.dp))
                 Text(
@@ -419,57 +372,88 @@ fun SignalPathDialog(
                 )
                 HealthRow(stringResource(R.string.signal_glitches), report.glitchCount.toString())
 
-                // Fork: what the phone's own output allows, and what is in use.
+                // Route/pipeline details: what the output allows and what is in use.
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    stringResource(R.string.signal_internal_section),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Spacer(Modifier.height(4.dp))
-                val session = report.internalSession
-                val route = session?.route ?: internalAvailability?.route ?: InternalRoute.UNKNOWN
-                val routeName = session?.routeName ?: internalAvailability?.routeName.orEmpty()
-                HealthRow(
-                    stringResource(R.string.signal_internal_route),
-                    routeLabel(route) + if (routeName.isNotBlank()) " • $routeName" else "",
-                )
-                HealthRow(
-                    stringResource(R.string.signal_internal_status),
-                    when {
-                        report.internalDirectActive -> stringResource(R.string.internal_reason_active)
-                        !internalEnabled -> stringResource(R.string.signal_internal_off)
-                        internalAvailability != null -> stringResource(internalFailureDetail(internalAvailability.reason))
-                        else -> "—"
-                    },
-                )
-                val probe = internalAvailability?.probe
-                HealthRow(
-                    stringResource(R.string.signal_internal_endpoint),
-                    when {
-                        session != null -> stringResource(
-                            R.string.signal_internal_endpoint_value,
-                            session.deviceRateHz,
-                            InternalDirectStream.labelOf(session.deviceEncoding),
-                        ) + when {
-                            session.backend == com.lastwave.app.playback.InternalBackend.DIRECT_TRACK ->
-                                " • " + stringResource(R.string.signal_internal_backend_direct)
-                            session.mmap -> " • MMAP"
-                            else -> ""
-                        }
-                        probe != null && probe.usable -> stringResource(
-                            R.string.signal_internal_endpoint_value,
-                            probe.sampleRateHz,
-                            InternalDirectStream.labelOf(probe.encoding),
-                        ) + if (probe.mmap) " • MMAP" else ""
-                        probe != null && internalAvailability != null ->
-                            stringResource(internalFailureDetail(internalAvailability.reason))
-                        else -> stringResource(R.string.signal_internal_not_checked)
-                    },
-                )
-                if (internalUnderruns != null) {
-                    HealthRow(stringResource(R.string.signal_internal_underruns), internalUnderruns.toString())
+                if (report.usbExclusiveActive) {
+                    Text(
+                        stringResource(R.string.signal_usb_hardware_section),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    HealthRow(
+                        stringResource(R.string.signal_usb_interface),
+                        stringResource(R.string.signal_usb_interface_value),
+                    )
+                    HealthRow(
+                        stringResource(R.string.signal_android_mixer),
+                        stringResource(R.string.signal_android_mixer_bypassed),
+                    )
+                    val epRate = if (report.outputRateHz > 0) report.outputRateHz else report.appRateHz
+                    HealthRow(
+                        stringResource(R.string.signal_internal_endpoint),
+                        if (epRate > 0) {
+                            stringResource(
+                                R.string.signal_internal_endpoint_value,
+                                epRate,
+                                "${report.outputBits}-bit PCM",
+                            )
+                        } else {
+                            "—"
+                        },
+                    )
+                } else {
+                    Text(
+                        stringResource(R.string.signal_internal_section),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    val session = report.internalSession
+                    val route = session?.route ?: internalAvailability?.route ?: InternalRoute.UNKNOWN
+                    val routeName = session?.routeName ?: internalAvailability?.routeName.orEmpty()
+                    HealthRow(
+                        stringResource(R.string.signal_internal_route),
+                        routeLabel(route) + if (routeName.isNotBlank()) " • $routeName" else "",
+                    )
+                    HealthRow(
+                        stringResource(R.string.signal_internal_status),
+                        when {
+                            report.internalDirectActive -> stringResource(R.string.internal_reason_active)
+                            !internalEnabled -> stringResource(R.string.signal_internal_off)
+                            internalAvailability != null -> stringResource(internalFailureDetail(internalAvailability.reason))
+                            else -> "—"
+                        },
+                    )
+                    val probe = internalAvailability?.probe
+                    HealthRow(
+                        stringResource(R.string.signal_internal_endpoint),
+                        when {
+                            session != null -> stringResource(
+                                R.string.signal_internal_endpoint_value,
+                                session.deviceRateHz,
+                                InternalDirectStream.labelOf(session.deviceEncoding),
+                            ) + when {
+                                session.backend == com.lastwave.app.playback.InternalBackend.DIRECT_TRACK ->
+                                    " • " + stringResource(R.string.signal_internal_backend_direct)
+                                session.mmap -> " • MMAP"
+                                else -> ""
+                            }
+                            probe != null && probe.usable -> stringResource(
+                                R.string.signal_internal_endpoint_value,
+                                probe.sampleRateHz,
+                                InternalDirectStream.labelOf(probe.encoding),
+                            ) + if (probe.mmap) " • MMAP" else ""
+                            probe != null && internalAvailability != null ->
+                                stringResource(internalFailureDetail(internalAvailability.reason))
+                            else -> stringResource(R.string.signal_internal_not_checked)
+                        },
+                    )
+                    if (internalUnderruns != null) {
+                        HealthRow(stringResource(R.string.signal_internal_underruns), internalUnderruns.toString())
+                    }
                 }
 
                 if (usbDiagnostic != null) {

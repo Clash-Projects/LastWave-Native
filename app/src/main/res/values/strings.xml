@@ -387,6 +387,11 @@
     <string name="signal_direct_hal">DIRECT → HAL</string>
     <string name="signal_verdict_direct_hal">Android mixer bypassed — samples enter the HAL unchanged. A vendor DSP after the HAL cannot be verified from Android.</string>
     <string name="signal_internal_track">Exclusive AAudio (internal)</string>
+    <string name="signal_usb_hardware_section">Hardware direct pipeline</string>
+    <string name="signal_usb_interface">Interface</string>
+    <string name="signal_usb_interface_value">Direct USB (usbdevfs)</string>
+    <string name="signal_android_mixer">Android mixer</string>
+    <string name="signal_android_mixer_bypassed">Bypassed (Hardware exclusive)</string>
     <string name="signal_internal_section">Internal output</string>
     <string name="signal_internal_route">Route</string>
     <string name="signal_internal_status">Direct output</string>
