@@ -80,7 +80,7 @@ class ExclusiveUsbOutput @Inject constructor(
     @Volatile private var lastNonMaxListeningGain = Float.NaN
     @Volatile private var ignoreStreamMusicMax = false
     /** Fork setting: never let the DAC's Feature Unit own the listening level. */
-    @Volatile private var forceSoftwareVolume = true
+    @Volatile private var forceSoftwareVolume = false
 
     private val audioManager: AudioManager? =
         appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
@@ -348,16 +348,25 @@ class ExclusiveUsbOutput @Inject constructor(
             startMediaTimeNeedsInit = false
         }
         recheckClockLocked()
+        val gain = softwareGain()
         val chunk = if (isFloatBuffer) {
             val floats = FloatArray(size / Float.SIZE_BYTES)
             buffer.order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(floats)
             buffer.position(buffer.limit())
+            if (gain < 1f - 1e-6f && gain >= 0f) {
+                for (i in floats.indices) {
+                    floats[i] = (floats[i] * gain).coerceIn(-1f, 1f)
+                }
+            }
             QueuedPcm(floats, null, 0, size)
         } else {
             val encoding = writeRawEncoding(sourceEncoding)
             if (encoding < 0) return false
             val bytes = ByteArray(size)
             buffer.get(bytes)
+            if (gain < 1f - 1e-6f && gain >= 0f) {
+                scalePcmBytes(bytes, encoding, gain)
+            }
             QueuedPcm(null, bytes, encoding, size)
         }
         synchronized(pcmLock) {
@@ -443,6 +452,10 @@ class ExclusiveUsbOutput @Inject constructor(
             paused = false
             pcmLock.notifyAll()
         }
+        synchronized(lock) {
+            pendingVolume = 1f
+            applyVolumeLocked()
+        }
         startMediaTimeNeedsInit = true
         startMediaTimeUs = 0L
         currentFallbackNegotiated = false
@@ -504,6 +517,7 @@ class ExclusiveUsbOutput @Inject constructor(
             startMediaTimeNeedsInit = true
             mediaTimeBaseFrames = reuse.framesWritten
             ensureVolumeObserverLocked()
+            pendingVolume = 1f
             syncListeningGainLocked()
             return true
         }
@@ -542,7 +556,15 @@ class ExclusiveUsbOutput @Inject constructor(
 
         var (alt, wireBits) = usbAudio.findAltSetting(effectiveBits, effectiveRate)
         var rateSetBefore = usbAudio.setSampleRate(effectiveRate)
-        if (!usbAudio.setAltSetting(alt)) return failLocked("setAltSetting $alt failed")
+        if (!usbAudio.setAltSetting(alt)) {
+            val fallbackAlt = usbAudio.findAltSetting(24, effectiveRate)
+            if (fallbackAlt.first != alt && usbAudio.setAltSetting(fallbackAlt.first)) {
+                alt = fallbackAlt.first
+                wireBits = fallbackAlt.second
+            } else {
+                return failLocked("setAltSetting $alt failed")
+            }
+        }
         var reported = usbAudio.readSampleRate()
         if (!rateSetBefore || (reported > 0 && reported != effectiveRate)) {
             rateSetBefore = usbAudio.setSampleRate(effectiveRate)
@@ -643,6 +665,7 @@ class ExclusiveUsbOutput @Inject constructor(
         active = true
         lastFailureReason = null
         paused = false
+        pendingVolume = 1f
         startMediaTimeNeedsInit = true
         startMediaTimeUs = 0L
         mediaTimeBaseFrames = 0L
@@ -987,6 +1010,59 @@ class ExclusiveUsbOutput @Inject constructor(
             C.ENCODING_PCM_24BIT, RAW_PCM24 -> RAW_PCM24
             C.ENCODING_PCM_32BIT, RAW_PCM32 -> RAW_PCM32
             else -> -1
+        }
+
+        private fun scalePcmBytes(bytes: ByteArray, rawEncoding: Int, gain: Float) {
+            if (gain <= 0f) {
+                bytes.fill(0)
+                return
+            }
+            when (rawEncoding) {
+                RAW_PCM16 -> {
+                    var i = 0
+                    while (i + 1 < bytes.size) {
+                        val sample = (bytes[i].toInt() and 0xFF) or (bytes[i + 1].toInt() shl 8)
+                        val scaled = (sample.toShort() * gain + if (sample >= 0) 0.5f else -0.5f).toInt()
+                            .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                        bytes[i] = (scaled and 0xFF).toByte()
+                        bytes[i + 1] = ((scaled shr 8) and 0xFF).toByte()
+                        i += 2
+                    }
+                }
+                RAW_PCM24 -> {
+                    var i = 0
+                    while (i + 2 < bytes.size) {
+                        val b0 = bytes[i].toInt() and 0xFF
+                        val b1 = bytes[i + 1].toInt() and 0xFF
+                        val b2 = bytes[i + 2].toInt()
+                        var sample = (b2 shl 16) or (b1 shl 8) or b0
+                        if (sample and 0x800000 != 0) sample -= 0x1000000
+                        val scaled = (sample * gain.toDouble() + if (sample >= 0) 0.5 else -0.5).toInt()
+                            .coerceIn(-0x800000, 0x7FFFFF)
+                        bytes[i] = (scaled and 0xFF).toByte()
+                        bytes[i + 1] = ((scaled shr 8) and 0xFF).toByte()
+                        bytes[i + 2] = ((scaled shr 16) and 0xFF).toByte()
+                        i += 3
+                    }
+                }
+                RAW_PCM32 -> {
+                    var i = 0
+                    while (i + 3 < bytes.size) {
+                        val b0 = bytes[i].toInt() and 0xFF
+                        val b1 = bytes[i + 1].toInt() and 0xFF
+                        val b2 = bytes[i + 2].toInt() and 0xFF
+                        val b3 = bytes[i + 3].toInt()
+                        val sample = (b3.toLong() shl 24) or (b2.toLong() shl 16) or (b1.toLong() shl 8) or (b0.toLong() and 0xFF)
+                        val scaled = (sample * gain.toDouble()).toLong()
+                            .coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong()).toInt()
+                        bytes[i] = (scaled and 0xFF).toByte()
+                        bytes[i + 1] = ((scaled shr 8) and 0xFF).toByte()
+                        bytes[i + 2] = ((scaled shr 16) and 0xFF).toByte()
+                        bytes[i + 3] = ((scaled shr 24) and 0xFF).toByte()
+                        i += 4
+                    }
+                }
+            }
         }
     }
 }

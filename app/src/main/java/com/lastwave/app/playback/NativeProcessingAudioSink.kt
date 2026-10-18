@@ -469,17 +469,7 @@ class NativeProcessingAudioSink(
                 return handleExclusiveConvertedBuffer(buffer, presentationTimeUs)
             }
             val fmt = configuredFormat
-            val gain = exclusiveUsb?.softwareGain() ?: lastVolume
-            val needsGain = gain < 1f - 1e-6f && gain >= 0f && buffer.hasRemaining() &&
-                fmt?.sampleMimeType == MimeTypes.AUDIO_RAW
-            if (needsGain && fmt != null) {
-                if (lastGainBuffer !== buffer) {
-                    scalePcmInPlace(buffer, buffer.position(), buffer.limit(), fmt.pcmEncoding, gain)
-                    lastGainBuffer = buffer
-                }
-            } else {
-                lastGainBuffer = null
-            }
+            lastGainBuffer = null
             val ok = exclusiveUsb?.write(
                 buffer,
                 presentationTimeUs,
@@ -570,7 +560,6 @@ class NativeProcessingAudioSink(
         return activeDelegate.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
     }
 
-    /** Linear gain on interleaved PCM, in place, with proper rounding/clipping. */
     private fun scalePcmInPlace(
         buffer: ByteBuffer,
         startPos: Int,
@@ -578,6 +567,7 @@ class NativeProcessingAudioSink(
         media3Encoding: Int,
         gain: Float,
     ) {
+        if (buffer.isReadOnly) return
         val originalOrder = buffer.order()
         try {
             buffer.order(ByteOrder.LITTLE_ENDIAN)

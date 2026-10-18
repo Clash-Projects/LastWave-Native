@@ -39,7 +39,7 @@ object InternalDirectPrefs {
     fun forceSoftwareVolumeFlow(context: Context): Flow<Boolean> =
         context.applicationContext.internalDirectDataStore.data
             .catch { emit(emptyPreferences()) }
-            .map { it[KEY_FORCE_SOFTWARE_VOLUME] ?: true }
+            .map { it[KEY_FORCE_SOFTWARE_VOLUME] == true }
 
     suspend fun setForceSoftwareVolume(context: Context, enabled: Boolean) {
         context.applicationContext.internalDirectDataStore.edit { it[KEY_FORCE_SOFTWARE_VOLUME] = enabled }

@@ -62,9 +62,7 @@ class UacFeatureVolume(
         for (channel in channels) {
             if (writeVolume(featureUnitId, channel, coded)) ok = true
         }
-        if (clamped <= 0f) {
-            writeMute(featureUnitId, true)
-        }
+        writeMute(featureUnitId, clamped <= 0f)
         if (ok && clamped in 0.001f..0.85f && coded < -512) {
             val checkChannel = channels.first()
             val readback = readVolume(featureUnitId, checkChannel)
