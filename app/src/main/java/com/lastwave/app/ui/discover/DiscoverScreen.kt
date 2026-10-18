@@ -144,7 +144,7 @@ fun DiscoverScreen(onBack: () -> Unit = {}, viewModel: DiscoverViewModel = hiltV
         ) {
             ExpressiveHeader(
             title = "Discover",
-            subtitle = if (state.isYtConnected) "Discover frash tracks" else "Discover frash tracks",
+            subtitle = "Discover fresh tracks",
             onBack = onBack,
             actions = {
                 HeaderActionIcon(Icons.Filled.BookmarkAdd, "Save as playlist", viewModel::saveAsPlaylist)

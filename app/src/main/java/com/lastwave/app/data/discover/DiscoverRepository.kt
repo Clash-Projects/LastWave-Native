@@ -25,7 +25,7 @@ private const val TAG = "DiscoverRepository"
 private const val MAX_REFILL_ATTEMPTS = 2
 private const val MAX_EXPLORATION_SEEDS = 120
 private const val MAX_TRACK_SEEDS = 6
-private const val DISCOVER_ARTIST_CAP = 3
+private const val DISCOVER_ARTIST_CAP = 1
 private const val MAX_SHOWN_KEYS = 3_000
 private const val SAVED_TRACK_SCORE_PENALTY = 22.0
 
@@ -186,16 +186,43 @@ class DiscoverRepository @Inject constructor(
             }
         }
 
+        val savedPlaylistKeys = generateRepository.savedPlaylistTrackKeys()
+        val listenedKeys = buildSet {
+            profile?.recentTracksRaw?.forEach { add(it.key) }
+            profile?.topTracksRaw?.forEach { add(it.key) }
+            profile?.ytMusicRecentRaw?.forEach { add(it.key) }
+            profile?.ytMusicLikedRaw?.forEach { add(it.key) }
+            profile?.ytMusicFeedRaw?.forEach { add(it.key) }
+            addAll(savedPlaylistKeys)
+        }
+        val listenedTitlesByArtist = buildMap<String, MutableSet<String>> {
+            fun record(artist: String, title: String) {
+                val a = artist.trim().lowercase()
+                val t = title.trim().lowercase()
+                if (a.isNotBlank() && t.isNotBlank()) {
+                    getOrPut(a) { mutableSetOf() }.add(t)
+                }
+            }
+            profile?.recentTracksRaw?.forEach { record(it.artist, it.name) }
+            profile?.topTracksRaw?.forEach { record(it.artist, it.name) }
+            profile?.ytMusicRecentRaw?.forEach { record(it.artist, it.name) }
+            profile?.ytMusicLikedRaw?.forEach { record(it.artist, it.name) }
+            profile?.ytMusicFeedRaw?.forEach { record(it.artist, it.name) }
+        }
+
+        fun isAlreadyListened(track: GeneratedTrack): Boolean {
+            if (track.key in listenedKeys) return true
+            val a = track.artist.trim().lowercase()
+            val t = track.name.trim().lowercase()
+            return listenedTitlesByArtist[a]?.contains(t) == true
+        }
+
         val queuedKeys = queue.mapTo(mutableSetOf()) { it.key }
         val candidates = LinkedHashMap<String, RankedCandidate>()
         val sourceBatches = jobs.awaitAll().toMutableList()
-        profile?.ytMusicFeedRaw
-            ?.take(40)
-            ?.takeIf { it.isNotEmpty() }
-            ?.let { sourceBatches += SourceBatch(it, 92, "yt-feed") }
         for (batch in sourceBatches) {
             for (track in batch.tracks) {
-                if (track.name.isBlank() || track.artist.isBlank() || track.key in queuedKeys) continue
+                if (track.name.isBlank() || track.artist.isBlank() || track.key in queuedKeys || isAlreadyListened(track)) continue
                 val current = candidates[track.key]
                 if (current == null) {
                     candidates[track.key] = RankedCandidate(
@@ -216,12 +243,11 @@ class DiscoverRepository @Inject constructor(
         val allowedKeys = generateRepository.filterRecommendationExclusions(
             candidates.values.map(RankedCandidate::track),
         ).mapTo(mutableSetOf(), GeneratedTrack::key)
-        val savedPlaylistKeys = generateRepository.savedPlaylistTrackKeys()
 
         class ScoredCandidate(val candidate: RankedCandidate, val score: Double)
 
         val ranked = candidates.values
-            .filterNot { it.track.key in shownKeys }
+            .filterNot { it.track.key in shownKeys || isAlreadyListened(it.track) }
             .map { candidate ->
                 val affinity = profile?.artistAffinity?.get(candidate.track.artist.trim().lowercase()) ?: 0.0
                 val consensus = minOf(24, (candidate.sources.size - 1).coerceAtLeast(0) * 8)
@@ -236,16 +262,16 @@ class DiscoverRepository @Inject constructor(
             .map { it.candidate }
 
         val preferred = ranked.filter { it.track.key in allowedKeys }
-        val ytFeedCandidates = preferred.filter { "yt-feed" in it.sources || "yt-new" in it.sources }
-        val otherCandidates = preferred.filterNot { "yt-feed" in it.sources || "yt-new" in it.sources }
+        val trendingCandidates = preferred.filter { "yt-new" in it.sources }
+        val similarCandidates = preferred.filterNot { "yt-new" in it.sources }
         val balanced = buildList {
-            var otherIndex = 0
-            var ytIndex = 0
-            while (otherIndex < otherCandidates.size || ytIndex < ytFeedCandidates.size) {
+            var simIndex = 0
+            var trendIndex = 0
+            while (simIndex < similarCandidates.size || trendIndex < trendingCandidates.size) {
                 repeat(2) {
-                    if (otherIndex < otherCandidates.size) add(otherCandidates[otherIndex++])
+                    if (simIndex < similarCandidates.size) add(similarCandidates[simIndex++])
                 }
-                if (ytIndex < ytFeedCandidates.size) add(ytFeedCandidates[ytIndex++])
+                if (trendIndex < trendingCandidates.size) add(trendingCandidates[trendIndex++])
             }
         }
         val artistCounts = mutableMapOf<String, Int>()

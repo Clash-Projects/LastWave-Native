@@ -66,16 +66,22 @@ class DiscoverViewModel @Inject constructor(
 
     fun loadInitial() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null, endReached = false) }
+            val cached = repository.allowedCachedFeed()
+            if (cached.isNotEmpty()) {
+                _uiState.update { it.copy(isLoading = false, error = null, tracks = cached) }
+            } else {
+                _uiState.update { it.copy(isLoading = true, error = null, endReached = false) }
+            }
             try {
-                val cached = repository.allowedCachedFeed()
                 val needed = (INITIAL_BATCH_SIZE - cached.size).coerceAtLeast(0)
                 val batch = if (needed > 0) repository.nextBatch(needed) else emptyList()
                 val feed = repository.getCachedFeed()
                 _uiState.update { it.copy(isLoading = false, tracks = feed) }
                 artworkRepository.enrichBatch((cached + batch).take(INITIAL_BATCH_SIZE).map { it.name to it.artist })
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.message ?: "Couldn't load recommendations") }
+                if (_uiState.value.tracks.isEmpty()) {
+                    _uiState.update { it.copy(isLoading = false, error = e.message ?: "Couldn't load recommendations") }
+                }
             }
         }
     }

@@ -19,12 +19,14 @@ import com.lastwave.app.data.playlist.PlaylistRepository
 import com.lastwave.app.data.repository.HomeRepository
 import com.lastwave.app.data.repository.RelatedGraphRepository
 import com.lastwave.app.data.ytmusic.YtMusicAuthManager
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -113,6 +115,7 @@ class FeedRepository @Inject constructor(
 ) {
     private var cachedFeed: FeedData? = null
     private var cachedKey: String? = null
+    private val artistEntityCache = ConcurrentHashMap<String, FeedArtist>()
 
     fun getCachedFeed(): FeedData? = cachedFeed
 
@@ -280,15 +283,13 @@ class FeedRepository @Inject constructor(
         }
 
         val familiarCandidates = buildList {
-            ytQuickPicks.forEachIndexed { i, t -> add(t to trackScore(t, i, 3.0)) }
-            ytLikedSongs.forEachIndexed { i, t -> add(t to trackScore(t, i, 2.2)) }
-            ytRecentSongs.forEachIndexed { i, t -> add(t to trackScore(t, i, 1.6)) }
-            regularPicks.forEachIndexed { i, t -> add(t to trackScore(t, i, 2.6)) }
-            // Local-first: liked + saved Room tracks score as personal picks
-            // for guest/disconnected so Quick Picks never looks generic.
-            localQuickPicks.forEachIndexed { i, t -> add(t to trackScore(t, i, 2.4)) }
-            homeSongs.forEachIndexed { i, t -> add(t to trackScore(t, i, 1.2)) }
-            charts.forEachIndexed { i, t -> add(t to trackScore(t, i, 1.0)) }
+            ytQuickPicks.forEachIndexed { i, t -> add(t to trackScore(t, i, 2.8)) }
+            homeSongs.forEachIndexed { i, t -> add(t to trackScore(t, i, 2.2)) }
+            charts.forEachIndexed { i, t -> add(t to trackScore(t, i, 2.0)) }
+            ytLikedSongs.forEachIndexed { i, t -> add(t to trackScore(t, i, 1.8)) }
+            regularPicks.forEachIndexed { i, t -> add(t to trackScore(t, i, 1.6)) }
+            localQuickPicks.forEachIndexed { i, t -> add(t to trackScore(t, i, 1.5)) }
+            ytRecentSongs.forEachIndexed { i, t -> add(t to trackScore(t, i, 1.2)) }
         }
             .distinctBy { (t, _) -> t.artist.trim().lowercase() to t.title.trim().lowercase() }
             .sortedByDescending { it.second }
@@ -308,7 +309,7 @@ class FeedRepository @Inject constructor(
         // First paint: familiar-only picks. These need no network beyond the
         // parallel batch above, so a cold feed shows shelves immediately.
         // Blending discovery into Quick Picks must never gate this
-        // emission â€” the related-songs round-trips (3 x up to 30 tracks) are
+        // emission — the related-songs round-trips (3 x up to 30 tracks) are
         // the slowest calls in the load, and waiting on them left the whole
         // feed blank for seconds on a cold start.
         val familiarQuickPicks = diversify(familiarCandidates, YouTubeMusicTrack::artist, maxPerArtist = 2)
@@ -321,8 +322,11 @@ class FeedRepository @Inject constructor(
         // Discovery: blends fresh picks over the familiar ones once the
         // round-trips land, and feeds Fresh Finds / Mixes below. It overlaps
         // with the artist fetches that follow instead of blocking paint.
-        val discoveryResults = discoverySeeds.zip(discoveryDef.await())
-        val discoveryTracks = discoveryResults.flatMap { it.second }.distinctBy { it.videoId }
+        val discoveryBatches = withTimeoutOrNull(3000L) { discoveryDef.await() } ?: emptyList()
+        val discoveryResults = discoverySeeds.zip(
+            if (discoveryBatches.size == discoverySeeds.size) discoveryBatches else List(discoverySeeds.size) { emptyList<YouTubeMusicTrack>() }
+        )
+        val discoveryTracks = discoveryBatches.flatten().distinctBy { it.videoId }
 
         val familiarVideoIds = (ytLikedSongs + ytRecentSongs + regularPicks + localQuickPicks + homeSongs).mapTo(mutableSetOf()) { it.videoId }
         val familiarKeys = (ytLikedSongs + ytRecentSongs + regularPicks + localQuickPicks + homeSongs).mapTo(mutableSetOf()) {
@@ -341,9 +345,11 @@ class FeedRepository @Inject constructor(
             .sortedByDescending { it.second }
             .map { it.first }
 
+        val freshOrChart = (newCandidates + charts.filter { it.videoId !in familiarVideoIds })
+            .distinctBy { it.videoId }
         val quickCandidates = blend(
-            first = diversify(familiarCandidates, YouTubeMusicTrack::artist, maxPerArtist = 2),
-            second = diversify(newCandidates, YouTubeMusicTrack::artist, maxPerArtist = 1),
+            first = diversify(familiarCandidates, YouTubeMusicTrack::artist, maxPerArtist = 1),
+            second = diversify(freshOrChart, YouTubeMusicTrack::artist, maxPerArtist = 1),
         )
 
         val quickPicks = diversify(quickCandidates, YouTubeMusicTrack::artist, maxPerArtist = 2)
@@ -395,42 +401,33 @@ class FeedRepository @Inject constructor(
 
         val topArtists = topArtistNames.map { name ->
             async(Dispatchers.IO) {
+                val cached = artistEntityCache[name.lowercase()]
+                if (cached != null) return@async cached
                 val trackArtwork = artistSignalTracks
                     .firstOrNull { ArtistHelper.splitArtists(it.artist).any { artist -> artist.equals(name, ignoreCase = true) } }
                     ?.artworkUrl
                 previous?.topArtists?.firstOrNull { it.name.equals(name, ignoreCase = true) && it.browseId != null }
-                    ?.let { return@async it }
+                    ?.let {
+                        artistEntityCache[name.lowercase()] = it
+                        return@async it
+                    }
                 val entity = runCatching {
                     innerTube.searchArtists(name, limit = 3)
                         .firstOrNull { it.name.trim().equals(name, ignoreCase = true) }
                 }.getOrNull()
-                FeedArtist(
+                val feedArtist = FeedArtist(
                     name = name,
                     browseId = entity?.browseId,
                     artworkUrl = entity?.artworkUrl?.takeIf(ArtworkNormalizer::isRealImage) ?: trackArtwork,
                 )
+                artistEntityCache[name.lowercase()] = feedArtist
+                feedArtist
             }
         }.awaitAll()
 
-        val releaseYear = java.time.Year.now().value.toString()
-        val artistReleases = if (artistRanks.isEmpty()) emptyList() else topArtists
-            .filter { it.name.lowercase() in artistRanks }
-            .take(4).map { artist ->
-                async(Dispatchers.IO) {
-                    val page = artist.browseId?.let { id ->
-                        runCatching { innerTube.fetchArtistPage(id, artist.name) }.getOrNull()
-                    }
-                    (page?.albums.orEmpty() + page?.singles.orEmpty())
-                        .filter { it.year == releaseYear && it.browseId.isNotBlank() }
-                        .take(3).map { release ->
-                            YouTubePlaylistSummary(id = release.browseId, title = release.title,
-                                author = artist.name, artworkUrl = release.artworkUrl)
-                        }
-                }
-            }.awaitAll().flatten()
-        val newReleases = (matchedReleases + artistReleases)
+        val newReleases = (matchedReleases.ifEmpty { releaseCandidates })
             .ifEmpty { previous?.newReleases.orEmpty() }
-            .distinctBy { it.id }.shuffled(random).take(15)
+            .distinctBy { it.id }.take(15)
 
         val familiarIds = (ytLikedSongs + ytRecentSongs + regularPicks).mapTo(mutableSetOf()) { it.videoId }
         val freshPool = (discoveryTracks + charts + homeSongs + ytQuickPicks)

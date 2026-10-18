@@ -83,8 +83,10 @@ class FeedViewModel @Inject constructor(
                 connection to session.username
             }.distinctUntilChanged().collect { (connection, _) ->
                 feedJob?.cancel()
+                val cached = repository.getCachedFeed()
                 _uiState.value = FeedUiState(
-                    feedData = FeedData(
+                    isLoading = cached == null,
+                    feedData = cached ?: FeedData(
                         isYtConnected = connection.isConnected,
                         ytAccountName = connection.accountName.takeIf { connection.isConnected },
                     ),
@@ -205,13 +207,19 @@ class FeedViewModel @Inject constructor(
             shuffled.map { it.toPlayableTrack() },
             startIndex = 0,
             sourceLabel = "$sourceLabel Shuffle",
+            enableRadioContinuation = true,
         )
     }
 
     fun playTracksQueue(tracks: List<YouTubeMusicTrack>, startIndex: Int = 0, sourceLabel: String = "Feed") {
         if (tracks.isEmpty()) return
         val playable = tracks.map { it.toPlayableTrack() }
-        musicPlayer.playQueue(playable, startIndex = startIndex.coerceIn(0, playable.lastIndex.coerceAtLeast(0)), sourceLabel = sourceLabel)
+        musicPlayer.playQueue(
+            playable,
+            startIndex = startIndex.coerceIn(0, playable.lastIndex.coerceAtLeast(0)),
+            sourceLabel = sourceLabel,
+            enableRadioContinuation = true,
+        )
     }
 
     fun playRecentQueue(tracks: List<RecentTrack>, startIndex: Int = 0) {
@@ -225,7 +233,12 @@ class FeedViewModel @Inject constructor(
                 videoId = GeneratedTrack(it.name, it.artist.displayName, it.artworkUrl, it.url).youtubeVideoIdOrNull(),
             )
         }
-        musicPlayer.playQueue(playable, startIndex = startIndex.coerceIn(0, playable.lastIndex.coerceAtLeast(0)), sourceLabel = "Jump Back In")
+        musicPlayer.playQueue(
+            playable,
+            startIndex = startIndex.coerceIn(0, playable.lastIndex.coerceAtLeast(0)),
+            sourceLabel = "Jump Back In",
+            enableRadioContinuation = true,
+        )
     }
 
     fun playGeneratedQueue(tracks: List<GeneratedTrack>, startIndex: Int = 0, sourceLabel: String = "Heavy Rotation") {
@@ -239,7 +252,12 @@ class FeedViewModel @Inject constructor(
                 videoId = it.youtubeVideoIdOrNull(),
             )
         }
-        musicPlayer.playQueue(playable, startIndex = startIndex.coerceIn(0, playable.lastIndex.coerceAtLeast(0)), sourceLabel = sourceLabel)
+        musicPlayer.playQueue(
+            playable,
+            startIndex = startIndex.coerceIn(0, playable.lastIndex.coerceAtLeast(0)),
+            sourceLabel = sourceLabel,
+            enableRadioContinuation = true,
+        )
     }
 
     fun playArtistRadio(artist: FeedArtist) {

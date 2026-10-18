@@ -410,7 +410,14 @@ fun FeedScreen(
                                 tracks = state.feedData.quickPicks,
                                 currentPlayingVideoId = playbackState.current?.videoId,
                                 isPlaying = playbackState.isPlaying,
-                                onTrackClick = { index -> viewModel.playTracksQueue(state.feedData.quickPicks, index, "Quick Picks") },
+                                onTrackClick = { index ->
+                                    val track = state.feedData.quickPicks.getOrNull(index)
+                                    if (track != null) {
+                                        viewModel.playTrack(track, "Quick Picks")
+                                    } else {
+                                        viewModel.playTracksQueue(state.feedData.quickPicks, index, "Quick Picks")
+                                    }
+                                },
                                 onMenuClick = { menuTrack = it },
                                 onLongClick = { track, index ->
                                     miniTrayTrack = TrackMiniTrayData(
@@ -420,7 +427,7 @@ fun FeedScreen(
                                         artworkUrl = track.artworkUrl,
                                         videoId = track.videoId.takeIf(String::isNotBlank),
                                         sourceLabel = "Home",
-                                        onPlay = { viewModel.playTracksQueue(state.feedData.quickPicks, index, "Quick Picks") },
+                                        onPlay = { viewModel.playTrack(track, "Quick Picks") },
                                     )
                                 },
                             )
@@ -497,7 +504,7 @@ fun FeedScreen(
                                             subtitle = ArtistHelper.primaryArtist(track.artist),
                                             artworkUrl = track.artworkUrl,
                                             fallbackIcon = Icons.Filled.MusicNote,
-                                            onClick = { viewModel.playTracksQueue(section.items, index, section.title) },
+                                            onClick = { viewModel.playTrack(track, section.title) },
                                             onLongClick = {
                                                 miniTrayTrack = TrackMiniTrayData(
                                                     title = track.title,
@@ -506,10 +513,10 @@ fun FeedScreen(
                                                     artworkUrl = track.artworkUrl,
                                                     videoId = track.videoId.takeIf(String::isNotBlank),
                                                     sourceLabel = "Home",
-                                                    onPlay = { viewModel.playTracksQueue(section.items, index, section.title) },
+                                                    onPlay = { viewModel.playTrack(track, section.title) },
                                                 )
                                             },
-                                            onPlayClick = { viewModel.playTracksQueue(section.items, index, section.title) },
+                                            onPlayClick = { viewModel.playTrack(track, section.title) },
                                         )
                                     }
                                 },
@@ -554,11 +561,11 @@ fun FeedScreen(
                                                             artworkUrl = track.artworkUrl,
                                                             videoId = track.videoId.takeIf(String::isNotBlank),
                                                             sourceLabel = "Home",
-                                                            onPlay = { viewModel.playTracksQueue(state.feedData.freshFinds, index, "Fresh Finds") },
+                                                            onPlay = { viewModel.playTrack(track, "Fresh Finds") },
                                                         )
                                                     },
-                                                    onClick = { viewModel.playTracksQueue(state.feedData.freshFinds, index, "Fresh Finds") },
-                                                    onPlayClick = { viewModel.playTracksQueue(state.feedData.freshFinds, index, "Fresh Finds") },
+                                                    onClick = { viewModel.playTrack(track, "Fresh Finds") },
+                                                    onPlayClick = { viewModel.playTrack(track, "Fresh Finds") },
                                                 )
                                             }
                                         },
@@ -802,7 +809,7 @@ fun FeedScreen(
                                     ChartTrackCard(
                                         rank = index + 1,
                                         track = track,
-                                        onClick = { viewModel.playTracksQueue(state.feedData.charts, index, "Top Charts") },
+                                        onClick = { viewModel.playTrack(track, "Top Charts") },
                                         onLongClick = {
                                             miniTrayTrack = TrackMiniTrayData(
                                                 title = track.title,
@@ -811,7 +818,7 @@ fun FeedScreen(
                                                 artworkUrl = track.artworkUrl,
                                                 videoId = track.videoId.takeIf(String::isNotBlank),
                                                 sourceLabel = "Home",
-                                                onPlay = { viewModel.playTracksQueue(state.feedData.charts, index, "Top Charts") },
+                                                onPlay = { viewModel.playTrack(track, "Top Charts") },
                                             )
                                         },
                                     )
