@@ -30,6 +30,13 @@
     <string name="settings_section_youtube">YouTube Music</string>
     <string name="settings_connect_yt">Connect YouTube Music</string>
     <string name="settings_connect_yt_sub">Sign in to see and sync every playlist</string>
+    <string name="settings_cookie_login">YouTube Music Cookie Login</string>
+    <string name="settings_cookie_login_sub">Sign in with exported session cookies</string>
+    <string name="cookie_login_instructions">Paste your session cookies from music.youtube.com (raw Cookie header, Netscape cookies.txt, or JSON array). Must contain SAPISID or __Secure-3PAPISID.</string>
+    <string name="cookie_login_placeholder">SID=...; __Secure-3PAPISID=...; SAPISID=...</string>
+    <string name="cookie_login_paste_clipboard">Paste from Clipboard</string>
+    <string name="cookie_login_connect">Connect</string>
+    <string name="cookie_login_connecting">Connecting…</string>
     <string name="settings_yt_sync">Two-way Playlist Sync</string>
     <string name="settings_select_playlists">Select Playlists to Sync</string>
     <string name="settings_yt_shown">YouTube Playlists Shown</string>

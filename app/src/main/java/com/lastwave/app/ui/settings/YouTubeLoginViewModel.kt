@@ -33,7 +33,24 @@ class YouTubeLoginViewModel @Inject constructor(
     val uiState: StateFlow<YouTubeLoginUiState> = _uiState.asStateFlow()
 
     /**
-     * Persists the cookies captured from the sign-in WebView and reports
+     * Connects with pasted cookies (raw header, Netscape cookies.txt, or JSON array).
+     * Normalizes and validates via [com.lastwave.app.data.ytmusic.CookieNormalizer], then connects.
+     */
+    fun attemptCookieConnect(rawText: String) {
+        if (_uiState.value.verifying) return
+        val normalized = try {
+            com.lastwave.app.data.ytmusic.CookieNormalizer.normalize(rawText)
+        } catch (e: Exception) {
+            _uiState.update {
+                it.copy(errorMessage = e.message ?: "Invalid cookies. Make sure SAPISID is present.")
+            }
+            return
+        }
+        attemptConnect(normalized)
+    }
+
+    /**
+     * Persists the cookies captured from the sign-in WebView or cookie login and reports
      * success as soon as they carry a real YouTube session (4.1.0 behavior).
      * Resolving the account name via InnerTube is best-effort enrichment —
      * a slow or unavailable account_menu must never reject a sign-in whose
@@ -42,7 +59,10 @@ class YouTubeLoginViewModel @Inject constructor(
      */
     fun attemptConnect(rawCookieHeader: String?) {
         if (_uiState.value.verifying) return
-        val cookies = rawCookieHeader.orEmpty()
+        val raw = rawCookieHeader.orEmpty()
+        val cookies = runCatching {
+            com.lastwave.app.data.ytmusic.CookieNormalizer.normalize(raw)
+        }.getOrDefault(raw)
         val hasSapisid = listOf("__Secure-3PAPISID=", "SAPISID=", "APISID=").any { it in cookies }
         if (!hasSapisid) {
             _uiState.update {
@@ -55,7 +75,7 @@ class YouTubeLoginViewModel @Inject constructor(
         viewModelScope.launch {
             val previous = ytAuthManager.connection.value
             try {
-                ytAuthManager.connect(rawCookieHeader ?: return@launch, "", null, null)
+                ytAuthManager.connect(cookies, "", null, null)
                 // Slow devices: the DataStore collector can re-emit the old
                 // (disconnected) value after the optimistic update, making
                 // fetchAccountInfo() bail instantly. Wait until memory matches

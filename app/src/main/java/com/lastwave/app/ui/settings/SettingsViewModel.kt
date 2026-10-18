@@ -999,6 +999,41 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun connectWithCookies(rawText: String, onComplete: ((Boolean, String?) -> Unit)? = null) {
+        viewModelScope.launch {
+            val normalized = try {
+                com.lastwave.app.data.ytmusic.CookieNormalizer.normalize(rawText)
+            } catch (e: Exception) {
+                onComplete?.invoke(false, e.message ?: "Invalid cookies. Make sure SAPISID is present.")
+                return@launch
+            }
+            try {
+                ytAuthManager.connect(normalized, "", null, null)
+                kotlinx.coroutines.withTimeoutOrNull(4_000L) { ytAuthManager.awaitLoadedConnection() }
+                runCatching { sessionPreferences.exitGuestMode() }
+                var info: com.lastwave.app.data.music.YtAccountInfo? = null
+                for ((attempt, waitMs) in longArrayOf(0L, 1_200L, 2_500L, 4_000L).withIndex()) {
+                    if (waitMs > 0L) kotlinx.coroutines.delay(waitMs)
+                    info = runCatching { innerTube.fetchAccountInfo() }.getOrNull()
+                    if (info != null) break
+                }
+                val displayName = info?.accountName?.takeIf { it.isNotBlank() } ?: "Google account"
+                if (info != null) {
+                    ytAuthManager.updateAccountIdentity(info.accountName, info.channelHandle, info.photoUrl)
+                }
+                viewModelScope.launch {
+                    runCatching { ytMusicSyncManager.syncNow("connected") }
+                }
+                _uiState.update { it.copy(toastMessage = "Connected as $displayName") }
+                onComplete?.invoke(true, null)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (e: Exception) {
+                onComplete?.invoke(false, e.localizedMessage ?: e.message ?: "Connection failed")
+            }
+        }
+    }
+
     fun disconnectYouTube() {
         launchSettingsAction("disconnect YouTube Music") {
             ytMusicPreferences.setSyncEnabled(false)

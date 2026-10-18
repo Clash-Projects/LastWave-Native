@@ -24,16 +24,22 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.lastwave.app.R
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,6 +70,7 @@ fun YouTubeLoginScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var loadProgressVisible by remember { mutableStateOf(true) }
     var webViewError by remember { mutableStateOf<String?>(null) }
+    var showCookieDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.connectedName, state.verifying) {
         if (state.connectedName != null || state.verifying) return@LaunchedEffect
@@ -93,6 +100,19 @@ fun YouTubeLoginScreen(
             title = "Connect YouTube Music",
             subtitle = "Sign in with your Google account",
             onBack = onBack,
+            actions = {
+                FilledTonalIconButton(
+                    onClick = { showCookieDialog = true },
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    ),
+                ) {
+                    Icon(
+                        Icons.Filled.Key,
+                        contentDescription = stringResource(R.string.settings_cookie_login),
+                    )
+                }
+            },
         )
 
         Box(Modifier.weight(1f)) {
@@ -259,35 +279,68 @@ fun YouTubeLoginScreen(
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                Button(
-                    onClick = {
-                        viewModel.attemptConnect(readYouTubeCookies())
-                    },
-                    enabled = webViewError == null && !state.verifying && state.connectedName == null,
-                    shape = CircleShape,
-                    modifier = Modifier.fillMaxWidth().height(46.dp),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    if (state.verifying) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onPrimary,
+                    OutlinedButton(
+                        onClick = { showCookieDialog = true },
+                        enabled = !state.verifying && state.connectedName == null,
+                        shape = CircleShape,
+                        modifier = Modifier.weight(1f).height(46.dp),
+                    ) {
+                        Icon(
+                            Icons.Filled.Key,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
                         )
-                        Spacer(Modifier.width(8.dp))
-                        Text("Verifying account...")
-                    } else {
-                        Text("I'm signed in")
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "Cookie Login",
+                            maxLines = 1,
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            viewModel.attemptConnect(readYouTubeCookies())
+                        },
+                        enabled = webViewError == null && !state.verifying && state.connectedName == null,
+                        shape = CircleShape,
+                        modifier = Modifier.weight(1.2f).height(46.dp),
+                    ) {
+                        if (state.verifying) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("Verifying...")
+                        } else {
+                            Text("I'm signed in")
+                        }
                     }
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "After signing in you'll be returned here automatically.",
+                    "After signing in or connecting cookies you'll be returned here automatically.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 )
             }
         }
     }
+    }
+
+    if (showCookieDialog) {
+        CookieLoginDialog(
+            onDismiss = { showCookieDialog = false },
+            onConnect = { cookies ->
+                showCookieDialog = false
+                viewModel.attemptCookieConnect(cookies)
+            },
+            isConnecting = state.verifying,
+        )
     }
 }
 

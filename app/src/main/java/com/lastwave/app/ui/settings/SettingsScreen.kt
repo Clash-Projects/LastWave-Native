@@ -95,6 +95,7 @@ import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -504,6 +505,7 @@ fun SettingsScreen(
     var showYtLibraryVisibilitySheet by remember { mutableStateOf(false) }
     var showYtChannelSheet by remember { mutableStateOf(false) }
     var showYtDisconnectConfirm by remember { mutableStateOf(false) }
+    var showCookieLoginDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     val currentLanguage = remember(misc.appLanguageTag) { AppLanguage.fromTag(misc.appLanguageTag) }
 
@@ -1473,19 +1475,11 @@ fun SettingsScreen(
                             it.authUserIndex == ytConnection.authUserIndex &&
                             it.pageId == ytConnection.pageId
                     }?.accountName ?: ytConnection.accountName
-                    val ytRowCount = if (ytConnected) 7 else 2
+                    val ytRowCount = if (ytConnected) 7 else 3
                     SettingsGroup(rowCount = ytRowCount) { index, position ->
-                        when (index) {
-                            0 -> if (ytConnected) {
-                                YouTubeAccountRow(
-                                    accountName = ytConnection.accountName,
-                                    channelHandle = ytConnection.channelHandle,
-                                    onDisconnect = { showYtDisconnectConfirm = true },
-                                    position = position,
-                                    isHighlighted = (highlightedSettingId == "youtube.account"),
-                                )
-                            } else {
-                                SettingsActionCard(
+                        if (!ytConnected) {
+                            when (index) {
+                                0 -> SettingsActionCard(
                                     icon = Icons.Filled.CloudSync,
                                     iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                     iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1495,20 +1489,49 @@ fun SettingsScreen(
                                     position = position,
                                     isHighlighted = (highlightedSettingId == "youtube.account"),
                                 )
+                                1 -> SettingsActionCard(
+                                    icon = Icons.Filled.Key,
+                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    title = stringResource(R.string.settings_cookie_login),
+                                    subtitle = stringResource(R.string.settings_cookie_login_sub),
+                                    onClick = { showCookieLoginDialog = true },
+                                    position = position,
+                                    isHighlighted = (highlightedSettingId == "youtube.cookie_login"),
+                                )
+                                2 -> SettingsToggleCard(
+                                    icon = Icons.Filled.CloudSync,
+                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    title = stringResource(R.string.settings_yt_sync),
+                                    subtitle = syncSubtitle,
+                                    checked = false,
+                                    onCheckedChange = viewModel::setYtSyncEnabled,
+                                    position = position,
+                                    isHighlighted = (highlightedSettingId == "youtube.sync"),
+                                )
                             }
-                            1 -> SettingsToggleCard(
-                                icon = Icons.Filled.CloudSync,
-                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                title = stringResource(R.string.settings_yt_sync),
-                                subtitle = syncSubtitle,
-                                checked = ytConnected && ytSyncEnabled,
-                                onCheckedChange = viewModel::setYtSyncEnabled,
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "youtube.sync"),
-                            )
-                            2 -> if (ytConnected) {
-                                SettingsActionCard(
+                        } else {
+                            when (index) {
+                                0 -> YouTubeAccountRow(
+                                    accountName = ytConnection.accountName,
+                                    channelHandle = ytConnection.channelHandle,
+                                    onDisconnect = { showYtDisconnectConfirm = true },
+                                    position = position,
+                                    isHighlighted = (highlightedSettingId == "youtube.account"),
+                                )
+                                1 -> SettingsToggleCard(
+                                    icon = Icons.Filled.CloudSync,
+                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    title = stringResource(R.string.settings_yt_sync),
+                                    subtitle = syncSubtitle,
+                                    checked = ytSyncEnabled,
+                                    onCheckedChange = viewModel::setYtSyncEnabled,
+                                    position = position,
+                                    isHighlighted = (highlightedSettingId == "youtube.sync"),
+                                )
+                                2 -> SettingsActionCard(
                                     icon = Icons.Filled.SwitchAccount,
                                     iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                     iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1521,7 +1544,6 @@ fun SettingsScreen(
                                     position = position,
                                     isHighlighted = (highlightedSettingId == "youtube.channel"),
                                 )
-                            }
                             3 -> if (ytConnected) {
                                 val selectedCount = syncedPlaylistIds?.size ?: allPlaylists.size
                                 val syncCountText = if (syncedPlaylistIds == null || selectedCount == allPlaylists.size) {
@@ -2082,6 +2104,17 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showYtDisconnectConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
+            },
+        )
+    }
+
+    if (showCookieLoginDialog) {
+        CookieLoginDialog(
+            onDismiss = { showCookieLoginDialog = false },
+            onConnect = { cookies ->
+                viewModel.connectWithCookies(cookies) { success, _ ->
+                    if (success) showCookieLoginDialog = false
+                }
             },
         )
     }
