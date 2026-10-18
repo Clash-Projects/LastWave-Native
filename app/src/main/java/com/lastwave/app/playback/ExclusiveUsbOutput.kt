@@ -82,6 +82,10 @@ class ExclusiveUsbOutput @Inject constructor(
     /** Fork setting: never let the DAC's Feature Unit own the listening level. */
     @Volatile private var forceSoftwareVolume = false
 
+    private val sessionBlockedDevices = java.util.concurrent.ConcurrentHashMap<String, String>()
+    @Volatile private var currentDeviceKey: String? = null
+    @Volatile private var sessionSummary: String = ""
+
     private val audioManager: AudioManager? =
         appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     private val volumePrefs =
@@ -718,18 +722,15 @@ class ExclusiveUsbOutput @Inject constructor(
 
     // ── Fork: safety guard + diagnostics ──
 
-    @Volatile private var currentDeviceKey: String? = null
-    @Volatile private var sessionSummary: String = ""
-    private val sessionBlockedDevices = java.util.concurrent.ConcurrentHashMap<String, String>()
-
     private fun blockReasonFor(vendorId: Int, productId: Int): String? =
-        sessionBlockedDevices["$vendorId:$productId"]
+        sessionBlockedDevices[vendorId.toString() + ":" + productId]
 
     /** Forget every DAC the guard disabled. */
     fun clearBlockedDevices() {
         sessionBlockedDevices.clear()
-        val editor = volumePrefs.edit()
-        volumePrefs.all.keys.filter { it.startsWith(KEY_BLOCK_PREFIX) }.forEach { editor.remove(it) }
+        val prefs = volumePrefs ?: return
+        val editor = prefs.edit()
+        prefs.all?.keys?.filter { it.startsWith(KEY_BLOCK_PREFIX) }?.forEach { editor.remove(it) }
         editor.apply()
     }
 
