@@ -1622,7 +1622,8 @@ fun SettingsScreen(
                     }
                 }
             }
-                    }
+        }
+    }
 
                     SettingsTab.LAST_FM -> {
                         item {
