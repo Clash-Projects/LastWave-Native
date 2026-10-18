@@ -291,7 +291,10 @@ class UacFeatureVolume(
 
     private fun parseFeatureUnitIds(): List<Int> {
         val raw = connection.rawDescriptors ?: return emptyList()
-        val ids = mutableListOf<Int>()
+        val allFeatureUnits = mutableListOf<Int>()
+        val outputTerminals = mutableListOf<Pair<Int, Int>>() // Pair(terminalType, sourceId)
+        val unitSources = mutableMapOf<Int, Int>() // unitId -> sourceId
+
         var i = 0
         var inAudioControl = false
         while (i + 1 < raw.size) {
@@ -305,17 +308,56 @@ class UacFeatureVolume(
             }
             if (inAudioControl && type == 0x24 && length >= 4) {
                 val subtype = raw[i + 2].toInt() and 0xFF
-                if (subtype == FEATURE_UNIT_SUBTYPE) {
-                    ids += raw[i + 3].toInt() and 0xFF
+                val unitId = raw[i + 3].toInt() and 0xFF
+                when (subtype) {
+                    FEATURE_UNIT_SUBTYPE -> {
+                        allFeatureUnits += unitId
+                        if (length >= 5) {
+                            unitSources[unitId] = raw[i + 4].toInt() and 0xFF
+                        }
+                    }
+                    OUTPUT_TERMINAL_SUBTYPE -> {
+                        if (length >= 8) {
+                            val termType = (raw[i + 4].toInt() and 0xFF) or ((raw[i + 5].toInt() and 0xFF) shl 8)
+                            val srcId = raw[i + 7].toInt() and 0xFF
+                            outputTerminals += Pair(termType, srcId)
+                        }
+                    }
+                    else -> {
+                        if (length >= 5) {
+                            unitSources[unitId] = raw[i + 4].toInt() and 0xFF
+                        }
+                    }
                 }
             }
             i += length
         }
-        return ids
+
+        // Trace backwards from physical playback Output Terminals (0x0300..0x03FF: Speaker, Headphones)
+        val playbackFus = mutableListOf<Int>()
+        for ((termType, srcId) in outputTerminals) {
+            if ((termType and 0xFF00) == 0x0300) {
+                var curr = srcId
+                val visited = mutableSetOf<Int>()
+                while (curr in unitSources && visited.add(curr)) {
+                    if (curr in allFeatureUnits) {
+                        playbackFus += curr
+                        break
+                    }
+                    curr = unitSources[curr] ?: break
+                }
+                if (srcId in allFeatureUnits && srcId !in playbackFus) {
+                    playbackFus += srcId
+                }
+            }
+        }
+
+        return (playbackFus + allFeatureUnits).distinct()
     }
 
     companion object {
         const val TAG = "UacFeatureVolume"
+        const val OUTPUT_TERMINAL_SUBTYPE = 0x03
         const val FEATURE_UNIT_SUBTYPE = 0x06
         const val VOLUME_WVALUE = 0x0200
         const val MUTE_WVALUE = 0x0100
