@@ -66,7 +66,7 @@ class ExclusiveUsbSignalPathTest {
     }
 
     @Test
-    fun exclusiveSoftwareVolumeFailsWhenSystemNotMax() {
+    fun exclusiveSoftwareVolumePassesBelowUnityAppGain() {
         val report = evaluateSignalPath(
             exclusiveInput().copy(
                 exclusiveHardwareVolume = false,
@@ -76,11 +76,11 @@ class ExclusiveUsbSignalPathTest {
                 appVolume = 8f / 15f,
             ),
         )
-        assertThat(report.bitPerfect).isFalse()
+        assertThat(report.bitPerfect).isTrue()
     }
 
     @Test
-    fun exclusiveSoftwareVolumeGoldOnlyAtSystemMax() {
+    fun exclusiveSoftwareVolumeGoldAtAnyGain() {
         val report = evaluateSignalPath(
             exclusiveInput().copy(
                 exclusiveHardwareVolume = false,

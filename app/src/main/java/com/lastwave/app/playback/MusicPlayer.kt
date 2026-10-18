@@ -3000,7 +3000,10 @@ class MusicPlayer @Inject constructor(
         outgoingPlayer = outgoing
         activePlayer = standby
         standby.addListener(listener)
-        standby.setAudioAttributes(standby.audioAttributes, true)
+        // Keep handleAudioFocus = false: LastWave manages audio focus manually via requestMediaAudioFocus().
+        // Setting true here activates ExoPlayer's internal AudioFocusManager which steals focus, causing Android
+        // to send AUDIOFOCUS_LOSS (-1) to LastWave's own focus listener, immediately pausing playback.
+        standby.setAudioAttributes(standby.audioAttributes, false)
         standby.play()
         // The standby is now the live player; the outgoing one is the next
         // standby. Cleared so the downloader resumes caching the new track.
@@ -3564,6 +3567,7 @@ class MusicPlayer @Inject constructor(
                 exclusiveHardwareVolume = hardwareVolume,
                 exclusiveFailureReason = exclusiveUsbOutput.lastFailureReason.takeIf { !exclusive },
                 clockFallbackResampled = clockFallback,
+                wireBits = exclusiveUsbOutput.activeWireBits(),
             ),
         )
     }

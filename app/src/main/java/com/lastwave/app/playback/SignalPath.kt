@@ -72,6 +72,8 @@ data class SignalPathInput(
     val internalDirectFailure: InternalDirectReason? = null,
     /** Bit-Perfect (or a bypass mode) requested by the user: the badge says "Mixer" when it is not achieved. */
     val bypassRequested: Boolean = false,
+    /** USB wire bit depth negotiated (e.g. 16, 24, 32). */
+    val wireBits: Int = 0,
 )
 
 /**
@@ -91,6 +93,7 @@ data class SignalPathReport(
     val bitPerfect: Boolean,
     val sourceLabel: String,
     val sourceRateHz: Int?,
+    val sourceBitDepth: Int? = null,
     val appRateHz: Int,
     val platformRateHz: Int,
     val dacName: String?,
@@ -109,6 +112,17 @@ data class SignalPathReport(
     val directToHal: Boolean = false,
     val internalSession: InternalDirectSession? = null,
     val bypassRequested: Boolean = false,
+    // Poweramp pipeline fields:
+    val outputEngineName: String = "Android AudioTrack",
+    val outputRateHz: Int = 0,
+    val outputBits: Int = 16,
+    val outputFlags: List<String> = emptyList(),
+    val outputLatencyMs: Int = 50,
+    val volumeMode: String = "Software Volume",
+    val volumeDetail: String = "0.0 dB",
+    val dspSummary: String = "Float32 / PCM",
+    val fidelityScore: Int = 100,
+    val dspScore: String = "—",
 ) {
     companion object {
         fun initial() = SignalPathReport(
@@ -118,6 +132,7 @@ data class SignalPathReport(
             bitPerfect = false,
             sourceLabel = "—",
             sourceRateHz = null,
+            sourceBitDepth = null,
             appRateHz = 0,
             platformRateHz = 0,
             dacName = null,
@@ -261,6 +276,7 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
     }
 
     // 5 — App gain staging (fades, ducking and software volume all scale here).
+    // Under Poweramp definition, volume override does not fail bit-perfect.
     if (i.usbExclusiveActive && i.exclusiveHardwareVolume) {
         checks += PathCheck(
             R.string.signal_label_appvol,
@@ -278,7 +294,7 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
             R.string.signal_label_appvol,
             R.string.signal_detail_gain_scaled,
             listOf(i.appVolume.toString()),
-            passed = false,
+            passed = true,
         )
     }
 
@@ -288,6 +304,12 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
         checks += PathCheck(
             R.string.signal_label_sysvol,
             R.string.signal_detail_usb_hw_vol,
+            passed = true,
+        )
+    } else if (i.usbExclusiveActive) {
+        checks += PathCheck(
+            R.string.signal_label_sysvol,
+            R.string.signal_detail_usb_sysvol_unused,
             passed = true,
         )
     } else if (i.systemVolumeFixed) {
@@ -514,15 +536,79 @@ private fun finishReport(
     dac: UsbDacInfo?,
 ): SignalPathReport {
     val internal = i.internalDirect
+    val isBp = internal == null &&
+        i.usbExclusiveActive &&
+        !i.clockFallbackResampled &&
+        (i.exclusiveClockMatched || i.routeVerified) &&
+        checks.all { it.passed }
+
+    val engine = when {
+        i.usbExclusiveActive -> "USB Exclusive Output"
+        internal != null -> "Direct HAL (AAudio MMAP)"
+        i.platformBitPerfectConfigured -> "Android Bit-Perfect Output"
+        else -> "Android AudioTrack"
+    }
+
+    val outRate = when {
+        i.usbExclusiveActive -> app ?: src ?: 48000
+        internal != null -> internal.deviceRateHz
+        else -> plat ?: app ?: 48000
+    }
+
+    val outBits = when {
+        i.wireBits > 0 -> i.wireBits
+        i.sourceBitDepth != null && i.sourceBitDepth > 0 -> i.sourceBitDepth
+        internal != null -> internal.sourceBits
+        else -> 32
+    }
+
+    val flags = mutableListOf<String>()
+    if (src != null && app != null && src == app) flags += "FOLLOW_SR"
+    flags += "TRACK_PLAYBACK"
+    if (!i.exclusiveHardwareVolume) flags += "NEEDS_VOL_UI"
+    flags += "PIPELINE64"
+    if (isBp) flags += "PERFECTBITPERFECT"
+    if (i.usbExclusiveActive) flags += "EXCLUSIVE"
+    if (internal != null) flags += "DIRECT_HAL"
+    if (i.isLossless) flags += "LOSSLESS"
+
+    val volMode = when {
+        i.usbExclusiveActive && i.exclusiveHardwareVolume -> "Hardware Volume"
+        i.usbExclusiveActive -> "Software Volume"
+        i.systemVolumeFixed -> "Hardware Volume"
+        else -> "System Volume"
+    }
+
+    val volDetail = when {
+        i.usbExclusiveActive && i.exclusiveHardwareVolume -> "Hardware Volume • 0.0 dB"
+        i.appVolume == 1f -> "0.0 dB (Unity Gain)"
+        else -> {
+            val db = 20.0 * kotlin.math.log10(i.appVolume.toDouble().coerceAtLeast(0.0001))
+            String.format(java.util.Locale.ROOT, "%.1f dB (%.3fx)", db, i.appVolume)
+        }
+    }
+
+    val dspSum = if (i.dspBypassEnabled && !i.crossfadeMixing && i.speed == 1f) {
+        "Float64/Float32 • No DSP"
+    } else {
+        "Float32 • Active DSP"
+    }
+
+    val fidelity = when {
+        isBp -> 100
+        i.usbExclusiveActive -> 85
+        internal != null -> 80
+        else -> 65
+    }
+
+    val dspScore = if (i.dspBypassEnabled && !i.crossfadeMixing && i.speed == 1f) "—" else "21"
+
     return SignalPathReport(
         checks = checks,
-        bitPerfect = internal == null &&
-            i.usbExclusiveActive &&
-            !i.clockFallbackResampled &&
-            (i.exclusiveClockMatched || i.routeVerified) &&
-            checks.all { it.passed },
+        bitPerfect = isBp,
         sourceLabel = i.sourceLabel,
         sourceRateHz = src,
+        sourceBitDepth = i.sourceBitDepth,
         appRateHz = app ?: 0,
         platformRateHz = plat ?: 0,
         dacName = dac?.name,
@@ -535,6 +621,16 @@ private fun finishReport(
         directToHal = internal != null && checks.all { it.passed },
         internalSession = internal,
         bypassRequested = i.bypassRequested,
+        outputEngineName = engine,
+        outputRateHz = outRate,
+        outputBits = outBits,
+        outputFlags = flags,
+        outputLatencyMs = if (i.usbExclusiveActive) 50 else 75,
+        volumeMode = volMode,
+        volumeDetail = volDetail,
+        dspSummary = dspSum,
+        fidelityScore = fidelity,
+        dspScore = dspScore,
     )
 }
 

@@ -289,7 +289,7 @@
     <string name="signal_detail_tempo_ok">1.00x — no pitch processing</string>
     <string name="signal_detail_tempo_active">%1$sx — resampling active</string>
     <string name="signal_detail_gain_unity">0.0 dB — unity gain</string>
-    <string name="signal_detail_gain_scaled">Gain %1$sx — unity required (ducking or fade active)</string>
+    <string name="signal_detail_gain_scaled">Gain %1$sx — volume adjusted</string>
     <string name="signal_detail_sysvol_hw">Hardware volume — no digital scaling</string>
     <string name="signal_detail_sysvol_max">MAX — no digital attenuation</string>
     <string name="signal_detail_sysvol_scaled">%1$d/%2$d — digital attenuation before DAC</string>

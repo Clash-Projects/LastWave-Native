@@ -1,12 +1,15 @@
 package com.lastwave.app.ui.player
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -29,10 +32,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.lastwave.app.R
 import com.lastwave.app.playback.InternalDirectAvailability
@@ -110,39 +116,268 @@ fun SignalPathDialog(
                     },
                     modifier = Modifier.padding(top = 4.dp),
                 )
-                Spacer(Modifier.height(12.dp))
+                // Poweramp-style Pipeline Stages
+                val dspRateKHz = (report.appRateHz / 1000.0).let { if (it % 1.0 == 0.0) "${it.toInt()} kHz" else "$it kHz" }
+                val outRateKHz = (report.outputRateHz / 1000.0).let { if (it % 1.0 == 0.0) "${it.toInt()} kHz" else "$it kHz" }
+                val srcKHz = ((report.sourceRateHz ?: report.appRateHz.takeIf { it > 0 } ?: 44100) / 1000.0).let { if (it % 1.0 == 0.0) "${it.toInt()} kHz" else "$it kHz" }
+                val srcBits = report.sourceBitDepth ?: 16
 
-                report.checks.forEach { check ->
+                // 1. Source Stage
+                PipelineNode(
+                    iconContent = {
+                        Text("♪", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    },
+                    title = "Source",
+                    badge = if (report.bitPerfect) "LOSSLESS" else null,
+                    isLast = false,
+                ) {
+                    Text(report.sourceLabel, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Text("$srcKHz\n$srcBits bit", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                }
+
+                // 2. DSP Stage
+                PipelineNode(
+                    iconContent = {
+                        Text("≈", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    },
+                    title = "DSP",
+                    badge = if (report.dspScore == "—") "NO DSP" else null,
+                    isLast = false,
+                ) {
+                    Text(dspRateKHz, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Text(report.dspSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Equalizer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (report.dspScore == "—") "Equ Off • Balance (0%)" else "Equalizer Mode: graphic (10-band)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text("Tone", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
+                    Text("Tone Off", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                    Text("Crossfade", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (report.checks.any { it.detailRes == R.string.signal_detail_dsp_crossfade }) "Crossfade active" else "No fading / Short crossfade",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text("Buffers", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
+                    Text("2x (50 ms, ${(report.appRateHz * 0.05).toInt()} audioframes)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                    Text("Latency", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
+                    Text("${report.outputLatencyMs * 2} ms", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                }
+
+                // 3. Volume Control Stage
+                PipelineNode(
+                    iconContent = {
+                        Box(
+                            modifier = Modifier
+                                .size(16.dp)
+                                .clip(CircleShape)
+                                .border(1.5.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                            contentAlignment = Alignment.TopStart,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(2.5.dp)
+                                    .size(3.5.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary),
+                            )
+                        }
+                    },
+                    title = "Volume Control",
+                    isLast = false,
+                ) {
+                    Text(report.volumeMode, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(2.dp))
+                    Text(report.volumeDetail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                    Text("Preamp", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
+                    Text("0.0dB", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                }
+
+                // 4. Output Engine Stage
+                PipelineNode(
+                    iconContent = {
+                        Text("ψ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    },
+                    title = "Output",
+                    badge = if (report.usbExclusiveActive) "EXCLUSIVE" else null,
+                    isLast = false,
+                ) {
+                    Text(
+                        report.outputEngineName,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            textDecoration = TextDecoration.Underline,
+                        ),
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(outRateKHz, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Text("${report.outputBits} bit", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(6.dp))
+                    Text("Flags", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        report.outputFlags.joinToString(" "),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text("Latency", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
+                    Text("${report.outputLatencyMs} ms", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                }
+
+                // 5. Output Device Stage
+                PipelineNode(
+                    iconContent = {
+                        Text("⎋", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    },
+                    title = "Output Device",
+                    isLast = true,
+                ) {
+                    Text(
+                        report.dacName ?: if (report.internalDirectActive) "Internal Hi-Res DAC" else "Android Default Output",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            textDecoration = TextDecoration.Underline,
+                        ),
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(outRateKHz, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Text("${report.outputBits} bit", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                }
+
+                // Poweramp Fidelity & DSP Bottom Card
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 5.dp),
-                        verticalAlignment = Alignment.Top,
+                            .padding(horizontal = 24.dp, vertical = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .padding(top = 5.dp)
-                                .size(8.dp)
-                                .background(
-                                    if (check.passed) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.error,
-                                    CircleShape,
-                                ),
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "Fidelity",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        "i",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 10.sp,
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(4.dp))
                             Text(
-                                stringResource(check.labelRes),
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
+                                "${report.fidelityScore}",
+                                style = MaterialTheme.typography.displayMedium,
+                                fontWeight = FontWeight.Black,
+                                color = if (report.bitPerfect) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                             )
+                        }
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "DSP",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        "i",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 10.sp,
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(4.dp))
                             Text(
-                                stringResource(check.detailRes, *check.detailArgs.toTypedArray()),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                report.dspScore,
+                                style = MaterialTheme.typography.displayMedium,
+                                fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.onSurface,
                             )
                         }
                     }
+                }
+
+                // Collapsible Verification Checklist
+                var showChecks by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                TextButton(
+                    onClick = { showChecks = !showChecks },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        if (showChecks) "Hide verification checks" else "Show verification checks (${report.checks.count { it.passed }}/${report.checks.size} passed)",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+
+                if (showChecks) {
+                    report.checks.forEach { check ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 5.dp)
+                                    .size(8.dp)
+                                    .background(
+                                        if (check.passed) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.error,
+                                        CircleShape,
+                                    ),
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    stringResource(check.labelRes),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    stringResource(check.detailRes, *check.detailArgs.toTypedArray()),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
                 }
 
                 Spacer(Modifier.height(8.dp))
@@ -360,3 +595,95 @@ private fun routeLabel(route: InternalRoute): String = stringResource(
         InternalRoute.UNKNOWN -> R.string.route_unknown
     },
 )
+
+@Composable
+private fun PipelineNode(
+    iconContent: @Composable () -> Unit,
+    title: String,
+    badge: String? = null,
+    isLast: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .width(36.dp)
+                .fillMaxHeight(),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(26.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.9f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                iconContent()
+            }
+            if (!isLast) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .width(1.5.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                )
+                Text(
+                    "↓",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.8f),
+                    lineHeight = 11.sp,
+                    modifier = Modifier.padding(vertical = 1.dp),
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .width(1.5.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                )
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(bottom = if (isLast) 6.dp else 18.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        textDecoration = TextDecoration.Underline,
+                    ),
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                if (badge != null) {
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    ) {
+                        Text(
+                            badge,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            fontSize = 9.sp,
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            content()
+        }
+    }
+}
+

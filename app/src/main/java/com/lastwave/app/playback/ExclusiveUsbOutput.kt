@@ -170,6 +170,8 @@ class ExclusiveUsbOutput @Inject constructor(
 
     fun currentRateHz(): Int = if (active) configuredRateHz else 0
 
+    fun activeWireBits(): Int = if (active) activeWireBits else 0
+
     fun lastHardwareRateHz(): Int = lastHardwareRate
 
     fun supportedHardwareRatesHz(): List<Int> = usbAudio.querySupportedSampleRates()
