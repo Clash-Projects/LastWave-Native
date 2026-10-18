@@ -2284,13 +2284,13 @@ private fun FullPlayer(
                             Modifier
                                 .fillMaxWidth()
                                 .height(52.dp)
-                                .padding(horizontal = 20.dp)
+                                .padding(horizontal = if (isTabletLandscape) 32.dp else 20.dp)
                                 .playerVerticalSwipe(enabled = currentTab != FullPlayerTab.NOW_PLAYING),
                         ) {
                             // FullPlayer sits on a dark blurred-artwork scrim in both light and
                             // dark mode, so foreground must use the white overlay palette —
                             // never MaterialTheme onSurface (near-black in light mode).
-                            IconButton(
+                            LiquidGlassSurface(
                                 onClick = {
                                     if (currentTab != FullPlayerTab.NOW_PLAYING) {
                                         onTabChange(FullPlayerTab.NOW_PLAYING)
@@ -2298,20 +2298,22 @@ private fun FullPlayer(
                                         onCollapse()
                                     }
                                 },
+                                shape = CircleShape,
+                                color = liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
+                                contentColor = Color.White.copy(alpha = 0.94f),
+                                glassModifier = Modifier.liquidGlassChrome(
+                                    CircleShape,
+                                    LocalLiquidGlass.current,
+                                    LiquidGlassPreset.FloatingControls,
+                                ),
                                 modifier = Modifier
                                     .align(Alignment.CenterStart)
-                                    .size(44.dp)
-                                    .clip(CircleShape)
-                                    .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls)
-                                    .background(
-                                        liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
-                                    ),
+                                    .size(44.dp),
                             ) {
                                 Icon(
                                     if (currentTab != FullPlayerTab.NOW_PLAYING) Icons.Filled.ArrowBack else Icons.Filled.ExpandMore,
                                     if (currentTab != FullPlayerTab.NOW_PLAYING) "Back to player" else "Minimize player",
                                     modifier = Modifier.size(26.dp),
-                                    tint = Color.White.copy(alpha = 0.94f),
                                 )
                             }
                             Column(
@@ -2347,40 +2349,42 @@ private fun FullPlayer(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 if (currentTab == FullPlayerTab.LYRICS && onSetLyricsOffsetMs != null) {
-                                    IconButton(
+                                    LiquidGlassSurface(
                                         onClick = { showLyricsOffsetDialog = true },
-                                        modifier = Modifier
-                                            .size(44.dp)
-                                            .clip(CircleShape)
-                                            .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls)
-                                            .background(
-                                                if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
-                                                else liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
-                                            ),
+                                        shape = CircleShape,
+                                        color = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                                        else liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
+                                        contentColor = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.94f),
+                                        glassModifier = Modifier.liquidGlassChrome(
+                                            CircleShape,
+                                            LocalLiquidGlass.current,
+                                            LiquidGlassPreset.FloatingControls,
+                                        ),
+                                        modifier = Modifier.size(44.dp),
                                     ) {
                                         Icon(
                                             Icons.Filled.Timer,
                                             contentDescription = stringResource(com.lastwave.app.R.string.player_lyrics_offset_cd),
                                             modifier = Modifier.size(22.dp),
-                                            tint = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.94f),
                                         )
                                     }
                                 }
-                                IconButton(
+                                LiquidGlassSurface(
                                     onClick = { showTrackMenu = true },
-                                    modifier = Modifier
-                                        .size(44.dp)
-                                        .clip(CircleShape)
-                                        .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls)
-                                        .background(
-                                            liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
-                                        ),
+                                    shape = CircleShape,
+                                    color = liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
+                                    contentColor = Color.White.copy(alpha = 0.94f),
+                                    glassModifier = Modifier.liquidGlassChrome(
+                                        CircleShape,
+                                        LocalLiquidGlass.current,
+                                        LiquidGlassPreset.FloatingControls,
+                                    ),
+                                    modifier = Modifier.size(44.dp),
                                 ) {
                                     Icon(
                                         Icons.Filled.MoreVert,
                                         "Song options",
                                         modifier = Modifier.size(22.dp),
-                                        tint = Color.White.copy(alpha = 0.94f),
                                     )
                                 }
                             }
