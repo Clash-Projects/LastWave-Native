@@ -1,8 +1,5 @@
 package com.lastwave.app.data.ytmusic
 
-import org.json.JSONArray
-import org.json.JSONObject
-
 /**
  * Normalizes user-pasted YouTube Music session cookies into a clean `Cookie` header string.
  *
@@ -47,36 +44,29 @@ object CookieNormalizer {
         }
 
         // 1. JSON export? e.g. [{"name":"SID","value":"..."}] or {"cookies": [...]} or {"SID":"..."}
+        // Uses pure Kotlin regex parsing so unit tests on the JVM don't fail due to Android SDK org.json stubs.
         if (input.startsWith("[") || input.startsWith("{")) {
-            try {
-                if (input.startsWith("[")) {
-                    val arr = JSONArray(input)
-                    for (i in 0 until arr.length()) {
-                        val obj = arr.optJSONObject(i) ?: continue
-                        val n = obj.optString("name")
-                        val v = obj.optString("value")
-                        addPair(n, v)
-                    }
-                } else {
-                    val obj = JSONObject(input)
-                    val cookiesArr = obj.optJSONArray("cookies")
-                    if (cookiesArr != null) {
-                        for (i in 0 until cookiesArr.length()) {
-                            val item = cookiesArr.optJSONObject(i) ?: continue
-                            addPair(item.optString("name"), item.optString("value"))
-                        }
-                    } else {
-                        val keys = obj.keys()
-                        while (keys.hasNext()) {
-                            val k = keys.next()
-                            if (k != "cookies") {
-                                addPair(k, obj.optString(k))
-                            }
-                        }
+            val objPattern = Regex("""\{[^{}]*\}""")
+            val namePattern = Regex(""""name"\s*:\s*"([^"]+)"""")
+            val valuePattern = Regex(""""value"\s*:\s*"([^"]*)"""")
+            for (match in objPattern.findAll(input)) {
+                val block = match.value
+                val n = namePattern.find(block)?.groupValues?.getOrNull(1)
+                val v = valuePattern.find(block)?.groupValues?.getOrNull(1)
+                if (n != null && v != null) {
+                    addPair(n, v)
+                }
+            }
+            if (pairs.isEmpty()) {
+                val kvPattern = Regex(""""([^"]+)"\s*:\s*"([^"]*)"""")
+                val ignoredKeys = setOf("name", "value", "cookies", "domain", "path", "expirationDate", "hostOnly", "httpOnly", "sameSite", "secure", "session", "storeId")
+                for (m in kvPattern.findAll(input)) {
+                    val k = m.groupValues[1]
+                    val v = m.groupValues[2]
+                    if (k !in ignoredKeys) {
+                        addPair(k, v)
                     }
                 }
-            } catch (_: Exception) {
-                // Not valid JSON — fall through to line-oriented parsing
             }
         }
 
