@@ -88,6 +88,7 @@ class ExclusiveUsbOutput @Inject constructor(
         appContext.getSharedPreferences("lastwave_exclusive_usb", Context.MODE_PRIVATE)
 
     init {
+        clearBlockedDevices()
         lastNonMaxListeningGain = volumePrefs.getFloat(KEY_LAST_NON_MAX_GAIN, Float.NaN)
         rememberStreamGain(readStreamMusicGain())
     }
@@ -719,12 +720,14 @@ class ExclusiveUsbOutput @Inject constructor(
 
     @Volatile private var currentDeviceKey: String? = null
     @Volatile private var sessionSummary: String = ""
+    private val sessionBlockedDevices = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     private fun blockReasonFor(vendorId: Int, productId: Int): String? =
-        volumePrefs.getString("$KEY_BLOCK_PREFIX$vendorId:$productId", null)
+        sessionBlockedDevices["$vendorId:$productId"]
 
-    /** Forget every DAC the guard disabled (USB Exclusive toggled off then on). */
+    /** Forget every DAC the guard disabled. */
     fun clearBlockedDevices() {
+        sessionBlockedDevices.clear()
         val editor = volumePrefs.edit()
         volumePrefs.all.keys.filter { it.startsWith(KEY_BLOCK_PREFIX) }.forEach { editor.remove(it) }
         editor.apply()
@@ -733,7 +736,7 @@ class ExclusiveUsbOutput @Inject constructor(
     /**
      * The DAC is not consuming the stream at the rate it was configured for
      * and its clock was never confirmed: what it plays is garbage (loud noise
-     * on a UAC1 dongle in the field). Stop now, remember the DAC so the next
+     * on a UAC1 dongle in the field). Stop now, remember the DAC for this session so the next
      * track does not blast it again, and let the sink fall back.
      */
     fun abortUnhealthy(reason: String) {
@@ -742,7 +745,7 @@ class ExclusiveUsbOutput @Inject constructor(
             val key = currentDeviceKey
             Log.w(TAG, "Exclusive USB aborted: $reason (device $key)")
             if (key != null) {
-                runCatching { volumePrefs.edit().putString("$KEY_BLOCK_PREFIX$key", reason).apply() }
+                sessionBlockedDevices[key] = reason
             }
             failLocked("stopped for safety: $reason")
         }

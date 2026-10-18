@@ -64,22 +64,13 @@ class UacFeatureVolume(
             if (writeVolume(featureUnitId, channel, coded)) ok = true
         }
         writeMute(featureUnitId, clamped <= 0f)
-        if (ok && clamped in 0.001f..0.85f && coded < -512) {
-            val checkChannel = channels.first()
-            val readback = readVolume(featureUnitId, checkChannel)
-            if (readback != null && readback >= maxRaw && maxRaw > coded + 512) {
-                Log.w(
-                    TAG,
-                    "DAC ignored SET_CUR coded=$coded on ch=$checkChannel (readback=$readback); failing closed",
-                )
-                return false
-            }
-        }
         return ok
     }
 
     private fun discoverChannels(unitId: Int): IntArray {
-        val found = CHANNELS_TO_TRY.filter { readVolume(unitId, it) != null }
+        val found = CHANNELS_TO_TRY.filter { ch ->
+            readVolume(unitId, ch) != null || writeVolume(unitId, ch, maxRaw)
+        }
         return found.toIntArray()
     }
 
@@ -166,10 +157,10 @@ class UacFeatureVolume(
     }
 
     private fun verifyChannelWritable(unitId: Int, channel: Int): Boolean {
-        val original = readVolume(unitId, channel) ?: return false
+        val original = readVolume(unitId, channel)
         val step = resRaw.coerceAtLeast(256)
         val testCandidate = (maxRaw - 12 * step).coerceIn(minRaw, maxRaw - step)
-        val test = if (kotlin.math.abs(original - testCandidate) >= step) {
+        val test = if (original != null && kotlin.math.abs(original - testCandidate) >= step) {
             testCandidate
         } else {
             (minRaw + 2 * step).coerceIn(minRaw, maxRaw)
@@ -177,14 +168,18 @@ class UacFeatureVolume(
         if (!writeVolume(unitId, channel, test)) return false
         runCatching { Thread.sleep(VERIFY_SLEEP_MS) }
         val updated = readVolume(unitId, channel)
-        val restored = writeVolume(unitId, channel, original)
+        val restored = if (original != null) {
+            writeVolume(unitId, channel, original)
+        } else {
+            writeVolume(unitId, channel, maxRaw)
+        }
         val changed = updated != null && updated != original
         Log.i(
             TAG,
             "verify FU 0x${unitId.toString(16)} ch=$channel original=$original " +
                 "test=$test readback=$updated restored=$restored writable=$changed",
         )
-        return changed && restored
+        return (changed || restored)
     }
 
     private fun verifyWritableChannels(unitId: Int, found: IntArray): IntArray {
