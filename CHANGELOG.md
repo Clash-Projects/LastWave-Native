@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.3.1] - 2026-10-18
+
+### Added & Improved
+- **YouTube Music Cookie Login:** Support for raw `Cookie` headers, Netscape `cookies.txt`, and browser extension JSON exports with clipboard paste helpers and real-time validation (matching Desktop).
+- **Poweramp-Style Signal Path Redesign:** Reorganized the Output Detector dialog into Poweramp's 5-stage pipeline flow (Source $\to$ DSP $\to$ Volume Control $\to$ Output $\to$ Output Device) with status cards.
+- **Smart Feed Queues & Continuation:** Tapping any track in feed shelves now starts context-aware radio (`startRadio = true`) for dynamic playback, while "Play All" and "Shuffle" continuously auto-extend queues.
+- **Discovery Recommendation Quality:** Added strict deduplication against listening history and saved playlists, capped artists to 1 per batch, and removed raw history feed injection.
+- **Faster Feed Loading:** Eliminated blocking artist page network fetches, added in-memory artist caching, and bounded discovery graph queries with timeouts for near-instant rendering.
+
+### Changed & Fixed
+- **Crossfade Audio Focus:** Fixed pause loop in standby player handoff by preventing ExoPlayer focus manager collisions.
+- **USB DAC Bit-Perfect Alignment:** Aligned bit-perfect detection with Poweramp definitions and protected against read-only direct buffer crashes.
+- **Version Bump:** Bumped version to 4.3.1 (versionCode 26).
+
 ## [4.3.0] - 2026-10-17
 
 ### Added & Improved
