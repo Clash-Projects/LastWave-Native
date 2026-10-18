@@ -685,6 +685,7 @@ class SettingsViewModel @Inject constructor(
             downloadManager.clearAllDownloads()
             discoverRepository.clearRecommendationExclusions()
             playlistRepository.clearAll()
+            runCatching { ytAuthManager.signOut() }
             // Session last: clearing it navigates to login and can cancel this
             // scope, which used to interrupt the reset halfway through.
             sessionPreferences.clearAll()
@@ -1002,6 +1003,7 @@ class SettingsViewModel @Inject constructor(
     fun disconnectYouTube() {
         launchSettingsAction("disconnect YouTube Music") {
             ytMusicPreferences.setSyncEnabled(false)
+            _ytChannels.value = emptyList()
             ytAuthManager.signOut()
             _uiState.update { it.copy(toastMessage = appContext.getString(com.lastwave.app.R.string.toast_yt_off)) }
         }

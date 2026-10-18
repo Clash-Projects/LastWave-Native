@@ -64,17 +64,31 @@ fun YouTubeLoginScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var loadProgressVisible by remember { mutableStateOf(true) }
     var webViewError by remember { mutableStateOf<String?>(null) }
+    var activeWebView by remember { mutableStateOf<WebView?>(null) }
 
-    LaunchedEffect(state.connectedName, state.verifying) {
+    LaunchedEffect(Unit) {
+        runCatching {
+            val cm = CookieManager.getInstance()
+            cm.removeAllCookies(null)
+            cm.flush()
+            android.webkit.WebStorage.getInstance().deleteAllData()
+        }
+    }
+
+    LaunchedEffect(state.connectedName, state.verifying, activeWebView) {
         if (state.connectedName != null || state.verifying) return@LaunchedEffect
         while (true) {
-            val cookies = readYouTubeCookies()
-            if (hasSessionTokens(cookies)) {
-                val current = viewModel.uiState.value
-                if (!current.verifying && current.connectedName == null) {
-                    viewModel.attemptConnect(cookies)
+            val currentUrl = activeWebView?.url
+            val isAtTarget = currentUrl?.contains("music.youtube.com") == true
+            if (isAtTarget) {
+                val cookies = readYouTubeCookies()
+                if (hasSessionTokens(cookies)) {
+                    val current = viewModel.uiState.value
+                    if (!current.verifying && current.connectedName == null) {
+                        viewModel.attemptConnect(cookies)
+                    }
+                    break
                 }
-                break
             }
             kotlinx.coroutines.delay(1_200L)
         }
@@ -101,11 +115,17 @@ fun YouTubeLoginScreen(
                 factory = { ctx ->
                     var createdWebView: WebView? = null
                     try {
-                        WebView(ctx).also { createdWebView = it }.apply {
+                        WebView(ctx).also {
+                            createdWebView = it
+                            activeWebView = it
+                        }.apply {
                         @SuppressLint("SetJavaScriptEnabled")
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
                         settings.databaseEnabled = true
+                        clearCache(true)
+                        clearHistory()
+                        clearFormData()
                         // Google blocks the default WebView user agent on
                         // accounts.google.com ("may not be secure"). Stripping
                         // embedded WebView markers ("; wv" and "Version/X.X")
@@ -126,9 +146,11 @@ fun YouTubeLoginScreen(
                                 super.doUpdateVisitedHistory(view, url, isReload)
                                 val current = viewModel.uiState.value
                                 if (current.verifying || current.connectedName != null) return
-                                val cookies = readYouTubeCookies()
-                                if (hasSessionTokens(cookies)) {
-                                    viewModel.attemptConnect(cookies)
+                                if (url?.contains("music.youtube.com") == true) {
+                                    val cookies = readYouTubeCookies()
+                                    if (hasSessionTokens(cookies)) {
+                                        viewModel.attemptConnect(cookies)
+                                    }
                                 }
                             }
 
@@ -138,9 +160,11 @@ fun YouTubeLoginScreen(
                                 // Read state live — a factory-captured copy would be stale.
                                 val current = viewModel.uiState.value
                                 if (current.verifying || current.connectedName != null) return
-                                val cookies = readYouTubeCookies()
-                                if (hasSessionTokens(cookies)) {
-                                    viewModel.attemptConnect(cookies)
+                                if (url?.contains("music.youtube.com") == true) {
+                                    val cookies = readYouTubeCookies()
+                                    if (hasSessionTokens(cookies)) {
+                                        viewModel.attemptConnect(cookies)
+                                    }
                                 }
                             }
                         }
@@ -148,6 +172,7 @@ fun YouTubeLoginScreen(
                         }
                     } catch (error: Exception) {
                         runCatching { createdWebView?.destroy() }
+                        activeWebView = null
                         loadProgressVisible = false
                         webViewError = "Android System WebView is unavailable. Install or enable a WebView provider to connect YouTube Music."
                         android.widget.FrameLayout(ctx)
