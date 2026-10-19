@@ -101,6 +101,7 @@ import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BubbleChart
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Lyrics
@@ -494,6 +495,7 @@ fun SettingsScreen(
     var showQualityDialog by remember { mutableStateOf(false) }
     var showDownloadQualityDialog by remember { mutableStateOf(false) }
     var showEqSheet by remember { mutableStateOf(false) }
+    var showAutoEq by remember { mutableStateOf(false) }
     var showLyricsProviderDialog by remember { mutableStateOf(false) }
     var showLyricsOffsetDialog by remember { mutableStateOf(false) }
     var showLyricsSizeDialog by remember { mutableStateOf(false) }
@@ -976,7 +978,7 @@ fun SettingsScreen(
                         LoudnessMode.ALBUM -> "Album \u2022 Keep intentional album dynamics"
                         else -> "Off \u2022 Play tagged tracks at original level"
                     }
-                    SettingsGroup(rowCount = 9) { index, position ->
+                    SettingsGroup(rowCount = 10) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.Usb,
@@ -1121,6 +1123,16 @@ fun SettingsScreen(
                                 onCheckedChange = viewModel::setClarityAtmosBypass,
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.clarity_spatial_bypass"),
+                            )
+                            9 -> SettingsActionCard(
+                                icon = Icons.Filled.Headphones,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.autoeq_title),
+                                subtitle = com.lastwave.app.ui.settings.autoeq.autoEqSummary(),
+                                onClick = { showAutoEq = true },
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.autoeq"),
                             )
                         }
                     }
@@ -2232,6 +2244,10 @@ fun SettingsScreen(
             },
             dismissButton = { TextButton(onClick = viewModel::dismissSessionKeyDialog) { Text(stringResource(R.string.common_cancel)) } },
         )
+    }
+
+    if (showAutoEq) {
+        com.lastwave.app.ui.settings.autoeq.AutoEqDialog(onDismiss = { showAutoEq = false })
     }
 
     // -- Experimental 15-band equalizer --

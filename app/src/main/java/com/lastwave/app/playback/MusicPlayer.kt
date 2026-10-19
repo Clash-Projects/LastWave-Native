@@ -223,6 +223,8 @@ class MusicPlayer @Inject constructor(
     private val exclusiveUsbOutput: ExclusiveUsbOutput,
     private val songPlayStatsRepository: dagger.Lazy<com.lastwave.app.data.repository.SongPlayStatsRepository>,
     private val internalDirectOutput: InternalDirectOutput,
+    /** AutoEQ: started with the player so the saved correction is published before playback. */
+    private val autoEqController: com.lastwave.app.data.autoeq.AutoEqController,
 ) {
     private val appContext = context.applicationContext
     /**
@@ -3539,6 +3541,7 @@ class MusicPlayer @Inject constructor(
                 internalDirectWanted = internalPrefOn,
                 internalDirectFailure = internalFailure,
                 bypassRequested = bitPerfectEnabled,
+                parametricEqActive = com.lastwave.app.playback.eq.ParametricEqNative.isEngaged(),
                 sourceLabel = srcLabel,
                 sourceRateHz = sourceRateHz,
                 // The source row follows the same shared hi-res rule as the pill

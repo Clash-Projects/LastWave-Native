@@ -4019,6 +4019,7 @@ private fun PlayerUtilityControls(state: MusicPlayerState, player: MusicPlayer, 
             signalPath.usbExclusiveActive,
             signalPath.bypassRequested,
             signalPath.internalSession,
+            signalPath.parametricEqActive,
             modeBitPerfect,
         ) {
             val base = qualityBadgeLabel(state)
@@ -4036,7 +4037,17 @@ private fun PlayerUtilityControls(state: MusicPlayerState, player: MusicPlayer, 
                 signalPath.bypassRequested && !signalPath.usbExclusiveActive -> modeMixer
                 else -> null
             }
-            if (mode != null) "$withRate · $mode" else withRate
+            // AutoEQ: the correction is LastWave's own, so name the route + EQ.
+            val shownMode = if (signalPath.parametricEqActive) {
+                when {
+                    signalPath.internalDirectActive -> "$modeDirect + EQ"
+                    signalPath.usbExclusiveActive -> "USB + EQ"
+                    else -> "EQ"
+                }
+            } else {
+                mode
+            }
+            if (shownMode != null) "$withRate · $shownMode" else withRate
         }
         val isSpatialPill = remember(state.audioCodec) { isSpatialAudioCodec(state.audioCodec) }
         // Atmos gets its own spatial logo — HQ badge is only for lossless, never for spatial.

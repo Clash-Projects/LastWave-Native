@@ -302,6 +302,23 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "audio.autoeq",
+                    title = "AutoEQ",
+                    subtitle = "Headphone correction from the AutoEQ database, parametric EQ, per-device profiles",
+                    keywords = listOf(
+                        "autoeq", "auto eq", "headphone", "casque", "iem", "harman", "parametric",
+                        "peq", "correction", "oratory1990", "crinacle", "target",
+                    ),
+                    icon = Icons.Filled.GraphicEq,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Output & Loudness",
+                    type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "audio.equalizer",
                     title = "Equalizer",
                     subtitle = "Shape sound across 15 frequency bands with custom curves and presets",
