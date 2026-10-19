@@ -1013,10 +1013,10 @@ fun SettingsScreen(
                                     )
                                 },
                                 checked = internalDirectEnabled,
-                                // Greyed out when this output cannot be bypassed, but an
-                                // enabled toggle always stays reachable so it can be turned off.
-                                enabled = internalDirectEnabled || internalDirectAvailability.available ||
-                                    internalDirectAvailability.reason == com.lastwave.app.playback.InternalDirectReason.CHECKING,
+                                // Greyed out only when this device can never bypass the mixer.
+                                // A route- or format-specific refusal must not lock the toggle:
+                                // turning it off used to grey it out until the app restarted.
+                                enabled = internalDirectEnabled || internalDirectAvailability.canEnable,
                                 onCheckedChange = viewModel::setInternalDirectEnabled,
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.internal_direct"),

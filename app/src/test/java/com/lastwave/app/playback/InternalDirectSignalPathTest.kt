@@ -254,4 +254,22 @@ class InternalDirectSignalPathTest {
         // A garbage source never reaches the loop.
         assertThat(InternalDirectOutput.fallbackRates(0, 44_100)).isEmpty()
     }
+    @Test
+    fun toggleStaysReachableUnlessTheDeviceCanNeverBypass() {
+        fun availability(reason: InternalDirectReason) =
+            InternalDirectAvailability(InternalRoute.SPEAKER, "Speaker", reason)
+        // Route- or format-specific results must not lock the toggle once it is turned off.
+        listOf(
+            InternalDirectReason.AVAILABLE,
+            InternalDirectReason.ACTIVE,
+            InternalDirectReason.CHECKING,
+            InternalDirectReason.BLUETOOTH,
+            InternalDirectReason.USB,
+            InternalDirectReason.EXCLUSIVE_REFUSED,
+            InternalDirectReason.NO_AAUDIO,
+            InternalDirectReason.MIXED_BY_ANDROID,
+        ).forEach { assertThat(availability(it).canEnable).isTrue() }
+        assertThat(availability(InternalDirectReason.ANDROID_TOO_OLD).canEnable).isFalse()
+        assertThat(availability(InternalDirectReason.NATIVE_MISSING).canEnable).isFalse()
+    }
 }

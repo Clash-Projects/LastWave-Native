@@ -65,6 +65,17 @@ data class InternalDirectAvailability(
 ) {
     val available: Boolean
         get() = reason == InternalDirectReason.AVAILABLE || reason == InternalDirectReason.ACTIVE
+
+    /**
+     * Whether the settings toggle may be switched on. Only a permanent
+     * impossibility (Android too old, native library missing) locks it.
+     * Route- or format-specific results (Bluetooth codec, one format mixed
+     * by Android, exclusive refused while something else held the output)
+     * can change on the next track or route, and the user must be able to
+     * turn the feature back on without restarting the app.
+     */
+    val canEnable: Boolean
+        get() = reason != InternalDirectReason.ANDROID_TOO_OLD && reason != InternalDirectReason.NATIVE_MISSING
 }
 
 /** The direct stream actually playing, for the signal-path page and the badge. */
@@ -169,6 +180,15 @@ class InternalDirectOutput @Inject constructor(
         if (!enabled) {
             synchronized(openLock) { closeLocked() }
             lastFailure = null
+        } else {
+            // Re-enabling is an explicit retry: forget what earlier attempts
+            // concluded (formats mixed by Android, a probe taken while our own
+            // stream held the output) so this output is tested again.
+            synchronized(openLock) {
+                openCache.clear()
+                mixedRoutes.clear()
+                cachedProbe = null
+            }
         }
         refreshAvailability()
     }
