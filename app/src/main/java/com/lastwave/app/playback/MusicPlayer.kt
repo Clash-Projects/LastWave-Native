@@ -3337,19 +3337,12 @@ class MusicPlayer @Inject constructor(
         // The signal path stays honest automatically — the resampler check
         // fails, so a converted track can never report gold.
         val usbRates = exclusiveUsbOutput.supportedHardwareRatesHz()
-        val platformRates = dac?.sampleRatesHz.orEmpty()
-        val dacRates = when {
-            usbRates.isNotEmpty() && platformRates.isNotEmpty() ->
-                usbRates.filter { it in platformRates }.ifEmpty { usbRates }
-            usbRates.isNotEmpty() -> usbRates
-            platformRates.isNotEmpty() -> platformRates
-            else -> {
-                val known = exclusiveUsbOutput.lastHardwareRateHz()
-                if (known > 0) listOf(known) else emptyList()
-            }
-        }
-        val fallbackHz = if (exclusiveWanted && dac != null) {
-            selectExclusiveRateFallback(effectiveRateHz, dacRates)
+        // Android AudioDeviceInfo rates describe the mixer route and may be
+        // incomplete for usbdevfs exclusive access. Only an open USB descriptor
+        // query may pre-select an exclusive fallback; otherwise let configure()
+        // attempt the source clock and verify it with the DAC handshake.
+        val fallbackHz = if (exclusiveWanted && dac != null && usbRates.isNotEmpty()) {
+            selectExclusiveRateFallback(effectiveRateHz, usbRates)
         } else {
             null
         }

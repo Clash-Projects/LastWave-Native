@@ -738,9 +738,6 @@ class UsbAudioDevice private constructor(private val context: Context) {
             if (detectedId > 0) add(detectedId)
             addAll(listOf(0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x28, 0x29, 0x06, 0x07, 0x08, 0x10, 0x20))
         }.distinct()
-        val standardRates = intArrayOf(
-            44100, 48000, 88200, 96000, 176400, 192000, 352800, 384000, 705600, 768000
-        )
         val rangeBuf = ByteArray(258)
         val stopOnFirstHit = parsedClockSourceIds.size <= 1
         for (csId in candidateIds) {
@@ -764,25 +761,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
                     val dMax = readLeInt32(rangeBuf, base + 4)
                     val dRes = readLeInt32(rangeBuf, base + 8)
                     if (dMin in 8000..1536000 && dMax >= dMin) {
-                        if (dMin == dMax || dRes <= 0) {
-                            csRates += dMin
-                        } else if (dRes == 44100 || (dMin % 44100 == 0 && dMax % 44100 == 0)) {
-                            for (std in standardRates) {
-                                if (std % 44100 == 0 && std in dMin..dMax) csRates += std
-                            }
-                        } else if (dRes == 48000 || (dMin % 48000 == 0 && dMax % 48000 == 0)) {
-                            for (std in standardRates) {
-                                if (std % 48000 == 0 && std in dMin..dMax) csRates += std
-                            }
-                        } else {
-                            csRates += dMin
-                            csRates += dMax
-                            for (std in standardRates) {
-                                if (std % 48000 == 0 && std in dMin..dMax && ((std - dMin) % dRes == 0)) {
-                                    csRates += std
-                                }
-                            }
-                        }
+                        csRates += supportedStandardRatesInRange(dMin, dMax, dRes)
                     }
                 }
                 if (csRates.isNotEmpty()) {
@@ -816,9 +795,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
                             val upper = readLeInt24(raw, i + 11)
                             if (lower in 8000..1536000) rates += lower
                             if (upper in 8000..1536000) rates += upper
-                            for (std in standardRates) {
-                                if (std % 48000 == 0 && std in lower..upper) rates += std
-                            }
+                            rates += supportedStandardRatesInRange(lower, upper, 0)
                         } else if (samFreqType > 0) {
                             for (k in 0 until samFreqType) {
                                 val off = i + 8 + k * 3
@@ -1160,4 +1137,27 @@ class UsbAudioDevice private constructor(private val context: Context) {
         return false
     }
 
+}
+
+/**
+ * Expands a UAC clock/format rate interval to common sample rates that the
+ * interval actually permits. A zero resolution means the interval is
+ * continuous; a positive resolution admits rates aligned from [minimumHz].
+ */
+fun supportedStandardRatesInRange(minimumHz: Int, maximumHz: Int, resolutionHz: Int): Set<Int> {
+    if (minimumHz <= 0 || maximumHz < minimumHz) return emptySet()
+    val standardRates = intArrayOf(
+        44100, 48000, 88200, 96000, 176400, 192000, 352800, 384000, 705600, 768000,
+    )
+    return buildSet {
+        add(minimumHz)
+        add(maximumHz)
+        for (rate in standardRates) {
+            if (rate in minimumHz..maximumHz &&
+                (resolutionHz <= 0 || (rate - minimumHz) % resolutionHz == 0)
+            ) {
+                add(rate)
+            }
+        }
+    }
 }

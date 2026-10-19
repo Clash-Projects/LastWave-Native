@@ -360,11 +360,7 @@ class ExclusiveUsbOutput @Inject constructor(
             val floats = FloatArray(size / Float.SIZE_BYTES)
             buffer.order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(floats)
             buffer.position(buffer.limit())
-            if (gain < 1f - 1e-6f && gain >= 0f) {
-                for (i in floats.indices) {
-                    floats[i] = (floats[i] * gain).coerceIn(-1f, 1f)
-                }
-            }
+            ExclusivePcmGain.apply(floats, gain)
             QueuedPcm(floats, null, 0, size)
         } else {
             val encoding = writeRawEncoding(sourceEncoding)
@@ -1027,8 +1023,9 @@ class ExclusiveUsbOutput @Inject constructor(
                 RAW_PCM16 -> {
                     var i = 0
                     while (i + 1 < bytes.size) {
-                        val sample = (bytes[i].toInt() and 0xFF) or (bytes[i + 1].toInt() shl 8)
-                        val scaled = (sample.toShort() * gain + if (sample >= 0) 0.5f else -0.5f).toInt()
+                        val sample = ((bytes[i].toInt() and 0xFF) or (bytes[i + 1].toInt() shl 8))
+                            .toShort().toInt()
+                        val scaled = (sample * gain + if (sample >= 0) 0.5f else -0.5f).toInt()
                             .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
                         bytes[i] = (scaled and 0xFF).toByte()
                         bytes[i + 1] = ((scaled shr 8) and 0xFF).toByte()

@@ -1268,20 +1268,14 @@ class NativeProcessingAudioSink(
             // owns the worst case — never feed unconverted bytes.
             if (!setupExclusiveConverter(source, target)) return false
         }
-        // Volume parity with the raw exclusive path (keys must work here
-        // too); unity otherwise. Scaled once per fresh chunk — stashed
-        // chunks are never re-scaled on retry.
-        val session = exclusiveUsb
-        val gain = session?.softwareGain() ?: lastVolume
+        // The exclusive USB writer owns software gain for both raw and
+        // resampled PCM. Applying it here too attenuates fallback PCM twice.
         processor.queueInput(buffer.duplicate())
         buffer.position(buffer.limit())
         var guard = 0
         while (guard++ < 32) {
             val out = processor.getOutput()
             if (out === AudioProcessor.EMPTY_BUFFER || !out.hasRemaining()) break
-            if (gain < 1f - 1e-6f && gain >= 0f) {
-                scalePcmInPlace(out, out.position(), out.limit(), C.ENCODING_PCM_FLOAT, gain)
-            }
             if (!writeConvertedToUsb(out, presentationTimeUs)) {
                 pendingUsbFloat = out
                 pendingUsbPtsUs = presentationTimeUs
