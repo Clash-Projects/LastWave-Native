@@ -42,16 +42,12 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.Fullscreen
-import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Verified
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.lastwave.app.ui.player.CanvasVideoPlayer
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -141,7 +137,6 @@ fun ArtistDetailScreen(
     var selectedTrackMenu by remember { mutableStateOf<PlayableTrack?>(null) }
     var showAllSongs by rememberSaveable { mutableStateOf(false) }
     var showHeaderVideo by rememberSaveable(artistName, settings.canvasEnabled) { mutableStateOf(settings.canvasEnabled) }
-    var showFullscreenArtistAnimation by rememberSaveable(artistName) { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
     val showScrolledHeader by remember {
@@ -225,18 +220,14 @@ fun ArtistDetailScreen(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(310.dp)
+                                    .height(380.dp)
                                     .shadow(
                                         elevation = 16.dp,
                                         shape = RoundedCornerShape(28.dp),
                                         ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
                                         spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
                                     )
-                                    .clip(RoundedCornerShape(28.dp))
-                                    .clickable(enabled = artistCanvas != null) {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        showFullscreenArtistAnimation = true
-                                    },
+                                    .clip(RoundedCornerShape(28.dp)),
                             ) {
                                 val artworkCandidates = remember(data) {
                                     listOfNotNull(data.artworkUrl, data.bannerUrl, data.fallbackArtworkUrl)
@@ -295,59 +286,30 @@ fun ArtistDetailScreen(
                                         ),
                                     )
 
-                                // Video / Photo toggle button + Fullscreen button (when artist motion video is available)
+                                // Video / Photo toggle button (when artist motion video is available)
                                 if (artistCanvas != null) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.85f),
+                                        tonalElevation = 4.dp,
                                         modifier = Modifier
                                             .align(Alignment.TopEnd)
-                                            .padding(14.dp),
+                                            .padding(14.dp)
+                                            .size(36.dp),
                                     ) {
-                                        // Fullscreen Expand Button
-                                        Surface(
-                                            shape = CircleShape,
-                                            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.85f),
-                                            tonalElevation = 4.dp,
-                                            modifier = Modifier.size(36.dp),
+                                        IconButton(
+                                            onClick = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                showHeaderVideo = !showHeaderVideo
+                                            },
+                                            modifier = Modifier.fillMaxSize(),
                                         ) {
-                                            IconButton(
-                                                onClick = {
-                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                    showFullscreenArtistAnimation = true
-                                                },
-                                                modifier = Modifier.fillMaxSize(),
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.Fullscreen,
-                                                    contentDescription = "Fullscreen Artist Animation",
-                                                    tint = MaterialTheme.colorScheme.onSurface,
-                                                    modifier = Modifier.size(20.dp),
-                                                )
-                                            }
-                                        }
-
-                                        // Video / Photo toggle button
-                                        Surface(
-                                            shape = CircleShape,
-                                            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.85f),
-                                            tonalElevation = 4.dp,
-                                            modifier = Modifier.size(36.dp),
-                                        ) {
-                                            IconButton(
-                                                onClick = {
-                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                    showHeaderVideo = !showHeaderVideo
-                                                },
-                                                modifier = Modifier.fillMaxSize(),
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (showHeaderVideo) Icons.Filled.SmartDisplay else Icons.Filled.Image,
-                                                    contentDescription = if (showHeaderVideo) "Show Photo" else "Show Motion Video",
-                                                    tint = if (showHeaderVideo) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    modifier = Modifier.size(18.dp),
-                                                )
-                                            }
+                                            Icon(
+                                                imageVector = if (showHeaderVideo) Icons.Filled.SmartDisplay else Icons.Filled.Image,
+                                                contentDescription = if (showHeaderVideo) "Show Photo" else "Show Motion Video",
+                                                tint = if (showHeaderVideo) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp),
+                                            )
                                         }
                                     }
                                 }
@@ -878,201 +840,6 @@ fun ArtistDetailScreen(
                         modifier = Modifier.size(38.dp),
                     ) {
                         Icon(Icons.Filled.PlayArrow, contentDescription = stringResource(R.string.dl_play_cd), modifier = Modifier.size(22.dp))
-                    }
-                }
-            }
-
-            // Fullscreen Artist Animation Modal
-            if (showFullscreenArtistAnimation && artistCanvas != null) {
-                val fullscreenVideoUrl = artistCanvas?.let { it.tallUrl ?: it.url ?: it.wideUrl }
-                val artistData = (uiState as? ArtistUiState.Success)?.data
-                val artistDisplayName = artistData?.name ?: artistName
-                val isCurrentlyPlaying = playbackState.isPlaying &&
-                    (playbackState.sourceLabel == artistDisplayName || playbackState.current?.artist.equals(artistDisplayName, ignoreCase = true))
-
-                Dialog(
-                    onDismissRequest = { showFullscreenArtistAnimation = false },
-                    properties = DialogProperties(
-                        usePlatformDefaultWidth = false,
-                        decorFitsSystemWindows = false,
-                    ),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.Black),
-                    ) {
-                        if (!fullscreenVideoUrl.isNullOrBlank()) {
-                            CanvasVideoPlayer(
-                                videoUrl = fullscreenVideoUrl,
-                                isPlaying = true,
-                                enableScrim = false,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
-
-                        // Top Vignette Scrim & Controls
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(160.dp)
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.Black.copy(alpha = 0.85f),
-                                            Color.Black.copy(alpha = 0.4f),
-                                            Color.Transparent,
-                                        ),
-                                    ),
-                                )
-                                .align(Alignment.TopCenter)
-                                .windowInsetsPadding(WindowInsets.statusBars),
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = Color.Black.copy(alpha = 0.55f),
-                                    contentColor = Color.White,
-                                    modifier = Modifier.size(44.dp),
-                                ) {
-                                    IconButton(
-                                        onClick = { showFullscreenArtistAnimation = false },
-                                        modifier = Modifier.fillMaxSize(),
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.FullscreenExit,
-                                            contentDescription = "Exit Fullscreen",
-                                            tint = Color.White,
-                                        )
-                                    }
-                                }
-
-                                Surface(
-                                    shape = CircleShape,
-                                    color = Color.Black.copy(alpha = 0.45f),
-                                ) {
-                                    Text(
-                                        "Artist Motion",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White.copy(alpha = 0.9f),
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                                    )
-                                }
-                            }
-                        }
-
-                        // Bottom Vignette Scrim & Controls (Artist Info, Play/Shuffle)
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .align(Alignment.BottomCenter)
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.Transparent,
-                                            Color.Black.copy(alpha = 0.6f),
-                                            Color.Black.copy(alpha = 0.92f),
-                                        ),
-                                    ),
-                                )
-                                .padding(bottom = safeDrawingBottomPadding()),
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(start = 24.dp, end = 24.dp, bottom = 28.dp, top = 40.dp),
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.Bottom,
-                                ) {
-                                    Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                text = com.lastwave.app.util.ArtistHelper.primaryArtist(artistDisplayName),
-                                                style = MaterialTheme.typography.headlineMedium,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = Color.White,
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                            Spacer(Modifier.width(8.dp))
-                                            Icon(
-                                                Icons.Filled.Verified,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(22.dp),
-                                            )
-                                        }
-                                        val stats = artistData?.subscribers ?: artistData?.monthlyListeners
-                                        if (!stats.isNullOrBlank()) {
-                                            Spacer(Modifier.height(4.dp))
-                                            Text(
-                                                text = stats,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = Color.White.copy(alpha = 0.75f),
-                                            )
-                                        }
-                                    }
-
-                                    val hasTopSongs = artistData?.topSongs?.isNotEmpty() == true
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        FilledTonalIconButton(
-                                            onClick = {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                viewModel.playShuffle()
-                                            },
-                                            enabled = hasTopSongs,
-                                            shape = CircleShape,
-                                            colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                                containerColor = Color.White.copy(alpha = 0.2f),
-                                            ),
-                                            modifier = Modifier.size(48.dp),
-                                        ) {
-                                            Icon(
-                                                Icons.Filled.Shuffle,
-                                                contentDescription = stringResource(R.string.art_shuffle_cd),
-                                                tint = Color.White,
-                                                modifier = Modifier.size(22.dp),
-                                            )
-                                        }
-
-                                        Surface(
-                                            onClick = {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                viewModel.playAll()
-                                            },
-                                            enabled = hasTopSongs,
-                                            shape = CircleShape,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                                            shadowElevation = 8.dp,
-                                            modifier = Modifier.size(56.dp),
-                                        ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                Icon(
-                                                    if (isCurrentlyPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                                    contentDescription = stringResource(R.string.art_play_cd),
-                                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                                    modifier = Modifier.size(30.dp),
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             }
