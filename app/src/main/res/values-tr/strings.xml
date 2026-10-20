@@ -1033,6 +1033,9 @@
     <string name="art_albums">Albümler</string>
     <string name="art_fans_like">Hayranlar Ayrıca Beğendi</string>
     <string name="art_load_fail">Sanatçı bilgileri yüklenemedi</string>
+    <string name="art_type_album">Albüm</string>
+    <string name="art_type_single">Tekli</string>
+    <string name="art_type_ep">EP</string>
 
     <!-- Albüm detayı -->
     <string name="alb_shuffle_cd">Albümü karıştır</string>
@@ -1124,4 +1127,59 @@
     <string name="lyshare_color_brand">LastWave Limon Yeşili</string>
     <string name="lyshare_accessibility_line_selected">Seçildi, %1$d / %2$d. satır</string>
     <string name="lyshare_accessibility_line_unselected">%1$d / %2$d. satır</string>
+
+    <!-- Kalan ekran metinleri -->
+    <string name="gen_progress_title">Liste Üretiliyor</string>
+    <string name="disc_error_title">Bir sorun oluştu</string>
+    <string name="disc_empty_title">Henüz öneri yok</string>
+    <string name="disc_empty_hint">Last.fm’de daha fazla müzik dinleyin, sonra yenilemek için aşağı çekin.</string>
+    <string name="ly_offset_title">Şarkı sözü eşitleme kayması</string>
+    <string name="ly_size_title">Şarkı sözü metin boyutu</string>
+    <string name="excluded_restore">Geri Yükle</string>
+    <string name="cast_title">Chromecast</string>
+    <string name="cast_unavailable">Chromecast için Google Play hizmetleri gerekir</string>
+    <string name="ytimport_fetching">Liste getiriliyor…</string>
+    <string name="ytimport_fetch">Listeyi Getir</string>
+    <string name="ytimport_importing">Liste içe aktarılıyor…</string>
+    <string name="ytimport_import_n">%1$d Şarkıyı İçe Aktar</string>
+    <string name="ytimport_clear_cd">Temizle</string>
+    <string name="ytimport_paste_cd">Panodan yapıştır</string>
+    <string name="ytlogin_continue">Devam</string>
+    <string name="ytlogin_verifying">Doğrulanıyor…</string>
+    <string name="ytlogin_signed_in">Giriş yaptım</string>
+
+    <!-- Sinyal yolu diyaloğu -->
+    <string name="sig_node_source">Kaynak</string>
+    <string name="sig_node_dsp">DSP</string>
+    <string name="sig_node_volume">Ses Denetimi</string>
+    <string name="sig_node_output">Çıkış</string>
+    <string name="sig_node_device">Çıkış Cihazı</string>
+    <string name="sig_eq">Ekolayzer</string>
+    <string name="sig_tone">Ton</string>
+    <string name="sig_tone_off">Ton Kapalı</string>
+    <string name="sig_crossfade">Geçiş</string>
+    <string name="sig_buffers">Tamponlar</string>
+    <string name="sig_latency">Gecikme</string>
+    <string name="sig_preamp">Ön yükseltici</string>
+    <string name="sig_flags">Bayraklar</string>
+    <string name="sig_eq_off">EQ Kapalı • Denge (%0)</string>
+    <string name="sig_eq_mode">Ekolayzer Modu: grafik (10 bant)</string>
+    <string name="sig_xfade_active">Geçiş etkin</string>
+    <string name="sig_xfade_off">Geçiş yok / Kısa geçiş</string>
+    <string name="sig_buffers_value">2x (50 ms, %1$d ses çerçevesi)</string>
+    <string name="sig_ms_value">%1$d ms</string>
+
+    <!-- YouTube Music çerez girişi -->
+    <string name="cookie_login_connect">Bağla</string>
+    <string name="cookie_login_connecting">Bağlanıyor…</string>
+    <string name="cookie_login_instructions">music.youtube.com üzerinden oturum çerezlerinizi yapıştırın (ham Cookie başlığı, Netscape cookies.txt veya JSON dizisi). SAPISID veya __Secure-3PAPISID içermelidir.</string>
+    <string name="cookie_login_paste_clipboard">Panodan yapıştır</string>
+    <string name="cookie_login_placeholder">SID=...; __Secure-3PAPISID=...; SAPISID=...</string>
+    <string name="settings_cookie_login">YouTube Music Çerez Girişi</string>
+    <string name="settings_cookie_login_sub">Dışa aktarılan oturum çerezleriyle giriş yapın</string>
+    <string name="signal_android_mixer">Android mikseri</string>
+    <string name="signal_android_mixer_bypassed">Atlandı (donanım özel)</string>
+    <string name="signal_usb_hardware_section">Donanım doğrudan hattı</string>
+    <string name="signal_usb_interface">Arabirim</string>
+    <string name="signal_usb_interface_value">Doğrudan USB (usbdevfs)</string>
 </resources>

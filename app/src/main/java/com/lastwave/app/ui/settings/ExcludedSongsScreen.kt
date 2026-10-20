@@ -32,9 +32,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.lastwave.app.R
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -215,7 +217,7 @@ private fun ExcludedSongRow(
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(Modifier.width(5.dp))
-                Text("Restore")
+                Text(stringResource(R.string.excluded_restore))
             }
         }
     }

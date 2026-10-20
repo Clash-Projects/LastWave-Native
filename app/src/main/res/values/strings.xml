@@ -1070,6 +1070,9 @@
     <string name="art_albums">Albums</string>
     <string name="art_fans_like">Fans Also Like</string>
     <string name="art_load_fail">Failed to load artist details</string>
+    <string name="art_type_album">Album</string>
+    <string name="art_type_single">Single</string>
+    <string name="art_type_ep">EP</string>
 
     <!-- Album detail -->
     <string name="alb_shuffle_cd">Shuffle Album</string>
@@ -1139,4 +1142,45 @@
     <string name="lyshare_color_brand">LastWave Lime</string>
     <string name="lyshare_accessibility_line_selected">Selected, line %1$d of %2$d</string>
     <string name="lyshare_accessibility_line_unselected">Line %1$d of %2$d</string>
+
+    <!-- Remaining screen strings -->
+    <string name="gen_progress_title">Generating Playlist</string>
+    <string name="disc_error_title">Something went wrong</string>
+    <string name="disc_empty_title">No recommendations yet</string>
+    <string name="disc_empty_hint">Listen to more music on Last.fm, then pull to refresh.</string>
+    <string name="ly_offset_title">Lyrics sync offset</string>
+    <string name="ly_size_title">Lyrics text size</string>
+    <string name="excluded_restore">Restore</string>
+    <string name="cast_title">Chromecast</string>
+    <string name="cast_unavailable">Chromecast requires Google Play services</string>
+    <string name="ytimport_fetching">Fetching Playlist…</string>
+    <string name="ytimport_fetch">Fetch Playlist</string>
+    <string name="ytimport_importing">Importing Playlist…</string>
+    <string name="ytimport_import_n">Import %1$d Songs</string>
+    <string name="ytimport_clear_cd">Clear</string>
+    <string name="ytimport_paste_cd">Paste from clipboard</string>
+    <string name="ytlogin_continue">Continue</string>
+    <string name="ytlogin_verifying">Verifying…</string>
+    <string name="ytlogin_signed_in">I\'m signed in</string>
+
+    <!-- Signal path dialog -->
+    <string name="sig_node_source">Source</string>
+    <string name="sig_node_dsp">DSP</string>
+    <string name="sig_node_volume">Volume Control</string>
+    <string name="sig_node_output">Output</string>
+    <string name="sig_node_device">Output Device</string>
+    <string name="sig_eq">Equalizer</string>
+    <string name="sig_tone">Tone</string>
+    <string name="sig_tone_off">Tone Off</string>
+    <string name="sig_crossfade">Crossfade</string>
+    <string name="sig_buffers">Buffers</string>
+    <string name="sig_latency">Latency</string>
+    <string name="sig_preamp">Preamp</string>
+    <string name="sig_flags">Flags</string>
+    <string name="sig_eq_off">Equ Off • Balance (0%)</string>
+    <string name="sig_eq_mode">Equalizer Mode: graphic (10-band)</string>
+    <string name="sig_xfade_active">Crossfade active</string>
+    <string name="sig_xfade_off">No fading / Short crossfade</string>
+    <string name="sig_buffers_value">2x (50 ms, %1$d audioframes)</string>
+    <string name="sig_ms_value">%1$d ms</string>
 </resources>

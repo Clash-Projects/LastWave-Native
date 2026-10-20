@@ -28,8 +28,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.lastwave.app.R
 
 
 /**
@@ -90,7 +92,7 @@ fun GenerationProgressCard(message: String, modifier: Modifier = Modifier) {
                 }
             }
             Spacer(Modifier.height(16.dp))
-            Text("Generating Playlist", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.gen_progress_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(4.dp))
             Text(
                 message.ifBlank { "Creating your personalized mix\u2026" },

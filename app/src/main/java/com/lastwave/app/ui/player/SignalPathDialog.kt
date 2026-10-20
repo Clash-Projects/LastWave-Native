@@ -127,7 +127,7 @@ fun SignalPathDialog(
                     iconContent = {
                         Text("♪", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     },
-                    title = "Source",
+                    title = stringResource(R.string.sig_node_source),
                     badge = if (report.bitPerfect) "LOSSLESS" else null,
                     isLast = false,
                 ) {
@@ -140,30 +140,30 @@ fun SignalPathDialog(
                     iconContent = {
                         Text("≈", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     },
-                    title = "DSP",
+                    title = stringResource(R.string.sig_node_dsp),
                     badge = if (report.dspScore == "—") "NO DSP" else null,
                     isLast = false,
                 ) {
                     Text(dspRateKHz, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     Text(report.dspSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(4.dp))
-                    Text("Equalizer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.sig_eq), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
                     Text(
-                        if (report.dspScore == "—") "Equ Off • Balance (0%)" else "Equalizer Mode: graphic (10-band)",
+                        if (report.dspScore == "—") stringResource(R.string.sig_eq_off) else stringResource(R.string.sig_eq_mode),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
-                    Text("Tone", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
-                    Text("Tone Off", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
-                    Text("Crossfade", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.sig_tone), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.sig_tone_off), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                    Text(stringResource(R.string.sig_crossfade), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
                     Text(
-                        if (report.checks.any { it.detailRes == R.string.signal_detail_dsp_crossfade }) "Crossfade active" else "No fading / Short crossfade",
+                        if (report.checks.any { it.detailRes == R.string.signal_detail_dsp_crossfade }) stringResource(R.string.sig_xfade_active) else stringResource(R.string.sig_xfade_off),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
-                    Text("Buffers", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
-                    Text("2x (50 ms, ${(report.appRateHz * 0.05).toInt()} audioframes)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
-                    Text("Latency", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.sig_buffers), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.sig_buffers_value, (report.appRateHz * 0.05).toInt()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                    Text(stringResource(R.string.sig_latency), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
                     Text("${report.outputLatencyMs * 2} ms", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
                 }
 
@@ -186,13 +186,13 @@ fun SignalPathDialog(
                             )
                         }
                     },
-                    title = "Volume Control",
+                    title = stringResource(R.string.sig_node_volume),
                     isLast = false,
                 ) {
                     Text(report.volumeMode, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(2.dp))
                     Text(report.volumeDetail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
-                    Text("Preamp", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.sig_preamp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
                     Text("0.0dB", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
                 }
 
@@ -201,7 +201,7 @@ fun SignalPathDialog(
                     iconContent = {
                         Text("ψ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     },
-                    title = "Output",
+                    title = stringResource(R.string.sig_node_output),
                     badge = if (report.usbExclusiveActive) "EXCLUSIVE" else null,
                     isLast = false,
                 ) {
@@ -216,7 +216,7 @@ fun SignalPathDialog(
                     Text(outRateKHz, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     Text("${report.outputBits} bit", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(6.dp))
-                    Text("Flags", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.sig_flags), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
                     Text(
                         report.outputFlags.joinToString(" "),
                         style = MaterialTheme.typography.labelSmall,
@@ -225,7 +225,7 @@ fun SignalPathDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(4.dp))
-                    Text("Latency", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.sig_latency), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.SemiBold)
                     Text("${report.outputLatencyMs} ms", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
                 }
 
@@ -234,7 +234,7 @@ fun SignalPathDialog(
                     iconContent = {
                         Text("⎋", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     },
-                    title = "Output Device",
+                    title = stringResource(R.string.sig_node_device),
                     isLast = true,
                 ) {
                     Text(
