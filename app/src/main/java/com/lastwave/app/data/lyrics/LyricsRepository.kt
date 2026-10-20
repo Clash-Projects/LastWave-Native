@@ -94,6 +94,7 @@ fun providerForSource(source: String?): com.lastwave.app.data.local.LyricsProvid
         s.startsWith("youtube captions") -> com.lastwave.app.data.local.LyricsProvider.YOUTUBE_CAPTIONS
         s.startsWith("youtube music") -> com.lastwave.app.data.local.LyricsProvider.YOUTUBE_MUSIC
         s.startsWith("megalobiz") -> com.lastwave.app.data.local.LyricsProvider.MEGALOBIZ
+        s.startsWith("spotify") -> com.lastwave.app.data.local.LyricsProvider.SPOTIFY
         s.startsWith("genius") -> com.lastwave.app.data.local.LyricsProvider.GENIUS
         else -> null
     }
@@ -115,6 +116,7 @@ class LyricsRepository @Inject constructor(
     private val youtubeLyricsApi: YouTubeLyricsApi,
     private val geniusLyricsApi: GeniusLyricsApi,
     private val megalobizLyricsApi: MegalobizLyricsApi,
+    private val spotifyLyricsApi: SpotifyLyricsApi,
     private val settingsPreferences: com.lastwave.app.data.local.SettingsPreferences,
     private val downloadedTrackDao: dagger.Lazy<com.lastwave.app.data.local.db.DownloadedTrackDao>,
 ) {
@@ -388,6 +390,9 @@ class LyricsRepository @Inject constructor(
                     if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.YOUTUBE_CAPTIONS)) {
                         requests.add(async<LyricsResult.Success?> { fetchWordFromYouTubeCaptions(effectiveVideoId, durationSeconds) })
                     }
+                    if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.SPOTIFY)) {
+                        requests.add(async<LyricsResult.Success?> { fetchWordFromSpotify(title, artist, durationSeconds) })
+                    }
                     if (requests.isEmpty()) {
                         return@coroutineScope null
                     }
@@ -446,6 +451,12 @@ class LyricsRepository @Inject constructor(
                 fetchWordFromMusixmatch(title, artist, durationSeconds)?.let { mxm ->
                     cache[cacheKey] = mxm
                     return@withContext mxm
+                }
+            }
+            if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.SPOTIFY)) {
+                fetchWordFromSpotify(title, artist, durationSeconds)?.let { sp ->
+                    cache[cacheKey] = sp
+                    return@withContext sp
                 }
             }
         }
@@ -605,10 +616,20 @@ class LyricsRepository @Inject constructor(
             fetchPlainFromYouTubeMusic(videoId)
         com.lastwave.app.data.local.LyricsProvider.MEGALOBIZ ->
             fetchWordFromMegalobiz(title, artist, durationSeconds)
+        com.lastwave.app.data.local.LyricsProvider.SPOTIFY ->
+            fetchWordFromSpotify(title, artist, durationSeconds)
         com.lastwave.app.data.local.LyricsProvider.GENIUS ->
             fetchPlainFromGenius(title, artist)
         else -> null
     }
+
+    private suspend fun fetchWordFromSpotify(
+        title: String,
+        artist: String,
+        durationSeconds: Int?,
+    ): LyricsResult.Success? = runCatching {
+        spotifyLyricsApi.fetchLyrics(title, artist, durationSeconds)
+    }.getOrNull()
 
     private suspend fun fetchWordFromLastWave(
         title: String,

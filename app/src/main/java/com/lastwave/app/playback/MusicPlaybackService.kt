@@ -633,8 +633,9 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
 
     private fun detectTransition(state: MusicPlayerState) {
         val track = state.current ?: return
+        val isEpisode = track.mediaType != com.lastwave.app.playback.MediaType.SONG
         val (cleanTitle, cleanArtist) = cleanTrackMetadata(track.title, track.artist)
-        val key = "${cleanArtist.lowercase()}|${cleanTitle.lowercase()}"
+        val key = if (isEpisode) "podcast:${track.videoId.orEmpty()}" else "${cleanArtist.lowercase()}|${cleanTitle.lowercase()}"
         if (key == detectedKey) {
             if (state.isPlaying && key != nowPlayingAnnouncedKey) {
                 announceNowPlaying(state)
@@ -663,7 +664,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         }
 
         detectedKey = key
-        pendingPreviousTrack = track
+        pendingPreviousTrack = if (isEpisode) null else track
         pendingPreviousStartedAt = System.currentTimeMillis() / 1000
         nowPlayingAnnouncedKey = ""
         accumulatedMs = 0
@@ -679,6 +680,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     }
 
     private fun pingLiveTelemetry(track: PlayableTrack, force: Boolean = false) {
+        if (track.mediaType != com.lastwave.app.playback.MediaType.SONG) return
         val (cleanTitle, cleanArtist) = cleanTrackMetadata(track.title, track.artist)
         val cover = artworkUrl ?: track.artworkUrl
         scope.launch(Dispatchers.IO) {
@@ -698,6 +700,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
 
     private fun announceNowPlaying(state: MusicPlayerState) {
         val track = state.current ?: return
+        if (track.mediaType != com.lastwave.app.playback.MediaType.SONG) return
         if (!state.isPlaying || !settings.submitNowPlaying) return
         // One announcement in flight at a time: during a rate-limit cooldown
         // each write can wait seconds on the shared write mutex — without this
@@ -746,6 +749,18 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
 
                 if (track == null) {
                     wasPlaying = false
+                    continue
+                }
+
+                if (track.mediaType != com.lastwave.app.playback.MediaType.SONG) {
+                    // Podcast episodes are never scrobbled. The detector still
+                    // has to keep its position bookkeeping in sync so the
+                    // timer below does not count stale seconds. The scrobble
+                    // latch stays untouched: the next song must be able to
+                    // scrobble normally.
+                    wasPlaying = state.isPlaying
+                    lastPositionMs = state.positionMs
+                    accumulatedMs = 0L
                     continue
                 }
 

@@ -95,6 +95,7 @@ import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Apps
@@ -104,6 +105,7 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Lyrics
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Waves
 import com.lastwave.app.data.local.LyricsProvider
@@ -303,8 +305,8 @@ private fun getTargetSectionIndex(settingId: String?): Int {
             else -> 0
         }
         SettingsTab.LIBRARY -> when (entry.section) {
-            "Imports" -> 1
-            "Modules & Addons" -> 2
+            "Content" -> 1
+            "Imports", "Imports & Addons", "Modules & Addons" -> 2
             else -> 0
         }
         SettingsTab.DATA_BACKUP -> if (entry.section == "Data Management") 1 else 0
@@ -444,6 +446,7 @@ fun SettingsScreen(
     onOpenYouTubeImport: () -> Unit = {},
     onOpenYouTubeLogin: () -> Unit = {},
     onOpenExternalImport: () -> Unit = {},
+    onOpenSpotifyLogin: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val session by viewModel.session.collectAsStateWithLifecycle()
@@ -1449,6 +1452,48 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SectionLabel("Spotify")
+                    val spotifyConnected by viewModel.spotifyConnected.collectAsStateWithLifecycle()
+                    val spotifyCanvasEnabled by viewModel.spotifyCanvasEnabled.collectAsStateWithLifecycle()
+                    val spotifySyncLikedEnabled by viewModel.spotifySyncLikedSongsEnabled.collectAsStateWithLifecycle()
+                    SettingsGroup(rowCount = if (spotifyConnected) 3 else 2) { index, position ->
+                        when (index) {
+                            0 -> SettingsActionCard(
+                                icon = Icons.Filled.PlayCircle,
+                                iconContainer = if (spotifyConnected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                iconTint = if (spotifyConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                title = if (spotifyConnected) "Spotify Account Connected" else "Connect Spotify Account",
+                                subtitle = if (spotifyConnected) "Connected (sp_dc). Tap to reconnect or manage session." else "Sign in to enable official Spotify Canvas video loops & library sync",
+                                onClick = onOpenSpotifyLogin,
+                                position = position,
+                            )
+                            1 -> SettingsToggleCard(
+                                icon = Icons.Filled.SmartDisplay,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = "Spotify Canvas (Looping background videos)",
+                                subtitle = "Fetch and play Spotify's looping visual videos in background",
+                                checked = spotifyCanvasEnabled,
+                                onCheckedChange = viewModel::setSpotifyCanvasEnabled,
+                                position = position,
+                            )
+                            2 -> SettingsToggleCard(
+                                icon = Icons.Filled.Favorite,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = "Sync Liked Songs with Spotify",
+                                subtitle = "Automatically like and unlike songs in your Spotify library when favorited in LastWave",
+                                checked = spotifySyncLikedEnabled,
+                                onCheckedChange = viewModel::setSpotifySyncLikedSongsEnabled,
+                                position = position,
+                            )
+                        }
+                    }
+                }
+            }
                     }
 
                     SettingsTab.YOUTUBE -> {
@@ -1750,6 +1795,29 @@ fun SettingsScreen(
                                             isHighlighted = (highlightedSettingId == "library.excluded_songs"),
                                         )
                                     }
+                                }
+                            }
+                        }
+
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                SectionLabel(stringResource(R.string.settings_section_content))
+                                SettingsGroup(rowCount = 1) { _, position ->
+                                    SettingsToggleCard(
+                                        icon = Icons.Filled.Mic,
+                                        iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                        iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                        title = stringResource(R.string.settings_podcasts),
+                                        subtitle = if (misc.podcastsEnabled) {
+                                            stringResource(R.string.settings_podcasts_sub_on)
+                                        } else {
+                                            stringResource(R.string.settings_podcasts_sub_off)
+                                        },
+                                        checked = misc.podcastsEnabled,
+                                        onCheckedChange = viewModel::setPodcastsEnabled,
+                                        position = position,
+                                        isHighlighted = (highlightedSettingId == "library.podcasts"),
+                                    )
                                 }
                             }
                         }

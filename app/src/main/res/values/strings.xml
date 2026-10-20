@@ -1139,4 +1139,23 @@
     <string name="lyshare_color_brand">LastWave Lime</string>
     <string name="lyshare_accessibility_line_selected">Selected, line %1$d of %2$d</string>
     <string name="lyshare_accessibility_line_unselected">Line %1$d of %2$d</string>
+    <string name="settings_section_content">Content</string>
+    <string name="settings_podcasts">Podcasts</string>
+    <string name="settings_podcasts_sub_on">Show podcast shelves, show pages and episode search</string>
+    <string name="settings_podcasts_sub_off">Podcasts are hidden; saved progress is kept</string>
+    <string name="podcasts_title">Podcasts</string>
+    <string name="podcasts_subtitle">Shows and episodes from YouTube Music</string>
+    <string name="podcasts_search_hint">Search episodes</string>
+    <string name="podcasts_search_empty">No episodes found</string>
+    <string name="podcasts_searching">Searching episodes…</string>
+    <string name="podcasts_loading">Loading podcasts…</string>
+    <string name="podcasts_load_fail">Couldn\'t load podcasts</string>
+    <string name="podcasts_empty">No podcasts available right now</string>
+    <string name="podcasts_empty_hint">Podcast browsing may be unavailable in this region.</string>
+    <string name="podcasts_see_all">See all</string>
+    <string name="podcast_episodes">Episodes</string>
+    <string name="podcast_load_more">Load more</string>
+    <string name="podcast_resume">Resume</string>
+    <string name="podcast_play_latest">Play latest</string>
+    <string name="podcast_progress_fraction">%1$d%% played</string>
 </resources>

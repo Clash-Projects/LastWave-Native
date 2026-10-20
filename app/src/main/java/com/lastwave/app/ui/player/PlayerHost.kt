@@ -428,7 +428,7 @@ class PlayerViewModel @Inject constructor(
                 if (key != currentCanvasTrackKey) {
                     currentCanvasTrackKey = key
                     canvasJob?.cancel()
-                    if (track != null && enabled) {
+                    if (track != null && enabled && track.mediaType != com.lastwave.app.playback.MediaType.PODCAST_EPISODE) {
                         _canvasState.value = canvasRepository.cached(track)
                         canvasJob = viewModelScope.launch {
                             waitUntilAudible(track)
@@ -536,6 +536,14 @@ class PlayerViewModel @Inject constructor(
         overrideProvider: com.lastwave.app.data.local.LyricsProvider? = spotLyricsOverride.first,
         excludedProviders: Set<com.lastwave.app.data.local.LyricsProvider> = spotLyricsOverride.second,
     ) {
+        if (track.mediaType == com.lastwave.app.playback.MediaType.PODCAST_EPISODE) {
+            // Podcast episodes have no lyrics: skip every provider instead of
+            // burning a lookup on a title that can never match.
+            lyricsJob?.cancel()
+            lyricsJob = null
+            _lyricsState.value = LyricsUiState.Idle
+            return
+        }
         lyricsJob?.cancel()
         lyricsJob = viewModelScope.launch {
             // Lyrics hit other hosts (LRCLIB, Apple, SimpMusic). Starting

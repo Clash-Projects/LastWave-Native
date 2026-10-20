@@ -7,6 +7,11 @@ import com.lastwave.app.data.local.AppLanguage
 import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.local.appLocale
 import com.lastwave.app.data.generate.normalizeTrackText
+import com.lastwave.app.data.podcast.PodcastEpisode
+import com.lastwave.app.data.podcast.PodcastEpisodePage
+import com.lastwave.app.data.podcast.PodcastParser
+import com.lastwave.app.data.podcast.PodcastShelf
+import com.lastwave.app.data.podcast.PodcastShowPage
 import java.util.Locale
 import com.lastwave.app.data.music.potoken.BotGuardTokenGenerator
 import com.lastwave.app.data.music.potoken.PoTokenResult
@@ -236,6 +241,8 @@ class InnerTubeMusicApi @Inject constructor(
     private val matchCache = ConcurrentHashMap<String, YouTubeMusicTrack>()
     private val streamCache = ConcurrentHashMap<StreamCacheKey, CachedStream>()
     private val activeStreamRequests = ConcurrentHashMap<String, SharedStreamRequest>()
+    @Volatile
+    private var podcastEpisodesFilter: String? = null
     private val apiScope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO + containedAudioResolutionFailure(STREAM_LOG_TAG),
     )
@@ -1733,6 +1740,96 @@ class InnerTubeMusicApi @Inject constructor(
             .take(limit)
         if (prefetchStreams) finalResults.take(2).forEach { prefetchStream(it.videoId) }
         finalResults
+    }
+
+    suspend fun fetchPodcastHome(): List<PodcastShelf> = withContext(Dispatchers.IO) {
+        val root = podcastBrowseRoot(PODCASTS_BROWSE_ID)
+        PodcastParser.parseHome(root)
+    }
+
+    suspend fun fetchPodcastShow(showId: String): PodcastShowPage? = withContext(Dispatchers.IO) {
+        if (showId.isBlank()) return@withContext null
+        val root = podcastBrowseRoot(showId)
+        PodcastParser.parseShow(root, showId)
+    }
+
+    suspend fun fetchPodcastShowContinuation(
+        showId: String,
+        continuation: String,
+        showTitle: String? = null,
+    ): PodcastEpisodePage = withContext(Dispatchers.IO) {
+        if (showId.isBlank() || continuation.isBlank()) {
+            return@withContext PodcastEpisodePage(episodes = emptyList())
+        }
+        val root = podcastBrowseContinuation(continuation)
+        PodcastParser.parseEpisodeContinuation(root, showId = showId, showTitle = showTitle)
+    }
+
+    suspend fun searchPodcastEpisodes(query: String, limit: Int = 30): List<PodcastEpisode> =
+        withContext(Dispatchers.IO) {
+            if (query.isBlank() || limit <= 0) return@withContext emptyList()
+            val config = getWebConfig()
+            suspend fun runSearch(params: String?): JsonObject = post(
+                url = "$MUSIC_API/search?key=${config.apiKey}&prettyPrint=false",
+                body = buildJsonObject {
+                    put("context", context("WEB_REMIX", config.clientVersion, config.visitorData))
+                    put("query", query.trim())
+                    if (params != null) put("params", params)
+                },
+                clientName = "WEB_REMIX",
+                clientVersion = config.clientVersion,
+                userAgent = WEB_USER_AGENT,
+                callTimeoutMs = SEARCH_REQUEST_TIMEOUT_MS,
+            )
+
+            val cachedFilter = podcastEpisodesFilter
+            val filteredRoot = runCatching {
+                runSearch(cachedFilter ?: PODCAST_EPISODES_SEARCH_FILTER)
+            }.getOrNull()
+            // The Episodes filter already restricts the rows to episodes, so no
+            // podcast marker is required for them.
+            var episodes = filteredRoot
+                ?.let { PodcastParser.parseEpisodeSearch(it, requirePodcastMarker = false) }
+                .orEmpty()
+
+            if (episodes.isEmpty()) {
+                val unfilteredRoot = runCatching { runSearch(null) }.getOrNull()
+                val discoveredFilter = unfilteredRoot?.let(PodcastParser::episodeSearchParams)
+                    ?.takeIf { it.isNotBlank() && it != cachedFilter }
+                if (discoveredFilter != null) {
+                    val retried = runCatching { runSearch(discoveredFilter) }.getOrNull()
+                    val parsed = retried
+                        ?.let { PodcastParser.parseEpisodeSearch(it, requirePodcastMarker = false) }
+                        .orEmpty()
+                    if (parsed.isNotEmpty()) {
+                        podcastEpisodesFilter = discoveredFilter
+                        episodes = parsed
+                    }
+                }
+                if (episodes.isEmpty()) {
+                    // No filter token available: only keep rows that are
+                    // explicitly podcasts.
+                    episodes = unfilteredRoot
+                        ?.let { PodcastParser.parseEpisodeSearch(it, requirePodcastMarker = true) }
+                        .orEmpty()
+                }
+            }
+
+            episodes.distinctBy { it.videoId }.take(limit)
+        }
+
+    private suspend fun podcastBrowseRoot(browseId: String): JsonObject {
+        val connected = ytAuth.connection.value.isConnected
+        return runCatching { browseRoot(browseId, connected) }.getOrElse { error ->
+            if (connected) browseRoot(browseId, false) else throw error
+        }
+    }
+
+    private suspend fun podcastBrowseContinuation(token: String): JsonObject {
+        val connected = ytAuth.connection.value.isConnected
+        return runCatching { browseContinuation(token, connected) }.getOrElse { error ->
+            if (connected) browseContinuation(token, false) else throw error
+        }
     }
 
     /** Anonymous YouTube Music radio for a seed video. This intentionally
@@ -4039,6 +4136,8 @@ class InnerTubeMusicApi @Inject constructor(
         const val FALLBACK_WEB_VERSION = "1.20260707.12.00"
         const val ARTIST_SEARCH_FILTER = "EgWKAQIgAWoKEAkQBRAKEAMQBA=="
         const val ALBUM_SEARCH_FILTER = "EgWKAQIYAWoKEAkQBRAKEAMQBA=="
+        const val PODCASTS_BROWSE_ID = "FEmusic_podcasts"
+        const val PODCAST_EPISODES_SEARCH_FILTER = "EgWKAQJIAWoSEBEQAxAQEAUQChAOEAkQBBAV"
         val CODEC_PATTERN = Regex("""codecs?=[\"']([^\"']+)[\"']""", RegexOption.IGNORE_CASE)
         val PLAYER_CLIENTS = listOf(
             PlayerClient(

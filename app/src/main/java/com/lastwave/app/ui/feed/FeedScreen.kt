@@ -136,6 +136,7 @@ import com.lastwave.app.ui.navigation.ArtistAlbumNavigator
 import com.lastwave.app.ui.player.LocalMusicPlayer
 import com.lastwave.app.ui.player.PlayingWaveBars
 import com.lastwave.app.ui.shell.FloatingNavDefaults
+import com.lastwave.app.ui.podcast.PodcastShowRow
 
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -151,6 +152,8 @@ fun FeedScreen(
     onOpenDownloads: () -> Unit = {},
     onOpenFriendProfile: (username: String, displayName: String?, avatarUrl: String?) -> Unit = { _, _, _ -> },
     onOpenNewReleases: () -> Unit = {},
+    onOpenPodcasts: () -> Unit = {},
+    onOpenPodcastShow: (String) -> Unit = {},
     viewModel: FeedViewModel = hiltViewModel(),
     artistAlbumNavigator: ArtistAlbumNavigator = hiltViewModel<ArtistAlbumNavBridgeFeed>().navigator,
 ) {
@@ -172,6 +175,7 @@ fun FeedScreen(
     var miniTrayTrack by remember { mutableStateOf<TrackMiniTrayData?>(null) }
     // Sections hidden via Settings → Home sections.
     val hiddenSections by viewModel.hiddenHomeSections.collectAsStateWithLifecycle()
+    val podcastsEnabled by viewModel.podcastsEnabled.collectAsStateWithLifecycle()
     fun isSectionVisible(section: HomeSection) = section.id !in hiddenSections
     val snackbarHostState = remember { SnackbarHostState() }
     val hasFeedContent = with(state.feedData) {
@@ -179,7 +183,8 @@ fun FeedScreen(
             quickPicks.isNotEmpty() || jumpBackIn.isNotEmpty() || recentAlbums.isNotEmpty() ||
             heavyRotation.isNotEmpty() || ytLikedSongs.isNotEmpty() || ytRecentSongs.isNotEmpty() ||
             (becauseYouListenTo?.items?.isNotEmpty() == true) || freshFinds.isNotEmpty() ||
-            spotlight != null || charts.isNotEmpty() || newReleases.isNotEmpty() || friends.isNotEmpty()
+            spotlight != null || charts.isNotEmpty() || newReleases.isNotEmpty() || friends.isNotEmpty() ||
+            podcastShows.isNotEmpty()
     }
     val greeting = remember {
         when (java.time.LocalTime.now().hour) {
@@ -366,6 +371,26 @@ fun FeedScreen(
                             )
                         
                                 }
+                            }
+                        }
+                    }
+
+                    if (podcastsEnabled && state.feedData.podcastShows.isNotEmpty()) {
+                        item(key = "podcast_shelf") {
+                            Column(Modifier.padding(vertical = 4.dp)) {
+                                FeedSectionHeader(
+                                    title = state.feedData.podcastShelfTitle
+                                        ?.takeIf { it.isNotBlank() }
+                                        ?: stringResource(R.string.podcasts_title),
+                                    actionText = stringResource(R.string.podcasts_see_all),
+                                    actionIcon = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                                    onActionClick = onOpenPodcasts,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                PodcastShowRow(
+                                    shows = state.feedData.podcastShows,
+                                    onShowClick = { show -> onOpenPodcastShow(show.showId) },
+                                )
                             }
                         }
                     }

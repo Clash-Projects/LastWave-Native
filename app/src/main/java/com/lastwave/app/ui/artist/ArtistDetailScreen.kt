@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
@@ -45,7 +46,9 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Verified
+import com.lastwave.app.ui.player.CanvasVideoPlayer
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -117,6 +120,7 @@ fun ArtistDetailScreen(
     genreBridge: ArtistDetailGenreBridge = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val artistCanvas by viewModel.artistCanvas.collectAsStateWithLifecycle()
     val musicPlayer = LocalMusicPlayer.current
     val playbackState by musicPlayer.chromeState.collectAsStateWithLifecycle()
     val haptic = LocalHapticFeedback.current
@@ -129,8 +133,10 @@ fun ArtistDetailScreen(
         viewModel.loadArtist(artistName, browseId)
     }
 
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
     var selectedTrackMenu by remember { mutableStateOf<PlayableTrack?>(null) }
     var showAllSongs by rememberSaveable { mutableStateOf(false) }
+    var showHeaderVideo by rememberSaveable(artistName, settings.canvasEnabled) { mutableStateOf(settings.canvasEnabled) }
     val listState = rememberLazyListState()
 
     val showScrolledHeader by remember {
@@ -214,7 +220,7 @@ fun ArtistDetailScreen(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(260.dp)
+                                    .height(280.dp)
                                     .shadow(
                                         elevation = 16.dp,
                                         shape = RoundedCornerShape(28.dp),
@@ -253,6 +259,17 @@ fun ArtistDetailScreen(
                                     }
                                 }
 
+                                // SimpMusic-style Apple Music Artist Motion animated looping video
+                                val motionVideoUrl = artistCanvas?.let { it.wideUrl ?: it.tallUrl ?: it.url }
+                                if (showHeaderVideo && !motionVideoUrl.isNullOrBlank()) {
+                                    CanvasVideoPlayer(
+                                        videoUrl = motionVideoUrl,
+                                        isPlaying = true,
+                                        enableScrim = false,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
+
                                 // Dark gradient overlay at the base of the hero
                                 Box(
                                     modifier = Modifier
@@ -267,7 +284,35 @@ fun ArtistDetailScreen(
                                                 startY = 100f,
                                             ),
                                         ),
-                                )
+                                    )
+
+                                // Video / Photo toggle button (when artist motion video is available)
+                                if (artistCanvas != null) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.82f),
+                                        tonalElevation = 4.dp,
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(14.dp)
+                                            .size(36.dp),
+                                    ) {
+                                        IconButton(
+                                            onClick = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                showHeaderVideo = !showHeaderVideo
+                                            },
+                                            modifier = Modifier.fillMaxSize(),
+                                        ) {
+                                            Icon(
+                                                imageVector = if (showHeaderVideo) Icons.Filled.SmartDisplay else Icons.Filled.Image,
+                                                contentDescription = if (showHeaderVideo) "Show Photo" else "Show Motion Video",
+                                                tint = if (showHeaderVideo) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                        }
+                                    }
+                                }
 
                                 if (isArtistPlaying) {
                                     Surface(

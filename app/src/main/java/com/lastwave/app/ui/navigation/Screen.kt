@@ -28,8 +28,13 @@ sealed class Screen(val route: String) {
     data object ExcludedSongs : Screen("excluded_songs")
     data object YouTubeImport : Screen("youtube_import")
     data object YouTubeLogin : Screen("youtube_login")
+    data object SpotifyLogin : Screen("spotify_login")
     data object ExternalPlaylistImport : Screen("external_playlist_import")
     data object NewReleases : Screen("new_releases")
+    data object Podcasts : Screen("podcasts")
+    data object PodcastShow : Screen("podcast_show/{showId}") {
+        fun createRoute(showId: String) = "podcast_show/${encodeArg(showId)}"
+    }
     data object FeedPlaylistDetail : Screen("feed_playlist/{playlistId}") {
         fun createRoute(playlistId: String) = "feed_playlist/${encodeArg(playlistId)}"
     }

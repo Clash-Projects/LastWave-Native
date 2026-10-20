@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lyrics
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.QueueMusic
@@ -966,6 +967,23 @@ object SettingsSearchIndex {
                     parentTab = SettingsTab.LIBRARY,
                     section = "Home & Organization",
                     type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "library.podcasts",
+                    title = "Podcasts",
+                    subtitle = "Show or hide podcast shelves, show pages and episode search",
+                    keywords = listOf(
+                        "podcast", "podcasts", "shows", "episodes", "hide podcasts",
+                        "youtube music podcasts", "episode search"
+                    ),
+                    icon = Icons.Filled.Mic,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    parentTab = SettingsTab.LIBRARY,
+                    section = "Content",
+                    type = EntryType.TOGGLE,
                 )
             )
             add(
