@@ -554,7 +554,7 @@ fun ArtistDetailScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .adaptiveContentWidth(maxWidth = 860.dp)
-                                    .padding(horizontal = 20.dp, top = 8.dp, bottom = 4.dp),
+                                    .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -710,7 +710,7 @@ fun ArtistDetailScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .adaptiveContentWidth(maxWidth = 860.dp)
-                                    .padding(horizontal = 20.dp, top = 10.dp),
+                                    .padding(start = 20.dp, end = 20.dp, top = 10.dp),
                             )
                         }
 
@@ -744,7 +744,7 @@ fun ArtistDetailScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .adaptiveContentWidth(maxWidth = 860.dp)
-                                    .padding(horizontal = 20.dp, top = 10.dp),
+                                    .padding(start = 20.dp, end = 20.dp, top = 10.dp),
                             )
                         }
 
@@ -778,7 +778,7 @@ fun ArtistDetailScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .adaptiveContentWidth(maxWidth = 860.dp)
-                                    .padding(horizontal = 20.dp, top = 10.dp),
+                                    .padding(start = 20.dp, end = 20.dp, top = 10.dp),
                             )
                         }
 
