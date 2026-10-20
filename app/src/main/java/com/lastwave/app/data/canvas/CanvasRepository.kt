@@ -138,7 +138,7 @@ class CanvasRepository @Inject constructor(
     }
 
     /**
-     * Resolves Apple Music motion artwork video for an artist profile (SimpMusic method).
+     * Resolves Apple Music motion artwork video for an artist profile.
      */
     suspend fun canvasForArtist(
         artist: String,

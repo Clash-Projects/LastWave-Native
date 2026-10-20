@@ -268,7 +268,7 @@ fun ArtistDetailScreen(
                                     }
                                 }
 
-                                // SimpMusic-style Apple Music Artist Motion animated looping video
+                                // Apple Music Artist Motion animated looping video
                                 val motionVideoUrl = artistCanvas?.let { it.wideUrl ?: it.tallUrl ?: it.url }
                                 if (showHeaderVideo && !motionVideoUrl.isNullOrBlank()) {
                                     CanvasVideoPlayer(
@@ -304,7 +304,7 @@ fun ArtistDetailScreen(
                                             .align(Alignment.TopEnd)
                                             .padding(14.dp),
                                     ) {
-                                        // Fullscreen Expand Button (SimpMusic-style)
+                                        // Fullscreen Expand Button
                                         Surface(
                                             shape = CircleShape,
                                             color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.85f),
@@ -882,7 +882,7 @@ fun ArtistDetailScreen(
                 }
             }
 
-            // SimpMusic-style Fullscreen Artist Animation Modal
+            // Fullscreen Artist Animation Modal
             if (showFullscreenArtistAnimation && artistCanvas != null) {
                 val fullscreenVideoUrl = artistCanvas?.let { it.tallUrl ?: it.url ?: it.wideUrl }
                 Dialog(
