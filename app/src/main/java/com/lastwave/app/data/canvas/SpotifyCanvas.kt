@@ -41,22 +41,43 @@ class SpotifyCanvas @Inject constructor(
         durationMs: Long? = null,
     ): CanvasArtwork? = withContext(Dispatchers.IO) {
         if (!spotifyPreferences.isCanvasEnabled()) {
+            Log.d(TAG, "Spotify canvas disabled in settings")
             return@withContext null
         }
 
-        val personalToken = authRepository.getPersonalToken() ?: return@withContext null
-        val clientToken = authRepository.getClientToken() ?: return@withContext null
+        // Both tokens are required: the personal one identifies the signed-in
+        // device, the client one the app. Each early exit used to be silent,
+        // so "Spotify was never queried" looked exactly like "this track has
+        // no canvas".
+        val personalToken = authRepository.getPersonalToken() ?: run {
+            Log.d(TAG, "No Spotify personal token for '$title' - '$artist' (connect Spotify first)")
+            return@withContext null
+        }
+        val clientToken = authRepository.getClientToken() ?: run {
+            Log.d(TAG, "No Spotify client token for '$title' - '$artist'")
+            return@withContext null
+        }
 
         try {
             // 1. Search for matching track on Spotify Pathfinder
             val track = searchTrack(personalToken, clientToken, title, artist, durationMs)
-                ?: return@withContext null
-            val trackId = track.id ?: return@withContext null
+                ?: run {
+                    Log.d(TAG, "No Spotify track matched '$title' - '$artist'")
+                    return@withContext null
+                }
+            val trackId = track.id ?: run {
+                Log.d(TAG, "Spotify match for '$title' has no track id")
+                return@withContext null
+            }
 
             // 2. Fetch Canvas from canvaz-cache Protobuf endpoint
             val canvasUrl = fetchCanvasUrl(personalToken, clientToken, trackId)
-                ?: return@withContext null
+                ?: run {
+                    Log.d(TAG, "Spotify track $trackId ('${track.name}') has no canvas")
+                    return@withContext null
+                }
 
+            Log.d(TAG, "Spotify canvas found for '$title' - '$artist' (track $trackId)")
             CanvasArtwork(
                 url = canvasUrl,
                 tallUrl = canvasUrl,

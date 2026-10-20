@@ -190,6 +190,7 @@ class CanvasRepository @Inject constructor(
             }
             return found
         }
+        Log.d(TAG, "No canvas from any provider")
         return null
     }
 
