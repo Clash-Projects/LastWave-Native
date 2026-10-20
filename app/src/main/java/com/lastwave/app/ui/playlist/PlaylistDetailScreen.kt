@@ -154,6 +154,34 @@ enum class PlaylistTrackSort(val labelRes: Int) {
     PLAY_TIME(com.lastwave.app.R.string.pd_sort_playtime),
 }
 
+/**
+ * Remembers each playlist's last track sort (key = playlist id), so leaving
+ * and reopening a playlist keeps e.g. "Date added ↓" instead of resetting to
+ * Custom order. Plain SharedPreferences: tiny, synchronous, read once per open.
+ */
+internal object PlaylistSortMemory {
+    private const val PREFS = "playlist_track_sort"
+
+    fun load(context: android.content.Context, playlistId: Long): Pair<PlaylistTrackSort, Boolean> {
+        val raw = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+            .getString(playlistId.toString(), null)
+            ?: return PlaylistTrackSort.CUSTOM to true
+        val sort = PlaylistTrackSort.entries.firstOrNull { it.name == raw.substringBefore(':') }
+            ?: return PlaylistTrackSort.CUSTOM to true
+        return sort to (raw.substringAfter(':', "asc") != "desc")
+    }
+
+    fun save(context: android.content.Context, playlistId: Long, sort: PlaylistTrackSort, ascending: Boolean) {
+        val prefs = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit()
+        if (sort == PlaylistTrackSort.CUSTOM && ascending) {
+            prefs.remove(playlistId.toString())
+        } else {
+            prefs.putString(playlistId.toString(), "${sort.name}:${if (ascending) "asc" else "desc"}")
+        }
+        prefs.apply()
+    }
+}
+
 private fun formatDate(millis: Long): String =
     SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(millis))
 
@@ -216,8 +244,9 @@ fun PlaylistDetailScreen(
     var overflowMenuOpen by remember { mutableStateOf(false) }
     val syncedPlaylistIds by viewModel.syncedPlaylistIds.collectAsStateWithLifecycle()
     var sortMenuOpen by remember { mutableStateOf(false) }
-    var currentSort by remember { mutableStateOf(PlaylistTrackSort.CUSTOM) }
-    var sortAscending by remember { mutableStateOf(true) }
+    val savedSort = remember(playlistId) { PlaylistSortMemory.load(context, playlistId) }
+    var currentSort by remember(playlistId) { mutableStateOf(savedSort.first) }
+    var sortAscending by remember(playlistId) { mutableStateOf(savedSort.second) }
     var isReorderLocked by remember { mutableStateOf(true) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
@@ -600,6 +629,7 @@ fun PlaylistDetailScreen(
                                                 currentSort = option
                                                 sortAscending = option != PlaylistTrackSort.PLAY_TIME
                                             }
+                                            PlaylistSortMemory.save(context, playlistId, currentSort, sortAscending)
                                             sortMenuOpen = false
                                         },
                                     )
