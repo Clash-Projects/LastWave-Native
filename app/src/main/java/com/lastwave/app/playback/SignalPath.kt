@@ -74,6 +74,8 @@ data class SignalPathInput(
     val bypassRequested: Boolean = false,
     /** USB wire bit depth negotiated (e.g. 16, 24, 32). */
     val wireBits: Int = 0,
+    /** AutoEQ / manual parametric EQ is changing the signal (any route). */
+    val parametricEqActive: Boolean = false,
 )
 
 /**
@@ -112,6 +114,8 @@ data class SignalPathReport(
     val directToHal: Boolean = false,
     val internalSession: InternalDirectSession? = null,
     val bypassRequested: Boolean = false,
+    /** AutoEQ is applied by LastWave: never bit-perfect, but still "Direct + EQ". */
+    val parametricEqActive: Boolean = false,
     // Poweramp pipeline fields:
     val outputEngineName: String = "Android AudioTrack",
     val outputRateHz: Int = 0,
@@ -256,6 +260,17 @@ fun evaluateSignalPath(i: SignalPathInput): SignalPathReport {
             R.string.signal_label_dsp,
             R.string.signal_detail_dsp_bypass,
             passed = true,
+        )
+    }
+
+    // 3b — AutoEQ / parametric EQ: a correction the user asked for. It runs
+    // in LastWave before any direct output, so the mixer is still bypassed,
+    // but the samples are no longer the source's.
+    if (i.parametricEqActive) {
+        checks += PathCheck(
+            R.string.signal_label_autoeq,
+            R.string.signal_detail_autoeq,
+            passed = false,
         )
     }
 
@@ -618,9 +633,11 @@ private fun finishReport(
         usbExclusiveActive = i.usbExclusiveActive,
         clockFallbackResampled = i.clockFallbackResampled || internal?.resampled == true,
         internalDirectActive = internal != null,
-        directToHal = internal != null && checks.all { it.passed },
+        directToHal = internal != null &&
+            checks.all { it.passed || it.labelRes == R.string.signal_label_autoeq },
         internalSession = internal,
         bypassRequested = i.bypassRequested,
+        parametricEqActive = i.parametricEqActive,
         outputEngineName = engine,
         outputRateHz = outRate,
         outputBits = outBits,
