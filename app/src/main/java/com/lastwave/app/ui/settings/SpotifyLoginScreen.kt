@@ -17,9 +17,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebStorage
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,6 +55,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -146,6 +145,10 @@ fun SpotifyLoginScreen(
         return false
     }
 
+    // The WebView is created once, so its callbacks must not keep calling
+    // the closure from that first composition.
+    val captureSpDcNow by rememberUpdatedState(captureSpDc)
+
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
@@ -153,7 +156,11 @@ fun SpotifyLoginScreen(
         Column(
             Modifier
                 .fillMaxSize()
-                .adaptiveContentWidth(maxWidth = 760.dp),
+                .adaptiveContentWidth(maxWidth = 760.dp)
+                // The app draws edge to edge and never resizes the window for
+                // the keyboard, so without this the keyboard would cover the
+                // form the user is typing into.
+                .imePadding(),
         ) {
             ExpressiveHeader(
                 title = "Connect Spotify",
@@ -174,14 +181,6 @@ fun SpotifyLoginScreen(
                     }
                 },
             )
-
-            AnimatedVisibility(
-                visible = isLoading,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
 
             // WebView Container.
             // No clip and no forced background: clipping a WebView makes
@@ -228,27 +227,46 @@ fun SpotifyLoginScreen(
                                 webChromeClient = object : WebChromeClient() {
                                     override fun onProgressChanged(view: WebView?, newProgress: Int) {
                                         super.onProgressChanged(view, newProgress)
-                                        isLoading = newProgress < 100
+                                        // Main-frame progress only: a sub-frame
+                                        // load must never flip the loading
+                                        // state.
+                                        val loading = newProgress < 100
+                                        if (loading != isLoading) isLoading = loading
                                     }
                                 }
 
                                 webViewClient = object : WebViewClient() {
                                     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                                         super.onPageStarted(view, url, favicon)
-                                        isLoading = true
+                                        // Sub-frames (captcha, email hints)
+                                        // report here as well. Nothing is
+                                        // derived from this callback: the
+                                        // loading state comes from the
+                                        // main-frame progress only.
                                         hasError = false
-                                        lastUrl = url
                                         Log.d(LOG_TAG, "onPageStarted: $url")
+                                    }
+
+                                    override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                                        super.doUpdateVisitedHistory(view, url, isReload)
+                                        // Main frame only: keeps the current
+                                        // page URL correct for the SPA.
+                                        if (!url.isNullOrBlank()) lastUrl = url
                                     }
 
                                     override fun onPageFinished(view: WebView?, url: String?) {
                                         super.onPageFinished(view, url)
-                                        isLoading = false
-                                        lastUrl = url
+                                        // view.url is always the main frame's
+                                        // URL, so a sub-frame finishing can
+                                        // never make this look like a
+                                        // different page.
+                                        val mainUrl = view?.url?.takeIf { it.isNotBlank() } ?: url
+                                        lastUrl = mainUrl
+                                        Log.d(LOG_TAG, "onPageFinished: $mainUrl")
                                         // The cookie is only present once the page
                                         // has loaded, so this is the only place the
                                         // capture may run.
-                                        captureSpDc(url)
+                                        captureSpDcNow(mainUrl)
                                     }
 
                                     override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
@@ -286,6 +304,17 @@ fun SpotifyLoginScreen(
                         }
                     },
                 )
+
+                // The progress bar floats over the page instead of sitting
+                // above it: the WebView's bounds must never change, because
+                // resizing it re-lays out the web content, which shows up as
+                // a flicker (and can steal the focus of the field being
+                // typed into).
+                if (isLoading) {
+                    LinearProgressIndicator(
+                        modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+                    )
+                }
 
                 if (webViewError != null) {
                     Card(
