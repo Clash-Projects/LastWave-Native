@@ -55,7 +55,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -144,10 +143,6 @@ fun SpotifyLoginScreen(
         Log.d(LOG_TAG, "Post-login page reached but no sp_dc in the cookie jar")
         return false
     }
-
-    // The WebView is created once, so its callbacks must not keep calling
-    // the closure from that first composition.
-    val captureSpDcNow by rememberUpdatedState(captureSpDc)
 
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -266,7 +261,7 @@ fun SpotifyLoginScreen(
                                         // The cookie is only present once the page
                                         // has loaded, so this is the only place the
                                         // capture may run.
-                                        captureSpDcNow(mainUrl)
+                                        captureSpDc(mainUrl)
                                     }
 
                                     override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
