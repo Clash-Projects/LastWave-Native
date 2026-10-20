@@ -885,6 +885,11 @@ fun ArtistDetailScreen(
             // Fullscreen Artist Animation Modal
             if (showFullscreenArtistAnimation && artistCanvas != null) {
                 val fullscreenVideoUrl = artistCanvas?.let { it.tallUrl ?: it.url ?: it.wideUrl }
+                val artistData = (uiState as? ArtistUiState.Success)?.data
+                val artistDisplayName = artistData?.name ?: artistName
+                val isCurrentlyPlaying = playbackState.isPlaying &&
+                    (playbackState.sourceLabel == artistDisplayName || playbackState.current?.artist.equals(artistDisplayName, ignoreCase = true))
+
                 Dialog(
                     onDismissRequest = { showFullscreenArtistAnimation = false },
                     properties = DialogProperties(
@@ -992,7 +997,7 @@ fun ArtistDetailScreen(
                                     Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(
-                                                text = com.lastwave.app.util.ArtistHelper.primaryArtist(data.name),
+                                                text = com.lastwave.app.util.ArtistHelper.primaryArtist(artistDisplayName),
                                                 style = MaterialTheme.typography.headlineMedium,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 color = Color.White,
@@ -1007,16 +1012,18 @@ fun ArtistDetailScreen(
                                                 modifier = Modifier.size(22.dp),
                                             )
                                         }
-                                        if (!data.subscribers.isNullOrBlank() || !data.monthlyListeners.isNullOrBlank()) {
+                                        val stats = artistData?.subscribers ?: artistData?.monthlyListeners
+                                        if (!stats.isNullOrBlank()) {
                                             Spacer(Modifier.height(4.dp))
                                             Text(
-                                                text = data.subscribers ?: data.monthlyListeners.orEmpty(),
+                                                text = stats,
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 color = Color.White.copy(alpha = 0.75f),
                                             )
                                         }
                                     }
 
+                                    val hasTopSongs = artistData?.topSongs?.isNotEmpty() == true
                                     Row(
                                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                                         verticalAlignment = Alignment.CenterVertically,
@@ -1026,7 +1033,7 @@ fun ArtistDetailScreen(
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                 viewModel.playShuffle()
                                             },
-                                            enabled = data.topSongs.isNotEmpty(),
+                                            enabled = hasTopSongs,
                                             shape = CircleShape,
                                             colors = IconButtonDefaults.filledTonalIconButtonColors(
                                                 containerColor = Color.White.copy(alpha = 0.2f),
@@ -1046,7 +1053,7 @@ fun ArtistDetailScreen(
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                 viewModel.playAll()
                                             },
-                                            enabled = data.topSongs.isNotEmpty(),
+                                            enabled = hasTopSongs,
                                             shape = CircleShape,
                                             color = MaterialTheme.colorScheme.primary,
                                             contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -1055,7 +1062,7 @@ fun ArtistDetailScreen(
                                         ) {
                                             Box(contentAlignment = Alignment.Center) {
                                                 Icon(
-                                                    if (isArtistPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                                    if (isCurrentlyPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                                     contentDescription = stringResource(R.string.art_play_cd),
                                                     tint = MaterialTheme.colorScheme.onPrimary,
                                                     modifier = Modifier.size(30.dp),
