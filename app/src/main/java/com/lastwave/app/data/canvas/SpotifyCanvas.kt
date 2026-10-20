@@ -76,7 +76,7 @@ class SpotifyCanvas @Inject constructor(
         clientToken: String,
         title: String,
         artist: String,
-        durationMs: Long?,
+        durationMs: Long? = null,
     ): SpotifySearchResponse.Data.Search.TracksV2.Items.Item.TrackData? {
         val query = "$title $artist"
         val variables = """{"searchTerm":"$query","offset":0,"limit":3,"numberOfTopResults":3}"""

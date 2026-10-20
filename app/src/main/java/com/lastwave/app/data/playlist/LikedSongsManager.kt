@@ -117,6 +117,7 @@ class LikedSongsManager @Inject constructor(
                     clientToken = clientToken,
                     title = track.name,
                     artist = track.artist,
+                    durationMs = null,
                 ) ?: return@launch
                 val id = spotifyTrack.id ?: return@launch
                 if (like) {

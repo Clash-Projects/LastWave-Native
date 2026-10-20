@@ -419,7 +419,6 @@ object PodcastParser {
         is JsonObject -> string("text") ?: textOf(this)
         else -> null
     }
-}
 
     private val MONTH_PATTERN = Regex(
         """\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b""",
