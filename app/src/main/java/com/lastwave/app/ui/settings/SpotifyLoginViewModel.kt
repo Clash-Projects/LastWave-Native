@@ -20,10 +20,16 @@ class SpotifyLoginViewModel @Inject constructor(
     val spdc = spotifyPreferences.spdc
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    fun saveSpdc(value: String, onDone: () -> Unit) {
+    /**
+     * Persists the captured `sp_dc` cookie. [onDone] receives whether the
+     * write actually landed: the screen must only latch "connected" on
+     * success, otherwise a failed write would leave the WebView latched and
+     * every later navigation blocked.
+     */
+    fun saveSpdc(value: String, onDone: (Boolean) -> Unit) {
         viewModelScope.launch {
-            spotifyPreferences.saveSpdc(value)
-            onDone()
+            val saved = runCatching { spotifyPreferences.saveSpdc(value) }.isSuccess
+            onDone(saved)
         }
     }
 
