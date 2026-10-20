@@ -59,21 +59,20 @@ class SpotifyCanvas @Inject constructor(
         }
 
         try {
-            // 1. Search for matching track on Spotify Pathfinder
-            val track = searchTrack(personalToken, clientToken, title, artist, durationMs)
+            // 1. Search for matching track on Spotify Pathfinder, falling back to Web API search
+            val trackMatch = searchTrack(personalToken, clientToken, title, artist, durationMs)
+            val trackId = trackMatch?.id ?: searchTrackFallback(personalToken, title, artist, durationMs)
                 ?: run {
                     Log.d(TAG, "No Spotify track matched '$title' - '$artist'")
                     return@withContext null
                 }
-            val trackId = track.id ?: run {
-                Log.d(TAG, "Spotify match for '$title' has no track id")
-                return@withContext null
-            }
+            val trackTitle = trackMatch?.name ?: title
+            val trackArtist = trackMatch?.artists?.items?.firstOrNull()?.profile?.name ?: artist
 
             // 2. Fetch Canvas from canvaz-cache Protobuf endpoint
             val canvasUrl = fetchCanvasUrl(personalToken, clientToken, trackId)
                 ?: run {
-                    Log.d(TAG, "Spotify track $trackId ('${track.name}') has no canvas")
+                    Log.d(TAG, "Spotify track $trackId ('$trackTitle') has no canvas")
                     return@withContext null
                 }
 
@@ -81,14 +80,57 @@ class SpotifyCanvas @Inject constructor(
             CanvasArtwork(
                 url = canvasUrl,
                 tallUrl = canvasUrl,
-                title = track.name ?: title,
-                artist = track.artists?.items?.firstOrNull()?.profile?.name ?: artist,
+                title = trackTitle,
+                artist = trackArtist,
                 album = album,
                 source = CanvasSource.SPOTIFY,
             )
         } catch (e: Exception) {
             Log.w(TAG, "Spotify canvas lookup error for '$title' - '$artist': ${e.message}")
             null
+        }
+    }
+
+    internal fun searchTrackFallback(
+        personalToken: String,
+        title: String,
+        artist: String,
+        durationMs: Long? = null,
+    ): String? {
+        val query = "$title $artist"
+        val url = "https://api.spotify.com/v1/search?type=track&q=${Uri.encode(query)}&limit=5"
+        val request = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer $personalToken")
+            .header("User-Agent", USER_AGENT)
+            .header("Accept", "application/json")
+            .build()
+
+        return okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                Log.d(TAG, "Fallback Web API search failed: HTTP ${response.code}")
+                return@use null
+            }
+            val body = response.body?.string().orEmpty()
+            val parsed = runCatching {
+                json.decodeFromString<com.lastwave.app.data.spotify.SpotifyWebSearchResponse>(body)
+            }.getOrNull()
+            val items = parsed?.tracks?.items.orEmpty()
+            if (items.isEmpty()) return@use null
+
+            val bestMatch = if (durationMs != null && durationMs > 0) {
+                items.minByOrNull { item ->
+                    val itemDuration = item.duration_ms ?: 0L
+                    if (itemDuration > 0) abs(itemDuration - durationMs) else Long.MAX_VALUE
+                } ?: items.firstOrNull()
+            } else {
+                items.firstOrNull { item ->
+                    val itemName = item.name.orEmpty()
+                    itemName.equals(title, ignoreCase = true) ||
+                        itemName.normalizeForMatch() == title.normalizeForMatch()
+                } ?: items.firstOrNull()
+            }
+            bestMatch?.id
         }
     }
 

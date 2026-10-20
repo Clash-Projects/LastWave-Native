@@ -41,8 +41,8 @@ data class ClientTokenRequest(
 ) {
     @Serializable
     data class ClientData(
-        val client_version: String = "1.2.61.20.g3b4cd5b2",
-        val client_id: String = "d8a5dc308d52402c9183b71477b84635",
+        val client_version: String = "1.3.7.1345.gcff6cec98b6e",
+        val client_id: String = "d8a5ed958d274c2e8ee717e6a4b0971d",
         val js_sdk_data: JsSdkData = JsSdkData(),
     )
 
@@ -53,6 +53,27 @@ data class ClientTokenRequest(
         val os: String = "windows",
         val os_version: String = "10.0.0",
     )
+}
+
+@Serializable
+data class SpotifyWebSearchResponse(
+    val tracks: TracksContainer? = null,
+) {
+    @Serializable
+    data class TracksContainer(
+        val items: List<TrackItem> = emptyList(),
+    ) {
+        @Serializable
+        data class TrackItem(
+            val id: String? = null,
+            val name: String? = null,
+            val duration_ms: Long? = null,
+            val artists: List<ArtistItem> = emptyList(),
+        ) {
+            @Serializable
+            data class ArtistItem(val name: String? = null)
+        }
+    }
 }
 
 @Serializable
