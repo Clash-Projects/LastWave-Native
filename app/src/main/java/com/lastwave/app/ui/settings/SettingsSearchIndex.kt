@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FormatListBulleted
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.filled.Lyrics
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.SmartDisplay
@@ -885,6 +887,55 @@ object SettingsSearchIndex {
                     iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
                     parentTab = SettingsTab.YOUTUBE,
                     section = "YouTube & Sync",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "spotify.account",
+                    title = "Connect Spotify Account",
+                    subtitle = "Sign in to enable official Spotify Canvas video loops & library sync",
+                    keywords = listOf(
+                        "spotify", "spotify account", "connect spotify", "sp_dc", "spotify login",
+                        "canvas login"
+                    ),
+                    icon = Icons.Filled.PlayCircle,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.primary },
+                    parentTab = SettingsTab.YOUTUBE,
+                    section = "Spotify",
+                    type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "spotify.canvas",
+                    title = "Spotify Canvas (Looping background videos)",
+                    subtitle = "Fetch and play Spotify's looping visual videos in background",
+                    keywords = listOf(
+                        "spotify canvas", "canvas", "video loop", "looping video", "moving background"
+                    ),
+                    icon = Icons.Filled.SmartDisplay,
+                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.YOUTUBE,
+                    section = "Spotify",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "spotify.sync_liked",
+                    title = "Sync Liked Songs with Spotify",
+                    subtitle = "Automatically like and unlike songs in your Spotify library when favorited in LastWave",
+                    keywords = listOf(
+                        "spotify sync", "liked songs", "sync favorites", "favorite songs", "spotify library"
+                    ),
+                    icon = Icons.Filled.Favorite,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    parentTab = SettingsTab.YOUTUBE,
+                    section = "Spotify",
                     type = EntryType.TOGGLE,
                 )
             )
