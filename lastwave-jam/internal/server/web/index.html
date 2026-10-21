@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>LastWave Jam</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #000000;
+      --card-bg: rgba(14, 15, 18, 0.85);
+      --card-inner: rgba(22, 23, 28, 0.85);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(255, 255, 255, 0.24);
+      --text: #ffffff;
+      --text-muted: #8e8e9a;
+      --text-sub: #545460;
+      --accent-lime: #C9FB00;
+      --accent-lime-dark: #012226;
+      --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      width: 100%;
+      height: 100%;
+      background-color: var(--bg);
+    }
+
+    body {
+      width: 100%;
+      height: 100%;
+      min-height: 100dvh;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+
+    /* Ambient background grid & glow */
+    .bg-mesh {
+      position: fixed;
+      top: 40%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: clamp(340px, 70vw, 750px);
+      height: clamp(340px, 70vw, 750px);
+      background: radial-gradient(circle, rgba(201, 251, 0, 0.05) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .bg-grid {
+      position: fixed;
+      inset: 0;
+      background-image: radial-gradient(rgba(255, 255, 255, 0.065) 1px, transparent 1px);
+      background-size: 24px 24px;
+      mask-image: radial-gradient(circle at 50% 45%, black 40%, transparent 80%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Full-Bleed Edge-to-Edge Navbar */
+    .navbar-bleed {
+      width: 100%;
+      border-bottom: 1px solid var(--border);
+      position: relative;
+      z-index: 20;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      flex-shrink: 0;
+    }
+
+    .navbar-inner {
+      width: 100%;
+      max-width: 1280px;
+      margin: 0 auto;
+      height: 60px;
+      padding: 0 clamp(16px, 4vw, 36px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: #ffffff;
+      user-select: none;
+    }
+
+    .brand-logo {
+      width: 28px;
+      height: 28px;
+      display: block;
+      filter: drop-shadow(0 0 10px rgba(201, 251, 0, 0.35));
+    }
+
+    .brand-title {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: #ffffff;
+    }
+
+    .brand-pill {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 9999px;
+      background: rgba(201, 251, 0, 0.1);
+      border: 1px solid rgba(201, 251, 0, 0.25);
+      color: var(--accent-lime);
+    }
+
+    .nav-socials {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .social-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      transition: all 150ms ease;
+    }
+
+    .social-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--border-hover);
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+
+    .social-btn svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+
+    /* Main Stage (Centered between Navbar and Footer) */
+    .stage {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: clamp(16px, 3vh, 32px) clamp(16px, 4vw, 36px);
+      min-height: 0;
+    }
+
+    .stage-box {
+      width: 100%;
+      max-width: 440px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* Main Interaction Card */
+    .card {
+      width: 100%;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: clamp(20px, 4vw, 28px);
+      box-shadow: 
+        0 24px 60px rgba(0, 0, 0, 0.8),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      animation: appear 180ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes appear {
+      from { opacity: 0; transform: scale(0.98); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    .card-header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-lime);
+      box-shadow: 0 0 8px var(--accent-lime);
+      animation: pulse 2s infinite ease-in-out;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    /* Room Code Box */
+    .code-box {
+      width: 100%;
+      background: var(--card-inner);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 18px;
+      margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      cursor: pointer;
+      user-select: none;
+      transition: all 160ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .code-box:hover {
+      border-color: var(--border-hover);
+      background: rgba(30, 31, 38, 0.95);
+      transform: translateY(-1px);
+    }
+
+    .code-box:active {
+      transform: translateY(0);
+    }
+
+    .code-val {
+      font-family: var(--font-mono);
+      font-size: clamp(32px, 8vw, 40px);
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      color: #ffffff;
+      padding-left: 0.2em;
+      line-height: 1;
+      text-shadow: 0 0 24px rgba(255, 255, 255, 0.25);
+    }
+
+    .code-hint {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-sub);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 3px;
+      transition: color 150ms ease;
+    }
+
+    .code-box:hover .code-hint {
+      color: var(--text-muted);
+    }
+
+    /* Buttons */
+    .btn-stack {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+
+    .btn {
+      width: 100%;
+      height: 46px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      text-decoration: none;
+      cursor: pointer;
+      border: 1px solid transparent;
+      outline: none;
+      transition: all 160ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .btn-primary {
+      background: #ffffff;
+      color: #000000;
+      border-color: #ffffff;
+    }
+
+    .btn-primary:hover {
+      background: #ebebeb;
+      box-shadow: 0 6px 20px rgba(255, 255, 255, 0.16);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+
+    .btn-secondary {
+      background: var(--card-inner);
+      color: #ffffff;
+      border-color: var(--border);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--border-hover);
+      background: rgba(30, 31, 38, 0.95);
+    }
+
+    /* Manual Input Form */
+    .input-code {
+      width: 100%;
+      height: 48px;
+      background: var(--card-inner);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: #ffffff;
+      font-family: var(--font-mono);
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-align: center;
+      text-transform: uppercase;
+      outline: none;
+      transition: all 160ms ease;
+    }
+
+    .input-code:focus {
+      border-color: #ffffff;
+      box-shadow: 0 0 0 1px #ffffff;
+    }
+
+    .input-code::placeholder {
+      font-family: var(--font-sans);
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      color: var(--text-sub);
+      text-transform: uppercase;
+    }
+
+    /* Community Dock (Matching exact 440px width) */
+    .community-dock {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .dock-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      text-decoration: none;
+      color: inherit;
+      transition: all 160ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .dock-card:hover {
+      border-color: var(--border-hover);
+      background: rgba(22, 23, 28, 0.95);
+      transform: translateY(-1px);
+    }
+
+    .dock-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .dock-tag {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .dock-icon {
+      width: 12px;
+      height: 12px;
+      fill: var(--text-sub);
+      transition: fill 150ms ease;
+    }
+
+    .dock-card:hover .dock-icon {
+      fill: #ffffff;
+    }
+
+    .dock-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #ffffff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .dock-sub {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-sub);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .dock-card:hover .dock-sub {
+      color: var(--text-muted);
+    }
+
+    /* Full-Bleed Edge-to-Edge Footer */
+    .footer-bleed {
+      width: 100%;
+      border-top: 1px solid var(--border);
+      position: relative;
+      z-index: 20;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      flex-shrink: 0;
+    }
+
+    .footer-inner {
+      width: 100%;
+      max-width: 1280px;
+      margin: 0 auto;
+      height: 48px;
+      padding: 0 clamp(16px, 4vw, 36px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-sub);
+    }
+
+    .footer-inner a {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 150ms ease;
+    }
+
+    .footer-inner a:hover {
+      color: #ffffff;
+    }
+
+    /* Minimalist Toast */
+    .toast {
+      position: fixed;
+      bottom: clamp(16px, 4vh, 28px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #ffffff;
+      color: #000000;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 18px;
+      border-radius: 9999px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.85);
+      z-index: 100;
+      pointer-events: none;
+      transition: opacity 160ms ease, transform 160ms ease;
+    }
+
+    .toast.hidden {
+      opacity: 0;
+      transform: translate(-50%, 8px);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 440px) {
+      .navbar-inner, .footer-inner {
+        padding: 0 14px;
+      }
+      .stage {
+        padding: 16px 12px;
+      }
+      .dock-sub span:first-child {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-mesh"></div>
+  <div class="bg-grid"></div>
+
+  <!-- Full-bleed Edge-to-Edge Navbar -->
+  <header class="navbar-bleed">
+    <div class="navbar-inner">
+      <a href="/" class="nav-brand">
+        <svg class="brand-logo" viewBox="0 0 108 108" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="54" cy="54" r="54" fill="#C9FB00"/>
+          <path fill="#012226" d="M12.92,36.47 A5.99,5.99 0 0 1 24.89,36.47 L24.89,78.39 A5.99,5.99 0 0 1 12.92,78.39 Z" />
+          <path fill="#012226" d="M36.86,16.58 A6.14,6.14 0 0 1 49.15,16.58 L49.15,92.58 A6.14,6.14 0 0 1 36.86,92.58 Z" />
+          <path fill="#012226" d="M60.54,23.12 A6.25,6.25 0 0 1 73.04,23.12 L73.04,84.82 A6.25,6.25 0 0 1 60.54,84.82 Z" />
+          <path fill="#012226" d="M80.74,33.72 A6.72,6.72 0 0 1 94.18,33.72 L94.18,74.17 A6.72,6.72 0 0 1 80.74,74.17 Z" />
+        </svg>
+        <span class="brand-title">LastWave</span>
+        <span class="brand-pill">JAM</span>
+      </a>
+
+      <div class="nav-socials">
+        <a 
+          href="https://t.me/clashprojects" 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          class="social-btn" 
+          title="Telegram Channel"
+        >
+          <svg viewBox="0 0 24 24">
+            <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.121l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.832.942z"/>
+          </svg>
+        </a>
+
+        <a 
+          href="https://discord.gg/TMCEPSUNk2" 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          class="social-btn" 
+          title="Discord Community"
+        >
+          <svg viewBox="0 0 24 24">
+            <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+          </svg>
+        </a>
+
+        <a 
+          href="https://github.com/Clash-Projects/lastwave-jam" 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          class="social-btn" 
+          title="GitHub Repository"
+        >
+          <svg viewBox="0 0 24 24">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Centered Stage Box -->
+  <main class="stage">
+    <div class="stage-box">
+      <!-- Interaction Card -->
+      <div class="card">
+        <!-- State 1: Invite with Room Code (?code=...) -->
+        <div id="invite-view" class="hidden" style="width: 100%;">
+          <div class="card-header-badge">
+            <span class="pulse-dot"></span>
+            <span>SESSION INVITE</span>
+          </div>
+
+          <div class="code-box" id="copy-code-btn" role="button" tabindex="0" title="Click to copy code">
+            <span id="room-code-display" class="code-val">------</span>
+            <span id="copy-hint" class="code-hint">Click to copy code</span>
+          </div>
+
+          <div class="btn-stack">
+            <a id="btn-join-app" href="#" class="btn btn-primary">
+              <span>Join in App</span>
+              <span style="font-size: 15px;">↗</span>
+            </a>
+            <button id="btn-copy-link" type="button" class="btn btn-secondary">
+              <span>Copy Link</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- State 2: Normal View without Code -->
+        <div id="normal-view" class="hidden" style="width: 100%;">
+          <div class="card-header-badge">
+            <span class="pulse-dot"></span>
+            <span>CONNECT TO SESSION</span>
+          </div>
+
+          <form id="code-form" class="btn-stack">
+            <input 
+              type="text" 
+              id="code-input" 
+              class="input-code" 
+              placeholder="ROOM CODE" 
+              maxlength="6" 
+              autocomplete="off" 
+              spellcheck="false" 
+              autofocus
+            />
+            <button type="submit" class="btn btn-primary">
+              <span>Join</span>
+              <span style="font-size: 15px;">→</span>
+            </button>
+            <a href="lastwave://jam" class="btn btn-secondary">
+              <span>Open App</span>
+            </a>
+          </form>
+        </div>
+      </div>
+
+      <!-- Community Dock -->
+      <div class="community-dock">
+        <!-- Telegram -->
+        <a 
+          href="https://t.me/clashprojects" 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          class="dock-card"
+        >
+          <div class="dock-top">
+            <span class="dock-tag">TG</span>
+            <svg class="dock-icon" viewBox="0 0 24 24">
+              <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.121l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.832.942z"/>
+            </svg>
+          </div>
+          <span class="dock-label">Telegram</span>
+          <div class="dock-sub">
+            <span>Channel</span>
+            <span>↗</span>
+          </div>
+        </a>
+
+        <!-- Discord -->
+        <a 
+          href="https://discord.gg/TMCEPSUNk2" 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          class="dock-card"
+        >
+          <div class="dock-top">
+            <span class="dock-tag">DISCORD</span>
+            <svg class="dock-icon" viewBox="0 0 24 24">
+              <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+            </svg>
+          </div>
+          <span class="dock-label">Discord</span>
+          <div class="dock-sub">
+            <span>Community</span>
+            <span>↗</span>
+          </div>
+        </a>
+
+        <!-- GitHub -->
+        <a 
+          href="https://github.com/Clash-Projects/lastwave-jam" 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          class="dock-card"
+        >
+          <div class="dock-top">
+            <span class="dock-tag">GITHUB</span>
+            <svg class="dock-icon" viewBox="0 0 24 24">
+              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+            </svg>
+          </div>
+          <span class="dock-label">Repository</span>
+          <div class="dock-sub">
+            <span>lastwave-jam</span>
+            <span>↗</span>
+          </div>
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <!-- Full-bleed Edge-to-Edge Footer -->
+  <footer class="footer-bleed">
+    <div class="footer-inner">
+      <span>LastWave Jam</span>
+      <a href="https://github.com/Clash-Projects/lastwave-jam" target="_blank" rel="noopener noreferrer">github.com/Clash-Projects/lastwave-jam</a>
+    </div>
+  </footer>
+
+  <div id="toast" class="toast hidden">Copied</div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = (urlParams.get('code') || urlParams.get('room') || '').trim().toUpperCase();
+
+      const inviteView = document.getElementById('invite-view');
+      const normalView = document.getElementById('normal-view');
+      const roomCodeDisplay = document.getElementById('room-code-display');
+      const copyHint = document.getElementById('copy-hint');
+      const copyCodeBtn = document.getElementById('copy-code-btn');
+      const btnJoinApp = document.getElementById('btn-join-app');
+      const btnCopyLink = document.getElementById('btn-copy-link');
+
+      const codeForm = document.getElementById('code-form');
+      const codeInput = document.getElementById('code-input');
+      const toast = document.getElementById('toast');
+
+      if (code.length > 0) {
+        roomCodeDisplay.textContent = code;
+        btnJoinApp.href = `lastwave://jam?code=${encodeURIComponent(code)}`;
+
+        btnJoinApp.onclick = function () {
+          navigator.clipboard.writeText(code).catch(function () {});
+          showToast('Opening LastWave...');
+        };
+
+        copyCodeBtn.onclick = function () {
+          copyText(code, 'Code copied');
+          copyHint.textContent = '✓ Copied';
+          setTimeout(function () {
+            copyHint.textContent = 'Click to copy code';
+          }, 2000);
+        };
+
+        btnCopyLink.onclick = function () {
+          const link = window.location.origin + window.location.pathname + '?code=' + encodeURIComponent(code);
+          copyText(link, 'Link copied');
+        };
+
+        inviteView.classList.remove('hidden');
+        normalView.classList.add('hidden');
+      } else {
+        codeInput.addEventListener('input', function (e) {
+          e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        });
+
+        codeForm.onsubmit = function (e) {
+          e.preventDefault();
+          const val = codeInput.value.trim().toUpperCase();
+          if (val.length > 0) {
+            window.location.search = '?code=' + encodeURIComponent(val);
+          }
+        };
+
+        inviteView.classList.add('hidden');
+        normalView.classList.remove('hidden');
+      }
+
+      function copyText(val, msg) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(val).then(function () {
+            showToast(msg);
+          }).catch(function () {
+            fallbackCopy(val, msg);
+          });
+        } else {
+          fallbackCopy(val, msg);
+        }
+      }
+
+      function fallbackCopy(text, msg) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        try {
+          document.execCommand('copy');
+          showToast(msg);
+        } catch (e) {
+          showToast(text);
+        }
+        document.body.removeChild(textarea);
+      }
+
+      let toastTimer = null;
+      function showToast(msg) {
+        clearTimeout(toastTimer);
+        toast.textContent = msg;
+        toast.classList.remove('hidden');
+        toastTimer = setTimeout(function () {
+          toast.classList.add('hidden');
+        }, 1800);
+      }
+    })();
+  </script>
+</body>
+</html>
