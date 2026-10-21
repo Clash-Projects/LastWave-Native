@@ -1,6 +1,7 @@
 package server
 
 import (
+	"embed"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -9,6 +10,9 @@ import (
 	"github.com/Clash-Projects/lastwave-sync/internal/sync"
 	"github.com/gorilla/websocket"
 )
+
+//go:embed web/*
+var embeddedWebFS embed.FS
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -35,6 +39,16 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", h.handleHealth)
 	mux.HandleFunc("GET /stats", h.handleStats)
 	mux.HandleFunc("GET /ws", h.handleWebSocket)
+
+	// Serve self-contained invite landing page
+	indexHTML, err := embeddedWebFS.ReadFile("web/index.html")
+	if err == nil {
+		mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(indexHTML)
+		})
+	}
 }
 
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
