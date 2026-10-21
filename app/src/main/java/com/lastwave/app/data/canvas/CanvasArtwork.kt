@@ -16,6 +16,13 @@ enum class CanvasSource {
     COMMUNITY,
 }
 
+fun CanvasSource.displayName(): String = when (this) {
+    CanvasSource.SPOTIFY -> "Spotify Canvas"
+    CanvasSource.APPLE -> "Apple Music Motion"
+    CanvasSource.TIDAL -> "TIDAL Video Cover"
+    CanvasSource.COMMUNITY -> "Community Canvas"
+}
+
 /**
  * A looping video that stands in for a track's cover art (Apple motion artwork,
  * Tidal video cover, or Community Canvas manifest).

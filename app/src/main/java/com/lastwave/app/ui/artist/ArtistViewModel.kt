@@ -69,9 +69,15 @@ class ArtistViewModel @Inject constructor(
         canvasJob?.cancel()
         canvasJob = viewModelScope.launch {
             _artistCanvas.value = null
-            val canvas = canvasRepository.canvasForArtist(artistName)
-            coroutineContext.ensureActive()
-            _artistCanvas.value = canvas
+            try {
+                val canvas = canvasRepository.canvasForArtist(artistName)
+                coroutineContext.ensureActive()
+                _artistCanvas.value = canvas
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Silently leave _artistCanvas null on network or resolution error
+            }
         }
 
         loadJob?.cancel()

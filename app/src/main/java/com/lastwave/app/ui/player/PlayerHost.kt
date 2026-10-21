@@ -30,6 +30,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -40,6 +41,10 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.graphics.lerp
+import kotlin.math.cos
+import kotlin.math.sin
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Shape
@@ -1803,6 +1808,139 @@ private fun AddToPlaylistDialog(
 
 private enum class SeekDirection { REWIND, FORWARD }
 
+/**
+ * Dynamic ambient lyrics background overlay.
+ * Derives colors strictly from the track cover-art palette (ambientColor, ambientCompanion, ambientDeep).
+ * Slowly modulates the atmospheric orbs line-by-line as lyrics advance, ensuring:
+ *  1. Micro-shifts: consecutive lines maintain cohesive color harmony with very subtle, gentle differentiation.
+ *  2. Zero visibility issues: controlled luminance and dark base keep synchronized text crisp and clear.
+ *  3. Performance: progressState is sampled via derivedStateOf so recomposition only occurs when the active line changes.
+ */
+@Composable
+private fun LyricsDynamicAmbientBackdrop(
+    isLyricsTab: Boolean,
+    lyricsState: LyricsUiState,
+    progressState: StateFlow<PlaybackProgressState>,
+    lyricsOffsetMs: Long,
+    ambientColor: Color,
+    ambientCompanion: Color,
+    ambientDeep: Color,
+    bgWidth: Float,
+    bgHeight: Float,
+    bgMaxDimension: Float,
+    modifier: Modifier = Modifier,
+) {
+    val lyricsBackdropAlpha by animateFloatAsState(
+        targetValue = if (isLyricsTab) 1f else 0f,
+        animationSpec = tween(350),
+        label = "lyricsBackdropAlpha",
+    )
+
+    if (lyricsBackdropAlpha <= 0.001f) return
+
+    val progress by progressState.collectAsStateWithLifecycle()
+    val lines = (lyricsState as? LyricsUiState.Success)?.lines.orEmpty()
+    val activeLine by remember(lines) {
+        derivedStateOf {
+            if (lines.isNotEmpty()) {
+                activeLineIndex(lines, progress.positionMs + lyricsOffsetMs).coerceAtLeast(0)
+            } else {
+                0
+            }
+        }
+    }
+
+    // Micro-modulation strictly bounded within the cover art's palette tone:
+    // angle advances gently per line index:
+    val lineAngle = activeLine * 0.35f
+    val shiftRatio1 = sin(lineAngle) * 0.05f + 0.06f
+    val shiftRatio2 = cos(lineAngle * 0.70f) * 0.05f + 0.06f
+    val shiftRatio3 = sin(lineAngle * 0.50f + 1f) * 0.04f + 0.05f
+
+    val targetColor1 = lerp(ambientColor, ambientCompanion, shiftRatio1)
+    val targetColor2 = lerp(ambientCompanion, ambientDeep, shiftRatio2)
+    val targetColor3 = lerp(ambientDeep, ambientColor, shiftRatio3)
+
+    val animatedColor1 by animateColorAsState(
+        targetValue = targetColor1,
+        animationSpec = tween(1200, easing = LinearOutSlowInEasing),
+        label = "lyricAmbientColor1",
+    )
+    val animatedColor2 by animateColorAsState(
+        targetValue = targetColor2,
+        animationSpec = tween(1200, easing = LinearOutSlowInEasing),
+        label = "lyricAmbientColor2",
+    )
+    val animatedColor3 by animateColorAsState(
+        targetValue = targetColor3,
+        animationSpec = tween(1200, easing = LinearOutSlowInEasing),
+        label = "lyricAmbientColor3",
+    )
+
+    // Gentle spatial drift of the orbs (subtle 2% to 4% offset)
+    val targetCenterX1 = 0.25f + sin(lineAngle * 0.45f) * 0.04f
+    val targetCenterY1 = 0.22f + cos(lineAngle * 0.45f) * 0.03f
+    val targetCenterX2 = 0.86f - cos(lineAngle * 0.55f) * 0.04f
+    val targetCenterY2 = 0.67f + sin(lineAngle * 0.55f) * 0.03f
+
+    val animCenterX1 by animateFloatAsState(targetCenterX1, tween(1400, easing = LinearOutSlowInEasing), label = "lyricCenterX1")
+    val animCenterY1 by animateFloatAsState(targetCenterY1, tween(1400, easing = LinearOutSlowInEasing), label = "lyricCenterY1")
+    val animCenterX2 by animateFloatAsState(targetCenterX2, tween(1400, easing = LinearOutSlowInEasing), label = "lyricCenterX2")
+    val animCenterY2 by animateFloatAsState(targetCenterY2, tween(1400, easing = LinearOutSlowInEasing), label = "lyricCenterY2")
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .graphicsLayer { alpha = lyricsBackdropAlpha }
+    ) {
+        // Dark scrim underlay to protect contrast and eliminate visibility issues
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.36f)))
+
+        // Primary cover art ambient orb (subtle line-by-line micro-shift)
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        0f to animatedColor1.copy(alpha = 0.50f),
+                        0.48f to animatedColor1.copy(alpha = 0.18f),
+                        1f to Color.Transparent,
+                        center = Offset(bgWidth * animCenterX1, bgHeight * animCenterY1),
+                        radius = bgMaxDimension * 0.85f,
+                    )
+                )
+        )
+        // Secondary cover art companion orb
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        0f to animatedColor2.copy(alpha = 0.44f),
+                        0.50f to animatedColor2.copy(alpha = 0.15f),
+                        1f to Color.Transparent,
+                        center = Offset(bgWidth * animCenterX2, bgHeight * animCenterY2),
+                        radius = bgMaxDimension * 0.78f,
+                    )
+                )
+        )
+        // Deep anchor orb
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        0f to animatedColor3.copy(alpha = 0.36f),
+                        0.55f to animatedColor3.copy(alpha = 0.12f),
+                        1f to Color.Transparent,
+                        center = Offset(bgWidth * 0.18f, bgHeight * 0.84f),
+                        radius = bgMaxDimension * 0.70f,
+                    )
+                )
+        )
+    }
+}
+
 @Composable
 private fun FullPlayer(
     state: MusicPlayerState,
@@ -2116,6 +2254,20 @@ private fun FullPlayer(
                                 )
                         )
                     }
+                )
+                // Dynamic ambient lyrics gradient overlay: subtly shifts line-by-line strictly
+                // using the album cover art palette, preserving zero text visibility issues.
+                LyricsDynamicAmbientBackdrop(
+                    isLyricsTab = isLyricsTab,
+                    lyricsState = lyricsState,
+                    progressState = progressState,
+                    lyricsOffsetMs = lyricsOffsetMs,
+                    ambientColor = ambientColor,
+                    ambientCompanion = ambientCompanion,
+                    ambientDeep = ambientDeep,
+                    bgWidth = bgWidth,
+                    bgHeight = bgHeight,
+                    bgMaxDimension = bgMaxDimension,
                 )
                 // Contrast scrim gradient (ensures text & controls are clear while preserving vibrant colors)
                 Box(

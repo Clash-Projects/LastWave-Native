@@ -1,6 +1,7 @@
 package com.lastwave.app.ui.player
 
 import android.content.Context
+import android.util.Log
 import android.graphics.Color as AndroidColor
 import android.view.TextureView
 import android.view.ViewGroup
@@ -26,6 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -106,6 +108,7 @@ fun CanvasVideoPlayer(
 
             override fun onPlayerError(error: PlaybackException) {
                 isRendered = false
+                Log.w("CanvasVideoPlayer", "Playback error for $videoUrl: ${error.message}", error)
             }
         }
         player.addListener(listener)
@@ -118,7 +121,15 @@ fun CanvasVideoPlayer(
     LaunchedEffect(videoUrl) {
         isRendered = false
         if (videoUrl.isNotBlank()) {
-            player.setMediaItem(MediaItem.fromUri(videoUrl))
+            val mediaItem = MediaItem.Builder()
+                .setUri(videoUrl)
+                .apply {
+                    if (videoUrl.contains(".m3u8", ignoreCase = true)) {
+                        setMimeType(MimeTypes.APPLICATION_M3U8)
+                    }
+                }
+                .build()
+            player.setMediaItem(mediaItem)
             player.prepare()
             player.playWhenReady = isPlaying
         } else {
