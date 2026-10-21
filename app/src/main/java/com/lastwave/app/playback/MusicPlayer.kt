@@ -122,6 +122,15 @@ import javax.inject.Singleton
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 
+/** What kind of media a queue entry is. Songs keep the scrobble / radio /
+ *  lyrics behaviour; podcast episodes are excluded from all of it and get
+ *  resume progress instead. */
+@Serializable
+enum class MediaType {
+    SONG,
+    PODCAST_EPISODE,
+}
+
 @Serializable
 data class PlayableTrack(
     val title: String,
@@ -134,6 +143,9 @@ data class PlayableTrack(
     val playbackUrl: String? = null,
     val playbackMimeType: String? = null,
     val durationMs: Long? = null,
+    val mediaType: MediaType = MediaType.SONG,
+    /** Podcast show id (MPSPPL…) when this entry is a podcast episode. */
+    val showId: String? = null,
 )
 
 @Serializable
@@ -223,6 +235,9 @@ class MusicPlayer @Inject constructor(
     private val exclusiveUsbOutput: ExclusiveUsbOutput,
     private val songPlayStatsRepository: dagger.Lazy<com.lastwave.app.data.repository.SongPlayStatsRepository>,
     private val internalDirectOutput: InternalDirectOutput,
+    private val podcastProgressStore: com.lastwave.app.data.podcast.PodcastProgressStore,
+    /** AutoEQ: started with the player so the saved correction is published before playback. */
+    private val autoEqController: com.lastwave.app.data.autoeq.AutoEqController,
 ) {
     private val appContext = context.applicationContext
     /**
@@ -640,6 +655,48 @@ class MusicPlayer @Inject constructor(
     }
 
     /**
+     * Persists the resume position of the playing podcast episode. Only
+     * podcast episodes are stored: songs have no resume semantics. Positions
+     * under 10s are ignored (a tap-through is not a listen) and anything
+     * past 95% counts as finished.
+     */
+    private fun persistPodcastProgress(
+        track: PlayableTrack?,
+        positionMs: Long,
+        durationMs: Long,
+        completed: Boolean = false,
+    ) {
+        val episode = track?.takeIf { it.mediaType == MediaType.PODCAST_EPISODE } ?: return
+        val videoId = episode.videoId?.takeIf { it.isNotBlank() } ?: return
+        applicationScope.launch(Dispatchers.IO) {
+            runCatching {
+                podcastProgressStore.save(
+                    videoId = videoId,
+                    showId = episode.showId,
+                    positionMs = positionMs,
+                    durationMs = durationMs,
+                    completed = completed,
+                )
+            }.onFailure { error ->
+                android.util.Log.w("MusicPlayer", "Failed to save podcast progress", error)
+            }
+        }
+    }
+
+    /** Snapshot of the currently playing episode, for progress checkpoints. */
+    private fun checkpointPodcastProgress(completed: Boolean = false) {
+        val snapshot = _state.value
+        val track = snapshot.current ?: return
+        if (track.mediaType != MediaType.PODCAST_EPISODE) return
+        val livePosition = runCatching { player.currentPosition.coerceAtLeast(0L) }.getOrNull()
+        val position = livePosition?.takeIf { it > 0L } ?: snapshot.positionMs
+        val duration = snapshot.durationMs.takeIf { it > 0L }
+            ?: track.durationMs
+            ?: 0L
+        persistPodcastProgress(track, position, duration, completed)
+    }
+
+    /**
      * Feeds SongPlayStatsRepository — the real "how much did you actually
      * listen to this" + skip signal that LocalTasteSuggestionEngine scores
      * on. Called right before onMediaItemTransition overwrites [_state],
@@ -652,6 +709,21 @@ class MusicPlayer @Inject constructor(
         val previousTrack = _state.value.current ?: return
         val previousPositionMs = _state.value.positionMs
         val previousDurationMs = _state.value.durationMs
+        if (previousTrack.mediaType == MediaType.PODCAST_EPISODE) {
+            // Podcast episodes are not songs: they never feed the local taste
+            // graph. They only persist a resume position. A natural advance
+            // (the episode played out) counts as finished; an explicit skip
+            // does not.
+            val playedRatio = if (previousDurationMs > 0L) {
+                previousPositionMs.toDouble() / previousDurationMs.toDouble()
+            } else {
+                0.0
+            }
+            val finished = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO &&
+                playedRatio >= PODCAST_FINISHED_RATIO
+            persistPodcastProgress(previousTrack, previousPositionMs, previousDurationMs, completed = finished)
+            return
+        }
         if (previousPositionMs <= 0L) return
         val playedRatio = if (previousDurationMs > 0L) {
             (previousPositionMs.toDouble() / previousDurationMs.toDouble()).coerceIn(0.0, 1.0)
@@ -709,6 +781,7 @@ class MusicPlayer @Inject constructor(
             // lossless-first advance; the call is debounced and a no-op
             // when ExoPlayer already moved on.
             if (playbackState == Player.STATE_ENDED) {
+                checkpointPodcastProgress(completed = true)
                 if (player.repeatMode == Player.REPEAT_MODE_ONE || _state.value.repeatMode == Player.REPEAT_MODE_ONE) {
                     onMain {
                         runCatching {
@@ -1553,6 +1626,7 @@ class MusicPlayer @Inject constructor(
         }
         ticker = applicationScope.launch(Dispatchers.Main.immediate) {
             var lastTickerPersistMs = 0L
+            var lastPodcastProgressMs = 0L
             while (true) {
                 // The ticker is the sole driver of progress-bar updates: it
                 // must never die (one escaping exception used to kill the
@@ -1769,6 +1843,16 @@ class MusicPlayer @Inject constructor(
                                     persistPlaybackSession()
                                 }
                             }
+                            // Podcast resume positions are checkpointed on
+                            // their own cadence, outside the "state changed"
+                            // gate: a paused episode must still be saved.
+                            val podcastNow = SystemClock.elapsedRealtime()
+                            if (_state.value.isPlaying &&
+                                podcastNow - lastPodcastProgressMs >= PODCAST_PROGRESS_INTERVAL_MS
+                            ) {
+                                lastPodcastProgressMs = podcastNow
+                                checkpointPodcastProgress()
+                            }
                             // Preserve lazy player startup when there is no
                             // restored or active queue. The short-circuit
                             // avoids touching ExoPlayer.
@@ -1916,7 +2000,9 @@ class MusicPlayer @Inject constructor(
         playHistory.clear()
         latePreloadKey = null
         lastPreloadRetryMs = 0L
-        radioQueueActive = startRadio
+        // A podcast episode never seeds a music radio.
+        val radioAllowed = startRadio && track.mediaType == MediaType.SONG
+        radioQueueActive = radioAllowed
         startResolvedQueuePlayback(
             tracks = listOf(track),
             selectedIndex = 0,
@@ -1924,7 +2010,7 @@ class MusicPlayer @Inject constructor(
             sourceLabel = sourceLabel,
             endlessDiscover = false,
         )
-        if (startRadio) {
+        if (radioAllowed) {
             _state.update { it.copy(isEndlessQueue = true) }
             startRadioQueue(track)
         }
@@ -1945,6 +2031,39 @@ class MusicPlayer @Inject constructor(
             sourceLabel = sourceLabel,
             startShuffled = startShuffled,
             enableRadioContinuation = enableRadioContinuation,
+        )
+    }
+
+    /**
+     * Starts a podcast episode queue. Unlike [playQueue] this never grows the
+     * queue with radio continuations and never marks the queue endless, so the
+     * episode list the user picked is exactly what plays.
+     */
+    fun playPodcastQueue(
+        tracks: List<PlayableTrack>,
+        startIndex: Int = 0,
+        startPositionMs: Long = 0L,
+        sourceLabel: String = "Podcasts",
+    ) {
+        if (tracks.isEmpty()) return
+        disableRadioQueue()
+        disableDiscoverQueue()
+        pendingRestoredSession = null
+        playRequest?.cancel()
+        queueEnrichmentJob?.cancel()
+        unavailableSkipJob?.cancel()
+        unavailableMediaIds.clear()
+        unavailableAttemptCounts.clear()
+        playHistory.clear()
+        latePreloadKey = null
+        lastPreloadRetryMs = 0L
+        val selectedIndex = startIndex.coerceIn(tracks.indices)
+        startResolvedQueuePlayback(
+            tracks = tracks,
+            selectedIndex = selectedIndex,
+            startPositionMs = startPositionMs.coerceAtLeast(0L),
+            sourceLabel = sourceLabel,
+            endlessDiscover = false,
         )
     }
 
@@ -2409,6 +2528,7 @@ class MusicPlayer @Inject constructor(
             if (isCasting) castPlayback?.pause()
             if (playerDelegate.isInitialized()) player.pause()
             _state.update { it.copy(isPlaying = false, isBuffering = false) }
+            checkpointPodcastProgress()
             persistPlaybackSession()
         }
     }
@@ -2568,6 +2688,7 @@ class MusicPlayer @Inject constructor(
         exclusiveUsbOutput.noteSeek(target * 1_000L)
         player.seekTo(target)
         _state.update { it.copy(positionMs = target) }
+        checkpointPodcastProgress()
     }
 
     private fun resetPlayhead(startPosMs: Long = 0L, key: String? = null) {
@@ -2838,6 +2959,9 @@ class MusicPlayer @Inject constructor(
     @MainThread
     private fun updateCrossfade(positionMs: Long): Boolean {
         if (!crossfadeEnabled || bitPerfectEnabled) return false
+        // Podcast episodes are long-form speech: a crossfade would cut the
+        // tail of an episode into the next one.
+        if (_state.value.current?.mediaType == MediaType.PODCAST_EPISODE) return false
         outgoingPlayer?.let { outgoing ->
             // Drive the blend off the incoming (active) player position so a
             // pause parks the fade instead of counting down underneath it.
@@ -3539,6 +3663,7 @@ class MusicPlayer @Inject constructor(
                 internalDirectWanted = internalPrefOn,
                 internalDirectFailure = internalFailure,
                 bypassRequested = bitPerfectEnabled,
+                parametricEqActive = com.lastwave.app.playback.eq.ParametricEqNative.isEngaged(),
                 sourceLabel = srcLabel,
                 sourceRateHz = sourceRateHz,
                 // The source row follows the same shared hi-res rule as the pill
@@ -4304,6 +4429,8 @@ class MusicPlayer @Inject constructor(
         unavailableSkipJob?.cancel()
         sleepTimerDeadlineMs = null
         sleepTimerStep = 0
+        // Save the podcast resume position before the queue is torn down.
+        checkpointPodcastProgress()
         player.stop()
         player.clearMediaItems()
         // Shuffle is engine state that survives stop()/clearMediaItems(): without
@@ -4386,6 +4513,11 @@ class MusicPlayer @Inject constructor(
         queueEnrichmentJob?.cancel()
         queueEnrichmentJob = null
         if (currentIndex !in 0 until player.mediaItemCount) return
+        // Podcast queues are finite lists of episodes: no artwork/related
+        // enrichment from the music graph.
+        val currentIsEpisode = player.getMediaItemAt(currentIndex).toPlayableTrack().mediaType ==
+            MediaType.PODCAST_EPISODE
+        if (currentIsEpisode) return
         val nextIndex = if (player.shuffleModeEnabled) player.nextMediaItemIndex else currentIndex + 1
         if (nextIndex == C.INDEX_UNSET || nextIndex !in 0 until player.mediaItemCount) return
         if (nextIndex == player.currentMediaItemIndex) return
@@ -5057,6 +5189,9 @@ class MusicPlayer @Inject constructor(
     }
 
     private fun startRadioQueue(seed: PlayableTrack, resumePlaybackImmediately: Boolean = false) {
+        // Podcast episodes are not radio seeds: a podcast queue never grows
+        // with related songs, it is a finite list the user picked.
+        if (seed.mediaType != MediaType.SONG) return
         radioQueueLoadJob?.cancel()
         radioUsedSeeds.clear()
         seed.videoId?.takeIf(String::isNotBlank)?.let { radioUsedSeeds.add(it) }
@@ -5313,7 +5448,7 @@ class MusicPlayer @Inject constructor(
                 }
             } else {
                 val currentTrack = player.currentMediaItem?.toPlayableTrack()
-                if (currentTrack != null && !isRepeatOne) {
+                if (currentTrack != null && !isRepeatOne && currentTrack.mediaType == MediaType.SONG) {
                     radioQueueActive = true
                     _state.update { it.copy(isEndlessQueue = true) }
                     startRadioQueue(currentTrack, resumePlaybackImmediately = true)
@@ -8078,6 +8213,10 @@ class MusicPlayer @Inject constructor(
         const val KEY_VOLUME_SAVED = "bitperfect_volume_saved"
         /** Ticker-driven session persistence cadence (explicit state changes persist immediately). */
         const val TICKER_PERSIST_INTERVAL_MS = 2_000L
+        /** Podcast resume-position checkpoint cadence. */
+        const val PODCAST_PROGRESS_INTERVAL_MS = 10_000L
+        /** Played ratio at (or past) which an episode counts as finished. */
+        const val PODCAST_FINISHED_RATIO = 0.95
         /** Masks pre-seek position reads with the seek target while ExoPlayer lands. */
         const val SEEK_SETTLE_WINDOW_MS = 400L
         /** Signal-path report + stream-health sampling cadence while playing. */
@@ -8229,6 +8368,8 @@ private fun PlayableTrack.toMediaItem(resolved: MusicPlayer.ResolvedStream? = nu
                         val d = durationMs ?: resolved?.durationMs
                         if (d != null && d > 0L) putLong("durationMs", d)
                         internalTrackId?.takeIf { it.isNotBlank() }?.let { putString("internalTrackId", it) }
+                        putString("mediaType", mediaType.name)
+                        showId?.takeIf { it.isNotBlank() }?.let { putString("showId", it) }
                     }
                 )
                 .build(),
@@ -8265,6 +8406,9 @@ private fun MediaItem.toPlayableTrack(): PlayableTrack {
         else -> null
     }
     val dur = mediaMetadata.extras?.getLong("durationMs")?.takeIf { it > 0L }
+    val mediaType = mediaMetadata.extras?.getString("mediaType")
+        ?.let { name -> runCatching { MediaType.valueOf(name) }.getOrNull() }
+        ?: MediaType.SONG
     return PlayableTrack(
         title = mediaMetadata.title?.toString().orEmpty().ifBlank { "Unknown track" },
         artist = mediaMetadata.artist?.toString().orEmpty().ifBlank { "Unknown artist" },
@@ -8275,6 +8419,8 @@ private fun MediaItem.toPlayableTrack(): PlayableTrack {
         playbackUrl = localUri,
         playbackMimeType = localConfiguration?.mimeType,
         durationMs = dur,
+        mediaType = mediaType,
+        showId = mediaMetadata.extras?.getString("showId"),
     )
 }
 

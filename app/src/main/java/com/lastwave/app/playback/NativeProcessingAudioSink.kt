@@ -111,6 +111,15 @@ class NativeProcessingAudioSink(
     /** Channel count the shared converter emits while it serves internal direct. */
     private var converterChannels = 2
 
+    /**
+     * AutoEQ on routes where PCM never enters the native Float32 DSP (USB
+     * exclusive, internal direct, Bit-Perfect AudioTrack, platform fallback).
+     * The converter / processed paths get the same EQ inside the native DSP.
+     */
+    private val directEq = com.lastwave.app.playback.eq.DirectPcmEq()
+    /** Buffer already equalised: Media3 retries the same object until consumed. */
+    private var directEqBuffer: ByteBuffer? = null
+
     var onConfiguredFormat: ((sampleRateHz: Int, pcmEncoding: Int, channelCount: Int) -> Unit)? = null
     var bitDepthHintProvider: (() -> Int?)? = null
 
@@ -176,6 +185,10 @@ class NativeProcessingAudioSink(
 
         if (format.sampleRate > 0) {
             onConfiguredFormat?.invoke(format.sampleRate, format.pcmEncoding, format.channelCount)
+        }
+        directEqBuffer = null
+        if (format.sampleMimeType == MimeTypes.AUDIO_RAW && format.sampleRate > 0) {
+            directEq.configure(format.sampleRate, format.channelCount, format.pcmEncoding)
         }
 
         if (exclusiveWanted && internalDirect?.hasOpenStream() == true) {
@@ -461,6 +474,29 @@ class NativeProcessingAudioSink(
     ): Boolean {
         maybeAdoptExclusiveUsb()
         maybeAdoptInternalDirect()
+        if (directEqBuffer !== buffer && isDirectEqRoute()) {
+            directEq.process(buffer)
+            directEqBuffer = buffer
+        }
+        val consumed = handleRoutedBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
+        // Decoder buffers are recycled objects: once consumed, the next
+        // payload in the same object must be equalised again.
+        if (consumed) directEqBuffer = null
+        return consumed
+    }
+
+    /** True when this buffer bypasses the native DSP (where the EQ otherwise runs). */
+    private fun isDirectEqRoute(): Boolean = when {
+        usbExclusive -> !isExclusiveConverting()
+        internalActive -> internalDirect?.requiresResampling() != true
+        else -> !processingActive
+    }
+
+    private fun handleRoutedBuffer(
+        buffer: ByteBuffer,
+        presentationTimeUs: Long,
+        encodedAccessUnitCount: Int,
+    ): Boolean {
         if (usbExclusive) {
             if (exclusiveUsb?.isPaused() == true) {
                 return false
@@ -1437,6 +1473,8 @@ class NativeProcessingAudioSink(
     }
 
     override fun flush() {
+        directEq.reset()
+        directEqBuffer = null
         clearPending()
         clearEndOfStream()
         exclusiveEnded = false
@@ -1475,6 +1513,8 @@ class NativeProcessingAudioSink(
     }
 
     override fun reset() {
+        directEq.reset()
+        directEqBuffer = null
         usbOutput?.setFormat(null)
         if (usbExclusive && exclusiveWanted) {
             exclusiveUsb?.prepareForNextItem()

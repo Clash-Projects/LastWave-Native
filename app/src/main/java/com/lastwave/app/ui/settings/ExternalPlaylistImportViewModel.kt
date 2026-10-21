@@ -10,11 +10,15 @@ import com.lastwave.app.data.playlist.ExternalPlaylistSource
 import com.lastwave.app.data.playlist.PlaylistImportManager
 import com.lastwave.app.data.playlist.SavedPlaylist
 import com.lastwave.app.data.playlist.SpotifyPlaylistImporter
+import com.lastwave.app.data.playlist.SpotifyUserPlaylist
+import com.lastwave.app.data.spotify.SpotifyPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -46,10 +50,93 @@ class ExternalPlaylistImportViewModel @Inject constructor(
     private val importManager: PlaylistImportManager,
     private val spotifyPlaylistImporter: SpotifyPlaylistImporter,
     private val appleMusicPlaylistImporter: AppleMusicPlaylistImporter,
+    private val spotifyPreferences: SpotifyPreferences,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ExternalImportUiState())
     val uiState: StateFlow<ExternalImportUiState> = _uiState.asStateFlow()
+
+    val spotifyConnected: StateFlow<Boolean> = spotifyPreferences.isConnected
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    private val _userPlaylists = MutableStateFlow<List<SpotifyUserPlaylist>>(emptyList())
+    val userPlaylists: StateFlow<List<SpotifyUserPlaylist>> = _userPlaylists.asStateFlow()
+
+    private val _loadingUserPlaylists = MutableStateFlow(false)
+    val loadingUserPlaylists: StateFlow<Boolean> = _loadingUserPlaylists.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            spotifyConnected.collect { connected ->
+                if (connected) {
+                    loadUserPlaylists()
+                } else {
+                    _userPlaylists.value = emptyList()
+                }
+            }
+        }
+    }
+
+    fun loadUserPlaylists() {
+        viewModelScope.launch {
+            _loadingUserPlaylists.value = true
+            val playlists = spotifyPlaylistImporter.fetchUserPlaylists()
+            _userPlaylists.value = playlists
+            _loadingUserPlaylists.value = false
+        }
+    }
+
+    fun selectUserPlaylist(playlist: SpotifyUserPlaylist) {
+        onLinkChange("https://open.spotify.com/playlist/${playlist.id}")
+        loadPreview()
+    }
+
+    /**
+     * Loads the user's Spotify Liked Songs collection into preview.
+     */
+    fun selectLikedSongs() {
+        _uiState.update {
+            it.copy(
+                link = "https://open.spotify.com/collection/tracks",
+                errorMessage = null,
+                preview = null,
+                isLoading = true,
+            )
+        }
+        viewModelScope.launch {
+            try {
+                val result = spotifyPlaylistImporter.fetchLikedSongs()
+                val rows = result.rows
+                if (rows.isEmpty()) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            preview = null,
+                            errorMessage = "No liked songs found in your Spotify account.",
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            preview = result,
+                            errorMessage = null,
+                            lastResult = null,
+                        )
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = "Couldn't read Spotify liked songs: ${e.localizedMessage ?: e.message}",
+                    )
+                }
+            }
+        }
+    }
 
     fun onLinkChange(value: String) {
         _uiState.update {
@@ -85,6 +172,10 @@ class ExternalPlaylistImportViewModel @Inject constructor(
             _uiState.update { it.copy(errorMessage = "Paste a Spotify or Apple Music playlist link.") }
             return
         }
+        if (ExternalPlaylistLink.isSpotifyLiked(raw)) {
+            selectLikedSongs()
+            return
+        }
         val source = ExternalPlaylistLink.detect(raw)
         if (source == null) {
             _uiState.update { it.copy(errorMessage = "Paste a Spotify or Apple Music playlist link.") }
@@ -104,7 +195,7 @@ class ExternalPlaylistImportViewModel @Inject constructor(
                         it.copy(
                             isLoading = false,
                             preview = null,
-                            errorMessage = "No tracks found in that playlist. Make sure it is public.",
+                            errorMessage = "No tracks found in that playlist. Make sure it is public or your account is connected.",
                         )
                     }
                 } else {
@@ -142,7 +233,12 @@ class ExternalPlaylistImportViewModel @Inject constructor(
                 it.copy(isImporting = true, progress = "Importing playlist...", errorMessage = null)
             }
             try {
-                val (saved, result) = importManager.importExternalPlaylist(raw.trim())
+                val isLiked = ExternalPlaylistLink.isSpotifyLiked(raw)
+                val (saved, result) = if (isLiked) {
+                    importManager.importSpotifyLikedIntoLikedSongs()
+                } else {
+                    importManager.importExternalPlaylist(raw.trim())
+                }
                 val skipped = (result.totalRows - result.matchedCount).coerceAtLeast(0)
                 _uiState.update {
                     it.copy(

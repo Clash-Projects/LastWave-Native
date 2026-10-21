@@ -280,6 +280,12 @@ fun LastWaveNavHost(
                 onOpenDownloads = {
                     navController.navigate(Screen.Downloads.route)
                 },
+                onOpenPodcasts = {
+                    navController.navigate(Screen.Podcasts.route)
+                },
+                onOpenPodcastShow = { showId ->
+                    navController.navigate(Screen.PodcastShow.createRoute(showId))
+                },
             )
         }
 
@@ -401,9 +407,42 @@ fun LastWaveNavHost(
                     onOpenExcludedSongs = { navController.navigate(Screen.ExcludedSongs.route) },
                     onOpenYouTubeImport = { navController.navigate(Screen.YouTubeImport.route) },
                     onOpenYouTubeLogin = { navController.navigate(Screen.YouTubeLogin.route) },
+                    onOpenSpotifyLogin = { navController.navigate(Screen.SpotifyLogin.route) },
                     onOpenExternalImport = { navController.navigate(Screen.ExternalPlaylistImport.route) },
                 )
             }
+        }
+
+        composable(Screen.SpotifyLogin.route) {
+            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+                com.lastwave.app.ui.settings.SpotifyLoginScreen(
+                    onBack = { navController.popBackStack() },
+                    onConnected = { navController.popBackStack() },
+                )
+            }
+        }
+
+        composable(
+            route = Screen.Jam.route,
+            arguments = listOf(
+                androidx.navigation.navArgument("code") {
+                    type = androidx.navigation.NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { backStackEntry ->
+            val code = backStackEntry.arguments?.getString("code")
+            val jamViewModel: com.lastwave.app.ui.jam.LastWaveJamViewModel = hiltViewModel()
+            androidx.compose.runtime.LaunchedEffect(code) {
+                if (!code.isNullOrBlank()) {
+                    jamViewModel.setPendingCode(code)
+                }
+            }
+            com.lastwave.app.ui.jam.LastWaveJamSheet(
+                viewModel = jamViewModel,
+                onDismiss = { navController.popBackStack() },
+            )
         }
 
         composable(Screen.YouTubeImport.route) {
@@ -432,6 +471,9 @@ fun LastWaveNavHost(
                     onBack = { navController.popBackStack() },
                     onImportSuccess = {
                         navController.popBackStack()
+                    },
+                    onOpenSpotifyLogin = {
+                        navController.navigate(Screen.SpotifyLogin.route)
                     },
                 )
             }
@@ -488,6 +530,34 @@ fun LastWaveNavHost(
         composable(Screen.NewReleases.route) {
             PredictiveBackScreen(onBack = { navController.popBackStack() }) {
                 com.lastwave.app.ui.newreleases.NewReleasesScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+        }
+
+        composable(Screen.Podcasts.route) {
+            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+                com.lastwave.app.ui.podcast.PodcastsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenShow = { showId ->
+                        navController.navigate(Screen.PodcastShow.createRoute(showId))
+                    },
+                )
+            }
+        }
+
+        composable(
+            route = Screen.PodcastShow.route,
+            arguments = listOf(
+                androidx.navigation.navArgument("showId") {
+                    type = androidx.navigation.NavType.StringType
+                },
+            ),
+        ) { backStackEntry ->
+            val showId = backStackEntry.arguments?.getString("showId").orEmpty()
+            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+                com.lastwave.app.ui.podcast.PodcastShowScreen(
+                    showId = showId,
                     onBack = { navController.popBackStack() },
                 )
             }

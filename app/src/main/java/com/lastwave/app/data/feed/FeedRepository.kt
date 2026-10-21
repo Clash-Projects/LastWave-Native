@@ -15,6 +15,9 @@ import com.lastwave.app.data.model.RecentTrack
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistSummary
+import com.lastwave.app.data.podcast.PodcastRepository
+import com.lastwave.app.data.podcast.PodcastShow
+import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.playlist.PlaylistRepository
 import com.lastwave.app.data.repository.HomeRepository
 import com.lastwave.app.data.repository.RelatedGraphRepository
@@ -26,6 +29,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -101,6 +105,8 @@ data class FeedData(
     val becauseYouListenTo: FeedSectionData<YouTubeMusicTrack>? = null,
     val freshFinds: List<YouTubeMusicTrack> = emptyList(),
     val friends: List<FriendEntry> = emptyList(),
+    val podcastShows: List<PodcastShow> = emptyList(),
+    val podcastShelfTitle: String? = null,
     val lastUpdatedMillis: Long = 0L,
 )
 
@@ -112,6 +118,8 @@ class FeedRepository @Inject constructor(
     private val tasteProfileProvider: TasteProfileProvider,
     private val ytAuth: YtMusicAuthManager,
     private val playlistRepository: PlaylistRepository,
+    private val podcastRepository: PodcastRepository,
+    private val settingsPreferences: SettingsPreferences,
 ) {
     private var cachedFeed: FeedData? = null
     private var cachedKey: String? = null
@@ -124,7 +132,8 @@ class FeedRepository @Inject constructor(
         onUpdate: (FeedData) -> Unit = {},
     ): FeedData = coroutineScope {
         val connectionPre = ytAuth.awaitLoadedConnection()
-        val cacheKey = "${username.orEmpty()}|$connectionPre"
+        val podcastsEnabled = settingsPreferences.settings.first().podcastsEnabled
+        val cacheKey = "${username.orEmpty()}|$connectionPre|podcasts=$podcastsEnabled"
         val previous = cachedFeed?.takeIf { cachedKey == cacheKey }
         previous?.let(onUpdate)
         val random = kotlin.random.Random(System.nanoTime())
@@ -136,6 +145,13 @@ class FeedRepository @Inject constructor(
         val homeMixesDef = async(Dispatchers.IO) { runCatching { innerTube.fetchHomeMixes() }.getOrDefault(emptyList()) }
         val homeSongsDef = async(Dispatchers.IO) {
             if (isYtConnected) emptyList() else runCatching { innerTube.fetchHomeSongs() }.getOrDefault(emptyList())
+        }
+        // Podcast shelf rides along with the rest of the feed. Disabled in
+        // settings -> the fetch never happens and the shelf stays empty.
+        val podcastShelfDef = async(Dispatchers.IO) {
+            if (!podcastsEnabled) return@async null
+            runCatching { podcastRepository.home() }.getOrNull()
+                ?.firstOrNull { it.shows.isNotEmpty() }
         }
 
         val ytTasteDef = async(Dispatchers.IO) {
@@ -777,6 +793,9 @@ class FeedRepository @Inject constructor(
         val tasteTags = tasteProfile?.topTags.orEmpty().take(8).ifEmpty { defaultTasteTags }
         val hasPersonalContent = tasteProfile?.hasPersonalSignals == true ||
             ytRecentSongs.isNotEmpty() || ytLikedSongs.isNotEmpty() || recentTracks.isNotEmpty()
+        // The podcast shelf joins the final feed; the first paint (familiar
+        // picks) never waits for it.
+        val podcastShelf = podcastShelfDef.await()
 
         val result = FeedData(
             isYtConnected = isYtConnected,
@@ -802,6 +821,8 @@ class FeedRepository @Inject constructor(
             becauseYouListenTo = becauseSection,
             freshFinds = freshFinds,
             friends = friends.take(10),
+            podcastShows = podcastShelf?.shows.orEmpty(),
+            podcastShelfTitle = podcastShelf?.title,
             lastUpdatedMillis = System.currentTimeMillis(),
         )
         ensureActive()

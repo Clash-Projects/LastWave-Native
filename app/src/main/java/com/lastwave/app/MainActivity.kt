@@ -18,6 +18,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lastwave.app.util.AppLocaleManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
@@ -50,7 +51,20 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     @Inject
     lateinit var appLocaleManager: AppLocaleManager
 
-    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    @Inject
+    lateinit var trackDownloadManager: dagger.Lazy<com.lastwave.app.data.download.TrackDownloadManager>
+
+    private val audioPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+        if (isGranted) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                runCatching { trackDownloadManager.get().restoreDownloadsAfterReinstall() }
+            }
+        }
+    }
+
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        checkAndRequestAudioPermission()
+    }
 
     override fun attachBaseContext(newBase: Context) {
         // FragmentActivity gets no AppCompat locale backport, so pin the
@@ -124,11 +138,19 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 ),
             )
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            runCatching { notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
-                .onFailure { android.util.Log.w(STARTUP_TAG, "Notification permission request skipped", it) }
+        if (savedInstanceState == null) {
+            val needsNotificationPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+
+            if (needsNotificationPermission) {
+                runCatching { notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
+                    .onFailure {
+                        android.util.Log.w(STARTUP_TAG, "Notification permission request skipped", it)
+                        checkAndRequestAudioPermission()
+                    }
+            } else {
+                checkAndRequestAudioPermission()
+            }
         }
 
         setContent {
@@ -261,6 +283,12 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 
     private fun handleNavigationIntent(intent: Intent?) {
         if (intent == null) return
+        val uri = intent.data
+        if (uri?.scheme == "lastwave" && (uri.host == "jam" || uri.host == "sync")) {
+            val code = uri.getQueryParameter("code")
+            runCatching { appRouteNavigator.get().navigateTo(Screen.Jam.createRoute(code)) }
+            return
+        }
         val isDownloadsTarget = intent.action == com.lastwave.app.data.download.TrackDownloadManager.ACTION_VIEW_DOWNLOADS ||
             intent.getStringExtra(com.lastwave.app.data.download.TrackDownloadManager.EXTRA_NAVIGATE_TO) == Screen.Downloads.route
         if (isDownloadsTarget) {
@@ -276,7 +304,31 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         handleNavigationIntent(intent)
     }
 
+    private fun checkAndRequestAudioPermission() {
+        if (hasPromptedAudioThisSession) return
+        hasPromptedAudioThisSession = true
+
+        val downloadManager = trackDownloadManager.get()
+        if (downloadManager.isDownloadsScanned()) return
+
+        val requiredPermission = downloadManager.getRequiredAudioPermission()
+        if (checkSelfPermission(requiredPermission) == PackageManager.PERMISSION_GRANTED) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                runCatching { downloadManager.restoreDownloadsAfterReinstall() }
+            }
+            return
+        }
+
+        runCatching {
+            audioPermissionLauncher.launch(requiredPermission)
+        }.onFailure {
+            android.util.Log.w(STARTUP_TAG, "Audio permission request skipped", it)
+        }
+    }
+
     private companion object {
         const val STARTUP_TAG = "LastWaveStartup"
+        @Volatile
+        var hasPromptedAudioThisSession = false
     }
 }

@@ -58,11 +58,12 @@ enum class LyricsProvider(val id: String, val title: String, val subtitle: Strin
     YOUTUBE_CAPTIONS("youtube_captions", "YouTube Captions", "Timed captions from the playing video first"),
     YOUTUBE_MUSIC("youtube_music", "YouTube Music", "Plain lyrics from the video's Lyrics tab first"),
     MEGALOBIZ("megalobiz", "Megalobiz", "Community line-synced LRC first"),
+    SPOTIFY("spotify", "Spotify", "Spotify Color Lyrics time-synced lyrics first"),
     GENIUS("genius", "Genius", "Plain-text web catalogue, tried last");
 
     val isWordProvider: Boolean get() =
         this == LASTWAVE || this == LRC_RED || this == APPLE_MUSIC || this == BETTER_LYRICS || this == KUGOU ||
-            this == BINI_LYRICS || this == SIMP_MUSIC || this == MUSIXMATCH ||
+            this == BINI_LYRICS || this == SIMP_MUSIC || this == MUSIXMATCH || this == SPOTIFY ||
             this == BETTER_LYRICS_PORTATO || this == LYRICS_PLUS || this == UNISON ||
             this == YOUTUBE_CAPTIONS || this == YOUTUBE_MUSIC || this == MEGALOBIZ || this == GENIUS
 
@@ -182,6 +183,9 @@ data class MiscSettings(
     val canvasOverCellular: Boolean = true,
     /** When true, anonymous listening telemetry connects to the LastWave Live Global Map. */
     val liveTelemetryEnabled: Boolean = true,
+    /** When false, podcast shelves, screens and episode search stay hidden.
+     *  Existing progress is preserved so re-enabling resumes where you left off. */
+    val podcastsEnabled: Boolean = true,
 )
 
 /** Toggleable sections of the Home tab (see FeedScreen). Hero greeting and
@@ -301,6 +305,7 @@ class SettingsPreferences @Inject constructor(
         val CANVAS_FULL_BLEED = booleanPreferencesKey("lw_canvas_full_bleed")
         val CANVAS_OVER_CELLULAR = booleanPreferencesKey("lw_canvas_over_cellular")
         val LIVE_TELEMETRY_ENABLED = booleanPreferencesKey("lw_live_telemetry_enabled")
+        val PODCASTS_ENABLED = booleanPreferencesKey("lw_podcasts_enabled")
     }
 
     val settings: Flow<MiscSettings> = dataStore.data
@@ -378,6 +383,7 @@ class SettingsPreferences @Inject constructor(
                 canvasFullBleed = p.readSafely(Keys.CANVAS_FULL_BLEED) ?: true,
                 canvasOverCellular = p.readSafely(Keys.CANVAS_OVER_CELLULAR) ?: true,
                 liveTelemetryEnabled = p.readSafely(Keys.LIVE_TELEMETRY_ENABLED) ?: true,
+                podcastsEnabled = p.readSafely(Keys.PODCASTS_ENABLED) ?: true,
             )
         }
 
@@ -533,6 +539,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setUseCustomFont(enabled: Boolean) {
         dataStore.edit { it[Keys.USE_CUSTOM_FONT] = enabled }
+    }
+
+    suspend fun setPodcastsEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.PODCASTS_ENABLED] = enabled }
     }
 
     suspend fun setPreferLosslessStreaming(enabled: Boolean) {

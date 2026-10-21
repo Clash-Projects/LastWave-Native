@@ -10,6 +10,7 @@ import java.util.Locale
  * Which provider a motion artwork clip came from.
  */
 enum class CanvasSource {
+    SPOTIFY,
     APPLE,
     TIDAL,
     COMMUNITY,
@@ -25,6 +26,7 @@ data class CanvasArtwork(
     val url: String,
     val fallbackUrl: String? = null,
     val tallUrl: String? = null,
+    val wideUrl: String? = null,
     val title: String? = null,
     val artist: String? = null,
     val album: String? = null,
@@ -37,6 +39,11 @@ data class CanvasArtwork(
      * are stripped. The album is checked when both sides provide it.
      */
     fun matches(wantTitle: String, wantArtist: String, wantAlbum: String?): Boolean {
+        if (source == CanvasSource.SPOTIFY) {
+            // Spotify Canvas is matched directly by track query and duration against Spotify's catalog
+            return true
+        }
+
         val titleOk = title == null || wantTitle.isBlank() ||
             title.normalizeForMatch() == wantTitle.normalizeForMatch()
 

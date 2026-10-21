@@ -42,6 +42,15 @@ data class ExternalImportResult(
     val tracks: List<GeneratedTrack>,
 )
 
+/** One Spotify playlist belonging to the connected Spotify user account. */
+data class SpotifyUserPlaylist(
+    val id: String,
+    val name: String,
+    val description: String? = null,
+    val artworkUrl: String? = null,
+    val trackCount: Int = 0,
+)
+
 /**
  * Link helpers shared by every provider importer.
  *
@@ -55,18 +64,20 @@ data class ExternalImportResult(
  */
 object ExternalPlaylistLink {
 
-    private val SPOTIFY_ID = Regex("""spotify\.com/(?:[a-z]{2}(?:-[a-z]{2})?/)?playlist/([A-Za-z0-9]+)""")
+    private val SPOTIFY_ID = Regex("""spotify\.com/(?:.+/)?playlist/([A-Za-z0-9]+)""")
     private val SPOTIFY_URI = Regex("""spotify:playlist:([A-Za-z0-9]+)""")
+    private val SPOTIFY_BARE_ID = Regex("""^[A-Za-z0-9]{22}$""")
     private val APPLE_ID = Regex("""music\.apple\.com/[a-z]{2}(?:-[a-z]{2})?/playlist/(?:[^/]+/)?(pl\.[A-Za-z0-9]+)""")
 
     /** Best-effort provider detection from a pasted string. */
     fun detect(raw: String): ExternalPlaylistSource? {
-        val value = raw.trim().lowercase()
+        val value = raw.trim()
         if (value.isEmpty()) return null
-        if (value.contains("spotify.com") || value.contains("spotify.link") || value.startsWith("spotify:")) {
+        val lower = value.lowercase()
+        if (lower.contains("spotify.com") || lower.contains("spotify.link") || lower.startsWith("spotify:") || SPOTIFY_BARE_ID.matches(value)) {
             return ExternalPlaylistSource.SPOTIFY
         }
-        if (value.contains("music.apple.com")) return ExternalPlaylistSource.APPLE_MUSIC
+        if (lower.contains("music.apple.com")) return ExternalPlaylistSource.APPLE_MUSIC
         return null
     }
 
@@ -77,8 +88,15 @@ object ExternalPlaylistLink {
             ExternalPlaylistSource.SPOTIFY ->
                 SPOTIFY_ID.find(value)?.groupValues?.getOrNull(1)
                     ?: SPOTIFY_URI.find(value)?.groupValues?.getOrNull(1)
+                    ?: if (SPOTIFY_BARE_ID.matches(value)) value else null
             ExternalPlaylistSource.APPLE_MUSIC ->
                 APPLE_ID.find(value)?.groupValues?.getOrNull(1)
         }
+    }
+
+    /** Returns true if the link points to the user's Spotify Liked Songs collection. */
+    fun isSpotifyLiked(raw: String): Boolean {
+        val clean = raw.trim().lowercase()
+        return clean.contains("collection/tracks") || clean == "spotify:liked" || clean.contains("spotify:collection:tracks")
     }
 }

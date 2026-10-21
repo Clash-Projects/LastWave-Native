@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.OpenInNew
@@ -307,6 +308,7 @@ fun TrackContextMenuSheet(
     val musicPlayer = LocalMusicPlayer.current
     val addToPlaylist = LocalAddToPlaylist.current
     var showDetailsSheet by remember { mutableStateOf(false) }
+    var showJamSheet by remember { mutableStateOf(false) }
     var showTimerDialog by remember { mutableStateOf(false) }
     var resolvedGenre by remember(target) { mutableStateOf<String?>(null) }
     var resolvingGenre by remember(target) { mutableStateOf(false) }
@@ -351,6 +353,16 @@ fun TrackContextMenuSheet(
             },
             onPlayTrack = {
                 onPlayInLastWave?.invoke() ?: musicPlayer.play(playable, sourceLabel = playbackSourceLabel)
+            },
+        )
+        return
+    }
+
+    if (showJamSheet) {
+        com.lastwave.app.ui.jam.LastWaveJamSheet(
+            onDismiss = {
+                showJamSheet = false
+                onDismiss()
             },
         )
         return
@@ -580,6 +592,15 @@ fun TrackContextMenuSheet(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             PlayerCastMenuRow(musicPlayer)
+                        }
+                    }
+                    add { pos ->
+                        MenuActionRow(
+                            icon = Icons.Filled.Group,
+                            label = "LastWave Jam (Listen Together)",
+                            position = pos,
+                        ) {
+                            showJamSheet = true
                         }
                     }
                     add { pos -> MenuActionRow(Icons.Filled.Language, stringResource(R.string.menu_open_lastfm), position = pos) { openUrl(context, buildLastFmUrl(target)); onDismiss() } }

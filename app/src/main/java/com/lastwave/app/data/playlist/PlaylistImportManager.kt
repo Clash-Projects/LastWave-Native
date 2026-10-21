@@ -154,4 +154,19 @@ class PlaylistImportManager @Inject constructor(
         )
         Pair(saved, result)
     }
+
+    /**
+     * Imports the user's Spotify Liked Songs collection into the local
+     * Liked Songs playlist, deduped by strong song identity.
+     */
+    suspend fun importSpotifyLikedIntoLikedSongs(): Pair<SavedPlaylist, ExternalImportResult> =
+        withContext(Dispatchers.IO) {
+            val result = spotifyPlaylistImporter.fetchAndMatchLikedSongs()
+            require(result.tracks.isNotEmpty()) {
+                "No liked songs found on Spotify or none could be matched."
+            }
+            likedSongsManager.mergeTracks(result.tracks)
+            val likedPlaylist = playlistRepository.ensureLikedSongs()
+            Pair(likedPlaylist, result)
+        }
 }

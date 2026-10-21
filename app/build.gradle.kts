@@ -248,6 +248,7 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.serialization.protobuf)
 
     implementation(libs.retrofit.core)
     implementation(libs.retrofit.kotlinx.serialization)

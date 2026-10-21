@@ -39,6 +39,7 @@
         android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
     <uses-feature
         android:name="android.hardware.usb.host"
@@ -47,6 +48,8 @@
     <application
         android:name=".LastWaveApplication"
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:appCategory="audio"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -104,6 +107,15 @@
                 <data android:scheme="lastwave" android:host="auth-callback" />
             </intent-filter>
 
+            <!-- LastWave Jam deep links (lastwave://jam?code=... and lastwave://sync?code=...) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="lastwave" android:host="jam" />
+                <data android:scheme="lastwave" android:host="sync" />
+            </intent-filter>
+
             <!-- YouTube & YouTube Music deep links / Open With -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -150,6 +162,10 @@
             <intent-filter>
                 <action android:name="android.media.browse.MediaBrowserService" />
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+            <!-- OriginOS (vivo / iQOO) music card: heart, loop mode and lists. -->
+            <intent-filter>
+                <action android:name="com.vivo.musicwidgetmix.support.service" />
             </intent-filter>
         </service>
 

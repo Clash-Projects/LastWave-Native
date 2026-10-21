@@ -78,3 +78,9 @@ credentials_backup*
 # Standalone Telemetry Repository (separated to Clash-Projects/LastWave-Telemetry)
 lastwave-live/
 
+# Standalone Jam Sync Repository (separated to Clash-Projects/LastWave-Jam)
+lastwave-jam/
+
+# Superpowers artifacts and documentation
+docs/superpowers/
+.superpowers/

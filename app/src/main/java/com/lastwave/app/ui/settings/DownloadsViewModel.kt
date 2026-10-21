@@ -365,6 +365,7 @@ class DownloadsViewModel @Inject constructor(
 
     init {
         launchDownloadAction("sync downloads from storage") {
+            downloadManager.restoreDownloadsAfterReinstall()
             downloadManager.syncDownloadsFromStorage()
         }
     }

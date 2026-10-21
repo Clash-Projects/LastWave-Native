@@ -2,9 +2,12 @@ package com.lastwave.app.data.playlist
 
 import android.content.Context
 import android.os.Build
+import com.lastwave.app.data.canvas.SpotifyCanvas
 import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.generate.distinctSongs
 import com.lastwave.app.data.generate.sameSongAs
+import com.lastwave.app.data.spotify.SpotifyAuthRepository
+import com.lastwave.app.data.spotify.SpotifyPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -24,6 +27,9 @@ class LikedSongsManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val playlistRepository: PlaylistRepository,
     private val applicationScope: CoroutineScope,
+    private val spotifyPreferences: SpotifyPreferences,
+    private val spotifyAuthRepository: SpotifyAuthRepository,
+    private val spotifyCanvas: SpotifyCanvas,
 ) {
     private val mutationMutex = Mutex()
     private val _likedTrackKeys = MutableStateFlow<Set<String>>(emptySet())
@@ -77,12 +83,14 @@ class LikedSongsManager @Inject constructor(
                 existing.tracks.filterNot { it.sameSongAs(track) },
             )
             refresh()
+            syncToSpotify(track, like = false)
             false
         } else {
             // Deletion is respected until the next actual Like action.
             val playlist = existing ?: playlistRepository.ensureLikedSongs()
             playlistRepository.replaceTracksForSync(playlist.id, (playlist.tracks + track).distinctSongs())
             refresh()
+            syncToSpotify(track, like = true)
             true
         }
     }
@@ -94,7 +102,33 @@ class LikedSongsManager @Inject constructor(
         val playlist = existing ?: playlistRepository.ensureLikedSongs()
         playlistRepository.replaceTracksForSync(playlist.id, (playlist.tracks + track).distinctSongs())
         refresh()
+        syncToSpotify(track, like = true)
         true
+    }
+
+    private fun syncToSpotify(track: GeneratedTrack, like: Boolean) {
+        applicationScope.launch(Dispatchers.IO) {
+            try {
+                if (!spotifyPreferences.isSyncLikedSongsEnabled()) return@launch
+                val personalToken = spotifyAuthRepository.getPersonalToken() ?: return@launch
+                val clientToken = spotifyAuthRepository.getClientToken() ?: return@launch
+                val spotifyTrack = spotifyCanvas.searchTrack(
+                    personalToken = personalToken,
+                    clientToken = clientToken,
+                    title = track.name,
+                    artist = track.artist,
+                    durationMs = null,
+                ) ?: return@launch
+                val id = spotifyTrack.id ?: return@launch
+                if (like) {
+                    spotifyAuthRepository.saveTrackToLiked(id)
+                } else {
+                    spotifyAuthRepository.removeTrackFromLiked(id)
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("LikedSongsManager", "Failed to sync like/unlike to Spotify: ${e.message}")
+            }
+        }
     }
 
     /**

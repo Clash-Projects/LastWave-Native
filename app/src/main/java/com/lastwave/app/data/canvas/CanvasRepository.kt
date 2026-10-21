@@ -16,9 +16,10 @@ import javax.inject.Singleton
  * art (Apple motion artwork, Tidal video cover, or Community Canvas manifest).
  *
  * Sources are queried in order:
- * 1. Apple Music (highest quality, richest animated album catalog)
- * 2. Tidal (1280x1280 square video covers)
- * 3. Community Canvas (ViMusic manifest for catalog gaps and indie tracks)
+ * 1. Spotify Canvas (official looping video loops, portrait 9:16)
+ * 2. Apple Music (highest quality, richest animated album catalog)
+ * 3. Tidal (1280x1280 square video covers)
+ * 4. Community Canvas (ViMusic manifest for catalog gaps and indie tracks)
  *
  * Waterfall lookups are serialized with a Mutex to avoid overwhelming the network
  * on rapid track skips. Results (both hits and misses) are cached in a 64-entry LRU cache.
@@ -27,6 +28,7 @@ import javax.inject.Singleton
 class CanvasRepository @Inject constructor(
     private val okHttpClient: OkHttpClient,
     private val networkMonitor: NetworkMonitor,
+    private val spotifyCanvas: SpotifyCanvas,
 ) {
 
     private class Entry(val artwork: CanvasArtwork?, val withAlbum: Boolean)
@@ -54,6 +56,7 @@ class CanvasRepository @Inject constructor(
             artist = artist,
             album = album,
             trackId = id,
+            durationMs = track.durationMs,
             cellularAllowed = cellularAllowed,
         )
     }
@@ -66,6 +69,7 @@ class CanvasRepository @Inject constructor(
         artist: String,
         album: String?,
         trackId: String? = null,
+        durationMs: Long? = null,
         cellularAllowed: Boolean = true,
     ): CanvasArtwork? {
         val cleanTitle = title.cleaned()
@@ -87,6 +91,7 @@ class CanvasRepository @Inject constructor(
 
         return resolve(key, album != null) {
             firstHit(
+                { spotifyCanvas.search(cleanTitle, cleanArtist, album, durationMs) },
                 { AppleMusicCanvas.search(okHttpClient, cleanTitle, cleanArtist, album) },
                 { TidalCanvas.search(okHttpClient, cleanTitle, cleanArtist, album) },
                 { CommunityCanvas.search(okHttpClient, cleanTitle, cleanArtist, album) },
@@ -132,6 +137,29 @@ class CanvasRepository @Inject constructor(
         }
     }
 
+    /**
+     * Resolves Apple Music motion artwork video for an artist profile.
+     */
+    suspend fun canvasForArtist(
+        artist: String,
+        cellularAllowed: Boolean = true,
+    ): CanvasArtwork? {
+        val credit = artist.cleaned()
+        if (credit.isBlank()) return null
+
+        val key = "artist|$credit"
+        val cachedAnswer = synchronized(cache) { cache[key] }
+        if (cachedAnswer != null) return cachedAnswer.artwork
+
+        if (!cellularAllowed && networkMonitor.isOnCellular()) {
+            return null
+        }
+
+        return resolve(key, withAlbum = false) {
+            AppleMusicCanvas.searchArtist(okHttpClient, credit)
+        }
+    }
+
     private suspend fun resolve(
         key: String,
         withAlbum: Boolean,
@@ -162,6 +190,7 @@ class CanvasRepository @Inject constructor(
             }
             return found
         }
+        Log.d(TAG, "No canvas from any provider")
         return null
     }
 

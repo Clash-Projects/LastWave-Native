@@ -102,10 +102,12 @@ class SettingsViewModel @Inject constructor(
     private val ytMusicPreferences: com.lastwave.app.data.ytmusic.YtMusicPreferences,
     private val ytMusicLibraryManager: com.lastwave.app.data.ytmusic.YtMusicLibraryManager,
     private val downloadedTrackDao: com.lastwave.app.data.local.db.DownloadedTrackDao,
+    private val podcastProgressStore: com.lastwave.app.data.podcast.PodcastProgressStore,
     private val appLocaleManager: com.lastwave.app.util.AppLocaleManager,
     val playlistImportManager: com.lastwave.app.data.playlist.PlaylistImportManager,
     val innerTube: com.lastwave.app.data.music.InnerTubeMusicApi,
     val appUpdateManager: com.lastwave.app.data.update.AppUpdateManager,
+    private val spotifyPreferences: com.lastwave.app.data.spotify.SpotifyPreferences,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
 ) : ViewModel() {
 
@@ -116,6 +118,36 @@ class SettingsViewModel @Inject constructor(
 
     fun checkForUpdates() = appUpdateManager.checkForUpdate(isSilent = false)
     fun openUpdate(context: android.content.Context) = appUpdateManager.openUpdate(context)
+
+    val spotifyConnected: StateFlow<Boolean> = spotifyPreferences.isConnected
+        .withSettingsFallback("Spotify connection", false)
+        .stateIn(viewModelScope, SettingsSharing, false)
+
+    val spotifyCanvasEnabled: StateFlow<Boolean> = spotifyPreferences.canvasEnabled
+        .withSettingsFallback("Spotify canvas preference", true)
+        .stateIn(viewModelScope, SettingsSharing, true)
+
+    val spotifySyncLikedSongsEnabled: StateFlow<Boolean> = spotifyPreferences.syncLikedSongsEnabled
+        .withSettingsFallback("Spotify sync liked songs preference", true)
+        .stateIn(viewModelScope, SettingsSharing, true)
+
+    fun setSpotifyCanvasEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            spotifyPreferences.setCanvasEnabled(enabled)
+        }
+    }
+
+    fun setSpotifySyncLikedSongsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            spotifyPreferences.setSyncLikedSongsEnabled(enabled)
+        }
+    }
+
+    fun disconnectSpotify() {
+        viewModelScope.launch {
+            spotifyPreferences.clearConnection()
+        }
+    }
 
     /** YouTube Music account connection + playlist-sync state (§ YouTube Music). */
     val ytConnection: StateFlow<com.lastwave.app.data.ytmusic.YtConnection> = ytAuthManager.connection
@@ -575,6 +607,9 @@ class SettingsViewModel @Inject constructor(
 
     fun setLoudnessPreamp(preampDb: Float) =
         launchSettingsAction("update loudness preamp") { loudnessPrefs.setPreampDb(preampDb) }
+    fun setPodcastsEnabled(enabled: Boolean) = launchSettingsAction("update podcasts setting") {
+        settingsPreferences.setPodcastsEnabled(enabled)
+    }
     fun setWordByWordLyrics(enabled: Boolean) = launchSettingsAction("update word-by-word lyrics") { settingsPreferences.setWordByWordLyrics(enabled) }
     fun setLyricsProvider(provider: com.lastwave.app.data.local.LyricsProvider) = launchSettingsAction("update lyrics provider") { settingsPreferences.setLyricsProvider(provider) }
     fun setLyricsOffsetMs(offsetMs: Long) = launchSettingsAction("update lyrics sync offset") {
@@ -684,6 +719,7 @@ class SettingsViewModel @Inject constructor(
             }
             downloadManager.clearAllDownloads()
             discoverRepository.clearRecommendationExclusions()
+            podcastProgressStore.clear()
             playlistRepository.clearAll()
             runCatching { ytAuthManager.signOut() }
             // Session last: clearing it navigates to login and can cancel this

@@ -28,6 +28,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -72,11 +73,26 @@ class FeedViewModel @Inject constructor(
         .map { it.hiddenHomeSections }
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    /** Podcast surfaces are hidden the moment the user turns them off. */
+    val podcastsEnabled: StateFlow<Boolean> = settingsPreferences.settings
+        .map { it.podcastsEnabled }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
     private var feedJob: Job? = null
     private var lastLoadedMillis: Long = 0L
 
     init {
         loadDiscovery()
+        viewModelScope.launch {
+            // The podcast shelf is part of the feed, so flipping the setting
+            // has to re-run the feed: the cached copy still holds the shelf.
+            settingsPreferences.settings
+                .map { it.podcastsEnabled }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { loadFeed() }
+        }
         viewModelScope.launch {
             ytAuth.awaitLoadedConnection()
             combine(ytAuth.connection, sessionPreferences.session) { connection, session ->

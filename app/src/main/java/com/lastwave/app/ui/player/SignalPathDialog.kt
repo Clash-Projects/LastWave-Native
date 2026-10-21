@@ -499,6 +499,7 @@ fun SignalPathDialog(
 @Composable
 private fun verdictText(report: SignalPathReport): String {
     if (report.bitPerfect) return stringResource(R.string.signal_verdict_ok)
+    if (report.directToHal && report.parametricEqActive) return stringResource(R.string.signal_verdict_direct_eq)
     if (report.directToHal) return stringResource(R.string.signal_verdict_direct_hal)
     val failing = report.checks.firstOrNull { !it.passed } ?: return ""
     return stringResource(failing.labelRes) +
@@ -522,6 +523,7 @@ private fun VerdictPill(report: SignalPathReport) {
     }
     val text = when {
         report.bitPerfect -> stringResource(R.string.signal_bit_perfect)
+        report.directToHal && report.parametricEqActive -> stringResource(R.string.signal_direct_eq)
         report.directToHal -> stringResource(R.string.signal_direct_hal)
         report.clockFallbackResampled && !report.internalDirectActive -> stringResource(R.string.signal_resampled_dac)
         else -> stringResource(R.string.signal_check_path)

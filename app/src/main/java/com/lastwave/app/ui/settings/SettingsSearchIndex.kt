@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FormatListBulleted
@@ -25,8 +26,10 @@ import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lyrics
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.SmartDisplay
@@ -295,6 +298,23 @@ object SettingsSearchIndex {
                     icon = Icons.Filled.VolumeUp,
                     iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Output & Loudness",
+                    type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "audio.autoeq",
+                    title = "AutoEQ",
+                    subtitle = "Headphone correction from the AutoEQ database, parametric EQ, per-device profiles",
+                    keywords = listOf(
+                        "autoeq", "auto eq", "headphone", "casque", "iem", "harman", "parametric",
+                        "peq", "correction", "oratory1990", "crinacle", "target",
+                    ),
+                    icon = Icons.Filled.GraphicEq,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
                     parentTab = SettingsTab.AUDIO,
                     section = "Output & Loudness",
                     type = EntryType.ACTION,
@@ -870,6 +890,55 @@ object SettingsSearchIndex {
                     type = EntryType.TOGGLE,
                 )
             )
+            add(
+                SettingsEntry(
+                    id = "spotify.account",
+                    title = "Connect Spotify Account",
+                    subtitle = "Sign in to enable official Spotify Canvas video loops & library sync",
+                    keywords = listOf(
+                        "spotify", "spotify account", "connect spotify", "sp_dc", "spotify login",
+                        "canvas login"
+                    ),
+                    icon = Icons.Filled.PlayCircle,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.primary },
+                    parentTab = SettingsTab.YOUTUBE,
+                    section = "Spotify",
+                    type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "spotify.canvas",
+                    title = "Spotify Canvas (Looping background videos)",
+                    subtitle = "Fetch and play Spotify's looping visual videos in background",
+                    keywords = listOf(
+                        "spotify canvas", "canvas", "video loop", "looping video", "moving background"
+                    ),
+                    icon = Icons.Filled.SmartDisplay,
+                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.YOUTUBE,
+                    section = "Spotify",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "spotify.sync_liked",
+                    title = "Sync Liked Songs with Spotify",
+                    subtitle = "Automatically like and unlike songs in your Spotify library when favorited in LastWave",
+                    keywords = listOf(
+                        "spotify sync", "liked songs", "sync favorites", "favorite songs", "spotify library"
+                    ),
+                    icon = Icons.Filled.Favorite,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    parentTab = SettingsTab.YOUTUBE,
+                    section = "Spotify",
+                    type = EntryType.TOGGLE,
+                )
+            )
 
             // ==========================================
             // TAB: LAST.FM
@@ -966,6 +1035,23 @@ object SettingsSearchIndex {
                     parentTab = SettingsTab.LIBRARY,
                     section = "Home & Organization",
                     type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "library.podcasts",
+                    title = "Podcasts",
+                    subtitle = "Show or hide podcast shelves, show pages and episode search",
+                    keywords = listOf(
+                        "podcast", "podcasts", "shows", "episodes", "hide podcasts",
+                        "youtube music podcasts", "episode search"
+                    ),
+                    icon = Icons.Filled.Mic,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    parentTab = SettingsTab.LIBRARY,
+                    section = "Content",
+                    type = EntryType.TOGGLE,
                 )
             )
             add(

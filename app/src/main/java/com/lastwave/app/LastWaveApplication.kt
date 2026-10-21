@@ -119,6 +119,7 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
         // asynchronously on startup so offline playback works immediately.
         applicationScope.launch(Dispatchers.IO) {
             delay(OPTIONAL_STARTUP_DELAY_MS)
+            runCatching { trackDownloadManager.get().restoreDownloadsAfterReinstall() }
             runCatching { trackDownloadManager.get().syncDownloadsFromStorage() }
                 .onFailure { com.lastwave.app.diagnostics.AppLog.e("LastWaveStartup", "Download sync startup failed", it) }
         }

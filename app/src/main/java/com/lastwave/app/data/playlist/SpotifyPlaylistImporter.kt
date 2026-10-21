@@ -3,6 +3,7 @@ package com.lastwave.app.data.playlist
 import android.util.Log
 import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.music.InnerTubeMusicApi
+import com.lastwave.app.data.spotify.SpotifyAuthRepository
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -21,26 +22,27 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
 private const val TAG = "SpotifyImport"
 
 /**
- * Reads the track list of a **public** Spotify playlist and matches it to
- * playable YouTube Music tracks.
+ * Reads the track list of a Spotify playlist and matches it to playable YouTube Music tracks.
  *
- * Spotify's Web API needs a client secret this app does not ship, so the
- * importer reads the public embed page instead:
- * `https://open.spotify.com/embed/playlist/<id>` serves an HTML document whose
- * `<script id="__NEXT_DATA__" type="application/json">` tree holds one object
- * per track (`uri`, `title`, `subtitle`) plus one object describing the
- * playlist itself (`spotify:playlist:…`).
+ * Supports both:
+ * 1. Direct Web API query when authenticated with Spotify account credentials (unlimited track count, private/account playlists).
+ * 2. Public embed page scraping fallback: `https://open.spotify.com/embed/playlist/<id>` reading `__NEXT_DATA__`.
  */
 @Singleton
 class SpotifyPlaylistImporter @Inject constructor(
     okHttpClient: OkHttpClient,
     private val innerTube: InnerTubeMusicApi,
+    private val spotifyAuthRepository: SpotifyAuthRepository,
 ) {
     private val client = okHttpClient.newBuilder()
         .callTimeout(20, TimeUnit.SECONDS)
@@ -51,9 +53,6 @@ class SpotifyPlaylistImporter @Inject constructor(
      * Pure parser: Spotify embed HTML in, parsed playlist out. Performs no
      * network and never throws — unreadable input yields an empty [rows] list so
      * the caller can show a friendly "could not read that playlist" message.
-     *
-     * @param html raw embed-page HTML.
-     * @param fallbackTitle title used when the page carries no playlist name.
      */
     internal fun parseEmbedPage(html: String, fallbackTitle: String = "Spotify Playlist"): ExternalPlaylistResult {
         val payload = NEXT_DATA.find(html)?.groupValues?.getOrNull(1)?.let(::unescapeHtml)
@@ -95,14 +94,32 @@ class SpotifyPlaylistImporter @Inject constructor(
     }
 
     /**
-     * Downloads the public embed page for [urlOrId] and returns its track list.
-     *
-     * @throws IllegalArgumentException when [urlOrId] is not a Spotify playlist link or URI.
-     * @throws IOException when the page cannot be fetched (non-200, network error).
+     * Downloads playlist metadata and tracks. Uses authenticated Spotify Web API when available,
+     * otherwise falls back to public embed page scraping.
      */
     suspend fun fetchPlaylist(urlOrId: String): ExternalPlaylistResult = withContext(Dispatchers.IO) {
-        val id = ExternalPlaylistLink.extractId(urlOrId, ExternalPlaylistSource.SPOTIFY)
+        var input = urlOrId.trim()
+        if (input.contains("spotify.link")) {
+            val resolveReq = Request.Builder().url(input).head().build()
+            runCatching {
+                client.newCall(resolveReq).execute().use { resp ->
+                    input = resp.request.url.toString()
+                }
+            }
+        }
+        val id = ExternalPlaylistLink.extractId(input, ExternalPlaylistSource.SPOTIFY)
             ?: throw IllegalArgumentException("That does not look like a Spotify playlist link.")
+
+        // First attempt via authenticated Spotify API if personal token is available
+        val token = spotifyAuthRepository.getPersonalToken()
+        if (!token.isNullOrBlank()) {
+            val apiResult = runCatching { fetchViaSpotifyApi(id, token) }.getOrNull()
+            if (apiResult != null && apiResult.rows.isNotEmpty()) {
+                return@withContext apiResult
+            }
+        }
+
+        // Fallback to public embed page scraping
         val request = Request.Builder()
             .url("$EMBED_BASE$id")
             .header("User-Agent", DESKTOP_USER_AGENT)
@@ -118,43 +135,215 @@ class SpotifyPlaylistImporter @Inject constructor(
         parseEmbedPage(html)
     }
 
+    private fun fetchViaSpotifyApi(id: String, token: String): ExternalPlaylistResult? {
+        val request = Request.Builder()
+            .url("https://api.spotify.com/v1/playlists/$id")
+            .header("Authorization", "Bearer $token")
+            .header("User-Agent", DESKTOP_USER_AGENT)
+            .header("Accept", "application/json")
+            .build()
+
+        val body = client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return null
+            response.body?.string().orEmpty()
+        }
+        if (body.isBlank()) return null
+        val root = json.parseToJsonElement(body).jsonObject
+        val title = root["name"]?.jsonPrimitive?.contentOrNull ?: "Spotify Playlist"
+        val author = root["owner"]?.jsonObject?.get("display_name")?.jsonPrimitive?.contentOrNull
+        val artwork = root["images"]?.jsonArray?.firstOrNull()?.jsonObject?.get("url")?.jsonPrimitive?.contentOrNull
+
+        val rows = mutableListOf<ExternalTrackRow>()
+        val tracksObj = root["tracks"]?.jsonObject
+        extractTracksFromJson(tracksObj, rows)
+
+        // Page through remaining tracks if available (up to 1,000 tracks)
+        var nextUrl = tracksObj?.get("next")?.jsonPrimitive?.contentOrNull
+        var pages = 0
+        while (!nextUrl.isNullOrBlank() && pages < 10) {
+            pages++
+            val pageRequest = Request.Builder()
+                .url(nextUrl)
+                .header("Authorization", "Bearer $token")
+                .header("User-Agent", DESKTOP_USER_AGENT)
+                .header("Accept", "application/json")
+                .build()
+            val pageBody = client.newCall(pageRequest).execute().use { response ->
+                if (!response.isSuccessful) null else response.body?.string()
+            } ?: break
+            val pageObj = json.parseToJsonElement(pageBody).jsonObject
+            extractTracksFromJson(pageObj, rows)
+            nextUrl = pageObj["next"]?.jsonPrimitive?.contentOrNull
+        }
+
+        return ExternalPlaylistResult(
+            source = ExternalPlaylistSource.SPOTIFY,
+            title = title,
+            author = author,
+            artworkUrl = artwork,
+            rows = rows,
+        )
+    }
+
+    private fun extractTracksFromJson(tracksContainer: JsonObject?, outList: MutableList<ExternalTrackRow>) {
+        if (tracksContainer == null) return
+        val items = tracksContainer["items"]?.jsonArray ?: return
+        for (item in items) {
+            val itemObj = item as? JsonObject ?: continue
+            val trackObj = itemObj["track"] as? JsonObject ?: continue
+            val name = trackObj["name"]?.jsonPrimitive?.contentOrNull?.clean() ?: continue
+            if (name.isBlank()) continue
+            val artists = trackObj["artists"]?.jsonArray?.mapNotNull {
+                (it as? JsonObject)?.get("name")?.jsonPrimitive?.contentOrNull?.clean()
+            }?.joinToString(", ").orEmpty()
+            val album = (trackObj["album"] as? JsonObject)?.get("name")?.jsonPrimitive?.contentOrNull?.clean()
+            outList += ExternalTrackRow(
+                title = name,
+                artist = artists,
+                album = album,
+            )
+        }
+    }
+
+    /**
+     * Fetches playlists from the connected Spotify account library.
+     */
+    suspend fun fetchUserPlaylists(): List<SpotifyUserPlaylist> = withContext(Dispatchers.IO) {
+        val token = spotifyAuthRepository.getPersonalToken() ?: return@withContext emptyList()
+        try {
+            val request = Request.Builder()
+                .url("https://api.spotify.com/v1/me/playlists?limit=50")
+                .header("Authorization", "Bearer $token")
+                .header("User-Agent", DESKTOP_USER_AGENT)
+                .header("Accept", "application/json")
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use emptyList()
+                val body = response.body?.string().orEmpty()
+                val root = json.parseToJsonElement(body).jsonObject
+                val items = root["items"]?.jsonArray.orEmpty()
+                items.mapNotNull { itemElement ->
+                    val obj = itemElement as? JsonObject ?: return@mapNotNull null
+                    val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    val name = obj["name"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    val desc = obj["description"]?.jsonPrimitive?.contentOrNull
+                    val img = obj["images"]?.jsonArray?.firstOrNull()?.jsonObject?.get("url")?.jsonPrimitive?.contentOrNull
+                    val count = obj["tracks"]?.jsonObject?.get("total")?.jsonPrimitive?.intOrNull ?: 0
+                    SpotifyUserPlaylist(
+                        id = id,
+                        name = name,
+                        description = desc,
+                        artworkUrl = img,
+                        trackCount = count,
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to fetch user Spotify playlists: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /**
+     * Fetches the user's Spotify Liked Songs collection.
+     */
+    suspend fun fetchLikedSongs(): ExternalPlaylistResult = withContext(Dispatchers.IO) {
+        val token = spotifyAuthRepository.getPersonalToken()
+            ?: throw IllegalStateException("Spotify account is not connected.")
+
+        val rows = mutableListOf<ExternalTrackRow>()
+        var nextUrl: String? = "https://api.spotify.com/v1/me/tracks?limit=50"
+        var pages = 0
+
+        while (!nextUrl.isNullOrBlank() && pages < 20) {
+            pages++
+            val request = Request.Builder()
+                .url(nextUrl)
+                .header("Authorization", "Bearer $token")
+                .header("User-Agent", DESKTOP_USER_AGENT)
+                .header("Accept", "application/json")
+                .build()
+
+            val body = client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) null else response.body?.string()
+            } ?: break
+
+            val root = json.parseToJsonElement(body).jsonObject
+            val items = root["items"]?.jsonArray.orEmpty()
+            for (item in items) {
+                val itemObj = item as? JsonObject ?: continue
+                val trackObj = itemObj["track"] as? JsonObject ?: continue
+                val name = trackObj["name"]?.jsonPrimitive?.contentOrNull?.clean() ?: continue
+                if (name.isBlank()) continue
+                val artists = trackObj["artists"]?.jsonArray?.mapNotNull {
+                    (it as? JsonObject)?.get("name")?.jsonPrimitive?.contentOrNull?.clean()
+                }?.joinToString(", ").orEmpty()
+                val album = (trackObj["album"] as? JsonObject)?.get("name")?.jsonPrimitive?.contentOrNull?.clean()
+                rows += ExternalTrackRow(
+                    title = name,
+                    artist = artists,
+                    album = album,
+                )
+            }
+            nextUrl = root["next"]?.jsonPrimitive?.contentOrNull
+        }
+
+        ExternalPlaylistResult(
+            source = ExternalPlaylistSource.SPOTIFY,
+            title = "Spotify Liked Songs",
+            author = "Spotify",
+            rows = rows,
+        )
+    }
+
+    /**
+     * Fetches and matches the user's Spotify Liked Songs to playable YouTube Music tracks.
+     */
+    suspend fun fetchAndMatchLikedSongs(): ExternalImportResult = withContext(Dispatchers.IO) {
+        val playlist = fetchLikedSongs()
+        matchRowsToTracks(playlist.rows, playlist.title)
+    }
+
     /**
      * Fetches the playlist and resolves every row to a playable YouTube Music
      * track, mirroring [CsvPlaylistImporter]'s bounded fan-out.
-     *
-     * Unmatched rows are dropped; [ExternalImportResult.totalRows] still counts
-     * them so the UI can report "N of M matched".
      */
     suspend fun fetchAndMatch(urlOrId: String): ExternalImportResult = withContext(Dispatchers.IO) {
         val playlist = fetchPlaylist(urlOrId)
-        val rows = playlist.rows
+        matchRowsToTracks(playlist.rows, playlist.title)
+    }
+
+    private suspend fun matchRowsToTracks(
+        rows: List<ExternalTrackRow>,
+        suggestedTitle: String,
+    ): ExternalImportResult = coroutineScope {
         val limiter = Semaphore(4)
-        val tracks = coroutineScope {
-            rows.map { row ->
-                async {
-                    limiter.withPermit {
-                        try {
-                            innerTube.findBestMatchOrNull(row.title, row.artist, prefetchStreams = false)?.let { match ->
-                                GeneratedTrack(
-                                    name = row.title,
-                                    artist = row.artist,
-                                    album = row.album ?: match.album,
-                                    artworkUrl = match.artworkUrl,
-                                    url = "https://music.youtube.com/watch?v=${match.videoId}",
-                                )
-                            }
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (_: Exception) {
-                            null
+        val tracks = rows.map { row ->
+            async {
+                limiter.withPermit {
+                    try {
+                        innerTube.findBestMatchOrNull(row.title, row.artist, prefetchStreams = false)?.let { match ->
+                            GeneratedTrack(
+                                name = row.title,
+                                artist = row.artist,
+                                album = row.album ?: match.album,
+                                artworkUrl = match.artworkUrl,
+                                url = "https://music.youtube.com/watch?v=${match.videoId}",
+                            )
                         }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        null
                     }
                 }
-            }.awaitAll().filterNotNull()
-        }
+            }
+        }.awaitAll().filterNotNull()
+
         ExternalImportResult(
             source = ExternalPlaylistSource.SPOTIFY,
-            suggestedTitle = playlist.title,
+            suggestedTitle = suggestedTitle,
             totalRows = rows.size,
             matchedCount = tracks.size,
             tracks = tracks,

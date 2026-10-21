@@ -48,6 +48,8 @@ add_library(
     DirectOutputBridge.cpp
     DirectOutputStream.cpp
     DspProcessor.cpp
+    ParametricEq.cpp
+    ParametricEqBridge.cpp
     NativeBridge.cpp
     SecretsBridge.cpp
 )

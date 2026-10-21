@@ -18,6 +18,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import com.lastwave.app.data.artwork.ArtworkNormalizer
+import com.lastwave.app.data.canvas.CanvasArtwork
+import com.lastwave.app.data.canvas.CanvasRepository
 import javax.inject.Inject
 
 import com.lastwave.app.data.local.MiscSettings
@@ -38,6 +40,7 @@ class ArtistViewModel @Inject constructor(
     private val musicPlayer: MusicPlayer,
     private val mixLauncher: MixLauncher,
     private val settingsPreferences: SettingsPreferences,
+    private val canvasRepository: CanvasRepository,
 ) : ViewModel() {
 
     val settings: StateFlow<MiscSettings> = settingsPreferences.settings
@@ -46,9 +49,13 @@ class ArtistViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<ArtistUiState>(ArtistUiState.Loading)
     val uiState: StateFlow<ArtistUiState> = _uiState.asStateFlow()
 
+    private val _artistCanvas = MutableStateFlow<CanvasArtwork?>(null)
+    val artistCanvas: StateFlow<CanvasArtwork?> = _artistCanvas.asStateFlow()
+
     private var currentArtistName: String = ""
     private var currentBrowseId: String? = null
     private var loadJob: Job? = null
+    private var canvasJob: Job? = null
 
     fun loadArtist(artistName: String, browseId: String? = null) {
         val cached = (_uiState.value as? ArtistUiState.Success)?.data
@@ -58,6 +65,14 @@ class ArtistViewModel @Inject constructor(
         }
         currentArtistName = artistName
         currentBrowseId = browseId
+
+        canvasJob?.cancel()
+        canvasJob = viewModelScope.launch {
+            _artistCanvas.value = null
+            val canvas = canvasRepository.canvasForArtist(artistName)
+            coroutineContext.ensureActive()
+            _artistCanvas.value = canvas
+        }
 
         loadJob?.cancel()
         loadJob = viewModelScope.launch {

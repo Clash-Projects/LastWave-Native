@@ -78,10 +78,12 @@ class SettingsClearAllDataTest {
     private val ytMusicPreferences = mockk<com.lastwave.app.data.ytmusic.YtMusicPreferences>(relaxed = true)
     private val ytMusicLibraryManager = mockk<com.lastwave.app.data.ytmusic.YtMusicLibraryManager>(relaxed = true)
     private val downloadedTrackDao = mockk<com.lastwave.app.data.local.db.DownloadedTrackDao>(relaxed = true)
+    private val podcastProgressStore = mockk<com.lastwave.app.data.podcast.PodcastProgressStore>(relaxed = true)
     private val appLocaleManager = mockk<com.lastwave.app.util.AppLocaleManager>(relaxed = true)
     private val playlistImportManager = mockk<com.lastwave.app.data.playlist.PlaylistImportManager>(relaxed = true)
     private val innerTube = mockk<com.lastwave.app.data.music.InnerTubeMusicApi>(relaxed = true)
     private val appUpdateManager = mockk<com.lastwave.app.data.update.AppUpdateManager>(relaxed = true)
+    private val spotifyPreferences = mockk<com.lastwave.app.data.spotify.SpotifyPreferences>(relaxed = true)
 
     private lateinit var viewModel: SettingsViewModel
     private val order = mutableListOf<String>()
@@ -116,6 +118,7 @@ class SettingsClearAllDataTest {
         every { musicPlayer.stopAndClear(clearSession = true) } answers { order += "player" }
         coEvery { downloadManager.clearAllDownloads() } coAnswers { order += "downloads" }
         coEvery { discoverRepository.clearRecommendationExclusions() } coAnswers { order += "exclusions" }
+        coEvery { podcastProgressStore.clear() } coAnswers { order += "podcast-progress" }
         coEvery { playlistRepository.clearAll() } coAnswers { order += "playlists" }
         coEvery { sessionPreferences.clearAll() } coAnswers { order += "session" }
         viewModel = SettingsViewModel(
@@ -142,10 +145,12 @@ class SettingsClearAllDataTest {
             ytMusicPreferences = ytMusicPreferences,
             ytMusicLibraryManager = ytMusicLibraryManager,
             downloadedTrackDao = downloadedTrackDao,
+            podcastProgressStore = podcastProgressStore,
             appLocaleManager = appLocaleManager,
             playlistImportManager = playlistImportManager,
             innerTube = innerTube,
             appUpdateManager = appUpdateManager,
+            spotifyPreferences = spotifyPreferences,
             context = RuntimeEnvironment.getApplication(),
         )
     }
@@ -181,6 +186,7 @@ class SettingsClearAllDataTest {
                 "player",
                 "downloads",
                 "exclusions",
+                "podcast-progress",
                 "playlists",
                 "session",
             ).inOrder()
@@ -224,6 +230,7 @@ class SettingsClearAllDataTest {
             "downloads-start",
             "downloads-end",
             "exclusions",
+            "podcast-progress",
             "playlists",
             "session",
         ).inOrder()
@@ -274,9 +281,12 @@ class SettingsClearAllDataTest {
             "player",
             "downloads",
             "exclusions",
+            "podcast-progress",
             "playlists",
             "session",
         ).inOrder()
+        assertThat(completed).isEqualTo(1)
+        coVerify(exactly = 1) { sessionPreferences.clearAll() }
         assertThat(viewModel.uiState.value.showClearAllConfirm).isFalse()
     }
 
