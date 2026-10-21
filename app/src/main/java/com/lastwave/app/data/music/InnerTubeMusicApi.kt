@@ -1868,6 +1868,65 @@ class InnerTubeMusicApi @Inject constructor(
     suspend fun searchAlbums(query: String, limit: Int = 30): List<YouTubeMusicEntity> =
         searchEntities(query, YouTubeMusicEntityKind.ALBUM, ALBUM_SEARCH_FILTER, limit)
 
+    /** Which artist shelf a localized heading refers to. */
+    private enum class ArtistShelf { ALBUMS, SINGLES, OTHER }
+
+    /**
+     * Classifies an artist shelf heading without assuming English.
+     *
+     * YouTube Music localizes these headings to the request's `hl` (which
+     * follows the app language), so `contains("album")` breaks for every
+     * translated locale. Each entry below is the heading stem YouTube uses in
+     * that language; accents are folded before matching so "Albümler" is
+     * tested as "albumler".
+     *
+     * Order matters: "Single'lar" must win over a generic album word, so the
+     * single/EP check runs first.
+     */
+    private fun classifyArtistShelf(heading: String): ArtistShelf {
+        if (heading.isBlank()) return ArtistShelf.OTHER
+        val h = heading.lowercase()
+            .replace('ı', 'i').replace('İ', 'i')
+            .replace('ü', 'u').replace('ö', 'o').replace('ç', 'c')
+            .replace('ş', 's').replace('ğ', 'g')
+            .replace('ä', 'a').replace('é', 'e').replace('è', 'e')
+            .replace('ñ', 'n').replace('å', 'a').replace('ø', 'o')
+
+        // Singles / EPs first — "single" also appears in some album headings.
+        // "EP" is matched as a whole word: a bare "ep" substring would also
+        // hit headings like "Reprise" or "Sleep", mis-filing albums.
+        val singleMarkers = listOf(
+            "single",               // en, it, es, pt, fr, nl, tr, de
+            "tekli",                // tr: "Tekliler"
+            "sinxelo", "sencillo",  // pt, es
+            "singiel",              // pl
+            "singel",               // sv/no/da
+            "a-side", "b-side",
+        )
+        if (singleMarkers.any { h.contains(it) } || EP_MARKER.containsMatchIn(h)) {
+            return ArtistShelf.SINGLES
+        }
+
+        val albumMarkers = listOf(
+            "album",        // en, de, fr, es, pt, it, nl, pl, tr, id, sv
+            "alben",        // de
+            "albumes",      // es
+            "albuns",       // pt
+            "albumy",       // pl
+            "albumi",       // fi / it plural
+            "albom",        // ru transliteration
+            "альбом",       // ru
+            "アルバム",      // ja
+            "앨범",          // ko
+            "专辑", "專輯",  // zh
+            "ألبوم",        // ar
+            "एल्बम", "एल्बम्स", // hi
+        )
+        if (albumMarkers.any { h.contains(it) }) return ArtistShelf.ALBUMS
+
+        return ArtistShelf.OTHER
+    }
+
     /** Loads and parses full artist details including top songs, albums, singles, and similar artists. */
     suspend fun fetchArtistPage(
         browseId: String,
@@ -1930,8 +1989,19 @@ class InnerTubeMusicApi @Inject constructor(
                 ?: shelf.obj("header")?.obj("musicCarouselShelfBasicHeaderRenderer")?.obj("title")?.array("runs")?.joinToString("") { it.asObject()?.string("text").orEmpty() }
                 ?: ""
 
+            val normalizedHeading = heading.lowercase()
+                .replace('ı', 'i').replace('ü', 'u').replace('ö', 'o')
+                .replace('ç', 'c').replace('ş', 's').replace('ğ', 'g')
+
             when {
-                heading.contains("song", ignoreCase = true) || heading.contains("track", ignoreCase = true) -> {
+                normalizedHeading.contains("song") || normalizedHeading.contains("track") ||
+                    normalizedHeading.contains("sarki") || normalizedHeading.contains("parca") ||
+                    normalizedHeading.contains("musique") || normalizedHeading.contains("cancion") ||
+                    normalizedHeading.contains("canzone") || normalizedHeading.contains("cancoes") ||
+                    normalizedHeading.contains("titel") || normalizedHeading.contains("lieder") ||
+                    normalizedHeading.contains("песн") || normalizedHeading.contains("曲") ||
+                    normalizedHeading.contains("노래") || normalizedHeading.contains("歌曲") ||
+                    normalizedHeading.contains("أغني") || normalizedHeading.contains("गाने") -> {
                     if (topSongs.isEmpty()) {
                         val parsed = parseSongRenderers(shelf)
                         val previewTracks = parsed.map { track ->
@@ -1988,14 +2058,38 @@ class InnerTubeMusicApi @Inject constructor(
                         }
                     }
                 }
-                heading.contains("album", ignoreCase = true) -> {
+                // YouTube Music renders shelf headings in the request's hl
+                // language, so English-only matching silently dropped whole
+                // shelves for localized users (e.g. Turkish "Albümler" never
+                // matched "album", leaving the Albums row empty while
+                // "Single'lar" still matched "single"). Classify by the
+                // localized heading table, then fall back to the per-item
+                // type so an unknown language can never lose a shelf.
+                classifyArtistShelf(heading) == ArtistShelf.ALBUMS -> {
                     albums.addAll(parseAlbumTwoRowItems(shelf, defaultType = "Album"))
                 }
-                heading.contains("single", ignoreCase = true) || heading.contains("ep", ignoreCase = true) -> {
+                classifyArtistShelf(heading) == ArtistShelf.SINGLES -> {
                     singles.addAll(parseAlbumTwoRowItems(shelf, defaultType = "Single"))
                 }
                 heading.contains("similar", ignoreCase = true) || heading.contains("fans", ignoreCase = true) || heading.contains("like", ignoreCase = true) -> {
                     similarArtists.addAll(parseArtistTwoRowItems(shelf))
+                }
+                else -> {
+                    // Unknown heading (a language the table above doesn't
+                    // cover, or a layout rename). Classify by the items
+                    // themselves so albums are never silently dropped.
+                    val items = parseAlbumTwoRowItems(shelf, defaultType = "")
+                    if (items.isEmpty()) {
+                        similarArtists.addAll(parseArtistTwoRowItems(shelf))
+                    } else {
+                        for (item in items) {
+                            when (item.type?.lowercase()) {
+                                "album" -> albums.add(item)
+                                "single", "ep" -> singles.add(item)
+                                else -> albums.add(item)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -2109,7 +2203,9 @@ class InnerTubeMusicApi @Inject constructor(
         for (shelf in shelves) {
             val heading = shelf.obj("header")?.obj("musicCarouselShelfBasicHeaderRenderer")?.obj("title")?.array("runs")
                 ?.joinToString("") { it.asObject()?.string("text").orEmpty() } ?: ""
-            if (heading.contains("album", ignoreCase = true) || heading.contains("more by", ignoreCase = true)) {
+            if (classifyArtistShelf(heading) == ArtistShelf.ALBUMS ||
+                heading.contains("more by", ignoreCase = true)
+            ) {
                 otherAlbums.addAll(parseAlbumTwoRowItems(shelf, defaultType = "Album"))
             }
         }
@@ -2141,7 +2237,28 @@ class InnerTubeMusicApi @Inject constructor(
             val browseId = nav?.string("browseId") ?: ""
             val subtitleRuns = item.obj("subtitle")?.array("runs")?.mapNotNull { it.asObject()?.string("text") }.orEmpty()
             val year = subtitleRuns.firstOrNull { it.trim().matches(Regex("^(19|20)\\d{2}$")) }
-            val type = subtitleRuns.firstOrNull { it.equals("Single", true) || it.equals("EP", true) || it.equals("Album", true) } ?: defaultType
+            // The type label is localized too ("Albüm", "Tekli", "Single'lar"),
+            // so match the same translated stems used for shelf headings
+            // instead of only the English words.
+            val type = subtitleRuns.firstOrNull { run ->
+                val r = run.lowercase()
+                    .replace('ı', 'i').replace('ü', 'u').replace('ö', 'o')
+                    .replace('ç', 'c').replace('ş', 's').replace('ğ', 'g')
+                r == "album" || r == "albüm" || r == "albumler" ||
+                    r == "single" || r == "ep" || r == "tekl" ||
+                    r == "sencillo" || r == "álbum" || r == "アルバム" ||
+                    r == "앨범" || r == "专辑" || r == "ألبوم"
+            }?.let { run ->
+                // Normalize back to the canonical English type so downstream
+                // grouping ("Album" / "Single") stays stable across locales.
+                val r = run.lowercase()
+                    .replace('ı', 'i').replace('ü', 'u').replace('ö', 'o')
+                    .replace('ç', 'c').replace('ş', 's').replace('ğ', 'g')
+                when {
+                    r == "single" || r == "ep" || r.startsWith("tekl") || r == "sencillo" -> "Single"
+                    else -> "Album"
+                }
+            } ?: defaultType
             val thumbs = item.obj("thumbnailRenderer")?.obj("musicThumbnailRenderer")?.obj("thumbnail")?.array("thumbnails")
                 ?: item.obj("thumbnail")?.array("thumbnails")
             val artworkUrl = thumbs?.lastOrNull()?.asObject()?.string("url")?.highResolutionArtwork()
@@ -4019,6 +4136,8 @@ class InnerTubeMusicApi @Inject constructor(
     }
 
     private companion object {
+        /** Whole-word "EP" — a bare substring would also match "Reprise". */
+        val EP_MARKER = Regex("(^|[^a-z])ep([^a-z]|$)")
         val LATIN_AMERICA_OR_SPAIN = setOf("ES", "MX", "AR", "CO", "CL", "PE", "VE", "EC", "GT", "CU", "BO", "DO", "HN", "PY", "SV", "NI", "CR", "PR", "PA", "UY")
         val ARABIC_COUNTRIES = setOf("SA", "EG", "AE", "IQ", "MA", "DZ", "SD", "YE", "SY", "TN", "JO", "LY", "LB", "OM", "KW", "QA", "BH")
         val ENGLISH_COUNTRIES = setOf("US", "GB", "CA", "AU", "NZ", "IE", "ZA")

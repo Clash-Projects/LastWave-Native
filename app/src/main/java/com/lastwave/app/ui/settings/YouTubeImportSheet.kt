@@ -60,9 +60,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.lastwave.app.R
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistResult
@@ -207,7 +209,7 @@ fun YouTubeImportSheet(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (urlInput.isNotBlank()) {
                             IconButton(onClick = { urlInput = ""; loadedPlaylist = null }) {
-                                Icon(Icons.Filled.Clear, contentDescription = "Clear")
+                                Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.ytimport_clear_cd))
                             }
                         } else {
                             IconButton(onClick = {
@@ -217,7 +219,7 @@ fun YouTubeImportSheet(
                                     fetchPlaylist()
                                 }
                             }) {
-                                Icon(Icons.Filled.ContentPaste, contentDescription = "Paste from clipboard")
+                                Icon(Icons.Filled.ContentPaste, contentDescription = stringResource(R.string.ytimport_paste_cd))
                             }
                         }
                     }
@@ -238,9 +240,9 @@ fun YouTubeImportSheet(
                     if (isLoading) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
                         Spacer(Modifier.width(8.dp))
-                        Text("Fetching Playlist...")
+                        Text(stringResource(R.string.ytimport_fetching))
                     } else {
-                        Text("Fetch Playlist", fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.ytimport_fetch), fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -354,11 +356,11 @@ fun YouTubeImportSheet(
                     if (isImporting) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
                         Spacer(Modifier.width(8.dp))
-                        Text("Importing Playlist...")
+                        Text(stringResource(R.string.ytimport_importing))
                     } else {
                         Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Import ${selectedVideoIds.size} Songs", fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.ytimport_import_n, selectedVideoIds.size), fontWeight = FontWeight.Bold)
                     }
                 }
             }

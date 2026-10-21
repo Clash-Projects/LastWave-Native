@@ -55,8 +55,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.lastwave.app.R
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lastwave.app.data.generate.GeneratedTrack
@@ -185,15 +187,15 @@ fun DiscoverScreen(onBack: () -> Unit = {}, viewModel: DiscoverViewModel = hiltV
                 } else when {
                     state.error != null && state.tracks.isEmpty() -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Something went wrong", style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.disc_error_title), style = MaterialTheme.typography.titleMedium)
                             Text(state.error.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            TextButton(onClick = viewModel::loadInitial) { Text("Retry") }
+                            TextButton(onClick = viewModel::loadInitial) { Text(stringResource(R.string.ly_retry)) }
                         }
                     }
                     state.tracks.isEmpty() -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("No recommendations yet", style = MaterialTheme.typography.titleMedium)
-                            Text("Listen to more music on Last.fm, then pull to refresh.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.disc_empty_title), style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.disc_empty_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     else -> LazyColumn(

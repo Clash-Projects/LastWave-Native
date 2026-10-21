@@ -1149,7 +1149,11 @@ private fun ArtistAlbumCard(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = item.type ?: "Album",
+                text = when (item.type) {
+                    "Single" -> stringResource(R.string.art_type_single)
+                    "EP" -> stringResource(R.string.art_type_ep)
+                    else -> stringResource(R.string.art_type_album)
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,

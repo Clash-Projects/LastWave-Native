@@ -262,7 +262,7 @@ fun YouTubeLoginScreen(
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
                         )
                         Button(onClick = onConnected, shape = CircleShape) {
-                            Text("Continue")
+                            Text(stringResource(R.string.ytlogin_continue))
                         }
                     }
                 }
@@ -340,9 +340,9 @@ fun YouTubeLoginScreen(
                                 color = MaterialTheme.colorScheme.onPrimary,
                             )
                             Spacer(Modifier.width(8.dp))
-                            Text("Verifying...")
+                            Text(stringResource(R.string.ytlogin_verifying))
                         } else {
-                            Text("I'm signed in")
+                            Text(stringResource(R.string.ytlogin_signed_in))
                         }
                     }
                 }

@@ -40,7 +40,7 @@ fun LyricsOffsetDialog(
     var draftMs by remember(currentMs) { mutableLongStateOf(currentMs) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Lyrics sync offset") },
+        title = { Text(stringResource(R.string.ly_offset_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(

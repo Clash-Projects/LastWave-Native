@@ -24,7 +24,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.lastwave.app.R
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.mediarouter.app.MediaRouteButton
 import com.google.android.gms.cast.framework.CastButtonFactory
@@ -38,7 +40,7 @@ internal fun PlayerCastMenuRow(player: MusicPlayer) {
     Row(
         Modifier.fillMaxWidth().clickable {
             if (available) routeButton?.performClick()
-            else Toast.makeText(context, "Chromecast requires Google Play services", Toast.LENGTH_SHORT).show()
+            else Toast.makeText(context, context.getString(R.string.cast_unavailable), Toast.LENGTH_SHORT).show()
         }.padding(horizontal = 12.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -61,6 +63,6 @@ internal fun PlayerCastMenuRow(player: MusicPlayer) {
                 tint = MaterialTheme.colorScheme.onPrimaryContainer)
         }
         Spacer(Modifier.width(16.dp))
-        Text("Chromecast", style = MaterialTheme.typography.bodyLarge)
+        Text(stringResource(R.string.cast_title), style = MaterialTheme.typography.bodyLarge)
     }
 }
