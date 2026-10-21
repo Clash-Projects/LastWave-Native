@@ -19,8 +19,11 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
+import com.lastwave.app.ui.jam.LastWaveJamSheet
+import com.lastwave.app.ui.jam.LastWaveJamViewModel
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -450,8 +453,10 @@ fun SettingsScreen(
     onOpenExternalImport: () -> Unit = {},
     onOpenSpotifyLogin: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
+    jamViewModel: LastWaveJamViewModel = hiltViewModel(),
 ) {
     val session by viewModel.session.collectAsStateWithLifecycle()
+    val jamUiState by jamViewModel.uiState.collectAsStateWithLifecycle()
     val avatarUrl by viewModel.avatarUrl.collectAsStateWithLifecycle()
     val theme by viewModel.theme.collectAsStateWithLifecycle()
     val misc by viewModel.misc.collectAsStateWithLifecycle()
@@ -513,6 +518,7 @@ fun SettingsScreen(
     var showYtDisconnectConfirm by remember { mutableStateOf(false) }
     var showCookieLoginDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
+    var showJamSheet by remember { mutableStateOf(false) }
     val currentLanguage = remember(misc.appLanguageTag) { AppLanguage.fromTag(misc.appLanguageTag) }
 
     // Sends the user to Android's own Notification Listener access screen
@@ -687,6 +693,27 @@ fun SettingsScreen(
             ) {
                 when (tab) {
                     null -> {
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                SectionLabel("Collaboration & Social")
+                                SettingsGroup(rowCount = 1) { _, position ->
+                                    SettingsActionCard(
+                                        icon = Icons.Filled.Group,
+                                        iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                        iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        title = stringResource(R.string.settings_jam_title),
+                                        subtitle = if (jamUiState.isConnected) {
+                                            "In Session: #${jamUiState.roomCode} \u2022 ${jamUiState.participants.size} listening together"
+                                        } else {
+                                            stringResource(R.string.settings_jam_sub)
+                                        },
+                                        onClick = { showJamSheet = true },
+                                        position = position,
+                                    )
+                                }
+                            }
+                        }
+
                         item {
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 SectionLabel("Services & Add-ons")
@@ -2325,6 +2352,13 @@ fun SettingsScreen(
 
     if (showAutoEq) {
         com.lastwave.app.ui.settings.autoeq.AutoEqDialog(onDismiss = { showAutoEq = false })
+    }
+
+    if (showJamSheet) {
+        LastWaveJamSheet(
+            viewModel = jamViewModel,
+            onDismiss = { showJamSheet = false },
+        )
     }
 
     // -- Experimental 15-band equalizer --

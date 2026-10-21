@@ -514,10 +514,7 @@ fun TrackContextMenuSheet(
 
                 val playable = playableTrack ?: PlayableTrack(title = target.name, artist = target.artist)
                 QuickActionsRow(
-                    onPlay = {
-                        onPlayInLastWave?.invoke() ?: musicPlayer.play(playable, sourceLabel = playbackSourceLabel)
-                        onDismiss()
-                    },
+                    onJam = { showJamSheet = true },
                     onPlayNext = { musicPlayer.playNext(playable); onDismiss() },
                     onAddToPlaylist = { addToPlaylist(playable); onDismiss() },
                 )
@@ -627,6 +624,16 @@ fun TrackContextMenuSheet(
                                     onDismiss()
                                 }
                             }
+                        }
+                    }
+                    add { pos ->
+                        MenuActionRow(
+                            icon = Icons.Filled.PlayCircle,
+                            label = stringResource(R.string.menu_quick_play),
+                            position = pos,
+                        ) {
+                            onPlayInLastWave?.invoke() ?: musicPlayer.play(playable, sourceLabel = playbackSourceLabel)
+                            onDismiss()
                         }
                     }
                     add { pos -> MenuActionRow(Icons.Filled.QueueMusic, stringResource(R.string.menu_add_queue), position = pos) { musicPlayer.addToQueue(playable); onDismiss() } }
@@ -797,7 +804,7 @@ private fun StartMixCard(onClick: () -> Unit) {
  *  sheet's current grouped language instead of the old outlined container. */
 @Composable
 private fun QuickActionsRow(
-    onPlay: () -> Unit,
+    onJam: () -> Unit,
     onPlayNext: () -> Unit,
     onAddToPlaylist: () -> Unit,
 ) {
@@ -805,7 +812,7 @@ private fun QuickActionsRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        QuickActionCard(Icons.Filled.PlayCircle, stringResource(R.string.menu_quick_play), Modifier.weight(1f), onPlay)
+        QuickActionCard(Icons.Filled.Group, stringResource(R.string.menu_quick_jam), Modifier.weight(1f), onJam)
         QuickActionCard(Icons.Filled.QueuePlayNext, stringResource(R.string.menu_quick_play_next), Modifier.weight(1f), onPlayNext)
         QuickActionCard(Icons.Filled.PlaylistAdd, stringResource(R.string.menu_quick_add_playlist), Modifier.weight(1f), onAddToPlaylist)
     }

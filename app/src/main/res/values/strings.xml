@@ -510,6 +510,9 @@
     <string name="menu_quick_play">Play</string>
     <string name="menu_quick_play_next">Play next</string>
     <string name="menu_quick_add_playlist">Add to playlist</string>
+    <string name="menu_quick_jam">Jam</string>
+    <string name="settings_jam_title">LastWave Jam</string>
+    <string name="settings_jam_sub">Listen together in real-time \u2022 Host or join with code</string>
 
     <!-- Playlists screen -->
     <string name="pl_sort_newest">Newest first</string>
