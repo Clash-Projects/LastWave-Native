@@ -29,6 +29,9 @@ sealed class Screen(val route: String) {
     data object YouTubeImport : Screen("youtube_import")
     data object YouTubeLogin : Screen("youtube_login")
     data object SpotifyLogin : Screen("spotify_login")
+    data object Jam : Screen("jam?code={code}") {
+        fun createRoute(code: String? = null) = if (code.isNullOrBlank()) "jam" else "jam?code=${encodeArg(code)}"
+    }
     data object ExternalPlaylistImport : Screen("external_playlist_import")
     data object NewReleases : Screen("new_releases")
     data object Podcasts : Screen("podcasts")
