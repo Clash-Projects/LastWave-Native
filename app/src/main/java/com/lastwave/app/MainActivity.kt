@@ -283,6 +283,12 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 
     private fun handleNavigationIntent(intent: Intent?) {
         if (intent == null) return
+        val uri = intent.data
+        if (uri?.scheme == "lastwave" && (uri.host == "jam" || uri.host == "sync")) {
+            val code = uri.getQueryParameter("code")
+            runCatching { appRouteNavigator.get().navigateTo(Screen.Jam.createRoute(code)) }
+            return
+        }
         val isDownloadsTarget = intent.action == com.lastwave.app.data.download.TrackDownloadManager.ACTION_VIEW_DOWNLOADS ||
             intent.getStringExtra(com.lastwave.app.data.download.TrackDownloadManager.EXTRA_NAVIGATE_TO) == Screen.Downloads.route
         if (isDownloadsTarget) {

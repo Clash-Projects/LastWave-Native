@@ -422,6 +422,29 @@ fun LastWaveNavHost(
             }
         }
 
+        composable(
+            route = Screen.Jam.route,
+            arguments = listOf(
+                androidx.navigation.navArgument("code") {
+                    type = androidx.navigation.NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { backStackEntry ->
+            val code = backStackEntry.arguments?.getString("code")
+            val jamViewModel: com.lastwave.app.ui.jam.LastWaveJamViewModel = hiltViewModel()
+            androidx.compose.runtime.LaunchedEffect(code) {
+                if (!code.isNullOrBlank()) {
+                    jamViewModel.setPendingCode(code)
+                }
+            }
+            com.lastwave.app.ui.jam.LastWaveJamSheet(
+                viewModel = jamViewModel,
+                onDismiss = { navController.popBackStack() },
+            )
+        }
+
         composable(Screen.YouTubeImport.route) {
             PredictiveBackScreen(onBack = { navController.popBackStack() }) {
                 com.lastwave.app.ui.settings.YouTubePlaylistImportScreen(
