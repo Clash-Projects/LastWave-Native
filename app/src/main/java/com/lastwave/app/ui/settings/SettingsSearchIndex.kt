@@ -902,7 +902,24 @@ object SettingsSearchIndex {
                     icon = Icons.Filled.PlayCircle,
                     iconContainer = { MaterialTheme.colorScheme.primaryContainer },
                     iconTint = { MaterialTheme.colorScheme.primary },
-                    parentTab = SettingsTab.YOUTUBE,
+                    parentTab = SettingsTab.SPOTIFY,
+                    section = "Spotify",
+                    type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "spotify.import",
+                    title = "Your Spotify Playlists",
+                    subtitle = "Import your Spotify playlists and Liked Songs into this app's library",
+                    keywords = listOf(
+                        "spotify playlist", "import playlist", "my playlists", "liked songs",
+                        "spotify library", "import from spotify"
+                    ),
+                    icon = Icons.Filled.QueueMusic,
+                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.SPOTIFY,
                     section = "Spotify",
                     type = EntryType.ACTION,
                 )
@@ -918,7 +935,7 @@ object SettingsSearchIndex {
                     icon = Icons.Filled.SmartDisplay,
                     iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
-                    parentTab = SettingsTab.YOUTUBE,
+                    parentTab = SettingsTab.SPOTIFY,
                     section = "Spotify",
                     type = EntryType.TOGGLE,
                 )
@@ -934,7 +951,7 @@ object SettingsSearchIndex {
                     icon = Icons.Filled.AutoAwesome,
                     iconContainer = { MaterialTheme.colorScheme.primaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
-                    parentTab = SettingsTab.YOUTUBE,
+                    parentTab = SettingsTab.SPOTIFY,
                     section = "Spotify",
                     type = EntryType.TOGGLE,
                 )
@@ -950,7 +967,7 @@ object SettingsSearchIndex {
                     icon = Icons.Filled.Favorite,
                     iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
-                    parentTab = SettingsTab.YOUTUBE,
+                    parentTab = SettingsTab.SPOTIFY,
                     section = "Spotify",
                     type = EntryType.TOGGLE,
                 )

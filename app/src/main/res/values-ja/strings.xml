@@ -866,6 +866,8 @@
     <string name="set_cat_appear_sub">テーマ、カラー、アートワーク、歌詞</string>
     <string name="set_cat_yt">YouTube と同期</string>
     <string name="set_cat_yt_sub">アカウント接続、年中無休のライブラリ同期、チャンネル、履歴</string>
+    <string name="set_cat_spotify">Spotify</string>
+    <string name="set_cat_spotify_sub">アカウント連携、Canvas、プレイリストの取り込み、お気に入り曲の同期</string>
     <string name="set_cat_lfm">Last.fm</string>
     <string name="set_cat_lfm_sub">アカウント接続、スクロール同期、API 認証情報</string>
     <string name="set_cat_lib">ライブラリとコンテンツ</string>

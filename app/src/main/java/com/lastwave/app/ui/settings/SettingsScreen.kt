@@ -308,7 +308,8 @@ private fun getTargetSectionIndex(settingId: String?): Int {
             "Canvas" -> 3
             else -> 0
         }
-        SettingsTab.YOUTUBE -> if (entry.section == "Spotify") 1 else 0
+        SettingsTab.YOUTUBE -> 0
+        SettingsTab.SPOTIFY -> 0
         SettingsTab.LIBRARY -> when (entry.section) {
             "Content" -> 1
             "Imports", "Imports & Addons", "Modules & Addons" -> 2
@@ -474,6 +475,7 @@ fun SettingsScreen(
     val hiddenYtLibraryPlaylistIds by viewModel.hiddenYtLibraryPlaylistIds.collectAsStateWithLifecycle()
     val ytChannels by viewModel.ytChannels.collectAsStateWithLifecycle()
     val ytChannelsLoading by viewModel.ytChannelsLoading.collectAsStateWithLifecycle()
+    val spotifyConnected by viewModel.spotifyConnected.collectAsStateWithLifecycle()
     val eq by viewModel.equalizer.collectAsStateWithLifecycle()
     val usbExclusiveEnabled by viewModel.usbExclusiveEnabled.collectAsStateWithLifecycle()
     val internalDirectEnabled by viewModel.internalDirectEnabled.collectAsStateWithLifecycle()
@@ -717,7 +719,7 @@ fun SettingsScreen(
                         item {
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 SectionLabel("Services & Add-ons")
-                                SettingsGroup(rowCount = 3) { index, position ->
+                                SettingsGroup(rowCount = 4) { index, position ->
                                     when (index) {
                                         0 -> SettingsActionCard(
                                             icon = Icons.Filled.Extension,
@@ -738,17 +740,30 @@ fun SettingsScreen(
                                             onClick = { activeTab = SettingsTab.LAST_FM },
                                             position = position,
                                         )
-                                        else -> SettingsActionCard(
+                                        2 -> SettingsActionCard(
                                             icon = Icons.Filled.CloudSync,
                                             iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                             iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                                             title = stringResource(R.string.set_cat_yt),
                                             subtitle = if (ytConnection.isConnected) {
-                                                "Connected as ${ytConnection.accountName} \u2022 Spotify & 24/7 sync"
+                                                "Connected as ${ytConnection.accountName} • 24/7 library sync"
                                             } else {
-                                                "YouTube Music & Spotify accounts, Canvas, 24/7 sync"
+                                                "YouTube Music account, channels, history & 24/7 sync"
                                             },
                                             onClick = { activeTab = SettingsTab.YOUTUBE },
+                                            position = position,
+                                        )
+                                        else -> SettingsActionCard(
+                                            icon = Icons.Filled.PlayCircle,
+                                            iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            title = stringResource(R.string.set_cat_spotify),
+                                            subtitle = if (spotifyConnected) {
+                                                "Connected (sp_dc) • Canvas, playlist imports & Liked Songs sync"
+                                            } else {
+                                                "Account connection, Canvas, playlist imports & Liked Songs sync"
+                                            },
+                                            onClick = { activeTab = SettingsTab.SPOTIFY },
                                             position = position,
                                         )
                                     }
@@ -1671,64 +1686,75 @@ fun SettingsScreen(
                 }
             }
         }
+        }
 
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SectionLabel("Spotify")
-                    val spotifyConnected by viewModel.spotifyConnected.collectAsStateWithLifecycle()
-                    val spotifyCanvasEnabled by viewModel.spotifyCanvasEnabled.collectAsStateWithLifecycle()
-                    val spotifyPreferCanvas by viewModel.spotifyPreferCanvas.collectAsStateWithLifecycle()
-                    val spotifySyncLikedEnabled by viewModel.spotifySyncLikedSongsEnabled.collectAsStateWithLifecycle()
-                    SettingsGroup(rowCount = if (spotifyConnected) 4 else 3) { index, position ->
-                        when (index) {
-                            0 -> SettingsActionCard(
-                                icon = Icons.Filled.PlayCircle,
-                                iconContainer = if (spotifyConnected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                                iconTint = if (spotifyConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                title = if (spotifyConnected) "Spotify Account Connected" else "Connect Spotify Account",
-                                subtitle = if (spotifyConnected) "Connected (sp_dc). Tap to reconnect or manage session." else "Sign in to enable official Spotify Canvas video loops & library sync",
-                                onClick = onOpenSpotifyLogin,
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "spotify.account"),
-                            )
-                            1 -> SettingsToggleCard(
-                                icon = Icons.Filled.SmartDisplay,
-                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                title = "Spotify Canvas (Looping background videos)",
-                                subtitle = "Fetch and play Spotify's looping visual videos in background",
-                                checked = spotifyCanvasEnabled,
-                                onCheckedChange = viewModel::setSpotifyCanvasEnabled,
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "spotify.canvas"),
-                            )
-                            2 -> SettingsToggleCard(
-                                icon = Icons.Filled.AutoAwesome,
-                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = "Prefer Spotify Canvas",
-                                subtitle = "Ask Spotify first, before Apple Music, Tidal and community artwork",
-                                checked = spotifyPreferCanvas,
-                                onCheckedChange = viewModel::setSpotifyPreferCanvas,
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "spotify.prefer_canvas"),
-                            )
-                            3 -> SettingsToggleCard(
-                                icon = Icons.Filled.Favorite,
-                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                title = "Sync Liked Songs with Spotify",
-                                subtitle = "Automatically like and unlike songs in your Spotify library when favorited in LastWave",
-                                checked = spotifySyncLikedEnabled,
-                                onCheckedChange = viewModel::setSpotifySyncLikedSongsEnabled,
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "spotify.sync_liked"),
-                            )
+                    SettingsTab.SPOTIFY -> {
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                SectionLabel("Spotify")
+                                val spotifyCanvasEnabled by viewModel.spotifyCanvasEnabled.collectAsStateWithLifecycle()
+                                val spotifyPreferCanvas by viewModel.spotifyPreferCanvas.collectAsStateWithLifecycle()
+                                val spotifySyncLikedEnabled by viewModel.spotifySyncLikedSongsEnabled.collectAsStateWithLifecycle()
+                                SettingsGroup(rowCount = if (spotifyConnected) 5 else 4) { index, position ->
+                                    when (index) {
+                                        0 -> SettingsActionCard(
+                                            icon = Icons.Filled.PlayCircle,
+                                            iconContainer = if (spotifyConnected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                            iconTint = if (spotifyConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            title = if (spotifyConnected) "Spotify Account Connected" else "Connect Spotify Account",
+                                            subtitle = if (spotifyConnected) "Connected (sp_dc). Tap to reconnect or manage session." else "Sign in to enable official Spotify Canvas video loops & library sync",
+                                            onClick = onOpenSpotifyLogin,
+                                            position = position,
+                                            isHighlighted = (highlightedSettingId == "spotify.account"),
+                                        )
+                                        1 -> SettingsActionCard(
+                                            icon = Icons.Filled.QueueMusic,
+                                            iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            title = "Your Spotify Playlists",
+                                            subtitle = "Import your Spotify playlists and Liked Songs into this app's library",
+                                            onClick = onOpenExternalImport,
+                                            position = position,
+                                            isHighlighted = (highlightedSettingId == "spotify.import"),
+                                        )
+                                        2 -> SettingsToggleCard(
+                                            icon = Icons.Filled.SmartDisplay,
+                                            iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            title = "Spotify Canvas (Looping background videos)",
+                                            subtitle = "Fetch and play Spotify's looping visual videos in background",
+                                            checked = spotifyCanvasEnabled,
+                                            onCheckedChange = viewModel::setSpotifyCanvasEnabled,
+                                            position = position,
+                                            isHighlighted = (highlightedSettingId == "spotify.canvas"),
+                                        )
+                                        3 -> SettingsToggleCard(
+                                            icon = Icons.Filled.AutoAwesome,
+                                            iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            title = "Prefer Spotify Canvas",
+                                            subtitle = "Ask Spotify first, before Apple Music, Tidal and community artwork",
+                                            checked = spotifyPreferCanvas,
+                                            onCheckedChange = viewModel::setSpotifyPreferCanvas,
+                                            position = position,
+                                            isHighlighted = (highlightedSettingId == "spotify.prefer_canvas"),
+                                        )
+                                        4 -> SettingsToggleCard(
+                                            icon = Icons.Filled.Favorite,
+                                            iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                            title = "Sync Liked Songs with Spotify",
+                                            subtitle = "Automatically like and unlike songs in your Spotify library when favorited in LastWave",
+                                            checked = spotifySyncLikedEnabled,
+                                            onCheckedChange = viewModel::setSpotifySyncLikedSongsEnabled,
+                                            position = position,
+                                            isHighlighted = (highlightedSettingId == "spotify.sync_liked"),
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
-                }
-            }
-        }
 
                     SettingsTab.LAST_FM -> {
                         item {

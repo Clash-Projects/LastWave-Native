@@ -866,6 +866,8 @@
     <string name="set_cat_appear_sub">Темы, Цвета, Иллюстрации, Тексты песен</string>
     <string name="set_cat_yt">YouTube и синхронизация</string>
     <string name="set_cat_yt_sub">Подключение учетной записи, синхронизация библиотеки 24/7, каналы, история</string>
+    <string name="set_cat_spotify">Spotify</string>
+    <string name="set_cat_spotify_sub">Подключение аккаунта, Canvas, импорт плейлистов и синхронизация любимых треков</string>
     <string name="set_cat_lfm">Last.fm</string>
     <string name="set_cat_lfm_sub">Подключение учетной записи, синхронизация скробблинга и учетные данные API</string>
     <string name="set_cat_lib">Библиотека и контент</string>

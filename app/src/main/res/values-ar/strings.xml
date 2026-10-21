@@ -866,6 +866,8 @@
     <string name="set_cat_appear_sub">المواضيع والألوان والأعمال الفنية والأغاني</string>
     <string name="set_cat_yt">يوتيوب والمزامنة</string>
     <string name="set_cat_yt_sub">اتصال الحساب، مزامنة المكتبة على مدار الساعة طوال أيام الأسبوع، القنوات، التاريخ</string>
+    <string name="set_cat_spotify">Spotify</string>
+    <string name="set_cat_spotify_sub">ربط الحساب، Canvas، استيراد قوائم التشغيل ومزامنة الأغاني المفضلة</string>
     <string name="set_cat_lfm">Last.fm</string>
     <string name="set_cat_lfm_sub">اتصال الحساب ومزامنة Scrobbling وبيانات اعتماد API</string>
     <string name="set_cat_lib">المكتبة والمحتوى</string>

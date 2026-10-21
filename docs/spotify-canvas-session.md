@@ -195,6 +195,25 @@ there, and as a row of its own in the three-dot menu. The row is gone; the detai
 where the other technical facts about the track live, and the menu row was a second,
 separately-resolved copy of the same value.
 
+## Where the settings live
+
+Spotify has a section of its own, "Spotify", reached from Settings → Services & Add-ons,
+the same way Last.fm and YouTube have one. It used to be a group at the bottom of the
+YouTube section, which made it hard to find and made the YouTube section's name a lie.
+
+The section holds everything about Spotify in one place:
+
+- the account, and whether it is connected
+- your Spotify playlists, imported into this app's library
+- the canvas toggle
+- the "prefer Spotify Canvas" toggle
+- the Liked Songs sync toggle
+
+The playlist import was already there — it reads the signed-in account's playlists
+through the Web API, and falls back to the public embed page — but it was only reachable
+from Library & Content → Imports, on a screen shared with Apple Music. From here it is
+where a Spotify user would look for it.
+
 ## Not verified here
 
 No Gradle invocation, build, test run or on-device run was performed. The unit tests

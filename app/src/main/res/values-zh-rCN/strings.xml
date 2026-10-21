@@ -869,6 +869,8 @@
     <string name="set_cat_appear_sub">主题、颜色、艺术品、歌词</string>
     <string name="set_cat_yt">YouTube 和同步</string>
     <string name="set_cat_yt_sub">帐户连接、24/7 库同步、频道、历史记录</string>
+    <string name="set_cat_spotify">Spotify</string>
+    <string name="set_cat_spotify_sub">账户连接、Canvas、播放列表导入和喜欢歌曲同步</string>
     <string name="set_cat_lfm">Last.fm</string>
     <string name="set_cat_lfm_sub">帐户连接、Scrobbling 同步和 API 凭据</string>
     <string name="set_cat_lib">图书馆和内容</string>

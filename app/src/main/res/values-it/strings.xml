@@ -920,6 +920,8 @@
     <string name="set_cat_appear_sub">Temi, colori, copertine, testi</string>
     <string name="set_cat_yt">YouTube e sincronizzazione</string>
     <string name="set_cat_yt_sub">Collegamento account, sincronizzazione libreria 24/7, canali, cronologia</string>
+    <string name="set_cat_spotify">Spotify</string>
+    <string name="set_cat_spotify_sub">Connessione account, Canvas, importazione playlist e sincronizzazione dei brani preferiti</string>
     <string name="set_cat_lfm">Last.fm</string>
     <string name="set_cat_lfm_sub">Collegamento account, sincronizzazione scrobble e credenziali API</string>
     <string name="set_cat_lib">Libreria e contenuti</string>

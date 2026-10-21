@@ -866,6 +866,8 @@
     <string name="set_cat_appear_sub">थीम, रंग, कलाकृति, गीत</string>
     <string name="set_cat_yt">यूट्यूब और सिंक</string>
     <string name="set_cat_yt_sub">खाता कनेक्शन, 24/7 लाइब्रेरी सिंक, चैनल, इतिहास</string>
+    <string name="set_cat_spotify">Spotify</string>
+    <string name="set_cat_spotify_sub">खाता कनेक्शन, Canvas, प्लेलिस्ट इम्पोर्ट और पसंदीदा गाने सिंक</string>
     <string name="set_cat_lfm">Last.fm</string>
     <string name="set_cat_lfm_sub">खाता कनेक्शन, स्क्रोब्लिंग सिंक और एपीआई क्रेडेंशियल</string>
     <string name="set_cat_lib">पुस्तकालय एवं सामग्री</string>
