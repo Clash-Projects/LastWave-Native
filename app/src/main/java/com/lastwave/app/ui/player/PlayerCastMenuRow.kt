@@ -40,7 +40,7 @@ internal fun PlayerCastMenuRow(player: MusicPlayer) {
     Row(
         Modifier.fillMaxWidth().clickable {
             if (available) routeButton?.performClick()
-            else Toast.makeText(context, getString(R.string.cast_unavailable), Toast.LENGTH_SHORT).show()
+            else Toast.makeText(context, context.getString(R.string.cast_unavailable), Toast.LENGTH_SHORT).show()
         }.padding(horizontal = 12.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
