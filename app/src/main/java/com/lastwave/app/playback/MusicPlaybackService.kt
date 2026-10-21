@@ -24,6 +24,7 @@ import android.provider.MediaStore
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.MediaMetadataCompat
+import android.support.v4.media.RatingCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.view.View
@@ -39,6 +40,7 @@ import com.lastwave.app.MainActivity
 import com.lastwave.app.R
 import com.lastwave.app.data.local.ScrobblerPreferences
 import com.lastwave.app.data.local.ScrobblerSettings
+import com.lastwave.app.data.playlist.TrackLikeController
 import com.lastwave.app.data.repository.ScrobbleRepository
 import com.lastwave.app.data.repository.ThemeRepository
 import com.lastwave.app.playback.resolve.MetadataLog
@@ -98,6 +100,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     @Inject lateinit var themeRepository: ThemeRepository
     @Inject lateinit var artworkRepository: com.lastwave.app.data.artwork.ArtworkRepository
     @Inject lateinit var androidAutoLibrary: AndroidAutoMediaLibrary
+    @Inject lateinit var trackLikeController: TrackLikeController
     @Inject lateinit var liveTelemetryRepository: com.lastwave.app.data.repository.LiveTelemetryRepository
 
     // SupervisorJob stops sibling failure propagation; the handler below
@@ -197,13 +200,24 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                         )
                     }
                     override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
-                        mediaId?.let(::playCarMediaId)
+                        if (mediaId == OriginOsMusicCard.EMPTY_LIST_MEDIA_ID) return
+                        mediaId?.let { playCarMediaId(OriginOsMusicCard.queueMediaIdOf(it)) }
+                    }
+                    override fun onSetRating(rating: RatingCompat?) {
+                        if (rating?.ratingStyle == RatingCompat.RATING_HEART) setCurrentTrackLiked(rating.hasHeart())
+                    }
+                    override fun onCustomAction(action: String?, extras: Bundle?) {
+                        if (action == OriginOsMusicCard.ACTION_PLAY_MODE) {
+                            setOriginOsLoopMode(extras?.getInt(OriginOsMusicCard.KEY_LOOP_MODE) ?: 0)
+                        }
                     }
                     override fun onPlayFromSearch(query: String?, extras: Bundle?) {
                         playCarSearch(resolveCarSearchQuery(query, extras))
                     }
                 })
                 setSessionActivity(openAppPendingIntent())
+                // The heart of external controllers, such as the OriginOS music card.
+                setRatingType(RatingCompat.RATING_HEART)
                 // KWGT / Bluetooth / headset discovery happens while idle too:
                 // publish an initial state so media buttons (and widget play
                 // buttons) can wake the player before any track is queued.
@@ -283,11 +297,19 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         scope.launch {
             androidAutoLibrary.playlistChanges.collect {
                 notifyCarLibraryChanged(AndroidAutoMediaLibrary.PLAYLISTS_ID)
+                notifyChildrenChangedSafely(OriginOsMusicCard.LIST_FAVORITE)
             }
         }
         scope.launch {
             androidAutoLibrary.downloadChanges.distinctUntilChanged().collect {
                 notifyCarLibraryChanged(AndroidAutoMediaLibrary.DOWNLOADS_ID)
+                notifyChildrenChangedSafely(OriginOsMusicCard.LIST_LOCAL)
+            }
+        }
+        scope.launch {
+            // The heart of the metadata follows a like made anywhere in the app.
+            trackLikeController.likedTrackKeys.drop(1).collect {
+                publishSystemState(musicPlayer.state.value)
             }
         }
         startDetector()
@@ -333,6 +355,79 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             }.getOrDefault(emptyList())
             result.sendResult(children)
         }
+    }
+
+    /**
+     * The lists of the OriginOS music card: the queue, the playlists and the
+     * downloads, all from the Android Auto browse tree. Everything else is
+     * browsed as before.
+     */
+    override fun onLoadChildren(
+        parentId: String,
+        result: Result<List<MediaBrowserCompat.MediaItem>>,
+        options: Bundle,
+    ) {
+        if (!OriginOsMusicCard.isList(parentId)) {
+            super.onLoadChildren(parentId, result, options)
+            return
+        }
+        result.detach()
+        scope.launch {
+            // Every list is a single page.
+            val firstPage = options.getInt(OriginOsMusicCard.KEY_PAGE) == 0
+            val children = if (!firstPage) emptyList() else runCatching {
+                val state = musicPlayer.state.value
+                when (parentId) {
+                    OriginOsMusicCard.LIST_CURRENT -> state.queue.mapIndexed { index, track ->
+                        MediaBrowserCompat.MediaItem(
+                            MediaDescriptionCompat.Builder()
+                                // Matches the media id of the metadata, so the card marks what plays.
+                                .setMediaId(OriginOsMusicCard.mediaIdOf(index, track))
+                                .setTitle(track.title)
+                                .setSubtitle(track.artist)
+                                .build(),
+                            MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
+                        )
+                    }.let { OriginOsMusicCard.singlePage(it, "Nothing playing", "Play something in LastWave") }
+                    OriginOsMusicCard.LIST_FAVORITE -> OriginOsMusicCard.singlePage(
+                        withContext(Dispatchers.IO) {
+                            androidAutoLibrary.loadChildren(AndroidAutoMediaLibrary.PLAYLISTS_ID, state)
+                        },
+                        "No playlists",
+                        "Your playlists show here",
+                    )
+                    else -> OriginOsMusicCard.singlePage(
+                        withContext(Dispatchers.IO) {
+                            androidAutoLibrary.loadChildren(AndroidAutoMediaLibrary.DOWNLOADS_ID, state)
+                        },
+                        "No downloads",
+                        "Music downloaded in LastWave shows here",
+                    )
+                }
+            }.onFailure { error ->
+                android.util.Log.w("MusicPlaybackService", "Music card list failed for $parentId", error)
+            }.getOrDefault(emptyList())
+            result.sendResult(children)
+        }
+    }
+
+    private fun setCurrentTrackLiked(liked: Boolean) {
+        val track = musicPlayer.state.value.current ?: return
+        if (trackLikeController.isLiked(track) == liked) return
+        scope.launch {
+            runCatching { trackLikeController.toggle(track) }
+                .onFailure { error -> android.util.Log.w("MusicPlaybackService", "Music card like failed", error) }
+        }
+    }
+
+    private fun setOriginOsLoopMode(loopMode: Int) {
+        val (shuffleEnabled, repeatMode) = OriginOsMusicCard.playModesOf(loopMode) ?: return
+        musicPlayer.setShuffleEnabled(shuffleEnabled)
+        musicPlayer.setRepeatMode(repeatMode)
+    }
+
+    private fun notifyChildrenChangedSafely(parentId: String) {
+        runCatching { notifyChildrenChanged(parentId) }
     }
 
     override fun onSearch(
@@ -420,6 +515,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         if (signature == carBrowseQueueSignature) return
         carBrowseQueueSignature = signature
         notifyCarLibraryChanged(AndroidAutoMediaLibrary.QUEUE_ID)
+        notifyChildrenChangedSafely(OriginOsMusicCard.LIST_CURRENT)
     }
 
     private fun notifyCarLibraryChanged(parentId: String) {
@@ -869,6 +965,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         broadcastLegacyState(state)
         val session = mediaSession ?: return
         publishSessionQueue(session, state)
+        val isLiked = track != null && trackLikeController.isLiked(track)
         val signature = buildString {
             append(track?.title).append('|')
             append(track?.artist).append('|')
@@ -878,7 +975,8 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             append(state.shuffleEnabled).append('|')
             append(state.repeatMode).append('|')
             append(artworkUrl).append('|')
-            append(artworkBitmap != null)
+            append(artworkBitmap != null).append('|')
+            append(isLiked)
             if (!state.isPlaying) append("|pos=").append(state.positionMs)
         }
         if (signature == systemStateSignature) return
@@ -888,7 +986,12 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         runCatching {
             session.setMetadata(
                 MediaMetadataCompat.Builder()
-                    .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, state.currentIndex.toString())
+                    // Unique per track: the OriginOS music card ignores a new
+                    // track whose media id is the same as the one before.
+                    .putString(
+                        MediaMetadataCompat.METADATA_KEY_MEDIA_ID,
+                        track?.let { OriginOsMusicCard.mediaIdOf(state.currentIndex, it) } ?: state.currentIndex.toString(),
+                    )
                     .putString(MediaMetadataCompat.METADATA_KEY_TITLE, track?.title.orEmpty())
                     .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, track?.artist.orEmpty())
                     .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, track?.album.orEmpty())
@@ -896,6 +999,12 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                     .putString(MediaMetadataCompat.METADATA_KEY_ART_URI, artUri)
                     .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, artUri)
                     .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, state.durationMs)
+                    .putRating(MediaMetadataCompat.METADATA_KEY_RATING, RatingCompat.newHeartRating(isLiked))
+                    .putLong(OriginOsMusicCard.KEY_SUPPORT_EVENT, OriginOsMusicCard.SUPPORTED_EVENTS)
+                    .putLong(
+                        OriginOsMusicCard.KEY_LOOP_MODE,
+                        OriginOsMusicCard.loopModeOf(state.shuffleEnabled, state.repeatMode).toLong(),
+                    )
                     .apply {
                         val art = artworkBitmap
                         if (art != null) {
@@ -914,7 +1023,8 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                             PlaybackStateCompat.ACTION_SKIP_TO_NEXT or PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
                             PlaybackStateCompat.ACTION_SKIP_TO_QUEUE_ITEM or PlaybackStateCompat.ACTION_STOP or
                             PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID or PlaybackStateCompat.ACTION_PLAY_FROM_SEARCH or
-                            PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE or PlaybackStateCompat.ACTION_SET_REPEAT_MODE,
+                            PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE or PlaybackStateCompat.ACTION_SET_REPEAT_MODE or
+                            PlaybackStateCompat.ACTION_SET_RATING,
                     )
                     .setActiveQueueItemId(state.currentIndex.toLong())
                     .setBufferedPosition(state.bufferedPositionMs)
