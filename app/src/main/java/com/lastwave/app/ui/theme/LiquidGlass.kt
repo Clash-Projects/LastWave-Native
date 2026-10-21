@@ -72,7 +72,6 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -440,6 +439,29 @@ fun rememberGlassInteraction(): GlassInteraction {
 }
 
 /**
+ * Shared frosted-glass recipe. Single source of truth for every liquid-glass
+ * surface: nav bar, dock, FAB, mini-player, player controls, pills and icon
+ * buttons all funnel through [drawInteractiveGlass], so the frost level is
+ * defined here once and cannot drift between the two [liquidGlass] overloads.
+ */
+private object GlassRecipe {
+    const val BLUR_BASE_DP = 12f
+    const val BLUR_BRIGHT_DP = 20f
+    const val BLUR_DARK_DP = 6f
+
+    const val BRIGHTNESS = 0.05f
+    const val CONTRAST = 1f
+    const val SATURATION = 1.1f
+
+    const val LENS_DIVISOR = 6f
+
+    const val MIN_SCRIM = 0.18f
+    const val MAX_SCRIM = 0.56f
+
+    const val PRESS_BLUR_DP = 2f
+}
+
+/**
  * Interactive liquid glass drawing modifier.
  * Element MUST be a sibling of the backdrop source, never inside it.
  */
@@ -453,8 +475,8 @@ fun Modifier.drawInteractiveGlass(
     pressedScale: Float = 1.12f,
     highlight: Highlight = Highlight.Default,
     blurScale: Float = 1f,
-    minScrim: Float = 0.12f,
-    maxScrim: Float = 0.5f,
+    minScrim: Float = GlassRecipe.MIN_SCRIM,
+    maxScrim: Float = GlassRecipe.MAX_SCRIM,
 ): Modifier =
     this
         .drawBackdrop(
@@ -464,22 +486,34 @@ fun Modifier.drawInteractiveGlass(
             effects = {
                 val l = (luminanceAnimation * 2f - 1f).let { sign(it) * it * it }
                 val press = interaction?.pressProgress ?: 0f
-                vibrancy()
                 colorControls(
-                    brightness = 0.05f,
-                    contrast = 1f,
-                    saturation = 1.5f,
+                    brightness = GlassRecipe.BRIGHTNESS,
+                    contrast = GlassRecipe.CONTRAST,
+                    saturation = GlassRecipe.SATURATION,
                 )
                 blur(
                     (
                         if (l > 0f) {
-                            lerp(8f.dp.toPx(), 16f.dp.toPx(), l)
+                            lerp(
+                                GlassRecipe.BLUR_BASE_DP.dp.toPx(),
+                                GlassRecipe.BLUR_BRIGHT_DP.dp.toPx(),
+                                l,
+                            )
                         } else {
-                            lerp(8f.dp.toPx(), 2f.dp.toPx(), -l)
+                            lerp(
+                                GlassRecipe.BLUR_BASE_DP.dp.toPx(),
+                                GlassRecipe.BLUR_DARK_DP.dp.toPx(),
+                                -l,
+                            )
                         }
-                    ) * blurScale + 2f.dp.toPx() * press,
+                    ) * blurScale + GlassRecipe.PRESS_BLUR_DP.dp.toPx() * press,
                 )
-                lens(size.minDimension / 4f + 2f.dp.toPx() * press, size.minDimension / 2f, false)
+                lens(
+                    size.minDimension / GlassRecipe.LENS_DIVISOR +
+                        GlassRecipe.PRESS_BLUR_DP.dp.toPx() * press,
+                    size.minDimension / 2f,
+                    false,
+                )
             },
             onDrawBackdrop = { drawBackdrop ->
                 drawBackdrop()
@@ -572,8 +606,8 @@ fun Modifier.liquidGlass(
     shape: Shape = CircleShape,
     interactive: Boolean = true,
     blurScale: Float = 1f,
-    minScrim: Float = 0.12f,
-    maxScrim: Float = 0.5f,
+    minScrim: Float = GlassRecipe.MIN_SCRIM,
+    maxScrim: Float = GlassRecipe.MAX_SCRIM,
 ): Modifier {
     if (!LocalLiquidGlass.current || !isLiquidGlassBackdropSupported()) {
         return this
