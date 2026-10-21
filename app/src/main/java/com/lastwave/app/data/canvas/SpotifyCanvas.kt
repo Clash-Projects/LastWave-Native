@@ -244,7 +244,7 @@ class SpotifyCanvas @Inject constructor(
         return FALLBACK_SEARCH_HASH
     }
 
-    private fun fetchCanvasUrl(
+    private suspend fun fetchCanvasUrl(
         personalToken: String,
         clientToken: String,
         trackId: String,
@@ -260,7 +260,7 @@ class SpotifyCanvas @Inject constructor(
      * A retired hash is looked up again once before the query is given up on: the web player
      * is rebuilt every so often and every rebuild renames the operation.
      */
-    private fun fetchCanvasViaQuery(
+    private suspend fun fetchCanvasViaQuery(
         personalToken: String,
         clientToken: String,
         trackUri: String,

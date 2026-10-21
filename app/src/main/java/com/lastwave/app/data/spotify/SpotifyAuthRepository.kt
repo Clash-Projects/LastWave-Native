@@ -52,7 +52,7 @@ class SpotifyAuthRepository @Inject constructor(
                 val reqBody = json.encodeToString(
                     ClientTokenRequest(
                         client_data = ClientTokenRequest.ClientData(
-                            js_sdk_data = ClientTokenRequest.ClientData.JsSdkData(
+                            js_sdk_data = ClientTokenRequest.JsSdkData(
                                 device_id = deviceId,
                             ),
                         ),

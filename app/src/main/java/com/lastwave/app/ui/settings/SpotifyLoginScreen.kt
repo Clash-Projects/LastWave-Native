@@ -113,6 +113,8 @@ fun SpotifyLoginScreen(
                 Toast.makeText(context, "Couldn't save the Spotify session.", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
     /**
      * Reads the `sp_dc` cookie and stores it.
      *
@@ -148,7 +150,6 @@ fun SpotifyLoginScreen(
         }
         Log.d(LOG_TAG, "Post-login page reached but no sp_dc in the cookie jar")
         return false
-    }
     }
 
     Box(

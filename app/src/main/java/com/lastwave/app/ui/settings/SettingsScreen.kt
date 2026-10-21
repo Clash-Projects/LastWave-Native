@@ -406,9 +406,16 @@ enum class SettingsTab(
     YOUTUBE(
         titleRes = R.string.set_cat_yt,
         subtitleRes = R.string.set_cat_yt_sub,
-        title = "YouTube & Spotify",
-        subtitle = "Account connection, Spotify Canvas, Library sync, Channels",
+        title = "YouTube & Sync",
+        subtitle = "Account connection, 24/7 Library sync, Channels, History",
         icon = Icons.Filled.CloudSync,
+    ),
+    SPOTIFY(
+        titleRes = R.string.set_cat_spotify,
+        subtitleRes = R.string.set_cat_spotify_sub,
+        title = "Spotify",
+        subtitle = "Account connection, Canvas, Playlist imports & Liked Songs sync",
+        icon = Icons.Filled.PlayCircle,
     ),
     LAST_FM(
         titleRes = R.string.set_cat_lfm,
