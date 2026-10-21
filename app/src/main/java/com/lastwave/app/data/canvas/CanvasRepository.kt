@@ -2,6 +2,7 @@ package com.lastwave.app.data.canvas
 
 import android.util.Log
 import com.lastwave.app.data.network.NetworkMonitor
+import com.lastwave.app.data.spotify.SpotifyPreferences
 import com.lastwave.app.playback.PlayableTrack
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -13,13 +14,19 @@ import javax.inject.Singleton
 
 /**
  * Finds the looping video that belongs behind a track's or a release's cover
- * art (Apple motion artwork, Tidal video cover, or Community Canvas manifest).
+ * art (Spotify Canvas, Apple motion artwork, Tidal video cover, or Community
+ * Canvas manifest).
  *
  * Sources are queried in order:
- * 1. Spotify Canvas (official looping video loops, portrait 9:16)
- * 2. Apple Music (highest quality, richest animated album catalog)
- * 3. Tidal (1280x1280 square video covers)
- * 4. Community Canvas (ViMusic manifest for catalog gaps and indie tracks)
+ * 1. Apple Music (highest quality, richest animated album catalog)
+ * 2. Tidal (1280x1280 square video covers)
+ * 3. Community Canvas (ViMusic manifest for catalog gaps and indie tracks)
+ * 4. Spotify Canvas (official looping video loops, portrait 9:16)
+ *
+ * Spotify is asked last by default: it is the only source that needs an account
+ * and the only one that can be refused, and the other three between them cover
+ * most of what it would have answered. The preference for Spotify being asked
+ * first moves it to the front.
  *
  * Waterfall lookups are serialized with a Mutex to avoid overwhelming the network
  * on rapid track skips. Results (both hits and misses) are cached in a 64-entry LRU cache.
@@ -29,6 +36,7 @@ class CanvasRepository @Inject constructor(
     private val okHttpClient: OkHttpClient,
     private val networkMonitor: NetworkMonitor,
     private val spotifyCanvas: SpotifyCanvas,
+    private val spotifyPreferences: SpotifyPreferences,
 ) {
 
     private class Entry(val artwork: CanvasArtwork?, val withAlbum: Boolean)
@@ -39,6 +47,29 @@ class CanvasRepository @Inject constructor(
     }
 
     private val lock = Mutex()
+
+    /**
+     * The provider order the cached answers were gathered under.
+     *
+     * A different order answers a different question — "the best clip" and "Spotify's clip"
+     * are not the same answer — so the answers gathered under the old order are dropped
+     * rather than reused.
+     */
+    @Volatile
+    private var cachedProviderOrder: Boolean? = null
+
+    private fun syncProviderOrder(preferSpotify: Boolean) {
+        val previous = cachedProviderOrder
+        if (previous == null) {
+            cachedProviderOrder = preferSpotify
+            return
+        }
+        if (previous != preferSpotify) {
+            Log.d(TAG, "Provider order changed; dropping the answers cached under the old one")
+            synchronized(cache) { cache.clear() }
+            cachedProviderOrder = preferSpotify
+        }
+    }
 
     /**
      * Resolves canvas for a [track], respecting cellular data settings. Never throws.
@@ -79,6 +110,9 @@ class CanvasRepository @Inject constructor(
         val id = trackId ?: "$cleanArtist-$cleanTitle"
         val key = "song|$id"
 
+        val preferSpotify = spotifyPreferences.isPreferSpotifyCanvas()
+        syncProviderOrder(preferSpotify)
+
         val cachedAnswer = synchronized(cache) { cache[key] }
         if (cachedAnswer != null && cachedAnswer.reusable(album != null)) {
             return cachedAnswer.artwork
@@ -90,12 +124,18 @@ class CanvasRepository @Inject constructor(
         }
 
         return resolve(key, album != null) {
-            firstHit(
-                { spotifyCanvas.search(cleanTitle, cleanArtist, album, durationMs) },
-                { AppleMusicCanvas.search(okHttpClient, cleanTitle, cleanArtist, album) },
-                { TidalCanvas.search(okHttpClient, cleanTitle, cleanArtist, album) },
-                { CommunityCanvas.search(okHttpClient, cleanTitle, cleanArtist, album) },
-            ) { it.matches(cleanTitle, cleanArtist, album) }
+            val sources = buildList<suspend () -> CanvasArtwork?> {
+                if (preferSpotify) {
+                    add { spotifyCanvas.search(cleanTitle, cleanArtist, album, durationMs) }
+                }
+                add { AppleMusicCanvas.search(okHttpClient, cleanTitle, cleanArtist, album) }
+                add { TidalCanvas.search(okHttpClient, cleanTitle, cleanArtist, album) }
+                add { CommunityCanvas.search(okHttpClient, cleanTitle, cleanArtist, album) }
+                if (!preferSpotify) {
+                    add { spotifyCanvas.search(cleanTitle, cleanArtist, album, durationMs) }
+                }
+            }
+            firstHit(*sources.toTypedArray()) { it.matches(cleanTitle, cleanArtist, album) }
         }
     }
 
@@ -181,13 +221,22 @@ class CanvasRepository @Inject constructor(
             return null
         }
 
+        val preferSpotify = spotifyPreferences.isPreferSpotifyCanvas()
+        syncProviderOrder(preferSpotify)
+
         return resolve(key, withAlbum = false) {
-            firstHit(
-                { AppleMusicCanvas.searchArtist(okHttpClient, credit) },
-                { spotifyCanvas.search(credit, credit) },
-                { TidalCanvas.searchAlbum(okHttpClient, credit, credit) },
-                { CommunityCanvas.search(okHttpClient, credit, credit, null) },
-            ) { artwork ->
+            val sources = buildList<suspend () -> CanvasArtwork?> {
+                if (preferSpotify) {
+                    add { spotifyCanvas.search(credit, credit) }
+                }
+                add { AppleMusicCanvas.searchArtist(okHttpClient, credit) }
+                add { TidalCanvas.searchAlbum(okHttpClient, credit, credit) }
+                add { CommunityCanvas.search(okHttpClient, credit, credit, null) }
+                if (!preferSpotify) {
+                    add { spotifyCanvas.search(credit, credit) }
+                }
+            }
+            firstHit(*sources.toTypedArray()) { artwork ->
                 val want = credit.normalizeForMatch()
                 val got = artwork.artist?.normalizeForMatch().orEmpty()
                 got.isBlank() || got.contains(want) || want.contains(got)

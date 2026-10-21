@@ -127,6 +127,10 @@ class SettingsViewModel @Inject constructor(
         .withSettingsFallback("Spotify canvas preference", true)
         .stateIn(viewModelScope, SettingsSharing, true)
 
+    val spotifyPreferCanvas: StateFlow<Boolean> = spotifyPreferences.preferSpotifyCanvas
+        .withSettingsFallback("Spotify prefer canvas preference", false)
+        .stateIn(viewModelScope, SettingsSharing, false)
+
     val spotifySyncLikedSongsEnabled: StateFlow<Boolean> = spotifyPreferences.syncLikedSongsEnabled
         .withSettingsFallback("Spotify sync liked songs preference", true)
         .stateIn(viewModelScope, SettingsSharing, true)
@@ -134,6 +138,12 @@ class SettingsViewModel @Inject constructor(
     fun setSpotifyCanvasEnabled(enabled: Boolean) {
         viewModelScope.launch {
             spotifyPreferences.setCanvasEnabled(enabled)
+        }
+    }
+
+    fun setSpotifyPreferCanvas(enabled: Boolean) {
+        viewModelScope.launch {
+            spotifyPreferences.setPreferSpotifyCanvas(enabled)
         }
     }
 

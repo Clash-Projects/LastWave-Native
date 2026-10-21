@@ -925,6 +925,22 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "spotify.prefer_canvas",
+                    title = "Prefer Spotify Canvas",
+                    subtitle = "Ask Spotify first, before Apple Music, Tidal and community artwork",
+                    keywords = listOf(
+                        "spotify canvas", "prefer", "priority", "first", "apple music", "tidal"
+                    ),
+                    icon = Icons.Filled.AutoAwesome,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                    parentTab = SettingsTab.YOUTUBE,
+                    section = "Spotify",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "spotify.sync_liked",
                     title = "Sync Liked Songs with Spotify",
                     subtitle = "Automatically like and unlike songs in your Spotify library when favorited in LastWave",

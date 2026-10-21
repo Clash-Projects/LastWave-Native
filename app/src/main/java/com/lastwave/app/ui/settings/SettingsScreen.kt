@@ -1677,8 +1677,9 @@ fun SettingsScreen(
                     SectionLabel("Spotify")
                     val spotifyConnected by viewModel.spotifyConnected.collectAsStateWithLifecycle()
                     val spotifyCanvasEnabled by viewModel.spotifyCanvasEnabled.collectAsStateWithLifecycle()
+                    val spotifyPreferCanvas by viewModel.spotifyPreferCanvas.collectAsStateWithLifecycle()
                     val spotifySyncLikedEnabled by viewModel.spotifySyncLikedSongsEnabled.collectAsStateWithLifecycle()
-                    SettingsGroup(rowCount = if (spotifyConnected) 3 else 2) { index, position ->
+                    SettingsGroup(rowCount = if (spotifyConnected) 4 else 3) { index, position ->
                         when (index) {
                             0 -> SettingsActionCard(
                                 icon = Icons.Filled.PlayCircle,
@@ -1702,6 +1703,17 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "spotify.canvas"),
                             )
                             2 -> SettingsToggleCard(
+                                icon = Icons.Filled.AutoAwesome,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = "Prefer Spotify Canvas",
+                                subtitle = "Ask Spotify first, before Apple Music, Tidal and community artwork",
+                                checked = spotifyPreferCanvas,
+                                onCheckedChange = viewModel::setSpotifyPreferCanvas,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "spotify.prefer_canvas"),
+                            )
+                            3 -> SettingsToggleCard(
                                 icon = Icons.Filled.Favorite,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
