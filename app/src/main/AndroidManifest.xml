@@ -154,6 +154,10 @@
                 <action android:name="android.media.browse.MediaBrowserService" />
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
+            <!-- OriginOS (vivo / iQOO) music card: heart, loop mode and lists. -->
+            <intent-filter>
+                <action android:name="com.vivo.musicwidgetmix.support.service" />
+            </intent-filter>
         </service>
 
         <receiver

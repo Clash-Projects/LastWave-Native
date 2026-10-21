@@ -230,6 +230,7 @@ import com.lastwave.app.playback.PlaybackProgressState
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lastwave.app.data.artwork.ArtworkNormalizer
 import com.lastwave.app.playback.PlayableTrack
+import com.lastwave.app.playback.toGeneratedTrack
 import com.lastwave.app.playback.resolve.MetadataLog
 import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ArtworkViewModel
@@ -307,8 +308,7 @@ class PlayerViewModel @Inject constructor(
     val genreExplorer: com.lastwave.app.ui.genres.GenreExplorer,
     val mixLauncher: com.lastwave.app.ui.generate.MixLauncher,
     private val ytMusicLibraryManager: com.lastwave.app.data.ytmusic.YtMusicLibraryManager,
-    private val likedSongsManager: com.lastwave.app.data.playlist.LikedSongsManager,
-    private val scrobbleRepository: com.lastwave.app.data.repository.ScrobbleRepository,
+    private val trackLikeController: com.lastwave.app.data.playlist.TrackLikeController,
     private val downloadManager: com.lastwave.app.data.download.TrackDownloadManager,
     private val routeNavigator: com.lastwave.app.ui.navigation.AppRouteNavigator,
 ) : ViewModel() {
@@ -332,7 +332,7 @@ class PlayerViewModel @Inject constructor(
     private val _customPlaylists = MutableStateFlow<List<SavedPlaylist>>(emptyList())
     val customPlaylists = _customPlaylists.asStateFlow()
     private var customPlaylistsLoaded = false
-    val likedTrackKeys = likedSongsManager.likedTrackKeys
+    val likedTrackKeys = trackLikeController.likedTrackKeys
 
     private val _toastMessage = MutableSharedFlow<String>()
     val toastMessage = _toastMessage.asSharedFlow()
@@ -731,8 +731,8 @@ class PlayerViewModel @Inject constructor(
             // mirrors to Last.fm — any step can fail while a sync pass holds
             // the database. An uncaught exception in this launch takes the
             // process down, so report it like the other playlist mutations.
-            val loved = try {
-                likedSongsManager.toggle(track.toGeneratedTrack())
+            val change = try {
+                trackLikeController.toggle(track)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
@@ -740,15 +740,14 @@ class PlayerViewModel @Inject constructor(
                 _toastMessage.tryEmit("Couldn't update Liked Songs")
                 return@launch
             }
-            mirrorLastFmLove(track, loved)
-            mirrorYouTubeLove(track, loved)
+            reportYouTubeMirror(change)
         }
     }
 
     fun like(track: PlayableTrack) {
         viewModelScope.launch {
-            try {
-                likedSongsManager.like(track.toGeneratedTrack())
+            val change = try {
+                trackLikeController.like(track)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
@@ -756,39 +755,16 @@ class PlayerViewModel @Inject constructor(
                 _toastMessage.tryEmit("Couldn't update Liked Songs")
                 return@launch
             }
-            mirrorLastFmLove(track, loved = true)
-            mirrorYouTubeLove(track, loved = true)
+            reportYouTubeMirror(change)
         }
     }
 
-    /**
-     * YouTube Music mirror of the local like. The local state is the source of
-     * truth and already saved, so a failed mirror is reported and left alone —
-     * the next toggle can retry it.
-     */
-    private suspend fun mirrorYouTubeLove(track: PlayableTrack, loved: Boolean) {
-        val mirrored = try {
-            ytMusicLibraryManager.mirrorLikeToYouTube(track.toGeneratedTrack(), loved)
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (error: Exception) {
-            android.util.Log.w("PlayerViewModel", "YouTube like mirror failed", error)
-            false
-        }
-        if (!mirrored) {
+    private fun reportYouTubeMirror(change: com.lastwave.app.data.playlist.LikeChange) {
+        if (!change.youTubeMirrored) {
             _toastMessage.tryEmit(
-                if (loved) "Couldn't like this song on YouTube Music"
+                if (change.liked) "Couldn't like this song on YouTube Music"
                 else "Couldn't remove the like on YouTube Music",
             )
-        }
-    }
-
-    private suspend fun mirrorLastFmLove(track: PlayableTrack, loved: Boolean) {
-        when (val result = scrobbleRepository.setTrackLoved(track.artist, track.title, loved)) {
-            com.lastwave.app.data.repository.ScrobbleRepository.Result.Success,
-            com.lastwave.app.data.repository.ScrobbleRepository.Result.NoSessionKey -> Unit
-            is com.lastwave.app.data.repository.ScrobbleRepository.Result.Failed ->
-                android.util.Log.w("PlayerViewModel", "Last.fm love sync failed: ${result.message}")
         }
     }
 }
@@ -4592,17 +4568,6 @@ internal fun formatTime(ms: Long): String {
     val total = (ms.coerceAtLeast(0) / 1000)
     return "%d:%02d".format(total / 60, total % 60)
 }
-
-private fun PlayableTrack.toGeneratedTrack() = com.lastwave.app.data.generate.GeneratedTrack(
-    name = title,
-    artist = artist,
-    artworkUrl = artworkUrl,
-    album = album,
-    // Local songs: an imported file keeps its path so any playlist it
-    // is added to plays the copy on disk instead of a YouTube search.
-    url = com.lastwave.app.data.generate.LocalAudioFormats.importedPathOrNull(playbackUrl)
-        ?: videoId?.let { "https://music.youtube.com/watch?v=$it" }.orEmpty(),
-)
 
 /** True for files copied by the Local songs importer (app-private storage). */
 internal fun PlayableTrack.isImportedLocalFile(): Boolean =
