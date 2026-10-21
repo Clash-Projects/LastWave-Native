@@ -1643,6 +1643,7 @@ fun SettingsScreen(
                     }
                 }
             }
+        }
 
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
