@@ -24,7 +24,7 @@ object AppleMusicCanvas {
 
     private const val TAG = "AppleMusicCanvas"
     private const val AMP = "https://amp-api.music.apple.com/v1/catalog"
-    private const val WEB_PLAYER = "https://music.apple.com/us/browse"
+    private const val WEB_PLAYER = "https://music.apple.com/us/new"
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
@@ -209,6 +209,7 @@ object AppleMusicCanvas {
         artistName: String,
     ): CanvasArtwork? {
         val url = "$AMP/$storefront/artists/$artistId".toHttpUrl().newBuilder()
+            .addQueryParameter("include", "albums")
             .addQueryParameter("extend", "editorialVideo")
             .build()
             .toString()
@@ -218,20 +219,49 @@ object AppleMusicCanvas {
             json.parseToJsonElement(body).jsonObject["data"]?.jsonArray?.firstOrNull()?.jsonObject
         }.getOrNull() ?: return null
 
-        val attributes = artistObj["attributes"]?.jsonObject ?: return null
-        val video = attributes["editorialVideo"]?.jsonObject ?: return null
-        val assets = motionUrls(video) ?: return null
+        val attributes = artistObj["attributes"]?.jsonObject
+        val video = attributes?.get("editorialVideo")?.jsonObject
+        val directAssets = video?.let(::motionUrls)
+        if (directAssets != null) {
+            Log.d(TAG, "Motion artwork found on artist detail '$artistName' ($artistId)")
+            return CanvasArtwork(
+                url = directAssets.wide ?: directAssets.tall ?: directAssets.primary,
+                fallbackUrl = directAssets.alternate,
+                tallUrl = directAssets.tall,
+                wideUrl = directAssets.wide,
+                title = artistName,
+                artist = artistName,
+                source = CanvasSource.APPLE,
+            )
+        }
 
-        Log.d(TAG, "Motion artwork found on artist detail '$artistName' ($artistId)")
-        return CanvasArtwork(
-            url = assets.wide ?: assets.tall ?: assets.primary,
-            fallbackUrl = assets.alternate,
-            tallUrl = assets.tall,
-            wideUrl = assets.wide,
-            title = artistName,
-            artist = artistName,
-            source = CanvasSource.APPLE,
-        )
+        // Check the artist's primary/featured albums if no direct artist video exists
+        val albums = artistObj["relationships"]?.jsonObject
+            ?.get("albums")?.jsonObject
+            ?.get("data")?.jsonArray
+        if (albums != null) {
+            for (hit in albums) {
+                val albumObj = hit as? JsonObject ?: continue
+                val albumAttrs = albumObj["attributes"]?.jsonObject ?: continue
+                val albumName = albumAttrs["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                if (isCompilation(albumName)) continue
+                val albumVideo = albumAttrs["editorialVideo"]?.jsonObject ?: continue
+                val albumAssets = motionUrls(albumVideo) ?: continue
+
+                Log.d(TAG, "Motion artwork found on album '$albumName' for artist '$artistName'")
+                return CanvasArtwork(
+                    url = albumAssets.wide ?: albumAssets.tall ?: albumAssets.primary,
+                    fallbackUrl = albumAssets.alternate,
+                    tallUrl = albumAssets.tall,
+                    wideUrl = albumAssets.wide,
+                    title = artistName,
+                    artist = artistName,
+                    album = albumName,
+                    source = CanvasSource.APPLE,
+                )
+            }
+        }
+        return null
     }
 
     private const val MIN_SCORE = 12
@@ -367,11 +397,23 @@ object AppleMusicCanvas {
                 ?: asset["url"]?.jsonPrimitive?.contentOrNull
         }?.takeIf { it.isNotBlank() }
 
-        val square = link("motionDetailSquare") ?: link("motionSquareVideo1x1")
+        val square = link("motionDetailSquare")
+            ?: link("motionSquareVideo1x1")
+            ?: link("motionArtistSquare1x1")
+            ?: link("motionArtistSquare")
         val raw = link("motionDetailRaw")
-        val tall = link("motionDetailTall") ?: link("motionTallVideo3x4")
-        val wide = link("motionWideVideo") ?: link("motionWideVideo16x9") ?: link("motionDetailWide")
-        val primary = square ?: raw ?: tall ?: wide ?: return null
+        val tall = link("motionDetailTall")
+            ?: link("motionTallVideo3x4")
+            ?: link("motionArtistFullscreen16x9")
+            ?: link("motionArtistTall")
+            ?: link("motionArtistFullscreen")
+        val wide = link("motionWideVideo")
+            ?: link("motionWideVideo16x9")
+            ?: link("motionDetailWide")
+            ?: link("motionArtistWide16x9")
+            ?: link("motionArtistWide")
+        val fallback = video.keys.firstNotNullOfOrNull { link(it) }
+        val primary = square ?: raw ?: tall ?: wide ?: fallback ?: return null
         val alternate = listOfNotNull(square, raw, tall, wide).firstOrNull { it != primary }
         return MotionUrls(primary, alternate, tall, wide)
     }
@@ -388,8 +430,9 @@ object AppleMusicCanvas {
         if (now < retryTokenAfterMs) return null
 
         val html = canvasGet(client, WEB_PLAYER, mapOf("User-Agent" to CANVAS_UA))
+            ?: canvasGet(client, "https://music.apple.com/us/browse", mapOf("User-Agent" to CANVAS_UA))
         val scripts = html?.let {
-            Regex("""/assets/index(?:-legacy)?[~-][A-Za-z0-9_-]+\.js""")
+            Regex("""/assets/(?:index|app)(?:-legacy)?[~-][A-Za-z0-9_-]+\.js|/assets/index[~-][A-Za-z0-9_-]+\.js""")
                 .findAll(it).map(MatchResult::value).distinct().toList()
         }.orEmpty()
 

@@ -459,6 +459,8 @@
     <string name="details_resolution">Resolution</string>
     <string name="details_bitrate">Bitrate</string>
     <string name="details_provider">Provider</string>
+    <string name="details_canvas_source">Canvas</string>
+    <string name="details_canvas_none">None</string>
     <string name="details_duration">Duration</string>
     <string name="details_offline_storage">Offline Storage</string>
     <string name="details_status">Status</string>
@@ -501,6 +503,9 @@
     <string name="menu_resolving_genre">Resolving genre…</string>
     <string name="menu_genre_value">Genre: %1$s</string>
     <string name="menu_genre_unknown">Unknown</string>
+    <string name="menu_resolving_canvas">Checking canvas…</string>
+    <string name="menu_canvas_value">Canvas: %1$s</string>
+    <string name="menu_canvas_none">None</string>
     <string name="menu_start_mix">Start Mix with this Song</string>
     <string name="menu_quick_play">Play</string>
     <string name="menu_quick_play_next">Play next</string>

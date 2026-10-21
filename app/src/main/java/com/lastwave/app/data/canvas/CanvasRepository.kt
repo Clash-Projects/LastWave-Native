@@ -109,6 +109,32 @@ class CanvasRepository @Inject constructor(
     }
 
     /**
+     * Cached canvas for raw title/artist/id strings if already resolved in memory.
+     */
+    fun cached(title: String, artist: String, trackId: String? = null): CanvasArtwork? {
+        val cleanTitle = title.cleaned()
+        val cleanArtist = artist.cleaned()
+        val fallbackId = "$cleanArtist-$cleanTitle"
+        return synchronized(cache) {
+            val fromId = trackId?.takeIf { it.isNotBlank() }?.let { cache["song|$it"]?.artwork }
+            fromId ?: cache["song|$fallbackId"]?.artwork
+        }
+    }
+
+    /**
+     * Whether canvas lookup for this song has already been completed (hit or miss).
+     */
+    fun hasResolved(title: String, artist: String, trackId: String? = null): Boolean {
+        val cleanTitle = title.cleaned()
+        val cleanArtist = artist.cleaned()
+        val fallbackId = "$cleanArtist-$cleanTitle"
+        return synchronized(cache) {
+            val fromId = trackId?.takeIf { it.isNotBlank() }?.let { cache.containsKey("song|$it") } ?: false
+            fromId || cache.containsKey("song|$fallbackId")
+        }
+    }
+
+    /**
      * Resolves canvas for an entire album release.
      */
     suspend fun canvasForAlbum(
@@ -156,7 +182,16 @@ class CanvasRepository @Inject constructor(
         }
 
         return resolve(key, withAlbum = false) {
-            AppleMusicCanvas.searchArtist(okHttpClient, credit)
+            firstHit(
+                { AppleMusicCanvas.searchArtist(okHttpClient, credit) },
+                { spotifyCanvas.search(credit, credit) },
+                { TidalCanvas.searchAlbum(okHttpClient, credit, credit) },
+                { CommunityCanvas.search(okHttpClient, credit, credit, null) },
+            ) { artwork ->
+                val want = credit.normalizeForMatch()
+                val got = artwork.artist?.normalizeForMatch().orEmpty()
+                got.isBlank() || got.contains(want) || want.contains(got)
+            }
         }
     }
 
@@ -168,7 +203,11 @@ class CanvasRepository @Inject constructor(
         synchronized(cache) {
             cache[key]?.let { if (it.reusable(withAlbum)) return@withLock it.artwork }
         }
-        val found = withContext(Dispatchers.IO) { lookUp() }
+        val found = withContext(Dispatchers.IO) {
+            runCatching { lookUp() }
+                .onFailure { Log.w(TAG, "Canvas lookup failed for '$key': ${it.message}") }
+                .getOrNull()
+        }
         synchronized(cache) { cache[key] = Entry(found, withAlbum) }
         found
     }
