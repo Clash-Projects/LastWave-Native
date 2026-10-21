@@ -1643,6 +1643,7 @@ fun SettingsScreen(
                     }
                 }
             }
+        }
 
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1689,7 +1690,6 @@ fun SettingsScreen(
                 }
             }
         }
-    }
 
                     SettingsTab.LAST_FM -> {
                         item {

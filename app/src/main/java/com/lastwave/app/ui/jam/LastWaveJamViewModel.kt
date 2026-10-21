@@ -146,7 +146,7 @@ class LastWaveJamViewModel @Inject constructor(
                     musicPlayer.seekTo(event.positionMs)
                     val curr = musicPlayer.state.value.current
                     if (curr != null && !musicPlayer.state.value.isPlaying) {
-                        musicPlayer.play(curr, listOf(curr), 0)
+                        musicPlayer.resume()
                     }
                 }
                 is RemotePlaybackEvent.Pause -> {
@@ -168,7 +168,7 @@ class LastWaveJamViewModel @Inject constructor(
                             durationMs = event.track.durationMs ?: 0L,
                             videoId = event.track.id,
                         )
-                        musicPlayer.play(playable, listOf(playable), 0)
+                        musicPlayer.play(playable, sourceLabel = "LastWave Jam")
                         if (event.positionMs > 0) {
                             musicPlayer.seekTo(event.positionMs)
                         }
@@ -186,7 +186,7 @@ class LastWaveJamViewModel @Inject constructor(
                                 durationMs = remoteTrack.durationMs ?: 0L,
                                 videoId = remoteTrack.id,
                             )
-                            musicPlayer.play(playable, listOf(playable), 0)
+                            musicPlayer.play(playable, sourceLabel = "LastWave Jam")
                         }
                         musicPlayer.seekTo(event.playback.positionMs)
                         if (!event.playback.isPlaying) {
