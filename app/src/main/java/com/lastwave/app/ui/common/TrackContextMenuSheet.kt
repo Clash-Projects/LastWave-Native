@@ -597,7 +597,7 @@ fun TrackContextMenuSheet(
                     add { pos ->
                         MenuActionRow(
                             icon = Icons.Filled.Group,
-                            title = "LastWave Jam (Listen Together)",
+                            label = "LastWave Jam (Listen Together)",
                             position = pos,
                         ) {
                             showJamSheet = true
