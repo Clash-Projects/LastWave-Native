@@ -3780,6 +3780,119 @@ class InnerTubeMusicApi @Inject constructor(
         return title to subtitle
     }
 
+    /**
+     * Parses a single musicCarouselShelfRenderer into a HomeShelf.
+     * Extracts title and subtitle via [parseCarouselShelfHeader], then parses
+     * child items (musicTwoRowItemRenderer and musicResponsiveListItemRenderer) into
+     * [HomeShelfItem.Track] or [HomeShelfItem.Playlist], skipping items without a usable ID.
+     */
+    internal fun parseCarouselShelf(carouselRenderer: JsonObject): HomeShelf? {
+        val (title, subtitle) = parseCarouselShelfHeader(carouselRenderer) ?: return null
+        val contents = carouselRenderer.array("contents") ?: return null
+        val items = mutableListOf<HomeShelfItem>()
+
+        for (contentElement in contents) {
+            val contentObj = contentElement.asObject() ?: continue
+            val twoRow = contentObj.obj("musicTwoRowItemRenderer")
+            if (twoRow != null) {
+                // Check if this two-row card is a playable song
+                val song = parseTwoRowSong(twoRow)
+                if (song != null && song.videoId.isNotBlank()) {
+                    items.add(HomeShelfItem.Track(song))
+                    continue
+                }
+
+                // Otherwise check if it's a playlist or album card
+                val nav = twoRow.obj("navigationEndpoint")?.obj("browseEndpoint")
+                    ?: twoRow.obj("title")?.array("runs")?.firstOrNull()?.asObject()?.obj("navigationEndpoint")?.obj("browseEndpoint")
+                    ?: twoRow.obj("thumbnailOverlay")?.obj("musicItemThumbnailOverlayRenderer")?.obj("content")
+                        ?.obj("musicPlayButtonRenderer")?.obj("playNavigationEndpoint")?.obj("watchEndpoint")
+                    ?: twoRow.obj("onTap")?.obj("browseEndpoint")
+                val browseId = nav?.string("browseId") ?: nav?.string("playlistId")
+
+                // Skip cards with no id or artist cards (UC-prefixed browse IDs)
+                if (browseId.isNullOrBlank() || browseId.startsWith("UC")) continue
+
+                val playlistId = if (browseId.startsWith("VL")) browseId.removePrefix("VL") else browseId
+                val itemTitle = twoRow.obj("title")?.array("runs")?.joinToString("") {
+                    it.asObject()?.string("text").orEmpty()
+                }?.trim()?.takeIf { it.isNotBlank() }
+                    ?: twoRow.obj("title")?.string("simpleText")?.trim()?.takeIf { it.isNotBlank() }
+                    ?: continue
+
+                val subtitleRuns = twoRow.obj("subtitle")?.array("runs")?.mapNotNull { it.asObject() }.orEmpty()
+                val author = subtitleRuns.firstOrNull {
+                    it.obj("navigationEndpoint")?.obj("browseEndpoint")?.string("browseId")?.startsWith("UC") == true
+                }?.string("text") ?: subtitleRuns.firstOrNull()?.string("text")
+                    ?.takeUnless { it.equals("Playlist", ignoreCase = true) }
+                val trackCountText = subtitleRuns.mapNotNull { it.string("text") }
+                    .lastOrNull { "song" in it.lowercase() || "track" in it.lowercase() }
+                val artwork = extractThumbnailsUrl(twoRow)
+
+                items.add(
+                    HomeShelfItem.Playlist(
+                        YouTubePlaylistSummary(
+                            id = playlistId,
+                            title = itemTitle,
+                            author = author?.trim(),
+                            trackCountText = trackCountText,
+                            artworkUrl = artwork,
+                        )
+                    )
+                )
+                continue
+            }
+
+            val responsive = contentObj.obj("musicResponsiveListItemRenderer")
+            if (responsive != null) {
+                val song = parseSong(responsive)
+                if (song != null && song.videoId.isNotBlank()) {
+                    items.add(HomeShelfItem.Track(song))
+                    continue
+                }
+
+                // Check for playlist/album responsive row
+                val nav = responsive.array("flexColumns")?.firstOrNull()?.asObject()
+                    ?.obj("musicResponsiveListItemFlexColumnRenderer")?.obj("text")
+                    ?.array("runs")?.firstOrNull()?.asObject()
+                    ?.obj("navigationEndpoint")?.obj("browseEndpoint")
+                    ?: responsive.obj("navigationEndpoint")?.obj("browseEndpoint")
+                val browseId = nav?.string("browseId") ?: nav?.string("playlistId")
+                if (browseId.isNullOrBlank() || browseId.startsWith("UC")) continue
+
+                val playlistId = if (browseId.startsWith("VL")) browseId.removePrefix("VL") else browseId
+                val itemTitle = responsive.array("flexColumns")?.firstOrNull()?.asObject()
+                    ?.obj("musicResponsiveListItemFlexColumnRenderer")?.obj("text")
+                    ?.array("runs")?.joinToString("") { it.asObject()?.string("text").orEmpty() }?.trim()
+                    ?: continue
+                if (itemTitle.isBlank()) continue
+
+                val subtitleRuns = responsive.array("flexColumns")?.getOrNull(1)?.asObject()
+                    ?.obj("musicResponsiveListItemFlexColumnRenderer")?.obj("text")?.array("runs")
+                    ?.mapNotNull { it.asObject() }.orEmpty()
+                val author = subtitleRuns.firstOrNull {
+                    it.obj("navigationEndpoint")?.obj("browseEndpoint")?.string("browseId")?.startsWith("UC") == true
+                }?.string("text") ?: subtitleRuns.firstOrNull()?.string("text")
+                val artwork = extractThumbnailsUrl(responsive)
+
+                items.add(
+                    HomeShelfItem.Playlist(
+                        YouTubePlaylistSummary(
+                            id = playlistId,
+                            title = itemTitle,
+                            author = author?.trim(),
+                            trackCountText = null,
+                            artworkUrl = artwork,
+                        )
+                    )
+                )
+            }
+        }
+
+        if (items.isEmpty()) return null
+        return HomeShelf(title = title, subtitle = subtitle, items = items)
+    }
+
     private fun directWatchVideoId(renderer: JsonObject): String? =
         renderer.obj("playlistItemData")?.string("videoId")
             ?: renderer.obj("navigationEndpoint")?.obj("watchEndpoint")?.string("videoId")
