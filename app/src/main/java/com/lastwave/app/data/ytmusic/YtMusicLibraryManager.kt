@@ -326,15 +326,20 @@ class YtMusicLibraryManager @Inject constructor(
         localId: Long,
         onUpdate: ((SavedPlaylist) -> Unit)? = null,
     ): SavedPlaylist? = withContext(Dispatchers.IO) {
-        // 1. Check in-memory cache for immediate zero-latency result
-        details[localId]?.takeIf { it.tracks.isNotEmpty() && it.remoteTrackCount != null }?.let { mem ->
+        // 1. Check in-memory cache for immediate zero-latency result.
+        // A list that is still being paged in counts: it has tracks, and showing
+        // them now is the point. The rest arrives behind them.
+        details[localId]?.takeIf { it.tracks.isNotEmpty() }?.let { mem ->
             onUpdate?.invoke(mem)
+            applicationScope.launch {
+                refreshDetailFromNetwork(localId, onUpdate)
+            }
             return@withContext mem
         }
 
         // 2. Check persistent disk cache for instant startup load
         val disk = readFromDiskCache(localId)
-        if (disk != null && disk.tracks.isNotEmpty() && disk.remoteTrackCount != null) {
+        if (disk != null && disk.tracks.isNotEmpty()) {
             details[localId] = disk
             onUpdate?.invoke(disk)
             // Trigger background refresh so any playlist changes on YouTube are updated
@@ -370,7 +375,7 @@ class YtMusicLibraryManager @Inject constructor(
         val remoteId = remoteIdsByLocalId[localId] ?: return@withContext details[localId]
         val summary = _accountPlaylists.value.firstOrNull { stableRemoteId(it.id) == localId || it.id == remoteId }
 
-        val result = innerTube.fetchPlaylist(remoteId) { partialSongs ->
+        val result = innerTube.fetchPlaylist(remoteId, progressive = true) { partialSongs ->
             val partialArtwork = summary?.artworkUrl?.takeIf(String::isNotBlank)
                 ?: partialSongs.firstNotNullOfOrNull { it.artworkUrl?.takeIf(String::isNotBlank) }
             publishArtwork(remoteId, partialArtwork)

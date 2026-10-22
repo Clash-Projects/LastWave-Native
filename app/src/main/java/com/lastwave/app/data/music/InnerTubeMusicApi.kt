@@ -343,11 +343,13 @@ class InnerTubeMusicApi @Inject constructor(
     ): YouTubePlaylistResult? = withContext(Dispatchers.IO) {
         val rawId = extractPlaylistId(playlistIdOrUrl)
         if (rawId.isBlank()) return@withContext null
-        // The account's liked list is not reachable under a "VL" browse id, so asking
-        // for one only buys a request that cannot answer. Ask for the list by the id
-        // that does answer.
+        // The account's liked list is browsed as "VLM"; "LM" is the playlist id
+        // the rest of the app knows it by, and a browse under it answers with
+        // nothing. Asking for the id that does answer saves a request that
+        // cannot return anything, on the path that pages through thousands of
+        // songs.
         val browseId = when {
-            com.lastwave.app.data.playlist.PlaylistImportManager.isYtLikedId(rawId) -> "FEmusic_liked_videos"
+            com.lastwave.app.data.playlist.PlaylistImportManager.isYtLikedId(rawId) -> "VLM"
             rawId.startsWith("VL") || rawId.startsWith("RDCLAK") || rawId.startsWith("FE") || rawId.startsWith("MPRE") || rawId.startsWith("UC") -> rawId
             else -> "VL$rawId"
         }
@@ -507,20 +509,40 @@ class InnerTubeMusicApi @Inject constructor(
             title = title ?: "",
             author = author,
             artworkUrl = artworkUrl,
-            trackCount = songs.size,
+            // The header says how many tracks the playlist has, which is known from
+            // the first page. Without it a list that is still loading looks empty.
+            trackCount = trackCountFromHeader(header) ?: songs.size,
             tracks = songs,
             isComplete = !truncated,
         )
     }
 
+    /**
+     * How many tracks a playlist has, as the header says.
+     *
+     * The header carries it from the first page, so a list that is still being paged
+     * in already knows its own size - which is what lets a cached, partly-read list
+     * be shown at once instead of being read again.
+     */
+    private fun trackCountFromHeader(header: JsonObject?): Int? {
+        val text = header?.obj("secondSubtitle")?.array("runs")
+            ?.mapNotNull { it.asObject()?.string("text") }
+            ?.joinToString(" ")
+            ?: return null
+        return Regex("""([\d][\d.,]*)""").find(text)
+            ?.groupValues
+            ?.get(1)
+            ?.replace(",", "")
+            ?.replace(".", "")
+            ?.toIntOrNull()
+    }
+
     suspend fun fetchPlaylistArtwork(playlistIdOrUrl: String): String? = withContext(Dispatchers.IO) {
         val rawId = extractPlaylistId(playlistIdOrUrl)
         if (rawId.isBlank()) return@withContext null
-        // The account's liked list is not reachable under a "VL" browse id, so asking
-        // for one only buys a request that cannot answer. Ask for the list by the id
-        // that does answer.
+        // The account's liked list is browsed as "VLM"; "LM" is not a browse id.
         val browseId = when {
-            com.lastwave.app.data.playlist.PlaylistImportManager.isYtLikedId(rawId) -> "FEmusic_liked_videos"
+            com.lastwave.app.data.playlist.PlaylistImportManager.isYtLikedId(rawId) -> "VLM"
             rawId.startsWith("VL") || rawId.startsWith("RDCLAK") || rawId.startsWith("FE") || rawId.startsWith("MPRE") || rawId.startsWith("UC") -> rawId
             else -> "VL$rawId"
         }
