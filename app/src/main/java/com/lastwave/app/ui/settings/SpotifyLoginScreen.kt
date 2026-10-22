@@ -71,13 +71,16 @@ import com.lastwave.app.ui.common.adaptiveContentWidth
 fun SpotifyLoginScreen(
     onBack: () -> Unit,
     onConnected: () -> Unit,
+    openManualEntryInitially: Boolean = false,
     viewModel: SpotifyLoginViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val isConnected by viewModel.isConnected.collectAsStateWithLifecycle()
     var isLoading by remember { mutableStateOf(true) }
     var hasError by remember { mutableStateOf(false) }
-    var showManualDialog by remember { mutableStateOf(false) }
+    // The sign-in and the pasted cookie are two different ways in, and a caller that
+    // only wants the cookie should not have to walk past the browser to get to it.
+    var showManualDialog by remember { mutableStateOf(openManualEntryInitially) }
     var manualSpDcInput by remember { mutableStateOf("") }
     var captured by remember { mutableStateOf(false) }
     var capturedSpdc by remember { mutableStateOf<String?>(null) }
