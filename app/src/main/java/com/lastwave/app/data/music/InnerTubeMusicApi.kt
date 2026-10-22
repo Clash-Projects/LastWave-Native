@@ -1989,6 +1989,33 @@ class InnerTubeMusicApi @Inject constructor(
         parseRadioResponse(root)
     }
 
+    /**
+     * Follows an automix radio playlist ID (e.g. from automixPreviewVideoRenderer)
+     * to continue seamless radio playback when no continuation token exists.
+     */
+    suspend fun fetchRadioByPlaylistId(
+        playlistId: String,
+    ): YtRadioResult = withContext(Dispatchers.IO) {
+        if (playlistId.isBlank()) return@withContext YtRadioResult(emptyList())
+        val config = getWebConfig()
+        val isAuth = ytAuth.isLoggedIn()
+        val root = post(
+            url = "$MUSIC_API/next?key=${config.apiKey}&prettyPrint=false",
+            body = buildJsonObject {
+                put("context", context("WEB_REMIX", config.clientVersion, config.visitorData, authenticated = isAuth))
+                put("playlistId", playlistId)
+                put("params", "wAEB")
+                put("isAudioOnly", true)
+            },
+            clientName = "WEB_REMIX",
+            clientVersion = config.clientVersion,
+            userAgent = WEB_USER_AGENT,
+            authenticated = isAuth,
+            callTimeoutMs = RELATED_REQUEST_TIMEOUT_MS,
+        )
+        parseRadioResponse(root)
+    }
+
     suspend fun searchArtists(query: String, limit: Int = 30): List<YouTubeMusicEntity> =
         searchEntities(query, YouTubeMusicEntityKind.ARTIST, ARTIST_SEARCH_FILTER, limit)
 
