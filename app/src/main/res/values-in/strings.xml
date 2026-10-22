@@ -866,6 +866,8 @@
     <string name="set_cat_appear_sub">Tema, Warna, Karya Seni, Lirik</string>
     <string name="set_cat_yt">YouTube &amp; Sinkronisasi</string>
     <string name="set_cat_yt_sub">Koneksi akun, sinkronisasi Perpustakaan 24/7, Saluran, Riwayat</string>
+    <string name="set_cat_spotify">Spotify</string>
+    <string name="set_cat_spotify_sub">Koneksi akun, Canvas, impor playlist, dan sink lagu favorit</string>
     <string name="set_cat_lfm">Last.fm</string>
     <string name="set_cat_lfm_sub">Koneksi akun, sinkronisasi Scrobbling &amp; kredensial API</string>
     <string name="set_cat_lib">Perpustakaan &amp; Konten</string>

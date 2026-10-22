@@ -900,6 +900,8 @@
     <string name="set_cat_appear_sub">Temalar, Renkler, Kapak, Şarkı sözleri</string>
     <string name="set_cat_yt">YouTube ve Eşitleme</string>
     <string name="set_cat_yt_sub">Hesap bağlantısı, 7/24 Kitaplık eşitlemesi, Kanallar, Geçmiş</string>
+    <string name="set_cat_spotify">Spotify</string>
+    <string name="set_cat_spotify_sub">Hesap bağlantısı, Canvas, oynatma listesi içe aktarma ve sevilen şarkı eşitleme</string>
     <string name="set_cat_lfm">Last.fm</string>
     <string name="set_cat_lfm_sub">Hesap bağlantısı, Scrobble eşitlemesi ve API bilgileri</string>
     <string name="set_cat_lib">Kitaplık ve İçerik</string>

@@ -45,12 +45,23 @@ class SpotifyAuthRepository @Inject constructor(
             }
 
             try {
-                val reqBody = json.encodeToString(ClientTokenRequest())
-                    .toRequestBody("application/json".toMediaType())
+                // The profile has to describe one browser, and the user agent has to be the
+                // browser it describes: an endpoint that is told "macos" by the body and
+                // "Windows" by the header is being handed two different machines.
+                val deviceId = spotifyPreferences.getOrCreateDeviceId()
+                val reqBody = json.encodeToString(
+                    ClientTokenRequest(
+                        client_data = ClientTokenRequest.ClientData(
+                            js_sdk_data = ClientTokenRequest.JsSdkData(
+                                device_id = deviceId,
+                            ),
+                        ),
+                    ),
+                ).toRequestBody("application/json".toMediaType())
 
                 val request = Request.Builder()
                     .url(CLIENT_TOKEN_URL)
-                    .header("User-Agent", USER_AGENT)
+                    .header("User-Agent", CLIENT_TOKEN_UA)
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json")
                     .post(reqBody)
@@ -80,8 +91,13 @@ class SpotifyAuthRepository @Inject constructor(
     }
 
     /**
-     * Retrieves an active Spotify personal access token using sp_dc and TOTP handshake,
-     * refreshing if expired or missing.
+     * Retrieves an active Spotify personal access token, refreshing if expired or missing.
+     *
+     * Two reasons are asked for in turn. `transport` is the one the web player itself uses
+     * and normally answers with a full session token; `init` is the fallback for when it
+     * answers with a short placeholder instead. A token that says the session is anonymous
+     * means the stored cookie is no longer a signed-in session, so the connection is dropped
+     * instead of being cached for another hour of silent failures.
      */
     suspend fun getPersonalToken(): String? = personalTokenMutex.withLock {
         withContext(Dispatchers.IO) {
@@ -99,94 +115,186 @@ class SpotifyAuthRepository @Inject constructor(
             }
 
             try {
-                // 1. Fetch secret dictionary for TOTP
-                val secretsRequest = Request.Builder()
-                    .url(SECRETS_DICT_URL)
-                    .header("User-Agent", USER_AGENT)
-                    .build()
+                val totp = computeTotp(spdc) ?: return@withContext cached
 
-                val secretsMap: Map<String, List<Int>> = okHttpClient.newCall(secretsRequest).execute().use { res ->
-                    if (!res.isSuccessful) {
-                        Log.w(TAG, "Failed to fetch secretDict: HTTP ${res.code}")
-                        return@withContext cached
-                    }
-                    val body = res.body?.string().orEmpty()
-                    json.decodeFromString(body)
+                val transport = requestPersonalToken(spdc, totp.otp, REASON_TRANSPORT, totp.version)
+                val init = if (transport.isUsable()) {
+                    null
+                } else {
+                    requestPersonalToken(spdc, totp.otp, REASON_INIT, totp.version)
                 }
 
-                val latestVersion = secretsMap.keys.maxByOrNull { it.toIntOrNull() ?: 0 } ?: return@withContext cached
-                val cipherBytes = secretsMap[latestVersion] ?: return@withContext cached
-
-                // 2. Derive secret key via XOR transformation
-                val secretKeyString = buildString {
-                    for ((index, byteVal) in cipherBytes.withIndex()) {
-                        val decoded = byteVal xor ((index % 33) + 9)
-                        append(decoded.toString())
+                val chosen = listOfNotNull(transport, init).firstOrNull { it.isUsable() }
+                if (chosen == null) {
+                    if (transport?.isAnonymous == true || init?.isAnonymous == true) {
+                        Log.w(TAG, "Spotify session is anonymous; the stored cookie is no longer signed in")
+                        spotifyPreferences.clearConnection()
+                        return@withContext null
                     }
+                    return@withContext cached
                 }
-                val secretKeyBytes = secretKeyString.toByteArray(Charsets.US_ASCII)
 
-                // 3. Fetch server time
-                val serverTimeRequest = Request.Builder()
-                    .url(SERVER_TIME_URL)
-                    .header("User-Agent", USER_AGENT)
-                    .header("Cookie", "sp_dc=$spdc")
-                    .build()
-
-                val serverTimeSeconds = okHttpClient.newCall(serverTimeRequest).execute().use { res ->
-                    if (res.isSuccessful) {
-                        val body = res.body?.string().orEmpty()
-                        json.decodeFromString<SpotifyServerTimeResponse>(body).serverTime
-                    } else null
-                } ?: (System.currentTimeMillis() / 1000L)
-
-                // 4. Compute TOTP (HMAC-SHA1, 30s period, 6 digits)
-                val counter = serverTimeSeconds / 30L
-                val counterBytes = ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN).putLong(counter).array()
-
-                val mac = Mac.getInstance("HmacSHA1")
-                mac.init(SecretKeySpec(secretKeyBytes, "HmacSHA1"))
-                val hmacResult = mac.doFinal(counterBytes)
-
-                val offset = hmacResult[hmacResult.size - 1].toInt() and 0x0F
-                val binary = ((hmacResult[offset].toInt() and 0x7F) shl 24) or
-                    ((hmacResult[offset + 1].toInt() and 0xFF) shl 16) or
-                    ((hmacResult[offset + 2].toInt() and 0xFF) shl 8) or
-                    (hmacResult[offset + 3].toInt() and 0xFF)
-
-                val otp = (binary % 1_000_000).toString().padStart(6, '0')
-
-                // 5. Exchange for personal access token
-                val tokenUrl = "$SESSION_TOKEN_URL?reason=init&productType=mobile-web-player" +
-                    "&totp=$otp&totpServer=$otp&totpVer=$latestVersion"
-
-                val tokenRequest = Request.Builder()
-                    .url(tokenUrl)
-                    .header("User-Agent", USER_AGENT)
-                    .header("Accept", "application/json")
-                    .header("Cookie", "sp_dc=$spdc")
-                    .build()
-
-                okHttpClient.newCall(tokenRequest).execute().use { res ->
-                    if (!res.isSuccessful) {
-                        Log.w(TAG, "Personal token exchange failed with HTTP ${res.code}")
-                        return@withContext cached
-                    }
-                    val body = res.body?.string().orEmpty()
-                    val tokenResp = json.decodeFromString<SpotifyPersonalTokenResponse>(body)
-                    val accessToken = tokenResp.accessToken
-                    if (!accessToken.isNullOrBlank()) {
-                        val expiresMs = tokenResp.accessTokenExpirationTimestampMs
-                            ?: (System.currentTimeMillis() + 3600_000L)
-                        spotifyPreferences.savePersonalToken(accessToken, expiresMs)
-                        Log.d(TAG, "Acquired fresh Spotify personal token (expires in ${(expiresMs - System.currentTimeMillis()) / 1000}s)")
-                        return@withContext accessToken
-                    }
-                }
+                val accessToken = chosen.accessToken.orEmpty()
+                val expiresMs = chosen.accessTokenExpirationTimestampMs
+                    ?: (System.currentTimeMillis() + 3600_000L)
+                spotifyPreferences.savePersonalToken(accessToken, expiresMs)
+                Log.d(TAG, "Acquired fresh Spotify personal token (expires in ${(expiresMs - System.currentTimeMillis()) / 1000}s)")
+                accessToken
             } catch (e: Exception) {
                 Log.w(TAG, "Failed personal token handshake: ${e.message}")
+                cached
             }
-            cached
+        }
+    }
+
+    /**
+     * Whether this answer carries a token worth using.
+     *
+     * An anonymous token is a guest session and is refused outright. A very short token is
+     * the placeholder the endpoint hands back instead of a real session token, which is why
+     * the length is looked at and not only the emptiness: a blank string and a stub are both
+     * "no token", but only one of them looks like a token at a glance.
+     */
+    private fun SpotifyPersonalTokenResponse?.isUsable(): Boolean {
+        val response = this ?: return false
+        val token = response.accessToken ?: return false
+        return response.isAnonymous != true && token.length >= MIN_PERSONAL_TOKEN_LENGTH
+    }
+
+    /**
+     * The one-time password and the secret version it was derived from.
+     */
+    private data class Totp(val otp: String, val version: Int)
+
+    /**
+     * Derives the one-time password from the secret the web player is carrying.
+     *
+     * The secret is read out of the player rather than from a copy of it: a copy goes
+     * stale when the player is rebuilt, and a secret that has been retired produces a
+     * token request that is refused — which is indistinguishable, from the outside,
+     * from a session that was never signed in.
+     */
+    private suspend fun computeTotp(spdc: String): Totp? {
+        val secret = readSecret() ?: return null
+        val version = secret.version
+        val plainBytes = secret.value.map { it.code }
+
+        val secretKeyString = buildString {
+            for ((index, byteVal) in plainBytes.withIndex()) {
+                val decoded = byteVal xor ((index % 33) + 9)
+                append(decoded.toString())
+            }
+        }
+        val secretKeyBytes = secretKeyString.toByteArray(Charsets.US_ASCII)
+
+        val serverTimeRequest = Request.Builder()
+            .url(SERVER_TIME_URL)
+            .header("User-Agent", USER_AGENT)
+            .header("Cookie", "sp_dc=$spdc")
+            .header("App-platform", "WebPlayer")
+            .header("Spotify-App-Version", SPOTIFY_APP_VERSION)
+            .header("Origin", SPOTIFY_ORIGIN)
+            .header("Referer", "$SPOTIFY_ORIGIN/")
+            .header("Accept", "application/json")
+            .build()
+
+        val serverTimeSeconds = okHttpClient.newCall(serverTimeRequest).execute().use { res ->
+            if (res.isSuccessful) {
+                json.decodeFromString<SpotifyServerTimeResponse>(res.body?.string().orEmpty()).serverTime
+            } else {
+                null
+            }
+        } ?: (System.currentTimeMillis() / 1000L)
+
+        val counter = serverTimeSeconds / 30L
+        val counterBytes = ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN).putLong(counter).array()
+
+        val mac = Mac.getInstance("HmacSHA1")
+        mac.init(SecretKeySpec(secretKeyBytes, "HmacSHA1"))
+        val hmacResult = mac.doFinal(counterBytes)
+
+        val offset = hmacResult[hmacResult.size - 1].toInt() and 0x0F
+        val binary = ((hmacResult[offset].toInt() and 0x7F) shl 24) or
+            ((hmacResult[offset + 1].toInt() and 0xFF) shl 16) or
+            ((hmacResult[offset + 2].toInt() and 0xFF) shl 8) or
+            (hmacResult[offset + 3].toInt() and 0xFF)
+
+        val otp = (binary % 1_000_000).toString().padStart(6, '0')
+        return Totp(otp, version)
+    }
+
+    /**
+     * The one-time-password secret the web player is currently carrying.
+     *
+     * Read from the player itself. The published copy of it is only a fallback: it is
+     * written by a scraper that has stopped finding the secret, so it froze months ago
+     * while the player moved on.
+     */
+    private suspend fun readSecret(): SpotifyWebPlayer.Secret? {
+        val script = SpotifyWebPlayer.script(okHttpClient)
+        val fromPlayer = script?.let { SpotifyWebPlayer.secrets(it).firstOrNull() }
+        if (fromPlayer != null) {
+            Log.d(TAG, "One-time password secret read from the web player (version ${fromPlayer.version})")
+            return fromPlayer
+        }
+        return readPublishedSecret()
+    }
+
+    /**
+     * The published copy of the secret, used only when the player could not be read.
+     */
+    private suspend fun readPublishedSecret(): SpotifyWebPlayer.Secret? {
+        val secretsRequest = Request.Builder()
+            .url(SECRETS_DICT_URL)
+            .header("User-Agent", USER_AGENT)
+            .build()
+
+        val secretsMap: Map<String, List<Int>> = okHttpClient.newCall(secretsRequest).execute().use { res ->
+            if (!res.isSuccessful) {
+                Log.w(TAG, "Failed to fetch secretDict: HTTP ${res.code}")
+                return null
+            }
+            json.decodeFromString(res.body?.string().orEmpty())
+        }
+
+        val latestVersion = secretsMap.keys.maxByOrNull { it.toIntOrNull() ?: 0 } ?: return null
+        val cipherBytes = secretsMap[latestVersion] ?: return null
+        val version = latestVersion.toIntOrNull() ?: return null
+        Log.d(TAG, "Falling back to the published one-time password secret (version $version)")
+        return SpotifyWebPlayer.Secret(String(cipherBytes.map { it.toChar() }.toCharArray()), version)
+    }
+
+    /**
+     * Asks for a personal token for one reason.
+     */
+    private suspend fun requestPersonalToken(
+        spdc: String,
+        otp: String,
+        reason: String,
+        totpVersion: Int,
+    ): SpotifyPersonalTokenResponse? {
+        val tokenUrl = "$SESSION_TOKEN_URL?reason=$reason&productType=mobile-web-player" +
+            "&totp=$otp&totpServer=$otp&totpVer=$totpVersion"
+
+        val tokenRequest = Request.Builder()
+            .url(tokenUrl)
+            .header("User-Agent", USER_AGENT)
+            .header("Accept", "application/json")
+            .header("Cookie", "sp_dc=$spdc")
+            .header("App-platform", "WebPlayer")
+            .header("Spotify-App-Version", SPOTIFY_APP_VERSION)
+            .header("Origin", SPOTIFY_ORIGIN)
+            .header("Referer", "$SPOTIFY_ORIGIN/")
+            .build()
+
+        return okHttpClient.newCall(tokenRequest).execute().use { res ->
+            if (!res.isSuccessful) {
+                Log.w(TAG, "Personal token exchange ($reason) failed with HTTP ${res.code}")
+                return@use null
+            }
+            runCatching {
+                json.decodeFromString<SpotifyPersonalTokenResponse>(res.body?.string().orEmpty())
+            }.getOrNull()
         }
     }
 
@@ -235,6 +343,16 @@ class SpotifyAuthRepository @Inject constructor(
         private const val SERVER_TIME_URL = "https://open.spotify.com/api/server-time"
         private const val SESSION_TOKEN_URL = "https://open.spotify.com/api/token"
 
+        private const val REASON_TRANSPORT = "transport"
+        private const val REASON_INIT = "init"
+
+        /** A real session token is a long opaque string; a stub is not. */
+        private const val MIN_PERSONAL_TOKEN_LENGTH = 100
+
+        private const val SPOTIFY_ORIGIN = "https://open.spotify.com"
+        private const val SPOTIFY_APP_VERSION = "1.2.62.476.g2ad6e7f3"
+
         private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        private const val CLIENT_TOKEN_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
     }
 }

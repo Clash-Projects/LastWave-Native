@@ -51,7 +51,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -81,18 +80,38 @@ fun SpotifyLoginScreen(
     var showManualDialog by remember { mutableStateOf(false) }
     var manualSpDcInput by remember { mutableStateOf("") }
     var captured by remember { mutableStateOf(false) }
+    var capturedSpdc by remember { mutableStateOf<String?>(null) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var lastUrl by remember { mutableStateOf<String?>(null) }
     var webViewError by remember { mutableStateOf<String?>(null) }
 
-    // Start from a clean cookie jar. A session left behind by an earlier
-    // attempt would otherwise be picked up as if the user had just signed in.
-    LaunchedEffect(Unit) {
-        runCatching {
-            val cm = CookieManager.getInstance()
-            cm.removeAllCookies(null)
-            cm.flush()
-            WebStorage.getInstance().deleteAllData()
+    /**
+     * What to say once the cookie has been stored, and whether to leave the screen.
+     *
+     * A session Spotify refuses is not the same as one it accepts, and the difference
+     * is worth saying out loud: without it, a sign-in that cannot be used looks
+     * exactly like one that can, and every later lookup fails quietly.
+     */
+    fun onSignInOutcome(outcome: SpotifyLoginViewModel.Outcome) {
+        when (outcome) {
+            SpotifyLoginViewModel.Outcome.CONNECTED -> {
+                if (captured) return
+                captured = true
+                Toast.makeText(context, "Spotify Canvas connected!", Toast.LENGTH_SHORT).show()
+                onConnected()
+            }
+            SpotifyLoginViewModel.Outcome.SESSION_REFUSED -> {
+                Log.w(LOG_TAG, "Spotify refused the session cookie")
+                Toast.makeText(
+                    context,
+                    "Signed in, but Spotify refused the session. Sign in again, or paste a fresh cookie.",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+            SpotifyLoginViewModel.Outcome.FAILED -> {
+                Log.w(LOG_TAG, "Failed to store sp_dc")
+                Toast.makeText(context, "Couldn't save the Spotify session.", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -102,10 +121,14 @@ fun SpotifyLoginScreen(
      * The cookie is only issued by Spotify's *authentication* response, so it
      * is read on the post-login landing page (the accounts status page) and
      * nowhere else — reading it on the login page would latch a cookie that
-     * belongs to an anonymous session. Returns true when a cookie was stored.
+     * belongs to an anonymous session.
+     *
+     * A cookie that is already stored is not stored again: the same one is read
+     * on every page the user visits after the sign-in, and the toast is only
+     * wanted once. A cookie that differs from the stored one is a newer session
+     * and replaces it.
      */
     fun captureSpDc(url: String?): Boolean {
-        if (captured) return true
         if (url == null || !SpotifyLoginUrls.isPostAuth(url)) {
             Log.d(LOG_TAG, "Not a post-login page, skipping capture: $url")
             return false
@@ -118,27 +141,12 @@ fun SpotifyLoginScreen(
         )
         for (cookieStr in cookieCandidates) {
             val spdc = extractSpDc(cookieStr)
-            if (!spdc.isNullOrBlank()) {
-                Log.i(LOG_TAG, "Post-login page reached, storing sp_dc (${spdc.length} chars)")
-                viewModel.saveSpdc(spdc) { saved ->
-                    if (saved) {
-                        captured = true
-                        // The WebView keeps its own logged-in session. Clear it
-                        // so the next attempt starts from a clean jar instead
-                        // of latching onto a stale cookie.
-                        runCatching {
-                            cm.removeAllCookies(null)
-                            cm.flush()
-                        }
-                        Toast.makeText(context, "Spotify Canvas connected!", Toast.LENGTH_SHORT).show()
-                        onConnected()
-                    } else {
-                        Log.w(LOG_TAG, "Failed to store sp_dc")
-                        Toast.makeText(context, "Couldn't save the Spotify session.", Toast.LENGTH_SHORT).show()
-                    }
-                }
-                return true
-            }
+            if (spdc.isNullOrBlank()) continue
+            if (spdc == capturedSpdc) return true
+            capturedSpdc = spdc
+            Log.i(LOG_TAG, "Post-login page reached, storing sp_dc (${spdc.length} chars)")
+            viewModel.saveSpdc(spdc) { outcome -> onSignInOutcome(outcome) }
+            return true
         }
         Log.d(LOG_TAG, "Post-login page reached but no sp_dc in the cookie jar")
         return false
@@ -247,6 +255,13 @@ fun SpotifyLoginScreen(
                                         // Main frame only: keeps the current
                                         // page URL correct for the SPA.
                                         if (!url.isNullOrBlank()) lastUrl = url
+                                        // The accounts page is a single-page app, so the
+                                        // sign-in can complete without a new page being
+                                        // loaded and the landing page reached without a
+                                        // page-finish either. The capture is attempted
+                                        // on every history entry so that route cannot
+                                        // hide the cookie.
+                                        captureSpDc(url)
                                     }
 
                                     override fun onPageFinished(view: WebView?, url: String?) {
@@ -276,6 +291,18 @@ fun SpotifyLoginScreen(
                                             )
                                         }
                                     }
+                                }
+
+                                // Start from a clean jar. This has to happen here, right
+                                // before the page is asked for: a session left behind by an
+                                // earlier attempt would otherwise be picked up as if the user
+                                // had just signed in, and wiping it later would race the
+                                // response that sets the session cookies.
+                                runCatching {
+                                    val cm = CookieManager.getInstance()
+                                    cm.removeAllCookies(null)
+                                    cm.flush()
+                                    WebStorage.getInstance().deleteAllData()
                                 }
 
                                 loadUrl(SpotifyLoginUrls.LOGIN_URL)
@@ -413,14 +440,7 @@ fun SpotifyLoginScreen(
                             val clipText = clipboard?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty().trim()
                             if (clipText.startsWith("AQ") || clipText.length >= 30) {
                                 manualSpDcInput = clipText
-                                viewModel.saveSpdc(clipText) { saved ->
-                                    if (saved) {
-                                        Toast.makeText(context, "Spotify connected from clipboard!", Toast.LENGTH_SHORT).show()
-                                        onConnected()
-                                    } else {
-                                        Toast.makeText(context, "Couldn't save the Spotify session.", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
+                                viewModel.saveSpdc(clipText) { outcome -> onSignInOutcome(outcome) }
                             } else {
                                 showManualDialog = true
                             }
@@ -470,14 +490,13 @@ fun SpotifyLoginScreen(
                     Button(
                         onClick = {
                             if (manualSpDcInput.isNotBlank()) {
-                                viewModel.saveSpdc(manualSpDcInput.trim()) { saved ->
-                                    if (saved) {
-                                        Toast.makeText(context, "Spotify connected!", Toast.LENGTH_SHORT).show()
+                                viewModel.saveSpdc(manualSpDcInput.trim()) { outcome ->
+                                    // The dialog stays open only when the cookie could not
+                                    // be stored, so the value can be corrected.
+                                    if (outcome != SpotifyLoginViewModel.Outcome.FAILED) {
                                         showManualDialog = false
-                                        onConnected()
-                                    } else {
-                                        Toast.makeText(context, "Couldn't save the Spotify session.", Toast.LENGTH_SHORT).show()
                                     }
+                                    onSignInOutcome(outcome)
                                 }
                             }
                         },

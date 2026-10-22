@@ -275,7 +275,7 @@ class TrackDetailsViewModel @Inject constructor(
                 canvasRepository.cached(title, artist, videoId)
             }
             val initialCanvasSource = cachedCanvas?.source?.displayName()
-                ?: if (canvasRepository.hasResolved(title, artist, videoId)) "None" else null
+                ?: if (canvasRepository.hasResolved(title, artist, videoId)) appContext.getString(R.string.details_canvas_none) else null
 
             _specs.value = TrackSpecs(
                 title = title,
@@ -570,7 +570,7 @@ class TrackDetailsViewModel @Inject constructor(
                 val resolvedCanvas = canvasDeferred.await()
                 val finalCanvasSource = resolvedCanvas?.source?.displayName()
                     ?: _specs.value?.canvasSource
-                    ?: "None"
+                    ?: appContext.getString(R.string.details_canvas_none)
 
                 _specs.value = _specs.value?.copy(
                     genre = genre.takeIf { it.isNotBlank() },

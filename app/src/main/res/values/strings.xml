@@ -503,9 +503,6 @@
     <string name="menu_resolving_genre">Resolving genre…</string>
     <string name="menu_genre_value">Genre: %1$s</string>
     <string name="menu_genre_unknown">Unknown</string>
-    <string name="menu_resolving_canvas">Checking canvas…</string>
-    <string name="menu_canvas_value">Canvas: %1$s</string>
-    <string name="menu_canvas_none">None</string>
     <string name="menu_start_mix">Start Mix with this Song</string>
     <string name="menu_quick_play">Play</string>
     <string name="menu_quick_play_next">Play next</string>
@@ -929,6 +926,8 @@
     <string name="set_cat_appear_sub">Themes, Colors, Artwork, Lyrics</string>
     <string name="set_cat_yt">YouTube &amp; Sync</string>
     <string name="set_cat_yt_sub">Account connection, 24/7 Library sync, Channels, History</string>
+    <string name="set_cat_spotify">Spotify</string>
+    <string name="set_cat_spotify_sub">Account connection, Canvas, Playlist imports &amp; Liked Songs sync</string>
     <string name="set_cat_lfm">Last.fm</string>
     <string name="set_cat_lfm_sub">Account connection, Scrobbling sync &amp; API credentials</string>
     <string name="set_cat_lib">Library &amp; Content</string>

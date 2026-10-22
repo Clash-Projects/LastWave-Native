@@ -866,6 +866,8 @@
     <string name="set_cat_appear_sub">테마, 색상, 아트워크, 가사</string>
     <string name="set_cat_yt">YouTube 및 동기화</string>
     <string name="set_cat_yt_sub">계정 연결, 연중무휴 라이브러리 동기화, 채널, 기록</string>
+    <string name="set_cat_spotify">Spotify</string>
+    <string name="set_cat_spotify_sub">계정 연결, Canvas, 플레이리스트 가져오기, 좋아하는 곡 동기화</string>
     <string name="set_cat_lfm">Last.fm</string>
     <string name="set_cat_lfm_sub">계정 연결, 스크로블링 동기화 및 API 자격 증명</string>
     <string name="set_cat_lib">라이브러리 및 콘텐츠</string>

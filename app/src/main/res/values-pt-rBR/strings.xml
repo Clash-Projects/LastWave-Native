@@ -866,6 +866,8 @@
     <string name="set_cat_appear_sub">Temas, cores, arte, letras</string>
     <string name="set_cat_yt">YouTube e sincronização</string>
     <string name="set_cat_yt_sub">Conexão de conta, sincronização de biblioteca 24 horas por dia, 7 dias por semana, canais, histórico</string>
+    <string name="set_cat_spotify">Spotify</string>
+    <string name="set_cat_spotify_sub">Conexão de conta, Canvas, importação de playlists e sincronização de músicas favoritas</string>
     <string name="set_cat_lfm">Last.fm</string>
     <string name="set_cat_lfm_sub">Conexão de conta, sincronização de Scrobbling e credenciais de API</string>
     <string name="set_cat_lib">Biblioteca e Conteúdo</string>
