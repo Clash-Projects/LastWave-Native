@@ -45,7 +45,6 @@ internal object SpotifyLoginUrls {
     fun isPostAuth(url: String?): Boolean {
         if (url.isNullOrBlank()) return false
         if (STATUS_URL.matches(url)) return true
-        if (url.startsWith("https://open.spotify.com")) return true
         if (!url.startsWith("https://accounts.spotify.com/")) return false
         return !ANONYMOUS_URL.matches(url)
     }
