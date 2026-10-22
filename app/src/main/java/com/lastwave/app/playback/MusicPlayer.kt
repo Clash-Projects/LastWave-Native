@@ -5225,6 +5225,7 @@ class MusicPlayer @Inject constructor(
                 }
                 val existingVideoIds = existingTracks.mapNotNullTo(mutableSetOf()) { it.videoId }
                 val existingKeys = existingTracks.mapTo(mutableSetOf()) { it.queueKey() }
+                val historyKeys = playHistory.toSet()
 
                 val toAdd: List<PlayableTrack> = if (seedVideoId != null) {
                     val radioResult = runCatching { innerTube.fetchRadio(seedVideoId) }.getOrElse { err ->
@@ -5236,13 +5237,7 @@ class MusicPlayer @Inject constructor(
                         currentRadioAutomixPlaylistId = radioResult.automixPlaylistId
                         radioResult.tracks
                             .map { it.toPlayableTrack() }
-                            .filter { track ->
-                                val vid = track.videoId
-                                val key = track.queueKey()
-                                (vid == null || vid != seedVideoId) &&
-                                    (vid == null || vid !in existingVideoIds) &&
-                                    key !in existingKeys
-                            }
+                            .filterNot { isTrackDuplicatedOrRecent(it, existingVideoIds, existingKeys, historyKeys, seedVideoId) }
                     } else if (!radioResult?.automixPlaylistId.isNullOrBlank()) {
                         val automixId = radioResult?.automixPlaylistId
                         val automixResult = runCatching { innerTube.fetchRadioByPlaylistId(automixId.orEmpty()) }.getOrNull()
@@ -5251,13 +5246,7 @@ class MusicPlayer @Inject constructor(
                             currentRadioAutomixPlaylistId = automixResult.automixPlaylistId
                             automixResult.tracks
                                 .map { it.toPlayableTrack() }
-                                .filter { track ->
-                                    val vid = track.videoId
-                                    val key = track.queueKey()
-                                    (vid == null || vid != seedVideoId) &&
-                                        (vid == null || vid !in existingVideoIds) &&
-                                        key !in existingKeys
-                                }
+                                .filterNot { isTrackDuplicatedOrRecent(it, existingVideoIds, existingKeys, historyKeys, seedVideoId) }
                         } else {
                             val knownCoreTitleArtists = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
                                 "${cleanCoreTitle(it.title)}|${cleanCoreArtist(it.artist)}"
@@ -5359,6 +5348,24 @@ class MusicPlayer @Inject constructor(
         }
     }
 
+    private fun isTrackDuplicatedOrRecent(
+        track: PlayableTrack,
+        knownVideoIds: Set<String>,
+        knownKeys: Set<String>,
+        historyKeys: Set<String>,
+        seedVideoId: String? = null,
+    ): Boolean {
+        val vid = track.videoId
+        if (vid != null) {
+            if (vid == seedVideoId) return true
+            if (vid in knownVideoIds) return true
+        }
+        val key = track.queueKey()
+        if (key in knownKeys) return true
+        if (track.mediaIdKey() in historyKeys) return true
+        return false
+    }
+
     private suspend fun runEmergencyFallbackRadio(
         currentIndex: Int,
         currentQueue: List<PlayableTrack>,
@@ -5429,13 +5436,7 @@ class MusicPlayer @Inject constructor(
                         }
                         result.tracks
                             .map { it.toPlayableTrack() }
-                            .filter { track ->
-                                val vid = track.videoId
-                                val key = track.queueKey()
-                                (vid == null || vid !in knownVideoIds) &&
-                                    key !in knownKeys &&
-                                    track.mediaIdKey() !in historyKeys
-                            }
+                            .filterNot { isTrackDuplicatedOrRecent(it, knownVideoIds, knownKeys, historyKeys) }
                     } else if (!automixId.isNullOrBlank()) {
                         currentRadioContinuationToken = null
                         currentRadioAutomixPlaylistId = null
@@ -5448,13 +5449,7 @@ class MusicPlayer @Inject constructor(
                             currentRadioAutomixPlaylistId = automixResult.automixPlaylistId
                             automixResult.tracks
                                 .map { it.toPlayableTrack() }
-                                .filter { track ->
-                                    val vid = track.videoId
-                                    val key = track.queueKey()
-                                    (vid == null || vid !in knownVideoIds) &&
-                                        key !in knownKeys &&
-                                        track.mediaIdKey() !in historyKeys
-                                }
+                                .filterNot { isTrackDuplicatedOrRecent(it, knownVideoIds, knownKeys, historyKeys) }
                         } else {
                             runEmergencyFallbackRadio(currentIndex, currentQueue, knownVideoIds, knownKeys)
                         }
@@ -5473,13 +5468,7 @@ class MusicPlayer @Inject constructor(
                         currentRadioAutomixPlaylistId = automixResult.automixPlaylistId
                         automixResult.tracks
                             .map { it.toPlayableTrack() }
-                            .filter { track ->
-                                val vid = track.videoId
-                                val key = track.queueKey()
-                                (vid == null || vid !in knownVideoIds) &&
-                                    key !in knownKeys &&
-                                    track.mediaIdKey() !in historyKeys
-                            }
+                            .filterNot { isTrackDuplicatedOrRecent(it, knownVideoIds, knownKeys, historyKeys) }
                     } else {
                         runEmergencyFallbackRadio(currentIndex, currentQueue, knownVideoIds, knownKeys)
                     }
