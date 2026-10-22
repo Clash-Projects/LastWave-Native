@@ -734,7 +734,7 @@ class FeedRepository @Inject constructor(
             likedSongsId?.let {
                 add(
                     FeedQuickTile(
-                        title = "Liked Songs",
+                        title = com.lastwave.app.data.playlist.LIKED_SONGS_TITLE,
                         subtitle = "Your collection",
                         localPlaylistId = it,
                         isLiked = true,

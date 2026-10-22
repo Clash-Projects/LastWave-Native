@@ -298,42 +298,6 @@ class SpotifyAuthRepository @Inject constructor(
         }
     }
 
-    /**
-     * Saves a track to the user's Spotify Liked Songs library.
-     */
-    suspend fun saveTrackToLiked(trackId: String): Boolean = withContext(Dispatchers.IO) {
-        val token = getPersonalToken() ?: return@withContext false
-        try {
-            val request = Request.Builder()
-                .url("https://api.spotify.com/v1/me/tracks?ids=$trackId")
-                .header("Authorization", "Bearer $token")
-                .header("User-Agent", USER_AGENT)
-                .put("".toRequestBody(null))
-                .build()
-            okHttpClient.newCall(request).execute().use { it.isSuccessful }
-        } catch (_: Exception) {
-            false
-        }
-    }
-
-    /**
-     * Removes a track from the user's Spotify Liked Songs library.
-     */
-    suspend fun removeTrackFromLiked(trackId: String): Boolean = withContext(Dispatchers.IO) {
-        val token = getPersonalToken() ?: return@withContext false
-        try {
-            val request = Request.Builder()
-                .url("https://api.spotify.com/v1/me/tracks?ids=$trackId")
-                .header("Authorization", "Bearer $token")
-                .header("User-Agent", USER_AGENT)
-                .delete("".toRequestBody(null))
-                .build()
-            okHttpClient.newCall(request).execute().use { it.isSuccessful }
-        } catch (_: Exception) {
-            false
-        }
-    }
-
     private companion object {
         private const val TAG = "SpotifyAuthRepo"
         private const val EXPIRY_GRACE_MS = 60_000L // Refresh 1 minute before expiry

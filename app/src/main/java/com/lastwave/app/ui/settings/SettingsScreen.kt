@@ -308,7 +308,7 @@ private fun getTargetSectionIndex(settingId: String?): Int {
             "Canvas" -> 3
             else -> 0
         }
-        SettingsTab.YOUTUBE -> 0
+        SettingsTab.YOUTUBE -> if (entry.section == "Liked Songs") 1 else 0
         SettingsTab.SPOTIFY -> 0
         SettingsTab.LIBRARY -> when (entry.section) {
             "Content" -> 1
@@ -1693,6 +1693,44 @@ fun SettingsScreen(
                 }
             }
         }
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                SectionLabel("Liked Songs")
+                                val likedLocalSync by viewModel.likedSongsLocalSync.collectAsStateWithLifecycle()
+                                val likedYouTubeSync by viewModel.likedSongsYouTubeSync.collectAsStateWithLifecycle()
+                                SettingsGroup(rowCount = 2) { index, position ->
+                                    when (index) {
+                                        0 -> SettingsToggleCard(
+                                            icon = Icons.Filled.Favorite,
+                                            iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            title = "Save to Liked Songs",
+                                            subtitle = "Keep a Liked Songs list in this app",
+                                            checked = likedLocalSync,
+                                            onCheckedChange = viewModel::setLikedSongsLocalSync,
+                                            position = position,
+                                            isHighlighted = (highlightedSettingId == "liked.local"),
+                                        )
+                                        else -> SettingsToggleCard(
+                                            icon = Icons.Filled.CloudSync,
+                                            iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            title = "Sync Liked Songs to YouTube Music",
+                                            subtitle = if (ytConnection.isConnected) {
+                                                "Also mark liked songs as liked on YouTube Music"
+                                            } else {
+                                                "Connect a YouTube Music account to mirror your likes"
+                                            },
+                                            checked = likedYouTubeSync,
+                                            onCheckedChange = viewModel::setLikedSongsYouTubeSync,
+                                            position = position,
+                                            isHighlighted = (highlightedSettingId == "liked.youtube"),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
         }
 
                     SettingsTab.SPOTIFY -> {
@@ -1701,8 +1739,7 @@ fun SettingsScreen(
                                 SectionLabel("Spotify")
                                 val spotifyCanvasEnabled by viewModel.spotifyCanvasEnabled.collectAsStateWithLifecycle()
                                 val spotifyPreferCanvas by viewModel.spotifyPreferCanvas.collectAsStateWithLifecycle()
-                                val spotifySyncLikedEnabled by viewModel.spotifySyncLikedSongsEnabled.collectAsStateWithLifecycle()
-                                SettingsGroup(rowCount = if (spotifyConnected) 5 else 4) { index, position ->
+                                SettingsGroup(rowCount = if (spotifyConnected) 4 else 3) { index, position ->
                                     when (index) {
                                         0 -> SettingsActionCard(
                                             icon = Icons.Filled.PlayCircle,
@@ -1745,17 +1782,6 @@ fun SettingsScreen(
                                             onCheckedChange = viewModel::setSpotifyPreferCanvas,
                                             position = position,
                                             isHighlighted = (highlightedSettingId == "spotify.prefer_canvas"),
-                                        )
-                                        4 -> SettingsToggleCard(
-                                            icon = Icons.Filled.Favorite,
-                                            iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
-                                            iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                            title = "Sync Liked Songs with Spotify",
-                                            subtitle = "Automatically like and unlike songs in your Spotify library when favorited in LastWave",
-                                            checked = spotifySyncLikedEnabled,
-                                            onCheckedChange = viewModel::setSpotifySyncLikedSongsEnabled,
-                                            position = position,
-                                            isHighlighted = (highlightedSettingId == "spotify.sync_liked"),
                                         )
                                     }
                                 }
