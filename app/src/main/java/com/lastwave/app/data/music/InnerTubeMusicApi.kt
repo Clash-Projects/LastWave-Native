@@ -1945,7 +1945,7 @@ class InnerTubeMusicApi @Inject constructor(
     ): YtRadioResult = withContext(Dispatchers.IO) {
         if (videoId.isBlank()) return@withContext YtRadioResult(emptyList())
         val config = getWebConfig()
-        val isAuth = ytAuth.isLoggedIn()
+        val isAuth = ytAuth.connection.value.isConnected
         val root = post(
             url = "$MUSIC_API/next?key=${config.apiKey}&prettyPrint=false",
             body = buildJsonObject {
@@ -1973,7 +1973,7 @@ class InnerTubeMusicApi @Inject constructor(
     ): YtRadioResult = withContext(Dispatchers.IO) {
         if (continuationToken.isBlank()) return@withContext YtRadioResult(emptyList())
         val config = getWebConfig()
-        val isAuth = ytAuth.isLoggedIn()
+        val isAuth = ytAuth.connection.value.isConnected
         val root = post(
             url = "$MUSIC_API/next?key=${config.apiKey}&prettyPrint=false",
             body = buildJsonObject {
@@ -1998,7 +1998,7 @@ class InnerTubeMusicApi @Inject constructor(
     ): YtRadioResult = withContext(Dispatchers.IO) {
         if (playlistId.isBlank()) return@withContext YtRadioResult(emptyList())
         val config = getWebConfig()
-        val isAuth = ytAuth.isLoggedIn()
+        val isAuth = ytAuth.connection.value.isConnected
         val root = post(
             url = "$MUSIC_API/next?key=${config.apiKey}&prettyPrint=false",
             body = buildJsonObject {
