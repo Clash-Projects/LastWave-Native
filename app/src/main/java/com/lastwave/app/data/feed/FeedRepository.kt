@@ -13,6 +13,7 @@ import com.lastwave.app.data.generate.TasteProfileProvider
 import com.lastwave.app.data.model.FriendEntry
 import com.lastwave.app.data.model.RecentTrack
 import com.lastwave.app.data.music.InnerTubeMusicApi
+import com.lastwave.app.data.music.HomeShelf
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistSummary
 import com.lastwave.app.data.podcast.PodcastRepository
@@ -89,6 +90,7 @@ data class FeedData(
     val hasYtMixes: Boolean = false,
     val hasPersonalContent: Boolean = false,
     val tasteTags: List<String> = emptyList(),
+    val nativeShelves: List<HomeShelf> = emptyList(),
     val ytSuggestedPlaylists: List<YouTubePlaylistSummary> = emptyList(),
     val spotlight: FeedSpotlight? = null,
     val quickTiles: List<FeedQuickTile> = emptyList(),
@@ -146,6 +148,9 @@ class FeedRepository @Inject constructor(
         val homeSongsDef = async(Dispatchers.IO) {
             runCatching { innerTube.fetchHomeSongs() }.getOrDefault(emptyList())
         }
+        val nativeShelvesDef = async(Dispatchers.IO) {
+            runCatching { innerTube.fetchHomeShelves() }.getOrDefault(emptyList())
+        }
         // Podcast shelf rides along with the rest of the feed. Disabled in
         // settings -> the fetch never happens and the shelf stays empty.
         val podcastShelfDef = async(Dispatchers.IO) {
@@ -202,6 +207,7 @@ class FeedRepository @Inject constructor(
             it.id.startsWith("PL") || it.id.startsWith("RD") || it.id.startsWith("OLAK") || it.id == "LM"
         }
         val homeSongs = homeSongsDef.await()
+        val nativeShelves = nativeShelvesDef.await()
         val recentTracks = recentTracksDef.await()
         val friends = friendsDef.await()
         val tasteProfile = tasteProfileDef.await()
@@ -316,6 +322,7 @@ class FeedRepository @Inject constructor(
             userName = username,
             hasYtRecommendations = ytTaste?.feedTracks?.isNotEmpty() == true,
             hasPersonalContent = tasteProfile?.hasPersonalSignals == true || ytLikedSongs.isNotEmpty() || ytRecentSongs.isNotEmpty(),
+            nativeShelves = nativeShelves.ifEmpty { previous?.nativeShelves.orEmpty() },
             quickPicks = quickPicks,
             ytLikedSongs = ytLikedSongs,
             ytRecentSongs = ytRecentSongs,
@@ -804,6 +811,7 @@ class FeedRepository @Inject constructor(
             hasYtMixes = false,
             hasPersonalContent = hasPersonalContent,
             tasteTags = tasteTags,
+            nativeShelves = nativeShelves,
             ytSuggestedPlaylists = homePlaylists.filter { it.id != "LM" }.take(12),
             spotlight = spotlight,
             quickTiles = quickTiles,
