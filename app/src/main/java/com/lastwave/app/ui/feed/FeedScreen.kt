@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.MoreVert
@@ -118,6 +119,8 @@ import com.lastwave.app.data.model.FriendEntry
 import com.lastwave.app.data.model.RecentTrack
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistSummary
+import com.lastwave.app.data.music.HomeShelf
+import com.lastwave.app.data.music.HomeShelfItem
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ExpressiveHeader
@@ -179,7 +182,8 @@ fun FeedScreen(
     fun isSectionVisible(section: HomeSection) = section.id !in hiddenSections
     val snackbarHostState = remember { SnackbarHostState() }
     val hasFeedContent = with(state.feedData) {
-        quickTiles.isNotEmpty() || mixes.isNotEmpty() || topArtists.isNotEmpty() ||
+        nativeShelves.any { it.items.isNotEmpty() } ||
+            quickTiles.isNotEmpty() || mixes.isNotEmpty() || topArtists.isNotEmpty() ||
             quickPicks.isNotEmpty() || jumpBackIn.isNotEmpty() || recentAlbums.isNotEmpty() ||
             heavyRotation.isNotEmpty() || ytLikedSongs.isNotEmpty() || ytRecentSongs.isNotEmpty() ||
             (becauseYouListenTo?.items?.isNotEmpty() == true) || freshFinds.isNotEmpty() ||
@@ -405,6 +409,86 @@ fun FeedScreen(
                             launching = state.launchingRadio,
                             onTagClick = { tag -> viewModel.playDiscoveryQuery(tag.displayName(), tag) },
                         )
+                    }
+
+                    // Native YouTube Music shelves (exact titles, original order, original items)
+                    for ((shelfIndex, shelf) in state.feedData.nativeShelves.withIndex()) {
+                        if (shelf.items.isEmpty()) continue
+                        item(key = "native_shelf_${shelfIndex}_${shelf.title}") {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                shape = RoundedCornerShape(24.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                            ) {
+                                Column(modifier = Modifier.padding(vertical = 12.dp)) {
+                                    val tracksInShelf = remember(shelf.items) {
+                                        shelf.items.mapNotNull { (it as? HomeShelfItem.Track)?.track }
+                                    }
+                                    FeedSectionHeader(
+                                        title = shelf.title,
+                                        subtitle = shelf.subtitle,
+                                        actionText = if (tracksInShelf.isNotEmpty()) stringResource(R.string.feed_play_all) else null,
+                                        actionIcon = if (tracksInShelf.isNotEmpty()) Icons.Filled.PlayArrow else null,
+                                        onActionClick = if (tracksInShelf.isNotEmpty()) {
+                                            { viewModel.playTracksQueue(tracksInShelf, 0, shelf.title) }
+                                        } else null,
+                                        onShuffleClick = if (tracksInShelf.isNotEmpty()) {
+                                            { viewModel.shuffleTracksQueue(tracksInShelf, shelf.title) }
+                                        } else null,
+                                    )
+                                    FeedMediaRow(
+                                        content = {
+                                            itemsIndexed(shelf.items) { itemIndex, shelfItem ->
+                                                when (shelfItem) {
+                                                    is HomeShelfItem.Track -> {
+                                                        val track = shelfItem.track
+                                                        FeedMediaCard(
+                                                            title = track.title,
+                                                            subtitle = ArtistHelper.primaryArtist(track.artist),
+                                                            artworkUrl = track.artworkUrl,
+                                                            fallbackIcon = Icons.Filled.MusicNote,
+                                                            onClick = { viewModel.playTrack(track, shelf.title) },
+                                                            onLongClick = {
+                                                                miniTrayTrack = TrackMiniTrayData(
+                                                                    title = track.title,
+                                                                    artist = track.artist,
+                                                                    album = track.album,
+                                                                    artworkUrl = track.artworkUrl,
+                                                                    videoId = track.videoId.takeIf(String::isNotBlank),
+                                                                    sourceLabel = "Home",
+                                                                    onPlay = { viewModel.playTrack(track, shelf.title) },
+                                                                )
+                                                            },
+                                                            onPlayClick = { viewModel.playTrack(track, shelf.title) },
+                                                        )
+                                                    }
+                                                    is HomeShelfItem.Playlist -> {
+                                                        val playlist = shelfItem.playlist
+                                                        FeedMediaCard(
+                                                            title = playlist.title,
+                                                            subtitle = playlist.author ?: playlist.trackCountText.orEmpty(),
+                                                            artworkUrl = playlist.artworkUrl,
+                                                            fallbackIcon = Icons.AutoMirrored.Filled.QueueMusic,
+                                                            onClick = {
+                                                                if (playlist.id.startsWith("MPRE")) {
+                                                                    artistAlbumNavigator.openAlbum(
+                                                                        title = playlist.title,
+                                                                        artist = playlist.author.orEmpty(),
+                                                                        browseId = playlist.id,
+                                                                    )
+                                                                } else {
+                                                                    onOpenFeedPlaylist(playlist.id)
+                                                                }
+                                                            },
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        },
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     if (isSectionVisible(HomeSection.QUICK_PICKS) && state.feedData.quickPicks.isNotEmpty()) {

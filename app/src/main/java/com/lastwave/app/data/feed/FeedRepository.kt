@@ -13,6 +13,7 @@ import com.lastwave.app.data.generate.TasteProfileProvider
 import com.lastwave.app.data.model.FriendEntry
 import com.lastwave.app.data.model.RecentTrack
 import com.lastwave.app.data.music.InnerTubeMusicApi
+import com.lastwave.app.data.music.HomeShelf
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistSummary
 import com.lastwave.app.data.podcast.PodcastRepository
@@ -89,6 +90,7 @@ data class FeedData(
     val hasYtMixes: Boolean = false,
     val hasPersonalContent: Boolean = false,
     val tasteTags: List<String> = emptyList(),
+    val nativeShelves: List<HomeShelf> = emptyList(),
     val ytSuggestedPlaylists: List<YouTubePlaylistSummary> = emptyList(),
     val spotlight: FeedSpotlight? = null,
     val quickTiles: List<FeedQuickTile> = emptyList(),
@@ -144,7 +146,10 @@ class FeedRepository @Inject constructor(
         val chartsDef = async(Dispatchers.IO) { runCatching { innerTube.fetchCharts() }.getOrDefault(emptyList()) }
         val homeMixesDef = async(Dispatchers.IO) { runCatching { innerTube.fetchHomeMixes() }.getOrDefault(emptyList()) }
         val homeSongsDef = async(Dispatchers.IO) {
-            if (isYtConnected) emptyList() else runCatching { innerTube.fetchHomeSongs() }.getOrDefault(emptyList())
+            runCatching { innerTube.fetchHomeSongs() }.getOrDefault(emptyList())
+        }
+        val nativeShelvesDef = async(Dispatchers.IO) {
+            runCatching { innerTube.fetchHomeShelves() }.getOrDefault(emptyList())
         }
         // Podcast shelf rides along with the rest of the feed. Disabled in
         // settings -> the fetch never happens and the shelf stays empty.
@@ -202,6 +207,7 @@ class FeedRepository @Inject constructor(
             it.id.startsWith("PL") || it.id.startsWith("RD") || it.id.startsWith("OLAK") || it.id == "LM"
         }
         val homeSongs = homeSongsDef.await()
+        val nativeShelves = nativeShelvesDef.await()
         val recentTracks = recentTracksDef.await()
         val friends = friendsDef.await()
         val tasteProfile = tasteProfileDef.await()
@@ -236,9 +242,8 @@ class FeedRepository @Inject constructor(
             val hasVideo = t.videoId.isNotBlank()
             val hasArt = ArtworkNormalizer.isRealImage(t.artworkUrl)
             val positionDecay = 1.0 / (1.0 + index / 9.0)
-            val jitter = random.nextDouble()
             return aff * 60.0 + sourceBoost * 14.0 * positionDecay +
-                (if (hasVideo) 10.0 else -6.0) + (if (hasArt) 4.0 else 0.0) + jitter * 35.0 - (if (t.videoId in previousPickIds) 30.0 else 0.0)
+                (if (hasVideo) 10.0 else -6.0) + (if (hasArt) 4.0 else 0.0) - (if (t.videoId in previousPickIds) 30.0 else 0.0)
         }
         fun <T> diversify(
             items: List<T>,
@@ -317,6 +322,7 @@ class FeedRepository @Inject constructor(
             userName = username,
             hasYtRecommendations = ytTaste?.feedTracks?.isNotEmpty() == true,
             hasPersonalContent = tasteProfile?.hasPersonalSignals == true || ytLikedSongs.isNotEmpty() || ytRecentSongs.isNotEmpty(),
+            nativeShelves = nativeShelves.ifEmpty { previous?.nativeShelves.orEmpty() },
             quickPicks = quickPicks,
             ytLikedSongs = ytLikedSongs,
             ytRecentSongs = ytRecentSongs,
@@ -805,6 +811,7 @@ class FeedRepository @Inject constructor(
             hasYtMixes = false,
             hasPersonalContent = hasPersonalContent,
             tasteTags = tasteTags,
+            nativeShelves = nativeShelves,
             ytSuggestedPlaylists = homePlaylists.filter { it.id != "LM" }.take(12),
             spotlight = spotlight,
             quickTiles = quickTiles,
