@@ -1789,44 +1789,6 @@ fun SettingsScreen(
                         }
                     }
 
-                    item {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            SectionLabel("Liked Songs")
-                            val likedLocalSync by viewModel.likedSongsLocalSync.collectAsStateWithLifecycle()
-                            val likedYouTubeSync by viewModel.likedSongsYouTubeSync.collectAsStateWithLifecycle()
-                            SettingsGroup(rowCount = 2) { index, position ->
-                                when (index) {
-                                    0 -> SettingsToggleCard(
-                                        icon = Icons.Filled.Favorite,
-                                        iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                        iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        title = "Save to Liked Songs",
-                                        subtitle = "Keep a Liked Songs list in this app",
-                                        checked = likedLocalSync,
-                                        onCheckedChange = viewModel::setLikedSongsLocalSync,
-                                        position = position,
-                                        isHighlighted = (highlightedSettingId == "liked.local"),
-                                    )
-                                    else -> SettingsToggleCard(
-                                        icon = Icons.Filled.CloudSync,
-                                        iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                        iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        title = "Sync Liked Songs to YouTube Music",
-                                        subtitle = if (ytConnection.isConnected) {
-                                            "Also mark liked songs as liked on YouTube Music"
-                                        } else {
-                                            "Connect a YouTube Music account to mirror your likes"
-                                        },
-                                        checked = likedYouTubeSync,
-                                        onCheckedChange = viewModel::setLikedSongsYouTubeSync,
-                                        position = position,
-                                        isHighlighted = (highlightedSettingId == "liked.youtube"),
-                                    )
-                                }
-                            }
-                        }
-                    }
-
                     SettingsTab.LAST_FM -> {
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
