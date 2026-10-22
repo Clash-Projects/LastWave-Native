@@ -1705,6 +1705,21 @@ class InnerTubeMusicApi @Inject constructor(
         return legacyItems.firstNotNullOfOrNull { it.string("continuation")?.takeIf(String::isNotBlank) }
     }
 
+    /** Extracts radio continuation token (checks nextRadioContinuationData, nextContinuationData, and continuationCommand). */
+    internal fun extractRadioContinuationToken(root: JsonElement): String? {
+        val radioItems = mutableListOf<JsonObject>()
+        collectObjects(root, "nextRadioContinuationData", radioItems)
+        radioItems.firstNotNullOfOrNull { it.string("continuation")?.takeIf(String::isNotBlank) }?.let { return it }
+
+        val legacyItems = mutableListOf<JsonObject>()
+        collectObjects(root, "nextContinuationData", legacyItems)
+        legacyItems.firstNotNullOfOrNull { it.string("continuation")?.takeIf(String::isNotBlank) }?.let { return it }
+
+        val commands = mutableListOf<JsonObject>()
+        collectObjects(root, "continuationCommand", commands)
+        return commands.firstNotNullOfOrNull { it.string("token")?.takeIf(String::isNotBlank) }
+    }
+
     private fun extractSetVideoId(renderer: JsonObject): String? {
         (renderer["setVideoId"] as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank)?.let { return it }
         renderer.obj("playlistItemData")?.let { data ->
