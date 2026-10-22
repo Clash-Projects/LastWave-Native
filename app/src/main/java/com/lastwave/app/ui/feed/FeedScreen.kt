@@ -182,7 +182,8 @@ fun FeedScreen(
     fun isSectionVisible(section: HomeSection) = section.id !in hiddenSections
     val snackbarHostState = remember { SnackbarHostState() }
     val hasFeedContent = with(state.feedData) {
-        quickTiles.isNotEmpty() || mixes.isNotEmpty() || topArtists.isNotEmpty() ||
+        nativeShelves.any { it.items.isNotEmpty() } ||
+            quickTiles.isNotEmpty() || mixes.isNotEmpty() || topArtists.isNotEmpty() ||
             quickPicks.isNotEmpty() || jumpBackIn.isNotEmpty() || recentAlbums.isNotEmpty() ||
             heavyRotation.isNotEmpty() || ytLikedSongs.isNotEmpty() || ytRecentSongs.isNotEmpty() ||
             (becauseYouListenTo?.items?.isNotEmpty() == true) || freshFinds.isNotEmpty() ||
@@ -412,6 +413,7 @@ fun FeedScreen(
 
                     // Native YouTube Music shelves (exact titles, original order, original items)
                     for ((shelfIndex, shelf) in state.feedData.nativeShelves.withIndex()) {
+                        if (shelf.items.isEmpty()) continue
                         item(key = "native_shelf_${shelfIndex}_${shelf.title}") {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
