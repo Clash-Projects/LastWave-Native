@@ -460,6 +460,7 @@ fun SettingsScreen(
     onOpenYouTubeLogin: () -> Unit = {},
     onOpenExternalImport: () -> Unit = {},
     onOpenSpotifyLogin: () -> Unit = {},
+    onOpenSpotifyTokenImport: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     jamViewModel: LastWaveJamViewModel = hiltViewModel(),
 ) {
@@ -1784,6 +1785,24 @@ fun SettingsScreen(
                                             isHighlighted = (highlightedSettingId == "spotify.prefer_canvas"),
                                         )
                                     }
+                                }
+                            }
+                        }
+
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                SectionLabel("Session Token")
+                                SettingsGroup(rowCount = 1) { _, position ->
+                                    SettingsActionCard(
+                                        icon = Icons.Filled.Key,
+                                        iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                        iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                        title = "Import sp_dc token",
+                                        subtitle = "Paste a session cookie from your browser instead of signing in here",
+                                        onClick = onOpenSpotifyTokenImport,
+                                        position = position,
+                                        isHighlighted = (highlightedSettingId == "spotify.token"),
+                                    )
                                 }
                             }
                         }

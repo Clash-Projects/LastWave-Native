@@ -408,19 +408,30 @@ fun LastWaveNavHost(
                     onOpenYouTubeImport = { navController.navigate(Screen.YouTubeImport.route) },
                     onOpenYouTubeLogin = { navController.navigate(Screen.YouTubeLogin.route) },
                     onOpenSpotifyLogin = { navController.navigate(Screen.SpotifyLogin.route) },
+                    onOpenSpotifyTokenImport = { navController.navigate(Screen.SpotifyTokenImport.route) },
                     onOpenExternalImport = { navController.navigate(Screen.ExternalPlaylistImport.route) },
                 )
             }
         }
 
-        composable(Screen.SpotifyLogin.route) {
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
-                com.lastwave.app.ui.settings.SpotifyLoginScreen(
-                    onBack = { navController.popBackStack() },
-                    onConnected = { navController.popBackStack() },
-                )
-            }
-        }
+      composable(Screen.SpotifyLogin.route) {
+      PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+      com.lastwave.app.ui.settings.SpotifyLoginScreen(
+      onBack = { navController.popBackStack() },
+      onConnected = { navController.popBackStack() },
+      )
+      }
+      }
+
+      composable(Screen.SpotifyTokenImport.route) {
+      PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+      com.lastwave.app.ui.settings.SpotifyLoginScreen(
+      onBack = { navController.popBackStack() },
+      onConnected = { navController.popBackStack() },
+      openManualEntryInitially = true,
+      )
+      }
+      }
 
         composable(
             route = Screen.Jam.route,
