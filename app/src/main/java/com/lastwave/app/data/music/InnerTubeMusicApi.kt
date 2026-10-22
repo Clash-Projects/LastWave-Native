@@ -4047,6 +4047,52 @@ class InnerTubeMusicApi @Inject constructor(
         return YouTubeMusicTrack(videoId, title, artist, null, artwork, duration)
     }
 
+    /**
+     * Parses a YouTube Music /next radio response, returning tracks in exact order,
+     * the continuation token (if present), and any chained automix playlistId.
+     */
+    internal fun parseRadioResponse(root: JsonElement): YtRadioResult {
+        val tracks = mutableListOf<YouTubeMusicTrack>()
+        val seenVideoIds = mutableSetOf<String>()
+
+        fun addTrack(track: YouTubeMusicTrack?) {
+            if (track != null && track.videoId.isNotBlank() && seenVideoIds.add(track.videoId)) {
+                tracks.add(track)
+            }
+        }
+
+        val panel = root.asObject()?.obj("continuationContents")?.obj("playlistPanelContinuation")
+            ?: run {
+                val panels = mutableListOf<JsonObject>()
+                collectObjects(root, "playlistPanelRenderer", panels)
+                panels.firstOrNull()
+            }
+
+        val contents = panel?.array("contents")
+        if (contents != null) {
+            for (i in 0 until contents.size) {
+                addTrack(parsePlaylistPanelItem(contents[i]))
+            }
+        }
+
+        if (tracks.isEmpty()) {
+            val queueRenderers = mutableListOf<JsonObject>()
+            collectObjects(root, "playlistPanelVideoRenderer", queueRenderers)
+            for (renderer in queueRenderers) {
+                addTrack(parsePlaylistPanelSong(renderer))
+            }
+        }
+
+        val continuationToken = extractRadioContinuationToken(root)
+        val automixPlaylistId = extractAutomixPlaylistId(root)
+
+        return YtRadioResult(
+            tracks = tracks,
+            continuationToken = continuationToken,
+            automixPlaylistId = automixPlaylistId,
+        )
+    }
+
     internal fun parsePlaylistPanelItem(element: JsonElement): YouTubeMusicTrack? {
         val obj = element.asObject() ?: return null
         obj.obj("playlistPanelVideoRenderer")?.let { return parsePlaylistPanelSong(it) }
