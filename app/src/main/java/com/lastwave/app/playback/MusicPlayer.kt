@@ -374,6 +374,10 @@ class MusicPlayer @Inject constructor(
     private var radioQueueLoadJob: Job? = null
     private var radioQueueActive = false
     private val radioUsedSeeds = ConcurrentHashMap.newKeySet<String>()
+    @Volatile
+    private var currentRadioContinuationToken: String? = null
+    @Volatile
+    private var currentRadioAutomixPlaylistId: String? = null
     private var unavailableSkipJob: Job? = null
     private val unavailableMediaIds = mutableSetOf<String>()
     /**
@@ -4905,6 +4909,8 @@ class MusicPlayer @Inject constructor(
         radioQueueLoadJob?.cancel()
         radioQueueLoadJob = null
         radioUsedSeeds.clear()
+        currentRadioContinuationToken = null
+        currentRadioAutomixPlaylistId = null
     }
 
     private fun isDisallowedRadioTitle(titleLower: String): Boolean {
