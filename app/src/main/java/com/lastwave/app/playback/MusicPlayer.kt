@@ -5243,6 +5243,40 @@ class MusicPlayer @Inject constructor(
                                     (vid == null || vid !in existingVideoIds) &&
                                     key !in existingKeys
                             }
+                    } else if (!radioResult?.automixPlaylistId.isNullOrBlank()) {
+                        val automixId = radioResult?.automixPlaylistId
+                        val automixResult = runCatching { innerTube.fetchRadioByPlaylistId(automixId.orEmpty()) }.getOrNull()
+                        if (automixResult != null && automixResult.tracks.isNotEmpty()) {
+                            currentRadioContinuationToken = automixResult.continuationToken
+                            currentRadioAutomixPlaylistId = automixResult.automixPlaylistId
+                            automixResult.tracks
+                                .map { it.toPlayableTrack() }
+                                .filter { track ->
+                                    val vid = track.videoId
+                                    val key = track.queueKey()
+                                    (vid == null || vid != seedVideoId) &&
+                                        (vid == null || vid !in existingVideoIds) &&
+                                        key !in existingKeys
+                                }
+                        } else {
+                            val knownCoreTitleArtists = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
+                                "${cleanCoreTitle(it.title)}|${cleanCoreArtist(it.artist)}"
+                            }
+                            val knownCoreTitles = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
+                                cleanCoreTitle(it.title)
+                            }
+                            val fallbackSeeds = existingTracks.takeLast(5).filter { !it.artist.equals(seed.artist, ignoreCase = true) }
+                            android.util.Log.w("MusicPlayer", "Native YTM radio returned no tracks; using emergency fallback curation")
+                            fetchContextAwareRadioTracks(
+                                primarySeed = seed,
+                                fallbackSeeds = fallbackSeeds,
+                                knownVideoIds = existingVideoIds,
+                                knownKeys = existingKeys,
+                                knownCoreTitleArtists = knownCoreTitleArtists,
+                                knownCoreTitles = knownCoreTitles,
+                                batchSize = RADIO_QUEUE_BATCH_SIZE,
+                            )
+                        }
                     } else {
                         val knownCoreTitleArtists = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
                             "${cleanCoreTitle(it.title)}|${cleanCoreArtist(it.artist)}"
