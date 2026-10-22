@@ -5325,6 +5325,43 @@ class MusicPlayer @Inject constructor(
         }
     }
 
+    private suspend fun runEmergencyFallbackRadio(
+        currentIndex: Int,
+        currentQueue: List<PlayableTrack>,
+        knownVideoIds: Set<String>,
+        knownKeys: Set<String>,
+    ): List<PlayableTrack> {
+        val nextSeed = currentQueue
+            .drop(currentIndex.coerceAtLeast(0))
+            .firstOrNull { it.videoId != null && it.videoId !in radioUsedSeeds }
+            ?: currentQueue.getOrNull(currentIndex)
+            ?: currentQueue.lastOrNull { it.videoId != null }
+            ?: return emptyList()
+
+        val fallbackSeeds = currentQueue
+            .takeLast(10)
+            .filter { !it.artist.equals(nextSeed.artist, ignoreCase = true) }
+            .distinctBy { it.artist.lowercase() }
+
+        val knownCoreTitleArtists = currentQueue.withHistoryTracks().mapTo(mutableSetOf()) {
+            "${cleanCoreTitle(it.title)}|${cleanCoreArtist(it.artist)}"
+        }
+        val knownCoreTitles = currentQueue.withHistoryTracks().mapTo(mutableSetOf()) {
+            cleanCoreTitle(it.title)
+        }
+
+        android.util.Log.w("MusicPlayer", "Native YTM radio continuation exhausted; using emergency fallback curation for ${nextSeed.title}")
+        return fetchContextAwareRadioTracks(
+            primarySeed = nextSeed,
+            fallbackSeeds = fallbackSeeds,
+            knownVideoIds = knownVideoIds,
+            knownKeys = knownKeys,
+            knownCoreTitleArtists = knownCoreTitleArtists,
+            knownCoreTitles = knownCoreTitles,
+            batchSize = RADIO_QUEUE_BATCH_SIZE,
+        )
+    }
+
     private fun extendRadioQueueIfNeeded(currentIndex: Int, forceIfAtEnd: Boolean = false) {
         if (!radioQueueActive || radioQueueLoadJob?.isActive == true) return
         val currentCount = player.mediaItemCount
@@ -5341,34 +5378,81 @@ class MusicPlayer @Inject constructor(
 
                 val knownVideoIds = currentQueue.mapNotNullTo(mutableSetOf()) { it.videoId }
                 val knownKeys = currentQueue.mapTo(mutableSetOf()) { it.queueKey() }
-                val knownCoreTitleArtists = currentQueue.withHistoryTracks().mapTo(mutableSetOf()) {
-                    "${cleanCoreTitle(it.title)}|${cleanCoreArtist(it.artist)}"
+                val historyKeys = playHistory.toSet()
+
+                val continuationToken = currentRadioContinuationToken
+                val automixId = currentRadioAutomixPlaylistId
+
+                val toAdd: List<PlayableTrack> = if (!continuationToken.isNullOrBlank()) {
+                    val result = runCatching { innerTube.fetchRadioContinuation(continuationToken) }.getOrElse { err ->
+                        android.util.Log.w("MusicPlayer", "Failed to fetch native radio continuation, will try automix or emergency fallback", err)
+                        null
+                    }
+                    if (result != null && result.tracks.isNotEmpty()) {
+                        currentRadioContinuationToken = result.continuationToken
+                        if (result.automixPlaylistId != null) {
+                            currentRadioAutomixPlaylistId = result.automixPlaylistId
+                        }
+                        result.tracks
+                            .map { it.toPlayableTrack() }
+                            .filter { track ->
+                                val vid = track.videoId
+                                val key = track.queueKey()
+                                (vid == null || vid !in knownVideoIds) &&
+                                    key !in knownKeys &&
+                                    track.mediaIdKey() !in historyKeys
+                            }
+                    } else if (!automixId.isNullOrBlank()) {
+                        currentRadioContinuationToken = null
+                        currentRadioAutomixPlaylistId = null
+                        val automixResult = runCatching { innerTube.fetchRadioByPlaylistId(automixId) }.getOrElse { err ->
+                            android.util.Log.w("MusicPlayer", "Failed to fetch automix radio playlist $automixId, using fallback", err)
+                            null
+                        }
+                        if (automixResult != null && automixResult.tracks.isNotEmpty()) {
+                            currentRadioContinuationToken = automixResult.continuationToken
+                            currentRadioAutomixPlaylistId = automixResult.automixPlaylistId
+                            automixResult.tracks
+                                .map { it.toPlayableTrack() }
+                                .filter { track ->
+                                    val vid = track.videoId
+                                    val key = track.queueKey()
+                                    (vid == null || vid !in knownVideoIds) &&
+                                        key !in knownKeys &&
+                                        track.mediaIdKey() !in historyKeys
+                                }
+                        } else {
+                            runEmergencyFallbackRadio(currentIndex, currentQueue, knownVideoIds, knownKeys)
+                        }
+                    } else {
+                        currentRadioContinuationToken = null
+                        runEmergencyFallbackRadio(currentIndex, currentQueue, knownVideoIds, knownKeys)
+                    }
+                } else if (!automixId.isNullOrBlank()) {
+                    currentRadioAutomixPlaylistId = null
+                    val automixResult = runCatching { innerTube.fetchRadioByPlaylistId(automixId) }.getOrElse { err ->
+                        android.util.Log.w("MusicPlayer", "Failed to fetch automix radio playlist $automixId, using fallback", err)
+                        null
+                    }
+                    if (automixResult != null && automixResult.tracks.isNotEmpty()) {
+                        currentRadioContinuationToken = automixResult.continuationToken
+                        currentRadioAutomixPlaylistId = automixResult.automixPlaylistId
+                        automixResult.tracks
+                            .map { it.toPlayableTrack() }
+                            .filter { track ->
+                                val vid = track.videoId
+                                val key = track.queueKey()
+                                (vid == null || vid !in knownVideoIds) &&
+                                    key !in knownKeys &&
+                                    track.mediaIdKey() !in historyKeys
+                            }
+                    } else {
+                        runEmergencyFallbackRadio(currentIndex, currentQueue, knownVideoIds, knownKeys)
+                    }
+                } else {
+                    runEmergencyFallbackRadio(currentIndex, currentQueue, knownVideoIds, knownKeys)
                 }
-                val knownCoreTitles = currentQueue.withHistoryTracks().mapTo(mutableSetOf()) {
-                    cleanCoreTitle(it.title)
-                }
 
-                val nextSeed = currentQueue
-                    .drop(currentIndex.coerceAtLeast(0))
-                    .firstOrNull { it.videoId != null && it.videoId !in radioUsedSeeds }
-                    ?: currentQueue.getOrNull(currentIndex)
-                    ?: currentQueue.lastOrNull { it.videoId != null }
-                    ?: return@launch
-
-                val fallbackSeeds = currentQueue
-                    .takeLast(10)
-                    .filter { !it.artist.equals(nextSeed.artist, ignoreCase = true) }
-                    .distinctBy { it.artist.lowercase() }
-
-                val toAdd = fetchContextAwareRadioTracks(
-                    primarySeed = nextSeed,
-                    fallbackSeeds = fallbackSeeds,
-                    knownVideoIds = knownVideoIds,
-                    knownKeys = knownKeys,
-                    knownCoreTitleArtists = knownCoreTitleArtists,
-                    knownCoreTitles = knownCoreTitles,
-                    batchSize = RADIO_QUEUE_BATCH_SIZE,
-                )
                 if (toAdd.isEmpty() || !radioQueueActive) return@launch
 
                 withContext(Dispatchers.Main.immediate) {
