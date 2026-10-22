@@ -594,12 +594,12 @@ private fun FloatingNavItem(
         targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(
             alpha = if (LocalLiquidGlass.current) 0.28f else 1f,
         ) else Color.Transparent,
-        animationSpec = navSpring(),
+        animationSpec = ExpressiveMotion.effectsDefault(),
         label = "navItemBackground",
     )
     val contentColor by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = navSpring(),
+        animationSpec = ExpressiveMotion.effectsDefault(),
         label = "navItemContent",
     )
     // Animate the pill padding instead of jumping it: combined with the label
