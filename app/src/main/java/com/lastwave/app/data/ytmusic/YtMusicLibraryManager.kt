@@ -204,7 +204,7 @@ class YtMusicLibraryManager @Inject constructor(
                         title = LIKED_YT_SONGS_TITLE,
                         author = "YouTube Music",
                         trackCountText = null,
-                        artworkUrl = null,
+                        artworkUrl = LIKED_MUSIC_ARTWORK,
                     ),
             ) + account
         }
@@ -679,6 +679,7 @@ class YtMusicLibraryManager @Inject constructor(
             summary.trackCountText?.let(::parseTrackCount)
         }
         val artwork = summary.artworkUrl ?: knownArtworkByRemoteId[summary.id]
+            ?: if (isLiked) LIKED_MUSIC_ARTWORK else null
         return SavedPlaylist(
             id = id,
             // The account's liked list is shown under its own name, so it is never
@@ -732,6 +733,15 @@ class YtMusicLibraryManager @Inject constructor(
 
     private companion object {
         const val LIKED_MUSIC_REMOTE_ID = "LM"
+
+/**
+ * The liked list's own cover, which is the same for every account.
+ *
+ * Reading it off the list would mean browsing the whole of it - a library of songs -
+ * for a thumbnail. This is that picture.
+ */
+const val LIKED_MUSIC_ARTWORK =
+    "https://www.gstatic.com/youtube/media/ytm/images/pbg/liked-songs-delhi-1200.png"
         const val PLAYLIST_CONTENT_VERSION = 2
         const val REALTIME_REFRESH_MS = 8_000L
         const val ARTWORK_RETRY_DELAY_MS = 5 * 60 * 1000L
