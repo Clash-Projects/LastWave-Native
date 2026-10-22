@@ -3796,6 +3796,8 @@ class InnerTubeMusicApi @Inject constructor(
      * Extracts title and subtitle via [parseCarouselShelfHeader], then parses
      * child items (musicTwoRowItemRenderer and musicResponsiveListItemRenderer) into
      * [HomeShelfItem.Track] or [HomeShelfItem.Playlist], skipping items without a usable ID.
+     *
+     * Adapted from Metrolist's HomePage.Section.fromMusicCarouselShelfRenderer (GPL-3.0).
      */
     internal fun parseCarouselShelf(carouselRenderer: JsonObject): HomeShelf? {
         val (title, subtitle) = parseCarouselShelfHeader(carouselRenderer) ?: return null

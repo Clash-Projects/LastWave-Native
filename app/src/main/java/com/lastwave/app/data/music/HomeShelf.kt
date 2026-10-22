@@ -1,3 +1,9 @@
+/*
+ * Adapted from Metrolist's InnerTube home feed architecture (GPL-3.0).
+ * Reference: com.metrolist.innertube.pages.HomePage
+ * Copyright (C) 2024 Metrolist Project / LastWave Authors
+ * Licensed under the GNU General Public License v3.0 (GPL-3.0).
+ */
 package com.lastwave.app.data.music
 
 import androidx.compose.runtime.Immutable
