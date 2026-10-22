@@ -236,9 +236,8 @@ class FeedRepository @Inject constructor(
             val hasVideo = t.videoId.isNotBlank()
             val hasArt = ArtworkNormalizer.isRealImage(t.artworkUrl)
             val positionDecay = 1.0 / (1.0 + index / 9.0)
-            val jitter = random.nextDouble()
             return aff * 60.0 + sourceBoost * 14.0 * positionDecay +
-                (if (hasVideo) 10.0 else -6.0) + (if (hasArt) 4.0 else 0.0) + jitter * 35.0 - (if (t.videoId in previousPickIds) 30.0 else 0.0)
+                (if (hasVideo) 10.0 else -6.0) + (if (hasArt) 4.0 else 0.0) - (if (t.videoId in previousPickIds) 30.0 else 0.0)
         }
         fun <T> diversify(
             items: List<T>,
