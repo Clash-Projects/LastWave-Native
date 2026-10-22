@@ -1935,6 +1935,35 @@ class InnerTubeMusicApi @Inject constructor(
         results
     }
 
+    /**
+     * Fetches YouTube Music's native radio for a seed videoId (`playlistId = RDAMVM<videoId>`).
+     * Returns the tracks in exact YouTube Music order, pagination continuation token, and automix playlistId.
+     * Works for both authenticated users and guests.
+     */
+    suspend fun fetchRadio(
+        videoId: String,
+    ): YtRadioResult = withContext(Dispatchers.IO) {
+        if (videoId.isBlank()) return@withContext YtRadioResult(emptyList())
+        val config = getWebConfig()
+        val isAuth = ytAuth.isLoggedIn()
+        val root = post(
+            url = "$MUSIC_API/next?key=${config.apiKey}&prettyPrint=false",
+            body = buildJsonObject {
+                put("context", context("WEB_REMIX", config.clientVersion, config.visitorData, authenticated = isAuth))
+                put("videoId", videoId)
+                put("playlistId", "RDAMVM$videoId")
+                put("params", "wAEB")
+                put("isAudioOnly", true)
+            },
+            clientName = "WEB_REMIX",
+            clientVersion = config.clientVersion,
+            userAgent = WEB_USER_AGENT,
+            authenticated = isAuth,
+            callTimeoutMs = RELATED_REQUEST_TIMEOUT_MS,
+        )
+        parseRadioResponse(root)
+    }
+
     suspend fun searchArtists(query: String, limit: Int = 30): List<YouTubeMusicEntity> =
         searchEntities(query, YouTubeMusicEntityKind.ARTIST, ARTIST_SEARCH_FILTER, limit)
 
