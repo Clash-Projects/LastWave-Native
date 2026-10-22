@@ -19,18 +19,30 @@ data class CanvasRequest(
 @Serializable
 data class CanvasResponse(
     @ProtoNumber(1) val canvases: List<CanvasItem> = emptyList(),
+    @ProtoNumber(2) val ttlInSeconds: Long? = null,
 ) {
     @Serializable
     data class CanvasItem(
         @ProtoNumber(1) val id: String? = null,
         @ProtoNumber(2) val canvasUrl: String? = null,
         @ProtoNumber(5) val trackUri: String? = null,
-        @ProtoNumber(8) val artist: ArtistItem? = null,
+        @ProtoNumber(6) val artist: ArtistItem? = null,
+        @ProtoNumber(9) val otherId: String? = null,
+        @ProtoNumber(11) val canvasUri: String? = null,
+        @ProtoNumber(13) val thumbsOfCanva: List<ThumbOfCanva>? = null,
     ) {
         @Serializable
         data class ArtistItem(
             @ProtoNumber(1) val artistUri: String? = null,
             @ProtoNumber(2) val artistName: String? = null,
+            @ProtoNumber(3) val artistImgUrl: String? = null,
+        )
+
+        @Serializable
+        data class ThumbOfCanva(
+            @ProtoNumber(1) val height: Int? = null,
+            @ProtoNumber(2) val width: Int? = null,
+            @ProtoNumber(3) val url: String? = null,
         )
     }
 }

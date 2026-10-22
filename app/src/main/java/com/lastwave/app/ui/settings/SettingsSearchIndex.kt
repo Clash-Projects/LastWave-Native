@@ -915,7 +915,7 @@ object SettingsSearchIndex {
                     subtitle = "Sign in to enable official Spotify Canvas video loops & library sync",
                     keywords = listOf(
                         "spotify", "spotify account", "connect spotify", "sp_dc", "spotify login",
-                        "canvas login"
+                        "canvas login", "disconnect spotify", "logout spotify", "sign out"
                     ),
                     icon = Icons.Filled.PlayCircle,
                     iconContainer = { MaterialTheme.colorScheme.primaryContainer },

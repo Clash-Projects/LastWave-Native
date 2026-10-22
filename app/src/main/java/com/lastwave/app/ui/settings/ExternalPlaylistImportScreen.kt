@@ -262,8 +262,15 @@ fun ExternalPlaylistImportScreen(
                                                     overflow = TextOverflow.Ellipsis,
                                                 )
                                                 Spacer(Modifier.height(4.dp))
+                                                val trackLabel = if (pl.trackCount > 0) {
+                                                    "${pl.trackCount} tracks"
+                                                } else if (uiState.preview != null && uiState.link.contains(pl.id)) {
+                                                    "${uiState.preview.rows.size} tracks"
+                                                } else {
+                                                    "Spotify Playlist"
+                                                }
                                                 Text(
-                                                    "${pl.trackCount} tracks",
+                                                    trackLabel,
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 )

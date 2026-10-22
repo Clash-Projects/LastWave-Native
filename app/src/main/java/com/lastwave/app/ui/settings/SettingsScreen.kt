@@ -527,6 +527,7 @@ fun SettingsScreen(
     var showYtLibraryVisibilitySheet by remember { mutableStateOf(false) }
     var showYtChannelSheet by remember { mutableStateOf(false) }
     var showYtDisconnectConfirm by remember { mutableStateOf(false) }
+    var showSpotifyDisconnectConfirm by remember { mutableStateOf(false) }
     var showCookieLoginDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showJamSheet by remember { mutableStateOf(false) }
@@ -1769,16 +1770,25 @@ fun SettingsScreen(
                                 val spotifyPreferCanvas by viewModel.spotifyPreferCanvas.collectAsStateWithLifecycle()
                                 SettingsGroup(rowCount = if (spotifyConnected) 4 else 3) { index, position ->
                                     when (index) {
-                                        0 -> SettingsActionCard(
-                                            icon = Icons.Filled.PlayCircle,
-                                            iconContainer = if (spotifyConnected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                                            iconTint = if (spotifyConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            title = if (spotifyConnected) "Spotify Account Connected" else "Connect Spotify Account",
-                                            subtitle = if (spotifyConnected) "Connected (sp_dc). Tap to reconnect or manage session." else "Sign in to enable official Spotify Canvas video loops & library sync",
-                                            onClick = onOpenSpotifyLogin,
-                                            position = position,
-                                            isHighlighted = (highlightedSettingId == "spotify.account"),
-                                        )
+                                        0 -> if (spotifyConnected) {
+                                            SpotifyAccountRow(
+                                                onDisconnect = { showSpotifyDisconnectConfirm = true },
+                                                onClick = onOpenSpotifyLogin,
+                                                position = position,
+                                                isHighlighted = (highlightedSettingId == "spotify.account"),
+                                            )
+                                        } else {
+                                            SettingsActionCard(
+                                                icon = Icons.Filled.PlayCircle,
+                                                iconContainer = MaterialTheme.colorScheme.surfaceVariant,
+                                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                title = "Connect Spotify Account",
+                                                subtitle = "Sign in to enable official Spotify Canvas video loops & library sync",
+                                                onClick = onOpenSpotifyLogin,
+                                                position = position,
+                                                isHighlighted = (highlightedSettingId == "spotify.account"),
+                                            )
+                                        }
                                         1 -> SettingsActionCard(
                                             icon = Icons.Filled.QueueMusic,
                                             iconContainer = MaterialTheme.colorScheme.secondaryContainer,
@@ -2338,6 +2348,37 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showYtDisconnectConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
+            },
+        )
+    }
+
+    // -- Spotify disconnect confirm --
+    if (showSpotifyDisconnectConfirm) {
+        AlertDialog(
+            onDismissRequest = { showSpotifyDisconnectConfirm = false },
+            title = { Text("Disconnect Spotify?") },
+            text = { Text("This will remove your Spotify session and log you out. Spotify Canvas loops and synced playlists will be disabled until you reconnect.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showSpotifyDisconnectConfirm = false
+                    viewModel.disconnectSpotify()
+                    runCatching {
+                        val cm = android.webkit.CookieManager.getInstance()
+                        for (domain in listOf("https://spotify.com", "https://accounts.spotify.com", "https://open.spotify.com")) {
+                            val cookies = cm.getCookie(domain) ?: continue
+                            for (cookie in cookies.split(";")) {
+                                val name = cookie.substringBefore("=").trim()
+                                if (name.isNotEmpty()) {
+                                    cm.setCookie(domain, "$name=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/")
+                                }
+                            }
+                        }
+                        cm.flush()
+                    }
+                }) { Text(stringResource(R.string.common_disconnect)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSpotifyDisconnectConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
             },
         )
     }
@@ -3706,6 +3747,69 @@ private fun YouTubeAccountRow(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+            Spacer(Modifier.width(8.dp))
+            FilledTonalIconButton(
+                onClick = onDisconnect,
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                ),
+            ) {
+                Icon(Icons.Filled.Logout, contentDescription = stringResource(R.string.set_disconnect_cd))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpotifyAccountRow(
+    onDisconnect: () -> Unit,
+    onClick: () -> Unit,
+    position: GroupPosition,
+    isHighlighted: Boolean = false,
+) {
+    val shape = groupShape(position)
+    Card(
+        onClick = onClick,
+        shape = shape,
+        colors = CardDefaults.cardColors(
+            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize()
+            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconBadge(
+                Icons.Filled.PlayCircle,
+                MaterialTheme.colorScheme.primaryContainer,
+                MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Spotify Account",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "Connected (sp_dc)",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+                Text(
+                    "Tap to manage session",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             Spacer(Modifier.width(8.dp))
             FilledTonalIconButton(

@@ -156,6 +156,10 @@ class SettingsViewModel @Inject constructor(
     fun setSpotifyCanvasEnabled(enabled: Boolean) {
         viewModelScope.launch {
             spotifyPreferences.setCanvasEnabled(enabled)
+            settingsPreferences.setCanvasEnabled(enabled)
+            if (enabled) {
+                spotifyPreferences.setPreferSpotifyCanvas(true)
+            }
         }
     }
 
@@ -168,6 +172,7 @@ class SettingsViewModel @Inject constructor(
     fun disconnectSpotify() {
         viewModelScope.launch {
             spotifyPreferences.clearConnection()
+            _uiState.update { it.copy(toastMessage = "Spotify account disconnected") }
         }
     }
 
