@@ -1014,7 +1014,6 @@
     <string name="alb_tracks">トラック</string>
     <string name="alb_empty">現在、このアルバムのトラックはリストされていません。後でもう一度試してください。</string>
     <string name="alb_load_fail">アルバムの詳細を読み込めませんでした</string>
-    <string name="alb_save_fail">アルバムを保存できませんでした。もう一度やり直してください。</string>
     <string name="nr_title">新しいリリース</string>
     <string name="nr_sub">新鮮な滴を見つける</string>
     <string name="nr_load_fail">新しいリリースを読み込めませんでした</string>

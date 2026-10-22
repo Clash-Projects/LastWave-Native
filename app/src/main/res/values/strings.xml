@@ -1090,7 +1090,6 @@
     <string name="alb_tracks">Tracks</string>
     <string name="alb_empty">No tracks listed for this album right now — try again later.</string>
     <string name="alb_load_fail">Failed to load album details</string>
-    <string name="alb_save_fail">Couldn\'t save album. Try again.</string>
 
     <!-- New releases -->
     <string name="nr_title">New releases</string>
@@ -1263,4 +1262,14 @@
     <string name="signal_detail_autoeq">Correction applied by LastWave (changes the samples, Android mixer still bypassed)</string>
     <string name="signal_verdict_direct_eq">Android mixer bypassed. LastWave applies your AutoEQ correction, then the samples go straight to the HAL.</string>
     <string name="signal_direct_eq">DIRECT + EQ</string>
+    <string name="lib_filter_playlists">Playlists</string>
+    <string name="lib_filter_albums">Albums</string>
+    <string name="lib_filter_artists">Artists</string>
+    <string name="fav_album_add">Add to favorite albums</string>
+    <string name="fav_album_remove">Favorite album</string>
+    <string name="fav_artist_add">Add to favorite artists</string>
+    <string name="fav_artist_remove">Remove from favorite artists</string>
+    <string name="fav_remove_cd">Remove from favorites</string>
+    <string name="fav_albums_empty">No favorite albums yet. Tap the heart on an album page.</string>
+    <string name="fav_artists_empty">No favorite artists yet. Tap the heart on an artist page.</string>
 </resources>

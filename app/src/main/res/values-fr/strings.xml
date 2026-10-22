@@ -1021,7 +1021,6 @@
     <string name="alb_tracks">Pistes</string>
     <string name="alb_empty">Aucun titre répertorié pour cet album pour le moment. Réessayez plus tard.</string>
     <string name="alb_load_fail">Échec du chargement des détails de l\'album</string>
-    <string name="alb_save_fail">Impossible d\'enregistrer l\'album. Essayer à nouveau.</string>
     <string name="nr_title">Nouvelles versions</string>
     <string name="nr_sub">Trouver des gouttes fraîches</string>
     <string name="nr_load_fail">Impossible de charger les nouvelles versions</string>
@@ -1126,4 +1125,14 @@
     <string name="signal_detail_autoeq">Correction appliquée par LastWave (modifie les échantillons, mixer Android toujours contourné)</string>
     <string name="signal_verdict_direct_eq">Mixer Android contourné. LastWave applique ta correction AutoEQ, puis les échantillons vont directement au HAL.</string>
     <string name="signal_direct_eq">DIRECT + EQ</string>
+    <string name="lib_filter_playlists">Playlists</string>
+    <string name="lib_filter_albums">Albums</string>
+    <string name="lib_filter_artists">Artistes</string>
+    <string name="fav_album_add">Ajouter aux albums favoris</string>
+    <string name="fav_album_remove">Album favori</string>
+    <string name="fav_artist_add">Ajouter aux artistes favoris</string>
+    <string name="fav_artist_remove">Retirer des artistes favoris</string>
+    <string name="fav_remove_cd">Retirer des favoris</string>
+    <string name="fav_albums_empty">Aucun album favori pour l\'instant. Touchez le cœur sur la page d\'un album.</string>
+    <string name="fav_artists_empty">Aucun artiste favori pour l\'instant. Touchez le cœur sur la page d\'un artiste.</string>
 </resources>

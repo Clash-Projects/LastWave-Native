@@ -1014,7 +1014,6 @@
     <string name="alb_tracks">المسارات</string>
     <string name="alb_empty">لا توجد مسارات مدرجة لهذا الألبوم حاليًا - حاول مرة أخرى لاحقًا.</string>
     <string name="alb_load_fail">فشل تحميل تفاصيل الألبوم</string>
-    <string name="alb_save_fail">تعذر حفظ الألبوم. حاول ثانية.</string>
     <string name="nr_title">الإصدارات الجديدة</string>
     <string name="nr_sub">العثور على قطرات جديدة</string>
     <string name="nr_load_fail">تعذر تحميل الإصدارات الجديدة</string>

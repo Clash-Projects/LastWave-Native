@@ -65,6 +65,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -79,7 +80,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import com.lastwave.app.data.favorites.FavoriteKind
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -153,6 +156,7 @@ fun PlaylistScreen(
     var menuTarget by remember { mutableStateOf<Pair<Long, GeneratedTrack>?>(null) }
     var selectedPlaylists by remember { mutableStateOf(setOf<Long>()) }
     var showMultipleDeleteConfirm by remember { mutableStateOf(false) }
+    var filter by rememberSaveable { mutableStateOf(LibraryFilter.PLAYLISTS) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -164,7 +168,7 @@ fun PlaylistScreen(
             var sortMenuExpanded by remember { mutableStateOf(false) }
             ExpressiveHeader(
                 title = if (selectedPlaylists.isNotEmpty()) stringResource(R.string.pl_selected_count, selectedPlaylists.size) else stringResource(R.string.pl_title),
-                subtitle = if (selectedPlaylists.isNotEmpty()) stringResource(R.string.pl_select_more_hint) else if (state.playlists.any { it.isYouTubeOnly && it.remoteTrackCount == null }) {
+                subtitle = if (filter != LibraryFilter.PLAYLISTS) null else if (selectedPlaylists.isNotEmpty()) stringResource(R.string.pl_select_more_hint) else if (state.playlists.any { it.isYouTubeOnly && it.remoteTrackCount == null }) {
                     stringResource(R.string.pl_count_only, state.playlists.size)
                 } else {
                     stringResource(R.string.pl_count_tracks, state.playlists.size, state.playlists.sumOf { it.remoteTrackCount ?: it.tracks.size })
@@ -183,7 +187,7 @@ fun PlaylistScreen(
                         ) {
                             Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.pl_clear_selection_cd))
                         }
-                    } else {
+                    } else if (filter == LibraryFilter.PLAYLISTS) {
                         IconButton(
                             onClick = viewModel::openCreateDialog,
                             modifier = Modifier.size(40.dp),
@@ -236,12 +240,30 @@ fun PlaylistScreen(
                 },
             )
 
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
+            ) {
+                LibraryFilter.entries.forEach { option ->
+                    FilterChip(
+                        selected = filter == option,
+                        onClick = { filter = option; selectedPlaylists = setOf() },
+                        label = { Text(stringResource(option.labelRes)) },
+                    )
+                }
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
             ) {
                 when {
+                    filter == LibraryFilter.ALBUMS -> FavoritesList(FavoriteKind.ALBUM)
+                    filter == LibraryFilter.ARTISTS -> FavoritesList(FavoriteKind.ARTIST)
                     state.isLoading && state.playlists.isEmpty() && !state.isGenerating -> LoadingState()
                     state.playlists.isEmpty() && !state.isGenerating -> EmptyState()
                     else -> LazyColumn(

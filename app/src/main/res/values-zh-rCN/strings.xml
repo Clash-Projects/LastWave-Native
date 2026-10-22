@@ -1017,7 +1017,6 @@
     <string name="alb_tracks">曲目</string>
     <string name="alb_empty">目前没有列出该专辑的曲目 - 稍后再试。</string>
     <string name="alb_load_fail">无法加载专辑详细信息</string>
-    <string name="alb_save_fail">无法保存相册。再试一次。</string>
     <string name="nr_title">新发布</string>
     <string name="nr_sub">寻找新鲜的水滴</string>
     <string name="nr_load_fail">无法加载新版本</string>
