@@ -429,6 +429,23 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "appearance.lastwave_theme",
+                    title = "LastWave Signature Theme",
+                    subtitle = "Bespoke logo palette with Electric Lime and Obsidian Teal",
+                    keywords = listOf(
+                        "lastwave theme", "brand theme", "special theme", "logo theme", "lime",
+                        "teal", "obsidian", "electric lime", "iconic theme", "brand colors"
+                    ),
+                    icon = Icons.Filled.AutoAwesome,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Appearance",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "appearance.amoled",
                     title = "Pure Black AMOLED",
                     subtitle = "Pitch black surfaces for OLED and AMOLED screens to save battery",

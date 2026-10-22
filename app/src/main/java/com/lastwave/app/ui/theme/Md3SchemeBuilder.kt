@@ -102,6 +102,113 @@ object Md3SchemeBuilder {
         monochrome = true,
     )
 
+    /**
+     * LastWave Signature Dark Scheme built specifically around the official app logo colors:
+     * Electric Lime (#C9FB00) and Deep Obsidian Teal (#012226).
+     */
+    fun buildLastWaveDarkScheme(amoled: Boolean, @Suppress("UNUSED_PARAMETER") liquidGlass: Boolean = false): ColorScheme {
+        val brandLime = Color(0xFFC9FB00)
+        val darkTeal = Color(0xFF012226)
+        val deepTeal = Color(0xFF01181B)
+
+        val backgroundCol = if (amoled) Color.Black else deepTeal
+        val surfaceCol = if (amoled) Color.Black else darkTeal
+        val surfaceLowCol = if (amoled) Color.Black else Color(0xFF011E22)
+        val surfaceLowestCol = if (amoled) Color.Black else Color(0xFF001214)
+
+        return darkColorScheme(
+            primary = brandLime,
+            onPrimary = darkTeal,
+            primaryContainer = Color(0xFF063E45),
+            onPrimaryContainer = Color(0xFFD6FF38),
+
+            secondary = Color(0xFF38E5B7),
+            onSecondary = darkTeal,
+            secondaryContainer = Color(0xFF06474F),
+            onSecondaryContainer = Color(0xFF67F8D8),
+
+            tertiary = Color(0xFFA6FF38),
+            onTertiary = Color(0xFF1B3800),
+            tertiaryContainer = Color(0xFF0C464C),
+            onTertiaryContainer = brandLime,
+
+            error = Color(0xFFFFB4AB),
+            errorContainer = Color(0xFF93000A),
+            onErrorContainer = Color(0xFFFFDAD6),
+            onError = Color(0xFF690005),
+
+            background = backgroundCol,
+            onBackground = Color(0xFFE4F8F8),
+            surface = surfaceCol,
+            onSurface = Color(0xFFE4F8F8),
+            surfaceContainer = Color(0xFF02272C),
+            surfaceContainerHigh = Color(0xFF04333A),
+            surfaceContainerHighest = Color(0xFF073F47),
+            surfaceContainerLow = surfaceLowCol,
+            surfaceContainerLowest = surfaceLowestCol,
+            surfaceVariant = Color(0xFF063B42),
+            onSurfaceVariant = Color(0xFFA1CACE),
+
+            outline = Color(0xFF23656E),
+            outlineVariant = Color(0xFF0A444C),
+
+            inverseSurface = Color(0xFFE4F8F8),
+            inverseOnSurface = darkTeal,
+            inversePrimary = Color(0xFF486300),
+            scrim = Color.Black,
+        )
+    }
+
+    /**
+     * LastWave Signature Light Scheme built around the official app logo colors.
+     */
+    fun buildLastWaveLightScheme(@Suppress("UNUSED_PARAMETER") liquidGlass: Boolean = false): ColorScheme {
+        val brandLime = Color(0xFFC9FB00)
+        val darkTeal = Color(0xFF012226)
+
+        return androidx.compose.material3.lightColorScheme(
+            primary = Color(0xFF486300),
+            onPrimary = Color.White,
+            primaryContainer = Color(0xFFE0FE5B),
+            onPrimaryContainer = darkTeal,
+
+            secondary = Color(0xFF014D56),
+            onSecondary = Color.White,
+            secondaryContainer = Color(0xFF9FF2E2),
+            onSecondaryContainer = darkTeal,
+
+            tertiary = Color(0xFF2C6855),
+            onTertiary = Color.White,
+            tertiaryContainer = Color(0xFFB8F9A5),
+            onTertiaryContainer = Color(0xFF0E3800),
+
+            error = Color(0xFFBA1A1A),
+            errorContainer = Color(0xFFFFDAD6),
+            onErrorContainer = Color(0xFF410002),
+            onError = Color.White,
+
+            background = Color(0xFFF2FBF7),
+            onBackground = darkTeal,
+            surface = Color(0xFFF2FBF7),
+            onSurface = darkTeal,
+            surfaceContainer = Color(0xFFE0F1EC),
+            surfaceContainerHigh = Color(0xFFD6EAE5),
+            surfaceContainerHighest = Color(0xFFCCE4DE),
+            surfaceContainerLow = Color(0xFFEAF6F2),
+            surfaceContainerLowest = Color.White,
+            surfaceVariant = Color(0xFFD6ECE8),
+            onSurfaceVariant = Color(0xFF1E464B),
+
+            outline = Color(0xFF5A8E89),
+            outlineVariant = Color(0xFFB0D5D0),
+
+            inverseSurface = darkTeal,
+            inverseOnSurface = Color(0xFFE4F8F8),
+            inversePrimary = brandLime,
+            scrim = Color.Black,
+        )
+    }
+
     private fun build(
         primaryHue: Int,
         secondaryHue: Int,

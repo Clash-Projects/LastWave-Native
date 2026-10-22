@@ -179,6 +179,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
@@ -238,12 +239,12 @@ import kotlin.math.roundToLong
 
 private data class AccentPreset(val name: String, val hex: String)
 private val ACCENT_PRESETS = listOf(
+    AccentPreset("Brand", "#C9FB00"),
     AccentPreset("Crimson", "#E03030"),
     AccentPreset("Violet", "#7C4DFF"),
     AccentPreset("Ocean", "#2196C6"),
     AccentPreset("Sage", "#6B9E6B"),
     AccentPreset("Amber", "#E0A030"),
-    AccentPreset("Rose", "#E0507A"),
 )
 
 // -- Expressive shape scale used only within this screen --
@@ -1202,7 +1203,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_appearance))
-                    SettingsGroup(rowCount = 8) { index, position ->
+                    SettingsGroup(rowCount = 9) { index, position ->
                         when (index) {
                             0 -> ThemeModeSelectorCard(
                                 currentThemeMode = theme?.themeMode ?: ThemeMode.SYSTEM,
@@ -1211,6 +1212,17 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "appearance.theme_mode"),
                             )
                             1 -> SettingsToggleCard(
+                                painter = painterResource(R.drawable.ic_launcher_logo),
+                                iconContainer = Color(0xFFC9FB00),
+                                iconTint = Color(0xFF012226),
+                                title = stringResource(R.string.settings_lastwave_theme),
+                                subtitle = stringResource(R.string.settings_lastwave_theme_sub),
+                                checked = theme?.isLastWaveTheme ?: false,
+                                onCheckedChange = viewModel::setLastWaveTheme,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.lastwave_theme"),
+                            )
+                            2 -> SettingsToggleCard(
                                 icon = Icons.Filled.Contrast,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1222,20 +1234,23 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.amoled"),
                             )
-                            2 -> SettingsToggleCard(
+                            3 -> SettingsToggleCard(
                                 icon = Icons.Filled.Palette,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                 title = stringResource(R.string.settings_dynamic_color),
                                 subtitle = stringResource(R.string.settings_dynamic_color_sub),
-                                checked = theme?.mode == AccentMode.DYNAMIC,
+                                checked = theme?.mode == AccentMode.DYNAMIC && !(theme?.isLastWaveTheme ?: false),
                                 onCheckedChange = { enabled ->
+                                    if (enabled && (theme?.isLastWaveTheme == true)) {
+                                        viewModel.setLastWaveTheme(false)
+                                    }
                                     viewModel.setAccentMode(if (enabled) AccentMode.DYNAMIC else AccentMode.MANUAL)
                                 },
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.dynamic_color"),
                             )
-                            3 -> SettingsToggleCard(
+                            4 -> SettingsToggleCard(
                                 icon = Icons.Filled.BubbleChart,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1246,7 +1261,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.liquid_glass"),
                             )
-                            4 -> SettingsToggleCard(
+                            5 -> SettingsToggleCard(
                                 icon = Icons.Filled.Apps,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1257,7 +1272,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.md3_nav_bar"),
                             )
-                            5 -> SettingsToggleCard(
+                            6 -> SettingsToggleCard(
                                 icon = Icons.Filled.Album,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1268,7 +1283,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.dynamic_now_playing"),
                             )
-                            6 -> SettingsToggleCard(
+                            7 -> SettingsToggleCard(
                                 icon = Icons.Filled.TextFields,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1279,7 +1294,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.app_font"),
                             )
-                            7 -> SettingsActionCard(
+                            8 -> SettingsActionCard(
                                 icon = Icons.Filled.Dashboard,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1318,9 +1333,21 @@ fun SettingsScreen(
                         Column(Modifier.padding(20.dp)) {
                             AccentPresetGrid(
                                 currentMode = theme?.mode ?: AccentMode.MANUAL,
+                                isLastWaveTheme = theme?.isLastWaveTheme ?: false,
                                 selectedHex = theme?.accentColorHex,
-                                onPickPreset = { hex -> viewModel.setManualAccent(Color(android.graphics.Color.parseColor(hex))) },
-                                onPickMono = { viewModel.setAccentMode(AccentMode.MONOCHROME) },
+                                onPickPreset = { hex ->
+                                    if (theme?.isLastWaveTheme == true) {
+                                        viewModel.setLastWaveTheme(false)
+                                    }
+                                    viewModel.setManualAccent(Color(android.graphics.Color.parseColor(hex)))
+                                },
+                                onPickLastWave = { viewModel.setLastWaveTheme(true) },
+                                onPickMono = {
+                                    if (theme?.isLastWaveTheme == true) {
+                                        viewModel.setLastWaveTheme(false)
+                                    }
+                                    viewModel.setAccentMode(AccentMode.MONOCHROME)
+                                },
                                 onPickCustom = viewModel::openColorWheel,
                             )
                         }
@@ -2963,6 +2990,19 @@ private fun IconBadge(icon: ImageVector, container: Color, tint: Color, modifier
 }
 
 @Composable
+private fun IconBadge(painter: Painter, container: Color, tint: Color, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .size(44.dp)
+            .clip(IconBadgeShape)
+            .background(container),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(painter, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+    }
+}
+
+@Composable
 private fun ThemeModeSelectorCard(
     currentThemeMode: ThemeMode,
     onSelectThemeMode: (ThemeMode) -> Unit,
@@ -3026,6 +3066,88 @@ private fun ThemeModeSelectorCard(
                     }
                     onSelectThemeMode(mode)
                 },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsToggleCard(
+    painter: Painter,
+    iconContainer: Color,
+    iconTint: Color,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    position: GroupPosition = GroupPosition.SINGLE,
+    enabled: Boolean = true,
+    isHighlighted: Boolean = false,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val scale = rememberPressScale(interactionSource)
+    val shape = groupShape(position)
+
+    Card(
+        onClick = { if (enabled) onCheckedChange(!checked) },
+        shape = shape,
+        enabled = enabled,
+        colors = CardDefaults.cardColors(
+            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh,
+            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        interactionSource = interactionSource,
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                val s = if (enabled) scale else 1f
+                scaleX = s
+                scaleY = s
+            }
+            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconBadge(
+                painter,
+                if (enabled) iconContainer else iconContainer.copy(alpha = 0.5f),
+                if (enabled) iconTint else iconTint.copy(alpha = 0.5f),
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Switch(
+                checked = checked,
+                enabled = enabled,
+                onCheckedChange = if (enabled) onCheckedChange else null,
+                thumbContent = if (checked) {
+                    {
+                        Icon(
+                            Icons.Filled.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(SwitchDefaults.IconSize),
+                        )
+                    }
+                } else null,
             )
         }
     }
@@ -3845,8 +3967,10 @@ private fun LastFmIntegrationCard(
 @Composable
 private fun AccentPresetGrid(
     currentMode: AccentMode,
+    isLastWaveTheme: Boolean = false,
     selectedHex: String?,
     onPickPreset: (String) -> Unit,
+    onPickLastWave: () -> Unit = {},
     onPickMono: () -> Unit,
     onPickCustom: () -> Unit,
 ) {
@@ -3854,11 +3978,15 @@ private fun AccentPresetGrid(
     // manual mode — Dynamic/Monochrome shouldn't light up whichever preset
     // happens to hex-match by coincidence.
     fun isPresetSelected(hex: String) =
-        currentMode == AccentMode.MANUAL && selectedHex?.equals(hex, ignoreCase = true) == true
-    val customSelected = currentMode == AccentMode.MANUAL &&
+        if (hex.equals("#C9FB00", ignoreCase = true)) {
+            isLastWaveTheme || (currentMode == AccentMode.MANUAL && selectedHex?.equals(hex, ignoreCase = true) == true)
+        } else {
+            !isLastWaveTheme && currentMode == AccentMode.MANUAL && selectedHex?.equals(hex, ignoreCase = true) == true
+        }
+    val customSelected = !isLastWaveTheme && currentMode == AccentMode.MANUAL &&
         selectedHex != null &&
         ACCENT_PRESETS.none { it.hex.equals(selectedHex, ignoreCase = true) }
-    val monoSelected = currentMode == AccentMode.MONOCHROME
+    val monoSelected = !isLastWaveTheme && currentMode == AccentMode.MONOCHROME
 
     // One unified 4-column tile grid — six color presets plus Mono and
     // Custom as tiles of their own, not a separate row of pill buttons.
@@ -3868,9 +3996,31 @@ private fun AccentPresetGrid(
                 label = preset.name,
                 selected = isPresetSelected(preset.hex),
                 modifier = Modifier.weight(1f),
-                onClick = { onPickPreset(preset.hex) },
+                onClick = {
+                    if (preset.hex.equals("#C9FB00", ignoreCase = true)) {
+                        onPickLastWave()
+                    } else {
+                        onPickPreset(preset.hex)
+                    }
+                },
             ) {
-                PaletteTilePreview(preset.hex)
+                if (preset.hex.equals("#C9FB00", ignoreCase = true)) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(Color(0xFFC9FB00)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_launcher_logo),
+                            contentDescription = null,
+                            tint = Color(0xFF012226),
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                } else {
+                    PaletteTilePreview(preset.hex)
+                }
             }
         }
     }
@@ -3881,9 +4031,31 @@ private fun AccentPresetGrid(
                 label = preset.name,
                 selected = isPresetSelected(preset.hex),
                 modifier = Modifier.weight(1f),
-                onClick = { onPickPreset(preset.hex) },
+                onClick = {
+                    if (preset.hex.equals("#C9FB00", ignoreCase = true)) {
+                        onPickLastWave()
+                    } else {
+                        onPickPreset(preset.hex)
+                    }
+                },
             ) {
-                PaletteTilePreview(preset.hex)
+                if (preset.hex.equals("#C9FB00", ignoreCase = true)) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(Color(0xFFC9FB00)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_launcher_logo),
+                            contentDescription = null,
+                            tint = Color(0xFF012226),
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                } else {
+                    PaletteTilePreview(preset.hex)
+                }
             }
         }
         ColorTile(

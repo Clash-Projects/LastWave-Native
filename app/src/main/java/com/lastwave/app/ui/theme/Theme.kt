@@ -49,6 +49,7 @@ fun LastWaveTheme(
     val context = LocalContext.current
     val useSystemDynamic = themeState.mode == AccentMode.DYNAMIC &&
         !themeState.isNowPlayingThemed &&
+        !themeState.isLastWaveTheme &&
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val systemDark = if (useSystemDynamic) {
         val base = dynamicDarkColorScheme(context)
@@ -63,6 +64,8 @@ fun LastWaveTheme(
     } else null
     val systemLight = if (useSystemDynamic) dynamicLightColorScheme(context) else null
     val activeColorScheme = when {
+        themeState.isLastWaveTheme && isDark -> themeState.darkColorScheme
+        themeState.isLastWaveTheme && !isDark -> themeState.lightColorScheme
         systemDark != null && isDark -> systemDark
         systemLight != null && !isDark -> systemLight
         isDark -> themeState.darkColorScheme

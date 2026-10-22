@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LastWave</string>
     <string name="widget_name">LastWave प्लेयर</string>
@@ -35,6 +35,8 @@
     <string name="settings_downloads_title">डाउनलोड और ऑफ़लाइन संगीत</string>
 
     <string name="settings_section_appearance">दिखावट</string>
+    <string name="settings_lastwave_theme">लास्टवेव सिग्नेचर थीम</string>
+    <string name="settings_lastwave_theme_sub">लोगो आइकन के रंगों पर आधारित स्पेशल थीम • इलेक्ट्रिक लाइम और टील</string>
     <string name="settings_amoled">AMOLED मोड</string>
     <string name="settings_amoled_sub">शुद्ध काली पृष्ठभूमि</string>
     <string name="settings_dynamic_color">डायनामिक रंग</string>
