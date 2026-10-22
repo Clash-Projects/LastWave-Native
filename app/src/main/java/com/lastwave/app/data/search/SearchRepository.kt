@@ -134,9 +134,12 @@ class SearchRepository @Inject constructor(
             SearchTab.PODCASTS -> innerTube.searchPodcasts(trimmed).map { episode ->
                 SearchResultItem(
                     name = episode.title,
-                    artist = episode.channelTitle ?: episode.author ?: "Podcast",
+                    artist = episode.showTitle ?: "Podcast",
                     artworkUrl = episode.artworkUrl,
-                    subtitle = episode.showTitle ?: episode.channelTitle ?: episode.author ?: "Podcast",
+                    subtitle = listOfNotNull(episode.showTitle, episode.publishedLabel)
+                        .filter(String::isNotBlank)
+                        .joinToString(" • ")
+                        .ifBlank { "Podcast" },
                     videoId = episode.videoId,
                     entityId = episode.videoId,
                 )
