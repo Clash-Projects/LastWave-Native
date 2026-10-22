@@ -141,6 +141,11 @@ class YtMusicSyncManager @Inject constructor(
             val allPlaylists = playlistRepository.getAll()
                 .filterNot { it.remotePlaylistId != null }
                 .filterNot { it.mode == com.lastwave.app.data.playlist.LOCAL_SONGS_MODE }
+                // The account's "Liked Music" is where this app's likes already go: the
+                // direct like marks the song there. Mirroring the local list as well
+                // would leave the account with two copies of the same likes, and would
+                // rewrite every one of them on every pass.
+                .filterNot { it.mode == com.lastwave.app.data.playlist.LIKED_SONGS_MODE }
             val syncedIds = preferences.syncedPlaylistIds.first()
             val playlists = if (syncedIds != null) allPlaylists.filter { it.id in syncedIds } else allPlaylists
 
@@ -218,6 +223,15 @@ class YtMusicSyncManager @Inject constructor(
     }
 
     /** Reconciles one playlist against its remote mirror; returns unmatched track count. */
+    /**
+     * The account's liked list is not read back.
+     *
+     * It is the account's own list, and the app shows it as it is - streamed from
+     * YouTube when it is opened, the same way YouTube Music shows it. Merging it
+     * into this app's own list would mean paging through every song the account has
+     * ever liked, keeping a second copy of all of them, and never dropping the ones
+     * that go away on the other side.
+     */
     private suspend fun reconcile(playlist: SavedPlaylist, allMappings: MutableMap<Long, YtPlaylistMapping>): Int {
         var mapping = allMappings[playlist.id]
         var remoteId = mapping?.remotePlaylistId
@@ -443,8 +457,8 @@ class YtMusicSyncManager @Inject constructor(
         const val TAG = "YtMusicSyncManager"
         const val DEBOUNCE_MS = 750L
         const val INITIAL_DELAY_MS = 2_000L
-        const val PERIODIC_INTERVAL_MS = 60_000L
-        const val WRITE_PACE_MS = 350L
+  const val PERIODIC_INTERVAL_MS = 60_000L
+  const val WRITE_PACE_MS = 350L
         const val NEGATIVE_MATCH_TTL_MS = 6 * 60 * 60_000L
         const val MATCH_CONCURRENCY = 6
         const val MAX_NEGATIVE_CACHE_ENTRIES = 2048

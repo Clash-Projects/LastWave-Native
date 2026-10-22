@@ -1,6 +1,6 @@
 package com.lastwave.app.data.playlist
 
-import com.lastwave.app.data.repository.ScrobbleRepository
+import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.ytmusic.YtMusicLibraryManager
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.playback.toGeneratedTrack
@@ -8,18 +8,22 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 
 /**
  * The player's heart: a like lands in the local Liked Songs playlist, then is
- * mirrored to Last.fm and YouTube Music. Shared by the in-app player and the
- * playback service, so a heart on an external controller (the OriginOS music
- * card) does exactly what the in-app heart does.
+ * mirrored to YouTube Music. Shared by the in-app player and the playback
+ * service, so a heart on an external controller (the OriginOS music card)
+ * does exactly what the in-app heart does.
+ *
+ * Nothing is pushed anywhere else: a like is this app's own and YouTube Music's,
+ * and nothing more.
  */
 @Singleton
 class TrackLikeController @Inject constructor(
     private val likedSongsManager: LikedSongsManager,
     private val ytMusicLibraryManager: YtMusicLibraryManager,
-    private val scrobbleRepository: ScrobbleRepository,
+    private val settingsPreferences: SettingsPreferences,
 ) {
     val likedTrackKeys: StateFlow<Set<String>> get() = likedSongsManager.likedTrackKeys
 
@@ -39,7 +43,6 @@ class TrackLikeController @Inject constructor(
     }
 
     private suspend fun mirror(track: PlayableTrack, liked: Boolean): LikeChange {
-        mirrorLastFmLove(track, liked)
         return LikeChange(liked = liked, youTubeMirrored = mirrorYouTubeLove(track, liked))
     }
 
@@ -47,22 +50,19 @@ class TrackLikeController @Inject constructor(
      * YouTube Music mirror of the local like. The local state is the source of
      * truth and already saved, so a failed mirror is reported and left alone —
      * the next toggle can retry it.
+     *
+     * With no YouTube account there is nowhere to mirror to, and the mirror is a
+     * no-op: the like stays in this app.
      */
-    private suspend fun mirrorYouTubeLove(track: PlayableTrack, loved: Boolean): Boolean = try {
-        ytMusicLibraryManager.mirrorLikeToYouTube(track.toGeneratedTrack(), loved)
-    } catch (cancellation: CancellationException) {
-        throw cancellation
-    } catch (error: Exception) {
-        android.util.Log.w("TrackLikeController", "YouTube like mirror failed", error)
-        false
-    }
-
-    private suspend fun mirrorLastFmLove(track: PlayableTrack, loved: Boolean) {
-        when (val result = scrobbleRepository.setTrackLoved(track.artist, track.title, loved)) {
-            ScrobbleRepository.Result.Success,
-            ScrobbleRepository.Result.NoSessionKey -> Unit
-            is ScrobbleRepository.Result.Failed ->
-                android.util.Log.w("TrackLikeController", "Last.fm love sync failed: ${result.message}")
+    private suspend fun mirrorYouTubeLove(track: PlayableTrack, loved: Boolean): Boolean {
+        if (!settingsPreferences.likedSongsYouTubeSync.first()) return true
+        return try {
+            ytMusicLibraryManager.mirrorLikeToYouTube(track.toGeneratedTrack(), loved)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            android.util.Log.w("TrackLikeController", "YouTube like mirror failed", error)
+            false
         }
     }
 }

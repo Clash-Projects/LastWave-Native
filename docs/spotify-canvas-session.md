@@ -207,12 +207,51 @@ The section holds everything about Spotify in one place:
 - your Spotify playlists, imported into this app's library
 - the canvas toggle
 - the "prefer Spotify Canvas" toggle
-- the Liked Songs sync toggle
 
 The playlist import was already there — it reads the signed-in account's playlists
 through the Web API, and falls back to the public embed page — but it was only reachable
 from Library & Content → Imports, on a screen shared with Apple Music. From here it is
 where a Spotify user would look for it.
+
+## What a like does
+
+A like goes to two places and no others: this app's own Liked Songs playlist, and
+YouTube Music. Nothing is pushed to Last.fm or Spotify any more.
+
+- **Last.fm**: the heart no longer marks a track as "loved" there. Scrobbling, the
+  listened-stats, the API-key settings and the Last.fm section all stay as they were.
+- **Spotify**: the heart no longer touches the Spotify library. The endpoints that
+  liked and unliked a track there are gone.
+
+Two switches control the two halves, in Settings → YouTube & Sync → Liked Songs:
+
+| Switch | Default | Off means |
+| --- | --- | --- |
+| **Save to Liked Songs** | on | The local Liked Local Song playlist is left alone. The like is still remembered by the app, so the heart still fills — but the song is not added to the list. |
+| **Sync Liked Songs to YouTube Music** | on | The like is not marked on YouTube Music. With no YouTube account connected there is nowhere to mirror to anyway, so the like stays in this app. |
+
+Switching the local half off moves what is in the playlist into the app's own record, so
+the heart does not lose the likes it already had; switching it back on puts them into the
+playlist again. Importing YouTube Music's Liked Music follows the same switch: with the
+local list off, the imported tracks go into the app's own record rather than quietly
+filling a list the user switched off.
+
+### The two lists keep their own names
+
+They are two different lists, and they keep their own names: **"Liked Local Song"** is
+this app's own, **"Liked Yt Song"** is the account's. The account's list used to be
+hidden from the library, which made the account look like it had no liked playlist of its
+own. Both are shown now.
+
+The account's list is shown as it is — streamed from YouTube when it is opened, the same
+way YouTube Music shows it — and is never copied into this app. Merging it into the
+local list would mean paging through every song the account has ever liked, keeping a
+second copy of all of them, and never dropping the ones that go away on the other side.
+What the app's own likes reach YouTube Music is the direct like, not a copy of the list.
+
+The consequence, which is the same one every YouTube Music client has: a song liked only
+in the YouTube Music app is in "Liked Yt Song" and not in "Liked Local Song", so the
+app's heart for it is unfilled.
 
 ## Not verified here
 

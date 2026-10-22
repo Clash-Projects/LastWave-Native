@@ -64,8 +64,21 @@ val SavedPlaylist.isYouTubeOnly: Boolean
 private const val MAX_SAVED_PLAYLISTS = 20
 private const val STARTUP_SYNC_WAIT_MS = 2_000L
 private const val TAG = "PlaylistRepository"
-const val LIKED_SONGS_MODE = "liked"
-const val LIKED_SONGS_TITLE = "Liked Songs"
+    const val LIKED_SONGS_MODE = "liked"
+
+    /**
+     * This app's own liked list.
+     *
+     * Named apart from YouTube Music's "Liked Music" so the two are never confused: they
+     * hold the same songs, and each of them can be switched off on its own.
+     */
+    const val LIKED_SONGS_TITLE = "Liked Local Song"
+
+    /** YouTube Music's own liked list. */
+    const val LIKED_YT_SONGS_TITLE = "Liked Yt Song"
+
+    /** What this app's liked list was called before it was renamed. */
+    const val LEGACY_LIKED_SONGS_TITLE = "Liked Songs"
 /** Built-in playlist holding audio files imported from the device. */
 const val LOCAL_SONGS_MODE = "local"
 const val LOCAL_SONGS_TITLE = "Local songs"
@@ -515,8 +528,22 @@ class PlaylistRepository @Inject constructor(
 
     /** Creates the built-in local playlist only when it is genuinely absent. */
     suspend fun ensureLikedSongs(): SavedPlaylist = likedSongsMutex.withLock {
-        getLikedSongs()?.let { return@withLock it }
-        getAll().firstOrNull { it.title.equals(LIKED_SONGS_TITLE, ignoreCase = true) }?.let { legacy ->
+        getLikedSongs()?.let { existing ->
+            // The list was renamed so it cannot be mistaken for YouTube Music's. An older
+            // build called it "Liked Songs": rename that one in place rather than
+            // leaving a second list behind.
+            if (existing.title.equals(LIKED_SONGS_TITLE, ignoreCase = true)) return@withLock existing
+            val entity = dao.getById(existing.id)
+            if (entity != null) {
+                val renamed = entity.copy(title = LIKED_SONGS_TITLE)
+                dao.upsert(renamed)
+                syncPublicMirror()
+                _changes.tryEmit(Unit)
+                return@withLock renamed.toDomain()
+            }
+            return@withLock existing
+        }
+        getAll().firstOrNull { it.title.equals(LEGACY_LIKED_SONGS_TITLE, ignoreCase = true) }?.let { legacy ->
             val entity = dao.getById(legacy.id)
             if (entity != null) {
                 val adopted = entity.copy(

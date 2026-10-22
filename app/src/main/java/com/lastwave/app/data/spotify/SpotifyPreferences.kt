@@ -53,12 +53,7 @@ class SpotifyPreferences @Inject constructor(
         .recoverPreferences("SpotifyPreferences")
         .map { it.readSafely(PREFER_SPOTIFY_CANVAS_KEY) ?: false }
 
-    val syncLikedSongsEnabled: Flow<Boolean> = dataStore.data
-        .recoverPreferences("SpotifyPreferences")
-        .map { it.readSafely(SYNC_LIKED_SONGS_KEY) ?: true }
-
     val isConnected: Flow<Boolean> = spdc.map { !it.isNullOrBlank() }
-
     /** The per-install device id the client-token profile presents. */
     val deviceId: Flow<String> = dataStore.data
         .recoverPreferences("SpotifyPreferences")
@@ -71,7 +66,6 @@ class SpotifyPreferences @Inject constructor(
     suspend fun getClientTokenExpires(): Long = clientTokenExpires.first()
     suspend fun isCanvasEnabled(): Boolean = canvasEnabled.first()
     suspend fun isPreferSpotifyCanvas(): Boolean = preferSpotifyCanvas.first()
-    suspend fun isSyncLikedSongsEnabled(): Boolean = syncLikedSongsEnabled.first()
 
     /**
      * The device id this install presents, generated once and kept.
@@ -128,11 +122,6 @@ class SpotifyPreferences @Inject constructor(
         }
     }
 
-    suspend fun setSyncLikedSongsEnabled(enabled: Boolean) {
-        dataStore.edit { prefs ->
-            prefs[SYNC_LIKED_SONGS_KEY] = enabled
-        }
-    }
 
     suspend fun clearConnection() {
         dataStore.edit { prefs ->
@@ -152,7 +141,6 @@ class SpotifyPreferences @Inject constructor(
         val CLIENT_TOKEN_EXPIRES_KEY = longPreferencesKey("spotify_client_token_expires")
         val CANVAS_ENABLED_KEY = booleanPreferencesKey("spotify_canvas_enabled")
         val PREFER_SPOTIFY_CANVAS_KEY = booleanPreferencesKey("spotify_prefer_canvas")
-        val SYNC_LIKED_SONGS_KEY = booleanPreferencesKey("spotify_sync_liked_songs")
         val DEVICE_ID_KEY = stringPreferencesKey("spotify_device_id")
     }
 }

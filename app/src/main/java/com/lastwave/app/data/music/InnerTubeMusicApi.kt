@@ -343,7 +343,11 @@ class InnerTubeMusicApi @Inject constructor(
     ): YouTubePlaylistResult? = withContext(Dispatchers.IO) {
         val rawId = extractPlaylistId(playlistIdOrUrl)
         if (rawId.isBlank()) return@withContext null
+        // The account's liked list is not reachable under a "VL" browse id, so asking
+        // for one only buys a request that cannot answer. Ask for the list by the id
+        // that does answer.
         val browseId = when {
+            com.lastwave.app.data.playlist.PlaylistImportManager.isYtLikedId(rawId) -> "FEmusic_liked_videos"
             rawId.startsWith("VL") || rawId.startsWith("RDCLAK") || rawId.startsWith("FE") || rawId.startsWith("MPRE") || rawId.startsWith("UC") -> rawId
             else -> "VL$rawId"
         }
@@ -361,7 +365,7 @@ class InnerTubeMusicApi @Inject constructor(
         val isLiked = com.lastwave.app.data.playlist.PlaylistImportManager.isYtLikedId(rawId)
         val header = playlistHeader(root)
         val title = extractTitleFromHeader(header, root)
-            ?: if (isLiked) "Liked Music" else null
+            ?: if (isLiked) com.lastwave.app.data.playlist.LIKED_YT_SONGS_TITLE else null
 
         val author = header?.obj("subtitle")?.array("runs")?.firstOrNull()?.asObject()?.string("text")
             ?: header?.obj("straplineTextOne")?.array("runs")?.firstOrNull()?.asObject()?.string("text")
@@ -389,7 +393,7 @@ class InnerTubeMusicApi @Inject constructor(
             if (header != null) {
                 return@withContext YouTubePlaylistResult(
                     id = rawId,
-                    title = title ?: if (isLiked) "Liked Music" else "YouTube Playlist",
+                    title = title ?: if (isLiked) com.lastwave.app.data.playlist.LIKED_YT_SONGS_TITLE else "YouTube Playlist",
                     author = author,
                     artworkUrl = artworkUrl,
                     trackCount = 0,
@@ -512,7 +516,11 @@ class InnerTubeMusicApi @Inject constructor(
     suspend fun fetchPlaylistArtwork(playlistIdOrUrl: String): String? = withContext(Dispatchers.IO) {
         val rawId = extractPlaylistId(playlistIdOrUrl)
         if (rawId.isBlank()) return@withContext null
+        // The account's liked list is not reachable under a "VL" browse id, so asking
+        // for one only buys a request that cannot answer. Ask for the list by the id
+        // that does answer.
         val browseId = when {
+            com.lastwave.app.data.playlist.PlaylistImportManager.isYtLikedId(rawId) -> "FEmusic_liked_videos"
             rawId.startsWith("VL") || rawId.startsWith("RDCLAK") || rawId.startsWith("FE") || rawId.startsWith("MPRE") || rawId.startsWith("UC") -> rawId
             else -> "VL$rawId"
         }
@@ -528,11 +536,13 @@ class InnerTubeMusicApi @Inject constructor(
                 if (hasPlaylistContent(it)) return it to true
             }
             if (isLiked) {
-                runCatching { browseRoot("FEmusic_liked_videos", authenticated = true) }.getOrNull()?.let {
-                    if (hasPlaylistContent(it)) return it to true
+                if (browseId != "FEmusic_liked_videos") {
+                    runCatching { browseRoot("FEmusic_liked_videos", authenticated = true) }.getOrNull()?.let {
+                        if (hasPlaylistContent(it)) return it to true
+                    }
                 }
-                if (browseId != "LM") {
-                    runCatching { browseRoot("LM", authenticated = true) }.getOrNull()?.let {
+                if (browseId != "VLM") {
+                    runCatching { browseRoot("VLM", authenticated = true) }.getOrNull()?.let {
                         if (hasPlaylistContent(it)) return it to true
                     }
                 }
@@ -543,7 +553,8 @@ class InnerTubeMusicApi @Inject constructor(
         }
         // RDCLAK / RD-prefixed IDs (radio/mix) or Liked Music fall back to the "next" endpoint
         if (browseId.startsWith("RDCLAK") || browseId.startsWith("RD") || isLiked) {
-            val playlistId = if (isLiked) "LM" else browseId.removePrefix("VL")
+            // The liked list is browsed as "VLM"; "LM" is not a browse id.
+            val playlistId = if (isLiked) "VLM" else browseId.removePrefix("VL")
             val auth = ytAuth.connection.value.isConnected
             runCatching { fetchPlaylistViaNext(playlistId, authenticated = auth) }.getOrNull()?.let {
                 return it to auth
