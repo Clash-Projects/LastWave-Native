@@ -4047,7 +4047,17 @@ class InnerTubeMusicApi @Inject constructor(
         return YouTubeMusicTrack(videoId, title, artist, null, artwork, duration)
     }
 
-    private fun parsePlaylistPanelSong(renderer: JsonObject): YouTubeMusicTrack? {
+    internal fun parsePlaylistPanelItem(element: JsonElement): YouTubeMusicTrack? {
+        val obj = element.asObject() ?: return null
+        obj.obj("playlistPanelVideoRenderer")?.let { return parsePlaylistPanelSong(it) }
+        obj.obj("playlistPanelVideoWrapperRenderer")
+            ?.obj("primaryRenderer")
+            ?.obj("playlistPanelVideoRenderer")
+            ?.let { return parsePlaylistPanelSong(it) }
+        return null
+    }
+
+    internal fun parsePlaylistPanelSong(renderer: JsonObject): YouTubeMusicTrack? {
         if (renderer.obj("unplayableText") != null) return null
         val videoId = renderer.string("videoId")
             ?: renderer.obj("navigationEndpoint")?.obj("watchEndpoint")?.string("videoId")
