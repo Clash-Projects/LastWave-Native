@@ -5,6 +5,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.BubbleChart
@@ -954,6 +955,22 @@ object SettingsSearchIndex {
                     parentTab = SettingsTab.SPOTIFY,
                     section = "Spotify",
                     type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "spotify.token",
+                    title = "Import sp_dc token",
+                    subtitle = "Paste a session cookie from your browser instead of signing in here",
+                    keywords = listOf(
+                        "sp_dc", "cookie", "token", "paste", "import", "session", "spotify login"
+                    ),
+                    icon = Icons.Filled.Key,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    parentTab = SettingsTab.SPOTIFY,
+                    section = "Session Token",
+                    type = EntryType.ACTION,
                 )
             )
             add(
