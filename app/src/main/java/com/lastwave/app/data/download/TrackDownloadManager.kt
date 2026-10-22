@@ -150,6 +150,7 @@ class TrackDownloadManager @Inject constructor(
     private val moduleManager: ModuleManager,
     private val flacTranscoder: ModuleFlacTranscoder,
     private val losslessMusicApi: LosslessMusicApi,
+    private val khInsider: com.lastwave.app.data.khinsider.KhInsiderClient,
 ) {
     companion object {
         const val CHANNEL_ID = "lastwave_downloads"
@@ -487,6 +488,9 @@ class TrackDownloadManager @Inject constructor(
         year: String? = null,
         videoId: String? = null,
         durationMs: Long? = null,
+        /** KHInsider track (khinsider://track?page=…): the file is fetched from the site. */
+        directSource: String? = null,
+        trackNumber: Int? = null,
     ) {
         val key = makeDownloadKey(title, artist)
         // Admission and job registration share [admissionLock] with the wipe so a
@@ -496,7 +500,11 @@ class TrackDownloadManager @Inject constructor(
             if (!activeKeys.add(key)) return
             reconnectGenerations[key] = AtomicLong()
             val job = applicationScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
-                runDownloadJob(key, title, artist, album, artworkUrl, year, videoId, durationMs)
+                runDownloadJob(
+                    key, title, artist, album, artworkUrl, year, videoId, durationMs,
+                    khInsiderPage = com.lastwave.app.data.khinsider.KhInsiderParser.pagePathOf(directSource.orEmpty()),
+                    trackNumber = trackNumber,
+                )
             }
             activeJobs[key] = job
             job.start()
@@ -512,6 +520,8 @@ class TrackDownloadManager @Inject constructor(
         year: String?,
         videoId: String?,
         durationMs: Long?,
+        khInsiderPage: String? = null,
+        trackNumber: Int? = null,
     ) {
             // Bound the number of simultaneous downloads: each one holds
             // sockets, buffers and (during tagging) a decoded cover bitmap,
@@ -782,7 +792,73 @@ class TrackDownloadManager @Inject constructor(
                 // the same here so an Atmos request still yields playable
                 // stereo FLAC instead of an unplayable spatial file.
                 val atmosCapable by lazy { isAtmosCapableDevice() }
-                if (!isYouTubeRequested && losslessMusicApi.isCoolingDown) {
+
+                // 0. KHInsider: the file link comes straight from the track page,
+                // in the FLAC/MP3 format chosen for KHInsider; no other source.
+                if (khInsiderPage != null) {
+                    try {
+                        updateStage("KHInsider…", notify = true)
+                        val fileUrl = khInsider.resolveFileUrlBlocking(khInsiderPage)
+                        resolvedUrl = fileUrl
+                        extension = fileUrl.substringBefore('?').substringAfterLast('.', "mp3").lowercase()
+                        mimeType = com.lastwave.app.data.generate.LocalAudioFormats.mimeFor("x.$extension")
+                            ?: "audio/mpeg"
+                        isLossless = extension == "flac"
+                        formatBadge = extension.uppercase()
+                        downloadHeaders = khInsider.fileRequestHeaders()
+                        val rawFile = File.createTempFile("dl_kh_", ".$extension", context.cacheDir)
+                        tempDownloadFile = rawFile
+                        var lastProgress = 0
+                        val transfer = downloadToTempFile(
+                            downloadKey = key,
+                            url = fileUrl,
+                            target = rawFile,
+                            requestHeaders = downloadHeaders,
+                            expectedContentLength = null,
+                            useParallelRanges = false,
+                            onConnectionStateChanged = { isWaiting ->
+                                _downloads.value[key]?.let { updateProgress(it.copy(isWaitingForConnection = isWaiting)) }
+                            },
+                        ) { downloadedBytes, totalBytes ->
+                            val progress = if (totalBytes > 0) ((downloadedBytes * 100) / totalBytes).toInt().coerceIn(0, 100) else 0
+                            if (progress > lastProgress) {
+                                lastProgress = progress
+                                updateProgress(
+                                    DownloadProgress(
+                                        key = key, title = title, artist = artist,
+                                        progressPercent = progress,
+                                        bytesDownloaded = downloadedBytes,
+                                        totalBytes = totalBytes,
+                                        formatBadge = formatBadge,
+                                    ),
+                                )
+                                if (progress % 10 == 0) runCatching {
+                                    showDownloadNotification(notifId, key, title, artist, progress, false, formatBadge)
+                                }
+                            }
+                        }
+                        bytesReadTotal = transfer.bytesDownloaded
+                        totalBytesRecorded = transfer.totalBytes
+                        val detected = detectValidContainer(rawFile)
+                            ?: throw IOException("KHInsider file is not valid audio (${rawFile.length()} bytes)")
+                        extension = detected
+                        downloadSucceeded = true
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (khError: Throwable) {
+                        val reason = khError.localizedMessage?.takeIf { it.isNotBlank() } ?: "KHInsider unavailable"
+                        android.util.Log.w("TrackDownloadManager", "KHInsider download failed for $title: $reason", khError)
+                        tempDownloadFile?.let { runCatching { if (it.exists()) it.delete() } }
+                        tempDownloadFile = null
+                        updateProgress(
+                            DownloadProgress(key = key, title = title, artist = artist, error = "Skipped: ${reason.take(90)}"),
+                        )
+                        runCatching { showErrorNotification(notifId, key, title, artist, "Skipped: ${reason.take(90)}") }
+                        return
+                    }
+                }
+
+                if (!downloadSucceeded && !isYouTubeRequested && losslessMusicApi.isCoolingDown) {
                     android.util.Log.i(
                         "TrackDownloadManager",
                         "Lossless backend cooling down; '$finalTitle' goes straight to YouTube",
@@ -790,7 +866,7 @@ class TrackDownloadManager @Inject constructor(
                     updateStage("YouTube • lossless cooling down", notify = true)
                 }
 
-                if (!isYouTubeRequested && !losslessMusicApi.isCoolingDown) {
+                if (!downloadSucceeded && !isYouTubeRequested && !losslessMusicApi.isCoolingDown) {
                     updateStage("Finding lossless stream…")
                     // Single source of truth: same tier order as streaming
                     // (LosslessMusicApi.getQualityAttemptOrder). Rules:
@@ -1509,7 +1585,8 @@ class TrackDownloadManager @Inject constructor(
                 }
 
                 // 3. Proactively start lyrics lookup concurrently with the download
-                val shouldDownloadLyrics = runCatching {
+                // Game soundtracks: lyric providers only return false matches.
+                val shouldDownloadLyrics = khInsiderPage == null && runCatching {
                     settingsPreferences.settings.first().downloadLyrics
                 }.getOrDefault(true)
 
@@ -1627,7 +1704,12 @@ class TrackDownloadManager @Inject constructor(
                         }
                     }
 
-                    val safeFilename = sanitizeFilename("$finalArtist - $finalTitle") + ".$extension"
+                    // KHInsider albums keep their track order in the folder: "07. Title.flac".
+                    val safeFilename = if (khInsiderPage != null && trackNumber != null) {
+                        sanitizeFilename("%02d. %s".format(trackNumber, finalTitle)) + ".$extension"
+                    } else {
+                        sanitizeFilename("$finalArtist - $finalTitle") + ".$extension"
+                    }
 
                     // 4. Resolve exact audio duration from downloaded file
                     val durationRetriever = android.media.MediaMetadataRetriever()
@@ -1708,6 +1790,7 @@ class TrackDownloadManager @Inject constructor(
                         artworkFallbackUrl = preloadedBestMatch?.artworkUrl,
                         lyrics = if (shouldDownloadLyrics) (syncedLyrics ?: plainLyrics) else null,
                         year = year,
+                        trackNumber = trackNumber,
                     )
                     if (!metadataEmbedded) {
                         android.util.Log.w("TrackDownloadManager", "Could not safely embed audio metadata; preserving audio file")
@@ -1726,7 +1809,8 @@ class TrackDownloadManager @Inject constructor(
                         artist = finalArtist,
                         album = resolvedAlbum,
                         year = year,
-                        structure = misc.downloadStructure,
+                        // KHInsider: always one folder per album (Music/<folder>/<album>/).
+                        structure = if (khInsiderPage != null) DownloadFolderStructure.ALBUM_ONLY else misc.downloadStructure,
                         useAlbumArtist = misc.useAlbumArtistForFolders,
                         primaryOnly = misc.primaryArtistOnly,
                     )
@@ -1814,6 +1898,8 @@ class TrackDownloadManager @Inject constructor(
                     downloadedAtMillis = System.currentTimeMillis(),
                 )
                 downloadedTrackDao.insert(entity)
+                // Offline first: this KHInsider page now plays from the saved file.
+                khInsiderPage?.let { page -> khInsider.recordDownload(page, uri?.toString() ?: finalPath) }
 
                 // 6b. Module DRM: persist offline keys + sidecar so the encrypted
                 // file plays without network. Skipped when transcoding already

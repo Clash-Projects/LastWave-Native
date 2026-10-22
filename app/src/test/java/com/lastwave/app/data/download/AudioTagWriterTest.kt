@@ -97,6 +97,30 @@ class AudioTagWriterTest {
     }
 
     @Test
+    fun trackNumberIsWrittenToId3AndFlac() {
+        val id3 = String(
+            writer.buildId3v2Tag(title = "Key", artist = "Minecraft", album = "Minecraft", artworkBytes = null, trackNumber = 7),
+            StandardCharsets.ISO_8859_1,
+        )
+        assertThat(id3).contains("TRCK")
+        val noNumber = String(
+            writer.buildId3v2Tag(title = "Key", artist = "Minecraft", album = null, artworkBytes = null),
+            StandardCharsets.ISO_8859_1,
+        )
+        assertThat(noNumber).doesNotContain("TRCK")
+
+        val flacFile = tempFolder.newFile("track.flac")
+        val out = ByteArrayOutputStream()
+        out.write("fLaC".toByteArray(StandardCharsets.US_ASCII))
+        out.write(0x80); out.write(0x00); out.write(0x00); out.write(34)
+        out.write(ByteArray(34))
+        out.write(byteArrayOf(0xFF.toByte(), 0xF8.toByte(), 0x00, 0x00, 0x01))
+        flacFile.writeBytes(out.toByteArray())
+        assertThat(writer.embedMetadata(audioFile = flacFile, title = "Key", artist = "Minecraft", album = "Minecraft", trackNumber = 7)).isTrue()
+        assertThat(String(flacFile.readBytes(), StandardCharsets.UTF_8)).contains("TRACKNUMBER=7")
+    }
+
+    @Test
     fun embedMetadata_intoMp4_replacesExistingUdtaAndAddsItunesAtoms() {
         val mp4File = tempFolder.newFile("test.m4a")
         val out = ByteArrayOutputStream()

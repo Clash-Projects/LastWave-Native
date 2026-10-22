@@ -203,6 +203,7 @@ class DownloadMenuViewModel @Inject constructor(
         artworkUrl: String? = null,
         videoId: String? = null,
         durationMs: Long? = null,
+        playbackUrl: String? = null,
     ) {
         downloadManager.downloadTrack(
             title = title,
@@ -211,6 +212,8 @@ class DownloadMenuViewModel @Inject constructor(
             artworkUrl = artworkUrl,
             videoId = videoId,
             durationMs = durationMs,
+            // KHInsider rows download their own file instead of a YouTube match.
+            directSource = playbackUrl?.takeIf { com.lastwave.app.data.generate.isKhInsiderUrl(it) },
         )
         routeNavigator.navigateTo(com.lastwave.app.ui.navigation.Screen.Downloads.route)
     }
@@ -638,6 +641,7 @@ fun TrackContextMenuSheet(
                                         artworkUrl = playable.artworkUrl,
                                         videoId = playable.videoId,
                                         durationMs = playable.durationMs,
+                                        playbackUrl = playable.playbackUrl,
                                     )
                                     onDismiss()
                                 }

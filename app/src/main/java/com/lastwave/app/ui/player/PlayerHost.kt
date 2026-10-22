@@ -5890,4 +5890,5 @@ internal fun formatTime(ms: Long): String {
 
 /** True for files copied by the Local songs importer (app-private storage). */
 internal fun PlayableTrack.isImportedLocalFile(): Boolean =
-    com.lastwave.app.data.generate.LocalAudioFormats.importedPathOrNull(playbackUrl) != null
+    com.lastwave.app.data.generate.LocalAudioFormats.importedPathOrNull(playbackUrl) != null ||
+        com.lastwave.app.data.generate.isKhInsiderUrl(playbackUrl)
