@@ -144,7 +144,7 @@ class FeedRepository @Inject constructor(
         val chartsDef = async(Dispatchers.IO) { runCatching { innerTube.fetchCharts() }.getOrDefault(emptyList()) }
         val homeMixesDef = async(Dispatchers.IO) { runCatching { innerTube.fetchHomeMixes() }.getOrDefault(emptyList()) }
         val homeSongsDef = async(Dispatchers.IO) {
-            if (isYtConnected) emptyList() else runCatching { innerTube.fetchHomeSongs() }.getOrDefault(emptyList())
+            runCatching { innerTube.fetchHomeSongs() }.getOrDefault(emptyList())
         }
         // Podcast shelf rides along with the rest of the feed. Disabled in
         // settings -> the fetch never happens and the shelf stays empty.
