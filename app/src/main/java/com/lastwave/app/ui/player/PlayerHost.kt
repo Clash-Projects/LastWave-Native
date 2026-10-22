@@ -2466,7 +2466,7 @@ private fun FullPlayer(
                         artist = track.artist,
                         embeddedUrl = track.artworkUrl,
                         resolvedUrl = resolvedAmbientUrl,
-                        bottomFade = 0.42f,
+                        bottomFade = 0.38f,
                         alpha = heroAlpha * heroCover,
                         modifier = Modifier
                             .align(Alignment.TopStart)
@@ -2789,7 +2789,7 @@ private fun FullPlayer(
                             } else {
                                 // ── Standard layout (lifted and balanced) ──────
                                 Column(
-                                    Modifier.fillMaxSize().padding(horizontal = 20.dp).padding(bottom = 18.dp),
+                                    Modifier.fillMaxSize().padding(horizontal = 20.dp).padding(bottom = 12.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
                                     val hasArtwork = !track.artworkUrl.isNullOrBlank() || !resolvedAmbientUrl.isNullOrBlank() || activeCanvas != null
@@ -3067,11 +3067,12 @@ private fun FullPlayer(
                                             }
                                         }
                                     }
-                                    Spacer(Modifier.height(6.dp))
+                                    Spacer(Modifier.height(4.dp))
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .graphicsLayer { translationY = -8.dp.toPx() },
+                                            .graphicsLayer { translationY = -14.dp.toPx() },
+                                        horizontalAlignment = Alignment.CenterHorizontally,
                                     ) {
                                     Row(
                                         Modifier
@@ -3210,24 +3211,29 @@ private fun FullPlayer(
                                             }
                                         }
                                     }
-                                    Spacer(Modifier.height(14.dp))
+                                    Spacer(Modifier.height(10.dp))
                                     SeekBar(
                                         progressState = progressState,
                                         isPlaying = state.isPlaying,
                                         trackKey = track.videoId ?: "${track.artist}|${track.title}",
                                         wavyEnabled = wavySeekbarEnabled,
                                         onSeek = player::seekTo,
-                                        isTranslucent = LocalLiquidGlass.current,
+                                        isTranslucent = LocalLiquidGlass.current || showFullBleed,
                                         fallbackDurationMs = track.durationMs ?: state.durationMs,
                                         primaryColor = ambientColor,
                                         secondaryColor = ambientCompanion,
                                         tertiaryColor = ambientDeep,
                                     )
-                                    Spacer(Modifier.height(14.dp))
-                                    MainControls(state, player, isTranslucent = true)
-                                    }
-                                    Spacer(Modifier.height(24.dp))
-                                    PlayerUtilityControls(state, player, isTranslucent = true)
+                                    Spacer(Modifier.height(10.dp))
+                                    MainControls(state, player, isTranslucent = LocalLiquidGlass.current || showFullBleed)
+                                    Spacer(Modifier.height(10.dp))
+                                    VolumeSlider(
+                                        isTranslucent = LocalLiquidGlass.current || showFullBleed,
+                                        primaryColor = ambientColor,
+                                    )
+                                    Spacer(Modifier.height(12.dp))
+                                    PlayerUtilityControls(state, player, isTranslucent = LocalLiquidGlass.current || showFullBleed)
+                                }
                                 }
                             }
                         }
@@ -3755,13 +3761,20 @@ private fun FullPlayerLandscape(
                 tertiaryColor = ambientDeep,
             )
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(14.dp))
 
-            MainControls(state, player, isTranslucent = true)
+            MainControls(state, player, isTranslucent = LocalLiquidGlass.current || showFullBleed)
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(10.dp))
 
-            PlayerUtilityControls(state, player, isTranslucent = true)
+            VolumeSlider(
+                isTranslucent = LocalLiquidGlass.current || showFullBleed,
+                primaryColor = ambientColor,
+            )
+
+            Spacer(Modifier.height(14.dp))
+
+            PlayerUtilityControls(state, player, isTranslucent = LocalLiquidGlass.current || showFullBleed)
         }
     }
 }
@@ -3922,13 +3935,24 @@ private fun SeekBar(
         (it * boundedDurationMs).toLong().coerceIn(0L, boundedDurationMs)
     } ?: progress.positionMs.coerceIn(0L, boundedDurationMs)
 
-    val effectivePrimary = primaryColor
-    val inactiveColor = if (isTranslucent) {
-        Color.White.copy(alpha = 0.20f)
-    } else {
-        effectivePrimary.copy(alpha = 0.28f)
+    val isGlassActive = LocalLiquidGlass.current &&
+        isLiquidGlassBackdropSupported() &&
+        LocalLiquidGlassBackdrop.current != null
+    val effectivePrimary = when {
+        isGlassActive -> Color.White.copy(alpha = 0.95f)
+        isTranslucent -> Color.White
+        else -> primaryColor
     }
-    val textColor = if (isTranslucent) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.92f)
+    val inactiveColor = when {
+        isGlassActive -> Color.White.copy(alpha = 0.16f)
+        isTranslucent -> Color.White.copy(alpha = 0.20f)
+        else -> effectivePrimary.copy(alpha = 0.28f)
+    }
+    val textColor = when {
+        isGlassActive -> Color.White.copy(alpha = 0.90f)
+        isTranslucent -> Color.White.copy(alpha = 0.85f)
+        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.92f)
+    }
 
     // Same RTL pin as above: custom Canvas draws LTR, invisible Slider must match it.
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
