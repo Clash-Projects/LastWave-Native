@@ -5022,6 +5022,10 @@ class MusicPlayer @Inject constructor(
         knownCoreTitles: Set<String>,
         batchSize: Int = RADIO_QUEUE_BATCH_SIZE,
     ): List<PlayableTrack> {
+        android.util.Log.w(
+            "MusicPlayer",
+            "Invoking emergency radio fallback curation for seed '${primarySeed.title}' by '${primarySeed.artist}' (native YTM radio unavailable)",
+        )
         val seenVideoIds = knownVideoIds.toMutableSet()
         val seenKeys = knownKeys.toMutableSet()
         val currentCoreTitleArtists = knownCoreTitleArtists.toMutableSet()
