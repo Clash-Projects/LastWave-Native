@@ -950,10 +950,13 @@ class InnerTubeMusicApi @Inject constructor(
 
     suspend fun fetchHomeShelves(): List<HomeShelf> = withContext(Dispatchers.IO) {
         val isAuth = ytAuth.connection.value.isConnected
-        runCatching {
-            val root = browseRoot(YT_HOME_BROWSE_ID, authenticated = isAuth)
-            parseHomeShelves(root)
-        }.getOrDefault(emptyList())
+        val root = runCatching {
+            browseRoot(YT_HOME_BROWSE_ID, authenticated = isAuth)
+        }.recoverCatching { error ->
+            if (isAuth) browseRoot(YT_HOME_BROWSE_ID, authenticated = false) else throw error
+        }.getOrNull()
+
+        if (root == null) emptyList() else runCatching { parseHomeShelves(root) }.getOrDefault(emptyList())
     }
 
     /**
