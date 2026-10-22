@@ -36,6 +36,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.snap
@@ -132,6 +133,7 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -907,18 +909,18 @@ fun PlayerHost(
                 modifier = Modifier,
                 visible = expanded && state.current != null,
                 enter = slideInVertically(
-                    animationSpec = ExpressiveMotion.smoothSpring(),
+                    animationSpec = ExpressiveMotion.spatialDefault(),
                     initialOffsetY = { (it * 0.85f).toInt() },
                 ) + scaleIn(
-                    animationSpec = ExpressiveMotion.smoothSpring(),
+                    animationSpec = ExpressiveMotion.spatialDefault(),
                     initialScale = 0.85f,
                     transformOrigin = TransformOrigin(0.5f, 1f)
                 ) + fadeIn(tween(180)),
                 exit = slideOutVertically(
-                    animationSpec = ExpressiveMotion.smoothSpring(),
+                    animationSpec = ExpressiveMotion.spatialFast(),
                     targetOffsetY = { (it * 0.85f).toInt() },
                 ) + scaleOut(
-                    animationSpec = ExpressiveMotion.smoothSpring(),
+                    animationSpec = ExpressiveMotion.spatialFast(),
                     targetScale = 0.85f,
                     transformOrigin = TransformOrigin(0.5f, 1f)
                 ) + fadeOut(tween(150)),
@@ -1097,14 +1099,23 @@ private fun MiniPlayer(
     val layer = rememberGraphicsLayer()
     val luminance = 0.5f // Fixed luminance to avoid heavy GPU readback which causes stuttering
     val barInteraction = remember { MutableInteractionSource() }
+    var isMiniDragging by remember(track.videoId, track.title) { mutableStateOf(false) }
     var dragX by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
     var dragY by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
-    val shownX by animateFloatAsState(dragX, ExpressiveMotion.spatialSpring(), label = "miniPlayerX")
-    val shownY by animateFloatAsState(dragY, ExpressiveMotion.spatialSpring(), label = "miniPlayerY")
+    val shownX by animateFloatAsState(
+        targetValue = dragX,
+        animationSpec = if (isMiniDragging) snap() else ExpressiveMotion.spatialDefault(),
+        label = "miniPlayerX",
+    )
+    val shownY by animateFloatAsState(
+        targetValue = dragY,
+        animationSpec = if (isMiniDragging) snap() else ExpressiveMotion.spatialDefault(),
+        label = "miniPlayerY",
+    )
     val threshold = with(LocalDensity.current) { 72.dp.toPx() }
     val isTablet = isTabletOrWideScreen()
     val shape = if (edgeToEdge && !isTablet) RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp) else RoundedCornerShape(100)
-    val positionedModifier = if (edgeToEdge && !isTablet) {
+    val positionedModifier = if (isGlass && edgeToEdge && !isTablet) {
         modifier.fillMaxWidth()
     } else {
         modifier
@@ -1125,8 +1136,14 @@ private fun MiniPlayer(
             }
             .pointerInput(track.videoId, track.title) {
                 detectDragGestures(
-                    onDragCancel = { dragX = 0f; dragY = 0f },
+                    onDragStart = { isMiniDragging = true },
+                    onDragCancel = {
+                        isMiniDragging = false
+                        dragX = 0f
+                        dragY = 0f
+                    },
                     onDragEnd = {
+                        isMiniDragging = false
                         when {
                             dragY > threshold -> onClose()
                             dragY < -threshold -> onExpand()
@@ -1144,106 +1161,229 @@ private fun MiniPlayer(
             },
         contentAlignment = Alignment.Center,
     ) {
-        Surface(
-            shape = shape,
-            // Transparent card when glass (glass draws scrim), 95% primaryContainer otherwise to match theme color.
-            color = if (isGlass) Color.Transparent else MaterialTheme.colorScheme.primaryContainer,
-            tonalElevation = if (edgeToEdge || isGlass) 0.dp else 6.dp,
-            shadowElevation = if (edgeToEdge || isGlass) 0.dp else 12.dp,
-            modifier = Modifier.fillMaxWidth().then(
-                if (isGlass && backdrop != null) {
-                    Modifier.liquidGlass(backdrop, layer, luminance, shape)
-                } else Modifier
-            )
-            .clickable(interactionSource = barInteraction, indication = null, onClick = onExpand),
-        ) {
-            Column(
-                modifier = if (edgeToEdge) {
-                    Modifier.windowInsetsPadding(
-                        WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
-                    )
-                } else {
-                    Modifier
-                },
+        if (isGlass) {
+            Surface(
+                shape = shape,
+                // Transparent card when glass (glass draws scrim), 95% primaryContainer otherwise to match theme color.
+                color = Color.Transparent,
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp,
+                modifier = Modifier.fillMaxWidth().then(
+                    if (backdrop != null) {
+                        Modifier.liquidGlass(backdrop, layer, luminance, shape)
+                    } else Modifier
+                )
+                .clickable(interactionSource = barInteraction, indication = null, onClick = onExpand),
             ) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                Column(
+                    modifier = if (edgeToEdge) {
+                        Modifier.windowInsetsPadding(
+                            WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
+                        )
+                    } else {
+                        Modifier
+                    },
                 ) {
-                    Box(Modifier.size(56.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(Modifier.size(56.dp)) {
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                tonalElevation = 2.dp,
+                                modifier = Modifier.fillMaxSize(),
+                            ) {
+                                PlayerArtwork(track, Modifier.fillMaxSize(), 18.dp)
+                            }
+                        }
+                        val miniTitleColor = if (LocalIsDarkTheme.current) Color.White else Color.Black
+                        val miniArtistColor = if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.7f)
+                            else Color.Black.copy(alpha = 0.7f)
+                        Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+                            Text(
+                                track.title,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = miniTitleColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                track.artist,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = miniArtistColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        // Inner controls sit plain on the glass card (no nested glass).
                         Surface(
-                            shape = RoundedCornerShape(18.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            tonalElevation = 2.dp,
-                            modifier = Modifier.fillMaxSize(),
+                            onClick = onToggle,
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(48.dp),
                         ) {
-                            PlayerArtwork(track, Modifier.fillMaxSize(), 18.dp)
+                            Box(contentAlignment = Alignment.Center) {
+                                if (state.isBuffering) {
+                                    ExpressiveInlineLoadingIndicator(
+                                        size = 24.dp,
+                                        color = androidx.compose.material3.LocalContentColor.current,
+                                        strokeWidth = 2.5.dp,
+                                    )
+                                } else {
+                                    AnimatedPlayPauseIcon(state.isPlaying, Modifier.size(27.dp))
+                                }
+                            }
+                        }
+                        IconButton(
+                            onClick = onNext,
+                            enabled = state.queueSize > 1,
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.secondaryContainer),
+                        ) {
+                            Icon(
+                                Icons.Filled.SkipNext,
+                                "Next",
+                                tint = if (state.queueSize > 1) MaterialTheme.colorScheme.onSecondaryContainer
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                            )
                         }
                     }
-                    // Glass surface follows the theme (frosted white → black text
-                    // in light, white text in dark); opaque card keeps theme tokens.
-                    val miniTitleColor = if (isGlass) {
-                        if (LocalIsDarkTheme.current) Color.White else Color.Black
-                    } else MaterialTheme.colorScheme.onPrimaryContainer
-                    val miniArtistColor = if (isGlass) {
-                        if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.7f)
-                        else Color.Black.copy(alpha = 0.7f)
-                    } else MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                    Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+                    MiniPlayerProgress(progressState)
+                }
+            }
+        } else {
+            // Material 3 (non-Liquid Glass) Mini-Player
+            val m3ArtworkCornerPercent by animateIntAsState(
+                targetValue = if (state.isPlaying) 50 else 28,
+                animationSpec = ExpressiveMotion.spatialDefault(),
+                label = "m3MiniArtworkCorner",
+            )
+            val m3PlayPauseCornerPercent by animateIntAsState(
+                targetValue = if (state.isPlaying) 32 else 50,
+                animationSpec = ExpressiveMotion.spatialDefault(),
+                label = "m3MiniPlayPauseCorner",
+            )
+            val progressStateValue by progressState.collectAsStateWithLifecycle()
+            val currentProgress = if (progressStateValue.durationMs > 0) {
+                (progressStateValue.positionMs.toFloat() / progressStateValue.durationMs).coerceIn(0f, 1f)
+            } else 0f
+
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                tonalElevation = 3.dp,
+                shadowElevation = 6.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .clickable(interactionSource = barInteraction, indication = null, onClick = onExpand),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(start = 8.dp, end = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // Concentric Left Geometry: 48.dp artwork nesting inside the 64.dp capsule curve (8.dp vertical/start padding)
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(percent = m3ArtworkCornerPercent))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        PlayerArtwork(
+                            track = track,
+                            modifier = Modifier.fillMaxSize(),
+                            corner = 0.dp,
+                        )
+                    }
+
+                    // Typography Hierarchy: 15.sp bold title (-0.2.sp letterSpacing) + 13.sp medium artist (0.78 alpha) + 1.dp space
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 12.dp),
+                        verticalArrangement = Arrangement.Center,
+                    ) {
                         Text(
-                            track.title,
-                            style = MaterialTheme.typography.titleMedium,
+                            text = track.title,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
-                            color = miniTitleColor,
+                            letterSpacing = (-0.2).sp,
+                            color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        Spacer(Modifier.height(1.dp))
                         Text(
-                            track.artist,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = miniArtistColor,
+                            text = track.artist,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    // Inner controls sit plain on the glass card (no nested glass).
-                    Surface(
-                        onClick = onToggle,
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(48.dp),
+
+                    // 44.dp CircularProgressIndicator wrapped concentrically around 36.dp Play/Pause morphing container
+                    Box(
+                        modifier = Modifier.size(44.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            if (state.isBuffering) {
-                                ExpressiveInlineLoadingIndicator(
-                                    size = 24.dp,
-                                    color = androidx.compose.material3.LocalContentColor.current,
-                                    strokeWidth = 2.5.dp,
-                                )
-                            } else {
-                                AnimatedPlayPauseIcon(state.isPlaying, Modifier.size(27.dp))
+                        CircularProgressIndicator(
+                            progress = { currentProgress },
+                            modifier = Modifier.size(44.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f),
+                            strokeWidth = 2.5.dp,
+                            strokeCap = StrokeCap.Round,
+                        )
+                        Surface(
+                            onClick = onToggle,
+                            shape = RoundedCornerShape(percent = m3PlayPauseCornerPercent),
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                if (state.isBuffering) {
+                                    ExpressiveInlineLoadingIndicator(
+                                        size = 18.dp,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        strokeWidth = 2.dp,
+                                    )
+                                } else {
+                                    AnimatedPlayPauseIcon(state.isPlaying, Modifier.size(20.dp))
+                                }
                             }
                         }
                     }
+
+                    // Clean, uncontained Skip Next IconButton (no dark circular background)
                     IconButton(
                         onClick = onNext,
                         enabled = state.queueSize > 1,
                         modifier = Modifier
-                            .padding(start = 8.dp)
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.secondaryContainer),
+                            .padding(start = 2.dp)
+                            .size(36.dp),
                     ) {
                         Icon(
                             Icons.Filled.SkipNext,
-                            "Next",
-                            tint = if (state.queueSize > 1) MaterialTheme.colorScheme.onSecondaryContainer
-                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                            contentDescription = "Next",
+                            modifier = Modifier.size(22.dp),
+                            tint = if (state.queueSize > 1) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
                         )
                     }
                 }
-                MiniPlayerProgress(progressState)
             }
         }
     }
@@ -2027,6 +2167,7 @@ private fun FullPlayer(
         }
     }
     var showTrackMenu by remember(track.videoId, track.title) { mutableStateOf(false) }
+    var isArtworkDragging by remember(track.videoId, track.title) { mutableStateOf(false) }
     var artworkDragX by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
     var dismissDragY by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
     var isDismissDragging by remember { mutableStateOf(false) }
@@ -2039,8 +2180,8 @@ private fun FullPlayer(
     var seekResetJob by remember(track.videoId, track.title) { mutableStateOf<Job?>(null) }
     val coroutineScope = rememberCoroutineScope()
     val shownArtworkX by animateFloatAsState(
-        artworkDragX,
-        ExpressiveMotion.spatialSpring(),
+        targetValue = artworkDragX,
+        animationSpec = if (isArtworkDragging) snap() else ExpressiveMotion.spatialDefault(),
         label = "fullPlayerArtworkX",
     )
     val shownDismissY by animateFloatAsState(
@@ -2678,6 +2819,7 @@ private fun FullPlayer(
 
                                                         if (!change.pressed) {
                                                             if (isDrag) {
+                                                                isArtworkDragging = false
                                                                 when {
                                                                     artworkDragX < -swipeThreshold -> player.next()
                                                                     artworkDragX > swipeThreshold -> player.previous()
@@ -2737,6 +2879,7 @@ private fun FullPlayer(
                                                         }
 
                                                         if (change.isConsumed) {
+                                                            isArtworkDragging = false
                                                             artworkDragX = 0f
                                                             lastLikeTapTimestamp = 0L
                                                             lastTapTimestamp = 0L
@@ -2749,6 +2892,7 @@ private fun FullPlayer(
                                                         if (!isDrag) {
                                                             if (kotlin.math.abs(dx) > touchSlop && kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
                                                                 isDrag = true
+                                                                isArtworkDragging = true
                                                                 lastLikeTapTimestamp = 0L
                                                                 lastTapTimestamp = 0L
                                                                 lastTapSide = null
@@ -3165,10 +3309,11 @@ private fun FullPlayerLandscape(
     shownDismissY: Float,
     swipeThreshold: Float,
 ) {
+    var isArtworkDragging by remember { mutableStateOf(false) }
     var artworkDragX by remember { mutableFloatStateOf(0f) }
     val shownArtworkX by animateFloatAsState(
         targetValue = artworkDragX,
-        animationSpec = ExpressiveMotion.spatialSpring(),
+        animationSpec = if (isArtworkDragging) snap() else ExpressiveMotion.spatialDefault(),
         label = "landscapeArtworkDragX",
     )
     var seekOverlaySeconds by remember { mutableIntStateOf(5) }
@@ -3256,6 +3401,7 @@ private fun FullPlayerLandscape(
 
                                 if (!change.pressed) {
                                     if (isDrag) {
+                                        isArtworkDragging = false
                                         when {
                                             artworkDragX < -swipeThreshold -> player.next()
                                             artworkDragX > swipeThreshold -> player.previous()
@@ -3311,6 +3457,7 @@ private fun FullPlayerLandscape(
                                 }
 
                                 if (change.isConsumed) {
+                                    isArtworkDragging = false
                                     artworkDragX = 0f
                                     lastLikeTapTimestamp = 0L
                                     lastTapTimestamp = 0L
@@ -3323,6 +3470,7 @@ private fun FullPlayerLandscape(
                                 if (!isDrag) {
                                     if (kotlin.math.abs(dx) > touchSlop && kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
                                         isDrag = true
+                                        isArtworkDragging = true
                                         lastLikeTapTimestamp = 0L
                                         lastTapTimestamp = 0L
                                         lastTapSide = null
