@@ -5203,33 +5203,85 @@ class MusicPlayer @Inject constructor(
         if (seed.mediaType != MediaType.SONG) return
         radioQueueLoadJob?.cancel()
         radioUsedSeeds.clear()
+        currentRadioContinuationToken = null
+        currentRadioAutomixPlaylistId = null
         seed.videoId?.takeIf(String::isNotBlank)?.let { radioUsedSeeds.add(it) }
 
         radioQueueLoadJob = applicationScope.launch(Dispatchers.IO) {
             try {
+                val seedVideoId = seed.videoId?.takeIf(String::isNotBlank)
+                    ?: innerTube.findBestMatchOrNull(seed.title, seed.artist, prefetchStreams = false)?.videoId
+                    ?: runCatching {
+                        innerTube.searchSongs("${seed.artist} ${seed.title}", limit = 3, prefetchStreams = false).firstOrNull()?.videoId
+                    }.getOrNull()
+
+                if (seedVideoId != null) {
+                    radioUsedSeeds.add(seedVideoId)
+                }
+
                 val existingTracks = withContext(Dispatchers.Main.immediate) {
                     if (!playerDelegate.isInitialized()) emptyList()
                     else (0 until player.mediaItemCount).map { player.getMediaItemAt(it).toPlayableTrack() }
                 }
                 val existingVideoIds = existingTracks.mapNotNullTo(mutableSetOf()) { it.videoId }
                 val existingKeys = existingTracks.mapTo(mutableSetOf()) { it.queueKey() }
-                val knownCoreTitleArtists = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
-                    "${cleanCoreTitle(it.title)}|${cleanCoreArtist(it.artist)}"
-                }
-                val knownCoreTitles = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
-                    cleanCoreTitle(it.title)
+
+                val toAdd: List<PlayableTrack> = if (seedVideoId != null) {
+                    val radioResult = runCatching { innerTube.fetchRadio(seedVideoId) }.getOrElse { err ->
+                        android.util.Log.w("MusicPlayer", "Failed to fetch native YTM radio for seed $seedVideoId, using fallback", err)
+                        null
+                    }
+                    if (radioResult != null && radioResult.tracks.isNotEmpty()) {
+                        currentRadioContinuationToken = radioResult.continuationToken
+                        currentRadioAutomixPlaylistId = radioResult.automixPlaylistId
+                        radioResult.tracks
+                            .map { it.toPlayableTrack() }
+                            .filter { track ->
+                                val vid = track.videoId
+                                val key = track.queueKey()
+                                (vid == null || vid != seedVideoId) &&
+                                    (vid == null || vid !in existingVideoIds) &&
+                                    key !in existingKeys
+                            }
+                    } else {
+                        val knownCoreTitleArtists = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
+                            "${cleanCoreTitle(it.title)}|${cleanCoreArtist(it.artist)}"
+                        }
+                        val knownCoreTitles = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
+                            cleanCoreTitle(it.title)
+                        }
+                        val fallbackSeeds = existingTracks.takeLast(5).filter { !it.artist.equals(seed.artist, ignoreCase = true) }
+                        android.util.Log.w("MusicPlayer", "Native YTM radio returned no tracks; using emergency fallback curation")
+                        fetchContextAwareRadioTracks(
+                            primarySeed = seed,
+                            fallbackSeeds = fallbackSeeds,
+                            knownVideoIds = existingVideoIds,
+                            knownKeys = existingKeys,
+                            knownCoreTitleArtists = knownCoreTitleArtists,
+                            knownCoreTitles = knownCoreTitles,
+                            batchSize = RADIO_QUEUE_BATCH_SIZE,
+                        )
+                    }
+                } else {
+                    android.util.Log.w("MusicPlayer", "No video ID found for radio seed; using emergency fallback curation")
+                    val knownCoreTitleArtists = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
+                        "${cleanCoreTitle(it.title)}|${cleanCoreArtist(it.artist)}"
+                    }
+                    val knownCoreTitles = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
+                        cleanCoreTitle(it.title)
+                    }
+                    val fallbackSeeds = existingTracks.takeLast(5).filter { !it.artist.equals(seed.artist, ignoreCase = true) }
+                    fetchContextAwareRadioTracks(
+                        primarySeed = seed,
+                        fallbackSeeds = fallbackSeeds,
+                        knownVideoIds = existingVideoIds,
+                        knownKeys = existingKeys,
+                        knownCoreTitleArtists = knownCoreTitleArtists,
+                        knownCoreTitles = knownCoreTitles,
+                        batchSize = RADIO_QUEUE_BATCH_SIZE,
+                    )
                 }
 
-                val fallbackSeeds = existingTracks.takeLast(5).filter { !it.artist.equals(seed.artist, ignoreCase = true) }
-                val toAdd = fetchContextAwareRadioTracks(
-                    primarySeed = seed,
-                    fallbackSeeds = fallbackSeeds,
-                    knownVideoIds = existingVideoIds,
-                    knownKeys = existingKeys,
-                    knownCoreTitleArtists = knownCoreTitleArtists,
-                    knownCoreTitles = knownCoreTitles,
-                    batchSize = RADIO_QUEUE_BATCH_SIZE,
-                )
                 if (toAdd.isEmpty() || !radioQueueActive) return@launch
 
                 withContext(Dispatchers.Main.immediate) {
@@ -8454,6 +8506,16 @@ fun GeneratedTrack.toPlayableTrack(): PlayableTrack {
         videoId = videoId,
     )
 }
+
+fun YouTubeMusicTrack.toPlayableTrack(): PlayableTrack =
+    PlayableTrack(
+        title = title.trim(),
+        artist = artist.trim(),
+        album = album?.trim(),
+        artworkUrl = artworkUrl,
+        videoId = videoId.takeIf(String::isNotBlank),
+        durationMs = durationSeconds?.takeIf { it > 0 }?.times(1_000L),
+    )
 
 private fun PlayableTrack.queueKey(): String =
     playbackIdentity()?.cacheKey ?: mediaIdKey()
