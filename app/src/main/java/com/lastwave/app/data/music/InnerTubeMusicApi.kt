@@ -948,6 +948,14 @@ class InnerTubeMusicApi @Inject constructor(
         }.getOrDefault(emptyList())
     }
 
+    suspend fun fetchHomeShelves(): List<HomeShelf> = withContext(Dispatchers.IO) {
+        val isAuth = ytAuth.connection.value.isConnected
+        runCatching {
+            val root = browseRoot(YT_HOME_BROWSE_ID, authenticated = isAuth)
+            parseHomeShelves(root)
+        }.getOrDefault(emptyList())
+    }
+
     /**
      * Returns the per-play `videostatsPlaybackUrl` tracking URL for [videoId]
      * from an AUTHENTICATED `player` response, or null when there is no
@@ -3891,6 +3899,33 @@ class InnerTubeMusicApi @Inject constructor(
 
         if (items.isEmpty()) return null
         return HomeShelf(title = title, subtitle = subtitle, items = items)
+    }
+
+    /**
+     * Parses the Home feed response into native YouTube Music carousel shelves in original order.
+     * Walks contents.singleColumnBrowseResultsRenderer.tabs[0].tabRenderer.content.sectionListRenderer.contents
+     * and maps each musicCarouselShelfRenderer using [parseCarouselShelf].
+     */
+    internal fun parseHomeShelves(root: JsonElement): List<HomeShelf> {
+        val rootObj = root.asObject() ?: return emptyList()
+        val sectionContents = rootObj.obj("contents")
+            ?.obj("singleColumnBrowseResultsRenderer")
+            ?.array("tabs")
+            ?.firstOrNull()?.asObject()
+            ?.obj("tabRenderer")
+            ?.obj("content")
+            ?.obj("sectionListRenderer")
+            ?.array("contents")
+
+        val carousels = if (sectionContents != null) {
+            sectionContents.mapNotNull { it.asObject()?.obj("musicCarouselShelfRenderer") }
+        } else {
+            val collected = mutableListOf<JsonObject>()
+            collectObjects(root, "musicCarouselShelfRenderer", collected)
+            collected
+        }
+
+        return carousels.mapNotNull { parseCarouselShelf(it) }
     }
 
     private fun directWatchVideoId(renderer: JsonObject): String? =
