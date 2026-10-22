@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -38,7 +39,9 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -177,10 +180,12 @@ object FloatingNavDefaults {
      * constant, otherwise the last row hides behind the dock/gesture bar.
      */
     @Composable
-    fun contentBottomPadding(): Dp =
-        ContentBottomPadding +
+    fun contentBottomPadding(): Dp {
+        val basePadding = if (LocalMd3NavBar.current) 80.dp else ContentBottomPadding
+        return basePadding +
             LocalMiniPlayerScrollClearance.current +
             WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding()
+    }
 }
 
 private val DockShape: CornerBasedShape = RoundedCornerShape(32.dp)
@@ -407,7 +412,7 @@ private fun FloatingNavBar(
             enabled = liquidGlass,
             backdrop = backdrop,
         )
-        androidx.compose.material3.NavigationBar(
+        Surface(
             modifier = modifier
                 .fillMaxWidth()
                 .then(
@@ -426,37 +431,131 @@ private fun FloatingNavBar(
                         Modifier
                     }
                 ),
-            containerColor = navContainerColor,
+            shape = RoundedCornerShape(0.dp),
+            color = navContainerColor,
             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
             tonalElevation = if (liquidGlass) 0.dp else 3.dp,
         ) {
-            tabs.forEachIndexed { index, tab ->
-                val onClick = remember(index) { { onSelect(index) } }
-                NavigationBarItem(
-                    selected = selectedIndex == index,
-                    onClick = onClick,
-                    icon = { Icon(tab.icon(), contentDescription = null) },
-                    label = { Text(androidx.compose.ui.res.stringResource(tab.labelRes), maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                )
-            }
-            if (selectedIndex == tabs.indexOf(MainTab.PLAYLISTS)) {
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onOpenGenerator,
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Filled.AutoAwesome,
-                            contentDescription = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.nav_generator),
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 420.dp)
+                        .height(56.dp)
+                        .selectableGroup(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    tabs.forEachIndexed { index, tab ->
+                        val onClick = remember(index) { { onSelect(index) } }
+                        val selected = selectedIndex == index
+                        val indicatorColor by animateColorAsState(
+                            targetValue = if (selected) MaterialTheme.colorScheme.secondaryContainer.copy(
+                                alpha = if (liquidGlass) 0.35f else 1f,
+                            ) else Color.Transparent,
+                            animationSpec = ExpressiveMotion.effectsDefault(),
+                            label = "md3IndicatorColor_$index",
                         )
-                    },
-                    label = {
-                        Text(
-                            text = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.nav_generator),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                        val indicatorWidth by animateDpAsState(
+                            targetValue = if (selected) 56.dp else 28.dp,
+                            animationSpec = navSpring(),
+                            label = "md3IndicatorWidth_$index",
                         )
-                    },
-                )
+                        val iconTint by animateColorAsState(
+                            targetValue = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                            animationSpec = ExpressiveMotion.effectsDefault(),
+                            label = "md3IconTint_$index",
+                        )
+                        val labelColor by animateColorAsState(
+                            targetValue = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            animationSpec = ExpressiveMotion.effectsDefault(),
+                            label = "md3LabelColor_$index",
+                        )
+
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clickable(
+                                    interactionSource = remember(index) { MutableInteractionSource() },
+                                    indication = androidx.compose.material3.ripple(bounded = false, radius = 28.dp),
+                                    onClick = onClick,
+                                ),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .height(28.dp)
+                                    .width(indicatorWidth)
+                                    .clip(CircleShape)
+                                    .background(indicatorColor),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = tab.icon(),
+                                    contentDescription = null,
+                                    tint = iconTint,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                            Spacer(Modifier.height(3.dp))
+                            Text(
+                                text = androidx.compose.ui.res.stringResource(tab.labelRes),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                color = labelColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+
+                    if (selectedIndex == tabs.indexOf(MainTab.PLAYLISTS)) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = androidx.compose.material3.ripple(bounded = false, radius = 28.dp),
+                                    onClick = onOpenGenerator,
+                                ),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .height(28.dp)
+                                    .width(28.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.AutoAwesome,
+                                    contentDescription = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.nav_generator),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                            Spacer(Modifier.height(3.dp))
+                            Text(
+                                text = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.nav_generator),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
             }
         }
         return
