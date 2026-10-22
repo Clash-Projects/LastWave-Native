@@ -127,4 +127,107 @@ class YtRadioParserTest {
 
         assertEquals("token_command_789", token)
     }
+
+    @Test
+    fun extractAutomixPlaylistId_automixRenderer_extractsPlaylistId() {
+        val sampleJson = """
+            {
+                "automixPreviewVideoRenderer": {
+                    "content": {
+                        "automixPlaylistVideoRenderer": {
+                            "navigationEndpoint": {
+                                "watchPlaylistEndpoint": {
+                                    "playlistId": "RDAMVMsample_automix_id"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        """.trimIndent()
+
+        val element = json.parseToJsonElement(sampleJson)
+        val playlistId = api.extractAutomixPlaylistId(element)
+
+        assertEquals("RDAMVMsample_automix_id", playlistId)
+    }
+
+    @Test
+    fun parseRadioResponse_fullStructure_extractsTracksTokensAndAutomixInOrder() {
+        val sampleJson = """
+            {
+                "contents": {
+                    "singleColumnMusicWatchNextResultsRenderer": {
+                        "tabbedRenderer": {
+                            "watchNextTabbedResultsRenderer": {
+                                "tabs": [
+                                    {
+                                        "tabRenderer": {
+                                            "content": {
+                                                "musicQueueRenderer": {
+                                                    "content": {
+                                                        "playlistPanelRenderer": {
+                                                            "contents": [
+                                                                {
+                                                                    "playlistPanelVideoRenderer": {
+                                                                        "videoId": "song1",
+                                                                        "title": { "runs": [{ "text": "First Song" }] },
+                                                                        "shortBylineText": { "runs": [{ "text": "Artist A" }] }
+                                                                    }
+                                                                },
+                                                                {
+                                                                    "playlistPanelVideoWrapperRenderer": {
+                                                                        "primaryRenderer": {
+                                                                            "playlistPanelVideoRenderer": {
+                                                                                "videoId": "song2",
+                                                                                "title": { "runs": [{ "text": "Second Song" }] },
+                                                                                "shortBylineText": { "runs": [{ "text": "Artist B" }] }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                },
+                                                                {
+                                                                    "automixPreviewVideoRenderer": {
+                                                                        "content": {
+                                                                            "automixPlaylistVideoRenderer": {
+                                                                                "navigationEndpoint": {
+                                                                                    "watchPlaylistEndpoint": {
+                                                                                        "playlistId": "RDAMVMchained"
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            ],
+                                                            "continuations": [
+                                                                {
+                                                                    "nextRadioContinuationData": {
+                                                                        "continuation": "radio_cont_token"
+                                                                    }
+                                                                }
+                                                            ]
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        """.trimIndent()
+
+        val root = json.parseToJsonElement(sampleJson)
+        val result = api.parseRadioResponse(root)
+
+        assertEquals(2, result.tracks.size)
+        assertEquals("song1", result.tracks[0].videoId)
+        assertEquals("song2", result.tracks[1].videoId)
+        assertEquals("radio_cont_token", result.continuationToken)
+        assertEquals("RDAMVMchained", result.automixPlaylistId)
+    }
 }
