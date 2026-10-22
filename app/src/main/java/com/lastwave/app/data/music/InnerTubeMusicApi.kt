@@ -1720,6 +1720,20 @@ class InnerTubeMusicApi @Inject constructor(
         return commands.firstNotNullOfOrNull { it.string("token")?.takeIf(String::isNotBlank) }
     }
 
+    /** Extracts automix playlist ID from automixPreviewVideoRenderer if present. */
+    internal fun extractAutomixPlaylistId(root: JsonElement): String? {
+        val automixList = mutableListOf<JsonObject>()
+        collectObjects(root, "automixPreviewVideoRenderer", automixList)
+        return automixList.firstNotNullOfOrNull { renderer ->
+            renderer.obj("content")
+                ?.obj("automixPlaylistVideoRenderer")
+                ?.obj("navigationEndpoint")
+                ?.obj("watchPlaylistEndpoint")
+                ?.string("playlistId")
+                ?.takeIf(String::isNotBlank)
+        }
+    }
+
     private fun extractSetVideoId(renderer: JsonObject): String? {
         (renderer["setVideoId"] as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank)?.let { return it }
         renderer.obj("playlistItemData")?.let { data ->
