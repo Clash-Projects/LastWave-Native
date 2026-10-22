@@ -709,7 +709,10 @@ class MusicPlayer @Inject constructor(
         val previousTrack = _state.value.current ?: return
         val previousPositionMs = _state.value.positionMs
         val previousDurationMs = _state.value.durationMs
-        if (previousTrack.mediaType == MediaType.PODCAST_EPISODE) {
+        if (previousTrack.mediaType == MediaType.PODCAST_EPISODE ||
+            !previousTrack.showId.isNullOrBlank() ||
+            previousTrack.artist.equals("Podcast", ignoreCase = true)
+        ) {
             // Podcast episodes are not songs: they never feed the local taste
             // graph. They only persist a resume position. A natural advance
             // (the episode played out) counts as finished; an explicit skip

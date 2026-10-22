@@ -1901,6 +1901,9 @@ class InnerTubeMusicApi @Inject constructor(
     suspend fun searchAlbums(query: String, limit: Int = 30): List<YouTubeMusicEntity> =
         searchEntities(query, YouTubeMusicEntityKind.ALBUM, ALBUM_SEARCH_FILTER, limit)
 
+    suspend fun searchPodcasts(query: String, limit: Int = 30): List<PodcastEpisode> =
+        searchPodcastEpisodes(query, limit)
+
     /** Which artist shelf a localized heading refers to. */
     private enum class ArtistShelf { ALBUMS, SINGLES, OTHER }
 
@@ -2190,9 +2193,29 @@ class InnerTubeMusicApi @Inject constructor(
             ?: albumTitleFallback.ifBlank { "Album" }
 
         val subRuns = header?.obj("subtitle")?.array("runs")?.mapNotNull { it.asObject() }.orEmpty()
-        val artistRun = subRuns.firstOrNull { it.obj("navigationEndpoint")?.obj("browseEndpoint")?.string("browseId")?.startsWith("UC") == true }
-        val artist = artistRun?.string("text") ?: header?.obj("straplineTextOne")?.array("runs")?.firstOrNull()?.asObject()?.string("text") ?: artistFallback.ifBlank { "Various Artists" }
-        val artistBrowseId = artistRun?.obj("navigationEndpoint")?.obj("browseEndpoint")?.string("browseId")
+        val artistRuns = subRuns.filter { it.obj("navigationEndpoint")?.obj("browseEndpoint")?.string("browseId")?.startsWith("UC") == true }
+        val allArtists = if (artistRuns.isNotEmpty()) {
+            artistRuns.mapNotNull { it.string("text")?.trim() }.filter { it.isNotBlank() }.joinToString(", ")
+        } else {
+            val beforeMeta = subRuns.takeWhile { run ->
+                val txt = run.string("text")?.trim().orEmpty()
+                !txt.matches(Regex("^(19|20)\\d{2}$")) &&
+                    txt != "•" && txt != "·" &&
+                    !txt.equals("Album", ignoreCase = true) &&
+                    !txt.equals("EP", ignoreCase = true) &&
+                    !txt.equals("Single", ignoreCase = true) &&
+                    !txt.contains("song", ignoreCase = true) &&
+                    !txt.contains("min", ignoreCase = true)
+            }.mapNotNull { it.string("text")?.trim() }.filter { it.isNotBlank() && it != "," && it != "&" }
+            if (beforeMeta.isNotEmpty()) {
+                beforeMeta.joinToString(", ")
+            } else {
+                header?.obj("straplineTextOne")?.array("runs")?.mapNotNull { it.asObject()?.string("text") }?.joinToString("")?.trim()?.takeIf { it.isNotBlank() }
+                    ?: artistFallback.ifBlank { "Various Artists" }
+            }
+        }
+        val artist = allArtists.ifBlank { artistFallback.ifBlank { "Various Artists" } }
+        val artistBrowseId = artistRuns.firstOrNull()?.obj("navigationEndpoint")?.obj("browseEndpoint")?.string("browseId")
 
         val releaseYear = subRuns.mapNotNull { it.string("text") }.firstOrNull { it.trim().matches(Regex("^(19|20)\\d{2}$")) }
 
