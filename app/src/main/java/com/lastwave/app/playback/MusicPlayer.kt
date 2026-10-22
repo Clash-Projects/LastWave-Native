@@ -374,6 +374,10 @@ class MusicPlayer @Inject constructor(
     private var radioQueueLoadJob: Job? = null
     private var radioQueueActive = false
     private val radioUsedSeeds = ConcurrentHashMap.newKeySet<String>()
+    @Volatile
+    private var currentRadioContinuationToken: String? = null
+    @Volatile
+    private var currentRadioAutomixPlaylistId: String? = null
     private var unavailableSkipJob: Job? = null
     private val unavailableMediaIds = mutableSetOf<String>()
     /**
@@ -4905,6 +4909,8 @@ class MusicPlayer @Inject constructor(
         radioQueueLoadJob?.cancel()
         radioQueueLoadJob = null
         radioUsedSeeds.clear()
+        currentRadioContinuationToken = null
+        currentRadioAutomixPlaylistId = null
     }
 
     private fun isDisallowedRadioTitle(titleLower: String): Boolean {
@@ -5000,12 +5006,9 @@ class MusicPlayer @Inject constructor(
     }
 
     /**
-     * Curates dynamic, context-aware radio tracks similar to YouTube Music:
-     * - Multi-seed related automix from /next ensures the candidate pool never starves.
-     * - Seamlessly branches to similar artist radio searches and local listener taste.
-     * - Strict anti-duplicate-version filter excludes covers, acoustic, live, remix,
-     *   lo-fi, slowed, or remaster variants of already-played or queued songs.
-     * - Smoothly paces artist distribution and blends listener affinity.
+     * Emergency last-resort fallback radio curation when native YouTube Music /next radio fails.
+     * Retained strictly for offline/network-error resilience. Normal radio queues are built and extended
+     * directly from YouTube Music's native radio endpoint in exact order.
      */
     private suspend fun fetchContextAwareRadioTracks(
         primarySeed: PlayableTrack,
@@ -5016,6 +5019,10 @@ class MusicPlayer @Inject constructor(
         knownCoreTitles: Set<String>,
         batchSize: Int = RADIO_QUEUE_BATCH_SIZE,
     ): List<PlayableTrack> {
+        android.util.Log.w(
+            "MusicPlayer",
+            "Invoking emergency radio fallback curation for seed '${primarySeed.title}' by '${primarySeed.artist}' (native YTM radio unavailable)",
+        )
         val seenVideoIds = knownVideoIds.toMutableSet()
         val seenKeys = knownKeys.toMutableSet()
         val currentCoreTitleArtists = knownCoreTitleArtists.toMutableSet()
@@ -5197,33 +5204,108 @@ class MusicPlayer @Inject constructor(
         if (seed.mediaType != MediaType.SONG) return
         radioQueueLoadJob?.cancel()
         radioUsedSeeds.clear()
+        currentRadioContinuationToken = null
+        currentRadioAutomixPlaylistId = null
         seed.videoId?.takeIf(String::isNotBlank)?.let { radioUsedSeeds.add(it) }
 
         radioQueueLoadJob = applicationScope.launch(Dispatchers.IO) {
             try {
+                val seedVideoId = seed.videoId?.takeIf(String::isNotBlank)
+                    ?: innerTube.findBestMatchOrNull(seed.title, seed.artist, prefetchStreams = false)?.videoId
+                    ?: runCatching {
+                        innerTube.searchSongs("${seed.artist} ${seed.title}", limit = 3, prefetchStreams = false).firstOrNull()?.videoId
+                    }.getOrNull()
+
+                if (seedVideoId != null) {
+                    radioUsedSeeds.add(seedVideoId)
+                }
+
                 val existingTracks = withContext(Dispatchers.Main.immediate) {
                     if (!playerDelegate.isInitialized()) emptyList()
                     else (0 until player.mediaItemCount).map { player.getMediaItemAt(it).toPlayableTrack() }
                 }
                 val existingVideoIds = existingTracks.mapNotNullTo(mutableSetOf()) { it.videoId }
                 val existingKeys = existingTracks.mapTo(mutableSetOf()) { it.queueKey() }
-                val knownCoreTitleArtists = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
-                    "${cleanCoreTitle(it.title)}|${cleanCoreArtist(it.artist)}"
-                }
-                val knownCoreTitles = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
-                    cleanCoreTitle(it.title)
+                val historyKeys = playHistory.toSet()
+
+                val toAdd: List<PlayableTrack> = if (seedVideoId != null) {
+                    val radioResult = runCatching { innerTube.fetchRadio(seedVideoId) }.getOrElse { err ->
+                        android.util.Log.w("MusicPlayer", "Failed to fetch native YTM radio for seed $seedVideoId, using fallback", err)
+                        null
+                    }
+                    if (radioResult != null && radioResult.tracks.isNotEmpty()) {
+                        currentRadioContinuationToken = radioResult.continuationToken
+                        currentRadioAutomixPlaylistId = radioResult.automixPlaylistId
+                        radioResult.tracks
+                            .map { it.toPlayableTrack() }
+                            .filterNot { isTrackDuplicatedOrRecent(it, existingVideoIds, existingKeys, historyKeys, seedVideoId) }
+                    } else if (!radioResult?.automixPlaylistId.isNullOrBlank()) {
+                        val automixId = radioResult?.automixPlaylistId
+                        val automixResult = runCatching { innerTube.fetchRadioByPlaylistId(automixId.orEmpty()) }.getOrNull()
+                        if (automixResult != null && automixResult.tracks.isNotEmpty()) {
+                            currentRadioContinuationToken = automixResult.continuationToken
+                            currentRadioAutomixPlaylistId = automixResult.automixPlaylistId
+                            automixResult.tracks
+                                .map { it.toPlayableTrack() }
+                                .filterNot { isTrackDuplicatedOrRecent(it, existingVideoIds, existingKeys, historyKeys, seedVideoId) }
+                        } else {
+                            val knownCoreTitleArtists = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
+                                "${cleanCoreTitle(it.title)}|${cleanCoreArtist(it.artist)}"
+                            }
+                            val knownCoreTitles = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
+                                cleanCoreTitle(it.title)
+                            }
+                            val fallbackSeeds = existingTracks.takeLast(5).filter { !it.artist.equals(seed.artist, ignoreCase = true) }
+                            android.util.Log.w("MusicPlayer", "Native YTM radio returned no tracks; using emergency fallback curation")
+                            fetchContextAwareRadioTracks(
+                                primarySeed = seed,
+                                fallbackSeeds = fallbackSeeds,
+                                knownVideoIds = existingVideoIds,
+                                knownKeys = existingKeys,
+                                knownCoreTitleArtists = knownCoreTitleArtists,
+                                knownCoreTitles = knownCoreTitles,
+                                batchSize = RADIO_QUEUE_BATCH_SIZE,
+                            )
+                        }
+                    } else {
+                        val knownCoreTitleArtists = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
+                            "${cleanCoreTitle(it.title)}|${cleanCoreArtist(it.artist)}"
+                        }
+                        val knownCoreTitles = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
+                            cleanCoreTitle(it.title)
+                        }
+                        val fallbackSeeds = existingTracks.takeLast(5).filter { !it.artist.equals(seed.artist, ignoreCase = true) }
+                        android.util.Log.w("MusicPlayer", "Native YTM radio returned no tracks; using emergency fallback curation")
+                        fetchContextAwareRadioTracks(
+                            primarySeed = seed,
+                            fallbackSeeds = fallbackSeeds,
+                            knownVideoIds = existingVideoIds,
+                            knownKeys = existingKeys,
+                            knownCoreTitleArtists = knownCoreTitleArtists,
+                            knownCoreTitles = knownCoreTitles,
+                            batchSize = RADIO_QUEUE_BATCH_SIZE,
+                        )
+                    }
+                } else {
+                    android.util.Log.w("MusicPlayer", "No video ID found for radio seed; using emergency fallback curation")
+                    val knownCoreTitleArtists = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
+                        "${cleanCoreTitle(it.title)}|${cleanCoreArtist(it.artist)}"
+                    }
+                    val knownCoreTitles = existingTracks.withHistoryTracks().mapTo(mutableSetOf()) {
+                        cleanCoreTitle(it.title)
+                    }
+                    val fallbackSeeds = existingTracks.takeLast(5).filter { !it.artist.equals(seed.artist, ignoreCase = true) }
+                    fetchContextAwareRadioTracks(
+                        primarySeed = seed,
+                        fallbackSeeds = fallbackSeeds,
+                        knownVideoIds = existingVideoIds,
+                        knownKeys = existingKeys,
+                        knownCoreTitleArtists = knownCoreTitleArtists,
+                        knownCoreTitles = knownCoreTitles,
+                        batchSize = RADIO_QUEUE_BATCH_SIZE,
+                    )
                 }
 
-                val fallbackSeeds = existingTracks.takeLast(5).filter { !it.artist.equals(seed.artist, ignoreCase = true) }
-                val toAdd = fetchContextAwareRadioTracks(
-                    primarySeed = seed,
-                    fallbackSeeds = fallbackSeeds,
-                    knownVideoIds = existingVideoIds,
-                    knownKeys = existingKeys,
-                    knownCoreTitleArtists = knownCoreTitleArtists,
-                    knownCoreTitles = knownCoreTitles,
-                    batchSize = RADIO_QUEUE_BATCH_SIZE,
-                )
                 if (toAdd.isEmpty() || !radioQueueActive) return@launch
 
                 withContext(Dispatchers.Main.immediate) {
@@ -5267,6 +5349,61 @@ class MusicPlayer @Inject constructor(
         }
     }
 
+    private fun isTrackDuplicatedOrRecent(
+        track: PlayableTrack,
+        knownVideoIds: Set<String>,
+        knownKeys: Set<String>,
+        historyKeys: Set<String>,
+        seedVideoId: String? = null,
+    ): Boolean {
+        val vid = track.videoId
+        if (vid != null) {
+            if (vid == seedVideoId) return true
+            if (vid in knownVideoIds) return true
+        }
+        val key = track.queueKey()
+        if (key in knownKeys) return true
+        if (track.mediaIdKey() in historyKeys) return true
+        return false
+    }
+
+    private suspend fun runEmergencyFallbackRadio(
+        currentIndex: Int,
+        currentQueue: List<PlayableTrack>,
+        knownVideoIds: Set<String>,
+        knownKeys: Set<String>,
+    ): List<PlayableTrack> {
+        val nextSeed = currentQueue
+            .drop(currentIndex.coerceAtLeast(0))
+            .firstOrNull { it.videoId != null && it.videoId !in radioUsedSeeds }
+            ?: currentQueue.getOrNull(currentIndex)
+            ?: currentQueue.lastOrNull { it.videoId != null }
+            ?: return emptyList()
+
+        val fallbackSeeds = currentQueue
+            .takeLast(10)
+            .filter { !it.artist.equals(nextSeed.artist, ignoreCase = true) }
+            .distinctBy { it.artist.lowercase() }
+
+        val knownCoreTitleArtists = currentQueue.withHistoryTracks().mapTo(mutableSetOf()) {
+            "${cleanCoreTitle(it.title)}|${cleanCoreArtist(it.artist)}"
+        }
+        val knownCoreTitles = currentQueue.withHistoryTracks().mapTo(mutableSetOf()) {
+            cleanCoreTitle(it.title)
+        }
+
+        android.util.Log.w("MusicPlayer", "Native YTM radio continuation exhausted; using emergency fallback curation for ${nextSeed.title}")
+        return fetchContextAwareRadioTracks(
+            primarySeed = nextSeed,
+            fallbackSeeds = fallbackSeeds,
+            knownVideoIds = knownVideoIds,
+            knownKeys = knownKeys,
+            knownCoreTitleArtists = knownCoreTitleArtists,
+            knownCoreTitles = knownCoreTitles,
+            batchSize = RADIO_QUEUE_BATCH_SIZE,
+        )
+    }
+
     private fun extendRadioQueueIfNeeded(currentIndex: Int, forceIfAtEnd: Boolean = false) {
         if (!radioQueueActive || radioQueueLoadJob?.isActive == true) return
         val currentCount = player.mediaItemCount
@@ -5283,34 +5420,63 @@ class MusicPlayer @Inject constructor(
 
                 val knownVideoIds = currentQueue.mapNotNullTo(mutableSetOf()) { it.videoId }
                 val knownKeys = currentQueue.mapTo(mutableSetOf()) { it.queueKey() }
-                val knownCoreTitleArtists = currentQueue.withHistoryTracks().mapTo(mutableSetOf()) {
-                    "${cleanCoreTitle(it.title)}|${cleanCoreArtist(it.artist)}"
+                val historyKeys = playHistory.toSet()
+
+                val continuationToken = currentRadioContinuationToken
+                val automixId = currentRadioAutomixPlaylistId
+
+                val toAdd: List<PlayableTrack> = if (!continuationToken.isNullOrBlank()) {
+                    val result = runCatching { innerTube.fetchRadioContinuation(continuationToken) }.getOrElse { err ->
+                        android.util.Log.w("MusicPlayer", "Failed to fetch native radio continuation, will try automix or emergency fallback", err)
+                        null
+                    }
+                    if (result != null && result.tracks.isNotEmpty()) {
+                        currentRadioContinuationToken = result.continuationToken
+                        if (result.automixPlaylistId != null) {
+                            currentRadioAutomixPlaylistId = result.automixPlaylistId
+                        }
+                        result.tracks
+                            .map { it.toPlayableTrack() }
+                            .filterNot { isTrackDuplicatedOrRecent(it, knownVideoIds, knownKeys, historyKeys) }
+                    } else if (!automixId.isNullOrBlank()) {
+                        currentRadioContinuationToken = null
+                        currentRadioAutomixPlaylistId = null
+                        val automixResult = runCatching { innerTube.fetchRadioByPlaylistId(automixId) }.getOrElse { err ->
+                            android.util.Log.w("MusicPlayer", "Failed to fetch automix radio playlist $automixId, using fallback", err)
+                            null
+                        }
+                        if (automixResult != null && automixResult.tracks.isNotEmpty()) {
+                            currentRadioContinuationToken = automixResult.continuationToken
+                            currentRadioAutomixPlaylistId = automixResult.automixPlaylistId
+                            automixResult.tracks
+                                .map { it.toPlayableTrack() }
+                                .filterNot { isTrackDuplicatedOrRecent(it, knownVideoIds, knownKeys, historyKeys) }
+                        } else {
+                            runEmergencyFallbackRadio(currentIndex, currentQueue, knownVideoIds, knownKeys)
+                        }
+                    } else {
+                        currentRadioContinuationToken = null
+                        runEmergencyFallbackRadio(currentIndex, currentQueue, knownVideoIds, knownKeys)
+                    }
+                } else if (!automixId.isNullOrBlank()) {
+                    currentRadioAutomixPlaylistId = null
+                    val automixResult = runCatching { innerTube.fetchRadioByPlaylistId(automixId) }.getOrElse { err ->
+                        android.util.Log.w("MusicPlayer", "Failed to fetch automix radio playlist $automixId, using fallback", err)
+                        null
+                    }
+                    if (automixResult != null && automixResult.tracks.isNotEmpty()) {
+                        currentRadioContinuationToken = automixResult.continuationToken
+                        currentRadioAutomixPlaylistId = automixResult.automixPlaylistId
+                        automixResult.tracks
+                            .map { it.toPlayableTrack() }
+                            .filterNot { isTrackDuplicatedOrRecent(it, knownVideoIds, knownKeys, historyKeys) }
+                    } else {
+                        runEmergencyFallbackRadio(currentIndex, currentQueue, knownVideoIds, knownKeys)
+                    }
+                } else {
+                    runEmergencyFallbackRadio(currentIndex, currentQueue, knownVideoIds, knownKeys)
                 }
-                val knownCoreTitles = currentQueue.withHistoryTracks().mapTo(mutableSetOf()) {
-                    cleanCoreTitle(it.title)
-                }
 
-                val nextSeed = currentQueue
-                    .drop(currentIndex.coerceAtLeast(0))
-                    .firstOrNull { it.videoId != null && it.videoId !in radioUsedSeeds }
-                    ?: currentQueue.getOrNull(currentIndex)
-                    ?: currentQueue.lastOrNull { it.videoId != null }
-                    ?: return@launch
-
-                val fallbackSeeds = currentQueue
-                    .takeLast(10)
-                    .filter { !it.artist.equals(nextSeed.artist, ignoreCase = true) }
-                    .distinctBy { it.artist.lowercase() }
-
-                val toAdd = fetchContextAwareRadioTracks(
-                    primarySeed = nextSeed,
-                    fallbackSeeds = fallbackSeeds,
-                    knownVideoIds = knownVideoIds,
-                    knownKeys = knownKeys,
-                    knownCoreTitleArtists = knownCoreTitleArtists,
-                    knownCoreTitles = knownCoreTitles,
-                    batchSize = RADIO_QUEUE_BATCH_SIZE,
-                )
                 if (toAdd.isEmpty() || !radioQueueActive) return@launch
 
                 withContext(Dispatchers.Main.immediate) {
@@ -8448,6 +8614,16 @@ fun GeneratedTrack.toPlayableTrack(): PlayableTrack {
         videoId = videoId,
     )
 }
+
+fun YouTubeMusicTrack.toPlayableTrack(): PlayableTrack =
+    PlayableTrack(
+        title = title.trim(),
+        artist = artist.trim(),
+        album = album?.trim(),
+        artworkUrl = artworkUrl,
+        videoId = videoId.takeIf(String::isNotBlank),
+        durationMs = durationSeconds?.takeIf { it > 0 }?.times(1_000L),
+    )
 
 private fun PlayableTrack.queueKey(): String =
     playbackIdentity()?.cacheKey ?: mediaIdKey()

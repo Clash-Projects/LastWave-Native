@@ -1705,6 +1705,35 @@ class InnerTubeMusicApi @Inject constructor(
         return legacyItems.firstNotNullOfOrNull { it.string("continuation")?.takeIf(String::isNotBlank) }
     }
 
+    /** Extracts radio continuation token (checks nextRadioContinuationData, nextContinuationData, and continuationCommand). */
+    internal fun extractRadioContinuationToken(root: JsonElement): String? {
+        val radioItems = mutableListOf<JsonObject>()
+        collectObjects(root, "nextRadioContinuationData", radioItems)
+        radioItems.firstNotNullOfOrNull { it.string("continuation")?.takeIf(String::isNotBlank) }?.let { return it }
+
+        val legacyItems = mutableListOf<JsonObject>()
+        collectObjects(root, "nextContinuationData", legacyItems)
+        legacyItems.firstNotNullOfOrNull { it.string("continuation")?.takeIf(String::isNotBlank) }?.let { return it }
+
+        val commands = mutableListOf<JsonObject>()
+        collectObjects(root, "continuationCommand", commands)
+        return commands.firstNotNullOfOrNull { it.string("token")?.takeIf(String::isNotBlank) }
+    }
+
+    /** Extracts automix playlist ID from automixPreviewVideoRenderer if present. */
+    internal fun extractAutomixPlaylistId(root: JsonElement): String? {
+        val automixList = mutableListOf<JsonObject>()
+        collectObjects(root, "automixPreviewVideoRenderer", automixList)
+        return automixList.firstNotNullOfOrNull { renderer ->
+            renderer.obj("content")
+                ?.obj("automixPlaylistVideoRenderer")
+                ?.obj("navigationEndpoint")
+                ?.obj("watchPlaylistEndpoint")
+                ?.string("playlistId")
+                ?.takeIf(String::isNotBlank)
+        }
+    }
+
     private fun extractSetVideoId(renderer: JsonObject): String? {
         (renderer["setVideoId"] as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank)?.let { return it }
         renderer.obj("playlistItemData")?.let { data ->
@@ -1904,6 +1933,87 @@ class InnerTubeMusicApi @Inject constructor(
             .take(limit)
         if (prefetchStreams) results.take(2).forEach { prefetchStream(it.videoId) }
         results
+    }
+
+    /**
+     * Fetches YouTube Music's native radio for a seed videoId (`playlistId = RDAMVM<videoId>`).
+     * Returns the tracks in exact YouTube Music order, pagination continuation token, and automix playlistId.
+     * Works for both authenticated users and guests.
+     */
+    suspend fun fetchRadio(
+        videoId: String,
+    ): YtRadioResult = withContext(Dispatchers.IO) {
+        if (videoId.isBlank()) return@withContext YtRadioResult(emptyList())
+        val config = getWebConfig()
+        val isAuth = ytAuth.connection.value.isConnected
+        val root = post(
+            url = "$MUSIC_API/next?key=${config.apiKey}&prettyPrint=false",
+            body = buildJsonObject {
+                put("context", context("WEB_REMIX", config.clientVersion, config.visitorData, authenticated = isAuth))
+                put("videoId", videoId)
+                put("playlistId", "RDAMVM$videoId")
+                put("params", "wAEB")
+                put("isAudioOnly", true)
+            },
+            clientName = "WEB_REMIX",
+            clientVersion = config.clientVersion,
+            userAgent = WEB_USER_AGENT,
+            authenticated = isAuth,
+            callTimeoutMs = RELATED_REQUEST_TIMEOUT_MS,
+        )
+        parseRadioResponse(root)
+    }
+
+    /**
+     * Requests the next page of YouTube Music radio tracks using a continuation token.
+     * Returns the next batch of tracks and the next continuation token.
+     */
+    suspend fun fetchRadioContinuation(
+        continuationToken: String,
+    ): YtRadioResult = withContext(Dispatchers.IO) {
+        if (continuationToken.isBlank()) return@withContext YtRadioResult(emptyList())
+        val config = getWebConfig()
+        val isAuth = ytAuth.connection.value.isConnected
+        val root = post(
+            url = "$MUSIC_API/next?key=${config.apiKey}&prettyPrint=false",
+            body = buildJsonObject {
+                put("context", context("WEB_REMIX", config.clientVersion, config.visitorData, authenticated = isAuth))
+                put("continuation", continuationToken)
+            },
+            clientName = "WEB_REMIX",
+            clientVersion = config.clientVersion,
+            userAgent = WEB_USER_AGENT,
+            authenticated = isAuth,
+            callTimeoutMs = RELATED_REQUEST_TIMEOUT_MS,
+        )
+        parseRadioResponse(root)
+    }
+
+    /**
+     * Follows an automix radio playlist ID (e.g. from automixPreviewVideoRenderer)
+     * to continue seamless radio playback when no continuation token exists.
+     */
+    suspend fun fetchRadioByPlaylistId(
+        playlistId: String,
+    ): YtRadioResult = withContext(Dispatchers.IO) {
+        if (playlistId.isBlank()) return@withContext YtRadioResult(emptyList())
+        val config = getWebConfig()
+        val isAuth = ytAuth.connection.value.isConnected
+        val root = post(
+            url = "$MUSIC_API/next?key=${config.apiKey}&prettyPrint=false",
+            body = buildJsonObject {
+                put("context", context("WEB_REMIX", config.clientVersion, config.visitorData, authenticated = isAuth))
+                put("playlistId", playlistId)
+                put("params", "wAEB")
+                put("isAudioOnly", true)
+            },
+            clientName = "WEB_REMIX",
+            clientVersion = config.clientVersion,
+            userAgent = WEB_USER_AGENT,
+            authenticated = isAuth,
+            callTimeoutMs = RELATED_REQUEST_TIMEOUT_MS,
+        )
+        parseRadioResponse(root)
     }
 
     suspend fun searchArtists(query: String, limit: Int = 30): List<YouTubeMusicEntity> =
@@ -4018,7 +4128,63 @@ class InnerTubeMusicApi @Inject constructor(
         return YouTubeMusicTrack(videoId, title, artist, null, artwork, duration)
     }
 
-    private fun parsePlaylistPanelSong(renderer: JsonObject): YouTubeMusicTrack? {
+    /**
+     * Parses a YouTube Music /next radio response, returning tracks in exact order,
+     * the continuation token (if present), and any chained automix playlistId.
+     */
+    internal fun parseRadioResponse(root: JsonElement): YtRadioResult {
+        val tracks = mutableListOf<YouTubeMusicTrack>()
+        val seenVideoIds = mutableSetOf<String>()
+
+        fun addTrack(track: YouTubeMusicTrack?) {
+            if (track != null && track.videoId.isNotBlank() && seenVideoIds.add(track.videoId)) {
+                tracks.add(track)
+            }
+        }
+
+        val panel = root.asObject()?.obj("continuationContents")?.obj("playlistPanelContinuation")
+            ?: run {
+                val panels = mutableListOf<JsonObject>()
+                collectObjects(root, "playlistPanelRenderer", panels)
+                panels.firstOrNull()
+            }
+
+        val contents = panel?.array("contents")
+        if (contents != null) {
+            for (i in 0 until contents.size) {
+                addTrack(parsePlaylistPanelItem(contents[i]))
+            }
+        }
+
+        if (tracks.isEmpty()) {
+            val queueRenderers = mutableListOf<JsonObject>()
+            collectObjects(root, "playlistPanelVideoRenderer", queueRenderers)
+            for (renderer in queueRenderers) {
+                addTrack(parsePlaylistPanelSong(renderer))
+            }
+        }
+
+        val continuationToken = extractRadioContinuationToken(root)
+        val automixPlaylistId = extractAutomixPlaylistId(root)
+
+        return YtRadioResult(
+            tracks = tracks,
+            continuationToken = continuationToken,
+            automixPlaylistId = automixPlaylistId,
+        )
+    }
+
+    internal fun parsePlaylistPanelItem(element: JsonElement): YouTubeMusicTrack? {
+        val obj = element.asObject() ?: return null
+        obj.obj("playlistPanelVideoRenderer")?.let { return parsePlaylistPanelSong(it) }
+        obj.obj("playlistPanelVideoWrapperRenderer")
+            ?.obj("primaryRenderer")
+            ?.obj("playlistPanelVideoRenderer")
+            ?.let { return parsePlaylistPanelSong(it) }
+        return null
+    }
+
+    internal fun parsePlaylistPanelSong(renderer: JsonObject): YouTubeMusicTrack? {
         if (renderer.obj("unplayableText") != null) return null
         val videoId = renderer.string("videoId")
             ?: renderer.obj("navigationEndpoint")?.obj("watchEndpoint")?.string("videoId")
