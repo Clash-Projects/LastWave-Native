@@ -3763,18 +3763,18 @@ private fun FullPlayerLandscape(
 
             Spacer(Modifier.height(14.dp))
 
-            MainControls(state, player, isTranslucent = LocalLiquidGlass.current || showFullBleed)
+            MainControls(state, player, isTranslucent = LocalLiquidGlass.current)
 
             Spacer(Modifier.height(10.dp))
 
             VolumeSlider(
-                isTranslucent = LocalLiquidGlass.current || showFullBleed,
+                isTranslucent = LocalLiquidGlass.current,
                 primaryColor = ambientColor,
             )
 
             Spacer(Modifier.height(14.dp))
 
-            PlayerUtilityControls(state, player, isTranslucent = LocalLiquidGlass.current || showFullBleed)
+            PlayerUtilityControls(state, player, isTranslucent = LocalLiquidGlass.current)
         }
     }
 }
