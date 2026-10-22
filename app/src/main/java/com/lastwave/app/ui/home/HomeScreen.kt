@@ -902,7 +902,12 @@ private fun MixHeader(sortMode: HomeSortMode, onSortModeChange: (HomeSortMode) -
                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                 tonalElevation = 1.dp,
                 interactionSource = pillInteractionSource,
-                modifier = Modifier.heightIn(min = 34.dp).scale(pillScale),
+                modifier = Modifier
+                    .heightIn(min = 34.dp)
+                    .graphicsLayer {
+                        scaleX = pillScale
+                        scaleY = pillScale
+                    },
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 13.dp, vertical = 6.dp),

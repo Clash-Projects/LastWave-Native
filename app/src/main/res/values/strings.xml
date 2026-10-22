@@ -718,6 +718,7 @@
     <string name="search_hint_users">Search Last.fm users…</string>
     <string name="search_hint_yt">Search YouTube Music…</string>
     <string name="search_tab_tracks">Tracks</string>
+    <string name="search_tab_podcasts">Podcasts</string>
     <string name="search_tab_artists">Artists</string>
     <string name="search_tab_albums">Albums</string>
     <string name="search_tab_playlists">Playlists</string>

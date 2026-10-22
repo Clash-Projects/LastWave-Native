@@ -3060,7 +3060,11 @@ private fun SettingsToggleCard(
         interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
-            .scale(if (enabled) scale else 1f)
+            .graphicsLayer {
+                val s = if (enabled) scale else 1f
+                scaleX = s
+                scaleY = s
+            }
             .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
     ) {
         Row(
@@ -3231,7 +3235,10 @@ private fun SettingsActionCard(
         interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
-            .scale(scale)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
     ) {
         Row(
@@ -3420,7 +3427,10 @@ private fun SearchResultCard(
         interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
-            .scale(scale),
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            },
     ) {
         Column(
             modifier = Modifier
@@ -4011,7 +4021,10 @@ private fun ColorTile(
     val tileShape = RoundedCornerShape(20.dp)
 
     Column(
-        modifier = modifier.scale(scale),
+        modifier = modifier.graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(

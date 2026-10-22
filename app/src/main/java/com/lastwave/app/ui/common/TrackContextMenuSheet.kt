@@ -73,7 +73,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -531,11 +531,11 @@ fun TrackContextMenuSheet(
                     }
                     if (!playable.album.isNullOrBlank()) {
                         add { pos ->
-                            val primaryArt = splitArtists.firstOrNull() ?: t.artist
+                            val albumArtist = playable.artist.ifBlank { t.artist }
                             val album = playable.album
                             if (album.isNullOrBlank()) return@add
                             MenuActionRow(Icons.Filled.Album, stringResource(R.string.menu_go_album, album), position = pos) {
-                                artistAlbumViewModel.openAlbum(album, primaryArt)
+                                artistAlbumViewModel.openAlbum(album, albumArtist)
                                 onDismiss()
                             }
                         }
@@ -725,7 +725,10 @@ private fun StartMixCard(onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .scale(scale),
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            },
     ) {
         Row(
             Modifier.padding(horizontal = 18.dp, vertical = 12.dp).fillMaxWidth(),
@@ -787,7 +790,10 @@ private fun QuickActionCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         shape = RoundedCornerShape(22.dp),
         interactionSource = interactionSource,
-        modifier = modifier.scale(scale),
+        modifier = modifier.graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        },
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 14.dp),
@@ -825,7 +831,10 @@ private fun MenuActionRow(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         shape = groupShape(position),
         interactionSource = interactionSource,
-        modifier = Modifier.fillMaxWidth().scale(scale),
+        modifier = Modifier.fillMaxWidth().graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        },
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 14.dp),

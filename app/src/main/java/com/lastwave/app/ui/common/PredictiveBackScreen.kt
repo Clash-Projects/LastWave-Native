@@ -115,13 +115,6 @@ fun PredictiveBackScreen(
         }
     }
 
-    val p = progress.value
-    val pivotX = if (edge == BackEventCompat.EDGE_RIGHT) 1f else 0f
-    // A small extra push toward the edge/corner being dragged from, on top
-    // of the scale — this is what sells "shrinking away from a corner"
-    // rather than just "shrinking in place".
-    val edgeSign = if (edge == BackEventCompat.EDGE_RIGHT) 1f else -1f
-
     Box(
         modifier
             .fillMaxSize()
@@ -132,6 +125,9 @@ fun PredictiveBackScreen(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer {
+                    val p = progress.value
+                    val pivotX = if (edge == BackEventCompat.EDGE_RIGHT) 1f else 0f
+                    val edgeSign = if (edge == BackEventCompat.EDGE_RIGHT) 1f else -1f
                     val scale = 1f - 0.12f * p
                     scaleX = scale
                     scaleY = scale

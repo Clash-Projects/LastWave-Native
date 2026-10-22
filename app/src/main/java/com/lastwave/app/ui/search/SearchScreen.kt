@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
@@ -485,7 +486,7 @@ fun SearchScreen(
                                     ),
                                 ) {
                                     if (topResult != null && state.tab != SearchTab.USERS) {
-                                        val isTopPlaying = state.tab == SearchTab.TRACKS && playbackState.isPlaying &&
+                                        val isTopPlaying = (state.tab == SearchTab.TRACKS || state.tab == SearchTab.PODCASTS) && playbackState.isPlaying &&
                                             playbackState.current?.title.equals(topResult.name, ignoreCase = true) &&
                                             (topResult.artist.isNullOrBlank() || playbackState.current?.artist.equals(topResult.artist, ignoreCase = true))
 
@@ -507,7 +508,7 @@ fun SearchScreen(
                                                 },
                                                 onMenu = {
                                                     menuTarget = when (state.tab) {
-                                                        SearchTab.TRACKS -> TrackMenuTarget.Track(topResult.name, topResult.artist.orEmpty(), topResult.url)
+                                                        SearchTab.TRACKS, SearchTab.PODCASTS -> TrackMenuTarget.Track(topResult.name, topResult.artist.orEmpty(), topResult.url)
                                                         SearchTab.ARTISTS -> TrackMenuTarget.Artist(topResult.name, topResult.url)
                                                         SearchTab.ALBUMS -> TrackMenuTarget.Album(topResult.name, topResult.artist.orEmpty(), topResult.url)
                                                         SearchTab.PLAYLISTS, SearchTab.USERS -> null
@@ -523,7 +524,7 @@ fun SearchScreen(
                                         key = { it.entityId ?: it.url.ifBlank { it.name + it.artist.orEmpty() } },
                                         contentType = { "search_result" },
                                     ) { item ->
-                                        val isItemPlaying = state.tab == SearchTab.TRACKS && playbackState.isPlaying &&
+                                        val isItemPlaying = (state.tab == SearchTab.TRACKS || state.tab == SearchTab.PODCASTS) && playbackState.isPlaying &&
                                             playbackState.current?.title.equals(item.name, ignoreCase = true) &&
                                             (item.artist.isNullOrBlank() || playbackState.current?.artist.equals(item.artist, ignoreCase = true))
 
@@ -546,7 +547,7 @@ fun SearchScreen(
                                             },
                                             onMenu = {
                                                 menuTarget = when (state.tab) {
-                                                    SearchTab.TRACKS -> TrackMenuTarget.Track(item.name, item.artist.orEmpty(), item.url)
+                                                    SearchTab.TRACKS, SearchTab.PODCASTS -> TrackMenuTarget.Track(item.name, item.artist.orEmpty(), item.url)
                                                     SearchTab.ARTISTS -> TrackMenuTarget.Artist(item.name, item.url)
                                                     SearchTab.ALBUMS -> TrackMenuTarget.Album(item.name, item.artist.orEmpty(), item.url)
                                                     SearchTab.PLAYLISTS, SearchTab.USERS -> null
@@ -567,7 +568,7 @@ fun SearchScreen(
     menuTarget?.let { target ->
         TrackContextMenuSheet(
             target = target,
-            capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = true),
+            capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = state.tab != SearchTab.PODCASTS),
             playbackSourceLabel = "Search",
             onDismiss = { menuTarget = null },
         )
@@ -637,6 +638,7 @@ private fun TopResultCard(
         ) {
             val fallback = when (tab) {
                 SearchTab.TRACKS -> if (isPlaying) Icons.Filled.GraphicEq else Icons.Filled.MusicNote
+                SearchTab.PODCASTS -> if (isPlaying) Icons.Filled.GraphicEq else Icons.Filled.Mic
                 SearchTab.ARTISTS -> Icons.Filled.Person
                 SearchTab.ALBUMS -> Icons.Filled.Album
                 SearchTab.PLAYLISTS -> Icons.AutoMirrored.Filled.QueueMusic
@@ -670,6 +672,7 @@ private fun TopResultCard(
                     Text(
                         when (tab) {
                             SearchTab.TRACKS -> "TOP SONG"
+                            SearchTab.PODCASTS -> "TOP PODCAST"
                             SearchTab.ARTISTS -> "TOP ARTIST"
                             SearchTab.ALBUMS -> "TOP ALBUM"
                             SearchTab.PLAYLISTS -> "TOP PLAYLIST"
@@ -690,6 +693,7 @@ private fun TopResultCard(
                 )
                 val subtitle = when (tab) {
                     SearchTab.TRACKS -> item.artist.orEmpty()
+                    SearchTab.PODCASTS -> listOfNotNull(item.artist, item.subtitle).distinct().joinToString(" • ")
                     SearchTab.ALBUMS -> item.artist.orEmpty()
                     SearchTab.PLAYLISTS -> item.subtitle.orEmpty()
                     SearchTab.ARTISTS -> item.subtitle.orEmpty().ifBlank { "Artist" }
@@ -886,6 +890,7 @@ private fun SearchResultRow(
     ) {
         val fallback = when (tab) {
             SearchTab.TRACKS -> if (isPlaying) Icons.Filled.GraphicEq else Icons.Filled.MusicNote
+            SearchTab.PODCASTS -> if (isPlaying) Icons.Filled.GraphicEq else Icons.Filled.Mic
             SearchTab.ARTISTS -> Icons.Filled.Person
             SearchTab.ALBUMS -> Icons.Filled.Album
             SearchTab.PLAYLISTS -> Icons.AutoMirrored.Filled.QueueMusic
@@ -916,6 +921,7 @@ private fun SearchResultRow(
             )
             val subtitle = when (tab) {
                 SearchTab.TRACKS -> listOfNotNull(item.artist, item.subtitle).joinToString(" \u00b7 ")
+                SearchTab.PODCASTS -> listOfNotNull(item.artist, item.subtitle).distinct().joinToString(" \u00b7 ")
                 SearchTab.ALBUMS -> item.subtitle ?: item.artist.orEmpty()
                 SearchTab.PLAYLISTS -> item.subtitle.orEmpty()
                 SearchTab.ARTISTS -> item.subtitle.orEmpty()
@@ -946,6 +952,7 @@ private fun SearchFilterPills(
 ) {
     val tabs = listOf(
         SearchTab.TRACKS to R.string.search_tab_tracks,
+        SearchTab.PODCASTS to R.string.search_tab_podcasts,
         SearchTab.ARTISTS to R.string.search_tab_artists,
         SearchTab.ALBUMS to R.string.search_tab_albums,
         SearchTab.PLAYLISTS to R.string.search_tab_playlists,
