@@ -1014,7 +1014,6 @@
     <string name="alb_tracks">Trek</string>
     <string name="alb_empty">Saat ini tidak ada lagu yang terdaftar untuk album ini — coba lagi nanti.</string>
     <string name="alb_load_fail">Gagal memuat detail album</string>
-    <string name="alb_save_fail">Tidak dapat menyimpan album. Coba lagi.</string>
     <string name="nr_title">Rilis baru</string>
     <string name="nr_sub">Temukan tetes segar</string>
     <string name="nr_load_fail">Tidak dapat memuat rilis baru</string>

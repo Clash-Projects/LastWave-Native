@@ -1014,7 +1014,6 @@
     <string name="alb_tracks">Spuren</string>
     <string name="alb_empty">Für dieses Album sind derzeit keine Titel aufgeführt. Versuchen Sie es später noch einmal.</string>
     <string name="alb_load_fail">Albumdetails konnten nicht geladen werden</string>
-    <string name="alb_save_fail">Album konnte nicht gespeichert werden. Versuchen Sie es erneut.</string>
     <string name="nr_title">Neuerscheinungen</string>
     <string name="nr_sub">Finden Sie frische Tropfen</string>
     <string name="nr_load_fail">Neue Versionen konnten nicht geladen werden</string>

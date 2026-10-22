@@ -1045,7 +1045,6 @@
     <string name="alb_tracks">Parçalar</string>
     <string name="alb_empty">Bu albümde şu an parça listelenmiyor — sonra tekrar deneyin.</string>
     <string name="alb_load_fail">Albüm bilgileri yüklenemedi</string>
-    <string name="alb_save_fail">Albüm kaydedilemedi. Tekrar deneyin.</string>
 
     <!-- Yeni çıkanlar -->
     <string name="nr_title">Yeni çıkanlar</string>
