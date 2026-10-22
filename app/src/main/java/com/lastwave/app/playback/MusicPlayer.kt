@@ -5006,12 +5006,9 @@ class MusicPlayer @Inject constructor(
     }
 
     /**
-     * Curates dynamic, context-aware radio tracks similar to YouTube Music:
-     * - Multi-seed related automix from /next ensures the candidate pool never starves.
-     * - Seamlessly branches to similar artist radio searches and local listener taste.
-     * - Strict anti-duplicate-version filter excludes covers, acoustic, live, remix,
-     *   lo-fi, slowed, or remaster variants of already-played or queued songs.
-     * - Smoothly paces artist distribution and blends listener affinity.
+     * Emergency last-resort fallback radio curation when native YouTube Music /next radio fails.
+     * Retained strictly for offline/network-error resilience. Normal radio queues are built and extended
+     * directly from YouTube Music's native radio endpoint in exact order.
      */
     private suspend fun fetchContextAwareRadioTracks(
         primarySeed: PlayableTrack,
