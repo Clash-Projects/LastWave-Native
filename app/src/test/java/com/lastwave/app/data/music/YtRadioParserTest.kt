@@ -89,4 +89,42 @@ class YtRadioParserTest {
         assertEquals("Wrapped Artist", track?.artist)
         assertEquals(130, track?.durationSeconds)
     }
+
+    @Test
+    fun extractRadioContinuationToken_nextRadioContinuationData_extractsToken() {
+        val sampleJson = """
+            {
+                "continuations": [
+                    {
+                        "nextRadioContinuationData": {
+                            "continuation": "token_abc_123"
+                        }
+                    }
+                ]
+            }
+        """.trimIndent()
+
+        val element = json.parseToJsonElement(sampleJson)
+        val token = api.extractRadioContinuationToken(element)
+
+        assertEquals("token_abc_123", token)
+    }
+
+    @Test
+    fun extractRadioContinuationToken_continuationCommand_extractsToken() {
+        val sampleJson = """
+            {
+                "continuationEndpoint": {
+                    "continuationCommand": {
+                        "token": "token_command_789"
+                    }
+                }
+            }
+        """.trimIndent()
+
+        val element = json.parseToJsonElement(sampleJson)
+        val token = api.extractRadioContinuationToken(element)
+
+        assertEquals("token_command_789", token)
+    }
 }
