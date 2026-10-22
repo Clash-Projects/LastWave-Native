@@ -243,6 +243,7 @@ class MusicPlayer @Inject constructor(
     private val podcastProgressStore: com.lastwave.app.data.podcast.PodcastProgressStore,
     /** AutoEQ: started with the player so the saved correction is published before playback. */
     private val autoEqController: com.lastwave.app.data.autoeq.AutoEqController,
+    private val khInsider: com.lastwave.app.data.khinsider.KhInsiderClient,
 ) {
     private val appContext = context.applicationContext
     /**
@@ -704,6 +705,30 @@ class MusicPlayer @Inject constructor(
             ?: track.durationMs
             ?: 0L
         persistPodcastProgress(track, position, duration, completed)
+    }
+
+    /**
+     * KHInsider tracks are queued with their track page (khinsider://track?page=…).
+     * The file link is read from that page here, on the loader thread, in the
+     * FLAC/MP3 format chosen at play time; everything else passes through.
+     */
+    private val khInsiderAwareDataSourceFactory: ResolvingDataSource.Factory by lazy {
+        ResolvingDataSource.Factory(cacheDataSourceFactory) { dataSpec ->
+            val uri = dataSpec.uri.toString()
+            val page = com.lastwave.app.data.khinsider.KhInsiderParser.pagePathOf(uri)
+                ?: return@Factory dataSpec
+            // A downloaded copy plays from the phone, even offline.
+            khInsider.downloadedLocation(page)?.let { local ->
+                val localUri = if (local.startsWith("/")) Uri.fromFile(java.io.File(local)) else Uri.parse(local)
+                return@Factory dataSpec.buildUpon().setUri(localUri).setKey(null).build()
+            }
+            val fileUrl = khInsider.resolveFileUrlBlocking(page)
+            dataSpec.buildUpon()
+                .setUri(Uri.parse(fileUrl))
+                .setKey("khinsider:$fileUrl")
+                .build()
+                .withAdditionalHeaders(khInsider.fileRequestHeaders())
+        }
     }
 
     /**
@@ -1174,7 +1199,7 @@ class MusicPlayer @Inject constructor(
         effects: AudioEffectsEngine,
         handleAudioFocus: Boolean,
     ): ExoPlayer {
-        val resolving = ResolvingDataSource.Factory(cacheDataSourceFactory) { dataSpec ->
+        val resolving = ResolvingDataSource.Factory(khInsiderAwareDataSourceFactory) { dataSpec ->
             val placeholder = dataSpec.uri.takeIf { it.scheme == "lastwave" }
             val resolvedPlaceholder = placeholder?.let { uri ->
                 val videoId = uri.lastPathSegment.takeIf { uri.host == "youtube" }
@@ -7148,7 +7173,7 @@ class MusicPlayer @Inject constructor(
     ): Boolean = withContext(Dispatchers.Main) {
         var auditionPlayer: ExoPlayer? = null
         try {
-            val resolvingFactory = ResolvingDataSource.Factory(cacheDataSourceFactory) { dataSpec ->
+            val resolvingFactory = ResolvingDataSource.Factory(khInsiderAwareDataSourceFactory) { dataSpec ->
                 val stream = dataSpec.key?.let(preparedStreams::get)
                     ?: preparedStreams.values.firstOrNull { it.url == dataSpec.uri.toString() }
                 if (stream != null) {
@@ -7725,7 +7750,11 @@ class MusicPlayer @Inject constructor(
     }
 
     private fun publishLocalTrackQuality(track: PlayableTrack) {
-        val url = track.playbackUrl ?: return
+        val queuedUrl = track.playbackUrl ?: return
+        // KHInsider: measure the real file (FLAC header / MP3) behind the page.
+        val url = com.lastwave.app.data.khinsider.KhInsiderParser.pagePathOf(queuedUrl)?.let { page ->
+            runCatching { khInsider.playbackSourceBlocking(page) }.getOrNull() ?: return
+        } ?: queuedUrl
         val retriever = android.media.MediaMetadataRetriever()
         try {
             if (url.startsWith("content://")) {
@@ -8368,6 +8397,16 @@ fun GeneratedTrack.toPlayableTrack(): PlayableTrack {
             artworkUrl = artworkUrl,
             playbackUrl = url,
             playbackMimeType = com.lastwave.app.data.generate.LocalAudioFormats.mimeFor(url),
+        )
+    }
+    if (com.lastwave.app.data.generate.isKhInsiderUrl(url)) {
+        // KHInsider: the track page rides along; the player reads the file link.
+        return PlayableTrack(
+            title = name,
+            artist = artist,
+            album = album,
+            artworkUrl = artworkUrl,
+            playbackUrl = url,
         )
     }
     val videoId = youtubeVideoIdOrNull()
