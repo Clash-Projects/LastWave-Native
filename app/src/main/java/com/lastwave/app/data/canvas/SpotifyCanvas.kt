@@ -76,7 +76,7 @@ class SpotifyCanvas @Inject constructor(
         try {
             // 1. Search for matching track on Spotify Pathfinder, falling back to Web API search
             val trackMatch = searchTrack(personalToken, clientToken, title, artist, durationMs)
-            val trackId = trackMatch?.id ?: searchTrackFallback(personalToken, title, artist, durationMs)
+            val trackId = trackMatch?.resolvedId ?: searchTrackFallback(personalToken, title, artist, durationMs)
                 ?: run {
                     Log.d(TAG, "No Spotify track matched '$title' - '$artist'")
                     return@withContext null
@@ -163,46 +163,52 @@ class SpotifyCanvas @Inject constructor(
         artist: String,
         durationMs: Long? = null,
     ): SpotifySearchResponse.Data.Search.TracksV2.Items.Item.TrackData? {
-        val query = "$title $artist"
-        // The operation was called `searchTracks` and is now `assistedCurationSearch`,
-        // and the term it takes is called `term` rather than `searchTerm`. The hash is
-        // read out of the web player, because an operation that the player no longer
-        // declares is refused with "persisted query not found" and the answer looks
-        // exactly like a track that is not on Spotify.
+        val cleanTitle = title
+            .replace(CLEAN_TITLE_REGEX, "")
+            .trim()
+        val primaryArtist = splitArtists(artist).firstOrNull() ?: artist
+        val candidateQueries = listOfNotNull(
+            "$cleanTitle $primaryArtist".trim().takeIf { it.isNotBlank() },
+            "$title $artist".takeIf { it != "$cleanTitle $primaryArtist" },
+        )
+
         val hash = searchHash()
-        val variables = """{"term":"$query","offset":0,"limit":3,"numberOfTopResults":3}"""
-        val extensions = """{"persistedQuery":{"version":1,"sha256Hash":"$hash"}}"""
+        for (query in candidateQueries) {
+            val variables = """{"term":"$query","offset":0,"limit":3,"numberOfTopResults":3}"""
+            val extensions = """{"persistedQuery":{"version":1,"sha256Hash":"$hash"}}"""
 
-        for (endpoint in SEARCH_ENDPOINTS) {
-            val url = "$endpoint?operationName=${SpotifyWebPlayer.SEARCH_OPERATION}" +
-                "&variables=${Uri.encode(variables)}&extensions=${Uri.encode(extensions)}"
+            for (endpoint in SEARCH_ENDPOINTS) {
+                val url = "$endpoint?operationName=${SpotifyWebPlayer.SEARCH_OPERATION}" +
+                    "&variables=${Uri.encode(variables)}&extensions=${Uri.encode(extensions)}"
 
-            val request = Request.Builder()
-                .url(url)
-                .header("Authorization", "Bearer $personalToken")
-                .header("Client-Token", clientToken)
-                .header("User-Agent", USER_AGENT)
-                .header("Accept", "application/json")
-                .build()
+                val request = Request.Builder()
+                    .url(url)
+                    .header("Authorization", "Bearer $personalToken")
+                    .header("Client-Token", clientToken)
+                    .header("User-Agent", USER_AGENT)
+                    .header("Accept", "application/json")
+                    .build()
 
-            val items = okHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Log.w(
-                        TAG,
-                        "Track search on $endpoint failed: HTTP ${response.code}" +
-                            sessionHint(response.code),
-                    )
-                    return@use emptyList<SpotifySearchResponse.Data.Search.TracksV2.Items.Item.TrackData>()
+                val items = okHttpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        Log.w(
+                            TAG,
+                            "Track search on $endpoint failed: HTTP ${response.code}" +
+                                sessionHint(response.code),
+                        )
+                        return@use emptyList<SpotifySearchResponse.Data.Search.TracksV2.Items.Item.TrackData>()
+                    }
+                    val body = response.body?.string().orEmpty()
+                    val parsed = runCatching { json.decodeFromString<SpotifySearchResponse>(body) }.getOrNull()
+                    parsed?.data?.searchV2?.tracksV2?.items.orEmpty().mapNotNull { it.item?.data }
                 }
-                val body = response.body?.string().orEmpty()
-                val parsed = runCatching { json.decodeFromString<SpotifySearchResponse>(body) }.getOrNull()
-                parsed?.data?.searchV2?.tracksV2?.items.orEmpty().mapNotNull { it.item?.data }
-            }
 
-            if (items.isEmpty()) continue
-            return pickBestTrack(items, title, durationMs)
+                if (items.isEmpty()) continue
+                val match = pickBestTrack(items, title, durationMs)
+                if (match != null) return match
+            }
         }
-        Log.d(TAG, "The track search answered with no tracks for '$query'")
+        Log.d(TAG, "The track search answered with no tracks for '$title' - '$artist'")
         return null
     }
 
@@ -388,14 +394,18 @@ class SpotifyCanvas @Inject constructor(
         private const val FALLBACK_SEARCH_HASH =
             "f78953bf9207d73493c27284103f5aeb6e728876d5793851bf79bc706127ff70"
 
-        /** Both pathfinder versions, in the order they are tried. */
+        /** Pathfinder query endpoint. */
         private val SEARCH_ENDPOINTS = listOf(
             "https://api-partner.spotify.com/pathfinder/v1/query",
-            "https://api-partner.spotify.com/pathfinder/v2/query",
         )
 
         private const val CANVAS_ENDPOINT = "https://spclient.wg.spotify.com/canvaz-cache/v0/canvases"
         private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         private const val CANVAS_UA = "Spotify/9.0.34.593 iOS/18.4 (iPhone15,3)"
+
+        private val CLEAN_TITLE_REGEX = Regex(
+            """\s*[\(\[](?:feat\.?|ft\.?|official|video|audio|remastered|lyric|lyrics|hd|4k)[^\)\]]*[\)\]]""",
+            RegexOption.IGNORE_CASE,
+        )
     }
 }

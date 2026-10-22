@@ -117,19 +117,17 @@ class SpotifyAuthRepository @Inject constructor(
             try {
                 val totp = computeTotp(spdc) ?: return@withContext cached
 
-                val transport = requestPersonalToken(spdc, totp.otp, REASON_TRANSPORT, totp.version)
+                val transport = requestPersonalToken(spdc, totp, REASON_TRANSPORT)
                 val init = if (transport.isUsable()) {
                     null
                 } else {
-                    requestPersonalToken(spdc, totp.otp, REASON_INIT, totp.version)
+                    requestPersonalToken(spdc, totp, REASON_INIT)
                 }
 
                 val chosen = listOfNotNull(transport, init).firstOrNull { it.isUsable() }
                 if (chosen == null) {
                     if (transport?.isAnonymous == true || init?.isAnonymous == true) {
-                        Log.w(TAG, "Spotify session is anonymous; the stored cookie is no longer signed in")
-                        spotifyPreferences.clearConnection()
-                        return@withContext null
+                        Log.w(TAG, "Spotify session returned anonymous; stored cookie may need re-login")
                     }
                     return@withContext cached
                 }
@@ -162,9 +160,26 @@ class SpotifyAuthRepository @Inject constructor(
     }
 
     /**
-     * The one-time password and the secret version it was derived from.
+     * The one-time passwords for client time and server time, plus the secret version.
      */
-    private data class Totp(val otp: String, val version: Int)
+    private data class Totp(val otpClient: String, val otpServer: String, val version: Int)
+
+    private fun generateOtp(secretKeyBytes: ByteArray, timestampSeconds: Long): String {
+        val counter = timestampSeconds / 30L
+        val counterBytes = ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN).putLong(counter).array()
+
+        val mac = Mac.getInstance("HmacSHA1")
+        mac.init(SecretKeySpec(secretKeyBytes, "HmacSHA1"))
+        val hmacResult = mac.doFinal(counterBytes)
+
+        val offset = hmacResult[hmacResult.size - 1].toInt() and 0x0F
+        val binary = ((hmacResult[offset].toInt() and 0x7F) shl 24) or
+            ((hmacResult[offset + 1].toInt() and 0xFF) shl 16) or
+            ((hmacResult[offset + 2].toInt() and 0xFF) shl 8) or
+            (hmacResult[offset + 3].toInt() and 0xFF)
+
+        return (binary % 1_000_000).toString().padStart(6, '0')
+    }
 
     /**
      * Derives the one-time password from the secret the web player is carrying.
@@ -206,21 +221,10 @@ class SpotifyAuthRepository @Inject constructor(
             }
         } ?: (System.currentTimeMillis() / 1000L)
 
-        val counter = serverTimeSeconds / 30L
-        val counterBytes = ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN).putLong(counter).array()
-
-        val mac = Mac.getInstance("HmacSHA1")
-        mac.init(SecretKeySpec(secretKeyBytes, "HmacSHA1"))
-        val hmacResult = mac.doFinal(counterBytes)
-
-        val offset = hmacResult[hmacResult.size - 1].toInt() and 0x0F
-        val binary = ((hmacResult[offset].toInt() and 0x7F) shl 24) or
-            ((hmacResult[offset + 1].toInt() and 0xFF) shl 16) or
-            ((hmacResult[offset + 2].toInt() and 0xFF) shl 8) or
-            (hmacResult[offset + 3].toInt() and 0xFF)
-
-        val otp = (binary % 1_000_000).toString().padStart(6, '0')
-        return Totp(otp, version)
+        val clientTimeSeconds = System.currentTimeMillis() / 1000L
+        val otpClient = generateOtp(secretKeyBytes, clientTimeSeconds)
+        val otpServer = generateOtp(secretKeyBytes, serverTimeSeconds)
+        return Totp(otpClient, otpServer, version)
     }
 
     /**
@@ -269,12 +273,11 @@ class SpotifyAuthRepository @Inject constructor(
      */
     private suspend fun requestPersonalToken(
         spdc: String,
-        otp: String,
+        totp: Totp,
         reason: String,
-        totpVersion: Int,
     ): SpotifyPersonalTokenResponse? {
-        val tokenUrl = "$SESSION_TOKEN_URL?reason=$reason&productType=mobile-web-player" +
-            "&totp=$otp&totpServer=$otp&totpVer=$totpVersion"
+        val tokenUrl = "$SESSION_TOKEN_URL?reason=$reason&productType=web-player" +
+            "&totp=${totp.otpClient}&totpServer=${totp.otpServer}&totpVer=${totp.version}"
 
         val tokenRequest = Request.Builder()
             .url(tokenUrl)

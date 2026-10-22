@@ -153,6 +153,10 @@ data class SpotifySearchResponse(
                             val artists: Artists? = null,
                             val duration: Duration? = null,
                         ) {
+                            val resolvedId: String?
+                                get() = id?.takeIf { it.isNotBlank() }
+                                    ?: uri?.removePrefix("spotify:track:")?.takeIf { it.isNotBlank() }
+
                             @Serializable
                             data class Duration(
                                 val totalMilliseconds: Int? = null,
