@@ -60,4 +60,33 @@ class YtRadioParserTest {
         assertEquals(225, track?.durationSeconds)
         assertEquals("https://lh3.googleusercontent.com/test.jpg", track?.artworkUrl)
     }
+
+    @Test
+    fun parsePlaylistPanelItem_wrapperRenderer_extractsSong() {
+        val sampleJson = """
+            {
+                "playlistPanelVideoWrapperRenderer": {
+                    "primaryRenderer": {
+                        "playlistPanelVideoRenderer": {
+                            "videoId": "wrappedVid456",
+                            "title": { "runs": [{ "text": "Wrapped Song" }] },
+                            "shortBylineText": {
+                                "runs": [{ "text": "Wrapped Artist" }]
+                            },
+                            "lengthText": { "runs": [{ "text": "2:10" }] }
+                        }
+                    }
+                }
+            }
+        """.trimIndent()
+
+        val element = json.parseToJsonElement(sampleJson)
+        val track = api.parsePlaylistPanelItem(element)
+
+        assertNotNull(track)
+        assertEquals("wrappedVid456", track?.videoId)
+        assertEquals("Wrapped Song", track?.title)
+        assertEquals("Wrapped Artist", track?.artist)
+        assertEquals(130, track?.durationSeconds)
+    }
 }
