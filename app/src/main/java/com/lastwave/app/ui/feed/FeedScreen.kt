@@ -35,6 +35,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -81,6 +82,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -184,7 +186,7 @@ fun FeedScreen(
     val podcastsEnabled by viewModel.podcastsEnabled.collectAsStateWithLifecycle()
     fun isSectionVisible(section: HomeSection) = section.id !in hiddenSections
     val snackbarHostState = remember { SnackbarHostState() }
-    val hasFeedContent = with(state.feedData) {
+    val hasFeedContent = state.isChipActive || with(state.feedData) {
         nativeShelves.any { it.items.isNotEmpty() } ||
             quickTiles.isNotEmpty() || mixes.isNotEmpty() || topArtists.isNotEmpty() ||
             quickPicks.isNotEmpty() || jumpBackIn.isNotEmpty() || recentAlbums.isNotEmpty() ||
@@ -193,6 +195,7 @@ fun FeedScreen(
             spotlight != null || charts.isNotEmpty() || newReleases.isNotEmpty() || friends.isNotEmpty() ||
             podcastShows.isNotEmpty()
     }
+    val showSynthetic = !state.isChipActive
     val greeting = remember {
         when (java.time.LocalTime.now().hour) {
             in 5..11 -> context.getString(R.string.feed_greeting_morning)
@@ -280,7 +283,7 @@ fun FeedScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(24.dp),
                 ) {
-                    if (isSectionVisible(HomeSection.HERO)) {
+                    if (showSynthetic && isSectionVisible(HomeSection.HERO)) {
                     item(key = "hero") {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Column(
@@ -326,7 +329,7 @@ fun FeedScreen(
                                 it.playlistId != "yt_liked" && it.playlistId != "yt_recent"
                         }
                     }
-                    if (isSectionVisible(HomeSection.QUICK_TILES) && quickTiles.isNotEmpty()) {
+                    if (showSynthetic && isSectionVisible(HomeSection.QUICK_TILES) && quickTiles.isNotEmpty()) {
                         item(key = "quick_tiles") {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -376,7 +379,7 @@ fun FeedScreen(
                         }
                     }
 
-                    if (podcastsEnabled && state.feedData.podcastShows.isNotEmpty()) {
+                    if (showSynthetic && podcastsEnabled && state.feedData.podcastShows.isNotEmpty()) {
                         item(key = "podcast_shelf") {
                             Column(Modifier.padding(vertical = 4.dp)) {
                                 FeedSectionHeader(
@@ -397,34 +400,77 @@ fun FeedScreen(
                     }
 
                     // 3. "Your Sound" Section - ALWAYS visible below Quick Access
-                    val displayTags = state.feedData.tasteTags.ifEmpty {
-                        listOf("Rock", "Indie", "Pop", "Electronic", "Hip-Hop", "R&B", "Synthwave", "Alternative")
-                    }
-                    item(key = "taste_strip") {
-                        TasteStrip(
-                            tags = displayTags,
-                            launching = state.launchingRadio,
-                            onTagClick = { tag -> viewModel.playDiscoveryQuery(tag.displayName(), tag) },
-                        )
-                    }
-
-                    // Native YouTube Music shelves (exact titles, original order, original items)
-                    for ((shelfIndex, shelf) in state.feedData.nativeShelves.withIndex()) {
-                        if (shelf.items.isEmpty()) continue
-                        item(key = "native_shelf_${shelfIndex}_${shelf.title}") {
-                            HomeShelfCard(
-                                shelf = shelf,
-                                onPlayTrack = { track, title -> viewModel.playTrack(track, title) },
-                                onPlayTracksQueue = { tracks, idx, title -> viewModel.playTracksQueue(tracks, idx, title) },
-                                onShuffleTracksQueue = { tracks, title -> viewModel.shuffleTracksQueue(tracks, title) },
-                                onOpenFeedPlaylist = onOpenFeedPlaylist,
-                                onOpenAlbum = { title, artist, id -> artistAlbumNavigator.openAlbum(title, artist, id) },
-                                onTrackLongClick = { tray -> miniTrayTrack = tray },
+                    if (showSynthetic) {
+                        val displayTags = state.feedData.tasteTags.ifEmpty {
+                            listOf("Rock", "Indie", "Pop", "Electronic", "Hip-Hop", "R&B", "Synthwave", "Alternative")
+                        }
+                        item(key = "taste_strip") {
+                            TasteStrip(
+                                tags = displayTags,
+                                launching = state.launchingRadio,
+                                onTagClick = { tag -> viewModel.playDiscoveryQuery(tag.displayName(), tag) },
                             )
                         }
                     }
 
-                    if (isSectionVisible(HomeSection.QUICK_PICKS) && state.feedData.quickPicks.isNotEmpty()) {
+                    // YouTube Music mood/activity chips row (Relax, Energize, Workout, Commute, Focus, etc.)
+                    if (state.homeChips.isNotEmpty()) {
+                        item(key = "home_chips_row") {
+                            HomeChipsRow(
+                                chips = state.homeChips,
+                                selectedChip = state.selectedChip,
+                                onChipClick = viewModel::onHomeChipSelected,
+                            )
+                        }
+                    }
+
+                    if (state.isChipActive) {
+                        if (state.isChipLoading) {
+                            item(key = "chip_loading") {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 48.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    ExpressiveLoadingIndicator()
+                                }
+                            }
+                        } else {
+                            for ((shelfIndex, shelf) in state.chipShelves.withIndex()) {
+                                if (shelf.items.isEmpty()) continue
+                                item(key = "chip_shelf_${shelfIndex}_${shelf.title}") {
+                                    HomeShelfCard(
+                                        shelf = shelf,
+                                        onPlayTrack = { track, title -> viewModel.playTrack(track, title) },
+                                        onPlayTracksQueue = { tracks, idx, title -> viewModel.playTracksQueue(tracks, idx, title) },
+                                        onShuffleTracksQueue = { tracks, title -> viewModel.shuffleTracksQueue(tracks, title) },
+                                        onOpenFeedPlaylist = onOpenFeedPlaylist,
+                                        onOpenAlbum = { title, artist, id -> artistAlbumNavigator.openAlbum(title, artist, id) },
+                                        onTrackLongClick = { tray -> miniTrayTrack = tray },
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        // Native YouTube Music shelves (exact titles, original order, original items)
+                        for ((shelfIndex, shelf) in state.feedData.nativeShelves.withIndex()) {
+                            if (shelf.items.isEmpty()) continue
+                            item(key = "native_shelf_${shelfIndex}_${shelf.title}") {
+                                HomeShelfCard(
+                                    shelf = shelf,
+                                    onPlayTrack = { track, title -> viewModel.playTrack(track, title) },
+                                    onPlayTracksQueue = { tracks, idx, title -> viewModel.playTracksQueue(tracks, idx, title) },
+                                    onShuffleTracksQueue = { tracks, title -> viewModel.shuffleTracksQueue(tracks, title) },
+                                    onOpenFeedPlaylist = onOpenFeedPlaylist,
+                                    onOpenAlbum = { title, artist, id -> artistAlbumNavigator.openAlbum(title, artist, id) },
+                                    onTrackLongClick = { tray -> miniTrayTrack = tray },
+                                )
+                            }
+                        }
+                    }
+
+                    if (showSynthetic && isSectionVisible(HomeSection.QUICK_PICKS) && state.feedData.quickPicks.isNotEmpty()) {
                         item(key = "quick_picks") {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -479,7 +525,7 @@ fun FeedScreen(
                         }
                     }
 
-                    if (discoveryTracks.isNotEmpty()) {
+                    if (showSynthetic && discoveryTracks.isNotEmpty()) {
                         item(key = "discover_new_music") {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -521,7 +567,7 @@ fun FeedScreen(
                         }
                     }
 
-                    if (isSectionVisible(HomeSection.BECAUSE_YOU_LISTEN_TO)) {
+                    if (showSynthetic && isSectionVisible(HomeSection.BECAUSE_YOU_LISTEN_TO)) {
                     state.feedData.becauseYouListenTo?.takeIf { it.items.isNotEmpty() }?.let { section ->
                         item(key = "because_you_listen_to") {
                             Surface(
@@ -570,7 +616,7 @@ fun FeedScreen(
                     }
                     }
 
-                    if (isSectionVisible(HomeSection.FRESH_FINDS) && state.feedData.freshFinds.isNotEmpty()) {
+                    if (showSynthetic && isSectionVisible(HomeSection.FRESH_FINDS) && state.feedData.freshFinds.isNotEmpty()) {
                         item(key = "fresh_finds") {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -617,7 +663,7 @@ fun FeedScreen(
                         }
                     }
 
-                    if (isSectionVisible(HomeSection.JUMP_BACK_IN) && state.feedData.jumpBackIn.isNotEmpty()) {
+                    if (showSynthetic && isSectionVisible(HomeSection.JUMP_BACK_IN) && state.feedData.jumpBackIn.isNotEmpty()) {
                         item(key = "jump_back_in") {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -657,7 +703,7 @@ fun FeedScreen(
                         }
                     }
 
-                    if (isSectionVisible(HomeSection.MIXES) && state.feedData.mixes.isNotEmpty()) {
+                    if (showSynthetic && isSectionVisible(HomeSection.MIXES) && state.feedData.mixes.isNotEmpty()) {
                         item(key = "mixed_for_you") {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -693,7 +739,7 @@ fun FeedScreen(
                         }
                     }
 
-                    if (isSectionVisible(HomeSection.SPOTLIGHT)) {
+                    if (showSynthetic && isSectionVisible(HomeSection.SPOTLIGHT)) {
                     state.feedData.spotlight?.let { spotlight ->
                         item(key = "spotlight_hero") {
                             SpotlightHeroCard(
@@ -709,7 +755,7 @@ fun FeedScreen(
                     }
                     }
 
-                    if (isSectionVisible(HomeSection.TOP_ARTISTS) && individualTopArtists.isNotEmpty()) {
+                    if (showSynthetic && isSectionVisible(HomeSection.TOP_ARTISTS) && individualTopArtists.isNotEmpty()) {
                         item(key = "top_artists") {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -745,7 +791,7 @@ fun FeedScreen(
                         }
                         }
 
-                    if (isSectionVisible(HomeSection.HEAVY_ROTATION) && state.feedData.heavyRotation.isNotEmpty()) {
+                    if (showSynthetic && isSectionVisible(HomeSection.HEAVY_ROTATION) && state.feedData.heavyRotation.isNotEmpty()) {
                         item(key = "heavy_rotation") {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -789,7 +835,7 @@ fun FeedScreen(
                         }
                     }
 
-                    if (isSectionVisible(HomeSection.ALBUMS) && state.feedData.recentAlbums.isNotEmpty()) {
+                    if (showSynthetic && isSectionVisible(HomeSection.ALBUMS) && state.feedData.recentAlbums.isNotEmpty()) {
                         item(key = "albums_in_rotation") {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -826,7 +872,7 @@ fun FeedScreen(
                         }
                     }
 
-                    if (isSectionVisible(HomeSection.CHARTS) && state.feedData.charts.isNotEmpty()) {
+                    if (showSynthetic && isSectionVisible(HomeSection.CHARTS) && state.feedData.charts.isNotEmpty()) {
                         item(key = "trending_charts") {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -872,7 +918,7 @@ fun FeedScreen(
                         }
                     }
 
-                    if (isSectionVisible(HomeSection.NEW_RELEASES) && state.feedData.newReleases.isNotEmpty()) {
+                    if (showSynthetic && isSectionVisible(HomeSection.NEW_RELEASES) && state.feedData.newReleases.isNotEmpty()) {
                         item(key = "new_releases") {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -913,8 +959,10 @@ fun FeedScreen(
                         }
                     }
 
-                    item(key = "feed_footer") {
-                        FeedFooter(lastUpdatedMillis = state.feedData.lastUpdatedMillis)
+                    if (showSynthetic) {
+                        item(key = "feed_footer") {
+                            FeedFooter(lastUpdatedMillis = state.feedData.lastUpdatedMillis)
+                        }
                     }
                 }
             }
