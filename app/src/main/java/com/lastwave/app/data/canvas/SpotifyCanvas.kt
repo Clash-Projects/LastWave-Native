@@ -327,6 +327,7 @@ class SpotifyCanvas @Inject constructor(
             .header("User-Agent", USER_AGENT)
             .post(
                 SpotifyCanvasQuery.requestBody(trackUri, hash)
+                    .toByteArray(Charsets.UTF_8)
                     .toRequestBody("application/json".toMediaType()),
             )
             .build()

@@ -50,7 +50,7 @@ class SpotifyAuthRepository @Inject constructor(
                 // browser it describes: an endpoint that is told "macos" by the body and
                 // "Windows" by the header is being handed two different machines.
                 val deviceId = spotifyPreferences.getOrCreateDeviceId()
-                val reqBody = json.encodeToString(
+                val reqBytes = json.encodeToString(
                     ClientTokenRequest(
                         client_data = ClientTokenRequest.ClientData(
                             client_version = SPOTIFY_APP_VERSION,
@@ -65,7 +65,8 @@ class SpotifyAuthRepository @Inject constructor(
                             ),
                         ),
                     ),
-                ).toRequestBody("application/json".toMediaType())
+                ).toByteArray(Charsets.UTF_8)
+                val reqBody = reqBytes.toRequestBody("application/json".toMediaType())
 
                 val request = Request.Builder()
                     .url(CLIENT_TOKEN_URL)
