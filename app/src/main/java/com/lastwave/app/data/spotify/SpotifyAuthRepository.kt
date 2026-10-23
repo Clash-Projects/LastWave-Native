@@ -26,6 +26,7 @@ class SpotifyAuthRepository @Inject constructor(
     private val json = Json {
         ignoreUnknownKeys = true
         coerceInputValues = true
+        encodeDefaults = true
     }
 
     private val clientTokenMutex = Mutex()
@@ -52,8 +53,15 @@ class SpotifyAuthRepository @Inject constructor(
                 val reqBody = json.encodeToString(
                     ClientTokenRequest(
                         client_data = ClientTokenRequest.ClientData(
+                            client_version = SPOTIFY_APP_VERSION,
+                            client_id = SPOTIFY_CLIENT_ID,
                             js_sdk_data = ClientTokenRequest.JsSdkData(
+                                device_brand = "Apple",
+                                device_model = "unknown",
+                                os = "macos",
+                                os_version = "10.15.7",
                                 device_id = deviceId,
+                                device_type = "computer",
                             ),
                         ),
                     ),
@@ -69,7 +77,8 @@ class SpotifyAuthRepository @Inject constructor(
 
                 okHttpClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
-                        Log.w(TAG, "Client token request failed with HTTP ${response.code}")
+                        val errBody = runCatching { response.body?.string() }.getOrNull()
+                        Log.w(TAG, "Client token request failed with HTTP ${response.code}: $errBody")
                         return@withContext cached
                     }
                     val bodyString = response.body?.string().orEmpty()
@@ -318,6 +327,7 @@ class SpotifyAuthRepository @Inject constructor(
 
         private const val SPOTIFY_ORIGIN = "https://open.spotify.com"
         private const val SPOTIFY_APP_VERSION = "1.2.62.476.g2ad6e7f3"
+        private const val SPOTIFY_CLIENT_ID = "d8a5ed958d274c2e8ee717e6a4b0971d"
 
         private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         private const val CLIENT_TOKEN_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
