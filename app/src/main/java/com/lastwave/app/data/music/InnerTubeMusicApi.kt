@@ -4083,6 +4083,64 @@ class InnerTubeMusicApi @Inject constructor(
         }
     }
 
+    /**
+     * Extracts the Home continuation token for pagination.
+     * Checks sectionListRenderer.continuations on page 1,
+     * sectionListContinuation.continuations on subsequent continuation pages,
+     * with fallback to [genericContinuationToken].
+     */
+    internal fun parseHomeContinuationToken(root: JsonElement): String? {
+        val rootObj = root.asObject() ?: return null
+
+        // 1. Check page 1 sectionListRenderer.continuations
+        val page1Continuations = rootObj.obj("contents")
+            ?.obj("singleColumnBrowseResultsRenderer")
+            ?.array("tabs")
+            ?.firstOrNull()?.asObject()
+            ?.obj("tabRenderer")
+            ?.obj("content")
+            ?.obj("sectionListRenderer")
+            ?.array("continuations")
+
+        page1Continuations?.mapNotNull { it.asObject() }?.firstNotNullOfOrNull {
+            it.obj("nextContinuationData")?.string("continuation")?.takeIf(String::isNotBlank)
+        }?.let { return it }
+
+        // 2. Check continuation page sectionListContinuation.continuations
+        val contContinuations = rootObj.obj("continuationContents")
+            ?.obj("sectionListContinuation")
+            ?.array("continuations")
+
+        contContinuations?.mapNotNull { it.asObject() }?.firstNotNullOfOrNull {
+            it.obj("nextContinuationData")?.string("continuation")?.takeIf(String::isNotBlank)
+        }?.let { return it }
+
+        // 3. Fallback to generic continuation token anywhere in tree
+        return genericContinuationToken(root)
+    }
+
+    /**
+     * Parses additional carousel shelves from a Home continuation response.
+     * Walks continuationContents.sectionListContinuation.contents and maps each
+     * musicCarouselShelfRenderer using [parseCarouselShelf].
+     */
+    internal fun parseHomeContinuationShelves(root: JsonElement): List<HomeShelf> {
+        val rootObj = root.asObject() ?: return emptyList()
+        val secContContents = rootObj.obj("continuationContents")
+            ?.obj("sectionListContinuation")
+            ?.array("contents")
+
+        val carousels = if (secContContents != null) {
+            secContContents.mapNotNull { it.asObject()?.obj("musicCarouselShelfRenderer") }
+        } else {
+            val collected = mutableListOf<JsonObject>()
+            collectObjects(root, "musicCarouselShelfRenderer", collected)
+            collected
+        }
+
+        return carousels.mapNotNull { parseCarouselShelf(it) }
+    }
+
     private fun directWatchVideoId(renderer: JsonObject): String? =
         renderer.obj("playlistItemData")?.string("videoId")
             ?: renderer.obj("navigationEndpoint")?.obj("watchEndpoint")?.string("videoId")
