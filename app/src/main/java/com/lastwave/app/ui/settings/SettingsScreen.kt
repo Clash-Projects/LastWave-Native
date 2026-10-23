@@ -3023,7 +3023,6 @@ fun SettingsScreen(
             }
         }
     }
-    }
 
     if (activeToggleDetail != null) {
         val detail = activeToggleDetail!!
@@ -3121,7 +3120,6 @@ fun SettingsScreen(
             }
         }
     }
-}
 }
 
 private fun appVersionName(context: android.content.Context): String = try {
