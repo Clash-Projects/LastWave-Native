@@ -4938,6 +4938,25 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
                     )
                 }
             }
+            val statsText = remember(state.queue) {
+                QueueStatsFormatter.formatQueueStats(state.queue)
+            }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color.White.copy(alpha = 0.12f))
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = statsText,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White.copy(alpha = 0.90f),
+                    maxLines = 1,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
             IconButton(
                 onClick = {
                     isQueueLockedState = !isQueueLockedState
