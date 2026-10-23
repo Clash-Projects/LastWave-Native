@@ -18,6 +18,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSpec
@@ -161,6 +162,7 @@ internal data class PersistedPlaybackSession(
     val shuffleEnabled: Boolean = false,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
     val speed: Float = 1f,
+    val pitch: Float = 1f,
     val durationMs: Long = 0L,
 )
 
@@ -179,6 +181,7 @@ data class MusicPlayerState(
     val shuffleEnabled: Boolean = false,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
     val speed: Float = 1f,
+    val pitch: Float = 1f,
     val bitrateKbps: Int? = null,
     val audioCodec: String? = null,
     val isLossless: Boolean = false,
@@ -1611,8 +1614,12 @@ class MusicPlayer @Inject constructor(
                     } ?: _state.value.repeatMode
                     // A persisted tempo stretch resamples by definition — it
                     // must not survive into a Bit-Perfect session.
-                    val restoredSpeed = restoredSession.speed.coerceIn(0.5f, 2f)
-                    restoredPlayer.setPlaybackSpeed(if (bitPerfectEnabled) 1f else restoredSpeed)
+                    val restoredSpeed = restoredSession.speed.coerceIn(0.25f, 3f)
+                    val restoredPitch = restoredSession.pitch.coerceIn(0.25f, 3f)
+                    restoredPlayer.playbackParameters = PlaybackParameters(
+                        if (bitPerfectEnabled) 1f else restoredSpeed,
+                        if (bitPerfectEnabled) 1f else restoredPitch,
+                    )
                     restoredPlayer.pause()
                 } else {
                     restoredPlayer.repeatMode = _state.value.repeatMode
@@ -4391,6 +4398,35 @@ class MusicPlayer @Inject constructor(
             else -> 0.75f
         }
         player.setPlaybackSpeed(next)
+    }
+
+    fun setPlaybackParameters(speed: Float, pitch: Float) = onMain {
+        val clampedSpeed = speed.coerceIn(0.25f, 3.0f)
+        val clampedPitch = pitch.coerceIn(0.25f, 3.0f)
+        if (isCasting) {
+            castPlayback?.setSpeed(clampedSpeed)
+            _state.update { it.copy(speed = clampedSpeed, pitch = clampedPitch) }
+            persistPlaybackSession()
+            return@onMain
+        }
+        cancelCrossfade()
+        player.playbackParameters = PlaybackParameters(clampedSpeed, clampedPitch)
+        _state.update { it.copy(speed = clampedSpeed, pitch = clampedPitch) }
+        persistPlaybackSession()
+    }
+
+    fun setSpeed(speed: Float) = onMain {
+        val currentPitch = runCatching { player.playbackParameters.pitch }.getOrDefault(_state.value.pitch)
+        setPlaybackParameters(speed, currentPitch)
+    }
+
+    fun setPitch(pitch: Float) = onMain {
+        val currentSpeed = runCatching { player.playbackParameters.speed }.getOrDefault(_state.value.speed)
+        setPlaybackParameters(currentSpeed, pitch)
+    }
+
+    fun resetPlaybackParameters() = onMain {
+        setPlaybackParameters(1f, 1f)
     }
     fun cycleSleepTimer() = onMain {
         setSleepTimerMinutes(SLEEP_TIMER_MINUTES[(sleepTimerStep + 1) % SLEEP_TIMER_MINUTES.size])
@@ -7855,6 +7891,7 @@ class MusicPlayer @Inject constructor(
             shuffleEnabled = session.shuffleEnabled,
             repeatMode = session.repeatMode,
             speed = session.speed,
+            pitch = session.pitch,
         )
         durationOwnerMediaId = restoredQueue[restoredIndex].mediaIdKey()
         pendingRestoredSession = session.copy(
@@ -7912,7 +7949,8 @@ class MusicPlayer @Inject constructor(
             append(snapshot.isEndlessQueue).append('|')
             append(snapshot.shuffleEnabled).append('|')
             append(snapshot.repeatMode).append('|')
-            append(snapshot.speed)
+            append(snapshot.speed).append('|')
+            append(snapshot.pitch)
         }
         if (signature == lastPersistedSignature) return
         val currentDuration = snapshot.durationMs.takeIf { it > 0L }
@@ -7927,6 +7965,7 @@ class MusicPlayer @Inject constructor(
             shuffleEnabled = snapshot.shuffleEnabled,
             repeatMode = snapshot.repeatMode,
             speed = snapshot.speed,
+            pitch = snapshot.pitch,
             durationMs = currentDuration,
         )
         lastPersistedSignature = signature
@@ -8023,6 +8062,7 @@ class MusicPlayer @Inject constructor(
             shuffleEnabled = player.shuffleModeEnabled,
             repeatMode = player.repeatMode,
             speed = player.playbackParameters.speed,
+            pitch = player.playbackParameters.pitch,
             bitrateKbps = previous.bitrateKbps.takeIf { hasExplicitPrevious } ?: streamForCurrent?.bitrateKbps,
             audioCodec = previous.audioCodec.takeIf { hasExplicitPrevious } ?: streamForCurrent?.audioCodec,
             isLossless = (previous.isLossless && sameTrack) || (streamForCurrent?.isLossless == true),

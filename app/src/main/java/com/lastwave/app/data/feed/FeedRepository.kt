@@ -749,8 +749,8 @@ class FeedRepository @Inject constructor(
             }
             if (isYtConnected) {
                 add(FeedQuickTile(
-                    title = "Liked on YouTube",
-                    subtitle = "",
+                    title = "Liked on YT",
+                    subtitle = "Your collection",
                     artworkUrl = ytLikedSongs.firstOrNull()?.artworkUrl,
                     playlistId = "yt_liked",
                     collection = "yt_liked",
@@ -765,9 +765,11 @@ class FeedRepository @Inject constructor(
                 artworkUrl = quickPicks.lastOrNull()?.artworkUrl ?: quickPicks.firstOrNull()?.artworkUrl, collection = "radio"))
 
             // 3. Discover Mix
-            val savedDiscoverMix = homePlaylists.firstOrNull { it.title.equals("Discover Mix", ignoreCase = true) }
+            val savedDiscoverMix = homePlaylists.firstOrNull { it.title.contains("Discover Mix", ignoreCase = true) }
+                ?: nativeShelves.flatMap { it.items }.filterIsInstance<HomeShelfItem.Playlist>()
+                    .map { it.summary }.firstOrNull { it.title.contains("Discover Mix", ignoreCase = true) }
             add(savedDiscoverMix?.let {
-                FeedQuickTile(title = it.title, subtitle = it.author.takeIf { a -> !a.isNullOrBlank() } ?: "New discoveries", artworkUrl = it.artworkUrl, playlistId = it.id)
+                FeedQuickTile(title = "Discover Mix", subtitle = it.author.takeIf { a -> !a.isNullOrBlank() } ?: "New discoveries", artworkUrl = it.artworkUrl, playlistId = it.id, collection = "discover_mix")
             } ?: FeedQuickTile(title = "Discover Mix", subtitle = "New discoveries",
                 artworkUrl = ytRecentSongs.firstOrNull()?.artworkUrl, collection = "discover_mix"))
 

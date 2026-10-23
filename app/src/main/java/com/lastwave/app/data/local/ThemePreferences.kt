@@ -42,6 +42,8 @@ data class ThemePrefs(
     val liquidGlass: Boolean = true,
     /** Optional Material 3 full-width navigation bar instead of the default floating dock. */
     val md3NavBar: Boolean = false,
+    /** Whether bottom navigation tabs are completely hidden. */
+    val hideNavTabs: Boolean = false,
     /** Dedicated LastWave Signature Theme inspired by the app logo icon (#C9FB00 & #012226). */
     val lastWaveTheme: Boolean = false,
 )
@@ -58,6 +60,7 @@ class ThemePreferences @Inject constructor(
         val AMOLED = booleanPreferencesKey("lw_amoled")
         val LIQUID_GLASS = booleanPreferencesKey("lw_liquidGlass")
         val MD3_NAV_BAR = booleanPreferencesKey("lw_md3NavBar")
+        val HIDE_NAV_TABS = booleanPreferencesKey("lw_hideNavTabs")
         val LASTWAVE_THEME = booleanPreferencesKey("lw_lastwave_theme")
     }
 
@@ -72,6 +75,7 @@ class ThemePreferences @Inject constructor(
                 amoled = p.readSafely(Keys.AMOLED) ?: false,
                 liquidGlass = p.readSafely(Keys.LIQUID_GLASS) ?: true,
                 md3NavBar = p.readSafely(Keys.MD3_NAV_BAR) ?: false,
+                hideNavTabs = p.readSafely(Keys.HIDE_NAV_TABS) ?: false,
                 lastWaveTheme = p.readSafely(Keys.LASTWAVE_THEME) ?: false,
             )
         }
@@ -108,6 +112,10 @@ class ThemePreferences @Inject constructor(
 
     suspend fun setMd3NavBar(enabled: Boolean) {
         dataStore.edit { it[Keys.MD3_NAV_BAR] = enabled }
+    }
+
+    suspend fun setHideNavTabs(enabled: Boolean) {
+        dataStore.edit { it[Keys.HIDE_NAV_TABS] = enabled }
     }
 
     suspend fun setLastWaveTheme(enabled: Boolean) {

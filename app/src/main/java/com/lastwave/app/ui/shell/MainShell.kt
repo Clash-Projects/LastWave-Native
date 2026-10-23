@@ -181,7 +181,12 @@ object FloatingNavDefaults {
      */
     @Composable
     fun contentBottomPadding(): Dp {
-        val basePadding = if (LocalMd3NavBar.current) 80.dp else ContentBottomPadding
+        val hideNav = com.lastwave.app.ui.theme.LocalHideNavTabs.current
+        val basePadding = when {
+            hideNav -> 16.dp
+            LocalMd3NavBar.current -> ContentBottomPadding
+            else -> 80.dp
+        }
         return basePadding +
             LocalMiniPlayerScrollClearance.current +
             WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding()
@@ -297,6 +302,62 @@ fun MainShell(
         }
 
         val bottomNavSlot = com.lastwave.app.ui.player.LocalBottomNavSlot.current
+        val hideNavTabs = com.lastwave.app.ui.theme.LocalHideNavTabs.current
+        val md3NavBar = LocalMd3NavBar.current
+        val clearance = com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance.current
+        val isMiniPlayerActive = clearance > 0.dp
+        val systemBottomInset = WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding()
+
+        val generatorFabBottomOffset by animateDpAsState(
+            targetValue = when {
+                hideNavTabs -> {
+                    if (isMiniPlayerActive) systemBottomInset + 12.dp + 72.dp + 16.dp
+                    else systemBottomInset + 20.dp
+                }
+                md3NavBar -> { // Floating dock is active
+                    if (isMiniPlayerActive) systemBottomInset + 92.dp + 72.dp + 16.dp
+                    else systemBottomInset + 92.dp
+                }
+                else -> { // Normal tabs navigation is active
+                    if (isMiniPlayerActive) systemBottomInset + 68.dp + 72.dp + 16.dp
+                    else systemBottomInset + 56.dp + 20.dp
+                }
+            },
+            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+            label = "generatorFabBottomOffset",
+        )
+
+        // Floating generator button on bottom-right for playlist tab in normal tabs mode or hide-nav mode
+        AnimatedVisibility(
+            visible = selectedTabIndex == tabs.indexOf(MainTab.PLAYLISTS) && (!md3NavBar || hideNavTabs),
+            enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.6f),
+            exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.6f),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 20.dp, bottom = generatorFabBottomOffset)
+                .zIndex(15f),
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = liquidGlassContainerColor(MaterialTheme.colorScheme.primaryContainer, backdrop = navigationBackdrop),
+                shadowElevation = if (navGlass) 0.dp else 8.dp,
+                tonalElevation = if (navGlass) 0.dp else 4.dp,
+                modifier = Modifier
+                    .size(56.dp)
+                    .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, navigationBackdrop)
+                    .clickable(onClick = onOpenGenerator),
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Icon(
+                        imageVector = Icons.Filled.AutoAwesome,
+                        contentDescription = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.nav_create_playlist),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+        }
+
         val currentSelectedIndex by androidx.compose.runtime.rememberUpdatedState(selectedTabIndex)
         val currentOnSelect by androidx.compose.runtime.rememberUpdatedState { index: Int ->
             if (index != selectedTabIndex) selectedTabIndex = index
@@ -305,18 +366,22 @@ fun MainShell(
         }
         val currentOnOpenGenerator by androidx.compose.runtime.rememberUpdatedState(onOpenGenerator)
 
-        androidx.compose.runtime.DisposableEffect(navigationBackdrop, tabs) {
-            bottomNavSlot.value = {
-                Box(Modifier.fillMaxSize()) {
-                    FloatingNavBar(
-                        backdrop = navigationBackdrop,
-                        tabs = tabs,
-                        selectedIndex = currentSelectedIndex,
-                        onSelect = currentOnSelect,
-                        onOpenGenerator = currentOnOpenGenerator,
-                        modifier = Modifier.align(Alignment.BottomCenter),
-                    )
+        androidx.compose.runtime.DisposableEffect(navigationBackdrop, tabs, hideNavTabs) {
+            if (!hideNavTabs) {
+                bottomNavSlot.value = {
+                    Box(Modifier.fillMaxSize()) {
+                        FloatingNavBar(
+                            backdrop = navigationBackdrop,
+                            tabs = tabs,
+                            selectedIndex = currentSelectedIndex,
+                            onSelect = currentOnSelect,
+                            onOpenGenerator = currentOnOpenGenerator,
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                        )
+                    }
                 }
+            } else {
+                bottomNavSlot.value = {}
             }
             onDispose { bottomNavSlot.value = {} }
         }
@@ -406,7 +471,7 @@ private fun FloatingNavBar(
     val dockInteraction = remember { MutableInteractionSource() }
     val fabInteraction = remember { MutableInteractionSource() }
     
-    if (md3NavBar) {
+    if (!md3NavBar) {
         val navContainerColor = liquidGlassContainerColor(
             MaterialTheme.colorScheme.surfaceContainer,
             enabled = liquidGlass,
@@ -512,44 +577,6 @@ private fun FloatingNavBar(
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                 color = labelColor,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-
-                    if (selectedIndex == tabs.indexOf(MainTab.PLAYLISTS)) {
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = androidx.compose.material3.ripple(bounded = false, radius = 28.dp),
-                                    onClick = onOpenGenerator,
-                                ),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center,
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .height(28.dp)
-                                    .width(28.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.AutoAwesome,
-                                    contentDescription = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.nav_generator),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            }
-                            Spacer(Modifier.height(3.dp))
-                            Text(
-                                text = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.nav_generator),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )

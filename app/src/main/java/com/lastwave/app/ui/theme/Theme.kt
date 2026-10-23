@@ -24,6 +24,8 @@ import com.lastwave.app.data.local.ThemeMode
 
 /** Shared composition local indicating whether the active theme is dark mode. */
 val LocalIsDarkTheme = staticCompositionLocalOf { true }
+/** Shared composition local indicating whether bottom navigation tabs are hidden. */
+val LocalHideNavTabs = staticCompositionLocalOf { false }
 
 /**
  * Wraps the whole app. Supports System Default, Light, and Dark modes.
@@ -101,6 +103,7 @@ fun LastWaveTheme(
             CompositionLocalProvider(
                 LocalLiquidGlass provides themeState.liquidGlass,
                 LocalMd3NavBar provides themeState.md3NavBar,
+                LocalHideNavTabs provides themeState.hideNavTabs,
                 LocalIsDarkTheme provides isDark,
             ) {
                 content()

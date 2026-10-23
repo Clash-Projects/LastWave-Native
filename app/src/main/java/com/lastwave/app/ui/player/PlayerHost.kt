@@ -57,6 +57,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import kotlin.math.roundToInt
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -130,19 +133,28 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.SurroundSound
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -2173,6 +2185,10 @@ private fun FullPlayer(
     }
     var showTrackMenu by remember(track.videoId, track.title) { mutableStateOf(false) }
     var showSyncedVideo by remember(track.videoId, track.title) { mutableStateOf(false) }
+    var showSignalPath by remember { mutableStateOf(false) }
+    var showAudioControls by remember { mutableStateOf(false) }
+    val signalPath by player.signalPath.collectAsStateWithLifecycle()
+    val usbDac by player.usbDacState.collectAsStateWithLifecycle()
     var isArtworkDragging by remember(track.videoId, track.title) { mutableStateOf(false) }
     var artworkDragX by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
     var dismissDragY by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
@@ -2786,6 +2802,8 @@ private fun FullPlayer(
                                     onTabChange = onTabChange,
                                     shownDismissY = shownDismissY,
                                     swipeThreshold = swipeThreshold,
+                                    onOpenSignalPath = { showSignalPath = true },
+                                    onOpenAudioControls = { showAudioControls = true },
                                 )
                             } else {
                                 // ── Standard layout (lifted and balanced) ──────
@@ -3228,12 +3246,19 @@ private fun FullPlayer(
                                     Spacer(Modifier.height(10.dp))
                                     MainControls(state, player, isTranslucent = LocalLiquidGlass.current || showFullBleed)
                                     Spacer(Modifier.height(10.dp))
-                                    VolumeSlider(
+                                    AppleMusicQualityBadge(
+                                        state = state,
+                                        signalPath = signalPath,
                                         isTranslucent = LocalLiquidGlass.current || showFullBleed,
-                                        primaryColor = ambientColor,
+                                        onClick = { showSignalPath = true },
                                     )
                                     Spacer(Modifier.height(12.dp))
-                                    PlayerUtilityControls(state, player, isTranslucent = LocalLiquidGlass.current || showFullBleed)
+                                    PlayerUtilityControls(
+                                        state = state,
+                                        player = player,
+                                        isTranslucent = LocalLiquidGlass.current || showFullBleed,
+                                        onOpenAudioControls = { showAudioControls = true },
+                                    )
                                 }
                                 }
                             }
@@ -3306,6 +3331,28 @@ private fun FullPlayer(
             onDismiss = { showLyricsOffsetDialog = false },
         )
     }
+    if (showSignalPath) {
+        val dac = usbDac.dac
+        val internalAvailability by player.internalDirectAvailability.collectAsStateWithLifecycle()
+        LaunchedEffect(Unit) { player.refreshInternalDirectAvailability() }
+        SignalPathDialog(
+            report = signalPath,
+            needsUsbPermission = dac != null && dac.hasUsbPeripheral && !dac.usbPermissionGranted,
+            onRequestUsbAccess = player::requestUsbPermission,
+            onDismiss = { showSignalPath = false },
+            internalAvailability = internalAvailability,
+            internalEnabled = player.isInternalDirectPrefEnabled,
+            internalUnderruns = if (signalPath.internalDirectActive) player.internalDirectUnderruns() else null,
+            usbDiagnostic = if (dac != null) player::usbDiagnosticReport else null,
+        )
+    }
+    if (showAudioControls) {
+        AudioControlsSheet(
+            player = player,
+            state = state,
+            onDismiss = { showAudioControls = false },
+        )
+    }
 }
 }
 
@@ -3328,6 +3375,8 @@ private fun FullPlayerLandscape(
     onTabChange: (FullPlayerTab) -> Unit,
     shownDismissY: Float,
     swipeThreshold: Float,
+    onOpenSignalPath: () -> Unit = {},
+    onOpenAudioControls: () -> Unit = {},
 ) {
     var isArtworkDragging by remember { mutableStateOf(false) }
     var artworkDragX by remember { mutableFloatStateOf(0f) }
@@ -3776,14 +3825,22 @@ private fun FullPlayerLandscape(
 
             Spacer(Modifier.height(10.dp))
 
-            VolumeSlider(
+            val signalPath by player.signalPath.collectAsStateWithLifecycle()
+            AppleMusicQualityBadge(
+                state = state,
+                signalPath = signalPath,
                 isTranslucent = LocalLiquidGlass.current,
-                primaryColor = ambientColor,
+                onClick = onOpenSignalPath,
             )
 
             Spacer(Modifier.height(14.dp))
 
-            PlayerUtilityControls(state, player, isTranslucent = LocalLiquidGlass.current)
+            PlayerUtilityControls(
+                state = state,
+                player = player,
+                isTranslucent = LocalLiquidGlass.current,
+                onOpenAudioControls = onOpenAudioControls,
+            )
         }
     }
 }
@@ -4285,10 +4342,13 @@ glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current
 }
 
 @Composable
-private fun PlayerUtilityControls(state: MusicPlayerState, player: MusicPlayer, isTranslucent: Boolean = false) {
-    var showSignalPath by remember { mutableStateOf(false) }
-    val signalPath by player.signalPath.collectAsStateWithLifecycle()
-    val usbDac by player.usbDacState.collectAsStateWithLifecycle()
+@Composable
+private fun PlayerUtilityControls(
+    state: MusicPlayerState,
+    player: MusicPlayer,
+    isTranslucent: Boolean = false,
+    onOpenAudioControls: () -> Unit = {},
+) {
     val edgeButtonBackground = if (isTranslucent) {
         Color.White.copy(alpha = 0.12f)
     } else {
@@ -4298,16 +4358,6 @@ private fun PlayerUtilityControls(state: MusicPlayerState, player: MusicPlayer, 
         Color.White.copy(alpha = 0.85f)
     } else {
         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.90f)
-    }
-    val qualityButtonBackground = if (isTranslucent) {
-        Color.White.copy(alpha = 0.12f)
-    } else {
-        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
-    }
-    val qualityButtonContent = if (isTranslucent) {
-        Color.White
-    } else {
-        MaterialTheme.colorScheme.onPrimaryContainer
     }
 
     Row(
@@ -4325,137 +4375,17 @@ private fun PlayerUtilityControls(state: MusicPlayerState, player: MusicPlayer, 
             iconSize = if (isTranslucent) 19.dp else 20.dp,
             modifier = Modifier.weight(1f).height(if (isTranslucent) 44.dp else 48.dp),
         )
-        val modeBitPerfect = stringResource(com.lastwave.app.R.string.badge_mode_bit_perfect)
-        val modeDirect = stringResource(com.lastwave.app.R.string.badge_mode_direct)
-        val modeMixer = stringResource(com.lastwave.app.R.string.badge_mode_mixer)
-        val pillLabel = remember(
-            state.audioCodec,
-            state.bitrateKbps,
-            state.samplingRateKHz,
-            state.bitDepth,
-            state.isLossless,
-            signalPath.clockFallbackResampled,
-            signalPath.appRateHz,
-            signalPath.bitPerfect,
-            signalPath.internalDirectActive,
-            signalPath.usbExclusiveActive,
-            signalPath.bypassRequested,
-            signalPath.internalSession,
-            signalPath.parametricEqActive,
-            modeBitPerfect,
-        ) {
-            val base = qualityBadgeLabel(state)
-            val withRate = if (signalPath.clockFallbackResampled && signalPath.appRateHz > 0) {
-                "$base → ${formatSampleRateKHz(signalPath.appRateHz.toDouble())}k"
-            } else {
-                base
-            }
-            // Fork: say which path the audio actually takes. "Mixer" only when the
-            // user asked for a bypass that is not happening, so it is never noise.
-            val mode = when {
-                signalPath.bitPerfect -> modeBitPerfect
-                signalPath.internalDirectActive && signalPath.internalSession?.directVerified == false -> "$modeDirect?"
-                signalPath.internalDirectActive -> modeDirect
-                signalPath.bypassRequested && !signalPath.usbExclusiveActive -> modeMixer
-                else -> null
-            }
-            // AutoEQ: the correction is LastWave's own, so name the route + EQ.
-            val shownMode = if (signalPath.parametricEqActive) {
-                when {
-                    signalPath.internalDirectActive -> "$modeDirect + EQ"
-                    signalPath.usbExclusiveActive -> "USB + EQ"
-                    else -> "EQ"
-                }
-            } else {
-                mode
-            }
-            if (shownMode != null) "$withRate · $shownMode" else withRate
-        }
-        val isSpatialPill = remember(state.audioCodec) { isSpatialAudioCodec(state.audioCodec) }
-        // Atmos gets its own spatial logo — HQ badge is only for lossless, never for spatial.
-        val pillIcon = when {
-            isSpatialPill -> Icons.Filled.SurroundSound
-            state.isLossless -> Icons.Filled.HighQuality
-            else -> Icons.Filled.MusicNote
-        }
-        val pillIconDesc = when {
-            isSpatialPill -> "Dolby Atmos"
-            state.isLossless -> "Lossless quality"
-            else -> "Audio quality"
-        }
-        val pillHaptics = LocalHapticFeedback.current
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = liquidGlassContainerColor(qualityButtonBackground),
-            contentColor = qualityButtonContent,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp,
-            modifier = Modifier.weight(1.8f).height(if (isTranslucent) 44.dp else 48.dp)
-                .liquidGlassChrome(RoundedCornerShape(24.dp), LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls)
-                .clip(RoundedCornerShape(24.dp))
-                .combinedClickable(
-                    onClick = { showSignalPath = true },
-                    onLongClick = {
-                        pillHaptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        showSignalPath = true
-                    },
-                ),
-        ) {
-            Row(
-                Modifier.fillMaxSize().padding(horizontal = 10.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    pillIcon,
-                    pillIconDesc,
-                    tint = if (isSpatialPill) {
-                        if (isTranslucent) Color.White.copy(alpha = 0.95f) else MaterialTheme.colorScheme.onPrimaryContainer
-                    } else if (signalPath.clockFallbackResampled) {
-                        Color(0xFFFFB74D)
-                    } else if (isTranslucent) {
-                        Color.White.copy(alpha = 0.92f)
-                    } else {
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    },
-                    modifier = Modifier.size(if (isSpatialPill) 19.dp else 17.dp),
-                )
-                // Auto-shrink (never ellipsis "..."): shrink font until the whole label fits.
-                val baseFontSize = if (isTranslucent) 11.sp else 13.sp
-                var pillFontSize by remember(pillLabel, isTranslucent) { mutableStateOf(baseFontSize) }
-                Text(
-                    pillLabel,
-                    style = if (isTranslucent) {
-                        MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            letterSpacing = 0.4.sp,
-                        )
-                    } else {
-                        MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                    },
-                    fontSize = pillFontSize,
-                    textAlign = TextAlign.Center,
-                    color = when {
-                        signalPath.bitPerfect -> Color(0xFFE6C15A)
-                        signalPath.directToHal -> Color(0xFF7FD3C3)
-                        signalPath.clockFallbackResampled -> Color(0xFFFFB74D)
-                        isTranslucent -> Color.White.copy(alpha = 0.95f)
-                        else -> Color.Unspecified
-                    },
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Clip,
-                    onTextLayout = { layout ->
-                        if (layout.didOverflowWidth && pillFontSize > 8.sp) {
-                            pillFontSize *= 0.92f
-                        }
-                    },
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .padding(start = 6.dp),
-                )
-            }
-        }
+        val isCustomAudio = state.speed != 1f || state.pitch != 1f
+        PlayerModeButton(
+            active = isCustomAudio,
+            description = if (isCustomAudio) "Audio Controls (Active)" else "Audio & Studio Controls",
+            icon = Icons.Filled.VolumeUp,
+            onClick = onOpenAudioControls,
+            background = edgeButtonBackground,
+            foreground = edgeButtonContent,
+            iconSize = if (isTranslucent) 19.dp else 20.dp,
+            modifier = Modifier.weight(1f).height(if (isTranslucent) 44.dp else 48.dp),
+        )
         PlayerModeButton(
             active = state.repeatMode != Player.REPEAT_MODE_OFF,
             description = when (state.repeatMode) {
@@ -4471,20 +4401,453 @@ private fun PlayerUtilityControls(state: MusicPlayerState, player: MusicPlayer, 
             modifier = Modifier.weight(1f).height(if (isTranslucent) 44.dp else 48.dp),
         )
     }
-    if (showSignalPath) {
-        val dac = usbDac.dac
-        val internalAvailability by player.internalDirectAvailability.collectAsStateWithLifecycle()
-        LaunchedEffect(Unit) { player.refreshInternalDirectAvailability() }
-        SignalPathDialog(
-            report = signalPath,
-            needsUsbPermission = dac != null && dac.hasUsbPeripheral && !dac.usbPermissionGranted,
-            onRequestUsbAccess = player::requestUsbPermission,
-            onDismiss = { showSignalPath = false },
-            internalAvailability = internalAvailability,
-            internalEnabled = player.isInternalDirectPrefEnabled,
-            internalUnderruns = if (signalPath.internalDirectActive) player.internalDirectUnderruns() else null,
-            usbDiagnostic = if (dac != null) player::usbDiagnosticReport else null,
-        )
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun AppleMusicQualityBadge(
+    state: MusicPlayerState,
+    signalPath: SignalPathReport,
+    isTranslucent: Boolean = false,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val haptics = LocalHapticFeedback.current
+    val isSpatial = remember(state.audioCodec) { isSpatialAudioCodec(state.audioCodec) }
+    val isHiRes = state.isLossless && ((state.samplingRateKHz ?: 44.1) > 48.0 || (state.bitDepth ?: 16) > 16)
+    val baseLabel = remember(state.audioCodec, state.bitrateKbps, state.samplingRateKHz, state.bitDepth, state.isLossless) {
+        qualityBadgeLabel(state)
+    }
+
+    val displayTitle = when {
+        isSpatial -> "Dolby Atmos"
+        isHiRes -> "Hi-Res Lossless"
+        state.isLossless -> "Lossless"
+        state.audioCodec?.contains("AAC", ignoreCase = true) == true -> "AAC"
+        state.audioCodec?.contains("MP3", ignoreCase = true) == true -> "MP3"
+        state.audioCodec?.contains("OPUS", ignoreCase = true) == true -> "Opus"
+        else -> "Audio"
+    }
+
+    val badgeIcon = when {
+        isSpatial -> Icons.Filled.SurroundSound
+        state.isLossless -> Icons.Filled.HighQuality
+        else -> Icons.Filled.GraphicEq
+    }
+
+    val tintColor = when {
+        signalPath.bitPerfect -> Color(0xFFE6C15A)
+        signalPath.directToHal -> Color(0xFF7FD3C3)
+        signalPath.clockFallbackResampled -> Color(0xFFFFB74D)
+        isTranslucent -> Color.White.copy(alpha = 0.95f)
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+
+    val containerBg = if (isTranslucent) {
+        Color.White.copy(alpha = 0.12f)
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.50f)
+    }
+
+    Box(
+        modifier = modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = containerBg,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+            modifier = Modifier
+                .height(30.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .combinedClickable(
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onClick()
+                    },
+                    onLongClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onClick()
+                    },
+                ),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Icon(
+                    imageVector = badgeIcon,
+                    contentDescription = null,
+                    tint = tintColor,
+                    modifier = Modifier.size(15.dp),
+                )
+                Spacer(Modifier.width(5.dp))
+                val fullText = if (baseLabel.isNotBlank() && !baseLabel.equals(displayTitle, ignoreCase = true) && !baseLabel.equals("AUDIO", ignoreCase = true)) {
+                    "$displayTitle · $baseLabel"
+                } else {
+                    displayTitle
+                }
+                Text(
+                    text = fullText,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.4.sp,
+                    ),
+                    color = tintColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.width(3.dp))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                    contentDescription = null,
+                    tint = tintColor.copy(alpha = 0.6f),
+                    modifier = Modifier.size(10.dp),
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AudioControlsSheet(
+    player: MusicPlayer,
+    state: MusicPlayerState,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val haptics = LocalHapticFeedback.current
+    var isLocked by remember { mutableStateOf(true) }
+    var currentSpeed by remember(state.speed) { mutableFloatStateOf(state.speed) }
+    var currentPitch by remember(state.pitch) { mutableFloatStateOf(state.pitch) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        dragHandle = {
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                modifier = Modifier
+                    .padding(top = 12.dp, bottom = 8.dp)
+                    .size(width = 36.dp, height = 4.dp),
+            ) {}
+        },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            // Header Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.VolumeUp,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "Audio & Studio Controls",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = "Volume, Slowed & Pitch Engine",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Filled.Close, contentDescription = "Close")
+                }
+            }
+
+            // Volume Section Card
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = "System Volume",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    VolumeSlider(
+                        isTranslucent = false,
+                        primaryColor = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+
+            // Studio Slowed & Pitch Section Card
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Slowed & Pitch Control",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = if (isLocked) "Linked tape varispeed mode" else "Independent time/pitch stretch",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+
+                        // Lock Button Toggle
+                        FilterChip(
+                            selected = isLocked,
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                isLocked = !isLocked
+                                if (isLocked) {
+                                    // Snap pitch to speed
+                                    currentPitch = currentSpeed
+                                    player.setPlaybackParameters(currentSpeed, currentSpeed)
+                                }
+                            },
+                            label = {
+                                Text(
+                                    if (isLocked) "Linked" else "Free",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = if (isLocked) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            ),
+                        )
+                    }
+
+                    // Speed Slider
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "Playback Speed (Tempo)",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                            ) {
+                                Text(
+                                    text = "${String.format(java.util.Locale.US, "%.2f", currentSpeed)}x",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                )
+                            }
+                        }
+                        Slider(
+                            value = currentSpeed,
+                            onValueChange = { value ->
+                                val rounded = ((value * 100).roundToInt() / 100f).coerceIn(0.50f, 1.50f)
+                                currentSpeed = rounded
+                                if (isLocked) {
+                                    currentPitch = rounded
+                                    player.setPlaybackParameters(rounded, rounded)
+                                } else {
+                                    player.setPlaybackParameters(rounded, currentPitch)
+                                }
+                            },
+                            valueRange = 0.50f..1.50f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = MaterialTheme.colorScheme.primary,
+                                activeTrackColor = MaterialTheme.colorScheme.primary,
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+
+                    // Pitch Slider
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "Audio Pitch (Tone)",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                            ) {
+                                Text(
+                                    text = "${String.format(java.util.Locale.US, "%.2f", currentPitch)}x",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                )
+                            }
+                        }
+                        Slider(
+                            value = currentPitch,
+                            onValueChange = { value ->
+                                val rounded = ((value * 100).roundToInt() / 100f).coerceIn(0.50f, 1.50f)
+                                currentPitch = rounded
+                                if (isLocked) {
+                                    currentSpeed = rounded
+                                    player.setPlaybackParameters(rounded, rounded)
+                                } else {
+                                    player.setPlaybackParameters(currentSpeed, rounded)
+                                }
+                            },
+                            valueRange = 0.50f..1.50f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = MaterialTheme.colorScheme.secondary,
+                                activeTrackColor = MaterialTheme.colorScheme.secondary,
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+
+                    // Quick Presets
+                    Text(
+                        text = "Studio Presets",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        SuggestionChip(
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                currentSpeed = 0.85f
+                                currentPitch = 0.85f
+                                player.setPlaybackParameters(0.85f, 0.85f)
+                            },
+                            label = { Text("Slowed (0.85x)", style = MaterialTheme.typography.labelSmall) },
+                        )
+                        SuggestionChip(
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                currentSpeed = 0.75f
+                                currentPitch = 0.75f
+                                player.setPlaybackParameters(0.75f, 0.75f)
+                            },
+                            label = { Text("Deep Slowed (0.75x)", style = MaterialTheme.typography.labelSmall) },
+                        )
+                        SuggestionChip(
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                currentSpeed = 1.0f
+                                currentPitch = 1.0f
+                                player.resetPlaybackParameters()
+                            },
+                            label = { Text("Normal (1.00x)", style = MaterialTheme.typography.labelSmall) },
+                        )
+                        SuggestionChip(
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                currentSpeed = 1.15f
+                                currentPitch = 1.15f
+                                player.setPlaybackParameters(1.15f, 1.15f)
+                            },
+                            label = { Text("Nightcore (1.15x)", style = MaterialTheme.typography.labelSmall) },
+                        )
+                        SuggestionChip(
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                currentSpeed = 1.25f
+                                currentPitch = 1.25f
+                                player.setPlaybackParameters(1.25f, 1.25f)
+                            },
+                            label = { Text("Sped Up (1.25x)", style = MaterialTheme.typography.labelSmall) },
+                        )
+                    }
+
+                    // Reset Button (visible when not 1.0x)
+                    if (currentSpeed != 1.0f || currentPitch != 1.0f) {
+                        OutlinedButton(
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                currentSpeed = 1.0f
+                                currentPitch = 1.0f
+                                player.resetPlaybackParameters()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Icon(Icons.Filled.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Reset Speed & Pitch to Normal")
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

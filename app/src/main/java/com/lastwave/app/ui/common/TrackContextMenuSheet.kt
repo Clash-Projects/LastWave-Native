@@ -650,15 +650,6 @@ fun TrackContextMenuSheet(
                             PlayerCastMenuRow(musicPlayer)
                         }
                     }
-                    add { pos ->
-                        MenuActionRow(
-                            icon = Icons.Filled.Group,
-                            label = "LastWave Jam (Listen Together)",
-                            position = pos,
-                        ) {
-                            showJamSheet = true
-                        }
-                    }
                     add { pos -> MenuActionRow(Icons.Filled.Language, stringResource(R.string.menu_open_lastfm), position = pos) { openUrl(context, buildLastFmUrl(target)); onDismiss() } }
                     if (onRefreshArtwork != null) {
                         add { pos -> MenuActionRow(Icons.Filled.Refresh, stringResource(R.string.menu_refresh_artwork), position = pos) { onRefreshArtwork(); onDismiss() } }

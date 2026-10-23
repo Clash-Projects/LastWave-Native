@@ -72,13 +72,13 @@ private const val TAG = "PlaylistRepository"
      * Named apart from YouTube Music's "Liked Music" so the two are never confused: they
      * hold the same songs, and each of them can be switched off on its own.
      */
-    const val LIKED_SONGS_TITLE = "Liked Local Song"
+    const val LIKED_SONGS_TITLE = "Liked Songs"
 
     /** YouTube Music's own liked list. */
     const val LIKED_YT_SONGS_TITLE = "Liked Yt Song"
 
     /** What this app's liked list was called before it was renamed. */
-    const val LEGACY_LIKED_SONGS_TITLE = "Liked Songs"
+    const val LEGACY_LIKED_SONGS_TITLE = "Liked Local Song"
 /** Built-in playlist holding audio files imported from the device. */
 const val LOCAL_SONGS_MODE = "local"
 const val LOCAL_SONGS_TITLE = "Local songs"

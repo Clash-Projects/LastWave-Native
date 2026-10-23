@@ -186,7 +186,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 ) {
                     val navController = rememberNavController()
                     val backStackEntry by navController.currentBackStackEntryAsState()
-                    val hasBottomNavigation = backStackEntry?.destination?.route == Screen.MainShell.route
+                    val hasBottomNavigation = backStackEntry?.destination?.route == Screen.MainShell.route && !themeState.hideNavTabs
 
                     PlayerHost(hasBottomNavigation = hasBottomNavigation) {
                         LastWaveNavHost(navController)

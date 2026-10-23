@@ -96,7 +96,9 @@
     <string name="settings_liquid_glass">Liquid Glass</string>
     <string name="settings_liquid_glass_sub">iOS-style translucent materials across the app</string>
     <string name="settings_md3_nav_bar">Material 3 Navigation Bar</string>
-    <string name="settings_md3_nav_bar_sub">Use classic full-width bottom navigation instead of the floating dock</string>
+    <string name="settings_md3_nav_bar_sub">Enable modern floating dock navigation instead of classic bottom tabs</string>
+    <string name="settings_hide_nav_tabs">Hide Navigation Tabs</string>
+    <string name="settings_hide_nav_tabs_sub">Completely hide navigation tabs and switch between screens using swipe gestures only</string>
     <string name="settings_lyrics_animation">Lyrics Animation</string>
     <string name="settings_lyrics_provider">Lyrics provider</string>
     <string name="settings_lyrics_provider_desc">Tried first for every song. If it returns nothing, the app automatically falls through to the other providers.</string>
@@ -1117,7 +1119,7 @@
 
     <!-- Genres -->
     <string name="ge_title">Your Genres</string>
-    <string name="ge_sub">Based on your listening history</string>
+    <string name="ge_sub">Your Genres</string>
     <string name="ge_empty">No genre data yet</string>
     <string name="ge_tracks">Your Tracks</string>
     <string name="ge_discover">Discover More</string>

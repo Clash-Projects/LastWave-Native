@@ -349,13 +349,7 @@ fun FeedScreen(
                                             }
                                         }
                                         tile.collection == "radio" -> onOpenDiscover()
-                                        tile.collection == "discover_mix" -> {
-                                            if (tile.playlistId != null) {
-                                                viewModel.playPlaylistById(tile.playlistId, tile.title)
-                                            } else {
-                                                onOpenDiscover()
-                                            }
-                                        }
+                                        tile.collection == "discover_mix" -> viewModel.playDiscoverMix(tile)
                                         tile.collection == "mix" -> onOpenGenerator()
                                         tile.collection == "my_mix" -> {
                                             if (tile.playlistId != null) {
@@ -974,41 +968,6 @@ fun FeedScreen(
                                     }
                                 },
                             )
-                        
-                                }
-                            }
-                        }
-                    }
-
-                    if (isSectionVisible(HomeSection.FRIENDS) && state.feedData.friends.isNotEmpty()) {
-                        item(key = "friends_activity") {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                                shape = RoundedCornerShape(24.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
-                            ) {
-                                Column(modifier = Modifier.padding(vertical = 12.dp)) {
-                            FeedSectionHeader(
-                                title = stringResource(R.string.feed_friends),
-                                subtitle = stringResource(R.string.feed_friends_sub),
-                                actionText = stringResource(R.string.feed_see_all),
-                                actionIcon = Icons.AutoMirrored.Filled.ArrowForwardIos,
-                                onActionClick = onOpenFriends,
-                            )
-                            LazyRow(
-                                contentPadding = PaddingValues(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                modifier = Modifier.padding(top = 12.dp),
-                            ) {
-                                items(state.feedData.friends) { friend ->
-                                    FriendAvatarCard(
-                                        friend = friend,
-                                        onClick = {
-                                            onOpenFriendProfile(friend.name, friend.displayName, friend.avatarUrl)
-                                        },
-                                    )
-                                }
-                            }
                         
                                 }
                             }

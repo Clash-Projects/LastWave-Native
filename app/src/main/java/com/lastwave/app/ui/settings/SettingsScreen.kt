@@ -147,6 +147,10 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
@@ -239,13 +243,21 @@ import kotlin.math.roundToLong
 
 private data class AccentPreset(val name: String, val hex: String)
 private val ACCENT_PRESETS = listOf(
-    AccentPreset("Brand", "#C9FB00"),
     AccentPreset("Crimson", "#E03030"),
     AccentPreset("Violet", "#7C4DFF"),
     AccentPreset("Ocean", "#2196C6"),
     AccentPreset("Sage", "#6B9E6B"),
     AccentPreset("Amber", "#E0A030"),
+    AccentPreset("Rose", "#E0507A"),
 )
+
+data class ToggleDetailInfo(
+    val title: String,
+    val subtitle: String,
+    val checked: Boolean,
+)
+
+val LocalToggleDetailViewer = staticCompositionLocalOf<((ToggleDetailInfo) -> Unit)?> { null }
 
 // -- Expressive shape scale used only within this screen --
 private val CardOuterShape = RoundedCornerShape(28.dp)
@@ -531,6 +543,7 @@ fun SettingsScreen(
     var showCookieLoginDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showJamSheet by remember { mutableStateOf(false) }
+    var activeToggleDetail by remember { mutableStateOf<ToggleDetailInfo?>(null) }
     val currentLanguage = remember(misc.appLanguageTag) { AppLanguage.fromTag(misc.appLanguageTag) }
 
     // Sends the user to Android's own Notification Listener access screen
@@ -563,10 +576,13 @@ fun SettingsScreen(
         if (uri != null) viewModel.exportBackup(uri, appVersionName(context))
     }
 
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.TopCenter,
+    CompositionLocalProvider(
+        LocalToggleDetailViewer provides { activeToggleDetail = it },
     ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter,
+        ) {
         Column(
             Modifier
                 .fillMaxSize()
@@ -1204,7 +1220,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_appearance))
-                    SettingsGroup(rowCount = 9) { index, position ->
+                    SettingsGroup(rowCount = 10) { index, position ->
                         when (index) {
                             0 -> ThemeModeSelectorCard(
                                 currentThemeMode = theme?.themeMode ?: ThemeMode.SYSTEM,
@@ -1213,9 +1229,9 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "appearance.theme_mode"),
                             )
                             1 -> SettingsToggleCard(
-                                painter = painterResource(R.drawable.ic_launcher_logo),
-                                iconContainer = Color(0xFFC9FB00),
-                                iconTint = Color(0xFF012226),
+                                icon = Icons.Filled.AutoAwesome,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                 title = stringResource(R.string.settings_lastwave_theme),
                                 subtitle = stringResource(R.string.settings_lastwave_theme_sub),
                                 checked = theme?.isLastWaveTheme ?: false,
@@ -1274,6 +1290,17 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "appearance.md3_nav_bar"),
                             )
                             6 -> SettingsToggleCard(
+                                icon = Icons.Filled.VisibilityOff,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_hide_nav_tabs),
+                                subtitle = stringResource(R.string.settings_hide_nav_tabs_sub),
+                                checked = theme?.hideNavTabs ?: false,
+                                onCheckedChange = viewModel::setHideNavTabs,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.hide_nav_tabs"),
+                            )
+                            7 -> SettingsToggleCard(
                                 icon = Icons.Filled.Album,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1284,7 +1311,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.dynamic_now_playing"),
                             )
-                            7 -> SettingsToggleCard(
+                            8 -> SettingsToggleCard(
                                 icon = Icons.Filled.TextFields,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1295,7 +1322,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.app_font"),
                             )
-                            8 -> SettingsActionCard(
+                            9 -> SettingsActionCard(
                                 icon = Icons.Filled.Dashboard,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1334,7 +1361,6 @@ fun SettingsScreen(
                         Column(Modifier.padding(20.dp)) {
                             AccentPresetGrid(
                                 currentMode = theme?.mode ?: AccentMode.MANUAL,
-                                isLastWaveTheme = theme?.isLastWaveTheme ?: false,
                                 selectedHex = theme?.accentColorHex,
                                 onPickPreset = { hex ->
                                     if (theme?.isLastWaveTheme == true) {
@@ -1342,7 +1368,6 @@ fun SettingsScreen(
                                     }
                                     viewModel.setManualAccent(Color(android.graphics.Color.parseColor(hex)))
                                 },
-                                onPickLastWave = { viewModel.setLastWaveTheme(true) },
                                 onPickMono = {
                                     if (theme?.isLastWaveTheme == true) {
                                         viewModel.setLastWaveTheme(false)
@@ -2996,6 +3021,104 @@ fun SettingsScreen(
             }
         }
     }
+    }
+
+    if (activeToggleDetail != null) {
+        val detail = activeToggleDetail!!
+        Dialog(
+            onDismissRequest = { activeToggleDetail = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .blur(16.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { activeToggleDetail = null },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Card(
+                    shape = RoundedCornerShape(28.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth(0.88f)
+                        .widthIn(max = 420.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {},
+                        ),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.Start,
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = if (detail.checked) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                modifier = Modifier.size(44.dp),
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                    Icon(
+                                        imageVector = if (detail.checked) Icons.Filled.Check else Icons.Filled.Info,
+                                        contentDescription = null,
+                                        tint = if (detail.checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                }
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (detail.checked) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
+                            ) {
+                                Text(
+                                    text = if (detail.checked) "Enabled" else "Disabled",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (detail.checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            text = detail.title,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = detail.subtitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 22.sp,
+                        )
+                        Spacer(Modifier.height(20.dp))
+                        FilledTonalButton(
+                            onClick = { activeToggleDetail = null },
+                            modifier = Modifier.align(Alignment.End),
+                            shape = CircleShape,
+                        ) {
+                            Text("Close", fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 private fun appVersionName(context: android.content.Context): String = try {
@@ -3143,9 +3266,10 @@ private fun SettingsToggleCard(
     val interactionSource = remember { MutableInteractionSource() }
     val scale = rememberPressScale(interactionSource)
     val shape = groupShape(position)
+    val haptic = LocalHapticFeedback.current
+    val detailViewer = LocalToggleDetailViewer.current
 
     Card(
-        onClick = { if (enabled) onCheckedChange(!checked) },
         shape = shape,
         enabled = enabled,
         colors = CardDefaults.cardColors(
@@ -3153,7 +3277,6 @@ private fun SettingsToggleCard(
             disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
             .graphicsLayer {
@@ -3161,7 +3284,18 @@ private fun SettingsToggleCard(
                 scaleX = s
                 scaleY = s
             }
-            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
+            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape)
+            .clip(shape)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = androidx.compose.material3.ripple(),
+                enabled = enabled,
+                onClick = { onCheckedChange(!checked) },
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    detailViewer?.invoke(ToggleDetailInfo(title, subtitle, checked))
+                },
+            ),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
@@ -3225,9 +3359,10 @@ private fun SettingsToggleCard(
     val interactionSource = remember { MutableInteractionSource() }
     val scale = rememberPressScale(interactionSource)
     val shape = groupShape(position)
+    val haptic = LocalHapticFeedback.current
+    val detailViewer = LocalToggleDetailViewer.current
 
     Card(
-        onClick = { if (enabled) onCheckedChange(!checked) },
         shape = shape,
         enabled = enabled,
         colors = CardDefaults.cardColors(
@@ -3235,7 +3370,6 @@ private fun SettingsToggleCard(
             disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
             .graphicsLayer {
@@ -3243,7 +3377,18 @@ private fun SettingsToggleCard(
                 scaleX = s
                 scaleY = s
             }
-            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
+            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape)
+            .clip(shape)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = androidx.compose.material3.ripple(),
+                enabled = enabled,
+                onClick = { onCheckedChange(!checked) },
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    detailViewer?.invoke(ToggleDetailInfo(title, subtitle, checked))
+                },
+            ),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
@@ -4086,10 +4231,8 @@ private fun LastFmIntegrationCard(
 @Composable
 private fun AccentPresetGrid(
     currentMode: AccentMode,
-    isLastWaveTheme: Boolean = false,
     selectedHex: String?,
     onPickPreset: (String) -> Unit,
-    onPickLastWave: () -> Unit = {},
     onPickMono: () -> Unit,
     onPickCustom: () -> Unit,
 ) {
@@ -4097,15 +4240,11 @@ private fun AccentPresetGrid(
     // manual mode — Dynamic/Monochrome shouldn't light up whichever preset
     // happens to hex-match by coincidence.
     fun isPresetSelected(hex: String) =
-        if (hex.equals("#C9FB00", ignoreCase = true)) {
-            isLastWaveTheme || (currentMode == AccentMode.MANUAL && selectedHex?.equals(hex, ignoreCase = true) == true)
-        } else {
-            !isLastWaveTheme && currentMode == AccentMode.MANUAL && selectedHex?.equals(hex, ignoreCase = true) == true
-        }
-    val customSelected = !isLastWaveTheme && currentMode == AccentMode.MANUAL &&
+        currentMode == AccentMode.MANUAL && selectedHex?.equals(hex, ignoreCase = true) == true
+    val customSelected = currentMode == AccentMode.MANUAL &&
         selectedHex != null &&
         ACCENT_PRESETS.none { it.hex.equals(selectedHex, ignoreCase = true) }
-    val monoSelected = !isLastWaveTheme && currentMode == AccentMode.MONOCHROME
+    val monoSelected = currentMode == AccentMode.MONOCHROME
 
     // One unified 4-column tile grid — six color presets plus Mono and
     // Custom as tiles of their own, not a separate row of pill buttons.
@@ -4115,31 +4254,9 @@ private fun AccentPresetGrid(
                 label = preset.name,
                 selected = isPresetSelected(preset.hex),
                 modifier = Modifier.weight(1f),
-                onClick = {
-                    if (preset.hex.equals("#C9FB00", ignoreCase = true)) {
-                        onPickLastWave()
-                    } else {
-                        onPickPreset(preset.hex)
-                    }
-                },
+                onClick = { onPickPreset(preset.hex) },
             ) {
-                if (preset.hex.equals("#C9FB00", ignoreCase = true)) {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(Color(0xFFC9FB00)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_launcher_logo),
-                            contentDescription = null,
-                            tint = Color(0xFF012226),
-                            modifier = Modifier.size(24.dp),
-                        )
-                    }
-                } else {
-                    PaletteTilePreview(preset.hex)
-                }
+                PaletteTilePreview(preset.hex)
             }
         }
     }
@@ -4150,31 +4267,9 @@ private fun AccentPresetGrid(
                 label = preset.name,
                 selected = isPresetSelected(preset.hex),
                 modifier = Modifier.weight(1f),
-                onClick = {
-                    if (preset.hex.equals("#C9FB00", ignoreCase = true)) {
-                        onPickLastWave()
-                    } else {
-                        onPickPreset(preset.hex)
-                    }
-                },
+                onClick = { onPickPreset(preset.hex) },
             ) {
-                if (preset.hex.equals("#C9FB00", ignoreCase = true)) {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(Color(0xFFC9FB00)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_launcher_logo),
-                            contentDescription = null,
-                            tint = Color(0xFF012226),
-                            modifier = Modifier.size(24.dp),
-                        )
-                    }
-                } else {
-                    PaletteTilePreview(preset.hex)
-                }
+                PaletteTilePreview(preset.hex)
             }
         }
         ColorTile(
@@ -4421,7 +4516,7 @@ private fun AboutCard(versionName: String) {
             }
             Spacer(Modifier.height(12.dp))
             Text(
-                "Built with the Last.fm API",
+                "Build With Love ♥️ By - ℘ꪊᦓᛕꪖ᥅",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

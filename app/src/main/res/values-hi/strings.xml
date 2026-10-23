@@ -279,7 +279,9 @@
     <string name="theme_mode_light">रोशनी</string>
     <string name="theme_mode_dark">अंधेरा</string>
     <string name="settings_md3_nav_bar">Material 3 नेविगेशन बार</string>
-    <string name="settings_md3_nav_bar_sub">फ्लोटिंग डॉक के बजाय क्लासिक पूर्ण-चौड़ाई वाले बॉटम नेविगेशन का उपयोग करें</string>
+    <string name="settings_md3_nav_bar_sub">क्लासिक बॉटम टैब्स के बजाय मॉडर्न फ्लोटिंग डॉक नेविगेशन चालू करें</string>
+    <string name="settings_hide_nav_tabs">नेविगेशन टैब्स छिपाएं</string>
+    <string name="settings_hide_nav_tabs_sub">नेविगेशन टैब्स को पूरी तरह छिपाएं और केवल स्वाइप जेस्चर से स्क्रीन बदलें</string>
     <string name="settings_lyrics_provider">गीत प्रदाता</string>
     <string name="settings_lyrics_provider_desc">हर गाने के लिए पहले प्रयास किया। यदि यह कुछ भी नहीं लौटाता है, तो ऐप स्वचालित रूप से अन्य प्रदाताओं के पास चला जाता है।</string>
     <string name="settings_rotating_background">घूमती पृष्ठभूमि</string>
@@ -1024,7 +1026,7 @@
     <string name="nr_empty_hint">दोबारा जांचने के लिए नीचे खींचें या ताज़ा करें टैप करें।</string>
     <string name="nr_more_fail">अधिक रिलीज़ लोड नहीं किया जा सका. पुन: प्रयास करें</string>
     <string name="ge_title">आपकी शैलियाँ</string>
-    <string name="ge_sub">आपके सुनने के इतिहास के आधार पर</string>
+    <string name="ge_sub">Your Genres</string>
     <string name="ge_empty">अभी तक कोई शैली डेटा नहीं</string>
     <string name="ge_tracks">आपके ट्रैक</string>
     <string name="ge_discover">और अधिक खोजें</string>
