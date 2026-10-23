@@ -2466,6 +2466,17 @@ private fun FullPlayer(
                         ),
                 )
                 if (showFullBleed && !isTabletLandscape) {
+                    val isTallCanvas = remember(activeCanvas, canvasAspect) {
+                        if (activeCanvas == null) false
+                        else if (canvasAspect > 0f) {
+                            // True vertical video (9:16 is ~0.56, 3:4 is 0.75; <= 0.72 is tall vertical)
+                            canvasAspect <= 0.72f
+                        } else {
+                            // Spotify Canvas is natively 9:16 vertical by specification
+                            activeCanvas.source == com.lastwave.app.data.canvas.CanvasSource.SPOTIFY
+                        }
+                    }
+
                     val heroHeight = if (heroBottomPx > 0f) {
                         with(LocalDensity.current) { heroBottomPx.toDp() }
                     } else {
@@ -2499,16 +2510,39 @@ private fun FullPlayer(
                             isPlaying = state.isPlaying,
                             contentMode = CanvasContentMode.CROP,
                             alignPortraitTop = true,
-                            bottomFade = 0.38f,
+                            bottomFade = if (isTallCanvas) 0f else 0.38f,
                             presentationAlpha = { heroAlpha },
                             onCoverChanged = { canvasCover = it },
                             onAspectRatioChanged = { canvasAspect = it },
                             pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .fillMaxWidth()
-                                .height(heroHeight),
+                            modifier = if (isTallCanvas) {
+                                Modifier.fillMaxSize()
+                            } else {
+                                Modifier
+                                    .align(Alignment.TopStart)
+                                    .fillMaxWidth()
+                                    .height(heroHeight)
+                            },
                         )
+
+                        // For true full-bleed canvas: a subtle contrast gradient scrim so top header and
+                        // bottom playback controls/title remain 100% legible without blurring the video
+                        if (isTallCanvas) {
+                            Box(
+                                Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer { alpha = canvasCover * heroAlpha }
+                                    .background(
+                                        Brush.verticalGradient(
+                                            0.00f to Color.Black.copy(alpha = 0.32f),
+                                            0.12f to Color.Transparent,
+                                            0.55f to Color.Transparent,
+                                            0.78f to Color.Black.copy(alpha = 0.36f),
+                                            1.00f to Color.Black.copy(alpha = 0.72f),
+                                        )
+                                    )
+                            )
+                        }
                     }
                 }
 
