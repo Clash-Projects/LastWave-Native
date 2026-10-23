@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -103,7 +104,7 @@ import com.lastwave.app.R
 import com.lastwave.app.data.music.YouTubeVideoStream
 import com.lastwave.app.data.video.SyncedVideoRepository
 import com.lastwave.app.playback.MusicPlayer
-import com.lastwave.app.playback.MusicPlayer.PlayableTrack
+import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.ui.common.EdgeToEdgeDialogWindow
 import com.lastwave.app.ui.common.ExpressiveLoadingIndicator
 import com.lastwave.app.ui.common.adaptiveContentWidth
@@ -206,7 +207,7 @@ fun SyncedVideoPlayerDialog(
     val context = LocalContext.current
     val view = LocalView.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val playerState by musicPlayer.playerState.collectAsStateWithLifecycle()
+    val playerState by musicPlayer.state.collectAsStateWithLifecycle()
     val progressState by musicPlayer.progressState.collectAsStateWithLifecycle()
 
     var isFullscreen by remember { mutableStateOf(false) }
@@ -653,7 +654,7 @@ fun SyncedVideoPlayerDialog(
 
                         // Fullscreen In-Video Top Bar (visible when controlsVisible is true)
                         if (isFullscreen) {
-                            AnimatedVisibility(
+                            androidx.compose.animation.AnimatedVisibility(
                                 visible = controlsVisible,
                                 enter = fadeIn(),
                                 exit = fadeOut(),
@@ -762,7 +763,7 @@ fun SyncedVideoPlayerDialog(
                         }
 
                         // Playback Center Controls overlay
-                        AnimatedVisibility(
+                        androidx.compose.animation.AnimatedVisibility(
                             visible = controlsVisible,
                             enter = fadeIn(),
                             exit = fadeOut(),
@@ -833,7 +834,7 @@ fun SyncedVideoPlayerDialog(
 
                         // Fullscreen Bottom Seekbar overlay
                         if (isFullscreen) {
-                            AnimatedVisibility(
+                            androidx.compose.animation.AnimatedVisibility(
                                 visible = controlsVisible,
                                 enter = fadeIn(),
                                 exit = fadeOut(),
