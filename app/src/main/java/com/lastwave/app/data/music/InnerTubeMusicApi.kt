@@ -4043,6 +4043,46 @@ class InnerTubeMusicApi @Inject constructor(
         return carousels.mapNotNull { parseCarouselShelf(it) }
     }
 
+    /**
+     * Parses the mood/activity chips row from YouTube Music Home response.
+     * Walks sectionListRenderer.header.chipCloudRenderer.chips and extracts
+     * title and browse parameters. Chips with missing title or params are skipped safely.
+     */
+    internal fun parseHomeChips(root: JsonElement): List<HomeChip> {
+        val rootObj = root.asObject() ?: return emptyList()
+        val secList = rootObj.obj("contents")
+            ?.obj("singleColumnBrowseResultsRenderer")
+            ?.array("tabs")
+            ?.firstOrNull()?.asObject()
+            ?.obj("tabRenderer")
+            ?.obj("content")
+            ?.obj("sectionListRenderer")
+
+        val chipElements = secList?.obj("header")?.obj("chipCloudRenderer")?.array("chips")
+            ?: run {
+                val collected = mutableListOf<JsonObject>()
+                collectObjects(root, "chipCloudRenderer", collected)
+                collected.firstOrNull()?.array("chips")
+            } ?: return emptyList()
+
+        return chipElements.mapNotNull { element ->
+            val renderer = element.asObject()?.obj("chipCloudChipRenderer") ?: return@mapNotNull null
+            val title = renderer.obj("text")?.array("runs")?.firstOrNull()?.asObject()?.string("text")?.trim()
+                ?: renderer.obj("text")?.string("simpleText")?.trim()
+            if (title.isNullOrBlank()) return@mapNotNull null
+
+            val endpoint = renderer.obj("navigationEndpoint")?.obj("browseEndpoint")
+            val params = endpoint?.string("params")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val browseId = endpoint.string("browseId")?.takeIf { it.isNotBlank() }
+
+            HomeChip(
+                title = title,
+                params = params,
+                browseId = browseId,
+            )
+        }
+    }
+
     private fun directWatchVideoId(renderer: JsonObject): String? =
         renderer.obj("playlistItemData")?.string("videoId")
             ?: renderer.obj("navigationEndpoint")?.obj("watchEndpoint")?.string("videoId")
