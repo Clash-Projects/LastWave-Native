@@ -4129,6 +4129,7 @@ class InnerTubeMusicApi @Inject constructor(
      * Parses the mood/activity chips row from YouTube Music Home response.
      * Walks sectionListRenderer.header.chipCloudRenderer.chips and extracts
      * title and browse parameters. Chips with missing title or params are skipped safely.
+     * Adapted from Metrolist (GPL-3.0) HomePage chipCloudRenderer parsing.
      */
     internal fun parseHomeChips(root: JsonElement): List<HomeChip> {
         val rootObj = root.asObject() ?: return emptyList()
