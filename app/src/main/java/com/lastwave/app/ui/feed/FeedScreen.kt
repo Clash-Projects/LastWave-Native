@@ -196,6 +196,19 @@ fun FeedScreen(
             podcastShows.isNotEmpty()
     }
     val showSynthetic = !state.isChipActive
+    val listState = rememberLazyListState()
+    val shouldLoadMore by remember(listState) {
+        derivedStateOf {
+            val total = listState.layoutInfo.totalItemsCount
+            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            total > 0 && last >= total - 3
+        }
+    }
+    LaunchedEffect(shouldLoadMore, state.pagedShelves.size, state.chipShelves.size) {
+        if (shouldLoadMore && !state.isLoading && !state.isLoadingMore && !state.isRefreshing && !state.isChipLoading) {
+            viewModel.loadMoreHomeShelves()
+        }
+    }
     val greeting = remember {
         when (java.time.LocalTime.now().hour) {
             in 5..11 -> context.getString(R.string.feed_greeting_morning)
@@ -276,6 +289,7 @@ fun FeedScreen(
                 }
 
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize().safeHorizontalContentPadding(),
                     contentPadding = PaddingValues(
                         bottom = FloatingNavDefaults.contentBottomPadding(),
@@ -955,6 +969,36 @@ fun FeedScreen(
                             )
                         
                                 }
+                            }
+                        }
+                    }
+
+                    if (!state.isChipActive) {
+                        for ((shelfIndex, shelf) in state.pagedShelves.withIndex()) {
+                            if (shelf.items.isEmpty()) continue
+                            item(key = "paged_shelf_${shelfIndex}_${shelf.title}") {
+                                HomeShelfCard(
+                                    shelf = shelf,
+                                    onPlayTrack = { track, title -> viewModel.playTrack(track, title) },
+                                    onPlayTracksQueue = { tracks, idx, title -> viewModel.playTracksQueue(tracks, idx, title) },
+                                    onShuffleTracksQueue = { tracks, title -> viewModel.shuffleTracksQueue(tracks, title) },
+                                    onOpenFeedPlaylist = onOpenFeedPlaylist,
+                                    onOpenAlbum = { title, artist, id -> artistAlbumNavigator.openAlbum(title, artist, id) },
+                                    onTrackLongClick = { tray -> miniTrayTrack = tray },
+                                )
+                            }
+                        }
+                    }
+
+                    if (state.isLoadingMore) {
+                        item(key = "loading_more_indicator", contentType = "loading") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(20.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                ExpressiveInlineLoadingIndicator()
                             }
                         }
                     }
