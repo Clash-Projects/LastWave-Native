@@ -13,6 +13,8 @@ import com.lastwave.app.data.generate.TasteProfileProvider
 import com.lastwave.app.data.model.FriendEntry
 import com.lastwave.app.data.model.RecentTrack
 import com.lastwave.app.data.music.InnerTubeMusicApi
+import com.lastwave.app.data.music.HomeChip
+import com.lastwave.app.data.music.HomePage
 import com.lastwave.app.data.music.HomeShelf
 import com.lastwave.app.data.music.HomeShelfItem
 import com.lastwave.app.data.music.YouTubeMusicTrack
@@ -92,6 +94,8 @@ data class FeedData(
     val hasPersonalContent: Boolean = false,
     val tasteTags: List<String> = emptyList(),
     val nativeShelves: List<HomeShelf> = emptyList(),
+    val homeChips: List<HomeChip> = emptyList(),
+    val homeContinuationToken: String? = null,
     val ytSuggestedPlaylists: List<YouTubePlaylistSummary> = emptyList(),
     val spotlight: FeedSpotlight? = null,
     val quickTiles: List<FeedQuickTile> = emptyList(),
@@ -149,8 +153,8 @@ class FeedRepository @Inject constructor(
         val homeSongsDef = async(Dispatchers.IO) {
             runCatching { innerTube.fetchHomeSongs() }.getOrDefault(emptyList())
         }
-        val nativeShelvesDef = async(Dispatchers.IO) {
-            runCatching { innerTube.fetchHomeShelves() }.getOrDefault(emptyList())
+        val homePageDef = async(Dispatchers.IO) {
+            runCatching { innerTube.fetchHomePage() }.getOrDefault(HomePage())
         }
         // Podcast shelf rides along with the rest of the feed. Disabled in
         // settings -> the fetch never happens and the shelf stays empty.
@@ -208,7 +212,12 @@ class FeedRepository @Inject constructor(
             it.id.startsWith("PL") || it.id.startsWith("RD") || it.id.startsWith("OLAK") || it.id == "LM"
         }
         val homeSongs = homeSongsDef.await()
-        val nativeShelves = nativeShelvesDef.await()
+        val homePage = homePageDef.await()
+        val nativeShelves = homePage.shelves.ifEmpty {
+            runCatching { innerTube.fetchHomeShelves() }.getOrDefault(emptyList())
+        }
+        val homeChips = homePage.chips
+        val homeContinuationToken = homePage.continuationToken
         val recentTracks = recentTracksDef.await()
         val friends = friendsDef.await()
         val tasteProfile = tasteProfileDef.await()
@@ -324,6 +333,8 @@ class FeedRepository @Inject constructor(
             hasYtRecommendations = ytTaste?.feedTracks?.isNotEmpty() == true,
             hasPersonalContent = tasteProfile?.hasPersonalSignals == true || ytLikedSongs.isNotEmpty() || ytRecentSongs.isNotEmpty(),
             nativeShelves = nativeShelves.ifEmpty { previous?.nativeShelves.orEmpty() },
+            homeChips = homeChips.ifEmpty { previous?.homeChips.orEmpty() },
+            homeContinuationToken = homeContinuationToken ?: previous?.homeContinuationToken,
             quickPicks = quickPicks,
             ytLikedSongs = ytLikedSongs,
             ytRecentSongs = ytRecentSongs,
@@ -815,6 +826,8 @@ class FeedRepository @Inject constructor(
             hasPersonalContent = hasPersonalContent,
             tasteTags = tasteTags,
             nativeShelves = nativeShelves,
+            homeChips = homeChips,
+            homeContinuationToken = homeContinuationToken,
             ytSuggestedPlaylists = homePlaylists.filter { it.id != "LM" }.take(12),
             spotlight = spotlight,
             quickTiles = quickTiles,
