@@ -4573,7 +4573,7 @@ class MusicPlayer @Inject constructor(
                 if (generation != playRequestGeneration.get()) return@withContext
                 val index = player.currentMediaItemIndex
                 if (index !in 0 until player.mediaItemCount) return@withContext
-                if (_state.value.isEndlessQueue) {
+                if (discoverQueueActive && !radioQueueActive) {
                     appendMissingDiscoverTracks(discoverRepository.getCachedFeed().map(GeneratedTrack::toPlayableTrack))
                 }
                 extendDiscoverQueueIfNeeded(index)
@@ -5316,6 +5316,10 @@ class MusicPlayer @Inject constructor(
                         (current?.title.equals(seed.title, ignoreCase = true) && current?.artist.equals(seed.artist, ignoreCase = true))
                     if (!stillCurrentSeed) return@withContext
 
+                    val currentIndex = player.currentMediaItemIndex
+                    if (player.mediaItemCount > currentIndex + 1) {
+                        player.removeMediaItems(currentIndex + 1, player.mediaItemCount)
+                    }
                     val currentKeys = (0 until player.mediaItemCount).mapTo(mutableSetOf()) {
                         player.getMediaItemAt(it).toPlayableTrack().queueKey()
                     }
