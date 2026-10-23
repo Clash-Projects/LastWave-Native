@@ -54,11 +54,15 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Leaderboard
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -66,7 +70,9 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.viewModelScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -148,8 +154,12 @@ import javax.inject.Inject
 @HiltViewModel
 class MainShellViewModel @Inject constructor(
     val appUpdateManager: com.lastwave.app.data.update.AppUpdateManager,
+    val ytAuthManager: com.lastwave.app.data.ytmusic.YtMusicAuthManager,
+    val settingsPreferences: com.lastwave.app.data.local.SettingsPreferences,
 ) : ViewModel() {
     val updateInfo = appUpdateManager.updateInfo
+    val ytConnection = ytAuthManager.connection
+    val settings = settingsPreferences.settings
 
     fun dismissUpdate(version: String) {
         appUpdateManager.dismissUpdate(version)
@@ -157,6 +167,12 @@ class MainShellViewModel @Inject constructor(
 
     fun openUpdate(context: android.content.Context) {
         appUpdateManager.openUpdate(context)
+    }
+
+    fun setSuppressYouTubeLoginPrompt(suppress: Boolean) {
+        viewModelScope.launch {
+            settingsPreferences.setSuppressYouTubeLoginPrompt(suppress)
+        }
     }
 }
 
@@ -214,6 +230,7 @@ fun MainShell(
     onOpenDownloads: () -> Unit = {},
     onOpenPodcasts: () -> Unit = {},
     onOpenPodcastShow: (String) -> Unit = {},
+    onOpenYouTubeLogin: () -> Unit = {},
     mainShellViewModel: MainShellViewModel = hiltViewModel(),
 ) {
     val tabs = MainTab.entries
@@ -235,6 +252,85 @@ fun MainShell(
     }
     val updateInfo by mainShellViewModel.updateInfo.collectAsStateWithLifecycle()
     val showUpdateBanner = updateInfo.isUpdateAvailable && !updateInfo.isDismissed
+    val ytConnection by mainShellViewModel.ytConnection.collectAsStateWithLifecycle()
+    val settings by mainShellViewModel.settings.collectAsStateWithLifecycle(initialValue = com.lastwave.app.data.local.MiscSettings())
+    var promptDismissedThisSession by rememberSaveable { mutableStateOf(false) }
+
+    val shouldShowLoginPrompt = !ytConnection.isConnected &&
+        !settings.suppressYouTubeLoginPrompt &&
+        !promptDismissedThisSession
+
+    if (shouldShowLoginPrompt) {
+        var dontShowAgain by remember { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = {
+                if (dontShowAgain) mainShellViewModel.setSuppressYouTubeLoginPrompt(true)
+                promptDismissedThisSession = true
+            },
+            shape = RoundedCornerShape(28.dp),
+            containerColor = if (LocalLiquidGlass.current) {
+                MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            },
+            title = {
+                Text(
+                    text = "Get better recommendations",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(
+                        text = "Log in to YouTube Music, or create a free account, to get personalized songs and queues.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { dontShowAgain = !dontShowAgain }
+                            .padding(vertical = 4.dp),
+                    ) {
+                        Checkbox(
+                            checked = dontShowAgain,
+                            onCheckedChange = { dontShowAgain = it },
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Don't show again",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (dontShowAgain) mainShellViewModel.setSuppressYouTubeLoginPrompt(true)
+                        promptDismissedThisSession = true
+                        onOpenYouTubeLogin()
+                    },
+                    shape = RoundedCornerShape(20.dp),
+                ) {
+                    Text("Take me to YT Music login")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        if (dontShowAgain) mainShellViewModel.setSuppressYouTubeLoginPrompt(true)
+                        promptDismissedThisSession = true
+                    },
+                ) {
+                    Text("OK, thanks")
+                }
+            },
+        )
+    }
+
     val backgroundColor = MaterialTheme.colorScheme.background
     // Unconditional remember keeps composition stable; usage gated below.
     val navigationBackdrop = rememberLayerBackdrop {
