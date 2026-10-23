@@ -651,6 +651,10 @@ class SettingsViewModel @Inject constructor(
     fun setLyricsFontScale(scale: Float) = launchSettingsAction("update lyrics font scale") {
         settingsPreferences.setLyricsFontScale(scale)
     }
+    fun setStopPlaybackOnTaskRemoved(enabled: Boolean) = launchSettingsAction("update playback on app removal") {
+        settingsPreferences.setStopPlaybackOnTaskRemoved(enabled)
+    }
+
     fun setCrossfadeEnabled(enabled: Boolean) = launchSettingsAction("update crossfade") { settingsPreferences.setCrossfadeEnabled(enabled) }
     fun setCrossfadeSeconds(seconds: Int) = launchSettingsAction("update crossfade duration") {
         settingsPreferences.setCrossfadeSeconds(seconds.coerceIn(1, 12))

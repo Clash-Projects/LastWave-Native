@@ -877,12 +877,24 @@ fun SettingsScreen(
 
                     val isIgnored = BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)
                     val totalAudioRows = if (misc.crossfadeEnabled) {
-                        if (isIgnored) 7 else 8
+                        if (isIgnored) 8 else 9
                     } else {
-                        if (isIgnored) 6 else 7
+                        if (isIgnored) 7 else 8
                     }
                     SettingsGroup(rowCount = totalAudioRows) { index, position ->
-                        when (index) {
+                        if (index == totalAudioRows - 1) {
+                            SettingsToggleCard(
+                                icon = Icons.Filled.PlayCircle,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.settings_stop_on_task_removed),
+                                subtitle = stringResource(R.string.settings_stop_on_task_removed_desc),
+                                checked = misc.stopPlaybackOnTaskRemoved,
+                                onCheckedChange = viewModel::setStopPlaybackOnTaskRemoved,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.stop_on_task_removed"),
+                            )
+                        } else when (index) {
                             0 -> SettingsActionCard(
                                 icon = Icons.Filled.HighQuality,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,

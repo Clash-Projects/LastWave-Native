@@ -1278,4 +1278,6 @@
     <string name="signal_detail_autoeq">Correction applied by LastWave (changes the samples, Android mixer still bypassed)</string>
     <string name="signal_verdict_direct_eq">Android mixer bypassed. LastWave applies your AutoEQ correction, then the samples go straight to the HAL.</string>
     <string name="signal_direct_eq">DIRECT + EQ</string>
+    <string name="settings_stop_on_task_removed">Stop playback when app is removed</string>
+    <string name="settings_stop_on_task_removed_desc">Stop music when you swipe LastWave away from recents</string>
 </resources>

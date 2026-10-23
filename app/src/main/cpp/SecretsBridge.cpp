@@ -223,6 +223,14 @@ static bool verifyCallerSignature(JNIEnv* env, jobject context, uint8_t outCertS
     // Package allowlist: only com.lastwave.app may call.
     const char* pkgChars = env->GetStringUTFChars(packageName, nullptr);
     bool pkgOk = pkgChars && strcmp(pkgChars, "com.lastwave.app") == 0;
+#if defined(LASTWAVE_COMPARISON_BUILD)
+    // Explicit comparison variant; certificate verification below still applies.
+    pkgOk = pkgOk || (pkgChars && strcmp(pkgChars, "com.lastwave.app.compare") == 0);
+#elif !defined(NDEBUG)
+    // The separately installed comparison app is allowed only in debug builds.
+    pkgOk = pkgOk || (pkgChars && strcmp(pkgChars, "com.lastwave.app.compare") == 0 &&
+                     isDebuggable(env, context));
+#endif
     if (pkgChars) env->ReleaseStringUTFChars(packageName, pkgChars);
     if (!pkgOk) return false;
 

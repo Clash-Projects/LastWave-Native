@@ -58,6 +58,7 @@ android {
 
     defaultConfig {
         applicationId = "com.lastwave.app"
+        manifestPlaceholders["appLabel"] = "@string/app_name"
         minSdk = (project.findProperty("minSdk") as? String)?.toIntOrNull() ?: 29
         targetSdk = 35
         versionCode = 26
@@ -163,7 +164,20 @@ android {
             // proguardFiles from initWith are ignored when minify is off
         }
         debug {
+            applicationIdSuffix = ".compare"
+            versionNameSuffix = "-compare"
+            manifestPlaceholders["appLabel"] = "LastWave Compare"
             isDebuggable = true
+        }
+        create("comparison") {
+            initWith(getByName("debug"))
+            isDebuggable = false
+            isProfileable = true
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "debug"
+            externalNativeBuild {
+                cmake { arguments += "-DLASTWAVE_COMPARISON_BUILD=ON" }
+            }
         }
     }
 

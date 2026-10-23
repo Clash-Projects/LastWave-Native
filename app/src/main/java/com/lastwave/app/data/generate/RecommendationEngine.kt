@@ -1,6 +1,7 @@
 package com.lastwave.app.data.generate
 
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -57,6 +58,10 @@ private class RecoContext(
     val blacklist: Set<String>,
 ) {
     val pool = LinkedHashMap<String, Candidate>()
+    val exploredTrackSeeds = mutableSetOf<String>()
+    val feedKeys = profile.ytMusicFeedRaw.mapTo(hashSetOf(), GeneratedTrack::key)
+    val likedKeys = profile.ytMusicLikedRaw.mapTo(hashSetOf(), GeneratedTrack::key)
+    val recentKeys = profile.ytMusicRecentRaw.mapTo(hashSetOf(), GeneratedTrack::key)
     val exploredArtists = mutableSetOf<String>()
     val exploredTags = mutableSetOf<String>()
     val pendingArtists = mutableListOf<String>()
@@ -72,6 +77,7 @@ private class RecoContext(
                 if (cur != null) {
                     if (weight > cur.weight) cur.weight = weight
                     cur.tags.add(tag)
+                    cur.isPrimaryGenre = cur.isPrimaryGenre || isPrimaryGenre
                 } else {
                     pool[key] = Candidate(t, weight, mutableSetOf(tag), isPrimaryGenre)
                 }
@@ -139,13 +145,14 @@ class RecommendationEngine(
 
     private fun recoScore(
         track: GeneratedTrack,
-        profile: TasteProfile,
+        ctx: RecoContext,
         bucketWeight: Int,
         isPrimaryGenre: Boolean,
         sourceCount: Int,
         fresh: Boolean,
         familiar: Boolean,
     ): Double {
+        val profile = ctx.profile
         var score = 0.0
         val bw = if (bucketWeight <= 0) 1 else bucketWeight
 
@@ -156,9 +163,9 @@ class RecommendationEngine(
         score += (profile.artistAffinity[artistKey] ?: 0.0) * 30.0
         if (profile.topArtistNames.contains(artistKey)) score += 16
         if (profile.recentArtists.contains(artistKey)) score += 8
-        if (profile.ytMusicFeedRaw.any { it.key == track.key }) score += 8
-        if (profile.ytMusicLikedRaw.any { it.key == track.key }) score += 6
-        if (profile.ytMusicRecentRaw.any { it.key == track.key }) score += 4
+        if (track.key in ctx.feedKeys) score += 8
+        if (track.key in ctx.likedKeys) score += 6
+        if (track.key in ctx.recentKeys) score += 4
         if (!knownArtist) score += 3
         if (isPrimaryGenre) score += 4
 
@@ -182,19 +189,19 @@ class RecommendationEngine(
         data class Seed(val track: GeneratedTrack, val weight: Int, val source: String)
         val seeds = buildList {
             addAll(
-                pool.shuffled().drop((cycle - 1) * 3).take(3).map {
+                pool.shuffled().filterNot { it.key in ctx.exploredTrackSeeds }.take(3).map {
                     Seed(it, if (cycle == 1) 4 else 3, if (cycle == 1) "mood" else "taste")
                 },
             )
             if (cycle <= 2) {
                 val ytPool = (ctx.profile.ytMusicRecentRaw + ctx.profile.ytMusicLikedRaw + ctx.profile.ytMusicFeedRaw)
                     .distinctBy(GeneratedTrack::key)
-                val ytFeedKeys = ctx.profile.ytMusicFeedRaw.mapTo(mutableSetOf(), GeneratedTrack::key)
-                ytPool.shuffled().drop((cycle - 1) * 2).firstOrNull()?.let {
-                    add(Seed(it, 3, if (it.key in ytFeedKeys) "yt-feed-similar" else "yt-taste"))
+                ytPool.shuffled().firstOrNull { it.key !in ctx.exploredTrackSeeds }?.let {
+                    add(Seed(it, 3, if (it.key in ctx.feedKeys) "yt-feed-similar" else "yt-taste"))
                 }
             }
         }.distinctBy { it.track.key }
+        ctx.exploredTrackSeeds.addAll(seeds.map { it.track.key })
         val deferreds = seeds.map { s ->
             async {
                 if (s.track.name.isNotBlank() && s.track.artist.isNotBlank()) {
@@ -202,6 +209,7 @@ class RecommendationEngine(
                         val d = rawCall(mapOf("method" to "track.getsimilar", "track" to s.track.name, "artist" to s.track.artist, "limit" to "30"))
                         s to jsonTracks(d, "similartracks", "track")
                     } catch (e: Exception) {
+                        if (e is CancellationException) throw e
                         Log.d(RTAG, "srcSimilarTracks miss for ${s.track.name}", e)
                         s to emptyList()
                     }
@@ -228,6 +236,7 @@ class RecommendationEngine(
                     val d = rawCall(mapOf("method" to "artist.getsimilar", "artist" to artistName, "limit" to "20"))
                     jsonNames(d, "similarartists", "artist").shuffled()
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     Log.d(RTAG, "srcSimilarArtists miss for $artistName", e)
                     emptyList()
                 }
@@ -255,6 +264,7 @@ class RecommendationEngine(
 
                     artistName to jsonTracks(d, "toptracks", "track")
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     Log.d(RTAG, "srcArtistTopTracks miss for $artistName", e)
                     artistName to emptyList()
                 }
@@ -268,8 +278,8 @@ class RecommendationEngine(
         }
     }
 
-    private suspend fun srcGenreMatches(ctx: RecoContext, cycle: Int) = coroutineScope {
-        val tags = ctx.profile.topTags.toList().shuffled().drop((cycle - 1) * 4).take(4)
+    private suspend fun srcGenreMatches(ctx: RecoContext) = coroutineScope {
+        val tags = ctx.profile.topTags.filterNot { it in ctx.exploredTags }.shuffled().take(4)
         for (tag in tags) ctx.exploredTags.add(tag)
         val limit = ceil(ctx.total * 0.4).toInt().coerceAtLeast(1)
         val deferreds = tags.map { tag ->
@@ -279,6 +289,7 @@ class RecommendationEngine(
                     val d = rawCall(mapOf("method" to "tag.gettoptracks", "tag" to tag, "limit" to limit.toString(), "page" to page.toString()))
                     tag to jsonTracks(d, "tracks", "track")
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     Log.d(RTAG, "srcGenreMatches miss for $tag", e)
                     tag to emptyList()
                 }
@@ -304,6 +315,7 @@ class RecommendationEngine(
                     val d = rawCall(mapOf("method" to "tag.gettoptracks", "tag" to tag, "limit" to limit.toString(), "page" to page.toString()))
                     tag to jsonTracks(d, "tracks", "track")
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     Log.d(RTAG, "srcTagMatches miss for $tag", e)
                     tag to emptyList()
                 }
@@ -325,6 +337,7 @@ class RecommendationEngine(
                     val d = rawCall(mapOf("method" to "artist.getsimilar", "artist" to artistName, "limit" to "15"))
                     jsonNames(d, "similarartists", "artist").shuffled()
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     Log.d(RTAG, "srcRelatedArtists miss for $artistName", e)
                     emptyList()
                 }
@@ -357,6 +370,7 @@ class RecommendationEngine(
                     val d = rawCall(mapOf("method" to "artist.gettoptracks", "artist" to artistName, "limit" to "15", "page" to page.toString()))
                     artistName to jsonTracks(d, "toptracks", "track")
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     Log.d(RTAG, "srcDiscoveryPool miss for $artistName", e)
                     artistName to emptyList()
                 }
@@ -396,6 +410,7 @@ class RecommendationEngine(
                 )
                 ctx.addAll(jsonTracks(data, "tracks", "track"), 1, "tag:$tag", isPrimaryGenre = true)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.d(RTAG, "fresh tag refill miss for $tag", e)
             }
             return
@@ -419,6 +434,7 @@ class RecommendationEngine(
                 )
                 ctx.addAll(tracks = jsonTracks(data, "toptracks", "track"), weight = 2, tag = "artist:${candidateArtist.trim().lowercase()}")
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.d(RTAG, "fresh artist refill miss for $artist", e)
             }
         }
@@ -450,7 +466,7 @@ class RecommendationEngine(
                 val ak = c.track.artist.trim().lowercase()
                 if ((artistCount[ak] ?: 0) >= artistCap) continue
                 if (albumCapOn && !c.track.album.isNullOrBlank()) {
-                    val alK = c.track.album.lowercase()
+                    val alK = "$ak|${c.track.album.trim().lowercase()}"
                     if ((albumCount[alK] ?: 0) >= RECO_ALBUM_CAP) continue
                 }
                 if (genreCapOn) {
@@ -462,7 +478,7 @@ class RecommendationEngine(
                 }
                 artistCount[ak] = (artistCount[ak] ?: 0) + 1
                 if (!c.track.album.isNullOrBlank()) {
-                    val alK = c.track.album.lowercase()
+                    val alK = "$ak|${c.track.album.trim().lowercase()}"
                     albumCount[alK] = (albumCount[alK] ?: 0) + 1
                 }
                 pickedKeys.add(key)
@@ -533,26 +549,49 @@ class RecommendationEngine(
             ctx.addAll(youtubeCandidates.take(60), 4, "yt-radio")
         }
 
+        // Check only new candidates each round; excluded candidates do
+        // not count toward the requested playlist size.
+        val checkedKeys = hashSetOf<String>()
+        val freshKeys = hashSetOf<String>()
+        suspend fun refreshFreshness() {
+            val unchecked = ctx.pool.values.map { it.track }.filterNot { it.key in checkedKeys }
+            if (unchecked.isNotEmpty()) {
+                freshKeys.addAll(isFresh(unchecked).map { it.key })
+                checkedKeys.addAll(unchecked.map { it.key })
+            }
+        }
+        refreshFreshness()
         var cycle = 1
         var stalledCycles = 0
-        while (cycle <= RECO_MAX_CYCLES && (cycle == 1 || ctx.pool.size < total)) {
+        while (cycle <= RECO_MAX_CYCLES && freshKeys.size < total) {
             val poolSizeBeforeCycle = ctx.pool.size
-            onProgress(if (cycle == 1) "Reading your listening mood\u2026" else "Digging deeper for more discoveries (round $cycle)\u2026")
+            onProgress("Digging deeper for more discoveries (round $cycle)\u2026")
 
             srcSimilarTracks(ctx, cycle)
-            if (ctx.pool.size < total) {
+            refreshFreshness()
+            if (freshKeys.size < total) {
                 srcSimilarArtists(ctx, cycle)
                 srcArtistTopTracks(ctx)
+                refreshFreshness()
             }
-            if (ctx.pool.size < total) srcGenreMatches(ctx, cycle)
-            if (ctx.pool.size < total) srcTagMatches(ctx)
-            if (ctx.pool.size < total) srcRelatedArtists(ctx)
-            if (ctx.pool.size < total) srcDiscoveryPool(ctx)
+            if (freshKeys.size < total) {
+                srcGenreMatches(ctx)
+                refreshFreshness()
+            }
+            if (freshKeys.size < total) {
+                srcTagMatches(ctx)
+                refreshFreshness()
+            }
+            if (freshKeys.size < total) {
+                srcRelatedArtists(ctx)
+                refreshFreshness()
+            }
+            if (freshKeys.size < total) {
+                srcDiscoveryPool(ctx)
+                refreshFreshness()
+            }
 
-            val freshKeys = isFresh(ctx.pool.values.map { it.track }).map { it.key }.toSet()
-            val freshCount = ctx.pool.keys.count { it in freshKeys }
-            Log.d(RTAG, "cycle $cycle: pool=${ctx.pool.size} unique, fresh=$freshCount, need=$total")
-
+            Log.d(RTAG, "cycle $cycle: pool=${ctx.pool.size} unique, fresh=${freshKeys.size}, need=$total")
             stalledCycles = if (ctx.pool.size == poolSizeBeforeCycle) stalledCycles + 1 else 0
             if (stalledCycles >= RECO_MAX_STALLED_ROUNDS) break
             cycle++
@@ -560,22 +599,19 @@ class RecommendationEngine(
 
         var refillAttempt = 0
         var stalledRefills = 0
-        while (ctx.pool.size < total && refillAttempt < RECO_REFILL_ATTEMPTS) {
+        while (freshKeys.size < total && refillAttempt < RECO_REFILL_ATTEMPTS) {
             val poolSizeBeforeRefill = ctx.pool.size
-            onProgress("Finding fresh tracks\u2026 ${ctx.pool.size}/$total")
+            onProgress("Finding fresh tracks\u2026 ${freshKeys.size}/$total")
             srcFreshRefill(ctx, refillAttempt)
+            refreshFreshness()
             stalledRefills = if (ctx.pool.size == poolSizeBeforeRefill) stalledRefills + 1 else 0
             if (stalledRefills >= RECO_MAX_STALLED_ROUNDS) break
             refillAttempt++
         }
 
         onProgress("Curating your personal recommendations\u2026")
-
-        val allTracks = ctx.pool.values.map { it.track }
-        val freshKeysFinal = isFresh(allTracks).map { it.key }.toSet()
-
         val scored = ctx.pool.values.map { c ->
-            val fresh = c.track.key in freshKeysFinal
+            val fresh = c.track.key in freshKeys
             val familiar = c.track.key in familiarKeys
             Scored(
                 track = c.track,
@@ -583,7 +619,7 @@ class RecommendationEngine(
                 tags = c.tags,
                 fresh = fresh,
                 familiar = familiar,
-                score = recoScore(c.track, profile, c.weight, c.isPrimaryGenre, c.tags.size, fresh, familiar),
+                score = recoScore(c.track, ctx, c.weight, c.isPrimaryGenre, c.tags.size, fresh, familiar),
             )
         }.sortedWith(compareByDescending<Scored> { it.fresh }.thenByDescending { it.score })
 

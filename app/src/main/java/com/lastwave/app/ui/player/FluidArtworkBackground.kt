@@ -14,9 +14,12 @@ import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -30,14 +33,16 @@ import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import coil.ImageLoader
+import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.lastwave.app.playback.PlayableTrack
@@ -183,7 +188,9 @@ private const val TEXTURE_PX = 256
 private const val TEXTURE_CACHE = 3
 private const val CROSSFADE_MS = 1400
 private const val APPEAR_MS = 800
-private const val FRAME_SECONDS = 1f / 30f
+// The deliberately blurred backdrop can render at one third of the linear
+// resolution (one ninth of the pixels) while following the display frame clock.
+private const val FLUID_RENDER_SCALE = 3f
 
 private val textureCache = LinkedHashMap<String, Bitmap>()
 
@@ -198,7 +205,7 @@ private suspend fun loadTexture(context: Context, url: String, preBlur: Boolean 
         .size(TEXTURE_PX)
         .allowHardware(false)
         .build()
-    val loader = ImageLoader(context)
+    val loader = context.imageLoader
     val result = runCatching { loader.execute(request) }.getOrNull()
     var bitmap = ((result as? SuccessResult)?.drawable as? BitmapDrawable)?.bitmap ?: return@withContext null
 
@@ -367,39 +374,39 @@ fun FluidArtworkBackground(
     LaunchedEffect(!shouldPauseLoop) {
         if (shouldPauseLoop) return@LaunchedEffect
         var last = 0L
-        var pending = 0f
         while (true) {
             withFrameNanos { now ->
-                if (last != 0L) pending += ((now - last) / 1_000_000_000f).coerceIn(0f, 0.1f)
+                if (last != 0L) seconds += ((now - last) / 1_000_000_000f).coerceIn(0f, 0.1f)
                 last = now
-            }
-            if (pending >= FRAME_SECONDS) {
-                seconds += pending
-                pending = 0f
             }
         }
     }
 
-    Box(modifier) {
-        if (appear.value < 1f || current == null) {
+    val showFallback by remember { derivedStateOf { appear.value < 1f || current == null } }
+    BoxWithConstraints(modifier) {
+        val density = LocalDensity.current
+        val sigma = with(density) {
+            fluidBlurSigma(maxWidth.toPx(), maxHeight.toPx(), extraBlur) / FLUID_RENDER_SCALE
+        }
+        val blurEffect = remember(sigma) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) runCatching {
+                RenderEffect.createBlurEffect(sigma, sigma, Shader.TileMode.CLAMP).asComposeRenderEffect()
+            }.getOrNull() else null
+        }
+        if (showFallback) {
             fallback()
         }
 
         if (current != null) {
             Box(
                 Modifier
-                    .fillMaxSize()
+                    .requiredSize(maxWidth / FLUID_RENDER_SCALE, maxHeight / FLUID_RENDER_SCALE)
                     .graphicsLayer {
+                        transformOrigin = TransformOrigin(0f, 0f)
+                        scaleX = FLUID_RENDER_SCALE
+                        scaleY = FLUID_RENDER_SCALE
                         alpha = appear.value
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            val sigma = fluidBlurSigma(size.width, size.height, extraBlur)
-                            // A haunted GPU driver must cost us the blur, never the process.
-                            renderEffect = runCatching {
-                                RenderEffect
-                                    .createBlurEffect(sigma, sigma, Shader.TileMode.CLAMP)
-                                    .asComposeRenderEffect()
-                            }.getOrNull()
-                        }
+                        renderEffect = blurEffect
                     }
                     .drawBehind {
                         val cur = current ?: return@drawBehind

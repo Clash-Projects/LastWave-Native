@@ -239,6 +239,20 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "audio.stop_on_task_removed",
+                    title = "Stop playback when app is removed",
+                    subtitle = "Stop music when you swipe LastWave away from recents",
+                    keywords = listOf("recents", "swipe", "close", "stop", "background", "playback"),
+                    icon = Icons.Filled.PlayCircle,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Audio & Playback",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "audio.usb_exclusive",
                     title = "USB Exclusive Output",
                     subtitle = "Direct usbdevfs communication with external USB DACs (Android 10+)",

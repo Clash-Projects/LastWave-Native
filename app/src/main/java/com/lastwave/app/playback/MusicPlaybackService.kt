@@ -73,17 +73,6 @@ private val TITLE_SUFFIX_REGEX = Regex(
 
 private data class CleanTrackMetadata(val title: String, val artist: String)
 
-private fun sameServiceState(previous: MusicPlayerState, current: MusicPlayerState): Boolean =
-    previous.current == current.current &&
-        previous.queue == current.queue &&
-        previous.currentIndex == current.currentIndex &&
-        previous.isPlaying == current.isPlaying &&
-        previous.isBuffering == current.isBuffering &&
-        previous.durationMs == current.durationMs &&
-        previous.speed == current.speed &&
-        previous.shuffleEnabled == current.shuffleEnabled &&
-        previous.repeatMode == current.repeatMode &&
-        (previous.isPlaying || current.isPlaying || previous.positionMs == current.positionMs)
 
 /**
  * Foreground playback host and standard Android MediaSession bridge. It
@@ -93,6 +82,9 @@ private fun sameServiceState(previous: MusicPlayerState, current: MusicPlayerSta
  */
 @AndroidEntryPoint
 class MusicPlaybackService : MediaBrowserServiceCompat() {
+    @Inject lateinit var settingsPreferences: com.lastwave.app.data.local.SettingsPreferences
+    private var stopPlaybackOnTaskRemoved = false
+
     @Inject lateinit var musicPlayer: MusicPlayer
     @Inject lateinit var scrobbleRepository: ScrobbleRepository
     @Inject lateinit var scrobblerPreferences: ScrobblerPreferences
@@ -143,11 +135,13 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     private var cleanedSourceArtist = ""
     private var cleanedMetadata = CleanTrackMetadata("", "")
     private var artworkJob: Job? = null
-    private var artworkUrl: String? = null
-    private var artworkBitmap: Bitmap? = null
+    private val notificationArtwork = TrackArtwork<Bitmap>()
+    private val artworkUrl: String? get() = notificationArtwork.urlFor(musicPlayer.state.value.current)
+    private val artworkBitmap: Bitmap? get() = notificationArtwork.valueFor(musicPlayer.state.value.current)
     private var notificationSignature = ""
     private var widgetSignature = ""
     private var systemStateSignature = ""
+    private var publishedMetadata: List<Any?>? = null
     private var legacyBroadcastSignature = ""
     private var sessionQueueSignature = ""
     private var carBrowseQueueSignature = ""
@@ -250,6 +244,9 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         notificationPalette = NotificationPalette.from(themeRepository.uiState.value.colorScheme)
         scope.launch { scrobblerPreferences.settings.collect { settings = it } }
         scope.launch {
+            settingsPreferences.settings.collect { stopPlaybackOnTaskRemoved = it.stopPlaybackOnTaskRemoved }
+        }
+        scope.launch {
             themeRepository.uiState.collectLatest { theme ->
                 val newPalette = NotificationPalette.from(theme.colorScheme)
                 // Only force a notification rebuild when the palette actually
@@ -284,6 +281,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         scope.launch {
             artworkRepository.resolved.collect { map ->
                 val current = musicPlayer.state.value.current ?: return@collect
+                requestArtwork(current)
                 val key = com.lastwave.app.data.artwork.ArtworkNormalizer.cacheKey(current.title, current.artist)
                 val resolvedUrl = map[key]
                 if (!resolvedUrl.isNullOrBlank() && resolvedUrl != artworkUrl) {
@@ -594,6 +592,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         if (isPlaybackForeground) return true
         // Browse-only Android Auto connections stay notification-free. A
         // started playback request promotes the already-bound service here.
+        requestArtwork(musicPlayer.state.value.current)
         val notification = buildNotification(musicPlayer.state.value, artworkBitmap)
         val promoted = runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -661,7 +660,8 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        if (musicPlayer.state.value.isPlaying) {
+        val state = musicPlayer.state.value
+        if (!stopPlaybackOnTaskRemoved && (state.isPlaying || state.isBuffering)) {
             // Something is actively playing — leave it running. The
             // foreground notification is what keeps the service (and the
             // process) alive; swiping the app from Recents shouldn't kill
@@ -669,7 +669,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             super.onTaskRemoved(rootIntent)
             return
         }
-        // Nothing is playing when the task is removed. Stop the service to
+        // Playback is idle or the user chose to stop on task removal. Stop to
         // free resources, but do NOT clear the persisted session
         // (clearSession = false): the old unconditional stopAndClear() wiped
         // clearPersistedPlaybackSession() here too, so the paused/idle track
@@ -963,7 +963,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         // "app stopped responding" spells. PlaybackState carries position +
         // speed, so the system extrapolates between publishes; only actual
         // changes (track, duration, play/buffer state, artwork, or a seek
-        // while paused) need to cross the binder.
+        // while paused), plus periodic clock corrections, cross the binder.
         val playbackState = when {
             state.isBuffering -> PlaybackStateCompat.STATE_BUFFERING
             state.isPlaying -> PlaybackStateCompat.STATE_PLAYING
@@ -981,6 +981,8 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             append(track?.title).append('|')
             append(track?.artist).append('|')
             append(track?.album).append('|')
+            append(state.currentIndex).append('|')
+            append(state.speed).append('|')
             append(state.durationMs).append('|')
             append(playbackState).append('|')
             append(state.shuffleEnabled).append('|')
@@ -988,44 +990,52 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             append(artworkUrl).append('|')
             append(artworkBitmap != null).append('|')
             append(isLiked)
-            if (!state.isPlaying) append("|pos=").append(state.positionMs)
+            append("|pos=").append(if (state.isPlaying) state.positionMs / 5_000 else state.positionMs)
         }
         if (signature == systemStateSignature) return
-        systemStateSignature = signature
+        val metadata = listOf(
+            track, state.currentIndex, state.durationMs, artworkUrl, artworkBitmap,
+            isLiked, state.shuffleEnabled, state.repeatMode,
+        )
 
         val artUri = artworkUrl ?: track?.artworkUrl.orEmpty()
         runCatching {
-            session.setMetadata(
-                MediaMetadataCompat.Builder()
-                    // Unique per track: the OriginOS music card ignores a new
-                    // track whose media id is the same as the one before.
-                    .putString(
-                        MediaMetadataCompat.METADATA_KEY_MEDIA_ID,
-                        track?.let { OriginOsMusicCard.mediaIdOf(state.currentIndex, it) } ?: state.currentIndex.toString(),
-                    )
-                    .putString(MediaMetadataCompat.METADATA_KEY_TITLE, track?.title.orEmpty())
-                    .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, track?.artist.orEmpty())
-                    .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, track?.album.orEmpty())
-                    .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, artUri)
-                    .putString(MediaMetadataCompat.METADATA_KEY_ART_URI, artUri)
-                    .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, artUri)
-                    .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, state.durationMs)
-                    .putRating(MediaMetadataCompat.METADATA_KEY_RATING, RatingCompat.newHeartRating(isLiked))
-                    .putLong(OriginOsMusicCard.KEY_SUPPORT_EVENT, OriginOsMusicCard.SUPPORTED_EVENTS)
-                    .putLong(
-                        OriginOsMusicCard.KEY_LOOP_MODE,
-                        OriginOsMusicCard.loopModeOf(state.shuffleEnabled, state.repeatMode).toLong(),
-                    )
-                    .apply {
-                        val art = artworkBitmap
-                        if (art != null) {
-                            putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, art)
-                            putBitmap(MediaMetadataCompat.METADATA_KEY_ART, art)
-                            putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, art)
+            // Clock corrections only need PlaybackState. Re-sending cover
+            // bitmaps through Binder every five seconds stalls the UI thread.
+            if (metadata != publishedMetadata) {
+                session.setMetadata(
+                    MediaMetadataCompat.Builder()
+                        // Unique per track: the OriginOS music card ignores a new
+                        // track whose media id is the same as the one before.
+                        .putString(
+                            MediaMetadataCompat.METADATA_KEY_MEDIA_ID,
+                            track?.let { OriginOsMusicCard.mediaIdOf(state.currentIndex, it) } ?: state.currentIndex.toString(),
+                        )
+                        .putString(MediaMetadataCompat.METADATA_KEY_TITLE, track?.title.orEmpty())
+                        .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, track?.artist.orEmpty())
+                        .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, track?.album.orEmpty())
+                        .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, artUri)
+                        .putString(MediaMetadataCompat.METADATA_KEY_ART_URI, artUri)
+                        .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, artUri)
+                        .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, state.durationMs)
+                        .putRating(MediaMetadataCompat.METADATA_KEY_RATING, RatingCompat.newHeartRating(isLiked))
+                        .putLong(OriginOsMusicCard.KEY_SUPPORT_EVENT, OriginOsMusicCard.SUPPORTED_EVENTS)
+                        .putLong(
+                            OriginOsMusicCard.KEY_LOOP_MODE,
+                            OriginOsMusicCard.loopModeOf(state.shuffleEnabled, state.repeatMode).toLong(),
+                        )
+                        .apply {
+                            val art = artworkBitmap
+                            if (art != null) {
+                                putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, art)
+                                putBitmap(MediaMetadataCompat.METADATA_KEY_ART, art)
+                                putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, art)
+                            }
                         }
-                    }
-                    .build(),
-            )
+                        .build(),
+                )
+                publishedMetadata = metadata
+            }
             session.setPlaybackState(
                 PlaybackStateCompat.Builder()
                     .setActions(
@@ -1039,7 +1049,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                     )
                     .setActiveQueueItemId(state.currentIndex.toLong())
                     .setBufferedPosition(state.bufferedPositionMs)
-                    .setState(playbackState, state.positionMs, if (state.isPlaying) state.speed else 0f)
+                    .setState(playbackState, state.positionMs, if (state.isPlaying && !state.isBuffering) state.speed else 0f)
                     .build(),
             )
             session.setShuffleMode(
@@ -1053,6 +1063,8 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                     else -> PlaybackStateCompat.REPEAT_MODE_NONE
                 },
             )
+        }.onSuccess {
+            systemStateSignature = signature
         }.onFailure { error ->
             // Binder IPC into a broken OEM media stack must not kill the
             // state collector that also drives notifications and widget.
@@ -1140,7 +1152,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         if (!isPlaybackForeground && activelyPlaying) {
             if (!promoteForPlayback()) return
         }
-        val signature = "${track.title}|${track.artist}|${track.album}|${state.isPlaying}|${state.isBuffering}|${state.shuffleEnabled}|${state.repeatMode}|$artworkUrl|${artworkBitmap != null}"
+        val signature = "${track.title}|${track.artist}|${track.album}|${state.isPlaying}|${state.isBuffering}|${state.durationMs}|${state.shuffleEnabled}|${state.repeatMode}|$artworkUrl|${artworkBitmap != null}"
         if (!force && signature == notificationSignature) return
         val success = runCatching {
             getSystemService(NotificationManager::class.java)
@@ -1160,25 +1172,11 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     }
 
     private fun requestArtwork(track: PlayableTrack?) {
-        if (track == null) {
-            artworkRequestKey = ""
-            artworkUrl = null
-            artworkBitmap = null
-            artworkJob?.cancel()
-            return
-        }
-
-        // The player state emits ~4x/second; without this guard every emission
-        // re-launched an artwork resolution job for the same track.
-        val requestKey = "${track.title}|${track.artist}|${track.artworkUrl.orEmpty()}"
-        if (requestKey == artworkRequestKey) return
-        artworkRequestKey = requestKey
-
-        // Track has changed: immediately clear previous track's artwork
-        // so the notification bar never displays the old song's cover art
-        artworkBitmap = null
-        artworkUrl = null
+        if (!notificationArtwork.select(track)) return
         artworkJob?.cancel()
+        artworkRequestKey = notificationArtwork.generation.toString()
+        if (track == null) return
+        val requestKey = artworkRequestKey
 
         val key = com.lastwave.app.data.artwork.ArtworkNormalizer.cacheKey(track.title, track.artist)
         val cached = artworkRepository.resolved.value[key]?.takeIf(String::isNotBlank)
@@ -1230,7 +1228,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         val cleanUrl = url.trim()
         if (cleanUrl.isBlank()) return
         if (cleanUrl == artworkUrl && artworkBitmap != null) return
-        artworkUrl = cleanUrl
+        val request = notificationArtwork.begin(cleanUrl, musicPlayer.state.value.current) ?: return
         artworkJob?.cancel()
 
         artworkJob = scope.launch {
@@ -1244,8 +1242,8 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                         .build(),
                 )
             }
-            if (expectedUrl != artworkUrl) return@launch
-            artworkBitmap = (result as? SuccessResult)?.drawable?.toBitmap()
+            val bitmap = (result as? SuccessResult)?.drawable?.toBitmap()
+            if (!notificationArtwork.complete(request, musicPlayer.state.value.current, bitmap)) return@launch
             val state = musicPlayer.state.value
             publishSystemState(state)
             publishNotification(state, force = true)

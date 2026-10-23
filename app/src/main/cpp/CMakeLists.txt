@@ -54,6 +54,10 @@ add_library(
     SecretsBridge.cpp
 )
 
+if(LASTWAVE_COMPARISON_BUILD)
+    target_compile_definitions(lastwave_audio PRIVATE LASTWAVE_COMPARISON_BUILD=1)
+endif()
+
 target_include_directories(
     lastwave_audio
     PRIVATE

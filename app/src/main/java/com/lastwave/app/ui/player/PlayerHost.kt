@@ -177,6 +177,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
@@ -789,7 +790,6 @@ fun PlayerHost(
     content: @Composable () -> Unit,
 ) {
     val state by viewModel.chromeState.collectAsStateWithLifecycle()
-    val playbackState by viewModel.player.state.collectAsStateWithLifecycle()
     val activeDownloads by viewModel.activeDownloads.collectAsStateWithLifecycle()
     var expanded by rememberSaveable { mutableStateOf(false) }
     var currentTab by rememberSaveable { mutableStateOf(FullPlayerTab.NOW_PLAYING) }
@@ -894,11 +894,7 @@ fun PlayerHost(
                 
                 // Sleep Timer Button
                 if (!expanded) {
-                    DraggableSleepTimerOverlay(
-                        sleepTimerRemainingMs = playbackState.sleepTimerRemainingMs,
-                        onCycleTimer = { viewModel.player.cycleSleepTimer() },
-                        onCloseTimer = { viewModel.player.setSleepTimerMinutes(0) },
-                    )
+                    PlayerSleepTimerOverlay(viewModel.player)
                 }
             }
             if (activeDownloads.isNotEmpty() && !expanded) {
@@ -2190,11 +2186,14 @@ private fun FullPlayer(
         animationSpec = if (isArtworkDragging) snap() else ExpressiveMotion.spatialDefault(),
         label = "fullPlayerArtworkX",
     )
-    val shownDismissY by animateFloatAsState(
-        targetValue = dismissDragY,
-        animationSpec = if (isDismissDragging) snap() else ExpressiveMotion.spatialSpring(),
-        label = "fullPlayerDismissY",
-    )
+    // Read gesture motion in graphicsLayer, never in the full-player composition.
+    val dismissOffset = remember(track.videoId, track.title) { Animatable(0f) }
+    val displayedDismissOffset = remember(dismissOffset) {
+        derivedStateOf { if (isDismissDragging) dismissDragY else dismissOffset.value }
+    }
+    val isDismissedForCanvas by remember(displayedDismissOffset) {
+        derivedStateOf { displayedDismissOffset.value > 1f }
+    }
     val swipeThreshold = with(LocalDensity.current) { 88.dp.toPx() }
 
     // Dominant cover-art color for the ambient background glow. Extracted
@@ -2253,19 +2252,32 @@ private fun FullPlayer(
 
     fun Modifier.playerVerticalSwipe(enabled: Boolean): Modifier = if (!enabled) this else pointerInput(track.videoId, track.title, currentTab) {
         detectVerticalDragGestures(
-            onDragStart = { isDismissDragging = true },
+            onDragStart = {
+                dismissDragY = dismissOffset.value
+                isDismissDragging = true
+                coroutineScope.launch { dismissOffset.stop() }
+            },
             onDragCancel = {
-                isDismissDragging = false
-                dismissDragY = 0f
+                val releasedOffset = dismissDragY
+                coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                    dismissOffset.snapTo(releasedOffset)
+                    isDismissDragging = false
+                    dismissOffset.animateTo(0f, ExpressiveMotion.spatialSpring())
+                }
             },
             onDragEnd = {
-                isDismissDragging = false
+                val releasedOffset = dismissDragY
+                val collapsing = currentTab == FullPlayerTab.NOW_PLAYING && dismissDragY > swipeThreshold
                 when {
                     currentTab != FullPlayerTab.NOW_PLAYING && dismissDragY > swipeThreshold -> onTabChange(FullPlayerTab.NOW_PLAYING)
                     currentTab == FullPlayerTab.NOW_PLAYING && dismissDragY < -swipeThreshold -> onTabChange(FullPlayerTab.QUEUE)
-                    currentTab == FullPlayerTab.NOW_PLAYING && dismissDragY > swipeThreshold -> onCollapse()
+                    collapsing -> onCollapse()
                 }
-                dismissDragY = 0f
+                coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                    dismissOffset.snapTo(releasedOffset)
+                    isDismissDragging = false
+                    if (!collapsing) dismissOffset.animateTo(0f, ExpressiveMotion.spatialSpring())
+                }
             },
         ) { change, amount ->
             val updatedDrag = if (currentTab != FullPlayerTab.NOW_PLAYING) {
@@ -2290,12 +2302,13 @@ private fun FullPlayer(
         color = MaterialTheme.colorScheme.surface,
         modifier = Modifier
             .fillMaxSize()
+            // Hit testing stays on a stationary plane while the panel moves.
+            .playerVerticalSwipe(enabled = currentTab == FullPlayerTab.NOW_PLAYING)
             .graphicsLayer {
-                translationY = shownDismissY.coerceAtLeast(0f)
+                translationY = displayedDismissOffset.value.coerceAtLeast(0f)
                 val playerHeight = size.height.coerceAtLeast(1f)
-                alpha = (1f - shownDismissY.coerceAtLeast(0f) / (playerHeight * 1.5f)).coerceIn(0.72f, 1f)
-            }
-            .playerVerticalSwipe(enabled = currentTab == FullPlayerTab.NOW_PLAYING),
+                alpha = (1f - displayedDismissOffset.value.coerceAtLeast(0f) / (playerHeight * 1.5f)).coerceIn(0.72f, 1f)
+            },
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val bgWidth = constraints.maxWidth.toFloat()
@@ -2484,7 +2497,7 @@ private fun FullPlayer(
                             presentationAlpha = { heroAlpha },
                             onCoverChanged = { canvasCover = it },
                             onAspectRatioChanged = { canvasAspect = it },
-                            pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
+                            pausedForTransition = isDismissedForCanvas || currentTab != FullPlayerTab.NOW_PLAYING,
                             modifier = Modifier
                                 .align(Alignment.TopStart)
                                 .fillMaxWidth()
@@ -2784,7 +2797,7 @@ private fun FullPlayer(
                                     onDoubleTapLike = onDoubleTapLike,
                                     onOpenArtist = onOpenArtist,
                                     onTabChange = onTabChange,
-                                    shownDismissY = shownDismissY,
+                                    isDismissedForCanvas = isDismissedForCanvas,
                                     swipeThreshold = swipeThreshold,
                                 )
                             } else {
@@ -2971,7 +2984,7 @@ private fun FullPlayer(
                                                         corner = 22.dp,
                                                         canvas = if (showSleeveCanvas) canvas else null,
                                                         isPlaying = state.isPlaying,
-                                                        pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
+                                                        pausedForTransition = isDismissedForCanvas || currentTab != FullPlayerTab.NOW_PLAYING,
                                                         onAspectRatioChanged = { canvasAspect = it },
                                                     )
                                                 }
@@ -3326,7 +3339,7 @@ private fun FullPlayerLandscape(
     onDoubleTapLike: () -> Unit,
     onOpenArtist: (String) -> Unit,
     onTabChange: (FullPlayerTab) -> Unit,
-    shownDismissY: Float,
+    isDismissedForCanvas: Boolean,
     swipeThreshold: Float,
 ) {
     var isArtworkDragging by remember { mutableStateOf(false) }
@@ -3511,7 +3524,7 @@ private fun FullPlayerLandscape(
                         corner = 24.dp,
                         canvas = if (showSleeveCanvas) canvas else null,
                         isPlaying = state.isPlaying,
-                        pausedForTransition = shownDismissY > 1f,
+                        pausedForTransition = isDismissedForCanvas,
                         onAspectRatioChanged = { canvasAspect = it },
                     )
                 }
@@ -4491,11 +4504,18 @@ private fun PlayerUtilityControls(state: MusicPlayerState, player: MusicPlayer, 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: Modifier = Modifier) {
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = state.currentIndex.coerceIn(0, state.queue.lastIndex.coerceAtLeast(0)),
+    )
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    var draggingIndex by remember { mutableIntStateOf(-1) }
-    var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    var draggingKey by remember { mutableStateOf<String?>(null) }
+    var draggedTop by remember { mutableFloatStateOf(0f) }
+    var pendingMoveTarget by remember { mutableStateOf<Int?>(null) }
+    var settlingKey by remember { mutableStateOf<String?>(null) }
+    var settlingTop by remember { mutableFloatStateOf(0f) }
+    val settleOffset = remember { Animatable(0f) }
+    var settleJob by remember { mutableStateOf<Job?>(null) }
     var menuIndex by remember { mutableStateOf<Int?>(null) }
 
     // Stable keys so animateItem() can animate moves instead of treating
@@ -4512,12 +4532,27 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
     }
     val currentQueue by rememberUpdatedState(state.queue)
     val currentQueueKeys by rememberUpdatedState(queueKeys)
-    // Abort a stale drag if the queue itself changes underneath us
-    // (track ended, clear-upcoming, fresh playQueue, …).
-    LaunchedEffect(state.queue.size) {
-        if (draggingIndex >= state.queue.size) {
-            draggingIndex = -1
-            dragOffsetY = 0f
+    LaunchedEffect(queueKeys) {
+        if (draggingKey != null && draggingKey !in queueKeys) {
+            draggingKey = null
+            pendingMoveTarget = null
+        }
+    }
+    fun finishDrag() {
+        val key = draggingKey ?: return
+        val releasedTop = draggedTop
+        settleJob?.cancel()
+        settleJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            settleOffset.snapTo(1f)
+            settlingTop = releasedTop
+            settlingKey = key
+            draggingKey = null
+            pendingMoveTarget = null
+            try {
+                settleOffset.animateTo(0f, ExpressiveMotion.spatialFast())
+            } finally {
+                if (settlingKey == key) settlingKey = null
+            }
         }
     }
     // Follow the now-playing song in long queues: auto-scroll on every track
@@ -4527,8 +4562,13 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
     LaunchedEffect(listState.isScrollInProgress) {
         if (listState.isScrollInProgress) userScrollHoldUntil = System.currentTimeMillis() + 3_000L
     }
+    var initialFollowComplete by remember { mutableStateOf(false) }
     LaunchedEffect(state.currentIndex, state.queue.size) {
-        if (draggingIndex != -1 || state.queue.isEmpty()) return@LaunchedEffect
+        if (!initialFollowComplete) {
+            initialFollowComplete = true
+            return@LaunchedEffect
+        }
+        if (draggingKey != null || settlingKey != null || state.queue.isEmpty()) return@LaunchedEffect
         if (System.currentTimeMillis() < userScrollHoldUntil) return@LaunchedEffect
         val target = state.currentIndex.coerceIn(0, state.queue.size - 1)
         runCatching { listState.animateScrollToItem(target) }
@@ -4657,7 +4697,8 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
             itemsIndexed(state.queue, key = { index, _ -> queueKeys.getOrNull(index) ?: index.toString() }) { index, item ->
                 val currentIndex by rememberUpdatedState(index)
                 val isCurrent = index == state.currentIndex
-                val isDragging = index == draggingIndex
+                val isDragging = queueKeys[index] == draggingKey
+                val isSettling = queueKeys[index] == settlingKey
                 val stableKey = queueKeys.getOrNull(index) ?: index.toString()
                 val dismissState = androidx.compose.material3.rememberSwipeToDismissBoxState(
                     confirmValueChange = { dismissValue ->
@@ -4676,7 +4717,26 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
                 )
                 androidx.compose.material3.SwipeToDismissBox(
                     state = dismissState,
-                    modifier = Modifier.animateItem(),
+                    modifier = Modifier
+                        .zIndex(if (isDragging || isSettling) 1f else 0f)
+                        .animateItem(
+                            placementSpec = if (isDragging || isSettling) null else ExpressiveMotion.spatialDefault(),
+                        )
+                        .graphicsLayer {
+                            translationY = when {
+                                isDragging -> {
+                                    val offset = listState.layoutInfo.visibleItemsInfo
+                                        .firstOrNull { it.key == stableKey }?.offset
+                                    if (offset != null) draggedTop - offset else 0f
+                                }
+                                isSettling -> {
+                                    val offset = listState.layoutInfo.visibleItemsInfo
+                                        .firstOrNull { it.key == stableKey }?.offset
+                                    if (offset != null) (settlingTop - offset) * settleOffset.value else 0f
+                                }
+                                else -> 0f
+                            }
+                        },
                     backgroundContent = {
                         // The delete background must only exist while a swipe
                         // is actually in progress: the queue card is
@@ -4709,9 +4769,7 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
                     contentColor = if (isCurrent) MaterialTheme.colorScheme.onPrimaryContainer
                     else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier
-                        .zIndex(if (isDragging) 1f else 0f)
                         .graphicsLayer {
-                            translationY = if (isDragging) dragOffsetY else 0f
                             shadowElevation = if (isDragging) 18f else 0f
                             val s = if (isDragging) 1.025f else 1f
                             scaleX = s
@@ -4776,44 +4834,42 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
                                 .pointerInput(stableKey) {
                                     detectDragGesturesAfterLongPress(
                                         onDragStart = {
-                                            val actualIndex = currentQueueKeys.indexOf(stableKey).takeIf { it >= 0 } ?: currentIndex
-                                            draggingIndex = actualIndex
-                                            dragOffsetY = 0f
-                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            val info = listState.layoutInfo.visibleItemsInfo
+                                                .firstOrNull { it.key == stableKey }
+                                            if (info != null) {
+                                                settleJob?.cancel()
+                                                settlingKey = null
+                                                draggedTop = info.offset.toFloat()
+                                                draggingKey = stableKey
+                                                pendingMoveTarget = null
+                                                userScrollHoldUntil = System.currentTimeMillis() + 3_000L
+                                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            }
                                         },
-                                        onDragEnd = {
-                                            draggingIndex = -1
-                                            dragOffsetY = 0f
-                                        },
-                                        onDragCancel = {
-                                            draggingIndex = -1
-                                            dragOffsetY = 0f
-                                        },
+                                        onDragEnd = { finishDrag() },
+                                        onDragCancel = { finishDrag() },
                                         onDrag = { change, dragAmount ->
                                             change.consume()
-                                            val source = draggingIndex
-                                            if (source < 0) return@detectDragGesturesAfterLongPress
-                                            dragOffsetY += dragAmount.y
+                                            if (draggingKey != stableKey) return@detectDragGesturesAfterLongPress
+                                            draggedTop += dragAmount.y
                                             val layoutInfo = listState.layoutInfo
                                             val draggedInfo = layoutInfo.visibleItemsInfo
-                                                .firstOrNull { it.index == source }
+                                                .firstOrNull { it.key == stableKey }
                                                 ?: return@detectDragGesturesAfterLongPress
-                                            val draggedCenter = draggedInfo.offset + draggedInfo.size / 2 + dragOffsetY.toInt()
+                                            val source = currentQueueKeys.indexOf(stableKey)
+                                            val draggedCenter = (draggedTop + draggedInfo.size / 2f).toInt()
+                                            if (pendingMoveTarget == source && draggedInfo.index == source) {
+                                                pendingMoveTarget = null
+                                            }
                                             val target = layoutInfo.visibleItemsInfo.firstOrNull { info ->
-                                                info.index != source &&
-                                                    info.index in currentQueue.indices &&
-                                                    draggedCenter in info.offset..(info.offset + info.size)
+                                                info.key != stableKey && info.index in currentQueue.indices &&
+                                                    draggedCenter in info.offset until (info.offset + info.size)
                                             }?.index
-                                            if (target != null && target != source) {
+                                            if (pendingMoveTarget == null && source >= 0 &&
+                                                draggedInfo.index == source && target != null && target != source
+                                            ) {
+                                                pendingMoveTarget = target
                                                 player.moveQueueItem(source, target)
-                                                // Keep the row glued under the finger across
-                                                // the layout shift caused by the move.
-                                                val targetInfo = layoutInfo.visibleItemsInfo
-                                                    .firstOrNull { it.index == target }
-                                                if (targetInfo != null) {
-                                                    dragOffsetY += (draggedInfo.offset - targetInfo.offset).toFloat()
-                                                }
-                                                draggingIndex = target
                                                 haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
                                             }
                                             // Edge auto-scroll while dragging.

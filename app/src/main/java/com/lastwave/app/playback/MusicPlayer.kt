@@ -3731,7 +3731,9 @@ class MusicPlayer @Inject constructor(
         }
         val snapshot = _state.value
         // If user taps the song currently playing, restart it from 0:00 immediately
-        if (index in snapshot.queue.indices && index == snapshot.currentIndex) {
+        if (index in snapshot.queue.indices && index == snapshot.currentIndex &&
+            playRequest?.isActive != true && isCurrentMediaMatch(player, snapshot.current)
+        ) {
             seekTo(0)
             player.play()
             return@onMain
@@ -4117,14 +4119,10 @@ class MusicPlayer @Inject constructor(
         val expectedMediaId = mediaItem.mediaId
         resetPlayhead(0L, expectedMediaId)
         resolvingMediaIds[expectedMediaId] = generation
-        // Screen-off continuity: do NOT player.pause() here. Pausing drops
-        // ExoPlayer's WAKE_MODE_NETWORK wake/wifi lock and lets refresh()
-        // flip state to not-playing, which releases the service WifiLock —
-        // then a locked-screen resolve stalls until unlock. The placeholder
-        // at [index] has no audible output yet, and when jumping from a
-        // different playing index keeping playback running avoids a silent
-        // gap; the seek below cuts over once the lossless-first stream is
-        // ready.
+        // Stop the old audio immediately. Keep playWhenReady set so the
+        // selected buffering state retains the service's wake/wifi locks.
+        // The resolved source is prepared by takeOverPlayback below.
+        player.stop()
         _state.update {
             it.copy(
                 current = track,

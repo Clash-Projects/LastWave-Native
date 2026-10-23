@@ -50,7 +50,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lastwave.app.playback.MusicPlayer
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlin.math.roundToInt
+
+/** Keep progress ticks out of the app-wide player host and scrolling content. */
+@Composable
+internal fun PlayerSleepTimerOverlay(player: MusicPlayer) {
+    val remainingSeconds by remember(player) {
+        player.state.map { it.sleepTimerRemainingMs?.div(1_000) }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(initialValue = player.state.value.sleepTimerRemainingMs?.div(1_000))
+    DraggableSleepTimerOverlay(
+        sleepTimerRemainingMs = remainingSeconds?.times(1_000),
+        onCycleTimer = player::cycleSleepTimer,
+        onCloseTimer = { player.setSleepTimerMinutes(0) },
+    )
+}
 
 @Composable
 fun DraggableSleepTimerOverlay(
