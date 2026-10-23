@@ -286,6 +286,9 @@ fun LastWaveNavHost(
                 onOpenPodcastShow = { showId ->
                     navController.navigate(Screen.PodcastShow.createRoute(showId))
                 },
+                onOpenYouTubeLogin = {
+                    navController.navigate(Screen.YouTubeLogin.route)
+                },
             )
         }
 
