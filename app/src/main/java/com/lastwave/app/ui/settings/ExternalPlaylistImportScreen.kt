@@ -264,8 +264,8 @@ fun ExternalPlaylistImportScreen(
                                                 Spacer(Modifier.height(4.dp))
                                                 val trackLabel = if (pl.trackCount > 0) {
                                                     "${pl.trackCount} tracks"
-                                                } else if (uiState.preview != null && uiState.link.contains(pl.id)) {
-                                                    "${uiState.preview.rows.size} tracks"
+                                                } else if (state.preview != null && state.link.contains(pl.id)) {
+                                                    "${state.preview.rows.size} tracks"
                                                 } else {
                                                     "Spotify Playlist"
                                                 }
