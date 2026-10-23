@@ -60,6 +60,7 @@ data class FeedUiState(
 ) {
     /** True when a mood/activity chip is active; synthetic sections are hidden in this mode. */
     val isChipActive: Boolean get() = selectedChip != null
+    val homeChips: List<HomeChip> get() = feedData.homeChips
 }
 
 @HiltViewModel

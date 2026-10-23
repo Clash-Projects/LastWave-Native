@@ -7,6 +7,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -119,6 +120,7 @@ import com.lastwave.app.data.model.FriendEntry
 import com.lastwave.app.data.model.RecentTrack
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistSummary
+import com.lastwave.app.data.music.HomeChip
 import com.lastwave.app.data.music.HomeShelf
 import com.lastwave.app.data.music.HomeShelfItem
 import com.lastwave.app.playback.PlayableTrack
@@ -133,6 +135,7 @@ import com.lastwave.app.ui.common.rememberWindowSizeClass
 import com.lastwave.app.ui.common.TrackMenuCapabilities
 import com.lastwave.app.ui.common.TrackMenuTarget
 import com.lastwave.app.ui.common.ExpressiveLoadingIndicator
+import com.lastwave.app.ui.common.ExpressiveInlineLoadingIndicator
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.common.safeHorizontalContentPadding
 import com.lastwave.app.ui.navigation.ArtistAlbumNavigator
@@ -409,79 +412,15 @@ fun FeedScreen(
                     for ((shelfIndex, shelf) in state.feedData.nativeShelves.withIndex()) {
                         if (shelf.items.isEmpty()) continue
                         item(key = "native_shelf_${shelfIndex}_${shelf.title}") {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                                shape = RoundedCornerShape(24.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
-                            ) {
-                                Column(modifier = Modifier.padding(vertical = 12.dp)) {
-                                    val tracksInShelf = remember(shelf.items) {
-                                        shelf.items.mapNotNull { (it as? HomeShelfItem.Track)?.track }
-                                    }
-                                    FeedSectionHeader(
-                                        title = shelf.title,
-                                        subtitle = shelf.subtitle,
-                                        actionText = if (tracksInShelf.isNotEmpty()) stringResource(R.string.feed_play_all) else null,
-                                        actionIcon = if (tracksInShelf.isNotEmpty()) Icons.Filled.PlayArrow else null,
-                                        onActionClick = if (tracksInShelf.isNotEmpty()) {
-                                            { viewModel.playTracksQueue(tracksInShelf, 0, shelf.title) }
-                                        } else null,
-                                        onShuffleClick = if (tracksInShelf.isNotEmpty()) {
-                                            { viewModel.shuffleTracksQueue(tracksInShelf, shelf.title) }
-                                        } else null,
-                                    )
-                                    FeedMediaRow(
-                                        content = {
-                                            itemsIndexed(shelf.items) { itemIndex, shelfItem ->
-                                                when (shelfItem) {
-                                                    is HomeShelfItem.Track -> {
-                                                        val track = shelfItem.track
-                                                        FeedMediaCard(
-                                                            title = track.title,
-                                                            subtitle = ArtistHelper.primaryArtist(track.artist),
-                                                            artworkUrl = track.artworkUrl,
-                                                            fallbackIcon = Icons.Filled.MusicNote,
-                                                            onClick = { viewModel.playTrack(track, shelf.title) },
-                                                            onLongClick = {
-                                                                miniTrayTrack = TrackMiniTrayData(
-                                                                    title = track.title,
-                                                                    artist = track.artist,
-                                                                    album = track.album,
-                                                                    artworkUrl = track.artworkUrl,
-                                                                    videoId = track.videoId.takeIf(String::isNotBlank),
-                                                                    sourceLabel = "Home",
-                                                                    onPlay = { viewModel.playTrack(track, shelf.title) },
-                                                                )
-                                                            },
-                                                            onPlayClick = { viewModel.playTrack(track, shelf.title) },
-                                                        )
-                                                    }
-                                                    is HomeShelfItem.Playlist -> {
-                                                        val playlist = shelfItem.playlist
-                                                        FeedMediaCard(
-                                                            title = playlist.title,
-                                                            subtitle = playlist.author ?: playlist.trackCountText.orEmpty(),
-                                                            artworkUrl = playlist.artworkUrl,
-                                                            fallbackIcon = Icons.AutoMirrored.Filled.QueueMusic,
-                                                            onClick = {
-                                                                if (playlist.id.startsWith("MPRE")) {
-                                                                    artistAlbumNavigator.openAlbum(
-                                                                        title = playlist.title,
-                                                                        artist = playlist.author.orEmpty(),
-                                                                        browseId = playlist.id,
-                                                                    )
-                                                                } else {
-                                                                    onOpenFeedPlaylist(playlist.id)
-                                                                }
-                                                            },
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        },
-                                    )
-                                }
-                            }
+                            HomeShelfCard(
+                                shelf = shelf,
+                                onPlayTrack = { track, title -> viewModel.playTrack(track, title) },
+                                onPlayTracksQueue = { tracks, idx, title -> viewModel.playTracksQueue(tracks, idx, title) },
+                                onShuffleTracksQueue = { tracks, title -> viewModel.shuffleTracksQueue(tracks, title) },
+                                onOpenFeedPlaylist = onOpenFeedPlaylist,
+                                onOpenAlbum = { title, artist, id -> artistAlbumNavigator.openAlbum(title, artist, id) },
+                                onTrackLongClick = { tray -> miniTrayTrack = tray },
+                            )
                         }
                     }
 
@@ -1211,6 +1150,163 @@ private fun TasteStrip(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Horizontally scrolling row of YouTube Music mood/activity chips
+ * (e.g., Relax, Energize, Workout, Commute, Focus).
+ * Placed directly above the native YTM shelves using the app's liquid-glass style.
+ * Adapted from Metrolist's Home screen chip row (GPL-3.0).
+ */
+@Composable
+fun HomeChipsRow(
+    chips: List<HomeChip>,
+    selectedChip: HomeChip?,
+    onChipClick: (HomeChip) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (chips.isEmpty()) return
+    val haptics = LocalHapticFeedback.current
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        items(chips, key = { it.title }) { chip ->
+            val isSelected = chip == selectedChip
+            Surface(
+                onClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onChipClick(chip)
+                },
+                shape = CircleShape,
+                color = if (isSelected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f)
+                },
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = if (isSelected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)
+                    },
+                ),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = chip.title,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.onPrimary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Reusable surface card for a YouTube Music carousel shelf.
+ * Used for page-1 native shelves, continuation paged shelves, and chip shelves.
+ */
+@Composable
+private fun HomeShelfCard(
+    shelf: HomeShelf,
+    onPlayTrack: (YouTubeMusicTrack, String) -> Unit,
+    onPlayTracksQueue: (List<YouTubeMusicTrack>, Int, String) -> Unit,
+    onShuffleTracksQueue: (List<YouTubeMusicTrack>, String) -> Unit,
+    onOpenFeedPlaylist: (String) -> Unit,
+    onOpenAlbum: (title: String, artist: String, browseId: String) -> Unit,
+    onTrackLongClick: (TrackMiniTrayData) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (shelf.items.isEmpty()) return
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+    ) {
+        Column(modifier = Modifier.padding(vertical = 12.dp)) {
+            val tracksInShelf = remember(shelf.items) {
+                shelf.items.mapNotNull { (it as? HomeShelfItem.Track)?.track }
+            }
+            FeedSectionHeader(
+                title = shelf.title,
+                subtitle = shelf.subtitle,
+                actionText = if (tracksInShelf.isNotEmpty()) stringResource(R.string.feed_play_all) else null,
+                actionIcon = if (tracksInShelf.isNotEmpty()) Icons.Filled.PlayArrow else null,
+                onActionClick = if (tracksInShelf.isNotEmpty()) {
+                    { onPlayTracksQueue(tracksInShelf, 0, shelf.title) }
+                } else null,
+                onShuffleClick = if (tracksInShelf.isNotEmpty()) {
+                    { onShuffleTracksQueue(tracksInShelf, shelf.title) }
+                } else null,
+            )
+            FeedMediaRow(
+                content = {
+                    itemsIndexed(shelf.items) { _, shelfItem ->
+                        when (shelfItem) {
+                            is HomeShelfItem.Track -> {
+                                val track = shelfItem.track
+                                FeedMediaCard(
+                                    title = track.title,
+                                    subtitle = ArtistHelper.primaryArtist(track.artist),
+                                    artworkUrl = track.artworkUrl,
+                                    fallbackIcon = Icons.Filled.MusicNote,
+                                    onClick = { onPlayTrack(track, shelf.title) },
+                                    onLongClick = {
+                                        onTrackLongClick(
+                                            TrackMiniTrayData(
+                                                title = track.title,
+                                                artist = track.artist,
+                                                album = track.album,
+                                                artworkUrl = track.artworkUrl,
+                                                videoId = track.videoId.takeIf(String::isNotBlank),
+                                                sourceLabel = "Home",
+                                                onPlay = { onPlayTrack(track, shelf.title) },
+                                            ),
+                                        )
+                                    },
+                                    onPlayClick = { onPlayTrack(track, shelf.title) },
+                                )
+                            }
+                            is HomeShelfItem.Playlist -> {
+                                val playlist = shelfItem.playlist
+                                FeedMediaCard(
+                                    title = playlist.title,
+                                    subtitle = playlist.author ?: playlist.trackCountText.orEmpty(),
+                                    artworkUrl = playlist.artworkUrl,
+                                    fallbackIcon = Icons.AutoMirrored.Filled.QueueMusic,
+                                    onClick = {
+                                        if (playlist.id.startsWith("MPRE")) {
+                                            onOpenAlbum(
+                                                playlist.title,
+                                                playlist.author.orEmpty(),
+                                                playlist.id,
+                                            )
+                                        } else {
+                                            onOpenFeedPlaylist(playlist.id)
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                },
+            )
         }
     }
 }
