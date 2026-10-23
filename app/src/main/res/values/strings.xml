@@ -78,6 +78,21 @@
     <string name="settings_section_accent">Accent</string>
 
     <string name="settings_section_experimental">Experimental</string>
+    <string name="settings_music_video">Music Video</string>
+    <string name="settings_music_video_on">Watch synced music videos in Now Playing menu</string>
+    <string name="settings_music_video_off">Disabled (enable to watch synced video in player menu)</string>
+    <string name="menu_watch_video">Watch Video</string>
+    <string name="menu_watch_video_sub">Exact ms sync with playing music</string>
+    <string name="video_sync_tag">SYNCED</string>
+    <string name="video_buffering">Syncing video stream…</string>
+    <string name="video_stream_unavailable">Unable to load video stream for this track</string>
+    <string name="video_retry">Retry</string>
+    <string name="video_exit_fullscreen">Exit full screen</string>
+    <string name="video_enter_fullscreen">Full screen</string>
+    <string name="video_quality">Quality</string>
+    <string name="video_quality_title">Select Video Quality</string>
+    <string name="video_quality_auto">Auto</string>
+    <string name="video_quality_auto_recommended">Auto (Recommended)</string>
     <string name="settings_liquid_glass">Liquid Glass</string>
     <string name="settings_liquid_glass_sub">iOS-style translucent materials across the app</string>
     <string name="settings_md3_nav_bar">Material 3 Navigation Bar</string>

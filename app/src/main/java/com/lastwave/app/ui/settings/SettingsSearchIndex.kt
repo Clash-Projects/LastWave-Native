@@ -616,6 +616,23 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "appearance.music_video",
+                    title = "Music Video",
+                    subtitle = "Watch exact-sync music video of currently playing song in player menu",
+                    keywords = listOf(
+                        "video", "music video", "watch video", "mv", "synced video", "youtube video",
+                        "fullscreen video", "exact ms sync", "now playing video"
+                    ),
+                    icon = Icons.Filled.SmartDisplay,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Experimental & Features",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "appearance.rotating_background",
                     title = "Rotating Background",
                     subtitle = "Animate fluid rotating artwork in player and lyrics view (disable for static background)",

@@ -1359,7 +1359,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_experimental))
-                    SettingsGroup(rowCount = 9) { index, position ->
+                    SettingsGroup(rowCount = 10) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.Lyrics,
@@ -1498,6 +1498,21 @@ fun SettingsScreen(
                                 onClick = { showTranslationLanguageDialog = true },
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.translation_language"),
+                            )
+                            9 -> SettingsToggleCard(
+                                icon = Icons.Filled.SmartDisplay,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.settings_music_video),
+                                subtitle = if (misc.musicVideoEnabled) {
+                                    stringResource(R.string.settings_music_video_on)
+                                } else {
+                                    stringResource(R.string.settings_music_video_off)
+                                },
+                                checked = misc.musicVideoEnabled,
+                                onCheckedChange = viewModel::setMusicVideoEnabled,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.music_video"),
                             )
                         }
                     }

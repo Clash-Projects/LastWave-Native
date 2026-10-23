@@ -550,6 +550,11 @@ class SettingsViewModel @Inject constructor(
         settingsPreferences.setSystemEffectsMode(enabled)
     }
 
+    /** Synced Music Video (Settings -> Experimental, default OFF). */
+    fun setMusicVideoEnabled(enabled: Boolean) = launchSettingsAction("update music video setting") {
+        settingsPreferences.setMusicVideoEnabled(enabled)
+    }
+
     // ── USB exclusive output (direct DAC, default OFF) ──
 
     val usbExclusiveEnabled: StateFlow<Boolean> =

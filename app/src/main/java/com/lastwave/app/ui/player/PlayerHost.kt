@@ -2172,6 +2172,7 @@ private fun FullPlayer(
         }
     }
     var showTrackMenu by remember(track.videoId, track.title) { mutableStateOf(false) }
+    var showSyncedVideo by remember(track.videoId, track.title) { mutableStateOf(false) }
     var isArtworkDragging by remember(track.videoId, track.title) { mutableStateOf(false) }
     var artworkDragX by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
     var dismissDragY by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
@@ -3288,6 +3289,14 @@ private fun FullPlayer(
             playableTrack = track,
             onDismiss = { showTrackMenu = false },
             onPlayInLastWave = { player.play(track, sourceLabel = state.sourceLabel) },
+            onWatchVideo = { showSyncedVideo = true },
+        )
+    }
+    if (showSyncedVideo) {
+        SyncedVideoPlayerDialog(
+            track = track,
+            musicPlayer = player,
+            onDismiss = { showSyncedVideo = false },
         )
     }
     if (showLyricsOffsetDialog && onSetLyricsOffsetMs != null) {

@@ -2680,6 +2680,9 @@ class MusicPlayer @Inject constructor(
         )
         return true
     }
+    /** Returns the live sub-millisecond playback position of the active audio player. */
+    fun currentPositionMs(): Long =
+        runCatching { player.currentPosition.coerceAtLeast(0L) }.getOrDefault(_state.value.positionMs)
     fun seekTo(positionMs: Long) = onMain {
         if (isCasting) {
             castPlayback?.seek(positionMs.coerceAtLeast(0))

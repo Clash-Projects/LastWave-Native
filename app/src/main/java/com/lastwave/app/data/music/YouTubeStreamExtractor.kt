@@ -66,6 +66,139 @@ class YouTubeStreamExtractor @Inject constructor(
         throw IOException("YouTube audio URLs were rejected for $videoId")
     }
 
+    suspend fun resolveVideoStreamBundle(
+        videoId: String,
+    ): SyncedVideoStreamBundle = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        initialize()
+        val info = try {
+            StreamInfo.getInfo(ServiceList.YouTube, "https://www.youtube.com/watch?v=$videoId")
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            throw IOException("YouTube video stream extraction failed for $videoId", error)
+        }
+        val allVideoStreams = buildList {
+            addAll(info.videoStreams)
+            addAll(info.videoOnlyStreams)
+        }
+        val validStreams = allVideoStreams.filter { stream ->
+            stream.content.isNotBlank() && (
+                stream.format?.mimeType?.contains("mp4", ignoreCase = true) == true ||
+                stream.format?.mimeType?.contains("webm", ignoreCase = true) == true
+            )
+        }
+        if (validStreams.isEmpty()) {
+            throw IOException("YouTube returned no playable video streams for $videoId")
+        }
+
+        // Group by resolution height (supports up to 2160p, 1440p, 1080p, 720p, 480p, 360p, 240p, 144p)
+        val streamsByHeight = validStreams
+            .map { stream ->
+                val h = parseResolutionHeight(stream.resolution, stream.height)
+                h to stream
+            }
+            .filter { it.first > 0 }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, streams) ->
+                streams.maxWithOrNull(
+                    compareBy<org.schabi.newpipe.extractor.stream.VideoStream> {
+                        // Prefer MP4 container for broad hardware decoding compatibility
+                        if (it.format?.mimeType?.contains("mp4", ignoreCase = true) == true) 1 else 0
+                    }.thenBy { it.bitrate }
+                )!!
+            }
+
+        val availableStreams = streamsByHeight.keys.sortedDescending().map { height ->
+            streamsByHeight[height]!!.toYouTubeVideoStream(videoId, info.duration, now)
+        }
+        if (availableStreams.isEmpty()) {
+            throw IOException("YouTube returned no valid video stream resolutions for $videoId")
+        }
+
+        // For default (Auto), prefer 720p or 1080p for instant playback without buffer stalls
+        val autoCandidates = availableStreams.sortedWith(
+            compareByDescending { stream ->
+                val h = stream.height ?: 0
+                when (h) {
+                    720 -> 100
+                    1080 -> 95
+                    480 -> 80
+                    1440 -> 75
+                    2160 -> 70
+                    360 -> 60
+                    else -> 40
+                }
+            }
+        )
+        val playableDefault = selectProbedCandidate(
+            candidates = autoCandidates,
+            urlOf = { it.url },
+            probe = ::probePlayableVideo,
+            limit = MAX_PROBED_AUDIO_STREAMS,
+        ) ?: availableStreams.first()
+
+        SyncedVideoStreamBundle(
+            videoId = videoId,
+            defaultStream = playableDefault,
+            availableStreams = availableStreams,
+        )
+    }
+
+    suspend fun resolveVideoStream(
+        videoId: String,
+    ): YouTubeVideoStream = resolveVideoStreamBundle(videoId).defaultStream
+
+    private fun parseResolutionHeight(resolution: String?, height: Int): Int {
+        if (height > 0) return height
+        return resolution.orEmpty().filter { it.isDigit() }.toIntOrNull() ?: 0
+    }
+
+    private fun probePlayableVideo(stream: YouTubeVideoStream): Boolean {
+        val request = playbackProbeRequest(stream.url, stream.requestHeaders)
+        val call = http.newCall(request)
+        call.timeout().timeout(PROBE_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+        return try {
+            call.execute().use { response ->
+                acceptsPlaybackProbe(response.code, response.header("Content-Type").orEmpty())
+            }
+        } catch (cancellation: kotlinx.coroutines.CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun org.schabi.newpipe.extractor.stream.VideoStream.toYouTubeVideoStream(
+        videoId: String,
+        durationSeconds: Long,
+        now: Long,
+    ): YouTubeVideoStream {
+        val streamUrl = content
+        return YouTubeVideoStream(
+            videoId = videoId,
+            url = streamUrl,
+            itag = itag.takeIf { it >= 0 },
+            mimeType = format?.mimeType,
+            codec = codec?.takeIf(String::isNotBlank),
+            resolution = resolution,
+            width = width.takeIf { it > 0 },
+            height = height.takeIf { it > 0 },
+            bitrate = bitrate.takeIf { it > 0 },
+            durationMs = itagItem?.approxDurationMs?.takeIf { it > 0 }
+                ?: durationSeconds.takeIf { it > 0 }?.times(1_000L),
+            requestHeaders = mapOf(
+                "User-Agent" to YOUTUBE_WEB_USER_AGENT,
+                "Origin" to YOUTUBE_ORIGIN,
+                "Referer" to "$YOUTUBE_ORIGIN/watch?v=$videoId",
+            ),
+            expiresAtEpochMs = streamUrl.toHttpUrlOrNull()
+                ?.queryParameter("expire")
+                ?.toLongOrNull()
+                ?.times(1_000L)
+                ?: (now + UNKNOWN_EXPIRY_TTL_MS),
+        )
+    }
     private fun org.schabi.newpipe.extractor.stream.AudioStream.toYouTubeAudioStream(
         videoId: String,
         durationSeconds: Long,
