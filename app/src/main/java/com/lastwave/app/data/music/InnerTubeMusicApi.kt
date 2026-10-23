@@ -1013,6 +1013,34 @@ class InnerTubeMusicApi @Inject constructor(
     }
 
     /**
+     * Fetches the YouTube Music Home page filtered by a mood/activity [chip].
+     * Passes the dynamic chip params from YTM's response to the browse endpoint.
+     * Uses the same authenticated/guest handling with automatic fallback to guest mode on auth failure.
+     */
+    suspend fun fetchHomeChip(chip: HomeChip): HomePage = withContext(Dispatchers.IO) {
+        val browseId = chip.browseId?.takeIf { it.isNotBlank() } ?: YT_HOME_BROWSE_ID
+        val params = chip.params?.takeIf { it.isNotBlank() }
+        val isAuth = ytAuth.connection.value.isConnected
+
+        val root = runCatching {
+            browseRoot(browseId, authenticated = isAuth, params = params)
+        }.recoverCatching { error ->
+            if (isAuth) browseRoot(browseId, authenticated = false, params = params) else throw error
+        }.getOrNull()
+
+        if (root == null) return@withContext HomePage()
+
+        val shelves = runCatching { parseHomeShelves(root) }.getOrDefault(emptyList())
+        val continuationToken = runCatching { parseHomeContinuationToken(root) }.getOrNull()
+
+        HomePage(
+            shelves = shelves,
+            chips = emptyList(),
+            continuationToken = continuationToken,
+        )
+    }
+
+    /**
      * Returns the per-play `videostatsPlaybackUrl` tracking URL for [videoId]
      * from an AUTHENTICATED `player` response, or null when there is no
      * connected account or the response carries no tracking URL.
