@@ -314,6 +314,86 @@ class FeedViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Loads the next page of shelves when scrolling near the end of Home.
+     * Enforces in-flight guard (one request at a time), stale response guard
+     * (ignores completed loads if chip or feed changed), and dedupe guard
+     * (never appends a shelf with matching title + first item id).
+     */
+    fun loadMoreHomeShelves() {
+        val state = _uiState.value
+        if (state.isLoadingMore || state.isChipLoading || state.isLoading || state.isRefreshing) return
+
+        val isChipActive = state.selectedChip != null
+        val token = if (isChipActive) {
+            state.chipContinuationToken
+        } else {
+            state.defaultContinuationToken ?: state.feedData.homeContinuationToken
+        }
+        if (token.isNullOrBlank()) return
+
+        val currentGen = requestGeneration
+        val activeChip = state.selectedChip
+        _uiState.update { it.copy(isLoadingMore = true) }
+
+        loadMoreJob?.cancel()
+        loadMoreJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val nextPage = innerTube.fetchHomeContinuation(token)
+                ensureActive()
+                if (requestGeneration != currentGen || _uiState.value.selectedChip != activeChip) return@launch
+
+                val existingShelves = if (isChipActive) {
+                    _uiState.value.chipShelves
+                } else {
+                    _uiState.value.feedData.nativeShelves + _uiState.value.pagedShelves
+                }
+                val existingKeys = existingShelves.map(::shelfFingerprint).toSet()
+
+                val newShelves = nextPage.shelves.filter { shelf ->
+                    shelf.items.isNotEmpty() && shelfFingerprint(shelf) !in existingKeys
+                }
+
+                _uiState.update { current ->
+                    if (isChipActive) {
+                        current.copy(
+                            isLoadingMore = false,
+                            chipShelves = current.chipShelves + newShelves,
+                            chipContinuationToken = nextPage.continuationToken,
+                        )
+                    } else {
+                        current.copy(
+                            isLoadingMore = false,
+                            pagedShelves = current.pagedShelves + newShelves,
+                            defaultContinuationToken = nextPage.continuationToken,
+                        )
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                ensureActive()
+                if (requestGeneration == currentGen) {
+                    _uiState.update {
+                        it.copy(
+                            isLoadingMore = false,
+                            error = appContext.getString(com.lastwave.app.R.string.feed_update_error),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun shelfFingerprint(shelf: HomeShelf): String {
+        val firstId = when (val item = shelf.items.firstOrNull()) {
+            is HomeShelfItem.Track -> item.track.videoId
+            is HomeShelfItem.Playlist -> item.playlist.id
+            null -> ""
+        }
+        return "${shelf.title.trim().lowercase()}_$firstId"
+    }
+
     fun playTrack(track: YouTubeMusicTrack, sourceLabel: String = "Feed") {
         musicPlayer.play(track.toPlayableTrack(), sourceLabel = sourceLabel, startRadio = true)
     }
