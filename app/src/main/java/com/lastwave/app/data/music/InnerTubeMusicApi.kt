@@ -986,6 +986,33 @@ class InnerTubeMusicApi @Inject constructor(
     }
 
     /**
+     * Fetches the next page of YouTube Music Home carousel shelves using [token].
+     * Returns additional shelves and the next continuation token if available.
+     * Preserves authenticated context with fallback to guest mode on auth failure.
+     */
+    suspend fun fetchHomeContinuation(token: String): HomePage = withContext(Dispatchers.IO) {
+        if (token.isBlank()) return@withContext HomePage()
+        val isAuth = ytAuth.connection.value.isConnected
+        val root = runCatching {
+            browseContinuation(token, authenticated = isAuth)
+        }.recoverCatching { error ->
+            if (isAuth) browseContinuation(token, authenticated = false) else throw error
+        }.getOrNull()
+
+        if (root == null) return@withContext HomePage()
+
+        val shelves = runCatching { parseHomeContinuationShelves(root) }.getOrDefault(emptyList())
+            .ifEmpty { runCatching { parseHomeShelves(root) }.getOrDefault(emptyList()) }
+        val nextToken = runCatching { parseHomeContinuationToken(root) }.getOrNull()
+
+        HomePage(
+            shelves = shelves,
+            chips = emptyList(),
+            continuationToken = nextToken,
+        )
+    }
+
+    /**
      * Returns the per-play `videostatsPlaybackUrl` tracking URL for [videoId]
      * from an AUTHENTICATED `player` response, or null when there is no
      * connected account or the response carries no tracking URL.
