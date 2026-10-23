@@ -365,7 +365,7 @@ class FeedViewModel @Inject constructor(
                 val feed = _uiState.value.feedData
                 val found = feed.ytSuggestedPlaylists.firstOrNull { it.title.contains("Discover Mix", ignoreCase = true) }
                     ?: feed.nativeShelves.flatMap { it.items }.filterIsInstance<com.lastwave.app.data.music.HomeShelfItem.Playlist>()
-                        .map { it.summary }.firstOrNull { it.title.contains("Discover Mix", ignoreCase = true) }
+                        .map { it.playlist }.firstOrNull { it.title.contains("Discover Mix", ignoreCase = true) }
                 playlistId = found?.id
             }
             if (playlistId.isNullOrBlank()) {

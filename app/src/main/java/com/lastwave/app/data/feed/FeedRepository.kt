@@ -14,6 +14,7 @@ import com.lastwave.app.data.model.FriendEntry
 import com.lastwave.app.data.model.RecentTrack
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.HomeShelf
+import com.lastwave.app.data.music.HomeShelfItem
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistSummary
 import com.lastwave.app.data.podcast.PodcastRepository
@@ -767,7 +768,7 @@ class FeedRepository @Inject constructor(
             // 3. Discover Mix
             val savedDiscoverMix = homePlaylists.firstOrNull { it.title.contains("Discover Mix", ignoreCase = true) }
                 ?: nativeShelves.flatMap { it.items }.filterIsInstance<HomeShelfItem.Playlist>()
-                    .map { it.summary }.firstOrNull { it.title.contains("Discover Mix", ignoreCase = true) }
+                    .map { it.playlist }.firstOrNull { it.title.contains("Discover Mix", ignoreCase = true) }
             add(savedDiscoverMix?.let {
                 FeedQuickTile(title = "Discover Mix", subtitle = it.author.takeIf { a -> !a.isNullOrBlank() } ?: "New discoveries", artworkUrl = it.artworkUrl, playlistId = it.id, collection = "discover_mix")
             } ?: FeedQuickTile(title = "Discover Mix", subtitle = "New discoveries",

@@ -246,6 +246,7 @@ import com.lastwave.app.playback.PlaybackChromeState
 import com.lastwave.app.playback.formatSampleRateKHz
 import com.lastwave.app.playback.isSpatialAudioCodec
 import com.lastwave.app.playback.qualityBadgeLabel
+import com.lastwave.app.playback.SignalPathReport
 import com.lastwave.app.playback.PlaybackProgressState
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lastwave.app.data.artwork.ArtworkNormalizer
@@ -4341,7 +4342,6 @@ glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current
     }
 }
 
-@Composable
 @Composable
 private fun PlayerUtilityControls(
     state: MusicPlayerState,

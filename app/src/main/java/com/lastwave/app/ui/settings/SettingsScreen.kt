@@ -148,6 +148,12 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -579,10 +585,6 @@ fun SettingsScreen(
     CompositionLocalProvider(
         LocalToggleDetailViewer provides { activeToggleDetail = it },
     ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.TopCenter,
-        ) {
         Column(
             Modifier
                 .fillMaxSize()
@@ -3120,6 +3122,7 @@ fun SettingsScreen(
         }
     }
 }
+}
 
 private fun appVersionName(context: android.content.Context): String = try {
     context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "4.3.1"
@@ -3271,7 +3274,6 @@ private fun SettingsToggleCard(
 
     Card(
         shape = shape,
-        enabled = enabled,
         colors = CardDefaults.cardColors(
             containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh,
             disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
@@ -3364,7 +3366,6 @@ private fun SettingsToggleCard(
 
     Card(
         shape = shape,
-        enabled = enabled,
         colors = CardDefaults.cardColors(
             containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh,
             disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
