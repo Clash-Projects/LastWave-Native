@@ -3962,10 +3962,13 @@ class InnerTubeMusicApi @Inject constructor(
     }
 
     /**
-     * Extracts the shelf title and optional strapline/subtitle from a carousel renderer header.
-     * Pattern follows YouTube Music's musicCarouselShelfBasicHeaderRenderer structure.
+     * Extracts the shelf title, optional strapline/subtitle, and the "more"
+     * chevron's browse destination from a carousel renderer header.
+     * Pattern follows YouTube Music's musicCarouselShelfBasicHeaderRenderer.
+     * The triple is (title, subtitle, moreBrowseId); subtitle folds strapline
+     * and subtitle the same way the previous Pair returned it.
      */
-    internal fun parseCarouselShelfHeader(carouselRenderer: JsonObject): Pair<String, String?>? {
+    internal fun parseCarouselShelfHeaderFull(carouselRenderer: JsonObject): Triple<String, String?, String?>? {
         val header = carouselRenderer.obj("header")?.obj("musicCarouselShelfBasicHeaderRenderer")
             ?: carouselRenderer.obj("header")?.obj("musicShelfHeaderRenderer")
             ?: return null
@@ -3980,7 +3983,19 @@ class InnerTubeMusicApi @Inject constructor(
         }?.trim()?.takeIf { it.isNotBlank() }
             ?: (header.obj("strapline") ?: header.obj("subtitle"))?.string("simpleText")?.trim()?.takeIf { it.isNotBlank() }
 
-        return title to subtitle
+        val moreBrowseId = header.obj("moreContentButton")
+            ?.obj("buttonRenderer")
+            ?.obj("navigationEndpoint")
+            ?.obj("browseEndpoint")
+            ?.string("browseId")
+            ?.takeIf { it.isNotBlank() }
+
+        return Triple(title, subtitle, moreBrowseId)
+    }
+
+    internal fun parseCarouselShelfHeader(carouselRenderer: JsonObject): Pair<String, String?>? {
+        val full = parseCarouselShelfHeaderFull(carouselRenderer) ?: return null
+        return full.first to full.second
     }
 
     /**
@@ -3992,7 +4007,10 @@ class InnerTubeMusicApi @Inject constructor(
      * Adapted from Metrolist's HomePage.Section.fromMusicCarouselShelfRenderer (GPL-3.0).
      */
     internal fun parseCarouselShelf(carouselRenderer: JsonObject): HomeShelf? {
-        val (title, subtitle) = parseCarouselShelfHeader(carouselRenderer) ?: return null
+        val headerFull = parseCarouselShelfHeaderFull(carouselRenderer) ?: return null
+        val title = headerFull.first
+        val subtitle = headerFull.second
+        val moreBrowseId = headerFull.third
         val contents = carouselRenderer.array("contents") ?: return null
         val items = mutableListOf<HomeShelfItem>()
 
@@ -4000,15 +4018,24 @@ class InnerTubeMusicApi @Inject constructor(
             val contentObj = contentElement.asObject() ?: continue
             val twoRow = contentObj.obj("musicTwoRowItemRenderer")
             if (twoRow != null) {
+                val twoRowNav = twoRow.obj("navigationEndpoint")
+                val extras = parseHomeItemExtras(twoRow, twoRowNav, ::parseSong)
                 // Check if this two-row card is a playable song
                 val song = parseTwoRowSong(twoRow)
                 if (song != null && song.videoId.isNotBlank()) {
-                    items.add(HomeShelfItem.Track(song))
+                    items.add(
+                        HomeShelfItem.Track(
+                            song,
+                            aspectRatio = extras.aspectRatio,
+                            itemType = extras.itemType,
+                            caption = extras.caption,
+                        )
+                    )
                     continue
                 }
 
                 // Otherwise check if it's a playlist or album card
-                val nav = twoRow.obj("navigationEndpoint")?.obj("browseEndpoint")
+                val nav = twoRowNav?.obj("browseEndpoint")
                     ?: twoRow.obj("title")?.array("runs")?.firstOrNull()?.asObject()?.obj("navigationEndpoint")?.obj("browseEndpoint")
                     ?: twoRow.obj("thumbnailOverlay")?.obj("musicItemThumbnailOverlayRenderer")?.obj("content")
                         ?.obj("musicPlayButtonRenderer")?.obj("playNavigationEndpoint")?.obj("watchEndpoint")
@@ -4042,7 +4069,12 @@ class InnerTubeMusicApi @Inject constructor(
                             author = author?.trim(),
                             trackCountText = trackCountText,
                             artworkUrl = artwork,
-                        )
+                        ),
+                        aspectRatio = extras.aspectRatio,
+                        itemType = extras.itemType ?: "playlist",
+                        caption = extras.caption,
+                        collageArtworkUrls = extras.collageArtworkUrls,
+                        previewSongs = extras.previewSongs,
                     )
                 )
                 continue
@@ -4088,14 +4120,21 @@ class InnerTubeMusicApi @Inject constructor(
                             author = author?.trim(),
                             trackCountText = null,
                             artworkUrl = artwork,
-                        )
+                        ),
+                        itemType = "playlist",
                     )
                 )
             }
         }
 
         if (items.isEmpty()) return null
-        return HomeShelf(title = title, subtitle = subtitle, items = items)
+        return HomeShelf(
+            title = title,
+            subtitle = subtitle,
+            items = items,
+            strapline = subtitle,
+            moreBrowseId = moreBrowseId,
+        )
     }
 
     /**
