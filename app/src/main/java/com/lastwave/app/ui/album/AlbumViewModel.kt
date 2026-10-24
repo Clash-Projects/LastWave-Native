@@ -175,6 +175,7 @@ class AlbumViewModel @Inject constructor(
         artist = artist,
         artworkUrl = artworkUrl,
         album = album,
-        url = videoId?.let { "https://music.youtube.com/watch?v=$it" }.orEmpty(),
+        url = playbackUrl?.takeIf { com.lastwave.app.data.generate.isKhInsiderUrl(it) }
+            ?: videoId?.let { "https://music.youtube.com/watch?v=$it" }.orEmpty(),
     )
 }

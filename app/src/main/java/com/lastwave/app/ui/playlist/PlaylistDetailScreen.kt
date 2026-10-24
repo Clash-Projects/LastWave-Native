@@ -126,6 +126,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.playlist.LIKED_SONGS_MODE
 import com.lastwave.app.data.playlist.LOCAL_SONGS_MODE
+import com.lastwave.app.data.generate.isDirectPlayback
 import com.lastwave.app.data.generate.isLocalFile
 import com.lastwave.app.data.playlist.SavedPlaylist
 import com.lastwave.app.data.playlist.isYouTubeOnly
@@ -1323,7 +1324,7 @@ fun PlaylistDetailScreen(
             target = TrackMenuTarget.Track(track.name, track.artist, track.url),
             capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = true),
             // Keep the file path so menu actions play / add the local copy.
-            playableTrack = track.takeIf { it.isLocalFile() }?.toPlayableTrack(),
+            playableTrack = track.takeIf { it.isDirectPlayback() }?.toPlayableTrack(),
             playbackSourceLabel = playlist.title,
             onDismiss = { menuTarget = null },
             onRemoveFromPlaylist = {

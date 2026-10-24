@@ -94,7 +94,7 @@ suspend fun List<GeneratedTrack>.pinnedWithVideoIds(
         async {
             if (track.youtubeVideoIdOrNull() != null) return@async track
             // Imported files play from disk; never swap them for a YouTube match.
-            if (track.isLocalFile()) return@async track
+            if (track.isDirectPlayback()) return@async track
             if (track.name.isBlank()) return@async null
             limiter.withPermit {
                 try {
@@ -131,7 +131,7 @@ suspend fun List<GeneratedTrack>.pinnedWithVideoIdsPreserving(
         async {
             if (track.youtubeVideoIdOrNull() != null) return@async track
             // Imported files play from disk; never swap them for a YouTube match.
-            if (track.isLocalFile()) return@async track
+            if (track.isDirectPlayback()) return@async track
             if (track.name.isBlank()) return@async track
             limiter.withPermit {
                 try {
@@ -194,6 +194,16 @@ private val YOUTUBE_VIDEO_ID_REGEX = Regex("[A-Za-z0-9_-]{11}")
  * re-pinned to a YouTube videoId, searched for, or mirrored to YouTube Music.
  */
 fun GeneratedTrack.isLocalFile(): Boolean = isLocalAudioPath(url)
+
+/** KHInsider track (khinsider://track?page=…): plays from the site, never YouTube-matched. */
+fun isKhInsiderUrl(url: String?): Boolean = url?.startsWith("khinsider://") == true
+
+/**
+ * Plays from its own source (an imported file or a KHInsider page): such rows
+ * are never re-pinned to a YouTube videoId, searched for, or mirrored to
+ * YouTube Music.
+ */
+fun GeneratedTrack.isDirectPlayback(): Boolean = isLocalFile() || isKhInsiderUrl(url)
 
 fun isLocalAudioPath(url: String?): Boolean = url != null && url.startsWith("/")
 

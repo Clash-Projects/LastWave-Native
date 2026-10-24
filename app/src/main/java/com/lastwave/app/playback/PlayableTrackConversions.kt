@@ -11,5 +11,6 @@ internal fun PlayableTrack.toGeneratedTrack() = GeneratedTrack(
     // Local songs: an imported file keeps its path so any playlist it
     // is added to plays the copy on disk instead of a YouTube search.
     url = LocalAudioFormats.importedPathOrNull(playbackUrl)
+        ?: playbackUrl?.takeIf { com.lastwave.app.data.generate.isKhInsiderUrl(it) }
         ?: videoId?.let { "https://music.youtube.com/watch?v=$it" }.orEmpty(),
 )
