@@ -1505,6 +1505,7 @@ private fun SquareItemCard(
                 fallbackIcon = Icons.Filled.MusicNote,
                 onClick = { onPlayTrack(track, shelfTitle) },
                 onLongClick = { onTrackLongClick(trackTray(track, shelfTitle, onPlayTrack)) },
+                cardWidth = com.lastwave.app.ui.feed.cards.rememberSquareCardWidth(),
             )
         }
         is HomeShelfItem.Playlist -> {
@@ -1515,6 +1516,7 @@ private fun SquareItemCard(
                 artworkUrl = p.artworkUrl,
                 fallbackIcon = Icons.AutoMirrored.Filled.QueueMusic,
                 onClick = { openPlaylistOrAlbum(p, onOpenFeedPlaylist, onOpenAlbum) },
+                cardWidth = com.lastwave.app.ui.feed.cards.rememberSquareCardWidth(),
             )
         }
     }
@@ -1538,6 +1540,7 @@ private fun WideItemCard(
                 artworkUrl = track.artworkUrl,
                 onClick = { onPlayTrack(track, shelfTitle) },
                 onLongClick = { onTrackLongClick(trackTray(track, shelfTitle, onPlayTrack)) },
+                cardWidth = com.lastwave.app.ui.feed.cards.rememberWideCardWidth(),
             )
         }
         is HomeShelfItem.Playlist -> {
@@ -1548,6 +1551,7 @@ private fun WideItemCard(
                 artworkUrl = p.artworkUrl,
                 fallbackIcon = Icons.AutoMirrored.Filled.QueueMusic,
                 onClick = { openPlaylistOrAlbum(p, onOpenFeedPlaylist, onOpenAlbum) },
+                cardWidth = com.lastwave.app.ui.feed.cards.rememberWideCardWidth(),
             )
         }
     }
@@ -1572,6 +1576,7 @@ private fun FeaturedItemCard(
                 caption = shelfItem.caption,
                 onClick = { onPlayTrack(track, shelfTitle) },
                 onLongClick = { onTrackLongClick(trackTray(track, shelfTitle, onPlayTrack)) },
+                cardWidth = com.lastwave.app.ui.feed.cards.rememberFeaturedCardWidth(),
             )
         }
         is HomeShelfItem.Playlist -> {
@@ -1583,6 +1588,7 @@ private fun FeaturedItemCard(
                 caption = shelfItem.caption,
                 fallbackIcon = Icons.AutoMirrored.Filled.QueueMusic,
                 onClick = { openPlaylistOrAlbum(p, onOpenFeedPlaylist, onOpenAlbum) },
+                cardWidth = com.lastwave.app.ui.feed.cards.rememberFeaturedCardWidth(),
             )
         }
     }
@@ -1614,6 +1620,7 @@ private fun CommunityItemCard(
         },
         onSongClick = { onPlayTrack(it, p.title) },
         onSongMenuClick = { onTrackLongClick(trackTray(it, p.title, onPlayTrack)) },
+        cardWidth = com.lastwave.app.ui.feed.cards.rememberCommunityCardWidth(),
     )
 }
 
