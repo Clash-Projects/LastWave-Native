@@ -251,6 +251,17 @@ fun FeedScreen(
                 },
             )
 
+            // Pinned YTM chip row under the app bar — stays visible while the
+            // feed scrolls beneath it. Rendered only when chips exist; its
+            // loading/filtering/selection behaviour is unchanged.
+            if (state.homeChips.isNotEmpty()) {
+                PinnedChipsBar(
+                    chips = state.homeChips,
+                    selectedChip = state.selectedChip,
+                    onChipClick = viewModel::onHomeChipSelected,
+                )
+            }
+
             PullToRefreshBox(
                 isRefreshing = state.isRefreshing,
                 onRefresh = viewModel::refresh,
@@ -427,16 +438,11 @@ fun FeedScreen(
                         }
                     }
 
-                    // YouTube Music mood/activity chips row (Relax, Energize, Workout, Commute, Focus, etc.)
-                    if (state.homeChips.isNotEmpty()) {
-                        item(key = "home_chips_row") {
-                            HomeChipsRow(
-                                chips = state.homeChips,
-                                selectedChip = state.selectedChip,
-                                onChipClick = viewModel::onHomeChipSelected,
-                            )
-                        }
-                    }
+                    // YouTube Music mood/activity chips (Relax, Energize, Workout,
+                    // ...) are pinned at the top under the app bar — see the
+                    // PinnedChipsBar rendered above the LazyColumn. Loading,
+                    // filtering and selection logic are unchanged; only the
+                    // row's position moved from between feed sections to the top.
 
                     if (state.isChipActive) {
                         if (state.isChipLoading) {
@@ -1305,6 +1311,37 @@ fun HomeChipsRow(
                 }
             }
         }
+    }
+}
+
+/**
+ * Pinned container for the YTM chip row. Sits directly under the app bar and
+ * stays visible while the feed scrolls, with a subtle gradient scrim behind
+ * it so content sliding underneath stays legible. Liquid-glass styled.
+ */
+@Composable
+private fun PinnedChipsBar(
+    chips: List<HomeChip>,
+    selectedChip: HomeChip?,
+    onChipClick: (HomeChip) -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                Brush.verticalGradient(
+                    0f to MaterialTheme.colorScheme.background.copy(alpha = 0.96f),
+                    0.7f to MaterialTheme.colorScheme.background.copy(alpha = 0.82f),
+                    1f to MaterialTheme.colorScheme.background.copy(alpha = 0f),
+                )
+            ),
+    ) {
+        HomeChipsRow(
+            chips = chips,
+            selectedChip = selectedChip,
+            onChipClick = onChipClick,
+            modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
+        )
     }
 }
 
