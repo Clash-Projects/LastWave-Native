@@ -1018,7 +1018,6 @@
     <string name="alb_tracks">ट्रैक</string>
     <string name="alb_empty">अभी इस एल्बम के लिए कोई ट्रैक सूचीबद्ध नहीं है - बाद में पुनः प्रयास करें।</string>
     <string name="alb_load_fail">एल्बम विवरण लोड करने में विफल</string>
-    <string name="alb_save_fail">एल्बम सहेजा नहीं जा सका. पुनः प्रयास करें।</string>
     <string name="nr_title">नई रिलीज़</string>
     <string name="nr_sub">ताज़ी बूँदें ढूँढ़ें</string>
     <string name="nr_load_fail">नई रिलीज़ लोड नहीं की जा सकीं</string>

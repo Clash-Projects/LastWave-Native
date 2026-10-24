@@ -3,7 +3,11 @@ package com.lastwave.app.ui.artist
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lastwave.app.data.favorites.FavoriteItem
+import com.lastwave.app.data.favorites.FavoriteKind
+import com.lastwave.app.data.favorites.FavoritesRepository
 import com.lastwave.app.data.model.ArtistPageData
+import kotlinx.coroutines.flow.combine
 import com.lastwave.app.data.repository.ArtistRepository
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.PlayableTrack
@@ -41,6 +45,7 @@ class ArtistViewModel @Inject constructor(
     private val mixLauncher: MixLauncher,
     private val settingsPreferences: SettingsPreferences,
     private val canvasRepository: CanvasRepository,
+    private val favoritesRepository: FavoritesRepository,
 ) : ViewModel() {
 
     val settings: StateFlow<MiscSettings> = settingsPreferences.settings
@@ -51,6 +56,19 @@ class ArtistViewModel @Inject constructor(
 
     private val _artistCanvas = MutableStateFlow<CanvasArtwork?>(null)
     val artistCanvas: StateFlow<CanvasArtwork?> = _artistCanvas.asStateFlow()
+
+    private fun ArtistPageData.toFavorite() =
+        FavoriteItem(title = name, browseId = browseId, artworkUrl = artworkUrl ?: fallbackArtworkUrl)
+
+    val isFavorite: StateFlow<Boolean> = combine(_uiState, favoritesRepository.favorites(FavoriteKind.ARTIST)) { state, favorites ->
+        val artist = (state as? ArtistUiState.Success)?.data?.toFavorite() ?: return@combine false
+        favorites.any { it.matches(artist) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    fun toggleFavorite() {
+        val data = (_uiState.value as? ArtistUiState.Success)?.data ?: return
+        viewModelScope.launch { favoritesRepository.toggle(FavoriteKind.ARTIST, data.toFavorite()) }
+    }
 
     private var currentArtistName: String = ""
     private var currentBrowseId: String? = null

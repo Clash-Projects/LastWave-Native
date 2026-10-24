@@ -1014,7 +1014,6 @@
     <string name="alb_tracks">트랙</string>
     <string name="alb_empty">지금은 이 앨범에 나열된 트랙이 없습니다. 나중에 다시 시도하세요.</string>
     <string name="alb_load_fail">앨범 세부정보를 로드하지 못했습니다.</string>
-    <string name="alb_save_fail">앨범을 저장할 수 없습니다. 다시 시도해 보세요.</string>
     <string name="nr_title">새로운 릴리스</string>
     <string name="nr_sub">신선한 방울을 찾아보세요</string>
     <string name="nr_load_fail">새 릴리스를 로드할 수 없습니다.</string>
