@@ -1376,10 +1376,20 @@ private fun HomeShelfCard(
             val tracksInShelf = remember(shelf.items) {
                 shelf.items.mapNotNull { (it as? HomeShelfItem.Track)?.track }
             }
+            // "More" only when the shelf's destination is a playlist/album id
+            // the app already knows how to open; mood/genre/chart browse ids
+            // aren't supported surfaces, so the chevron stays hidden for them.
+            val morePlaylistId = remember(shelf.moreBrowseId) {
+                shelf.moreBrowseId
+                    ?.removePrefix("VL")
+                    ?.takeIf { it.startsWith("PL") || it.startsWith("MPRE") || it.startsWith("RD") || it.startsWith("OLAK") }
+            }
             com.lastwave.app.ui.feed.cards.ShelfHeaderV2(
                 title = shelf.title,
                 eyebrow = shelf.strapline,
                 subtitle = shelf.subtitle,
+                showMore = morePlaylistId != null,
+                onMoreClick = morePlaylistId?.let { { onOpenFeedPlaylist(it) } },
                 onPlayAll = if (tracksInShelf.isNotEmpty()) {
                     { onPlayTracksQueue(tracksInShelf, 0, shelf.title) }
                 } else null,
@@ -1389,15 +1399,25 @@ private fun HomeShelfCard(
             )
             FeedMediaRow(
                 content = {
-                    itemsIndexed(shelf.items) { _, shelfItem ->
-                        NativeShelfItemCard(
-                            shelfItem = shelfItem,
-                            shelfTitle = shelf.title,
-                            onPlayTrack = onPlayTrack,
-                            onOpenFeedPlaylist = onOpenFeedPlaylist,
-                            onOpenAlbum = onOpenAlbum,
-                            onTrackLongClick = onTrackLongClick,
-                        )
+                    itemsIndexed(
+                        shelf.items,
+                        key = { _, item ->
+                            when (item) {
+                                is HomeShelfItem.Track -> "t_${item.track.videoId}"
+                                is HomeShelfItem.Playlist -> "p_${item.playlist.id}"
+                            }
+                        },
+                    ) { _, shelfItem ->
+                        Box(Modifier.animateItem()) {
+                            NativeShelfItemCard(
+                                shelfItem = shelfItem,
+                                shelfTitle = shelf.title,
+                                onPlayTrack = onPlayTrack,
+                                onOpenFeedPlaylist = onOpenFeedPlaylist,
+                                onOpenAlbum = onOpenAlbum,
+                                onTrackLongClick = onTrackLongClick,
+                            )
+                        }
                     }
                 },
             )
