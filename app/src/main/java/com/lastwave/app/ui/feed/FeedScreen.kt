@@ -1310,6 +1310,8 @@ fun HomeChipsRow(
 
 /**
  * Reusable surface card for a YouTube Music carousel shelf.
+ * Renders each item through the card system (square / wide / featured /
+ * community) chosen from the item's real YTM data, falling back to square.
  * Used for page-1 native shelves, continuation paged shelves, and chip shelves.
  */
 @Composable
@@ -1335,72 +1337,247 @@ private fun HomeShelfCard(
             val tracksInShelf = remember(shelf.items) {
                 shelf.items.mapNotNull { (it as? HomeShelfItem.Track)?.track }
             }
-            FeedSectionHeader(
+            com.lastwave.app.ui.feed.cards.ShelfHeaderV2(
                 title = shelf.title,
+                eyebrow = shelf.strapline,
                 subtitle = shelf.subtitle,
-                actionText = if (tracksInShelf.isNotEmpty()) stringResource(R.string.feed_play_all) else null,
-                actionIcon = if (tracksInShelf.isNotEmpty()) Icons.Filled.PlayArrow else null,
-                onActionClick = if (tracksInShelf.isNotEmpty()) {
+                onPlayAll = if (tracksInShelf.isNotEmpty()) {
                     { onPlayTracksQueue(tracksInShelf, 0, shelf.title) }
                 } else null,
-                onShuffleClick = if (tracksInShelf.isNotEmpty()) {
+                onShuffle = if (tracksInShelf.isNotEmpty()) {
                     { onShuffleTracksQueue(tracksInShelf, shelf.title) }
                 } else null,
             )
             FeedMediaRow(
                 content = {
                     itemsIndexed(shelf.items) { _, shelfItem ->
-                        when (shelfItem) {
-                            is HomeShelfItem.Track -> {
-                                val track = shelfItem.track
-                                FeedMediaCard(
-                                    title = track.title,
-                                    subtitle = ArtistHelper.primaryArtist(track.artist),
-                                    artworkUrl = track.artworkUrl,
-                                    fallbackIcon = Icons.Filled.MusicNote,
-                                    onClick = { onPlayTrack(track, shelf.title) },
-                                    onLongClick = {
-                                        onTrackLongClick(
-                                            TrackMiniTrayData(
-                                                title = track.title,
-                                                artist = track.artist,
-                                                album = track.album,
-                                                artworkUrl = track.artworkUrl,
-                                                videoId = track.videoId.takeIf(String::isNotBlank),
-                                                sourceLabel = "Home",
-                                                onPlay = { onPlayTrack(track, shelf.title) },
-                                            ),
-                                        )
-                                    },
-                                    onPlayClick = { onPlayTrack(track, shelf.title) },
-                                )
-                            }
-                            is HomeShelfItem.Playlist -> {
-                                val playlist = shelfItem.playlist
-                                FeedMediaCard(
-                                    title = playlist.title,
-                                    subtitle = playlist.author ?: playlist.trackCountText.orEmpty(),
-                                    artworkUrl = playlist.artworkUrl,
-                                    fallbackIcon = Icons.AutoMirrored.Filled.QueueMusic,
-                                    onClick = {
-                                        if (playlist.id.startsWith("MPRE")) {
-                                            onOpenAlbum(
-                                                playlist.title,
-                                                playlist.author.orEmpty(),
-                                                playlist.id,
-                                            )
-                                        } else {
-                                            onOpenFeedPlaylist(playlist.id)
-                                        }
-                                    },
-                                )
-                            }
-                        }
+                        NativeShelfItemCard(
+                            shelfItem = shelfItem,
+                            shelfTitle = shelf.title,
+                            onPlayTrack = onPlayTrack,
+                            onOpenFeedPlaylist = onOpenFeedPlaylist,
+                            onOpenAlbum = onOpenAlbum,
+                            onTrackLongClick = onTrackLongClick,
+                        )
                     }
                 },
             )
         }
     }
+}
+
+/**
+ * Dispatches a single shelf item to its card variant based on the real YTM
+ * data (aspect ratio, caption, community preview songs). Unknown shapes fall
+ * back to the square card. Calls the same play/open/menu handlers as before.
+ */
+@Composable
+private fun NativeShelfItemCard(
+    shelfItem: HomeShelfItem,
+    shelfTitle: String,
+    onPlayTrack: (YouTubeMusicTrack, String) -> Unit,
+    onOpenFeedPlaylist: (String) -> Unit,
+    onOpenAlbum: (title: String, artist: String, browseId: String) -> Unit,
+    onTrackLongClick: (TrackMiniTrayData) -> Unit,
+) {
+    when (val variant = com.lastwave.app.ui.feed.cards.selectCardVariant(shelfItem)) {
+        com.lastwave.app.ui.feed.cards.HomeCardVariant.WIDE -> WideItemCard(
+            shelfItem = shelfItem,
+            shelfTitle = shelfTitle,
+            onPlayTrack = onPlayTrack,
+            onOpenFeedPlaylist = onOpenFeedPlaylist,
+            onOpenAlbum = onOpenAlbum,
+            onTrackLongClick = onTrackLongClick,
+        )
+        com.lastwave.app.ui.feed.cards.HomeCardVariant.FEATURED -> FeaturedItemCard(
+            shelfItem = shelfItem,
+            shelfTitle = shelfTitle,
+            onPlayTrack = onPlayTrack,
+            onOpenFeedPlaylist = onOpenFeedPlaylist,
+            onOpenAlbum = onOpenAlbum,
+            onTrackLongClick = onTrackLongClick,
+        )
+        com.lastwave.app.ui.feed.cards.HomeCardVariant.COMMUNITY -> {
+            val item = shelfItem as? HomeShelfItem.Playlist ?: return
+            CommunityItemCard(
+                item = item,
+                shelfTitle = shelfTitle,
+                onPlayTrack = onPlayTrack,
+                onOpenFeedPlaylist = onOpenFeedPlaylist,
+                onOpenAlbum = onOpenAlbum,
+                onTrackLongClick = onTrackLongClick,
+            )
+        }
+        else -> SquareItemCard(
+            shelfItem = shelfItem,
+            shelfTitle = shelfTitle,
+            onPlayTrack = onPlayTrack,
+            onOpenFeedPlaylist = onOpenFeedPlaylist,
+            onOpenAlbum = onOpenAlbum,
+            onTrackLongClick = onTrackLongClick,
+        )
+    }
+}
+
+/** Builds the track mini-tray payload used by every card's long-press. */
+private fun trackTray(track: YouTubeMusicTrack, shelfTitle: String, onPlayTrack: (YouTubeMusicTrack, String) -> Unit) =
+    TrackMiniTrayData(
+        title = track.title,
+        artist = track.artist,
+        album = track.album,
+        artworkUrl = track.artworkUrl,
+        videoId = track.videoId.takeIf(String::isNotBlank),
+        sourceLabel = "Home",
+        onPlay = { onPlayTrack(track, shelfTitle) },
+    )
+
+private fun playlistInfoLine(p: com.lastwave.app.data.music.YouTubePlaylistSummary): String =
+    listOfNotNull(
+        p.author,
+        p.trackCountText,
+    ).joinToString(" • ").ifBlank { p.author.orEmpty() }
+
+private fun openPlaylistOrAlbum(
+    playlist: com.lastwave.app.data.music.YouTubePlaylistSummary,
+    onOpenFeedPlaylist: (String) -> Unit,
+    onOpenAlbum: (title: String, artist: String, browseId: String) -> Unit,
+) {
+    if (playlist.id.startsWith("MPRE")) {
+        onOpenAlbum(playlist.title, playlist.author.orEmpty(), playlist.id)
+    } else {
+        onOpenFeedPlaylist(playlist.id)
+    }
+}
+
+@Composable
+private fun SquareItemCard(
+    shelfItem: HomeShelfItem,
+    shelfTitle: String,
+    onPlayTrack: (YouTubeMusicTrack, String) -> Unit,
+    onOpenFeedPlaylist: (String) -> Unit,
+    onOpenAlbum: (title: String, artist: String, browseId: String) -> Unit,
+    onTrackLongClick: (TrackMiniTrayData) -> Unit,
+) {
+    when (shelfItem) {
+        is HomeShelfItem.Track -> {
+            val track = shelfItem.track
+            com.lastwave.app.ui.feed.cards.ShelfSquareCard(
+                title = track.title,
+                infoLine = ArtistHelper.primaryArtist(track.artist),
+                artworkUrl = track.artworkUrl,
+                fallbackIcon = Icons.Filled.MusicNote,
+                onClick = { onPlayTrack(track, shelfTitle) },
+                onLongClick = { onTrackLongClick(trackTray(track, shelfTitle, onPlayTrack)) },
+            )
+        }
+        is HomeShelfItem.Playlist -> {
+            val p = shelfItem.playlist
+            com.lastwave.app.ui.feed.cards.ShelfSquareCard(
+                title = p.title,
+                infoLine = playlistInfoLine(p),
+                artworkUrl = p.artworkUrl,
+                fallbackIcon = Icons.AutoMirrored.Filled.QueueMusic,
+                onClick = { openPlaylistOrAlbum(p, onOpenFeedPlaylist, onOpenAlbum) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun WideItemCard(
+    shelfItem: HomeShelfItem,
+    shelfTitle: String,
+    onPlayTrack: (YouTubeMusicTrack, String) -> Unit,
+    onOpenFeedPlaylist: (String) -> Unit,
+    onOpenAlbum: (title: String, artist: String, browseId: String) -> Unit,
+    onTrackLongClick: (TrackMiniTrayData) -> Unit,
+) {
+    when (shelfItem) {
+        is HomeShelfItem.Track -> {
+            val track = shelfItem.track
+            com.lastwave.app.ui.feed.cards.ShelfWideCard(
+                title = track.title,
+                infoLine = ArtistHelper.primaryArtist(track.artist),
+                artworkUrl = track.artworkUrl,
+                onClick = { onPlayTrack(track, shelfTitle) },
+                onLongClick = { onTrackLongClick(trackTray(track, shelfTitle, onPlayTrack)) },
+            )
+        }
+        is HomeShelfItem.Playlist -> {
+            val p = shelfItem.playlist
+            com.lastwave.app.ui.feed.cards.ShelfWideCard(
+                title = p.title,
+                infoLine = playlistInfoLine(p),
+                artworkUrl = p.artworkUrl,
+                fallbackIcon = Icons.AutoMirrored.Filled.QueueMusic,
+                onClick = { openPlaylistOrAlbum(p, onOpenFeedPlaylist, onOpenAlbum) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun FeaturedItemCard(
+    shelfItem: HomeShelfItem,
+    shelfTitle: String,
+    onPlayTrack: (YouTubeMusicTrack, String) -> Unit,
+    onOpenFeedPlaylist: (String) -> Unit,
+    onOpenAlbum: (title: String, artist: String, browseId: String) -> Unit,
+    onTrackLongClick: (TrackMiniTrayData) -> Unit,
+) {
+    when (shelfItem) {
+        is HomeShelfItem.Track -> {
+            val track = shelfItem.track
+            com.lastwave.app.ui.feed.cards.ShelfFeaturedCard(
+                title = track.title,
+                artist = ArtistHelper.primaryArtist(track.artist),
+                artworkUrl = track.artworkUrl,
+                caption = shelfItem.caption,
+                onClick = { onPlayTrack(track, shelfTitle) },
+                onLongClick = { onTrackLongClick(trackTray(track, shelfTitle, onPlayTrack)) },
+            )
+        }
+        is HomeShelfItem.Playlist -> {
+            val p = shelfItem.playlist
+            com.lastwave.app.ui.feed.cards.ShelfFeaturedCard(
+                title = p.title,
+                artist = playlistInfoLine(p),
+                artworkUrl = p.artworkUrl,
+                caption = shelfItem.caption,
+                fallbackIcon = Icons.AutoMirrored.Filled.QueueMusic,
+                onClick = { openPlaylistOrAlbum(p, onOpenFeedPlaylist, onOpenAlbum) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun CommunityItemCard(
+    item: HomeShelfItem.Playlist,
+    shelfTitle: String,
+    onPlayTrack: (YouTubeMusicTrack, String) -> Unit,
+    onOpenFeedPlaylist: (String) -> Unit,
+    onOpenAlbum: (title: String, artist: String, browseId: String) -> Unit,
+    onTrackLongClick: (TrackMiniTrayData) -> Unit,
+) {
+    val p = item.playlist
+    com.lastwave.app.ui.feed.cards.ShelfCommunityPlaylistCard(
+        title = p.title,
+        subtitle = playlistInfoLine(p),
+        collageUrls = item.collageArtworkUrls,
+        songs = item.previewSongs,
+        artworkUrl = p.artworkUrl,
+        onClick = { openPlaylistOrAlbum(p, onOpenFeedPlaylist, onOpenAlbum) },
+        onPlayClick = {
+            if (item.previewSongs.isNotEmpty()) {
+                onPlayTrack(item.previewSongs.first(), p.title)
+            } else {
+                openPlaylistOrAlbum(p, onOpenFeedPlaylist, onOpenAlbum)
+            }
+        },
+        onSongClick = { onPlayTrack(it, p.title) },
+        onSongMenuClick = { onTrackLongClick(trackTray(it, p.title, onPlayTrack)) },
+    )
 }
 
 @Composable
