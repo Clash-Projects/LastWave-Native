@@ -1527,6 +1527,7 @@ private fun SquareItemCard(
                 fallbackIcon = Icons.Filled.MusicNote,
                 onClick = { onPlayTrack(track, shelfTitle) },
                 onLongClick = { onTrackLongClick(trackTray(track, shelfTitle, onPlayTrack)) },
+                onPlayClick = { onPlayTrack(track, shelfTitle) },
                 cardWidth = com.lastwave.app.ui.feed.cards.rememberSquareCardWidth(),
             )
         }
@@ -1562,6 +1563,7 @@ private fun WideItemCard(
                 artworkUrl = track.artworkUrl,
                 onClick = { onPlayTrack(track, shelfTitle) },
                 onLongClick = { onTrackLongClick(trackTray(track, shelfTitle, onPlayTrack)) },
+                onPlayClick = { onPlayTrack(track, shelfTitle) },
                 cardWidth = com.lastwave.app.ui.feed.cards.rememberWideCardWidth(),
             )
         }
