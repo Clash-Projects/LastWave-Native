@@ -446,14 +446,16 @@ fun FeedScreen(
 
                     if (state.isChipActive) {
                         if (state.isChipLoading) {
-                            item(key = "chip_loading") {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 48.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    ExpressiveLoadingIndicator()
+                            // Card-shaped shimmer placeholders that mirror the
+                            // native shelf layout the chip page will render.
+                            item(key = "chip_loading_skeleton") {
+                                Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                                    com.lastwave.app.ui.feed.cards.ShelfSquareSkeletonRow(
+                                        cardWidth = com.lastwave.app.ui.feed.cards.rememberSquareCardWidth(),
+                                    )
+                                    com.lastwave.app.ui.feed.cards.ShelfWideSkeletonRow(
+                                        cardWidth = com.lastwave.app.ui.feed.cards.rememberWideCardWidth(),
+                                    )
                                 }
                             }
                         } else {
