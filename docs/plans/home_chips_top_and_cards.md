@@ -46,11 +46,27 @@ video/wide items.
    - `HomeCardVariant.kt` — enum + pure `selectCardVariant(item)` + tests.
    - `ShelfSquareCard.kt`, `ShelfWideCard.kt`, `ShelfFeaturedCard.kt`,
      `ShelfCommunityPlaylistCard.kt`, `ShelfHeaderV2.kt`.
-5. `ui/feed/FeedScreen.kt` — move `HomeChipsRow` into a pinned glass row under
-   the app bar (sticky via a Box above the LazyColumn); render native shelves
-   through the new card system; keep synthetic sections untouched.
-6. Chip/community enrichment — when a Playlist shelf item has community songs,
-   render `ShelfCommunityPlaylistCard`.
-7. Tests — `HomeShelfVariantTest.kt`, parser extras tests.
-8. Skeleton loaders shaped like real cards; responsiveness via
-   `rememberWindowSizeClass` + `adaptiveContentWidth`.
+5. `ui/feed/FeedScreen.kt` — move `HomeChipsRow` into `PinnedChipsBar` under
+   the app bar (sticky above the LazyColumn); render native shelves through
+   the card system; keep synthetic sections untouched.
+6. Chip/community enrichment — when a Playlist shelf item has community
+   preview songs / collage, render `ShelfCommunityPlaylistCard`.
+7. Tests — `HomeCardVariantTest.kt`, `HomeShelfExtrasTest.kt`.
+8. Skeleton loaders shaped like real cards (`ShelfCardSkeletons.kt`);
+   responsive widths via `CardSizing.kt`.
+
+## Result
+
+- Chips pinned under app bar; mid-feed chip item removed. Behaviour unchanged.
+- Native shelves dispatch per-item through `selectCardVariant()` -> square /
+  wide / featured / community; unknown shapes fall back to square.
+- Shelf header v2 renders strapline eyebrow + subtitle + more-chevron (only
+  when the destination is a playlist/album the app already opens) + Play all.
+- Side-by-side APK: `app-cardtest.apk` (applicationId `com.lastwave.app.cardtest`).
+
+## Known limitation
+
+- `musicCardShelfRenderer` / `musicPlaylistShelfRenderer` only appear on
+  logged-in Home responses; guest feeds are all `musicTwoRowItemRenderer`.
+  Featured/community variants therefore engage mainly on signed-in feeds —
+  which is also where YTM shows them.
