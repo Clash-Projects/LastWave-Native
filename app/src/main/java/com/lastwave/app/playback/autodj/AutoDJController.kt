@@ -61,11 +61,11 @@ sealed interface AutoDJStatus {
 @Singleton
 class AutoDJController @Inject constructor(
     private val nativeEngine: NativeAutoDJEngine,
-    private val streamResolver: StreamResolveCoordinator,
     private val settingsPreferences: SettingsPreferences,
 ) {
     private var host: AutoDJPlaybackHost? = null
     private var scope: CoroutineScope? = null
+    private var streamResolver: StreamResolveCoordinator? = null
 
     private val trackStages = ConcurrentHashMap<String, TrackLifecycleStage>()
     private val retryCounts = ConcurrentHashMap<String, Int>()
@@ -78,9 +78,14 @@ class AutoDJController @Inject constructor(
     var isEnabled: Boolean = true
         private set
 
-    fun attachHost(host: AutoDJPlaybackHost, scope: CoroutineScope) {
+    fun attachHost(
+        host: AutoDJPlaybackHost,
+        scope: CoroutineScope,
+        streamResolver: StreamResolveCoordinator,
+    ) {
         this.host = host
         this.scope = scope
+        this.streamResolver = streamResolver
         scope.launch {
             settingsPreferences.settings.collect { settings ->
                 isEnabled = settings.autoDJEnabled
@@ -246,11 +251,12 @@ class AutoDJController @Inject constructor(
         trackStages[key] = TrackLifecycleStage.RESOLVING
         _status.value = AutoDJStatus.Resolving(track.title, index, attempt)
 
+        val resolver = streamResolver ?: return
         val job = coroutineScope.launch(Dispatchers.IO) {
             val startMs = SystemClock.elapsedRealtime()
             try {
                 Log.d(TAG, "[PREFETCH_START] index=$index title='${track.title}' attempt=$attempt")
-                streamResolver.prefetchNext(identity, track.durationMs) { cacheEntry ->
+                resolver.prefetchNext(identity, track.durationMs) { cacheEntry ->
                     val elapsedMs = SystemClock.elapsedRealtime() - startMs
                     nativeEngine.recordLatency(elapsedMs, wasSuccess = true)
 
@@ -289,12 +295,13 @@ class AutoDJController @Inject constructor(
         val upcomingKey = upcomingTrack.mediaIdKey()
         if (getTrackStage(upcomingKey) != TrackLifecycleStage.QUEUED || inFlightJobs[upcomingKey]?.isActive == true) return
         val identity = upcomingTrack.playbackIdentity() ?: return
+        val resolver = streamResolver ?: return
 
         val coroutineScope = scope ?: return
         val job = coroutineScope.launch(Dispatchers.IO) {
             try {
                 Log.d(TAG, "[WARM_PREFETCH_START] index=$upcomingIndex title='${upcomingTrack.title}'")
-                streamResolver.prefetchNext(identity, upcomingTrack.durationMs) { cacheEntry ->
+                resolver.prefetchNext(identity, upcomingTrack.durationMs) { cacheEntry ->
                     val resolvedStream = cacheEntry.toPlayerStream()
                     trackStages[upcomingKey] = TrackLifecycleStage.RESOLVED
                     host?.registerResolvedStream(upcomingIndex, upcomingTrack, resolvedStream)

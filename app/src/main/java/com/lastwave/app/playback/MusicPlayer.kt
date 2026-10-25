@@ -1732,7 +1732,7 @@ class MusicPlayer @Inject constructor(
     }
 
     init {
-        autoDJController.get().attachHost(autoDJHost, applicationScope)
+        autoDJController.get().attachHost(autoDJHost, applicationScope, streamResolver)
         setupSpatializerListener()
         runCatching { restorePlaybackSession() }.getOrElse { error ->
             // A corrupt session or OEM media-stack failure must not become a
