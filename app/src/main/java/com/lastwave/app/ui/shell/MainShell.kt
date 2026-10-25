@@ -231,10 +231,12 @@ fun MainShell(
     onOpenPodcasts: () -> Unit = {},
     onOpenPodcastShow: (String) -> Unit = {},
     onOpenYouTubeLogin: () -> Unit = {},
+    onReturnToHome: () -> Boolean = { false },
     mainShellViewModel: MainShellViewModel = hiltViewModel(),
 ) {
     val tabs = MainTab.entries
     val pagerState = rememberPagerState(pageCount = { tabs.size })
+    val feedTapEvents = remember { kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     // Drive the dock selection from an explicit tab index instead of
@@ -365,6 +367,7 @@ fun MainShell(
                         onOpenDownloads = onOpenDownloads,
                         onOpenPodcasts = onOpenPodcasts,
                         onOpenPodcastShow = onOpenPodcastShow,
+                        feedTapEvents = feedTapEvents,
                     )
                     MainTab.STATS -> HomeScreen(
                         onOpenSettings = onOpenSettings,
@@ -457,8 +460,23 @@ fun MainShell(
 
         val currentSelectedIndex by androidx.compose.runtime.rememberUpdatedState(selectedTabIndex)
         val currentOnSelect by androidx.compose.runtime.rememberUpdatedState { index: Int ->
-            if (index != selectedTabIndex) selectedTabIndex = index
-            scope.launch { pagerState.animateScrollToPage(index) }
+            if (tabs[index] == MainTab.FEED) {
+                val wasOnDetail = onReturnToHome()
+                if (wasOnDetail) {
+                    if (selectedTabIndex != feedIndex) selectedTabIndex = feedIndex
+                    scope.launch { pagerState.scrollToPage(feedIndex) }
+                    return@rememberUpdatedState
+                }
+                if (pagerState.currentPage != feedIndex) {
+                    if (selectedTabIndex != feedIndex) selectedTabIndex = feedIndex
+                    scope.launch { pagerState.scrollToPage(feedIndex) }
+                    return@rememberUpdatedState
+                }
+                feedTapEvents.tryEmit(Unit)
+            } else {
+                if (index != selectedTabIndex) selectedTabIndex = index
+                scope.launch { pagerState.animateScrollToPage(index) }
+            }
             Unit
         }
         val currentOnOpenGenerator by androidx.compose.runtime.rememberUpdatedState(onOpenGenerator)

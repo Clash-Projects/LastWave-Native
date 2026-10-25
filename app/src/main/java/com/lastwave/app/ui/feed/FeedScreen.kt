@@ -1,5 +1,6 @@
 package com.lastwave.app.ui.feed
 
+import androidx.activity.compose.BackHandler
 import com.lastwave.app.playback.toPlayableTrack
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.animation.core.RepeatMode
@@ -85,8 +86,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.flow.SharedFlow
+import com.lastwave.app.ui.navigation.FEED_TAP_DEBOUNCE_MS
+import com.lastwave.app.ui.navigation.FeedTapAction
+import com.lastwave.app.ui.navigation.resolveFeedTapAction
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -166,10 +172,14 @@ fun FeedScreen(
     onOpenNewReleases: () -> Unit = {},
     onOpenPodcasts: () -> Unit = {},
     onOpenPodcastShow: (String) -> Unit = {},
+    feedTapEvents: SharedFlow<Unit>? = null,
     viewModel: FeedViewModel = hiltViewModel(),
     artistAlbumNavigator: ArtistAlbumNavigator = hiltViewModel<ArtistAlbumNavBridgeFeed>().navigator,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    BackHandler(enabled = state.selectedChip != null) {
+        viewModel.selectChip(null)
+    }
     val discoveryTracks by viewModel.discoveryTracks.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, viewModel) {
@@ -201,6 +211,56 @@ fun FeedScreen(
     }
     val showSynthetic = !state.isChipActive
     val listState = rememberLazyListState()
+    var lastFeedTapMillis by remember { mutableLongStateOf(0L) }
+    var isFeedTapRefreshing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(state.isRefreshing) {
+        if (!state.isRefreshing) {
+            isFeedTapRefreshing = false
+        }
+    }
+
+    LaunchedEffect(feedTapEvents) {
+        feedTapEvents?.collect {
+            val now = System.currentTimeMillis()
+            val isAtTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+            val isChipSelected = state.selectedChip != null
+            val isRefreshing = state.isRefreshing || isFeedTapRefreshing
+
+            val action = resolveFeedTapAction(
+                isChipSelected = isChipSelected,
+                isAtTop = isAtTop,
+                isOnHomeFeed = true,
+                isRefreshing = isRefreshing,
+                nowMs = now,
+                lastTapMs = lastFeedTapMillis,
+                debounceMs = FEED_TAP_DEBOUNCE_MS,
+            )
+
+            when (action) {
+                FeedTapAction.DeselectChipAndRefresh -> {
+                    lastFeedTapMillis = now
+                    isFeedTapRefreshing = true
+                    viewModel.selectChip(null)
+                    listState.animateScrollToItem(0)
+                    viewModel.refresh()
+                }
+                FeedTapAction.ScrollTopAndRefresh -> {
+                    lastFeedTapMillis = now
+                    isFeedTapRefreshing = true
+                    listState.animateScrollToItem(0)
+                    viewModel.refresh()
+                }
+                FeedTapAction.RefreshOnly -> {
+                    lastFeedTapMillis = now
+                    isFeedTapRefreshing = true
+                    viewModel.refresh()
+                }
+                FeedTapAction.NavigateToFeed,
+                FeedTapAction.Ignore -> { /* ignored */ }
+            }
+        }
+    }
     val shouldLoadMore by remember(listState) {
         derivedStateOf {
             val total = listState.layoutInfo.totalItemsCount
