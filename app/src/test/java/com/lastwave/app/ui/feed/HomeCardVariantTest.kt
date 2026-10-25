@@ -2,6 +2,9 @@ package com.lastwave.app.ui.feed.cards
 
 import com.google.common.truth.Truth.assertThat
 import com.lastwave.app.data.music.HomeShelfItem
+import com.lastwave.app.data.music.HomeShelf
+import com.lastwave.app.data.music.HomeCardData
+import com.lastwave.app.data.music.HomePlayAllButton
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistSummary
 import org.junit.Test
@@ -45,38 +48,41 @@ class HomeCardVariantTest {
     }
 
     @Test
-    fun captionSelectsFeatured() {
+    fun captionAloneDoesNotSelectFeatured() {
         assertThat(selectCardVariant(track(caption = "Because you liked X")))
-            .isEqualTo(HomeCardVariant.FEATURED)
+            .isEqualTo(HomeCardVariant.SQUARE)
     }
 
     @Test
-    fun previewSongsOrCollageSelectsCommunity() {
+    fun previewSongsOrCollageAloneDoNotSelectCommunity() {
         val song = YouTubeMusicTrack("s1", "T", "A")
         assertThat(selectCardVariant(playlist(songs = listOf(song))))
-            .isEqualTo(HomeCardVariant.COMMUNITY)
+            .isEqualTo(HomeCardVariant.SQUARE)
         assertThat(selectCardVariant(playlist(collage = listOf("u1", "u2"))))
-            .isEqualTo(HomeCardVariant.COMMUNITY)
+            .isEqualTo(HomeCardVariant.SQUARE)
     }
 
     @Test
-    fun communityBeatsWideAndFeatured() {
+    fun wideStaysWideWithoutCommunityEndpointEvidence() {
         val song = YouTubeMusicTrack("s1", "T", "A")
         val item = playlist(
             aspect = "MUSIC_TWO_ROW_ITEM_THUMBNAIL_ASPECT_RATIO_RECTANGLE_16_9",
             caption = "cap",
             songs = listOf(song),
         )
-        assertThat(selectCardVariant(item)).isEqualTo(HomeCardVariant.COMMUNITY)
+        assertThat(selectCardVariant(item)).isEqualTo(HomeCardVariant.WIDE)
     }
 
     @Test
-    fun isFeaturedShelfOnlyWhenAllFeatured() {
-        assertThat(
-            isFeaturedShelf(listOf(track(caption = "c"), track(caption = "d")))
-        ).isTrue()
-        assertThat(isFeaturedShelf(listOf(track(), track(caption = "c")))).isFalse()
-        assertThat(isFeaturedShelf(emptyList())).isFalse()
+    fun isFeaturedShelfRequiresSongRenderersAndHeaderEndpoint() {
+        val item = track(aspect = "MUSIC_TWO_ROW_ITEM_THUMBNAIL_ASPECT_RATIO_SQUARE")
+            .copy(cardData = HomeCardData(isTwoRow = true, watchVideoId = "v1"))
+        val shelf = HomeShelf("Any title", items = listOf(item), playAllButton = HomePlayAllButton("Play all", "v1"))
+        assertThat(isFeaturedShelf(shelf)).isTrue()
+        assertThat(selectCardVariant(item, shelf)).isEqualTo(HomeCardVariant.FEATURED)
+        assertThat(selectCardVariant(item)).isEqualTo(HomeCardVariant.SQUARE)
+        assertThat(isFeaturedShelf(shelf.copy(playAllButton = null))).isFalse()
+        assertThat(isFeaturedShelf(shelf.copy(items = emptyList()))).isFalse()
     }
 
     @Test

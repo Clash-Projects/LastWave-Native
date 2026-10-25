@@ -558,6 +558,8 @@ fun FeedScreen(
                                         onOpenFeedPlaylist = onOpenFeedPlaylist,
                                         onOpenAlbum = { title, artist, id -> artistAlbumNavigator.openAlbum(title, artist, id) },
                                         onTrackLongClick = { tray -> miniTrayTrack = tray },
+                                        onPlayPlaylist = viewModel::playPlaylistSummary,
+                                        onTrackMenu = { menuTrack = it },
                                     )
                                 }
                             }
@@ -574,6 +576,8 @@ fun FeedScreen(
                                     onOpenFeedPlaylist = onOpenFeedPlaylist,
                                     onOpenAlbum = { title, artist, id -> artistAlbumNavigator.openAlbum(title, artist, id) },
                                     onTrackLongClick = { tray -> miniTrayTrack = tray },
+                                    onPlayPlaylist = viewModel::playPlaylistSummary,
+                                    onTrackMenu = { menuTrack = it },
                                 )
                             }
                         }
@@ -1114,6 +1118,8 @@ fun FeedScreen(
                                     onOpenFeedPlaylist = onOpenFeedPlaylist,
                                     onOpenAlbum = { title, artist, id -> artistAlbumNavigator.openAlbum(title, artist, id) },
                                     onTrackLongClick = { tray -> miniTrayTrack = tray },
+                                    onPlayPlaylist = viewModel::playPlaylistSummary,
+                                    onTrackMenu = { menuTrack = it },
                                 )
                             }
                         }
@@ -1483,9 +1489,24 @@ private fun HomeShelfCard(
     onOpenFeedPlaylist: (String) -> Unit,
     onOpenAlbum: (title: String, artist: String, browseId: String) -> Unit,
     onTrackLongClick: (TrackMiniTrayData) -> Unit,
+    onPlayPlaylist: (com.lastwave.app.data.music.YouTubePlaylistSummary) -> Unit,
+    onTrackMenu: (YouTubeMusicTrack) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (shelf.items.isEmpty()) return
+    if (com.lastwave.app.data.music.isDailyDiscoverShelf(shelf) ||
+        shelf.items.any { com.lastwave.app.data.music.isCommunityPlaylistItem(it) }) {
+        CommunityDiscoverShelf(
+            shelf = shelf, onPlayTrack = onPlayTrack, onPlayTracksQueue = onPlayTracksQueue,
+            onPlayPlaylist = onPlayPlaylist, onOpenPlaylist = onOpenFeedPlaylist,
+            onTrackMenu = onTrackMenu,
+            onTrackLongClick = { onTrackLongClick(trackTray(it, shelf.title, onPlayTrack)) },
+            modifier = modifier,
+        ) { item ->
+            NativeShelfItemCard(item, shelf.title, onPlayTrack, onOpenFeedPlaylist, onOpenAlbum, onTrackLongClick)
+        }
+        return
+    }
     Surface(
         modifier = modifier
             .fillMaxWidth()

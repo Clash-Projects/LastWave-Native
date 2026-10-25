@@ -551,6 +551,13 @@ class InnerTubeMusicApi @Inject constructor(
             ?: parseSongRenderers(root).firstNotNullOfOrNull { it.artworkUrl?.takeIf(String::isNotBlank) }
     }
 
+    /** A single authenticated browse for visible community cards; no playlist pagination. */
+    suspend fun fetchPlaylistPreview(playlistId: String): PlaylistPreview? = withContext(Dispatchers.IO) {
+        val id = playlistId.removePrefix("VL").trim()
+        if (id.isEmpty()) return@withContext null
+        parsePlaylistPreview(browseRoot("VL$id", authenticated = ytAuth.connection.value.isConnected))
+    }
+
     private suspend fun fetchPlaylistRoot(browseId: String): Pair<JsonElement, Boolean>? {
         val isLiked = com.lastwave.app.data.playlist.PlaylistImportManager.isYtLikedId(browseId)
         if (ytAuth.connection.value.isConnected) {
@@ -4020,6 +4027,7 @@ class InnerTubeMusicApi @Inject constructor(
             if (twoRow != null) {
                 val twoRowNav = twoRow.obj("navigationEndpoint")
                 val extras = parseHomeItemExtras(twoRow, twoRowNav, ::parseSong)
+                val cardData = parseHomeCardData(twoRow)
                 // Check if this two-row card is a playable song
                 val song = parseTwoRowSong(twoRow)
                 if (song != null && song.videoId.isNotBlank()) {
@@ -4029,6 +4037,7 @@ class InnerTubeMusicApi @Inject constructor(
                             aspectRatio = extras.aspectRatio,
                             itemType = extras.itemType,
                             caption = extras.caption,
+                            cardData = cardData,
                         )
                     )
                     continue
@@ -4075,6 +4084,7 @@ class InnerTubeMusicApi @Inject constructor(
                         caption = extras.caption,
                         collageArtworkUrls = extras.collageArtworkUrls,
                         previewSongs = extras.previewSongs,
+                        cardData = cardData,
                     )
                 )
                 continue
@@ -4134,6 +4144,8 @@ class InnerTubeMusicApi @Inject constructor(
             items = items,
             strapline = subtitle,
             moreBrowseId = moreBrowseId,
+            playAllButton = parseHomePlayAllButton(carouselRenderer),
+            sourceItemCount = contents.size,
         )
     }
 
