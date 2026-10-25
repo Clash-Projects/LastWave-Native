@@ -173,6 +173,7 @@ fun FeedScreen(
     onOpenPodcasts: () -> Unit = {},
     onOpenPodcastShow: (String) -> Unit = {},
     feedTapEvents: SharedFlow<Unit>? = null,
+    isOnHomeFeed: Boolean = true,
     viewModel: FeedViewModel = hiltViewModel(),
     artistAlbumNavigator: ArtistAlbumNavigator = hiltViewModel<ArtistAlbumNavBridgeFeed>().navigator,
 ) {
@@ -230,7 +231,7 @@ fun FeedScreen(
             val action = resolveFeedTapAction(
                 isChipSelected = isChipSelected,
                 isAtTop = isAtTop,
-                isOnHomeFeed = true,
+                isOnHomeFeed = isOnHomeFeed,
                 isRefreshing = isRefreshing,
                 nowMs = now,
                 lastTapMs = lastFeedTapMillis,

@@ -125,6 +125,8 @@ import com.lastwave.app.ui.common.PredictiveBackScreen
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.feed.FeedScreen
 import com.lastwave.app.ui.home.HomeScreen
+import com.lastwave.app.ui.navigation.FeedTapAction
+import com.lastwave.app.ui.navigation.resolveFeedTapAction
 import com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance
 import com.lastwave.app.ui.playlist.PlaylistScreen
 import androidx.compose.foundation.shape.CornerBasedShape
@@ -215,6 +217,7 @@ private val PillShape: Shape = CircleShape
 
 private fun <T> navSpring() = ExpressiveMotion.spatialSpring<T>()
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @Composable
 fun MainShell(
     onOpenSettings: () -> Unit,
@@ -236,7 +239,7 @@ fun MainShell(
 ) {
     val tabs = MainTab.entries
     val pagerState = rememberPagerState(pageCount = { tabs.size })
-    val feedTapEvents = remember { kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
+    val feedTapEvents = remember { kotlinx.coroutines.flow.MutableSharedFlow<Unit>(replay = 0, extraBufferCapacity = 0) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     // Drive the dock selection from an explicit tab index instead of
@@ -368,6 +371,7 @@ fun MainShell(
                         onOpenPodcasts = onOpenPodcasts,
                         onOpenPodcastShow = onOpenPodcastShow,
                         feedTapEvents = feedTapEvents,
+                        isOnHomeFeed = isCurrent,
                     )
                     MainTab.STATS -> HomeScreen(
                         onOpenSettings = onOpenSettings,
@@ -462,16 +466,23 @@ fun MainShell(
         val currentOnSelect by androidx.compose.runtime.rememberUpdatedState { index: Int ->
             if (tabs[index] == MainTab.FEED) {
                 val wasOnDetail = onReturnToHome()
-                if (wasOnDetail) {
+                val isFeedTab = pagerState.currentPage == feedIndex
+                val isOnHomeFeed = !wasOnDetail && isFeedTab
+
+                val action = resolveFeedTapAction(
+                    isChipSelected = false,
+                    isAtTop = true,
+                    isOnHomeFeed = isOnHomeFeed,
+                    isRefreshing = false,
+                )
+
+                if (action == FeedTapAction.NavigateToFeed) {
                     if (selectedTabIndex != feedIndex) selectedTabIndex = feedIndex
                     scope.launch { pagerState.scrollToPage(feedIndex) }
+                    feedTapEvents.resetReplayCache()
                     return@rememberUpdatedState
                 }
-                if (pagerState.currentPage != feedIndex) {
-                    if (selectedTabIndex != feedIndex) selectedTabIndex = feedIndex
-                    scope.launch { pagerState.scrollToPage(feedIndex) }
-                    return@rememberUpdatedState
-                }
+
                 feedTapEvents.tryEmit(Unit)
             } else {
                 if (index != selectedTabIndex) selectedTabIndex = index

@@ -61,7 +61,6 @@ fun resolveFeedTapAction(
     debounceMs: Long = FEED_TAP_DEBOUNCE_MS,
 ): FeedTapAction {
     val isOnHomeFeed = currentDestination == "feed" ||
-        currentDestination == Screen.MainShell.route ||
         currentDestination == "main_shell/feed"
     return resolveFeedTapAction(
         isChipSelected = isChipSelected,
