@@ -90,6 +90,8 @@
     <string name="settings_backup_sub">Enregistre toutes les données dans un fichier</string>
     <string name="settings_restore">Restaurer</string>
     <string name="settings_restore_sub">Charge une sauvegarde ou un JSON de playlist</string>
+    <string name="settings_sync">Synchroniser avec un fichier</string>
+    <string name="settings_sync_sub">Fusionne dans les deux sens avec un fichier de sauvegarde partagé avec LastWave Desktop</string>
 
     <string name="settings_section_about">À propos</string>
     <string name="settings_updates_support">Mises à jour et assistance</string>
@@ -848,6 +850,8 @@
     <string name="toast_sync_fail">Échec de la synchronisation de la playlist : %1$s</string>
     <string name="toast_synced">Playlist(s) %1$d synchronisée(s) à partir du JSON local</string>
     <string name="toast_restored">Liste(s) de lecture %1$d restaurée(s)%2$s</string>
+    <string name="toast_file_sync_ok">Synchronisé : %1$d playlist(s), %2$d exclusion(s)</string>
+    <string name="toast_file_sync_fail">Échec de la synchro : %1$s</string>
     <string name="toast_newer_backup">Cette sauvegarde a été réalisée avec une version plus récente de LastWave</string>
     <string name="toast_not_backup">Ce fichier ne ressemble pas à une sauvegarde LastWave</string>
     <string name="toast_not_json">Il ne s\'agit pas d\'une sauvegarde LastWave ou d\'une playlist JSON.</string>

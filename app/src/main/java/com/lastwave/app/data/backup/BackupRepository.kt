@@ -1,5 +1,6 @@
 package com.lastwave.app.data.backup
 
+import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -13,7 +14,9 @@ import com.lastwave.app.data.local.db.SavedPlaylistEntity
 import com.lastwave.app.data.local.db.RecommendationExclusionDao
 import com.lastwave.app.data.local.db.RecommendationExclusionEntity
 import com.lastwave.app.data.local.readSafely
+import com.lastwave.app.data.playlist.LIKED_SONGS_MODE
 import com.lastwave.app.data.playlist.PlaylistPublicMirror
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -122,6 +125,7 @@ sealed interface BackupCheck {
  */
 @Singleton
 class BackupRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val dataStore: DataStore<Preferences>,
     private val playlistDao: SavedPlaylistDao,
     private val recommendationExclusionDao: RecommendationExclusionDao,
@@ -288,6 +292,88 @@ class BackupRepository @Inject constructor(
         }
     }
 
+    /**
+     * Two-way sync through a backup file shared with LastWave Desktop (see
+     * [BackupMerge]). The merged file goes to [writeFile] first: if that
+     * fails nothing changed. Only then are playlists and exclusions replaced
+     * here and the merged file kept as the next sync's base. Settings are
+     * never touched; the file carries this phone's own (minus credentials),
+     * so a plain restore of it still works.
+     */
+    suspend fun sync(
+        content: String,
+        appVersionName: String,
+        writeFile: suspend (String) -> Unit,
+    ): RestoreResult {
+        val remote = try {
+            json.decodeFromString<BackupFile>(content)
+        } catch (e: Exception) {
+            return RestoreResult.InvalidFile
+        }
+        if (remote.type != BACKUP_TYPE) return RestoreResult.InvalidFile
+        if (remote.schemaVersion > SCHEMA_VERSION) return RestoreResult.UnsupportedSchema
+        if (runCatching { remote.playlists.forEach(BackupMerge::tracksOf) }.isFailure) {
+            return RestoreResult.InvalidFile
+        }
+        val baseFile = java.io.File(context.filesDir, SYNC_BASE_FILE)
+        val base = runCatching {
+            baseFile.takeIf { it.exists() }?.let { json.decodeFromString<BackupFile>(it.readText()) }
+        }.getOrNull()
+        val local = json.decodeFromString<BackupFile>(buildBackup(appVersionName))
+        val merged = BackupMerge.merge(base, local, remote)
+        val output = json.encodeToString(
+            local.copy(
+                createdAt = System.currentTimeMillis(),
+                playlists = merged.playlists,
+                recommendationExclusions = merged.exclusions,
+            ),
+        )
+        writeFile(output)
+
+        val previousPlaylists = playlistDao.getAll()
+        val previousExclusions = recommendationExclusionDao.getAll()
+        // Liked Songs keeps this phone's row id (the YouTube Music mirror maps it).
+        val likedId = previousPlaylists.firstOrNull { it.mode == LIKED_SONGS_MODE }?.id
+        return try {
+            playlistDao.replaceAll(merged.playlists.map { p ->
+                SavedPlaylistEntity(
+                    id = if (p.mode == LIKED_SONGS_MODE && likedId != null) likedId else p.id,
+                    title = p.title,
+                    subtitle = p.subtitle,
+                    mode = p.mode,
+                    tracksJson = p.tracksJson,
+                    createdAtMillis = p.createdAtMillis,
+                    discoverSignature = p.discoverSignature,
+                    customCoverUri = p.customCoverUri,
+                    isPinned = p.isPinned,
+                )
+            })
+            recommendationExclusionDao.clear()
+            recommendationExclusionDao.upsertAll(
+                merged.exclusions.map {
+                    RecommendationExclusionEntity(
+                        trackKey = it.trackKey,
+                        excludedAtMillis = it.excludedAtMillis,
+                        trackName = it.trackName,
+                        artistName = it.artistName,
+                    )
+                },
+            )
+            playlistPublicMirror.writeFromDatabase()
+            baseFile.writeText(output)
+            RestoreResult.Success(merged.playlists.size, merged.exclusions.size)
+        } catch (e: Exception) {
+            try {
+                playlistDao.replaceAll(previousPlaylists)
+                recommendationExclusionDao.clear()
+                recommendationExclusionDao.upsertAll(previousExclusions)
+            } catch (rollbackError: Exception) {
+                // Nothing more we can safely do; the file is merely ahead.
+            }
+            RestoreResult.Failed(e.message ?: "Sync failed")
+        }
+    }
+
     private suspend fun rollback(snapshotJson: String) {
         val snapshot = json.decodeFromString<BackupFile>(snapshotJson)
         dataStore.edit { mutablePrefs ->
@@ -307,6 +393,8 @@ class BackupRepository @Inject constructor(
     }
 
     private companion object {
+        /** The shared file as this phone last synced it: the merge's common ancestor. */
+        const val SYNC_BASE_FILE = "backup_sync_base.json"
         const val GUEST_MODE_PREFERENCE = "lw_guest_mode"
         val AUTH_PREFERENCE_NAMES = listOf(
             "lw_apikey",

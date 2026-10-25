@@ -96,6 +96,7 @@ import com.lastwave.app.util.BatteryOptimizationHelper
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Contrast
@@ -570,6 +571,12 @@ fun SettingsScreen(
         if (uri != null) {
             viewModel.handleRestorePicked(uri)
         }
+    }
+
+    // Same "*/*" reasoning as restoreLauncher; OpenDocument also grants write
+    // access, which the sync needs to put the merged file back.
+    val syncLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.syncWithFile(uri, appVersionName(context))
     }
 
     val csvPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -2110,7 +2117,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_backup))
-                    SettingsGroup(rowCount = 2) { index, position ->
+                    SettingsGroup(rowCount = 3) { index, position ->
                         when (index) {
                             0 -> SettingsActionCard(
                                 icon = Icons.Filled.Backup,
@@ -2137,6 +2144,19 @@ fun SettingsScreen(
                                 },
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "backup.restore"),
+                            )
+                            2 -> SettingsActionCard(
+                                icon = Icons.Filled.Sync,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.settings_sync),
+                                subtitle = stringResource(R.string.settings_sync_sub),
+                                onClick = {
+                                    runCatching { syncLauncher.launch(arrayOf("*/*")) }
+                                        .onFailure { viewModel.showToast(context.getString(R.string.toast_no_picker)) }
+                                },
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "backup.sync"),
                             )
                         }
                     }

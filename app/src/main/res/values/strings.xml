@@ -157,6 +157,8 @@
     <string name="settings_backup_sub">Save all your data to a file</string>
     <string name="settings_restore">Restore</string>
     <string name="settings_restore_sub">Load a backup or playlist JSON</string>
+    <string name="settings_sync">Sync with file</string>
+    <string name="settings_sync_sub">Merge both ways with a backup file shared with LastWave Desktop</string>
 
     <string name="settings_section_about">About</string>
     <string name="settings_updates_support">Updates &amp; Support</string>
@@ -921,6 +923,8 @@
     <string name="toast_sync_fail">Playlist sync failed: %1$s</string>
     <string name="toast_synced">Synced %1$d playlist(s) from local JSON</string>
     <string name="toast_restored">Restored %1$d playlist(s)%2$s</string>
+    <string name="toast_file_sync_ok">Synced: %1$d playlist(s), %2$d exclusion(s)</string>
+    <string name="toast_file_sync_fail">Sync failed: %1$s</string>
     <string name="toast_newer_backup">This backup was made with a newer version of LastWave</string>
     <string name="toast_not_backup">That file doesn\'t look like a LastWave backup</string>
     <string name="toast_not_json">That isn\'t a LastWave backup or playlist JSON</string>
