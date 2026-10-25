@@ -2145,38 +2145,6 @@ private fun FeedMediaCard(
                     }
                 }
             }
-            if (onPlayClick != null) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    shadowElevation = 6.dp,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 8.dp, bottom = 8.dp)
-                        .size(38.dp)
-                        .combinedClickable(
-                            onClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onPlayClick()
-                            },
-                            onLongClick = onLongClick?.let { tray ->
-                                {
-                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    tray()
-                                }
-                            },
-                        ),
-                ) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Filled.PlayArrow,
-                            contentDescription = stringResource(R.string.feed_play_title_cd, title),
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
-            }
         }
         Spacer(Modifier.height(CardTokens.coverToTextGap))
         CardTextArea(title = title, infoLine = subtitle)
