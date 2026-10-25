@@ -1,22 +1,11 @@
-/*
- * FeaturedCard: big square cover with gradient scrim, title+artist at top,
- * 3-dot menu top-right, optional italic caption at the bottom.
- * Used for YTM's big featured cards ("Your daily discover").
- */
 package com.lastwave.app.ui.feed.cards
 
+import android.animation.ValueAnimator
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
@@ -24,29 +13,31 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.lastwave.app.ui.common.ArtworkImage
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 
-/**
- * Large featured square card: full-bleed cover, dark gradient scrim at the
- * bottom, title + artist overlaid at the top, a 3-dot affordance at the top
- * right, and an optional italic caption (YTM "Because you liked X") at the
- * bottom. Sized to snap in a horizontal pager-style row.
- */
+/** Full-bleed daily song card. A caption is shown only when supplied by the response. */
 @Composable
 fun ShelfFeaturedCard(
     title: String,
@@ -58,118 +49,63 @@ fun ShelfFeaturedCard(
     onLongClick: (() -> Unit)? = null,
     onMenuClick: (() -> Unit)? = null,
     fallbackIcon: ImageVector = Icons.Filled.MusicNote,
-    cardWidth: Dp = 200.dp,
+    cardWidth: Dp = 330.dp,
+    isVisible: Boolean = true,
 ) {
+    val context = LocalContext.current
+    val inspection = LocalInspectionMode.current
+    var started by rememberSaveable(title, artworkUrl) { mutableStateOf(false) }
+    var imageReady by remember(artworkUrl) { mutableStateOf(false) }
+    val scale = remember(title, artworkUrl) { Animatable(if (started || inspection) 1f else 1.12f) }
+    LaunchedEffect(isVisible, imageReady, title, artworkUrl) {
+        if (started) {
+            scale.snapTo(1f)
+        } else if (isVisible && imageReady) {
+            started = true
+            if (inspection || !ValueAnimator.areAnimatorsEnabled()) scale.snapTo(1f)
+            else scale.animateTo(1f, tween(6000, easing = LinearOutSlowInEasing))
+        }
+    }
     Box(
-        modifier = modifier
-            .width(cardWidth)
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(22.dp))
-            .cardPressable(onClick = onClick, onLongClick = onLongClick),
+        modifier.width(cardWidth).aspectRatio(1f).clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .cardPressable(onClick = onClick, onLongClick = onLongClick)
+            .semantics { contentDescription = "Play $title, $artist" },
     ) {
-        CardArtwork(
-            title = title,
-            subtitle = artist,
-            artworkUrl = artworkUrl,
-            fallbackIcon = fallbackIcon,
-            modifier = Modifier.fillMaxSize(),
-            cornerRadius = 22.dp,
+        Icon(fallbackIcon, null, Modifier.size(64.dp).align(Alignment.Center),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        AsyncImage(
+            model = remember(artworkUrl, context) {
+                ImageRequest.Builder(context).data(artworkUrl).size(544).crossfade(200).build()
+            },
+            contentDescription = null, contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize().graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+            },
+            onSuccess = { imageReady = true },
         )
-
-        // Bottom gradient scrim for text legibility.
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(cardWidth * 0.55f)
-                .align(Alignment.BottomCenter)
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color.Transparent,
-                        1f to Color.Black.copy(alpha = 0.72f),
-                    )
-                )
-        )
-        // Top gradient for the title/menu row.
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(cardWidth * 0.4f)
-                .align(Alignment.TopCenter)
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.55f),
-                        1f to Color.Transparent,
-                    )
-                )
-        )
-
-        // Title + artist at top-left, 3-dot at top-right.
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopStart)
-                .padding(start = 14.dp, top = 12.dp, end = 4.dp),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(end = 40.dp),
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = 17.sp,
-                        lineHeight = 20.sp,
-                    ),
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color.White,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (artist.isNotBlank()) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = artist,
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                        color = Color.White.copy(alpha = 0.88f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+        Box(Modifier.fillMaxWidth().fillMaxHeight(0.5f).align(Alignment.TopCenter)
+            .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.76f), Color.Transparent))))
+        Box(Modifier.fillMaxWidth().fillMaxHeight(0.46f).align(Alignment.BottomCenter)
+            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)))))
+        Row(Modifier.fillMaxWidth().align(Alignment.TopStart).padding(start = 16.dp, top = 10.dp, end = 4.dp),
+            verticalAlignment = Alignment.Top) {
+            Column(Modifier.weight(1f).padding(top = 6.dp)) {
+                Text(title, fontSize = 17.sp, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold,
+                    color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(3.dp))
+                Text(artist, fontSize = 14.sp, lineHeight = 20.sp, color = Color.White.copy(alpha = 0.76f),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (onMenuClick != null) {
-                Surface(
-                    shape = CircleShape,
-                    color = Color.Black.copy(alpha = 0.42f),
-                    modifier = Modifier.align(Alignment.TopEnd),
-                ) {
-                    IconButton(onClick = onMenuClick, modifier = Modifier.size(34.dp)) {
-                        Icon(
-                            Icons.Filled.MoreVert,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(19.dp),
-                        )
-                    }
-                }
+            if (onMenuClick != null) IconButton(onClick = onMenuClick, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Filled.MoreVert, "More options for $title", Modifier.size(23.dp), tint = Color.White)
             }
         }
-
-        // Optional italic caption at the bottom.
-        if (!caption.isNullOrBlank()) {
-            Text(
-                text = caption,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontSize = 12.sp,
-                    fontStyle = FontStyle.Italic,
-                ),
-                color = Color.White.copy(alpha = 0.92f),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 14.dp, end = 14.dp, bottom = 12.dp),
-            )
-        }
+        if (!caption.isNullOrBlank()) Text(
+            caption, fontSize = 13.sp, lineHeight = 18.sp, fontStyle = FontStyle.Italic,
+            color = Color.White.copy(alpha = 0.92f), maxLines = 2, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
+        )
     }
 }

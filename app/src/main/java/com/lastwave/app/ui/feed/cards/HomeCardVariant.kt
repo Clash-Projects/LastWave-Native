@@ -6,6 +6,9 @@
 package com.lastwave.app.ui.feed.cards
 
 import com.lastwave.app.data.music.HomeShelfItem
+import com.lastwave.app.data.music.HomeShelf
+import com.lastwave.app.data.music.isCommunityPlaylistItem
+import com.lastwave.app.data.music.isDailyDiscoverShelf
 import com.lastwave.app.data.music.isWideAspect
 
 /** Visual variants supported by the native shelf card system. */
@@ -22,10 +25,11 @@ enum class HomeCardVariant {
 
 /**
  * Picks the card variant for a single shelf item from its real fields.
- * Order matters: community (rich playlist) wins over wide, which wins over
- * featured, which wins over square.
+ * Community requires a playlist and user-channel author endpoint. Daily cards
+ * additionally require the shelf's Play all watch endpoint; captions are not evidence.
  */
-fun selectCardVariant(item: HomeShelfItem): HomeCardVariant {
+fun selectCardVariant(item: HomeShelfItem, shelf: HomeShelf? = null): HomeCardVariant {
+    if (shelf != null && isDailyDiscoverShelf(shelf) && item in shelf.items) return HomeCardVariant.FEATURED
     return when (item) {
         is HomeShelfItem.Playlist -> selectPlaylistVariant(item)
         is HomeShelfItem.Track -> selectTrackVariant(item)
@@ -33,27 +37,22 @@ fun selectCardVariant(item: HomeShelfItem): HomeCardVariant {
 }
 
 private fun selectPlaylistVariant(item: HomeShelfItem.Playlist): HomeCardVariant {
-    // Collage + song rows only when YTM supplied the extra data.
-    if (item.previewSongs.isNotEmpty() || item.collageArtworkUrls.size >= 2) {
+    if (isCommunityPlaylistItem(item)) {
         return HomeCardVariant.COMMUNITY
     }
     if (isWideAspect(item.aspectRatio)) return HomeCardVariant.WIDE
-    if (!item.caption.isNullOrBlank()) return HomeCardVariant.FEATURED
     return HomeCardVariant.SQUARE
 }
 
 private fun selectTrackVariant(item: HomeShelfItem.Track): HomeCardVariant {
     if (isWideAspect(item.aspectRatio)) return HomeCardVariant.WIDE
-    if (!item.caption.isNullOrBlank()) return HomeCardVariant.FEATURED
     return HomeCardVariant.SQUARE
 }
 
 /**
- * Returns true when every item in a shelf resolves to [HomeCardVariant.FEATURED]
- * — the big snapping "Your daily discover"-style carousel.
+ * The header and renderer evidence together identify a daily-discover carousel.
  */
-fun isFeaturedShelf(items: List<HomeShelfItem>): Boolean =
-    items.isNotEmpty() && items.all { selectCardVariant(it) == HomeCardVariant.FEATURED }
+fun isFeaturedShelf(shelf: HomeShelf): Boolean = isDailyDiscoverShelf(shelf)
 
 /** True when the shelf's items are playable tracks (drives the "Play all" pill). */
 fun shelfIsPlayableTracks(items: List<HomeShelfItem>): Boolean =
