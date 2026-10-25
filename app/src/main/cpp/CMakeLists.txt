@@ -50,6 +50,10 @@ add_library(
     DspProcessor.cpp
     ParametricEq.cpp
     ParametricEqBridge.cpp
+    AutoMixEngine.cpp
+    AutoMixBridge.cpp
+    WsolaTimeStretcher.cpp
+    BpmPhaseDetector.cpp
     NativeBridge.cpp
     SecretsBridge.cpp
 )
