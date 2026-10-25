@@ -30,12 +30,16 @@ sealed interface HomeShelfItem {
     val caption: String?
         get() = null
 
+    val cardData: HomeCardData?
+        get() = null
+
     @Immutable
     data class Track(
         val track: YouTubeMusicTrack,
         override val aspectRatio: String? = null,
         override val itemType: String? = null,
         override val caption: String? = null,
+        override val cardData: HomeCardData? = null,
     ) : HomeShelfItem
 
     @Immutable
@@ -47,6 +51,7 @@ sealed interface HomeShelfItem {
         /** Collage covers + preview song rows when the shelf carries them. */
         val collageArtworkUrls: List<String> = emptyList(),
         val previewSongs: List<YouTubeMusicTrack> = emptyList(),
+        override val cardData: HomeCardData? = null,
     ) : HomeShelfItem
 }
 
@@ -63,4 +68,7 @@ data class HomeShelf(
     val strapline: String? = null,
     /** Browse endpoint id for the shelf's "more" chevron, when YTM provides one. */
     val moreBrowseId: String? = null,
+    val playAllButton: HomePlayAllButton? = null,
+    /** Includes unsupported source items, so a partially parsed shelf cannot qualify as daily. */
+    val sourceItemCount: Int? = null,
 )

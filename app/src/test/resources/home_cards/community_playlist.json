@@ -1,0 +1,456 @@
+{
+  "header": {
+    "musicResponsiveHeaderRenderer": {
+      "thumbnail": {
+        "musicThumbnailRenderer": {
+          "thumbnail": {
+            "thumbnails": [
+              {
+                "url": "https://i.ytimg.com/vi/hrYwGItueA8/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3maUyJPZc9DHP-FRZxK5S0CVCFHcA",
+                "width": 400,
+                "height": 225
+              },
+              {
+                "url": "https://i.ytimg.com/vi/hrYwGItueA8/hq720.jpg?sqp=-oaymwEKCKAGEMIDIABIWg&rs=AMzJL3kSmjyYgswXPO7NrNE3MfzLefjElw",
+                "width": 800,
+                "height": 450
+              },
+              {
+                "url": "https://i.ytimg.com/vi/hrYwGItueA8/hq720.jpg?sqp=-oaymwEKCNUGEN8DIABIWg&rs=AMzJL3klR6xQ8h4kfQTCKHt_rt2xnTmUfQ",
+                "width": 853,
+                "height": 479
+              }
+            ]
+          }
+        }
+      },
+      "title": {
+        "runs": [
+          {
+            "text": "Dev mamledar band Satana 🎹🎹🎹🥁🔥👑"
+          }
+        ]
+      },
+      "subtitle": {
+        "runs": [
+          {
+            "text": "Playlist"
+          },
+          {
+            "text": " • "
+          },
+          {
+            "text": "2025"
+          }
+        ]
+      },
+      "secondSubtitle": {
+        "runs": [
+          {
+            "text": "141K views"
+          },
+          {
+            "text": " • "
+          },
+          {
+            "text": "13 tracks"
+          },
+          {
+            "text": " • "
+          },
+          {
+            "text": "58 minutes"
+          }
+        ]
+      }
+    }
+  },
+  "contents": [
+    {
+      "musicPlaylistShelfRenderer": {
+        "contents": [
+          {
+            "musicResponsiveListItemRenderer": {
+              "thumbnail": {
+                "musicThumbnailRenderer": {
+                  "thumbnail": {
+                    "thumbnails": [
+                      {
+                        "url": "https://i.ytimg.com/vi/hrYwGItueA8/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3maUyJPZc9DHP-FRZxK5S0CVCFHcA",
+                        "width": 400,
+                        "height": 225
+                      }
+                    ]
+                  }
+                }
+              },
+              "flexColumns": [
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {
+                      "runs": [
+                        {
+                          "text": "Nath Bhagavya Kafanivala | नाथ भगव्या कफनी वाला By Shree Dev Mamledar Brass Band Satana New Gadi",
+                          "navigationEndpoint": {
+                            "watchEndpoint": {
+                              "videoId": "hrYwGItueA8",
+                              "playlistId": "PLuqftEWxk5wrRcg5B0bAW-0XQ12QF8sDP"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {
+                      "runs": [
+                        {
+                          "text": "SACHIN KHILLARI 🇮🇳",
+                          "navigationEndpoint": {
+                            "browseEndpoint": {
+                              "browseId": "UCEjhkoEmU0o9F0yRIUaKQ7A",
+                              "browseEndpointContextSupportedConfigs": {
+                                "browseEndpointContextMusicConfig": {
+                                  "pageType": "MUSIC_PAGE_TYPE_USER_CHANNEL"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {
+                      "runs": [
+                        {
+                          "text": "3:53"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {}
+                  }
+                }
+              ],
+              "playlistItemData": {
+                "videoId": "hrYwGItueA8"
+              }
+            }
+          },
+          {
+            "musicResponsiveListItemRenderer": {
+              "thumbnail": {
+                "musicThumbnailRenderer": {
+                  "thumbnail": {
+                    "thumbnails": [
+                      {
+                        "url": "https://i.ytimg.com/vi/TYTO-pbz3ZE/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3m5j3-ivQp5CP0Q-h9h-9yFKYErsA",
+                        "width": 400,
+                        "height": 225
+                      }
+                    ]
+                  }
+                }
+              },
+              "flexColumns": [
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {
+                      "runs": [
+                        {
+                          "text": "Shakuntala Bai Song | शकुंतला बाई ग | Gaadi Wale Dada By Shree Dev Mamledar Brass Band Satana",
+                          "navigationEndpoint": {
+                            "watchEndpoint": {
+                              "videoId": "TYTO-pbz3ZE",
+                              "playlistId": "PLuqftEWxk5wrRcg5B0bAW-0XQ12QF8sDP"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {
+                      "runs": [
+                        {
+                          "text": "SACHIN KHILLARI 🇮🇳",
+                          "navigationEndpoint": {
+                            "browseEndpoint": {
+                              "browseId": "UCEjhkoEmU0o9F0yRIUaKQ7A",
+                              "browseEndpointContextSupportedConfigs": {
+                                "browseEndpointContextMusicConfig": {
+                                  "pageType": "MUSIC_PAGE_TYPE_USER_CHANNEL"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {
+                      "runs": [
+                        {
+                          "text": "3:07"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {}
+                  }
+                }
+              ],
+              "playlistItemData": {
+                "videoId": "TYTO-pbz3ZE"
+              }
+            }
+          },
+          {
+            "musicResponsiveListItemRenderer": {
+              "thumbnail": {
+                "musicThumbnailRenderer": {
+                  "thumbnail": {
+                    "thumbnails": [
+                      {
+                        "url": "https://i.ytimg.com/vi/hnJ9rRxJr8c/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3mO9CVgtQqEntfqTDcj7zu50QYbBA",
+                        "width": 400,
+                        "height": 225
+                      }
+                    ]
+                  }
+                }
+              },
+              "flexColumns": [
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {
+                      "runs": [
+                        {
+                          "text": "🕰️घडीना काटा गर गर फिरे पार्ट ✌️| Performance By 🎷Shree Dev Mamledar Brass Band Satana 🥁✨",
+                          "navigationEndpoint": {
+                            "watchEndpoint": {
+                              "videoId": "hnJ9rRxJr8c",
+                              "playlistId": "PLuqftEWxk5wrRcg5B0bAW-0XQ12QF8sDP"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {
+                      "runs": [
+                        {
+                          "text": "Pratik Kapate",
+                          "navigationEndpoint": {
+                            "browseEndpoint": {
+                              "browseId": "UCEaf4Za6mKbvFX1sWmipRiw",
+                              "browseEndpointContextSupportedConfigs": {
+                                "browseEndpointContextMusicConfig": {
+                                  "pageType": "MUSIC_PAGE_TYPE_USER_CHANNEL"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {
+                      "runs": [
+                        {
+                          "text": "7:34"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {}
+                  }
+                }
+              ],
+              "playlistItemData": {
+                "videoId": "hnJ9rRxJr8c"
+              }
+            }
+          },
+          {
+            "musicResponsiveListItemRenderer": {
+              "thumbnail": {
+                "musicThumbnailRenderer": {
+                  "thumbnail": {
+                    "thumbnails": [
+                      {
+                        "url": "https://i.ytimg.com/vi/aQMJEUWyWqI/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3kBiCk-UC0gpeZ0arjDe9fGveKhRQ",
+                        "width": 400,
+                        "height": 225
+                      }
+                    ]
+                  }
+                }
+              },
+              "flexColumns": [
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {
+                      "runs": [
+                        {
+                          "text": "एक नबर दादा 💯👌 बलावा बलावा भाऊ बंध | 𝐃𝐞𝐯 𝐌𝐚𝐦𝐥𝐞𝐝𝐚𝐫 𝐁𝐚𝐧𝐝 𝐒𝐀𝐓𝐀𝐍𝐀",
+                          "navigationEndpoint": {
+                            "watchEndpoint": {
+                              "videoId": "aQMJEUWyWqI",
+                              "playlistId": "PLuqftEWxk5wrRcg5B0bAW-0XQ12QF8sDP"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {
+                      "runs": [
+                        {
+                          "text": "Dinesh jadhav 7776",
+                          "navigationEndpoint": {
+                            "browseEndpoint": {
+                              "browseId": "UCR6uK3VUsGXh94dwFbWF8tg",
+                              "browseEndpointContextSupportedConfigs": {
+                                "browseEndpointContextMusicConfig": {
+                                  "pageType": "MUSIC_PAGE_TYPE_USER_CHANNEL"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {
+                      "runs": [
+                        {
+                          "text": "8:17"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {}
+                  }
+                }
+              ],
+              "playlistItemData": {
+                "videoId": "aQMJEUWyWqI"
+              }
+            }
+          },
+          {
+            "musicResponsiveListItemRenderer": {
+              "thumbnail": {
+                "musicThumbnailRenderer": {
+                  "thumbnail": {
+                    "thumbnails": [
+                      {
+                        "url": "https://i.ytimg.com/vi/U5K8i6bUeMc/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3nzgeNut12eiM3d66KQzh5MjkMX2A",
+                        "width": 400,
+                        "height": 225
+                      }
+                    ]
+                  }
+                }
+              },
+              "flexColumns": [
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {
+                      "runs": [
+                        {
+                          "text": "शकुंतला बाई ग | Shakuntala bai Song Dev Mamledar Band Satana #bandmusiclover",
+                          "navigationEndpoint": {
+                            "watchEndpoint": {
+                              "videoId": "U5K8i6bUeMc",
+                              "playlistId": "PLuqftEWxk5wrRcg5B0bAW-0XQ12QF8sDP"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {
+                      "runs": [
+                        {
+                          "text": "Band Music Lover",
+                          "navigationEndpoint": {
+                            "browseEndpoint": {
+                              "browseId": "UCuvv5BPBFmpLKpmXI2rzyvA",
+                              "browseEndpointContextSupportedConfigs": {
+                                "browseEndpointContextMusicConfig": {
+                                  "pageType": "MUSIC_PAGE_TYPE_USER_CHANNEL"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {
+                      "runs": [
+                        {
+                          "text": "3:02"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "musicResponsiveListItemFlexColumnRenderer": {
+                    "text": {}
+                  }
+                }
+              ],
+              "playlistItemData": {
+                "videoId": "U5K8i6bUeMc"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
