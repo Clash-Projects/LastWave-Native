@@ -114,7 +114,7 @@ internal fun CardArtwork(
 @Composable
 internal fun CardTextArea(
     title: String,
-    infoLine: String,
+    infoLine: String? = "",
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -136,18 +136,20 @@ internal fun CardTextArea(
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(CardTokens.titleToInfoGap))
-        Text(
-            text = infoLine,
-            style = MaterialTheme.typography.bodySmall.copy(
-                fontSize = CardTokens.infoFontSize,
-                lineHeight = CardTokens.infoLineHeight,
-            ),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-            modifier = Modifier.fillMaxWidth(),
-        )
+        if (!infoLine.isNullOrBlank()) {
+            Spacer(Modifier.height(CardTokens.titleToInfoGap))
+            Text(
+                text = infoLine,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = CardTokens.infoFontSize,
+                    lineHeight = CardTokens.infoLineHeight,
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 

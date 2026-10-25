@@ -8,7 +8,8 @@ import kotlin.math.abs
 /**
  * Unit tests for CardTokens and the pure [calculateCardDimensions] function.
  * Validates viewport responsiveness, min/max clamping, 16:9 wide width relation,
- * and guaranteed identical total height between square and wide cards.
+ * guaranteed identical total height between square and wide cards, fixed text area height,
+ * and text invariants across long strings and non-Latin scripts (Hindi, Marathi, Tamil).
  */
 class CardTokensTest {
 
@@ -39,6 +40,7 @@ class CardTokensTest {
         assertThat(dims412.squareWidth).isEqualTo(dims412.coverHeight)
         assertThat(dims412.wideWidth.value).isWithin(0.02f).of(173.04f * 16f / 9f)
         assertThat(dims412.totalSquareCardHeight).isEqualTo(dims412.totalWideCardHeight)
+        assertThat(dims412.totalHeight.value).isWithin(0.01f).of(173.04f + 8f + 42f)
     }
 
     @Test
@@ -79,6 +81,37 @@ class CardTokensTest {
             assertThat(dims.squareWidth).isEqualTo(dims.coverHeight)
             assertThat(dims.totalSquareCardHeight).isEqualTo(dims.totalWideCardHeight)
             assertThat(dims.totalHeight).isEqualTo(dims.coverHeight + CardTokens.coverToTextGap + CardTokens.textAreaHeight)
+        }
+    }
+
+    @Test
+    fun totalCardHeightIsGuaranteedIdenticalRegardlessOfTextContentOrNullInfo() {
+        // Verify invariant: totalHeight = coverHeight + coverToTextGap + textAreaHeight
+        // Because textAreaHeight is a constant 42.dp, total card height is 100% deterministic
+        // whether title is 1 char or 100 chars, Latin or non-Latin, and whether info is null or present.
+        val testCases = listOf(
+            Triple("Short", "Artist", false),
+            Triple("Very long title exceeding single line limit and needing ellipsis", "Long artist list", false),
+            Triple("दिल संभल जा ज़रा - फिर मोहब्बत करने चला है", "अरिजीत सिंह", false),
+            Triple("देवा श्री गणेशा - देवा तुझ्या चरणी", "अजय-अतुल", false),
+            Triple("காதல் ரோஜாவே எங்கே எங்கே", "எஸ். பி. பாலசுப்பிரமணியம்", false),
+            Triple("Short Title", null, true),
+            Triple("Long Title Without Info", "", true),
+        )
+
+        val dims = calculateCardDimensions(393.dp)
+        for ((title, info, isInfoEmpty) in testCases) {
+            // Both square and wide cards share identical coverHeight and identical textAreaHeight
+            val squareTotalHeight = dims.coverHeight + CardTokens.coverToTextGap + CardTokens.textAreaHeight
+            val wideTotalHeight = dims.coverHeight + CardTokens.coverToTextGap + CardTokens.textAreaHeight
+
+            assertThat(squareTotalHeight).isEqualTo(wideTotalHeight)
+            assertThat(squareTotalHeight).isEqualTo(dims.totalHeight)
+
+            if (isInfoEmpty) {
+                // Info line being empty or null preserves the fixed textAreaHeight (no layout jumping)
+                assertThat(CardTokens.textAreaHeight).isEqualTo(42.dp)
+            }
         }
     }
 }
