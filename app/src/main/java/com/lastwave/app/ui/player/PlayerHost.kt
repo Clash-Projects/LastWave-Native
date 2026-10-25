@@ -139,6 +139,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.AlertDialog
@@ -244,6 +245,7 @@ import com.lastwave.app.data.playlist.SavedPlaylist
 import com.lastwave.app.data.playlist.LIKED_SONGS_MODE
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.MusicPlayerState
+import com.lastwave.app.playback.AutoMixState
 import com.lastwave.app.playback.PlaybackChromeState
 import com.lastwave.app.playback.formatSampleRateKHz
 import com.lastwave.app.playback.isSpatialAudioCodec
@@ -3274,6 +3276,10 @@ private fun FullPlayer(
                                         tertiaryColor = ambientDeep,
                                     )
                                     Spacer(Modifier.height(8.dp))
+                                    AutoDJStatusBadge(
+                                        state = state,
+                                        isTranslucent = LocalLiquidGlass.current || showFullBleed,
+                                    )
                                     AppleMusicQualityBadge(
                                         state = state,
                                         signalPath = signalPath,
@@ -3852,6 +3858,10 @@ private fun FullPlayerLandscape(
             Spacer(Modifier.height(8.dp))
 
             val signalPath by player.signalPath.collectAsStateWithLifecycle()
+            AutoDJStatusBadge(
+                state = state,
+                isTranslucent = LocalLiquidGlass.current,
+            )
             AppleMusicQualityBadge(
                 state = state,
                 signalPath = signalPath,
@@ -4429,6 +4439,82 @@ private fun PlayerUtilityControls(
             iconSize = if (isTranslucent) 19.dp else 20.dp,
             modifier = Modifier.weight(1f).height(if (isTranslucent) 44.dp else 48.dp),
         )
+    }
+}
+
+@Composable
+private fun AutoDJStatusBadge(
+    state: MusicPlayerState,
+    isTranslucent: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    val isVisible = state.isAutoMixActive || (state.isAutoDJActive && state.autoDJStatus != null)
+    AnimatedVisibility(
+        visible = isVisible,
+        enter = fadeIn() + expandVertically(),
+        exit = fadeOut() + shrinkVertically(),
+    ) {
+        val label = when {
+            state.isAutoMixActive -> {
+                val bpmText = state.autoMixBpm?.let { " · ${it.roundToInt()} BPM" } ?: ""
+                when (state.autoMixState) {
+                    AutoMixState.FADING_AUTO -> "Blending · ${(state.autoMixProgress * 100).roundToInt()}%$bpmText"
+                    AutoMixState.FADING_FAST -> "Fast Blend · ${(state.autoMixProgress * 100).roundToInt()}%$bpmText"
+                    AutoMixState.MONITORING_OUTRO -> "Outro Blend Ready$bpmText"
+                    AutoMixState.ANALYZING -> "Analyzing Next$bpmText"
+                    AutoMixState.PREBUFFERING_DECK_B -> "Prebuffering Deck B"
+                    else -> "AutoDJ Active$bpmText"
+                }
+            }
+            state.autoDJStatus != null -> state.autoDJStatus
+            else -> "Auto DJ"
+        }
+
+        val containerBg = if (isTranslucent) {
+            Color(0xFF8B5CF6).copy(alpha = 0.25f)
+        } else {
+            MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.75f)
+        }
+        val contentColor = if (isTranslucent) Color(0xFFDDD6FE) else MaterialTheme.colorScheme.onTertiaryContainer
+
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(bottom = 6.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = containerBg,
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp,
+                modifier = Modifier.height(26.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        tint = contentColor,
+                        modifier = Modifier.size(13.dp),
+                    )
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.3.sp,
+                        ),
+                        color = contentColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
     }
 }
 

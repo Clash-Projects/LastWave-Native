@@ -154,6 +154,56 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "audio.autodj",
+                    title = "Auto DJ",
+                    subtitle = "Autonomous queue replenishment & predictive background resolution",
+                    keywords = listOf(
+                        "auto dj", "autodj", "prefetch", "predictive", "queue", "automatic queue",
+                        "mixxx", "background resolve", "endless playback"
+                    ),
+                    icon = Icons.Filled.AutoAwesome,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Audio & Playback",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "audio.automix",
+                    title = "Automix (AutoDJ)",
+                    subtitle = "Seamless tempo-synced DJ blends between queued tracks",
+                    keywords = listOf(
+                        "automix", "autodj", "bpm", "tempo sync", "beat match", "crossfade", "mixxx",
+                        "dj blend", "bass swap", "fade now", "transition"
+                    ),
+                    icon = Icons.Filled.AutoAwesome,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Audio & Playback",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "audio.automix_bars",
+                    title = "Automix Transition Length",
+                    subtitle = "Select 8-bar or 16-bar phrase transition length for Automix blends",
+                    keywords = listOf(
+                        "automix bars", "transition length", "8 bars", "16 bars", "phrase", "automix duration", "dj blend length"
+                    ),
+                    icon = Icons.Filled.AutoAwesome,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Audio & Playback",
+                    type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "audio.crossfade",
                     title = "Crossfade",
                     subtitle = "Blend the end of a track smoothly into the next one",

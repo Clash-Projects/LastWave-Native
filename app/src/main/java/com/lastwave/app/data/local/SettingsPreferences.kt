@@ -132,6 +132,8 @@ data class MiscSettings(
     val automixEnabled: Boolean = false,
     /** Automix phrase transition duration in bars (8 or 16 bars). */
     val automixBars: Int = 8,
+    /** Autonomous queue controller with predictive background resolution. */
+    val autoDJEnabled: Boolean = true,
     /** When true (default), uses the multi-layer dynamic wavy seekbar.
      *  When false, uses the classic standard progress slider in the player tab. */
     val wavySeekbarEnabled: Boolean = true,
@@ -296,6 +298,7 @@ class SettingsPreferences @Inject constructor(
         val CROSSFADE_SECONDS = intPreferencesKey("lw_crossfade_seconds")
         val AUTOMIX_ENABLED = booleanPreferencesKey("lw_automix_enabled")
         val AUTOMIX_BARS = intPreferencesKey("lw_automix_bars")
+        val AUTODJ_ENABLED = booleanPreferencesKey("lw_autodj_enabled")
         val WAVY_SEEKBAR_ENABLED = booleanPreferencesKey("lw_wavy_seekbar_enabled")
         val ROTATING_BACKGROUND_ENABLED = booleanPreferencesKey("lw_rotating_background_enabled")
         val LYRICS_ROTATING_BACKGROUND_ENABLED = booleanPreferencesKey("lw_lyrics_rotating_background_enabled")
@@ -382,6 +385,7 @@ class SettingsPreferences @Inject constructor(
                 crossfadeSeconds = (p.readSafely(Keys.CROSSFADE_SECONDS) ?: 5).coerceIn(1, 12),
                 automixEnabled = p.readSafely(Keys.AUTOMIX_ENABLED) ?: false,
                 automixBars = (p.readSafely(Keys.AUTOMIX_BARS) ?: 8).let { if (it >= 16) 16 else 8 },
+                autoDJEnabled = p.readSafely(Keys.AUTODJ_ENABLED) ?: true,
                 wavySeekbarEnabled = p.readSafely(Keys.WAVY_SEEKBAR_ENABLED) ?: true,
                 rotatingBackgroundEnabled = p.readSafely(Keys.ROTATING_BACKGROUND_ENABLED) ?: true,
                 lyricsRotatingBackgroundEnabled = p.readSafely(Keys.LYRICS_ROTATING_BACKGROUND_ENABLED) ?: true,
@@ -671,6 +675,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setAutomixBars(bars: Int) {
         dataStore.edit { it[Keys.AUTOMIX_BARS] = if (bars >= 16) 16 else 8 }
+    }
+
+    suspend fun setAutoDJEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.AUTODJ_ENABLED] = enabled }
     }
 
     suspend fun setWavySeekbarEnabled(enabled: Boolean) {
