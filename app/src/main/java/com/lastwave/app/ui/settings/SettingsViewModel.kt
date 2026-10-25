@@ -656,6 +656,10 @@ class SettingsViewModel @Inject constructor(
     fun setCrossfadeSeconds(seconds: Int) = launchSettingsAction("update crossfade duration") {
         settingsPreferences.setCrossfadeSeconds(seconds.coerceIn(1, 12))
     }
+    fun setAutomixEnabled(enabled: Boolean) = launchSettingsAction("update automix") { settingsPreferences.setAutomixEnabled(enabled) }
+    fun setAutomixBars(bars: Int) = launchSettingsAction("update automix bars") {
+        settingsPreferences.setAutomixBars(bars)
+    }
     fun setWavySeekbarEnabled(enabled: Boolean) = launchSettingsAction("update seekbar style") {
         settingsPreferences.setWavySeekbarEnabled(enabled)
     }
