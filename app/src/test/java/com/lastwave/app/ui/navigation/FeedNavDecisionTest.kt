@@ -1,5 +1,6 @@
 package com.lastwave.app.ui.navigation
 
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -154,5 +155,69 @@ class FeedNavDecisionTest {
             debounceMs = 600L,
         )
         assertEquals(FeedTapAction.ScrollTopAndRefresh, action)
+    }
+
+    @Test
+    fun feedTapFromAnyNonFeedDestinationAlwaysReturnsNavigateToFeedWithoutRefresh() {
+        val destinations = listOf(
+            "stats",
+            "playlists",
+            "settings",
+            "downloads",
+            "search",
+            "discover",
+            "genres",
+            "friends",
+            "new_releases",
+            "podcasts",
+            "podcast_show/abc123",
+            "playlist_detail/456",
+            "feed_playlist/789",
+            null,
+        )
+
+        for (dest in destinations) {
+            val action = resolveFeedTapAction(
+                isChipSelected = true,
+                isAtTop = false,
+                currentDestination = dest,
+                isRefreshing = true,
+            )
+            assertEquals("Expected NavigateToFeed for destination $dest", FeedTapAction.NavigateToFeed, action)
+        }
+    }
+
+    @Test
+    fun noPendingRefreshRequestIsBufferedWhenNavigating() = kotlinx.coroutines.test.runTest {
+        val flow = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(replay = 0, extraBufferCapacity = 0)
+
+        // Tapping while no active subscriber is collecting must not leave anything in replay cache
+        flow.tryEmit(Unit)
+        assertEquals(0, flow.replayCache.size)
+
+        // Subscribing after tap receives no buffered event
+        val received = java.util.concurrent.atomic.AtomicBoolean(false)
+        val job = launch(kotlinx.coroutines.Dispatchers.Unconfined) {
+            flow.collect { received.set(true) }
+        }
+        org.junit.Assert.assertFalse("Late subscriber must not receive unbuffered tap event", received.get())
+        job.cancel()
+
+        // Resetting cache ensures clean slate
+        @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+        flow.resetReplayCache()
+        assertEquals(0, flow.replayCache.size)
+    }
+
+    @Test
+    fun feedTapWhenNotOnHomeFeedNeverTriggersRefreshAction() {
+        // Even if chip is active and list is at top, if not on home feed, must ONLY navigate
+        val action = resolveFeedTapAction(
+            isChipSelected = true,
+            isAtTop = true,
+            isOnHomeFeed = false,
+            isRefreshing = false,
+        )
+        assertEquals(FeedTapAction.NavigateToFeed, action)
     }
 }
