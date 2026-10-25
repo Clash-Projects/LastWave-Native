@@ -6930,33 +6930,6 @@ class MusicPlayer @Inject constructor(
         }
     }
 
-    private fun StreamCache.toPlayerStream(): ResolvedStream {
-        val ytStream = toYouTubeAudioStream()
-        val trueBitrate = ytStream.bitrate.takeIf { it > 0 }?.let { (it + 500) / 1_000 }
-        val rawCodec = ytStream.codec?.substringBefore(',')?.trim()?.uppercase()?.ifBlank {
-            ytStream.mimeType?.substringAfter("audio/")?.substringBefore(';')?.uppercase()?.ifBlank { "WEBM" } ?: "WEBM"
-        } ?: "WEBM"
-        val codec = when {
-            rawCodec.contains("OPUS") || rawCodec == "WEBM" -> "OPUS"
-            rawCodec.contains("M4A") || rawCodec.contains("MP4") || rawCodec.contains("MP4A") || rawCodec.contains("AAC") -> "AAC"
-            else -> rawCodec
-        }
-        val cleanMime = ytStream.mimeType?.substringBefore(';')?.trim().orEmpty()
-        return ResolvedStream(
-            url = ytStream.url,
-            mimeType = cleanMime,
-            bitrateKbps = trueBitrate,
-            audioCodec = codec,
-            cacheKey = ytStream.mediaCacheKey,
-            requestHeaders = ytStream.requestHeaders,
-            isLossless = false,
-            samplingRateKHz = ytStream.sampleRateHz?.let { it / 1_000.0 },
-            youtubeCandidate = ytStream,
-            durationMs = ytStream.durationMs?.takeIf { it > 0 },
-            expiresAtEpochMs = ytStream.expiresAtEpochMs,
-        )
-    }
-
     private fun publishResolvedQuality(resolved: ResolvedStream, expectedMediaId: String? = null) {
         if (expectedMediaId != null) {
             val current = _state.value.current
@@ -8505,7 +8478,34 @@ private fun PlayableTrack.toMediaItem(resolved: MusicPlayer.ResolvedStream? = nu
         .build()
 }
 
-    private fun PlayableTrack.mediaIdKey(): String = when {
+internal fun com.lastwave.app.playback.resolve.StreamCache.toPlayerStream(): MusicPlayer.ResolvedStream {
+    val ytStream = toYouTubeAudioStream()
+    val trueBitrate = ytStream.bitrate.takeIf { it > 0 }?.let { (it + 500) / 1_000 }
+    val rawCodec = ytStream.codec?.substringBefore(',')?.trim()?.uppercase()?.ifBlank {
+        ytStream.mimeType?.substringAfter("audio/")?.substringBefore(';')?.uppercase()?.ifBlank { "WEBM" } ?: "WEBM"
+    } ?: "WEBM"
+    val codec = when {
+        rawCodec.contains("OPUS") || rawCodec == "WEBM" -> "OPUS"
+        rawCodec.contains("M4A") || rawCodec.contains("MP4") || rawCodec.contains("MP4A") || rawCodec.contains("AAC") -> "AAC"
+        else -> rawCodec
+    }
+    val cleanMime = ytStream.mimeType?.substringBefore(';')?.trim().orEmpty()
+    return MusicPlayer.ResolvedStream(
+        url = ytStream.url,
+        mimeType = cleanMime,
+        bitrateKbps = trueBitrate,
+        audioCodec = codec,
+        cacheKey = ytStream.mediaCacheKey,
+        requestHeaders = ytStream.requestHeaders,
+        isLossless = false,
+        samplingRateKHz = ytStream.sampleRateHz?.let { it / 1_000.0 },
+        youtubeCandidate = ytStream,
+        durationMs = ytStream.durationMs?.takeIf { it > 0 },
+        expiresAtEpochMs = ytStream.expiresAtEpochMs,
+    )
+}
+
+internal fun PlayableTrack.mediaIdKey(): String = when {
     !playbackUrl.isNullOrBlank() -> "local:${playbackUrl}"
     !videoId.isNullOrBlank() -> videoId
     else -> "query:${artist.lowercase()}|${title.lowercase()}"

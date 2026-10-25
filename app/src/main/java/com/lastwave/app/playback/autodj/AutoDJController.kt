@@ -7,11 +7,13 @@ import com.lastwave.app.data.music.isCooperativeCancellation
 import com.lastwave.app.data.music.resolutionFailureDetail
 import com.lastwave.app.playback.AutoDJDecision
 import com.lastwave.app.playback.AutoDJLatencyStats
+import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.NativeAutoDJEngine
 import com.lastwave.app.playback.PlayableTrack
-import com.lastwave.app.playback.ResolvedStream
 import com.lastwave.app.playback.TrackLifecycleStage
+import com.lastwave.app.playback.mediaIdKey
 import com.lastwave.app.playback.resolve.StreamResolveCoordinator
+import com.lastwave.app.playback.resolve.playbackIdentity
 import com.lastwave.app.playback.toPlayerStream
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -35,7 +37,7 @@ interface AutoDJPlaybackHost {
     fun getQueueSize(): Int
     fun getCurrentIndex(): Int
     fun isCurrentItem(index: Int): Boolean
-    fun registerResolvedStream(index: Int, track: PlayableTrack, stream: ResolvedStream)
+    fun registerResolvedStream(index: Int, track: PlayableTrack, stream: MusicPlayer.ResolvedStream)
     fun armStandbyForNext(index: Int, track: PlayableTrack)
     fun triggerAutoTransition(overlapMs: Long)
     fun setLateTrackBuffering(isWaiting: Boolean)
@@ -114,12 +116,12 @@ class AutoDJController @Inject constructor(
         for (i in 0 until queueSize) {
             h.getTrackAt(i)?.mediaIdKey()?.let { currentKeys.add(it) }
         }
-        val iterator = trackStages.keys().asIterator()
+        val iterator = trackStages.keys.iterator()
         while (iterator.hasNext()) {
             val key = iterator.next()
             if (key !in currentKeys) {
                 inFlightJobs.remove(key)?.cancel()
-                trackStages.remove(key)
+                iterator.remove()
                 retryCounts.remove(key)
             }
         }

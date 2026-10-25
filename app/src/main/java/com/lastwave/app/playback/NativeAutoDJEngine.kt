@@ -116,7 +116,7 @@ class NativeAutoDJEngine @Inject constructor() : Closeable {
         if (unplayedCount <= 2 && (durationMs <= 0 || currentPositionMs >= (durationMs / 2) || (durationMs - currentPositionMs) <= 60000)) {
             return AutoDJDecision.REFILL_QUEUE
         }
-        if (nextStage == TrackLifecycleStage::FAILED.get()) {
+        if (nextStage == TrackLifecycleStage.FAILED) {
             return if (retryCount >= 3) AutoDJDecision.SKIP_FAILED_TRACK else AutoDJDecision.PREFETCH_NEXT
         }
         val remainingMs = (durationMs - currentPositionMs).coerceAtLeast(0L)
