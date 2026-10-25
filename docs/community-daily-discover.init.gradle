@@ -1,0 +1,8 @@
+// Optional test-APK suffix, applied without changing the project's build files.
+gradle.beforeProject { project ->
+    project.plugins.withId('com.android.application') {
+        project.extensions.getByName('androidComponents').finalizeDsl { android ->
+            android.buildTypes.getByName('debug').applicationIdSuffix = '.communitytest'
+        }
+    }
+}
