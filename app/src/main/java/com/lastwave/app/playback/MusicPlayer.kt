@@ -828,6 +828,9 @@ class MusicPlayer @Inject constructor(
             // anywhere else just fights the other apps that own focus.
             if (playWhenReady) requestMediaAudioFocus() else abandonMediaAudioFocus()
         }
+        override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
+            _state.update { it.copy(speed = playbackParameters.speed, pitch = playbackParameters.pitch) }
+        }
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             if (isCasting) return
             // In-place quality swap replaces the playing item with the same
@@ -1282,14 +1285,14 @@ class MusicPlayer @Inject constructor(
             ): androidx.media3.exoplayer.audio.AudioSink {
                 val fallbackSink = DefaultAudioSink.Builder(context)
                     .setEnableFloatOutput(false)
-                    .setEnableAudioTrackPlaybackParams(false)
+                    .setEnableAudioTrackPlaybackParams(true)
                     .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
                     .build()
                 val engine = runCatching(engineProvider).getOrNull()
                 val enhancedSink = try {
                     DefaultAudioSink.Builder(context)
                         .setEnableFloatOutput(true)
-                        .setEnableAudioTrackPlaybackParams(false)
+                        .setEnableAudioTrackPlaybackParams(true)
                         .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
                         .build()
                 } catch (error: Exception) {
@@ -1297,7 +1300,7 @@ class MusicPlayer @Inject constructor(
                     effects.setFallbackRequired(true)
                     DefaultAudioSink.Builder(context)
                         .setEnableFloatOutput(false)
-                        .setEnableAudioTrackPlaybackParams(false)
+                        .setEnableAudioTrackPlaybackParams(true)
                         .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
                         .build()
                 } catch (error: LinkageError) {
@@ -1305,7 +1308,7 @@ class MusicPlayer @Inject constructor(
                     effects.setFallbackRequired(true)
                     DefaultAudioSink.Builder(context)
                         .setEnableFloatOutput(false)
-                        .setEnableAudioTrackPlaybackParams(false)
+                        .setEnableAudioTrackPlaybackParams(true)
                         .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
                         .build()
                 }

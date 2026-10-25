@@ -881,7 +881,7 @@ fun PlayerHost(
     CompositionLocalProvider(
         LocalMusicPlayer provides viewModel.player,
         LocalAddToPlaylist provides requestAddToPlaylist,
-        LocalMiniPlayerScrollClearance provides if (state.current != null) 88.dp else 0.dp,
+        LocalMiniPlayerScrollClearance provides if (state.current != null) 98.dp else 0.dp,
         LocalBottomNavSlot provides bottomNavSlot,
     ) {
         Box(Modifier.fillMaxSize()) {
@@ -898,9 +898,9 @@ fun PlayerHost(
                     onNext = viewModel.player::next,
                     onClose = viewModel.player::stopAndClear,
                     bottomPadding = if (hasBottomNavigation) {
-                        if (LocalMd3NavBar.current) 68.dp else 92.dp
+                        if (LocalMd3NavBar.current) 84.dp else 80.dp
                     } else {
-                        12.dp
+                        14.dp
                     },
                     edgeToEdge = !hasBottomNavigation,
                     backdrop = if (miniGlass) miniBackdrop else null,
@@ -1302,19 +1302,19 @@ private fun MiniPlayer(
                 shadowElevation = 6.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(64.dp)
+                    .height(72.dp)
                     .clickable(interactionSource = barInteraction, indication = null, onClick = onExpand),
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(start = 8.dp, end = 12.dp),
+                        .padding(start = 10.dp, end = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // Concentric Left Geometry: 48.dp artwork nesting inside the 64.dp capsule curve (8.dp vertical/start padding)
+                    // Concentric Left Geometry: 54.dp artwork nesting inside the 72.dp capsule curve
                     Box(
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(54.dp)
                             .clip(RoundedCornerShape(percent = m3ArtworkCornerPercent))
                             .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                         contentAlignment = Alignment.Center,
@@ -1353,47 +1353,40 @@ private fun MiniPlayer(
                         )
                     }
 
-                    // 44.dp CircularProgressIndicator wrapped concentrically around 36.dp Play/Pause morphing container
-                    Box(
-                        modifier = Modifier.size(44.dp),
-                        contentAlignment = Alignment.Center,
+                    // Clean solid play/pause button without outer progress indicator
+                    Surface(
+                        onClick = onToggle,
+                        shape = RoundedCornerShape(percent = m3PlayPauseCornerPercent),
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.size(42.dp),
                     ) {
-                        CircularProgressIndicator(
-                            progress = { currentProgress },
-                            modifier = Modifier.size(44.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f),
-                            strokeWidth = 2.5.dp,
-                            strokeCap = StrokeCap.Round,
-                        )
-                        Surface(
-                            onClick = onToggle,
-                            shape = RoundedCornerShape(percent = m3PlayPauseCornerPercent),
-                            color = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.size(36.dp),
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                if (state.isBuffering) {
-                                    ExpressiveInlineLoadingIndicator(
-                                        size = 18.dp,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        strokeWidth = 2.dp,
-                                    )
-                                } else {
-                                    AnimatedPlayPauseIcon(state.isPlaying, Modifier.size(20.dp))
-                                }
+                        Box(contentAlignment = Alignment.Center) {
+                            if (state.isBuffering) {
+                                ExpressiveInlineLoadingIndicator(
+                                    size = 20.dp,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
+                                AnimatedPlayPauseIcon(state.isPlaying, Modifier.size(22.dp))
                             }
                         }
                     }
 
-                    // Clean, uncontained Skip Next IconButton (no dark circular background)
+                    // Skip Next IconButton with an outline stroke
                     IconButton(
                         onClick = onNext,
                         enabled = state.queueSize > 1,
                         modifier = Modifier
-                            .padding(start = 2.dp)
-                            .size(36.dp),
+                            .padding(start = 6.dp)
+                            .size(40.dp)
+                            .border(
+                                width = 1.2.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+                                shape = CircleShape,
+                            )
+                            .clip(CircleShape),
                     ) {
                         Icon(
                             Icons.Filled.SkipNext,
@@ -3280,15 +3273,15 @@ private fun FullPlayer(
                                         secondaryColor = ambientCompanion,
                                         tertiaryColor = ambientDeep,
                                     )
-                                    Spacer(Modifier.height(10.dp))
-                                    MainControls(state, player, isTranslucent = LocalLiquidGlass.current || showFullBleed)
-                                    Spacer(Modifier.height(10.dp))
+                                    Spacer(Modifier.height(8.dp))
                                     AppleMusicQualityBadge(
                                         state = state,
                                         signalPath = signalPath,
                                         isTranslucent = LocalLiquidGlass.current || showFullBleed,
                                         onClick = { showSignalPath = true },
                                     )
+                                    Spacer(Modifier.height(8.dp))
+                                    MainControls(state, player, isTranslucent = LocalLiquidGlass.current || showFullBleed)
                                     Spacer(Modifier.height(12.dp))
                                     PlayerUtilityControls(
                                         state = state,
@@ -3856,11 +3849,7 @@ private fun FullPlayerLandscape(
                 tertiaryColor = ambientDeep,
             )
 
-            Spacer(Modifier.height(14.dp))
-
-            MainControls(state, player, isTranslucent = LocalLiquidGlass.current)
-
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
 
             val signalPath by player.signalPath.collectAsStateWithLifecycle()
             AppleMusicQualityBadge(
@@ -3869,6 +3858,10 @@ private fun FullPlayerLandscape(
                 isTranslucent = LocalLiquidGlass.current,
                 onClick = onOpenSignalPath,
             )
+
+            Spacer(Modifier.height(10.dp))
+
+            MainControls(state, player, isTranslucent = LocalLiquidGlass.current)
 
             Spacer(Modifier.height(14.dp))
 
@@ -4479,24 +4472,13 @@ private fun AppleMusicQualityBadge(
         else -> MaterialTheme.colorScheme.onSurface
     }
 
-    val containerBg = if (isTranslucent) {
-        Color.White.copy(alpha = 0.12f)
-    } else {
-        MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.50f)
-    }
-
     Box(
         modifier = modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center,
     ) {
-        Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = containerBg,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp,
+        Row(
             modifier = Modifier
-                .height(30.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(CircleShape)
                 .combinedClickable(
                     onClick = {
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -4506,43 +4488,40 @@ private fun AppleMusicQualityBadge(
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         onClick()
                     },
-                ),
+                )
+                .padding(horizontal = 8.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                Icon(
-                    imageVector = badgeIcon,
-                    contentDescription = null,
-                    tint = tintColor,
-                    modifier = Modifier.size(15.dp),
-                )
-                Spacer(Modifier.width(5.dp))
-                val fullText = if (baseLabel.isNotBlank() && !baseLabel.equals(displayTitle, ignoreCase = true) && !baseLabel.equals("AUDIO", ignoreCase = true)) {
-                    "$displayTitle · $baseLabel"
-                } else {
-                    displayTitle
-                }
-                Text(
-                    text = fullText,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.4.sp,
-                    ),
-                    color = tintColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.width(3.dp))
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
-                    contentDescription = null,
-                    tint = tintColor.copy(alpha = 0.6f),
-                    modifier = Modifier.size(10.dp),
-                )
+            Icon(
+                imageVector = badgeIcon,
+                contentDescription = null,
+                tint = tintColor,
+                modifier = Modifier.size(15.dp),
+            )
+            Spacer(Modifier.width(5.dp))
+            val fullText = if (baseLabel.isNotBlank() && !baseLabel.equals(displayTitle, ignoreCase = true) && !baseLabel.equals("AUDIO", ignoreCase = true)) {
+                "$displayTitle · $baseLabel"
+            } else {
+                displayTitle
             }
+            Text(
+                text = fullText,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.4.sp,
+                ),
+                color = tintColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.width(3.dp))
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                contentDescription = null,
+                tint = tintColor.copy(alpha = 0.6f),
+                modifier = Modifier.size(10.dp),
+            )
         }
     }
 }
@@ -4806,16 +4785,15 @@ private fun AudioControlsSheet(
                         )
                     }
 
-                    // Quick Presets
+                    // Quick Presets - Exactly 2 lines for compact and clean layout
                     Text(
                         text = "Studio Presets",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    FlowRow(
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         SuggestionChip(
                             onClick = {
@@ -4824,7 +4802,8 @@ private fun AudioControlsSheet(
                                 currentPitch = 0.85f
                                 player.setPlaybackParameters(0.85f, 0.85f)
                             },
-                            label = { Text("Slowed (0.85x)", style = MaterialTheme.typography.labelSmall) },
+                            label = { Text("Slowed", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
+                            modifier = Modifier.weight(1f),
                         )
                         SuggestionChip(
                             onClick = {
@@ -4833,7 +4812,8 @@ private fun AudioControlsSheet(
                                 currentPitch = 0.75f
                                 player.setPlaybackParameters(0.75f, 0.75f)
                             },
-                            label = { Text("Deep Slowed (0.75x)", style = MaterialTheme.typography.labelSmall) },
+                            label = { Text("Deep Slow", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
+                            modifier = Modifier.weight(1f),
                         )
                         SuggestionChip(
                             onClick = {
@@ -4842,8 +4822,14 @@ private fun AudioControlsSheet(
                                 currentPitch = 1.0f
                                 player.resetPlaybackParameters()
                             },
-                            label = { Text("Normal (1.00x)", style = MaterialTheme.typography.labelSmall) },
+                            label = { Text("Normal", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
+                            modifier = Modifier.weight(1f),
                         )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
                         SuggestionChip(
                             onClick = {
                                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -4851,7 +4837,8 @@ private fun AudioControlsSheet(
                                 currentPitch = 1.15f
                                 player.setPlaybackParameters(1.15f, 1.15f)
                             },
-                            label = { Text("Nightcore (1.15x)", style = MaterialTheme.typography.labelSmall) },
+                            label = { Text("Nightcore", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
+                            modifier = Modifier.weight(1f),
                         )
                         SuggestionChip(
                             onClick = {
@@ -4860,26 +4847,20 @@ private fun AudioControlsSheet(
                                 currentPitch = 1.25f
                                 player.setPlaybackParameters(1.25f, 1.25f)
                             },
-                            label = { Text("Sped Up (1.25x)", style = MaterialTheme.typography.labelSmall) },
+                            label = { Text("Sped Up", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
+                            modifier = Modifier.weight(1f),
                         )
-                    }
-
-                    // Reset Button (visible when not 1.0x)
-                    if (currentSpeed != 1.0f || currentPitch != 1.0f) {
-                        OutlinedButton(
+                        SuggestionChip(
                             onClick = {
                                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 currentSpeed = 1.0f
                                 currentPitch = 1.0f
                                 player.resetPlaybackParameters()
                             },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                        ) {
-                            Icon(Icons.Filled.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Reset Speed & Pitch to Normal")
-                        }
+                            label = { Text("Reset", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
+                            icon = { Icon(Icons.Filled.RestartAlt, null, modifier = Modifier.size(14.dp)) },
+                            modifier = Modifier.weight(1f),
+                        )
                     }
                 }
             }
@@ -5064,6 +5045,8 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
                             textAlign = TextAlign.Center,
                             modifier = Modifier.width(20.dp),
                         )
+                        Spacer(Modifier.width(6.dp))
+                        PlayerArtwork(item, Modifier.size(36.dp), 8.dp)
                         Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
                             Text(
                                 item.title,

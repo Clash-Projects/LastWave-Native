@@ -783,10 +783,11 @@ fun Modifier.liquidGlassChrome(
     }
     // interactionSource/ambient/contentBrightness deliberately ignored:
     // Uses observe-only GlassInteraction, no haptics, no ambient drift.
+    // BottomNavigation stays completely static on press (no scale/jiggle).
     return this.liquidGlass(
         backdrop = backdrop,
         shape = shape,
-        interactive = true,
+        interactive = preset != LiquidGlassPreset.BottomNavigation,
         highlight = Highlight.Default,
     )
 }

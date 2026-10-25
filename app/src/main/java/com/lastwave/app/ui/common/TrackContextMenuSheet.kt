@@ -507,18 +507,6 @@ fun TrackContextMenuSheet(
                     onPlayNext = { musicPlayer.playNext(playable); onDismiss() },
                     onAddToPlaylist = { addToPlaylist(playable); onDismiss() },
                 )
-                if (musicVideoEnabled) {
-                    WatchVideoCard(
-                        onClick = {
-                            if (onWatchVideo != null) {
-                                onWatchVideo()
-                                onDismiss()
-                            } else {
-                                showSyncedVideoDialog = true
-                            }
-                        }
-                    )
-                }
                 // Local songs: imported files get an explicit row.
                 val isLocalFile = com.lastwave.app.data.generate.LocalAudioFormats.importedPathOrNull(playable.playbackUrl) != null
                 val rows = buildList<@Composable (GroupPosition) -> Unit> {

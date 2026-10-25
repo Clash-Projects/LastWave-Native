@@ -377,7 +377,10 @@ fun MainShell(
                         onOpenFriends = onOpenFriends,
                         onOpenDownloads = onOpenDownloads,
                     )
-                    MainTab.PLAYLISTS -> PlaylistScreen(onOpenPlaylist = onOpenPlaylist)
+                    MainTab.PLAYLISTS -> PlaylistScreen(
+                        onOpenPlaylist = onOpenPlaylist,
+                        onOpenGenerator = onOpenGenerator,
+                    )
                 }
             }
         }
@@ -407,56 +410,6 @@ fun MainShell(
         val clearance = com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance.current
         val isMiniPlayerActive = clearance > 0.dp
         val systemBottomInset = WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding()
-
-        val generatorFabBottomOffset by animateDpAsState(
-            targetValue = when {
-                hideNavTabs -> {
-                    if (isMiniPlayerActive) systemBottomInset + 12.dp + 72.dp + 16.dp
-                    else systemBottomInset + 20.dp
-                }
-                md3NavBar -> { // Floating dock is active
-                    if (isMiniPlayerActive) systemBottomInset + 92.dp + 72.dp + 16.dp
-                    else systemBottomInset + 92.dp
-                }
-                else -> { // Normal tabs navigation is active
-                    if (isMiniPlayerActive) systemBottomInset + 68.dp + 72.dp + 16.dp
-                    else systemBottomInset + 56.dp + 20.dp
-                }
-            },
-            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-            label = "generatorFabBottomOffset",
-        )
-
-        // Floating generator button on bottom-right for playlist tab in normal tabs mode or hide-nav mode
-        AnimatedVisibility(
-            visible = selectedTabIndex == tabs.indexOf(MainTab.PLAYLISTS) && (!md3NavBar || hideNavTabs),
-            enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.6f),
-            exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.6f),
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 20.dp, bottom = generatorFabBottomOffset)
-                .zIndex(15f),
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = liquidGlassContainerColor(MaterialTheme.colorScheme.primaryContainer, backdrop = navigationBackdrop),
-                shadowElevation = if (navGlass) 0.dp else 8.dp,
-                tonalElevation = if (navGlass) 0.dp else 4.dp,
-                modifier = Modifier
-                    .size(56.dp)
-                    .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, navigationBackdrop)
-                    .clickable(onClick = onOpenGenerator),
-            ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    Icon(
-                        imageVector = Icons.Filled.AutoAwesome,
-                        contentDescription = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.nav_create_playlist),
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
-            }
-        }
 
         val currentSelectedIndex by androidx.compose.runtime.rememberUpdatedState(selectedTabIndex)
         val currentOnSelect by androidx.compose.runtime.rememberUpdatedState { index: Int ->
@@ -627,8 +580,7 @@ private fun FloatingNavBar(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .widthIn(max = 420.dp)
-                        .height(56.dp)
+                        .height(66.dp)
                         .selectableGroup(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically,
@@ -644,7 +596,7 @@ private fun FloatingNavBar(
                             label = "md3IndicatorColor_$index",
                         )
                         val indicatorWidth by animateDpAsState(
-                            targetValue = if (selected) 56.dp else 28.dp,
+                            targetValue = if (selected) 64.dp else 32.dp,
                             animationSpec = navSpring(),
                             label = "md3IndicatorWidth_$index",
                         )
@@ -665,7 +617,7 @@ private fun FloatingNavBar(
                                 .fillMaxHeight()
                                 .clickable(
                                     interactionSource = remember(index) { MutableInteractionSource() },
-                                    indication = androidx.compose.material3.ripple(bounded = false, radius = 28.dp),
+                                    indication = androidx.compose.material3.ripple(bounded = false, radius = 32.dp),
                                     onClick = onClick,
                                 ),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -673,7 +625,7 @@ private fun FloatingNavBar(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .height(28.dp)
+                                    .height(32.dp)
                                     .width(indicatorWidth)
                                     .clip(CircleShape)
                                     .background(indicatorColor),
@@ -683,13 +635,13 @@ private fun FloatingNavBar(
                                     imageVector = tab.icon(),
                                     contentDescription = null,
                                     tint = iconTint,
-                                    modifier = Modifier.size(20.dp),
+                                    modifier = Modifier.size(24.dp),
                                 )
                             }
-                            Spacer(Modifier.height(3.dp))
+                            Spacer(Modifier.height(4.dp))
                             Text(
                                 text = androidx.compose.ui.res.stringResource(tab.labelRes),
-                                style = MaterialTheme.typography.labelSmall,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                 color = labelColor,
                                 maxLines = 1,
@@ -732,33 +684,30 @@ private fun FloatingNavBar(
             ) {
                 Row(
                     modifier = Modifier
-                        .then(
-                            if (liquidGlass) {
-                                Modifier.pointerInput(Unit) {
-                                    val bridge = 6.dp.toPx()
-                                    val hitIndex: (Offset) -> Int? = { pos ->
-                                        glassNavBounds.entries
-                                            .firstOrNull { it.value.inflate(bridge).contains(pos) }
-                                            ?.key
-                                    }
-                                    awaitEachGesture {
-                                        val down = awaitFirstDown(requireUnconsumed = false)
-                                        glassHoverIndex.value = hitIndex(down.position)
-                                        while (true) {
-                                            val event = awaitPointerEvent()
-                                            val change = event.changes.firstOrNull { it.id == down.id }
-                                            if (change == null || !change.pressed) {
-                                                glassHoverIndex.value = null
-                                                break
-                                            }
-                                            glassHoverIndex.value = hitIndex(change.position)
-                                        }
+                        .pointerInput(tabs, selectedIndex) {
+                            val bridge = 8.dp.toPx()
+                            val hitIndex: (Offset) -> Int? = { pos ->
+                                glassNavBounds.entries
+                                    .firstOrNull { it.value.inflate(bridge).contains(pos) }
+                                    ?.key
+                            }
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val initialHit = hitIndex(down.position)
+                                if (initialHit != null && initialHit != selectedIndex) {
+                                    onSelect(initialHit)
+                                }
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id }
+                                    if (change == null || !change.pressed) break
+                                    val currentHit = hitIndex(change.position)
+                                    if (currentHit != null && currentHit != selectedIndex) {
+                                        onSelect(currentHit)
                                     }
                                 }
-                            } else {
-                                Modifier
-                            },
-                        )
+                            }
+                        }
                         .padding(horizontal = 8.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -770,53 +719,10 @@ private fun FloatingNavBar(
                             icon = tab.icon(),
                             selected = selectedIndex == index,
                             onClick = onClick,
+                            modifier = Modifier.onGloballyPositioned { coords ->
+                                glassNavBounds[index] = coords.boundsInParent()
+                            },
                         )
-                    }
-                }
-            }
-
-            // Satellite Companion Generator Button (only visible on Playlists tab).
-            // Size-affecting enter/exit run with clip = false so the circular
-            // FAB is never sliced into a rectangle mid-transition, and the
-            // dock Row is never squeezed — the FAB grows beside the dock
-            // instead of drawing over the selected pill.
-            AnimatedVisibility(
-                visible = selectedIndex == tabs.indexOf(MainTab.PLAYLISTS),
-                enter = fadeIn(animationSpec = tween(180)) +
-                    scaleIn(initialScale = 0.6f, animationSpec = navSpring()) +
-                    expandHorizontally(
-                        animationSpec = navSpring(),
-                        expandFrom = Alignment.End,
-                        clip = false,
-                    ),
-                exit = fadeOut(animationSpec = tween(120)) +
-                    scaleOut(targetScale = 0.6f, animationSpec = navSpring()) +
-                    shrinkHorizontally(
-                        animationSpec = navSpring(),
-                        shrinkTowards = Alignment.End,
-                        clip = false,
-                    ),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Spacer(Modifier.width(10.dp))
-                    Surface(
-                        shape = CircleShape,
-                        color = liquidGlassContainerColor(MaterialTheme.colorScheme.primaryContainer, backdrop = backdrop),
-                        shadowElevation = if (liquidGlass) 0.dp else 10.dp,
-                        tonalElevation = if (liquidGlass) 0.dp else 4.dp,
-                        modifier = Modifier
-                            .size(56.dp)
-                            .liquidGlassChrome(CircleShape, liquidGlass, LiquidGlassPreset.FloatingControls, backdrop, interactionSource = fabInteraction)
-                            .clickable(interactionSource = fabInteraction, indication = null, onClick = onOpenGenerator),
-                    ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            Icon(
-                                imageVector = Icons.Filled.AutoAwesome,
-                                contentDescription = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.nav_create_playlist),
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(24.dp),
-                            )
-                        }
                     }
                 }
             }
@@ -830,6 +736,7 @@ private fun FloatingNavItem(
     icon: ImageVector,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val backgroundColor by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(
@@ -858,7 +765,7 @@ private fun FloatingNavItem(
         onClick = onClick,
         shape = PillShape,
         color = backgroundColor,
-        modifier = Modifier.height(48.dp),
+        modifier = modifier.height(48.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,

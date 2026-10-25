@@ -177,6 +177,10 @@ data class MiscSettings(
     /** Ids of Home tab sections the user hid ([HomeSection.id]).
      *  Empty = everything visible. Unknown ids are dropped on read. */
     val hiddenHomeSections: Set<String> = emptySet(),
+    /** Titles of YouTube Music shelves the user hid. */
+    val ytMusicHiddenSections: Set<String> = emptySet(),
+    /** Custom order of YouTube Music shelves. */
+    val ytMusicSectionsOrder: List<String> = emptyList(),
     /** When true, Animated Album Canvas motion video loops are displayed. */
     val canvasEnabled: Boolean = true,
     /** When true, portrait motion artwork is displayed edge-to-edge behind player controls. */
@@ -305,6 +309,8 @@ class SettingsPreferences @Inject constructor(
         val USE_ALBUM_ARTIST_FOLDERS = booleanPreferencesKey("lw_use_album_artist_folders")
         val PRIMARY_ARTIST_ONLY = booleanPreferencesKey("lw_primary_artist_only")
         val HIDDEN_HOME_SECTIONS = stringSetPreferencesKey("lw_hidden_home_sections")
+        val YT_MUSIC_HIDDEN_SECTIONS = stringSetPreferencesKey("lw_yt_music_hidden_sections")
+        val YT_MUSIC_SECTIONS_ORDER = stringPreferencesKey("lw_yt_music_sections_order")
         val ADDON_URL = stringPreferencesKey("lw_addon_url")
         val ADDON_NAME = stringPreferencesKey("lw_addon_name")
         val ADDON_ENABLED = booleanPreferencesKey("lw_addon_enabled")
@@ -388,6 +394,8 @@ class SettingsPreferences @Inject constructor(
                 hiddenHomeSections = p.readSafely(Keys.HIDDEN_HOME_SECTIONS)
                     ?.filter { id -> HomeSection.entries.any { it.id == id } }?.toSet()
                     ?: emptySet(),
+                ytMusicHiddenSections = p.readSafely(Keys.YT_MUSIC_HIDDEN_SECTIONS) ?: emptySet(),
+                ytMusicSectionsOrder = p.readSafely(Keys.YT_MUSIC_SECTIONS_ORDER)?.split("|||")?.filter { it.isNotBlank() } ?: emptyList(),
                 addonUrl = primaryAddon?.url ?: legacyUrl,
                 addonName = primaryAddon?.name ?: legacyName,
                 addonEnabled = primaryAddon?.enabled ?: legacyEnabled,
@@ -716,6 +724,20 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun showAllHomeSections() {
         dataStore.edit { it.remove(Keys.HIDDEN_HOME_SECTIONS) }
+    }
+
+    suspend fun saveYtMusicSections(order: List<String>, hidden: Set<String>) {
+        dataStore.edit { prefs ->
+            prefs[Keys.YT_MUSIC_SECTIONS_ORDER] = order.joinToString("|||")
+            prefs[Keys.YT_MUSIC_HIDDEN_SECTIONS] = hidden
+        }
+    }
+
+    suspend fun resetYtMusicSections() {
+        dataStore.edit { prefs ->
+            prefs.remove(Keys.YT_MUSIC_SECTIONS_ORDER)
+            prefs.remove(Keys.YT_MUSIC_HIDDEN_SECTIONS)
+        }
     }
 
     /**

@@ -197,6 +197,8 @@ fun FeedScreen(
     var miniTrayTrack by remember { mutableStateOf<TrackMiniTrayData?>(null) }
     // Sections hidden via Settings → Home sections.
     val hiddenSections by viewModel.hiddenHomeSections.collectAsStateWithLifecycle()
+    val ytHidden by viewModel.ytMusicHiddenSections.collectAsStateWithLifecycle()
+    val ytOrder by viewModel.ytMusicSectionsOrder.collectAsStateWithLifecycle()
     val podcastsEnabled by viewModel.podcastsEnabled.collectAsStateWithLifecycle()
     fun isSectionVisible(section: HomeSection) = section.id !in hiddenSections
     val snackbarHostState = remember { SnackbarHostState() }
@@ -444,7 +446,15 @@ fun FeedScreen(
                                             }
                                         }
                                         tile.collection == "radio" -> onOpenDiscover()
-                                        tile.collection == "discover_mix" -> viewModel.playDiscoverMix(tile)
+                                        tile.collection == "discover_mix" || tile.title.contains("Discover Mix", ignoreCase = true) -> {
+                                            if (!tile.playlistId.isNullOrBlank()) {
+                                                onOpenFeedPlaylist(tile.playlistId)
+                                            } else {
+                                                viewModel.openDiscoverMixPlaylist(tile) { resolvedId ->
+                                                    onOpenFeedPlaylist(resolvedId)
+                                                }
+                                            }
+                                        }
                                         tile.collection == "mix" -> onOpenGenerator()
                                         tile.collection == "my_mix" -> {
                                             if (tile.playlistId != null) {
@@ -539,9 +549,21 @@ fun FeedScreen(
                             }
                         }
                     } else {
-                        // Native YouTube Music shelves (exact titles, original order, original items)
-                        for ((shelfIndex, shelf) in state.feedData.nativeShelves.withIndex()) {
-                            if (shelf.items.isEmpty()) continue
+                        // Native YouTube Music shelves (filtered & ordered via Settings → Home sections → YouTube Music Selection)
+                        val visibleNativeShelves = remember(state.feedData.nativeShelves, ytHidden, ytOrder) {
+                            state.feedData.nativeShelves
+                                .filter { shelf -> shelf.title !in ytHidden && shelf.items.isNotEmpty() }
+                                .let { list ->
+                                    if (ytOrder.isEmpty()) list
+                                    else {
+                                        list.sortedWith(compareBy { shelf ->
+                                            val idx = ytOrder.indexOfFirst { it.equals(shelf.title, ignoreCase = true) }
+                                            if (idx >= 0) idx else Int.MAX_VALUE
+                                        })
+                                    }
+                                }
+                        }
+                        for ((shelfIndex, shelf) in visibleNativeShelves.withIndex()) {
                             item(key = "native_shelf_${shelfIndex}_${shelf.title}") {
                                 HomeShelfCard(
                                     shelf = shelf,
@@ -1040,6 +1062,40 @@ fun FeedScreen(
                                 },
                             )
                         
+                                }
+                            }
+                        }
+                    }
+
+                    if (isSectionVisible(HomeSection.FRIENDS) && state.feedData.friends.isNotEmpty()) {
+                        item(key = "friends_activity") {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                shape = RoundedCornerShape(24.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                            ) {
+                                Column(modifier = Modifier.padding(vertical = 12.dp)) {
+                                    FeedSectionHeader(
+                                        title = stringResource(R.string.feed_friends),
+                                        subtitle = stringResource(R.string.feed_friends_sub),
+                                        actionText = stringResource(R.string.feed_see_all),
+                                        actionIcon = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                                        onActionClick = onOpenFriends,
+                                    )
+                                    LazyRow(
+                                        contentPadding = PaddingValues(horizontal = 16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                        modifier = Modifier.padding(top = 12.dp),
+                                    ) {
+                                        items(state.feedData.friends) { friend ->
+                                            FriendAvatarCard(
+                                                friend = friend,
+                                                onClick = {
+                                                    onOpenFriendProfile(friend.name, friend.displayName, friend.avatarUrl)
+                                                },
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

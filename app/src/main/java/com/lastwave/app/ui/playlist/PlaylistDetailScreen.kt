@@ -59,6 +59,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
@@ -228,6 +229,11 @@ fun PlaylistDetailScreen(
     }
 
     val isThisPlaylistPlaying = playbackState.isPlaying && playbackState.sourceLabel == playlist.title
+    val localSongsViewModel: LocalSongsViewModel = hiltViewModel()
+    val localFolders by localSongsViewModel.folders.collectAsStateWithLifecycle()
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) localSongsViewModel.addFolder(uri)
+    }
     var coverEditorOpen by remember { mutableStateOf(false) }
     var coverPickerPending by remember { mutableStateOf(false) }
     val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -536,9 +542,9 @@ fun PlaylistDetailScreen(
                         }
                     }
 
-                    if (playlist.mode == LOCAL_SONGS_MODE) {
+                    if (playlist.mode == LOCAL_SONGS_MODE && localFolders.isEmpty() && playlist.tracks.isEmpty()) {
                         Spacer(Modifier.height(14.dp))
-                        LocalSongsPanel(trackCount = playlist.tracks.size)
+                        LocalSongsPanel(trackCount = playlist.tracks.size, viewModel = localSongsViewModel)
                     }
 
                     Spacer(Modifier.height(18.dp))
@@ -1048,6 +1054,15 @@ fun PlaylistDetailScreen(
                                 },
                             )
                             val isLocalSongs = playlist.mode == LOCAL_SONGS_MODE
+                            if (isLocalSongs) DropdownMenuItem(
+                                text = { Text("Change selected folder") },
+                                leadingIcon = { Icon(Icons.Filled.CreateNewFolder, contentDescription = null) },
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    folderPicker.launch(null)
+                                    overflowMenuOpen = false
+                                },
+                            )
                             if (!isLocalSongs) DropdownMenuItem(
                                 text = { Text(stringResource(com.lastwave.app.R.string.pl_download_all)) },
                                 leadingIcon = { Icon(Icons.Filled.Download, contentDescription = null) },

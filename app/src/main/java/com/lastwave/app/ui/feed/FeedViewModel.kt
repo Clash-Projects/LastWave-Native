@@ -88,6 +88,16 @@ class FeedViewModel @Inject constructor(
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
+    val ytMusicHiddenSections: StateFlow<Set<String>> = settingsPreferences.settings
+        .map { it.ytMusicHiddenSections }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    val ytMusicSectionsOrder: StateFlow<List<String>> = settingsPreferences.settings
+        .map { it.ytMusicSectionsOrder }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     /** Podcast surfaces are hidden the moment the user turns them off. */
     val podcastsEnabled: StateFlow<Boolean> = settingsPreferences.settings
         .map { it.podcastsEnabled }
@@ -540,6 +550,29 @@ class FeedViewModel @Inject constructor(
                 val playable = tracks.map { it.toPlayableTrack() }
                 musicPlayer.playQueue(playable, startIndex = 0, sourceLabel = title)
             }
+        }
+    }
+
+    fun openDiscoverMixPlaylist(tile: FeedQuickTile? = null, onOpen: (String) -> Unit) {
+        viewModelScope.launch {
+            var playlistId = tile?.playlistId
+            if (playlistId.isNullOrBlank()) {
+                val feed = _uiState.value.feedData
+                val found = feed.ytSuggestedPlaylists.firstOrNull { it.title.contains("Discover Mix", ignoreCase = true) }
+                    ?: feed.nativeShelves.flatMap { it.items }.filterIsInstance<com.lastwave.app.data.music.HomeShelfItem.Playlist>()
+                        .map { it.playlist }.firstOrNull { it.title.contains("Discover Mix", ignoreCase = true) }
+                playlistId = found?.id
+            }
+            if (playlistId.isNullOrBlank()) {
+                val mixes = runCatching { innerTube.fetchHomeMixes() }.getOrDefault(emptyList())
+                playlistId = mixes.firstOrNull { it.title.contains("Discover Mix", ignoreCase = true) }?.id
+            }
+            if (playlistId.isNullOrBlank()) {
+                val search = runCatching { innerTube.searchPlaylists("Discover Mix") }.getOrDefault(emptyList())
+                playlistId = search.firstOrNull { it.title.contains("Discover Mix", ignoreCase = true) }?.id
+                    ?: search.firstOrNull()?.id
+            }
+            onOpen(playlistId?.ifBlank { "RDMPO" } ?: "RDMPO")
         }
     }
 

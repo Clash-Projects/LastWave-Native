@@ -805,21 +805,21 @@ fun SettingsScreen(
                                 SettingsGroup(rowCount = 3) { index, position ->
                                     when (index) {
                                         0 -> SettingsActionCard(
-                                            icon = Icons.Filled.GraphicEq,
-                                            iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                            iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            title = stringResource(R.string.set_cat_audio),
-                                            subtitle = stringResource(R.string.set_cat_audio_sub),
-                                            onClick = { activeTab = SettingsTab.AUDIO },
-                                            position = position,
-                                        )
-                                        1 -> SettingsActionCard(
                                             icon = Icons.Filled.Palette,
                                             iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                             iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
                                             title = stringResource(R.string.set_cat_appear),
                                             subtitle = stringResource(R.string.set_cat_appear_sub),
                                             onClick = { activeTab = SettingsTab.APPEARANCE },
+                                            position = position,
+                                        )
+                                        1 -> SettingsActionCard(
+                                            icon = Icons.Filled.GraphicEq,
+                                            iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            title = stringResource(R.string.set_cat_audio),
+                                            subtitle = stringResource(R.string.set_cat_audio_sub),
+                                            onClick = { activeTab = SettingsTab.AUDIO },
                                             position = position,
                                         )
                                         else -> SettingsActionCard(
@@ -1222,7 +1222,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_appearance))
-                    SettingsGroup(rowCount = 10) { index, position ->
+                    SettingsGroup(rowCount = 9) { index, position ->
                         when (index) {
                             0 -> ThemeModeSelectorCard(
                                 currentThemeMode = theme?.themeMode ?: ThemeMode.SYSTEM,
@@ -1323,20 +1323,6 @@ fun SettingsScreen(
                                 onCheckedChange = viewModel::setUseCustomFont,
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.app_font"),
-                            )
-                            9 -> SettingsActionCard(
-                                icon = Icons.Filled.Dashboard,
-                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = stringResource(R.string.settings_home_sections),
-                                subtitle = run {
-                                    val total = com.lastwave.app.data.local.HomeSection.entries.size
-                                    val visible = total - misc.hiddenHomeSections.size
-                                    stringResource(R.string.home_sections_visible, visible, total)
-                                },
-                                onClick = onOpenHomeSections,
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "appearance.home_sections"),
                             )
                         }
                     }

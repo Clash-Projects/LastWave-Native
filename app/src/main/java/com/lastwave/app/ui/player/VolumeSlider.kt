@@ -169,9 +169,8 @@ fun VolumeSlider(
         val containerShape = RoundedCornerShape(100)
         Row(
             modifier = modifier
-                .fillMaxWidth(0.78f)
-                .widthIn(max = 280.dp)
-                .height(34.dp)
+                .fillMaxWidth()
+                .height(44.dp)
                 .then(
                     if (isGlassActive) {
                         Modifier.liquidGlassChrome(
@@ -194,14 +193,14 @@ fun VolumeSlider(
                         Modifier
                     }
                 )
-                .padding(horizontal = 4.dp),
+                .padding(horizontal = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             // Mute / Restore shortcut button
             Box(
                 modifier = Modifier
-                    .size(28.dp)
+                    .size(34.dp)
                     .clip(CircleShape)
                     .clickable {
                         if (currentVolume > minVol) {
@@ -224,7 +223,7 @@ fun VolumeSlider(
                     imageVector = if (displayFraction <= 0.02f) Icons.Filled.VolumeMute else Icons.Filled.VolumeDown,
                     contentDescription = if (displayFraction <= 0.02f) "Unmute" else "Mute",
                     tint = iconColor,
-                    modifier = Modifier.size(17.dp),
+                    modifier = Modifier.size(20.dp),
                 )
             }
 
@@ -232,18 +231,18 @@ fun VolumeSlider(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(34.dp),
+                    .height(44.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Canvas(modifier = Modifier.fillMaxWidth().height(34.dp)) {
+                Canvas(modifier = Modifier.fillMaxWidth().height(44.dp)) {
                     val width = size.width
                     val height = size.height
                     val centerY = height / 2f
-                    val trackHeightPx = 8.dp.toPx()
+                    val trackHeightPx = 10.dp.toPx()
                     val cornerRadius = CornerRadius(trackHeightPx / 2f, trackHeightPx / 2f)
-                    val thumbWidthPx = 4.dp.toPx()
-                    val thumbHeightPx = 20.dp.toPx()
-                    val thumbClearancePx = 5.dp.toPx()
+                    val thumbWidthPx = 5.dp.toPx()
+                    val thumbHeightPx = 24.dp.toPx()
+                    val thumbClearancePx = 6.dp.toPx()
                     val rawThumbCenterX = displayFraction * width
                     val thumbCenterX = if (width > thumbWidthPx) {
                         rawThumbCenterX.coerceIn(thumbWidthPx / 2f, width - thumbWidthPx / 2f)
@@ -332,7 +331,7 @@ fun VolumeSlider(
             // Max Volume shortcut button
             Box(
                 modifier = Modifier
-                    .size(28.dp)
+                    .size(34.dp)
                     .clip(CircleShape)
                     .clickable {
                         currentVolume = maxVol
@@ -346,7 +345,7 @@ fun VolumeSlider(
                     imageVector = Icons.Filled.VolumeUp,
                     contentDescription = "Max volume",
                     tint = iconColor,
-                    modifier = Modifier.size(17.dp),
+                    modifier = Modifier.size(20.dp),
                 )
             }
         }
