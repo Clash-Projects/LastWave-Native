@@ -484,6 +484,11 @@ class RecommendationEngine(
         if (result.size < total) result = attempt(99, false, false, true, familiarCap)
         if (result.size < total) result = attempt(99, false, false, true, maxOf(familiarCap, total / 3))
         if (result.size < total) result = attempt(99, false, false, true, total)
+        // If the pool has candidates but all are flagged non-fresh (large exclusion
+        // list or no new exclusion data), drop the freshOnly gate rather than
+        // silently returning a short playlist. Explicit recommendation exclusions
+        // are always respected — this only relaxes the "not in saved playlists" guard.
+        if (result.size < total) result = attempt(99, false, false, false, total)
         return result
     }
 
