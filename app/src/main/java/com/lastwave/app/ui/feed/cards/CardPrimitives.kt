@@ -11,8 +11,14 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -77,7 +83,7 @@ internal fun CardArtwork(
     artworkUrl: String?,
     fallbackIcon: ImageVector,
     modifier: Modifier = Modifier,
-    cornerRadius: Dp = 18.dp,
+    cornerRadius: Dp = CardTokens.coverCornerRadius,
     decodeSizePx: Int? = null,
 ) {
     Surface(
@@ -94,6 +100,54 @@ internal fun CardArtwork(
                 fallbackIcon = fallbackIcon,
                 decodeSizePx = decodeSizePx,
                 modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+/**
+ * Exactly two text lines per card, both limited to the cover width:
+ * Title (1 line, 14sp medium, ellipsis) and Info line (1 line, 12sp muted, ellipsis).
+ * Fixed container height ensures cards with short, long, or missing info lines
+ * maintain identical total height without shifting or clipping.
+ */
+@Composable
+internal fun CardTextArea(
+    title: String,
+    infoLine: String? = "",
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(CardTokens.textAreaHeight)
+            .padding(horizontal = 2.dp),
+        verticalArrangement = Arrangement.Top,
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = CardTokens.titleFontSize,
+                fontWeight = FontWeight.Medium,
+                lineHeight = CardTokens.titleLineHeight,
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (!infoLine.isNullOrBlank()) {
+            Spacer(Modifier.height(CardTokens.titleToInfoGap))
+            Text(
+                text = infoLine,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = CardTokens.infoFontSize,
+                    lineHeight = CardTokens.infoLineHeight,
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }

@@ -108,6 +108,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.lastwave.app.ui.feed.cards.CardTokens
+import com.lastwave.app.ui.feed.cards.CardTextArea
+import com.lastwave.app.ui.feed.cards.rememberCoverHeight
+import com.lastwave.app.ui.feed.cards.rememberSquareCardWidth
+import com.lastwave.app.ui.feed.cards.rememberWideCardWidth
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -305,7 +310,7 @@ fun FeedScreen(
                         bottom = FloatingNavDefaults.contentBottomPadding(),
                         top = 12.dp,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(CardTokens.sectionGap),
                 ) {
                     if (showSynthetic && isSectionVisible(HomeSection.HERO)) {
                     item(key = "hero") {
@@ -356,7 +361,7 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.QUICK_TILES) && quickTiles.isNotEmpty()) {
                         item(key = "quick_tiles") {
                             Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 shape = RoundedCornerShape(24.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
                             ) {
@@ -448,7 +453,7 @@ fun FeedScreen(
                             // Card-shaped shimmer placeholders that mirror the
                             // native shelf layout the chip page will render.
                             item(key = "chip_loading_skeleton") {
-                                Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                                Column(verticalArrangement = Arrangement.spacedBy(CardTokens.sectionGap)) {
                                     com.lastwave.app.ui.feed.cards.ShelfSquareSkeletonRow(
                                         cardWidth = com.lastwave.app.ui.feed.cards.rememberSquareCardWidth(),
                                     )
@@ -494,7 +499,7 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.QUICK_PICKS) && state.feedData.quickPicks.isNotEmpty()) {
                         item(key = "quick_picks") {
                             Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 shape = RoundedCornerShape(24.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
                             ) {
@@ -549,7 +554,7 @@ fun FeedScreen(
                     if (showSynthetic && discoveryTracks.isNotEmpty()) {
                         item(key = "discover_new_music") {
                             Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 shape = RoundedCornerShape(24.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
                             ) {
@@ -592,7 +597,7 @@ fun FeedScreen(
                     state.feedData.becauseYouListenTo?.takeIf { it.items.isNotEmpty() }?.let { section ->
                         item(key = "because_you_listen_to") {
                             Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 shape = RoundedCornerShape(24.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
                             ) {
@@ -640,7 +645,7 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.FRESH_FINDS) && state.feedData.freshFinds.isNotEmpty()) {
                         item(key = "fresh_finds") {
                             Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 shape = RoundedCornerShape(24.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
                             ) {
@@ -687,7 +692,7 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.JUMP_BACK_IN) && state.feedData.jumpBackIn.isNotEmpty()) {
                         item(key = "jump_back_in") {
                             Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 shape = RoundedCornerShape(24.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
                             ) {
@@ -727,7 +732,7 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.MIXES) && state.feedData.mixes.isNotEmpty()) {
                         item(key = "mixed_for_you") {
                             Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 shape = RoundedCornerShape(24.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
                             ) {
@@ -779,7 +784,7 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.TOP_ARTISTS) && individualTopArtists.isNotEmpty()) {
                         item(key = "top_artists") {
                             Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 shape = RoundedCornerShape(24.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
                             ) {
@@ -815,7 +820,7 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.HEAVY_ROTATION) && state.feedData.heavyRotation.isNotEmpty()) {
                         item(key = "heavy_rotation") {
                             Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 shape = RoundedCornerShape(24.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
                             ) {
@@ -859,7 +864,7 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.ALBUMS) && state.feedData.recentAlbums.isNotEmpty()) {
                         item(key = "albums_in_rotation") {
                             Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 shape = RoundedCornerShape(24.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
                             ) {
@@ -896,7 +901,7 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.CHARTS) && state.feedData.charts.isNotEmpty()) {
                         item(key = "trending_charts") {
                             Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 shape = RoundedCornerShape(24.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
                             ) {
@@ -942,7 +947,7 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.NEW_RELEASES) && state.feedData.newReleases.isNotEmpty()) {
                         item(key = "new_releases") {
                             Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 shape = RoundedCornerShape(24.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
                             ) {
@@ -1367,7 +1372,7 @@ private fun HomeShelfCard(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp),
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
     ) {
@@ -2069,8 +2074,8 @@ private fun FeedMediaRow(
 ) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.padding(top = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(CardTokens.cardGap),
+        modifier = Modifier.padding(top = 10.dp),
         content = content,
     )
 }
@@ -2086,9 +2091,10 @@ private fun FeedMediaCard(
     onLongClick: (() -> Unit)? = null,
     onPlayClick: (() -> Unit)? = null,
     badgeText: String? = null,
-    cardWidth: androidx.compose.ui.unit.Dp = 148.dp,
+    cardWidth: androidx.compose.ui.unit.Dp = rememberSquareCardWidth(),
 ) {
     val haptics = LocalHapticFeedback.current
+    val coverHeight = rememberCoverHeight()
     Column(
         modifier = Modifier
             .width(cardWidth)
@@ -2102,12 +2108,12 @@ private fun FeedMediaCard(
                 },
             ),
     ) {
-        Box(modifier = Modifier.size(cardWidth)) {
+        Box(modifier = Modifier.width(cardWidth).height(coverHeight)) {
             // No onClick here on purpose: the outer Column's combinedClickable
             // owns tap + long-press for the whole card. An inner clickable
             // Surface would swallow the press and starve the long-press tray.
             Surface(
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(CardTokens.coverCornerRadius),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 tonalElevation = 1.dp,
                 modifier = Modifier.fillMaxSize(),
@@ -2139,58 +2145,9 @@ private fun FeedMediaCard(
                     }
                 }
             }
-            if (onPlayClick != null) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    shadowElevation = 6.dp,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 8.dp, bottom = 8.dp)
-                        .size(38.dp)
-                        .combinedClickable(
-                            onClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onPlayClick()
-                            },
-                            onLongClick = onLongClick?.let { tray ->
-                                {
-                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    tray()
-                                }
-                            },
-                        ),
-                ) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Filled.PlayArrow,
-                            contentDescription = stringResource(R.string.feed_play_title_cd, title),
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
-            }
         }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(horizontal = 4.dp),
-        )
-        Spacer(Modifier.height(1.dp))
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-            modifier = Modifier.padding(horizontal = 4.dp),
-        )
+        Spacer(Modifier.height(CardTokens.coverToTextGap))
+        CardTextArea(title = title, infoLine = subtitle)
     }
 }
 
@@ -2209,7 +2166,7 @@ private fun FeedPlaylistCard(
         fallbackIcon = Icons.Filled.Album,
         onClick = onClick,
         onPlayClick = onPlayClick,
-        cardWidth = 156.dp,
+        cardWidth = rememberSquareCardWidth(),
     )
 }
 
@@ -2228,9 +2185,11 @@ private fun RecentTrackCard(
     val primaryArtistName = remember(track.artist.displayName) { ArtistHelper.primaryArtist(track.artist.displayName) }
     val subtitle = if (ago != null) "$primaryArtistName · $ago" else primaryArtistName
     val haptics = LocalHapticFeedback.current
+    val cardWidth = rememberSquareCardWidth()
+    val coverHeight = rememberCoverHeight()
     Column(
         modifier = Modifier
-            .width(148.dp)
+            .width(cardWidth)
             .combinedClickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -2247,10 +2206,10 @@ private fun RecentTrackCard(
             ),
     ) {
         Surface(
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(CardTokens.coverCornerRadius),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 1.dp,
-            modifier = Modifier.size(148.dp),
+            modifier = Modifier.width(cardWidth).height(coverHeight),
         ) {
             Box(Modifier.fillMaxSize()) {
                 ArtworkImage(
@@ -2279,25 +2238,8 @@ private fun RecentTrackCard(
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = track.name,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(horizontal = 4.dp),
-        )
-        Spacer(Modifier.height(1.dp))
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-            modifier = Modifier.padding(horizontal = 4.dp),
-        )
+        Spacer(Modifier.height(CardTokens.coverToTextGap))
+        CardTextArea(title = track.name, infoLine = subtitle)
     }
 }
 

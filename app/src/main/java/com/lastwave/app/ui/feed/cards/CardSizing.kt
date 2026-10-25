@@ -10,29 +10,30 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/** Square card width: ~2.3 cards visible on phones, larger on wide screens. */
+import androidx.compose.runtime.remember
+
+/**
+ * Remembers the unified [CardDimensions] for the current viewport width.
+ */
 @Composable
-fun rememberSquareCardWidth(): Dp {
+fun rememberCardDimensions(): CardDimensions {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-    return when {
-        screenWidth < 360.dp -> (screenWidth * 0.40f).coerceAtLeast(120.dp)
-        screenWidth < 600.dp -> (screenWidth * 0.40f).coerceAtMost(180.dp)
-        screenWidth < 840.dp -> (screenWidth * 0.24f).coerceAtMost(200.dp)
-        else -> (screenWidth * 0.16f).coerceAtMost(216.dp)
+    return remember(screenWidth) {
+        calculateCardDimensions(screenWidth)
     }
 }
 
-/** Wide 16:9 card width: ~1.6 cards visible on phones, larger on tablets. */
+/** Unified cover height shared by square and wide cards. */
 @Composable
-fun rememberWideCardWidth(): Dp {
-    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-    return when {
-        screenWidth < 360.dp -> (screenWidth * 0.62f).coerceAtLeast(200.dp)
-        screenWidth < 600.dp -> (screenWidth * 0.58f).coerceAtMost(300.dp)
-        screenWidth < 840.dp -> (screenWidth * 0.38f).coerceAtMost(340.dp)
-        else -> (screenWidth * 0.26f).coerceAtMost(360.dp)
-    }
-}
+fun rememberCoverHeight(): Dp = rememberCardDimensions().coverHeight
+
+/** Square card width: equals coverHeight for 1:1 aspect ratio. */
+@Composable
+fun rememberSquareCardWidth(): Dp = rememberCardDimensions().squareWidth
+
+/** Wide 16:9 card width: equals coverHeight * 16/9. */
+@Composable
+fun rememberWideCardWidth(): Dp = rememberCardDimensions().wideWidth
 
 /** Featured big-square card width: ~1.7 cards peek on phones. */
 @Composable
