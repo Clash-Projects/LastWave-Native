@@ -231,6 +231,7 @@ fun MainShell(
     onOpenPodcasts: () -> Unit = {},
     onOpenPodcastShow: (String) -> Unit = {},
     onOpenYouTubeLogin: () -> Unit = {},
+    onReturnToHome: () -> Boolean = { false },
     mainShellViewModel: MainShellViewModel = hiltViewModel(),
 ) {
     val tabs = MainTab.entries
@@ -457,8 +458,22 @@ fun MainShell(
 
         val currentSelectedIndex by androidx.compose.runtime.rememberUpdatedState(selectedTabIndex)
         val currentOnSelect by androidx.compose.runtime.rememberUpdatedState { index: Int ->
-            if (index != selectedTabIndex) selectedTabIndex = index
-            scope.launch { pagerState.animateScrollToPage(index) }
+            if (tabs[index] == MainTab.FEED) {
+                val wasOnDetail = onReturnToHome()
+                if (wasOnDetail) {
+                    if (selectedTabIndex != feedIndex) selectedTabIndex = feedIndex
+                    scope.launch { pagerState.scrollToPage(feedIndex) }
+                    return@rememberUpdatedState
+                }
+                if (pagerState.currentPage != feedIndex) {
+                    if (selectedTabIndex != feedIndex) selectedTabIndex = feedIndex
+                    scope.launch { pagerState.scrollToPage(feedIndex) }
+                    return@rememberUpdatedState
+                }
+            } else {
+                if (index != selectedTabIndex) selectedTabIndex = index
+                scope.launch { pagerState.animateScrollToPage(index) }
+            }
             Unit
         }
         val currentOnOpenGenerator by androidx.compose.runtime.rememberUpdatedState(onOpenGenerator)
