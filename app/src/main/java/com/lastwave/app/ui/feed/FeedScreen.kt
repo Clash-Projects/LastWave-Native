@@ -365,6 +365,20 @@ fun FeedScreen(
                     }.distinctBy { it.name.trim().lowercase() }
                 }
 
+                val visibleNativeShelves = remember(state.feedData.nativeShelves, ytHidden, ytOrder) {
+                    state.feedData.nativeShelves
+                        .filter { shelf -> shelf.title !in ytHidden && shelf.items.isNotEmpty() }
+                        .let { list ->
+                            if (ytOrder.isEmpty()) list
+                            else {
+                                list.sortedWith(compareBy { shelf ->
+                                    val idx = ytOrder.indexOfFirst { it.equals(shelf.title, ignoreCase = true) }
+                                    if (idx >= 0) idx else Int.MAX_VALUE
+                                })
+                            }
+                        }
+                }
+
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize().safeHorizontalContentPadding(),
@@ -550,19 +564,6 @@ fun FeedScreen(
                         }
                     } else {
                         // Native YouTube Music shelves (filtered & ordered via Settings → Home sections → YouTube Music Selection)
-                        val visibleNativeShelves = remember(state.feedData.nativeShelves, ytHidden, ytOrder) {
-                            state.feedData.nativeShelves
-                                .filter { shelf -> shelf.title !in ytHidden && shelf.items.isNotEmpty() }
-                                .let { list ->
-                                    if (ytOrder.isEmpty()) list
-                                    else {
-                                        list.sortedWith(compareBy { shelf ->
-                                            val idx = ytOrder.indexOfFirst { it.equals(shelf.title, ignoreCase = true) }
-                                            if (idx >= 0) idx else Int.MAX_VALUE
-                                        })
-                                    }
-                                }
-                        }
                         for ((shelfIndex, shelf) in visibleNativeShelves.withIndex()) {
                             item(key = "native_shelf_${shelfIndex}_${shelf.title}") {
                                 HomeShelfCard(
