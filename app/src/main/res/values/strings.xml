@@ -1020,7 +1020,7 @@
     <string name="ytimp_refresh">Refresh</string>
     <string name="ytimp_no_library">No library playlists found</string>
     <string name="ytimp_no_library_sub">Create a playlist in YouTube Music (or refresh) and it will show up here.</string>
-    <string name="ytimp_search_hint">Search YouTube Music playlists…</string>
+    <string name="ytimp_search_hint">Search playlists or paste a YouTube URL…</string>
     <string name="ytimp_searching">Searching YouTube Music playlists…</string>
     <string name="ytimp_resolving">Resolving Playlist…</string>
     <string name="ytimp_preview_import">Preview &amp; Import Link</string>
