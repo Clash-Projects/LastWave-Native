@@ -894,14 +894,9 @@ fun SettingsScreen(
                     }
 
                     val isIgnored = BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)
-                    val totalAudioRows = if (misc.crossfadeEnabled) {
-                        if (isIgnored) 7 else 8
-                    } else {
-                        if (isIgnored) 6 else 7
-                    }
-                    SettingsGroup(rowCount = totalAudioRows) { index, position ->
-                        when (index) {
-                            0 -> SettingsActionCard(
+                    val audioRows = buildList<@Composable (GroupPosition) -> Unit> {
+                        add { position ->
+                            SettingsActionCard(
                                 icon = Icons.Filled.HighQuality,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -911,7 +906,9 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.streaming_quality"),
                             )
-                            1 -> SettingsActionCard(
+                        }
+                        add { position ->
+                            SettingsActionCard(
                                 icon = Icons.Filled.CloudDownload,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -921,7 +918,9 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.download_quality"),
                             )
-                            2 -> SettingsToggleCard(
+                        }
+                        add { position ->
+                            SettingsToggleCard(
                                 icon = Icons.Filled.Tune,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -936,12 +935,60 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.bit_perfect"),
                             )
-                            3 -> SettingsToggleCard(
-                                icon = Icons.Filled.GraphicEq,
+                        }
+                        add { position ->
+                            SettingsToggleCard(
+                                icon = Icons.Filled.AutoAwesome,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = "Auto DJ",
+                                subtitle = if (misc.autoDJEnabled) {
+                                    "Autonomous queue replenishment & predictive background prefetch"
+                                } else {
+                                    "Automatic queue management and prefetching disabled"
+                                },
+                                checked = misc.autoDJEnabled,
+                                onCheckedChange = viewModel::setAutoDJEnabled,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.autodj"),
+                            )
+                        }
+                        add { position ->
+                            SettingsToggleCard(
+                                icon = Icons.Filled.AutoAwesome,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = "Automix (AutoDJ)",
+                                subtitle = if (misc.automixEnabled) {
+                                    "Beat-synced transitions with bass crossover swap \u2022 ${misc.automixBars} bars"
+                                } else {
+                                    "Seamless tempo-synced DJ blends between queued tracks"
+                                },
+                                checked = misc.automixEnabled,
+                                onCheckedChange = viewModel::setAutomixEnabled,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.automix"),
+                            )
+                        }
+                        if (misc.automixEnabled) {
+                            add { position ->
+                                AutomixBarsRow(
+                                    bars = misc.automixBars,
+                                    onBarsChange = viewModel::setAutomixBars,
+                                    position = position,
+                                    isHighlighted = (highlightedSettingId == "audio.automix_bars"),
+                                )
+                            }
+                        }
+                        add { position ->
+                            SettingsToggleCard(
+                                icon = Icons.Filled.GraphicEq,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                                 title = stringResource(R.string.settings_crossfade),
-                                subtitle = if (misc.crossfadeEnabled && misc.isBitPerfectEnabled) {
+                                subtitle = if (misc.automixEnabled) {
+                                    "Disabled while Automix is active"
+                                } else if (misc.crossfadeEnabled && misc.isBitPerfectEnabled) {
                                     "Paused while Bit-Perfect is enabled"
                                 } else if (misc.crossfadeEnabled) {
                                     "Smooth transition between tracks \u2022 ${misc.crossfadeSeconds} sec"
@@ -953,84 +1000,49 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.crossfade"),
                             )
-                            4 -> if (misc.crossfadeEnabled) {
+                        }
+                        if (misc.crossfadeEnabled) {
+                            add { position ->
                                 CrossfadeDurationRow(
                                     seconds = misc.crossfadeSeconds,
                                     onSecondsChange = viewModel::setCrossfadeSeconds,
                                     position = position,
                                     isHighlighted = (highlightedSettingId == "audio.crossfade_duration"),
                                 )
-                            } else {
-                                SettingsToggleCard(
-                                    icon = Icons.Filled.Lyrics,
-                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    title = stringResource(R.string.settings_keep_lyrics_screen_awake),
-                                    subtitle = stringResource(R.string.settings_keep_lyrics_screen_awake_desc),
-                                    checked = misc.keepLyricsScreenAwake,
-                                    onCheckedChange = viewModel::setKeepLyricsScreenAwake,
-                                    position = position,
-                                    isHighlighted = (highlightedSettingId == "audio.keep_lyrics_screen_awake"),
-                                )
                             }
-                            5 -> if (misc.crossfadeEnabled) {
-                                SettingsToggleCard(
-                                    icon = Icons.Filled.Lyrics,
-                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    title = stringResource(R.string.settings_keep_lyrics_screen_awake),
-                                    subtitle = stringResource(R.string.settings_keep_lyrics_screen_awake_desc),
-                                    checked = misc.keepLyricsScreenAwake,
-                                    onCheckedChange = viewModel::setKeepLyricsScreenAwake,
-                                    position = position,
-                                    isHighlighted = (highlightedSettingId == "audio.keep_lyrics_screen_awake"),
-                                )
-                            } else {
-                                SettingsToggleCard(
-                                    icon = Icons.Filled.Lyrics,
-                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    title = stringResource(R.string.settings_download_lyrics),
-                                    subtitle = if (misc.downloadLyrics) {
-                                        "Save .lrc companion files & embed lyrics in downloads"
-                                    } else {
-                                        "Do not fetch or save lyrics when downloading"
-                                    },
-                                    checked = misc.downloadLyrics,
-                                    onCheckedChange = viewModel::setDownloadLyrics,
-                                    position = position,
-                                    isHighlighted = (highlightedSettingId == "audio.download_lyrics"),
-                                )
-                            }
-                            6 -> if (misc.crossfadeEnabled) {
-                                SettingsToggleCard(
-                                    icon = Icons.Filled.Lyrics,
-                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    title = stringResource(R.string.settings_download_lyrics),
-                                    subtitle = if (misc.downloadLyrics) {
-                                        "Save .lrc companion files & embed lyrics in downloads"
-                                    } else {
-                                        "Do not fetch or save lyrics when downloading"
-                                    },
-                                    checked = misc.downloadLyrics,
-                                    onCheckedChange = viewModel::setDownloadLyrics,
-                                    position = position,
-                                    isHighlighted = (highlightedSettingId == "audio.download_lyrics"),
-                                )
-                            } else if (!isIgnored) {
-                                SettingsActionCard(
-                                    icon = Icons.Filled.Bolt,
-                                    iconContainer = MaterialTheme.colorScheme.errorContainer,
-                                    iconTint = MaterialTheme.colorScheme.onErrorContainer,
-                                    title = stringResource(R.string.settings_battery_title),
-                                    subtitle = stringResource(R.string.set_battery_restricted),
-                                    onClick = { BatteryOptimizationHelper.requestIgnoreBatteryOptimizations(context) },
-                                    position = position,
-                                    isHighlighted = (highlightedSettingId == "audio.battery_optimization"),
-                                )
-                            }
-                            7 -> if (!isIgnored) {
+                        }
+                        add { position ->
+                            SettingsToggleCard(
+                                icon = Icons.Filled.Lyrics,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_keep_lyrics_screen_awake),
+                                subtitle = stringResource(R.string.settings_keep_lyrics_screen_awake_desc),
+                                checked = misc.keepLyricsScreenAwake,
+                                onCheckedChange = viewModel::setKeepLyricsScreenAwake,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.keep_lyrics_screen_awake"),
+                            )
+                        }
+                        add { position ->
+                            SettingsToggleCard(
+                                icon = Icons.Filled.Lyrics,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_download_lyrics),
+                                subtitle = if (misc.downloadLyrics) {
+                                    "Save .lrc companion files & embed lyrics in downloads"
+                                } else {
+                                    "Do not fetch or save lyrics when downloading"
+                                },
+                                checked = misc.downloadLyrics,
+                                onCheckedChange = viewModel::setDownloadLyrics,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.download_lyrics"),
+                            )
+                        }
+                        if (!isIgnored) {
+                            add { position ->
                                 SettingsActionCard(
                                     icon = Icons.Filled.Bolt,
                                     iconContainer = MaterialTheme.colorScheme.errorContainer,
@@ -1043,6 +1055,9 @@ fun SettingsScreen(
                                 )
                             }
                         }
+                    }
+                    SettingsGroup(rowCount = audioRows.size) { index, position ->
+                        audioRows[index](position)
                     }
                 }
             }
@@ -3422,6 +3437,71 @@ private fun SettingsToggleCard(
 }
 
 
+
+@Composable
+private fun AutomixBarsRow(
+    bars: Int,
+    onBarsChange: (Int) -> Unit,
+    position: GroupPosition = GroupPosition.SINGLE,
+    isHighlighted: Boolean = false,
+) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val shape = groupShape(position)
+
+    Card(
+        shape = shape,
+        colors = CardDefaults.cardColors(
+            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconBadge(
+                    Icons.Filled.AutoAwesome,
+                    MaterialTheme.colorScheme.tertiaryContainer,
+                    MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Automix Transition Length", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                    Text(
+                        if (bars >= 16) "16 bars \u2022 Extended club blend" else "8 bars \u2022 Standard DJ transition",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChip(
+                    selected = bars <= 8,
+                    onClick = {
+                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        onBarsChange(8)
+                    },
+                    label = { Text("8 Bars (Standard)", style = MaterialTheme.typography.labelMedium) },
+                    modifier = Modifier.weight(1f),
+                )
+                FilterChip(
+                    selected = bars >= 16,
+                    onClick = {
+                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        onBarsChange(16)
+                    },
+                    label = { Text("16 Bars (Extended)", style = MaterialTheme.typography.labelMedium) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun CrossfadeDurationRow(
