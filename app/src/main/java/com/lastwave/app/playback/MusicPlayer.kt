@@ -5164,77 +5164,40 @@ class MusicPlayer @Inject constructor(
                 }
                 if (currentQueue.isEmpty() || !radioQueueActive || expectedGeneration != playRequestGeneration.get()) return@launch
 
-                val knownVideoIds = currentQueue.mapNotNullTo(mutableSetOf()) { it.videoId }
-                val knownKeys = currentQueue.mapTo(mutableSetOf()) { it.queueKey() }
-                val knownSongKeys = currentQueue.mapTo(mutableSetOf()) { PureRadioQueue.normalizedSongKey(it.title, it.artist) }
                 val recentHistoryKeys = playHistory.takeLast(50).toSet()
 
-                val continuationToken = currentRadioContinuationToken
-                val automixId = currentRadioAutomixPlaylistId
-
-                val toAdd: List<PlayableTrack> = if (!continuationToken.isNullOrBlank()) {
-                    val result = retryRadioRequest { innerTube.fetchRadioContinuation(continuationToken) }
-                    if (expectedGeneration != playRequestGeneration.get() || !radioQueueActive) return@launch
-
-                    if (result != null && result.tracks.isNotEmpty()) {
-                        currentRadioContinuationToken = result.continuationToken
-                        if (result.automixPlaylistId != null) {
-                            currentRadioAutomixPlaylistId = result.automixPlaylistId
+                val refillResult = RadioRefillPlanner.executeRefill(
+                    initialQueue = currentQueue,
+                    initialContinuationToken = currentRadioContinuationToken,
+                    initialAutomixPlaylistId = currentRadioAutomixPlaylistId,
+                    initialUsedSeeds = radioUsedSeeds,
+                    recentHistoryKeys = recentHistoryKeys,
+                    targetNewSongs = RadioRefillPlanner.TARGET_REFILL_SONGS,
+                    maxPages = RadioRefillPlanner.MAX_PAGE_REQUESTS_PER_REFILL,
+                    isStale = { expectedGeneration != playRequestGeneration.get() || !radioQueueActive },
+                    fetchSource = { source ->
+                        when (source) {
+                            is RadioRefillPlanner.RefillFetchSource.Continuation -> {
+                                retryRadioRequest { innerTube.fetchRadioContinuation(source.token) }
+                            }
+                            is RadioRefillPlanner.RefillFetchSource.Automix -> {
+                                retryRadioRequest { innerTube.fetchRadioByPlaylistId(source.playlistId) }
+                            }
+                            is RadioRefillPlanner.RefillFetchSource.Reseed -> {
+                                android.util.Log.i("MusicPlayer", "Re-seeding YTM radio with RDAMVM of last track in queue: ${source.seedVideoId}")
+                                retryRadioRequest { innerTube.fetchRadio(source.seedVideoId) }
+                            }
                         }
-                        PureRadioQueue.filterStrictYtmRadioBatch(
-                            incomingTracks = result.tracks.map { it.toPlayableTrack() },
-                            existingVideoIds = knownVideoIds,
-                            existingKeys = knownKeys,
-                            existingSongKeys = knownSongKeys,
-                            recentVideoIds = recentHistoryKeys,
-                            recentKeys = recentHistoryKeys,
-                        )
-                    } else if (!automixId.isNullOrBlank()) {
-                        currentRadioContinuationToken = null
-                        currentRadioAutomixPlaylistId = null
-                        val automixResult = retryRadioRequest { innerTube.fetchRadioByPlaylistId(automixId) }
-                        if (expectedGeneration != playRequestGeneration.get() || !radioQueueActive) return@launch
+                    },
+                )
 
-                        if (automixResult != null && automixResult.tracks.isNotEmpty()) {
-                            currentRadioContinuationToken = automixResult.continuationToken
-                            currentRadioAutomixPlaylistId = automixResult.automixPlaylistId
-                            PureRadioQueue.filterStrictYtmRadioBatch(
-                                incomingTracks = automixResult.tracks.map { it.toPlayableTrack() },
-                                existingVideoIds = knownVideoIds,
-                                existingKeys = knownKeys,
-                                existingSongKeys = knownSongKeys,
-                                recentVideoIds = recentHistoryKeys,
-                                recentKeys = recentHistoryKeys,
-                            )
-                        } else {
-                            reseedWithLastQueueSong(currentQueue, knownVideoIds, knownKeys, knownSongKeys, recentHistoryKeys)
-                        }
-                    } else {
-                        currentRadioContinuationToken = null
-                        reseedWithLastQueueSong(currentQueue, knownVideoIds, knownKeys, knownSongKeys, recentHistoryKeys)
-                    }
-                } else if (!automixId.isNullOrBlank()) {
-                    currentRadioAutomixPlaylistId = null
-                    val automixResult = retryRadioRequest { innerTube.fetchRadioByPlaylistId(automixId) }
-                    if (expectedGeneration != playRequestGeneration.get() || !radioQueueActive) return@launch
+                if (expectedGeneration != playRequestGeneration.get() || !radioQueueActive) return@launch
 
-                    if (automixResult != null && automixResult.tracks.isNotEmpty()) {
-                        currentRadioContinuationToken = automixResult.continuationToken
-                        currentRadioAutomixPlaylistId = automixResult.automixPlaylistId
-                        PureRadioQueue.filterStrictYtmRadioBatch(
-                            incomingTracks = automixResult.tracks.map { it.toPlayableTrack() },
-                            existingVideoIds = knownVideoIds,
-                            existingKeys = knownKeys,
-                            existingSongKeys = knownSongKeys,
-                            recentVideoIds = recentHistoryKeys,
-                            recentKeys = recentHistoryKeys,
-                        )
-                    } else {
-                        reseedWithLastQueueSong(currentQueue, knownVideoIds, knownKeys, knownSongKeys, recentHistoryKeys)
-                    }
-                } else {
-                    reseedWithLastQueueSong(currentQueue, knownVideoIds, knownKeys, knownSongKeys, recentHistoryKeys)
-                }
+                currentRadioContinuationToken = refillResult.nextContinuationToken
+                currentRadioAutomixPlaylistId = refillResult.nextAutomixPlaylistId
+                radioUsedSeeds.addAll(refillResult.usedSeedVideoIds)
+
+                val toAdd: List<PlayableTrack> = refillResult.tracksToAdd
 
                 if (toAdd.isEmpty() || !radioQueueActive || expectedGeneration != playRequestGeneration.get()) return@launch
 
