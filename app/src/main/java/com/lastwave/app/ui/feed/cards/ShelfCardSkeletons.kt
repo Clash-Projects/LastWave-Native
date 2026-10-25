@@ -51,20 +51,21 @@ private fun Modifier.shimmer(pulse: Float, radius: Dp) =
 
 /** Square-card skeleton row matching [ShelfSquareCard]. */
 @Composable
-fun ShelfSquareSkeletonRow(cardWidth: Dp, count: Int = 4) {
+fun ShelfSquareSkeletonRow(cardWidth: Dp = rememberSquareCardWidth(), count: Int = 4) {
     val pulse = rememberShimmerPulse()
+    val coverHeight = rememberCoverHeight()
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(CardTokens.cardGap),
         userScrollEnabled = false,
     ) {
         items(count) {
             Column {
-                Box(Modifier.width(cardWidth).aspectRatio(1f).shimmer(pulse, 18.dp))
-                Spacer(Modifier.height(8.dp))
-                Box(Modifier.width(cardWidth * 0.7f).height(12.dp).shimmer(pulse, 6.dp))
-                Spacer(Modifier.height(4.dp))
-                Box(Modifier.width(cardWidth * 0.5f).height(10.dp).shimmer(pulse, 5.dp))
+                Box(Modifier.width(cardWidth).height(coverHeight).shimmer(pulse, CardTokens.coverCornerRadius))
+                Spacer(Modifier.height(CardTokens.coverToTextGap))
+                Box(Modifier.width(cardWidth * 0.7f).height(12.dp).shimmer(pulse, 4.dp))
+                Spacer(Modifier.height(CardTokens.titleToInfoGap))
+                Box(Modifier.width(cardWidth * 0.5f).height(10.dp).shimmer(pulse, 4.dp))
             }
         }
     }
@@ -72,18 +73,21 @@ fun ShelfSquareSkeletonRow(cardWidth: Dp, count: Int = 4) {
 
 /** Wide 16:9-card skeleton row matching [ShelfWideCard]. */
 @Composable
-fun ShelfWideSkeletonRow(cardWidth: Dp, count: Int = 3) {
+fun ShelfWideSkeletonRow(cardWidth: Dp = rememberWideCardWidth(), count: Int = 3) {
     val pulse = rememberShimmerPulse()
+    val coverHeight = rememberCoverHeight()
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(CardTokens.cardGap),
         userScrollEnabled = false,
     ) {
         items(count) {
             Column {
-                Box(Modifier.width(cardWidth).aspectRatio(16f / 9f).shimmer(pulse, 16.dp))
-                Spacer(Modifier.height(8.dp))
-                Box(Modifier.width(cardWidth * 0.7f).height(12.dp).shimmer(pulse, 6.dp))
+                Box(Modifier.width(cardWidth).height(coverHeight).shimmer(pulse, CardTokens.coverCornerRadius))
+                Spacer(Modifier.height(CardTokens.coverToTextGap))
+                Box(Modifier.width(cardWidth * 0.7f).height(12.dp).shimmer(pulse, 4.dp))
+                Spacer(Modifier.height(CardTokens.titleToInfoGap))
+                Box(Modifier.width(cardWidth * 0.5f).height(10.dp).shimmer(pulse, 4.dp))
             }
         }
     }

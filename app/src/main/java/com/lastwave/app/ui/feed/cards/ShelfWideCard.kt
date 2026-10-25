@@ -48,9 +48,10 @@ fun ShelfWideCard(
     onLongClick: (() -> Unit)? = null,
     onPlayClick: (() -> Unit)? = null,
     fallbackIcon: ImageVector = Icons.Filled.PlayCircle,
-    cardWidth: Dp = 232.dp,
+    cardWidth: Dp = rememberWideCardWidth(),
 ) {
     val haptics = LocalHapticFeedback.current
+    val coverHeight = rememberCoverHeight()
     Column(
         modifier = modifier
             .width(cardWidth)
@@ -59,7 +60,7 @@ fun ShelfWideCard(
         Box(
             modifier = Modifier
                 .width(cardWidth)
-                .aspectRatio(16f / 9f),
+                .height(coverHeight),
         ) {
             CardArtwork(
                 title = title,
@@ -67,7 +68,7 @@ fun ShelfWideCard(
                 artworkUrl = artworkUrl,
                 fallbackIcon = fallbackIcon,
                 modifier = Modifier.fillMaxSize(),
-                cornerRadius = 16.dp,
+                cornerRadius = CardTokens.coverCornerRadius,
             )
             if (onPlayClick != null) {
                 Surface(
@@ -102,9 +103,7 @@ fun ShelfWideCard(
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
-        CardTitle(text = title, maxLines = 2, modifier = Modifier.padding(horizontal = 4.dp).fillMaxWidth())
-        Spacer(Modifier.height(1.dp))
-        CardInfoLine(text = infoLine, modifier = Modifier.padding(horizontal = 4.dp).fillMaxWidth())
+        Spacer(Modifier.height(CardTokens.coverToTextGap))
+        CardTextArea(title = title, infoLine = infoLine)
     }
 }

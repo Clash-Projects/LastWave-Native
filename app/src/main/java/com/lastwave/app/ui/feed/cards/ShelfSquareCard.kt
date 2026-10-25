@@ -48,9 +48,10 @@ fun ShelfSquareCard(
     onLongClick: (() -> Unit)? = null,
     onPlayClick: (() -> Unit)? = null,
     fallbackIcon: ImageVector = Icons.Filled.MusicNote,
-    cardWidth: Dp = 148.dp,
+    cardWidth: Dp = rememberSquareCardWidth(),
 ) {
     val haptics = LocalHapticFeedback.current
+    val coverHeight = rememberCoverHeight()
     Column(
         modifier = modifier
             .width(cardWidth)
@@ -59,7 +60,7 @@ fun ShelfSquareCard(
         Box(
             modifier = Modifier
                 .width(cardWidth)
-                .aspectRatio(1f),
+                .height(coverHeight),
         ) {
             CardArtwork(
                 title = title,
@@ -101,9 +102,7 @@ fun ShelfSquareCard(
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
-        CardTitle(text = title, maxLines = 2, modifier = Modifier.padding(horizontal = 4.dp).fillMaxWidth())
-        Spacer(Modifier.height(1.dp))
-        CardInfoLine(text = infoLine, modifier = Modifier.padding(horizontal = 4.dp).fillMaxWidth())
+        Spacer(Modifier.height(CardTokens.coverToTextGap))
+        CardTextArea(title = title, infoLine = infoLine)
     }
 }

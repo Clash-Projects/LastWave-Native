@@ -108,6 +108,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.lastwave.app.ui.feed.cards.CardTokens
+import com.lastwave.app.ui.feed.cards.CardTextArea
+import com.lastwave.app.ui.feed.cards.rememberCoverHeight
+import com.lastwave.app.ui.feed.cards.rememberSquareCardWidth
+import com.lastwave.app.ui.feed.cards.rememberWideCardWidth
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -2086,9 +2091,10 @@ private fun FeedMediaCard(
     onLongClick: (() -> Unit)? = null,
     onPlayClick: (() -> Unit)? = null,
     badgeText: String? = null,
-    cardWidth: androidx.compose.ui.unit.Dp = 148.dp,
+    cardWidth: androidx.compose.ui.unit.Dp = rememberSquareCardWidth(),
 ) {
     val haptics = LocalHapticFeedback.current
+    val coverHeight = rememberCoverHeight()
     Column(
         modifier = Modifier
             .width(cardWidth)
@@ -2102,12 +2108,12 @@ private fun FeedMediaCard(
                 },
             ),
     ) {
-        Box(modifier = Modifier.size(cardWidth)) {
+        Box(modifier = Modifier.width(cardWidth).height(coverHeight)) {
             // No onClick here on purpose: the outer Column's combinedClickable
             // owns tap + long-press for the whole card. An inner clickable
             // Surface would swallow the press and starve the long-press tray.
             Surface(
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(CardTokens.coverCornerRadius),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 tonalElevation = 1.dp,
                 modifier = Modifier.fillMaxSize(),
@@ -2172,25 +2178,8 @@ private fun FeedMediaCard(
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(horizontal = 4.dp),
-        )
-        Spacer(Modifier.height(1.dp))
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-            modifier = Modifier.padding(horizontal = 4.dp),
-        )
+        Spacer(Modifier.height(CardTokens.coverToTextGap))
+        CardTextArea(title = title, infoLine = subtitle)
     }
 }
 
@@ -2209,7 +2198,7 @@ private fun FeedPlaylistCard(
         fallbackIcon = Icons.Filled.Album,
         onClick = onClick,
         onPlayClick = onPlayClick,
-        cardWidth = 156.dp,
+        cardWidth = rememberSquareCardWidth(),
     )
 }
 
@@ -2228,9 +2217,11 @@ private fun RecentTrackCard(
     val primaryArtistName = remember(track.artist.displayName) { ArtistHelper.primaryArtist(track.artist.displayName) }
     val subtitle = if (ago != null) "$primaryArtistName · $ago" else primaryArtistName
     val haptics = LocalHapticFeedback.current
+    val cardWidth = rememberSquareCardWidth()
+    val coverHeight = rememberCoverHeight()
     Column(
         modifier = Modifier
-            .width(148.dp)
+            .width(cardWidth)
             .combinedClickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -2247,10 +2238,10 @@ private fun RecentTrackCard(
             ),
     ) {
         Surface(
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(CardTokens.coverCornerRadius),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 1.dp,
-            modifier = Modifier.size(148.dp),
+            modifier = Modifier.width(cardWidth).height(coverHeight),
         ) {
             Box(Modifier.fillMaxSize()) {
                 ArtworkImage(
@@ -2279,25 +2270,8 @@ private fun RecentTrackCard(
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = track.name,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(horizontal = 4.dp),
-        )
-        Spacer(Modifier.height(1.dp))
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-            modifier = Modifier.padding(horizontal = 4.dp),
-        )
+        Spacer(Modifier.height(CardTokens.coverToTextGap))
+        CardTextArea(title = track.name, infoLine = subtitle)
     }
 }
 
