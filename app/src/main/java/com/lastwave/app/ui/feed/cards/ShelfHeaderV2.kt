@@ -5,6 +5,7 @@
 package com.lastwave.app.ui.feed.cards
 
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
@@ -53,6 +55,7 @@ fun ShelfHeaderV2(
     onMoreClick: (() -> Unit)? = null,
     onPlayAll: (() -> Unit)? = null,
     onShuffle: (() -> Unit)? = null,
+    outlinedPlayAll: Boolean = false,
 ) {
     val haptics = LocalHapticFeedback.current
     Row(
@@ -137,7 +140,8 @@ fun ShelfHeaderV2(
                     onPlayAll()
                 },
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                color = if (outlinedPlayAll) Color.Transparent else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                border = if (outlinedPlayAll) BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f)) else null,
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp),
