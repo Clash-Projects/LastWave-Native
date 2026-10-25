@@ -193,6 +193,8 @@ data class MusicPlayerState(
     val autoMixState: AutoMixState = AutoMixState.IDLE,
     val autoMixProgress: Float = 0f,
     val autoMixBpm: Float? = null,
+    val isAutoDJActive: Boolean = true,
+    val autoDJStatus: String? = null,
 )
 
 /**
@@ -238,6 +240,7 @@ class MusicPlayer @Inject constructor(
     private val playlistRepository: PlaylistRepository,
     private val nativeAudioEngine: dagger.Lazy<NativeAudioEngine>,
     private val nativeAutoMixEngine: dagger.Lazy<NativeAutoMixEngine>,
+    private val autoDJController: dagger.Lazy<com.lastwave.app.playback.autodj.AutoDJController>,
     private val audioEffectsEngine: AudioEffectsEngine,
     private val applicationScope: CoroutineScope,
     private val downloadedTrackDao: dagger.Lazy<com.lastwave.app.data.local.db.DownloadedTrackDao>,
@@ -879,6 +882,7 @@ class MusicPlayer @Inject constructor(
                     errorRetryCount = 0
                 }
                 val currentIndex = player.currentMediaItemIndex
+                autoDJController.get().onTrackTransition(currentIndex)
                 val currentTrack = mediaItem.toPlayableTrack()
                 val currentQueue = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).toPlayableTrack() }
                 // The stream we staged for this exact mediaId, if any. Taken
@@ -1643,7 +1647,91 @@ class MusicPlayer @Inject constructor(
     private val player: ExoPlayer
         get() = activePlayer ?: playerDelegate.value
 
+    private val autoDJHost = object : com.lastwave.app.playback.autodj.AutoDJPlaybackHost {
+        override fun getTrackAt(index: Int): PlayableTrack? {
+            if (!playerDelegate.isInitialized() || index !in 0 until player.mediaItemCount) return null
+            return player.getMediaItemAt(index).toPlayableTrack()
+        }
+
+        override fun getQueueSize(): Int {
+            return if (playerDelegate.isInitialized()) player.mediaItemCount else 0
+        }
+
+        override fun getCurrentIndex(): Int {
+            return if (playerDelegate.isInitialized()) player.currentMediaItemIndex else C.INDEX_UNSET
+        }
+
+        override fun isCurrentItem(index: Int): Boolean {
+            return playerDelegate.isInitialized() && index == player.currentMediaItemIndex
+        }
+
+        override fun registerResolvedStream(index: Int, track: PlayableTrack, stream: ResolvedStream) {
+            applicationScope.launch(Dispatchers.Main.immediate) {
+                if (!playerDelegate.isInitialized() || index !in 0 until player.mediaItemCount) return@launch
+                val currentAt = player.getMediaItemAt(index).toPlayableTrack()
+                if (currentAt.mediaIdKey() != track.mediaIdKey() || index == player.currentMediaItemIndex) return@launch
+                registerPreparedStream(stream)
+                stagePendingQuality(track.mediaIdKey(), stream)
+                track.videoId?.let { stagePendingQuality(it, stream) }
+                replaceMediaItemPreservingShuffle(index, currentAt.toMediaItem(stream))
+                logStreamEvent("autodj-next-prepared", stream, retry = 0)
+            }
+        }
+
+        override fun armStandbyForNext(index: Int, track: PlayableTrack) {
+            applicationScope.launch(Dispatchers.Main.immediate) {
+                if (!playerDelegate.isInitialized() || index !in 0 until player.mediaItemCount) return@launch
+                val item = player.getMediaItemAt(index)
+                armCrossfadeStandby(index, item)
+            }
+        }
+
+        override fun triggerAutoTransition(overlapMs: Long) {
+            applicationScope.launch(Dispatchers.Main.immediate) {
+                val standby = currentStandby()
+                val nextIndex = player.nextMediaItemIndex
+                if (standby != null && nextIndex != C.INDEX_UNSET && crossfadeStandbyArmed && standby.playbackState == Player.STATE_READY) {
+                    handOffCrossfade(standby, overlapMs)
+                }
+            }
+        }
+
+        override fun setLateTrackBuffering(isWaiting: Boolean) {
+            applicationScope.launch(Dispatchers.Main.immediate) {
+                _state.update { it.copy(isBuffering = isWaiting) }
+            }
+        }
+
+        override fun skipToNextPlayableItem(failedIndex: Int) {
+            applicationScope.launch(Dispatchers.Main.immediate) {
+                if (playerDelegate.isInitialized() && failedIndex in 0 until player.mediaItemCount) {
+                    val failedId = player.getMediaItemAt(failedIndex).mediaId
+                    unavailableMediaIds.add(failedId)
+                }
+                handleNaturalTrackEnd()
+            }
+        }
+
+        override fun requestQueueRefill() {
+            applicationScope.launch(Dispatchers.Main.immediate) {
+                if (discoverQueueActive) {
+                    extendDiscoverQueueIfNeeded(player.currentMediaItemIndex)
+                } else if (radioQueueActive) {
+                    extendRadioQueueIfNeeded(player.currentMediaItemIndex, forceIfAtEnd = true)
+                } else {
+                    val cur = player.currentMediaItem?.toPlayableTrack()
+                    if (cur != null) {
+                        radioQueueActive = true
+                        _state.update { it.copy(isEndlessQueue = true) }
+                        startRadioQueue(cur, resumePlaybackImmediately = false)
+                    }
+                }
+            }
+        }
+    }
+
     init {
+        autoDJController.get().attachHost(autoDJHost, applicationScope)
         setupSpatializerListener()
         runCatching { restorePlaybackSession() }.getOrElse { error ->
             // A corrupt session or OEM media-stack failure must not become a
@@ -1715,6 +1803,12 @@ class MusicPlayer @Inject constructor(
                             val buf = player.bufferedPosition.coerceAtLeast(0)
                             val sleepRemaining = remaining?.coerceAtLeast(0)
 
+                            autoDJController.get().onPlaybackTick(
+                                currentPositionMs = pos,
+                                durationMs = dur,
+                                isPlaying = player.isPlaying,
+                                transitionDurationMs = if (automixEnabled) 15000L else crossfadeDurationMs,
+                            )
                             if (updateCrossfade(pos)) {
                                 cadenceMs = 60L
                             } else {
@@ -2931,6 +3025,9 @@ class MusicPlayer @Inject constructor(
         player.volume = 1f
         if (nativeAutoMixEngine.get().isAvailable) {
             nativeAutoMixEngine.get().reset()
+        }
+        if (autoDJController.get().isEnabled) {
+            autoDJController.get().cancelAllPrefetches("cancel-crossfade")
         }
     }
 
@@ -5484,6 +5581,12 @@ class MusicPlayer @Inject constructor(
         if (nextIndex == C.INDEX_UNSET || nextIndex !in 0 until player.mediaItemCount) {
             _state.update { it.copy(isPlaying = false, isBuffering = false) }
             persistPlaybackSession()
+            return
+        }
+        val nextMediaId = player.getMediaItemAt(nextIndex).mediaId
+        val nextStage = autoDJController.get().getTrackStage(nextMediaId)
+        if (nextStage == TrackLifecycleStage.RESOLVING || nextStage == TrackLifecycleStage.PREPARING) {
+            _state.update { it.copy(isBuffering = true) }
             return
         }
         resolveAndPlayQueueItem(nextIndex)
@@ -8152,6 +8255,13 @@ class MusicPlayer @Inject constructor(
             autoMixState = if (nativeAutoMixEngine.get().isAvailable) nativeAutoMixEngine.get().state else AutoMixState.IDLE,
             autoMixProgress = if (nativeAutoMixEngine.get().isAvailable) nativeAutoMixEngine.get().transitionProgress else 0f,
             autoMixBpm = if (nativeAutoMixEngine.get().isAvailable) nativeAutoMixEngine.get().deckABpm.takeIf { it in 50f..220f } else null,
+            isAutoDJActive = autoDJController.get().isEnabled,
+            autoDJStatus = when (val st = autoDJController.get().status.value) {
+                is com.lastwave.app.playback.autodj.AutoDJStatus.Resolving -> "Resolving ${st.title}..."
+                is com.lastwave.app.playback.autodj.AutoDJStatus.Ready -> "Ready: ${st.title}"
+                is com.lastwave.app.playback.autodj.AutoDJStatus.WaitingLate -> "Waiting for ${st.title}..."
+                else -> null
+            },
         )
         persistPlaybackSession()
         updateSignalPath()
