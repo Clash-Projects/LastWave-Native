@@ -106,7 +106,7 @@ class AutoDJController @Inject constructor(
         this.host = host
         this.scope = scope
         this.streamResolver = streamResolver
-        scope.launch {
+        scope.launch(Dispatchers.Main.immediate) {
             settingsPreferences.settings.collect { settings ->
                 isEnabled = settings.autoDJEnabled
                 isAutomixEnabled = settings.automixEnabled
