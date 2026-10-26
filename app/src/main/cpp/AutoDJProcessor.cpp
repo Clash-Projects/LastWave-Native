@@ -20,72 +20,86 @@ AutoDJDecision AutoDJProcessor::evaluate(
     int32_t retryCount,
     int32_t unplayedCount
 ) {
-    // 1. Refill check: if queue is running out of unplayed tracks, refill early
+    // 1. Refill check: when approaching exhaustion (<= 2 tracks remaining)
     if (unplayedCount <= m_refillThreshold) {
-        if (durationMs <= 0 || currentPositionMs >= (durationMs / 2) || (durationMs - currentPositionMs) <= 60000) {
-            return AutoDJDecision::REFILL_QUEUE;
-        }
+        return AutoDJDecision::REFILL_QUEUE;
     }
 
-    // 2. Terminal failure handling
-    if (nextStage == TrackLifecycleStage::FAILED) {
+    // 2. Resilience: if stream expired, silently refresh it
+    if (nextStage == TrackLifecycleStage::EXPIRED) {
+        return AutoDJDecision::REFRESH_EXPIRED_STREAM;
+    }
+
+    // 3. Failure retry bound: 2 retries with backoff, then skip unplayable
+    if (nextStage == TrackLifecycleStage::FAILED_RETRYING) {
         if (retryCount >= m_maxRetries) {
-            return AutoDJDecision::SKIP_FAILED_TRACK;
+            return AutoDJDecision::SKIP_UNPLAYABLE;
         }
-        return AutoDJDecision::PREFETCH_NEXT;
+        return AutoDJDecision::RESOLVE_NEXT_STREAM;
     }
 
+    // 4. Unknown duration handling
     if (durationMs <= 0) {
-        // Unknown duration or stream without fixed duration: prefetch if queued
         if (nextStage == TrackLifecycleStage::QUEUED) {
-            return AutoDJDecision::PREFETCH_NEXT;
+            return AutoDJDecision::RESOLVE_NEXT_STREAM;
         }
-        if (nextStage == TrackLifecycleStage::RESOLVED) {
-            return AutoDJDecision::PREPARE_STANDBY;
+        if (nextStage == TrackLifecycleStage::STREAM_RESOLVED) {
+            return AutoDJDecision::DECODE_HEAD_WINDOW;
+        }
+        if (nextStage == TrackLifecycleStage::DECODING_HEAD_WINDOW) {
+            return AutoDJDecision::ARM_STANDBY;
         }
         return AutoDJDecision::DO_NOTHING;
     }
 
     const int64_t remainingMs = std::max<int64_t>(0, durationMs - currentPositionMs);
     const int64_t leadWindowMs = m_latencyEstimator.calculateDynamicLeadWindowMs(transitionDurationMs);
+    const int64_t armLeadThresholdMs = ADVANCE_ARM_LEAD_MS + transitionDurationMs; // 40s + transition
 
-    // 3. Track has reached or exceeded its duration
+    // 5. Track finished or at transition edge
     if (remainingMs <= 0) {
-        if (nextStage == TrackLifecycleStage::READY) {
+        if (nextStage == TrackLifecycleStage::ARMED_READY) {
             return AutoDJDecision::TRIGGER_TRANSITION;
         }
-        if (nextStage == TrackLifecycleStage::RESOLVING ||
-            nextStage == TrackLifecycleStage::PREPARING ||
+        if (nextStage == TrackLifecycleStage::RESOLVING_STREAM ||
+            nextStage == TrackLifecycleStage::DECODING_HEAD_WINDOW ||
             nextStage == TrackLifecycleStage::QUEUED) {
             return AutoDJDecision::WAIT_FOR_LATE_TRACK;
         }
-        if (nextStage == TrackLifecycleStage::RESOLVED) {
-            return AutoDJDecision::PREPARE_STANDBY;
+        if (nextStage == TrackLifecycleStage::STREAM_RESOLVED) {
+            return AutoDJDecision::DECODE_HEAD_WINDOW;
         }
         return AutoDJDecision::DO_NOTHING;
     }
 
-    // 4. Normal active playback progression
+    // 6. Active playback progression
     if (isPlaying) {
-        // Ready for transition right at the transition boundary
-        if (remainingMs <= transitionDurationMs && nextStage == TrackLifecycleStage::READY) {
+        // Trigger transition right at exit cue
+        if (remainingMs <= transitionDurationMs && nextStage == TrackLifecycleStage::ARMED_READY) {
             return AutoDJDecision::TRIGGER_TRANSITION;
         }
 
-        // Within predictive lead window: start background resolution
-        if (remainingMs <= leadWindowMs) {
-            if (nextStage == TrackLifecycleStage::QUEUED) {
-                return AutoDJDecision::PREFETCH_NEXT;
+        // Keep index + 1 fully armed at least 40s before planned exit cue
+        if (remainingMs <= armLeadThresholdMs) {
+            if (nextStage == TrackLifecycleStage::STREAM_RESOLVED) {
+                return AutoDJDecision::DECODE_HEAD_WINDOW;
             }
-            if (nextStage == TrackLifecycleStage::RESOLVED) {
-                return AutoDJDecision::PREPARE_STANDBY;
+            if (nextStage == TrackLifecycleStage::DECODING_HEAD_WINDOW) {
+                return AutoDJDecision::ARM_STANDBY;
             }
-            // If already inside transition window but track is still resolving/preparing,
-            // signal anticipated late track
-            if (remainingMs <= transitionDurationMs &&
-                (nextStage == TrackLifecycleStage::RESOLVING || nextStage == TrackLifecycleStage::PREPARING)) {
-                return AutoDJDecision::WAIT_FOR_LATE_TRACK;
-            }
+        }
+
+        // Never wait until track end: start resolving immediate next track as early as leadWindowMs
+        // (or immediately at track start)
+        if (nextStage == TrackLifecycleStage::QUEUED) {
+            return AutoDJDecision::RESOLVE_NEXT_STREAM;
+        }
+
+        // If inside transition window and next track is still in-flight
+        if (remainingMs <= transitionDurationMs &&
+            (nextStage == TrackLifecycleStage::RESOLVING_STREAM ||
+             nextStage == TrackLifecycleStage::DECODING_HEAD_WINDOW)) {
+            return AutoDJDecision::WAIT_FOR_LATE_TRACK;
         }
     }
 

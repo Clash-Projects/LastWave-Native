@@ -52,6 +52,7 @@ add_library(
     ParametricEqBridge.cpp
     AutoMixEngine.cpp
     AutoMixBridge.cpp
+    TransitionPlanner.cpp
     AutoDJProcessor.cpp
     AutoDJBridge.cpp
     WsolaTimeStretcher.cpp

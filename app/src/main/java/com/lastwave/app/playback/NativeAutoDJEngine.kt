@@ -9,15 +9,17 @@ import kotlin.math.sqrt
 
 enum class TrackLifecycleStage(val nativeValue: Int) {
     QUEUED(0),
-    RESOLVING(1),
-    RESOLVED(2),
-    PREPARING(3),
-    READY(4),
-    PLAYING(5),
-    FINISHED(6),
-    WAITING_LATE(7),
-    FAILED(8),
-    CANCELLED(9);
+    RESOLVING_STREAM(1),
+    STREAM_RESOLVED(2),
+    DECODING_HEAD_WINDOW(3),
+    ARMED_READY(4),
+    TRANSITIONING(5),
+    PLAYING(6),
+    COMPLETED(7),
+    EXPIRED(8),
+    FAILED_RETRYING(9),
+    SKIPPED_UNPLAYABLE(10),
+    CANCELLED(11);
 
     companion object {
         fun fromNative(value: Int): TrackLifecycleStage = entries.firstOrNull { it.nativeValue == value } ?: QUEUED
@@ -26,12 +28,14 @@ enum class TrackLifecycleStage(val nativeValue: Int) {
 
 enum class AutoDJDecision(val nativeValue: Int) {
     DO_NOTHING(0),
-    PREFETCH_NEXT(1),
-    PREPARE_STANDBY(2),
-    TRIGGER_TRANSITION(3),
-    WAIT_FOR_LATE_TRACK(4),
-    SKIP_FAILED_TRACK(5),
-    REFILL_QUEUE(6);
+    RESOLVE_NEXT_STREAM(1),
+    DECODE_HEAD_WINDOW(2),
+    ARM_STANDBY(3),
+    TRIGGER_TRANSITION(4),
+    WAIT_FOR_LATE_TRACK(5),
+    SKIP_UNPLAYABLE(6),
+    REFILL_QUEUE(7),
+    REFRESH_EXPIRED_STREAM(8);
 
     companion object {
         fun fromNative(value: Int): AutoDJDecision = entries.firstOrNull { it.nativeValue == value } ?: DO_NOTHING
@@ -56,7 +60,7 @@ class NativeAutoDJEngine @Inject constructor() : Closeable {
     @Volatile
     private var nativeHandle = if (NativeAudioEngine.libraryLoaded) {
         try {
-            nativeCreate(maxRetries = 3, refillThreshold = 2)
+            nativeCreate(maxRetries = 2, refillThreshold = 2)
         } catch (error: LinkageError) {
             Log.e(TAG, "Native AutoDJ engine unavailable", error)
             0L
@@ -113,35 +117,42 @@ class NativeAutoDJEngine @Inject constructor() : Closeable {
         }
 
         // Fallback pure Kotlin evaluation
-        if (unplayedCount <= 2 && (durationMs <= 0 || currentPositionMs >= (durationMs / 2) || (durationMs - currentPositionMs) <= 60000)) {
+        if (unplayedCount <= 2) {
             return AutoDJDecision.REFILL_QUEUE
         }
-        if (nextStage == TrackLifecycleStage.FAILED) {
-            return if (retryCount >= 3) AutoDJDecision.SKIP_FAILED_TRACK else AutoDJDecision.PREFETCH_NEXT
+        if (nextStage == TrackLifecycleStage.EXPIRED) {
+            return AutoDJDecision.REFRESH_EXPIRED_STREAM
+        }
+        if (nextStage == TrackLifecycleStage.FAILED_RETRYING) {
+            return if (retryCount >= 2) AutoDJDecision.SKIP_UNPLAYABLE else AutoDJDecision.RESOLVE_NEXT_STREAM
         }
         val remainingMs = (durationMs - currentPositionMs).coerceAtLeast(0L)
         val leadWindowMs = (transitionDurationMs + fallbackMeanMs + (2.5 * sqrt(max(0.0, fallbackVarianceMs))) + 5000.0)
-            .coerceIn(15000.0, 60000.0).toLong()
+            .coerceIn(20000.0, 70000.0).toLong()
+        val armLeadThresholdMs = 40000L + transitionDurationMs
 
         if (durationMs > 0 && remainingMs <= 0) {
             return when (nextStage) {
-                TrackLifecycleStage.READY -> AutoDJDecision.TRIGGER_TRANSITION
-                TrackLifecycleStage.RESOLVED -> AutoDJDecision.PREPARE_STANDBY
-                TrackLifecycleStage.RESOLVING, TrackLifecycleStage.PREPARING, TrackLifecycleStage.QUEUED -> AutoDJDecision.WAIT_FOR_LATE_TRACK
+                TrackLifecycleStage.ARMED_READY -> AutoDJDecision.TRIGGER_TRANSITION
+                TrackLifecycleStage.STREAM_RESOLVED -> AutoDJDecision.DECODE_HEAD_WINDOW
+                TrackLifecycleStage.DECODING_HEAD_WINDOW, TrackLifecycleStage.RESOLVING_STREAM, TrackLifecycleStage.QUEUED -> AutoDJDecision.WAIT_FOR_LATE_TRACK
                 else -> AutoDJDecision.DO_NOTHING
             }
         }
 
         if (isPlaying && durationMs > 0) {
-            if (remainingMs <= transitionDurationMs && nextStage == TrackLifecycleStage.READY) {
+            if (remainingMs <= transitionDurationMs && nextStage == TrackLifecycleStage.ARMED_READY) {
                 return AutoDJDecision.TRIGGER_TRANSITION
             }
-            if (remainingMs <= leadWindowMs) {
-                if (nextStage == TrackLifecycleStage.QUEUED) return AutoDJDecision.PREFETCH_NEXT
-                if (nextStage == TrackLifecycleStage.RESOLVED) return AutoDJDecision.PREPARE_STANDBY
-                if (remainingMs <= transitionDurationMs && (nextStage == TrackLifecycleStage.RESOLVING || nextStage == TrackLifecycleStage.PREPARING)) {
-                    return AutoDJDecision.WAIT_FOR_LATE_TRACK
-                }
+            if (remainingMs <= armLeadThresholdMs) {
+                if (nextStage == TrackLifecycleStage.STREAM_RESOLVED) return AutoDJDecision.DECODE_HEAD_WINDOW
+                if (nextStage == TrackLifecycleStage.DECODING_HEAD_WINDOW) return AutoDJDecision.ARM_STANDBY
+            }
+            if (nextStage == TrackLifecycleStage.QUEUED) {
+                return AutoDJDecision.RESOLVE_NEXT_STREAM
+            }
+            if (remainingMs <= transitionDurationMs && (nextStage == TrackLifecycleStage.RESOLVING_STREAM || nextStage == TrackLifecycleStage.DECODING_HEAD_WINDOW)) {
+                return AutoDJDecision.WAIT_FOR_LATE_TRACK
             }
         }
         return AutoDJDecision.DO_NOTHING
@@ -155,18 +166,17 @@ class NativeAutoDJEngine @Inject constructor() : Closeable {
             return AutoDJLatencyStats(stats[0], stats[1], stats[2])
         }
         val stdDev = sqrt(max(0.0, fallbackVarianceMs)).toFloat()
-        val lead = (transitionDurationMs + fallbackMeanMs + (2.5 * stdDev) + 5000.0).coerceIn(15000.0, 60000.0).toFloat()
+        val lead = (transitionDurationMs + fallbackMeanMs + (2.5 * stdDev) + 5000.0).coerceIn(20000.0, 70000.0).toFloat()
         return AutoDJLatencyStats(fallbackMeanMs.toFloat(), stdDev, lead)
     }
 
     override fun close() {
-        val handleToDestroy = synchronized(handleLock) {
+        synchronized(handleLock) {
             val handle = nativeHandle
-            nativeHandle = 0L
-            handle
-        }
-        if (handleToDestroy != 0L) {
-            nativeDestroy(handleToDestroy)
+            if (handle != 0L) {
+                nativeHandle = 0L
+                nativeDestroy(handle)
+            }
         }
     }
 
@@ -175,8 +185,8 @@ class NativeAutoDJEngine @Inject constructor() : Closeable {
         return if (handle != 0L) {
             try {
                 block(handle)
-            } catch (error: Throwable) {
-                Log.e(TAG, "Native AutoDJ call failed", error)
+            } catch (error: LinkageError) {
+                Log.e(TAG, "Native AutoDJ engine invocation failed", error)
                 fallback
             }
         } else {
@@ -184,7 +194,7 @@ class NativeAutoDJEngine @Inject constructor() : Closeable {
         }
     }
 
-    private companion object {
+    companion object {
         private const val TAG = "NativeAutoDJEngine"
 
         @JvmStatic

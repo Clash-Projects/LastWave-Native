@@ -47,7 +47,7 @@ public:
 
     LinkwitzRileyFilter() noexcept = default;
 
-    void configure(double sampleRate, double crossoverHz = 160.0) noexcept {
+    void configure(double sampleRate, double crossoverHz = 180.0) noexcept {
         if (sampleRate <= 0.0) sampleRate = 48000.0;
         sampleRate_ = sampleRate;
         crossoverHz_ = std::clamp(crossoverHz, 20.0, sampleRate * 0.45);
@@ -121,6 +121,29 @@ public:
 
                 if (outLowStereo != nullptr) outLowStereo[offset + ch] = low;
                 if (outHighStereo != nullptr) outHighStereo[offset + ch] = high;
+            }
+        }
+    }
+
+    // Attenuates low frequencies (<crossoverHz) by lowGain and high frequencies by highGain
+    void processBassAttenuate(
+        float* stereo,
+        std::size_t frames,
+        float lowGain,
+        float highGain = 1.0F) noexcept {
+        if (stereo == nullptr || frames == 0) return;
+
+        for (std::size_t f = 0; f < frames; ++f) {
+            const std::size_t offset = f * 2;
+            for (std::size_t ch = 0; ch < 2; ++ch) {
+                const float in = stereo[offset + ch];
+                float low = lpStage_[0].tick(in, ch);
+                low = lpStage_[1].tick(low, ch);
+
+                float high = hpStage_[0].tick(in, ch);
+                high = hpStage_[1].tick(high, ch);
+
+                stereo[offset + ch] = low * lowGain + high * highGain;
             }
         }
     }
