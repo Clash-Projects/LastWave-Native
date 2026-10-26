@@ -107,7 +107,8 @@ void SubtlePhaser::process(float& left, float& right, float send) noexcept {
 // AutoMixEngine Implementation
 // ============================================================================
 
-AutoMixEngine::AutoMixEngine() noexcept {
+AutoMixEngine::AutoMixEngine() noexcept
+    : deckBRingBuffer_(192000 * 40 * 2) {
     configure(48000.0);
 }
 
@@ -115,9 +116,14 @@ void AutoMixEngine::configure(double sampleRate) noexcept {
     if (sampleRate <= 0.0) sampleRate = 48000.0;
     sampleRate_ = sampleRate;
 
-    deckAFilter_.configure(sampleRate_, 180.0);
-    deckBFilter_.configure(sampleRate_, 180.0);
-    deckBHpf200_.configure(sampleRate_, 200.0);
+    deckAHpfL_.reset();
+    deckAHpfR_.reset();
+    deckBHpfL_.reset();
+    deckBHpfR_.reset();
+    currentGainA_ = 1.0f;
+    currentGainB_ = 0.0f;
+    currentCutoffA_ = 20.0f;
+    currentCutoffB_ = 200.0f;
 
     deckBStretcher_.configure(sampleRate_, 2);
     deckADetector_.configure(sampleRate_);
@@ -125,30 +131,25 @@ void AutoMixEngine::configure(double sampleRate) noexcept {
     deckAEcho_.configure(sampleRate_, 120.0f);
     subtlePhaser_.configure(sampleRate_);
 
-    deckAHpfResonant_.update(ResonantFilter::Mode::HighPass, sampleRate_, 60.0, 1.25);
     deckAVocalDuckFilter_.update(ResonantFilter::Mode::PeakingCut, sampleRate_, 1200.0, 0.7, -9.0);
 
-    const std::size_t maxFrames = static_cast<std::size_t>(sampleRate_ * 40.0); // 40s capacity
-    {
-        std::lock_guard<std::mutex> lock(bufferMutex_);
-        deckBRingBuffer_.assign(maxFrames * 2, 0.0f);
-        deckBReadPos_ = 0;
-        deckBWritePos_ = 0;
-        deckBAvailableFrames_ = 0;
-        deckBTrimCalculated_ = false;
-    }
+    deckBRingBuffer_.clear();
+    deckBLeadingTrimFrames_ = 0;
+    deckBFirstBeatMs_ = 0;
+    deckBDropBeatMs_ = 0;
+    deckBTrimCalculated_ = false;
 
     const std::size_t rollFrames = static_cast<std::size_t>(sampleRate_ * 6.0); // 6s rolling buffer
     deckARollingBuffer_.assign(rollFrames * 2, 0.0f);
     deckARollingWritePos_ = 0;
-    deckAOneBarLoopBuffer_.clear();
+    deckAOneBarLoopBuffer_.assign(rollFrames * 2, 0.0f);
     deckALoopFrames_ = 0;
     deckALoopReadPos_ = 0;
     deckALoopActive_ = false;
 
-    deckBScratch_.resize(4096 * 2, 0.0f);
-    deckBStretchedScratch_.resize(8192 * 2, 0.0f);
-    conversionScratch_.resize(4096 * 2, 0.0f);
+    deckBScratch_.assign(16384 * 2, 0.0f);
+    deckBStretchedScratch_.assign(32768 * 2, 0.0f);
+    conversionScratch_.assign(32768 * 2, 0.0f);
 }
 
 void AutoMixEngine::setEnabled(bool enabled) noexcept {
@@ -179,8 +180,16 @@ bool AutoMixEngine::isPaused() const noexcept {
 }
 
 void AutoMixEngine::setTransitionPlan(const TransitionPlan& plan) noexcept {
-    std::lock_guard<std::mutex> lock(planMutex_);
-    currentPlan_ = plan;
+    {
+        std::lock_guard<std::mutex> lock(planMutex_);
+        currentPlan_ = plan;
+    }
+
+    planBpmA_.store(plan.bpmA, std::memory_order_relaxed);
+    planBpmB_.store(plan.bpmB, std::memory_order_relaxed);
+    planBpmRatio_.store(plan.bpmRatio, std::memory_order_relaxed);
+    planGainOffsetDb_.store(std::clamp(plan.gainOffsetDb, -6.0f, 0.0f), std::memory_order_relaxed);
+    planTextureFx_.store(static_cast<int>(plan.textureFx), std::memory_order_relaxed);
 
     if (plan.bpmRatio > 0.0f && std::abs(plan.bpmRatio - 1.0f) <= 0.08f) {
         deckBStretcher_.setTimeRatio(plan.bpmRatio);
@@ -189,7 +198,7 @@ void AutoMixEngine::setTransitionPlan(const TransitionPlan& plan) noexcept {
     }
 
     deckAEcho_.configure(sampleRate_, plan.bpmA);
-    activeGainOffsetDb_ = plan.gainOffsetDb;
+    activeGainOffsetDb_ = std::clamp(plan.gainOffsetDb, -6.0f, 0.0f);
 }
 
 TransitionPlan AutoMixEngine::getTransitionPlan() const noexcept {
@@ -251,11 +260,15 @@ void AutoMixEngine::startTransition(AutoMixState mode, int bars) noexcept {
         deckBStretcher_.setTimeRatio(1.0f);
     }
 
-    deckAFilter_.reset();
-    deckBFilter_.reset();
-    deckBHpf200_.reset();
-    deckAHpfResonant_.reset();
-    deckAHpfResonant_.update(ResonantFilter::Mode::HighPass, sampleRate_, 60.0, 1.25);
+    deckAHpfL_.reset();
+    deckAHpfR_.reset();
+    deckBHpfL_.reset();
+    deckBHpfR_.reset();
+    currentGainA_ = 1.0f;
+    currentGainB_ = 0.0f;
+    currentCutoffA_ = 20.0f;
+    currentCutoffB_ = 200.0f;
+
     deckAVocalDuckFilter_.reset();
     deckAVocalDuckFilter_.update(ResonantFilter::Mode::PeakingCut, sampleRate_, 1200.0, 0.7, -9.0);
     subtlePhaser_.reset();
@@ -296,19 +309,21 @@ void AutoMixEngine::reset() noexcept {
     deckAEcho_.setEnabled(false);
     subtlePhaser_.reset();
 
-    deckAFilter_.reset();
-    deckBFilter_.reset();
-    deckBHpf200_.reset();
-    deckAHpfResonant_.reset();
+    deckAHpfL_.reset();
+    deckAHpfR_.reset();
+    deckBHpfL_.reset();
+    deckBHpfR_.reset();
+    currentGainA_ = 1.0f;
+    currentGainB_ = 0.0f;
+    currentCutoffA_ = 20.0f;
+    currentCutoffB_ = 200.0f;
     deckAVocalDuckFilter_.reset();
 
-    {
-        std::lock_guard<std::mutex> lock(bufferMutex_);
-        deckBReadPos_ = 0;
-        deckBWritePos_ = 0;
-        deckBAvailableFrames_ = 0;
-        deckBTrimCalculated_ = false;
-    }
+    deckBRingBuffer_.clear();
+    deckBLeadingTrimFrames_ = 0;
+    deckBFirstBeatMs_ = 0;
+    deckBDropBeatMs_ = 0;
+    deckBTrimCalculated_ = false;
 
     deckALoopActive_ = false;
     deckALoopFrames_ = 0;
@@ -323,42 +338,34 @@ void AutoMixEngine::reset() noexcept {
 std::size_t AutoMixEngine::writeDeckBPcm(const float* stereoPcm, std::size_t frames) noexcept {
     if (stereoPcm == nullptr || frames == 0) return 0;
 
-    std::size_t written = 0;
-    {
-        std::lock_guard<std::mutex> lock(bufferMutex_);
-        const std::size_t capacityFrames = deckBRingBuffer_.size() / 2;
-        const std::size_t spaceFrames = capacityFrames - deckBAvailableFrames_;
-        written = std::min(frames, spaceFrames);
+    const std::size_t writtenSamples = deckBRingBuffer_.write(stereoPcm, frames * 2);
+    const std::size_t writtenFrames = writtenSamples / 2;
 
-        for (std::size_t f = 0; f < written; ++f) {
-            deckBRingBuffer_[deckBWritePos_ * 2] = stereoPcm[f * 2];
-            deckBRingBuffer_[deckBWritePos_ * 2 + 1] = stereoPcm[f * 2 + 1];
-            deckBWritePos_ = (deckBWritePos_ + 1) % capacityFrames;
-        }
-        deckBAvailableFrames_ += written;
-    }
+    deckBDetector_.process(stereoPcm, writtenFrames);
 
-    deckBDetector_.process(stereoPcm, written);
-
-    if (!deckBTrimCalculated_ && deckBAvailableFrames_ >= static_cast<std::size_t>(sampleRate_ * 3.0)) {
+    if (!deckBTrimCalculated_ && deckBRingBuffer_.availableToRead() / 2 >= static_cast<std::size_t>(sampleRate_ * 3.0)) {
         detectDeckBFirstBeatAndSilence();
     }
 
-    return written;
+    return writtenFrames;
 }
 
 void AutoMixEngine::detectDeckBFirstBeatAndSilence() noexcept {
-    std::lock_guard<std::mutex> lock(bufferMutex_);
-    if (deckBAvailableFrames_ < static_cast<std::size_t>(sampleRate_ * 1.5)) return;
+    const std::size_t availableFrames = deckBRingBuffer_.availableToRead() / 2;
+    if (availableFrames < static_cast<std::size_t>(sampleRate_ * 1.5)) return;
 
-    const std::size_t totalCapacityFrames = deckBRingBuffer_.size() / 2;
     const std::size_t searchLimit = std::min(
-        deckBAvailableFrames_,
+        availableFrames,
         static_cast<std::size_t>(sampleRate_ * 35.0));
 
-    // 2nd-order Butterworth filters: 60-140 Hz sub-bass kick
+    std::vector<float> searchBuf(searchLimit * 2);
+    const std::size_t peekedSamples = deckBRingBuffer_.peek(searchBuf.data(), searchLimit * 2);
+    const std::size_t peekedFrames = peekedSamples / 2;
+    if (peekedFrames < static_cast<std::size_t>(sampleRate_ * 1.5)) return;
+
+    // 2nd-order Butterworth filters: 60-140 Hz sub-bass kick (Q = 0.7071)
     const double wKick = 2.0 * M_PI * 95.0 / sampleRate_;
-    const double alphaKick = std::sin(wKick) / (2.0 * 1.2);
+    const double alphaKick = std::sin(wKick) / (2.0 * 0.7071);
     const double a0K = 1.0 + alphaKick;
     const double b0K = alphaKick / a0K, b1K = 0.0, b2K = -alphaKick / a0K;
     const double a1K = (-2.0 * std::cos(wKick)) / a0K, a2K = (1.0 - alphaKick) / a0K;
@@ -376,8 +383,8 @@ void AutoMixEngine::detectDeckBFirstBeatAndSilence() noexcept {
     for (std::size_t b = 0; b < totalBlocks; ++b) {
         double kSum = 0.0, peak = 0.0;
         for (std::size_t j = 0; j < B; ++j) {
-            const std::size_t idx = (deckBReadPos_ + b * B + j) % totalCapacityFrames;
-            const double mono = (deckBRingBuffer_[idx * 2] + deckBRingBuffer_[idx * 2 + 1]) * 0.5;
+            const std::size_t idx = b * B + j;
+            const double mono = (searchBuf[idx * 2] + searchBuf[idx * 2 + 1]) * 0.5;
 
             const double kOut = b0K * mono + kZ1;
             kZ1 = b1K * mono - a1K * kOut + kZ2;
@@ -421,7 +428,7 @@ void AutoMixEngine::detectDeckBFirstBeatAndSilence() noexcept {
             if (matched >= 4) {
                 foundGridLock = true;
                 dropBeatTimeSec = t0;
-                entryCueTimeSec = std::max(0.0, t0 - 4.0 * T); // 1 bar before drop
+                entryCueTimeSec = (t0 >= 4.0 * T) ? (t0 - 4.0 * T) : t0; // 1 bar before drop if available, else first beat
                 break;
             }
         }
@@ -432,9 +439,8 @@ void AutoMixEngine::detectDeckBFirstBeatAndSilence() noexcept {
         // Fallback: silence threshold search
         constexpr float kSilenceThreshold = 0.00562341325f;
         for (std::size_t f = 0; f < searchLimit; ++f) {
-            const std::size_t idx = (deckBReadPos_ + f) % totalCapacityFrames;
-            const float l = std::abs(deckBRingBuffer_[idx * 2]);
-            const float r = std::abs(deckBRingBuffer_[idx * 2 + 1]);
+            const float l = std::abs(searchBuf[f * 2]);
+            const float r = std::abs(searchBuf[f * 2 + 1]);
             if (l >= kSilenceThreshold || r >= kSilenceThreshold) {
                 dropBeatTimeSec = static_cast<double>(f) / sampleRate_;
                 entryCueTimeSec = dropBeatTimeSec;
@@ -445,9 +451,8 @@ void AutoMixEngine::detectDeckBFirstBeatAndSilence() noexcept {
     }
 
     const std::size_t chosenCueFrame = static_cast<std::size_t>(entryCueTimeSec * sampleRate_);
-    if (chosenCueFrame > 0 && chosenCueFrame < deckBAvailableFrames_) {
-        deckBReadPos_ = (deckBReadPos_ + chosenCueFrame) % totalCapacityFrames;
-        deckBAvailableFrames_ -= chosenCueFrame;
+    if (chosenCueFrame > 0 && chosenCueFrame < availableFrames) {
+        deckBRingBuffer_.discard(chosenCueFrame * 2);
         deckBLeadingTrimFrames_ = chosenCueFrame;
     }
 
@@ -455,20 +460,11 @@ void AutoMixEngine::detectDeckBFirstBeatAndSilence() noexcept {
     deckBDropBeatMs_ = static_cast<std::int64_t>(dropBeatTimeSec * 1000.0);
     deckBTrimCalculated_ = true;
 }
-
 float AutoMixEngine::applySoftKneeLimiter(float x) noexcept {
-    // -0.5 dBFS soft-knee tanh limiter (threshold ~ 0.944f)
-    constexpr float kThreshold = 0.94406f;
-    constexpr float kMargin = 1.0f - kThreshold;
-
-    const float absX = std::abs(x);
-    if (absX <= kThreshold) {
-        return x;
+    if (std::abs(x) > 0.85f) {
+        x = std::tanh(x);
     }
-
-    const float excess = absX - kThreshold;
-    const float compressed = kThreshold + kMargin * std::tanh(excess / kMargin);
-    return std::copysign(compressed, x);
+    return std::clamp(x, -0.98f, 0.98f);
 }
 
 void AutoMixEngine::processDeckA(float* deckAStereo, std::size_t frames, float progress) noexcept {
@@ -477,35 +473,25 @@ void AutoMixEngine::processDeckA(float* deckAStereo, std::size_t frames, float p
 
     progress = std::clamp(progress, 0.0f, 1.0f);
 
-    // 1. Vocal-Safe Loop / Beat-Repeat Slicer (t >= 0.55):
-    // If Deck A is verified vocal-free, lock into captured 1-bar drum loop
-    if (progress >= 0.55f && deckAVocalFree_.load(std::memory_order_acquire)) {
-        if (!deckALoopActive_) {
-            captureDeckALoop(deckADetector_.getResult().bpm);
-        }
-        if (deckALoopActive_ && deckALoopFrames_ > 0) {
-            for (std::size_t f = 0; f < frames; ++f) {
-                deckAStereo[f * 2] = deckAOneBarLoopBuffer_[deckALoopReadPos_ * 2];
-                deckAStereo[f * 2 + 1] = deckAOneBarLoopBuffer_[deckALoopReadPos_ * 2 + 1];
-                deckALoopReadPos_ = (deckALoopReadPos_ + 1) % deckALoopFrames_;
-            }
-        }
-    }
-
-    // 2. Vocal-Pocket Ducking: dynamic -9.0 dB peaking cut at 1200 Hz if Deck B has vocals
-    if (deckBVocalsActive_.load(std::memory_order_acquire)) {
+    // 1. Vocal-Pocket Ducking: dynamic -9.0 dB peaking cut at 1200 Hz
+    if (deckBVocalsActive_.load(std::memory_order_relaxed)) {
         for (std::size_t f = 0; f < frames; ++f) {
             deckAStereo[f * 2] = deckAVocalDuckFilter_.tick(deckAStereo[f * 2], 0);
             deckAStereo[f * 2 + 1] = deckAVocalDuckFilter_.tick(deckAStereo[f * 2 + 1], 1);
         }
     }
 
-    // 3. Single Texture FX Auto-Chooser (t >= 0.40):
-    TransitionTextureFx fx = TransitionTextureFx::None;
-    {
-        std::lock_guard<std::mutex> lock(planMutex_);
-        fx = currentPlan_.textureFx;
+    // 2. Vocal-Safe Loop / Beat-Repeat Exit Buffer (t >= 0.55):
+    if (progress >= 0.55f && deckALoopActive_ && deckALoopFrames_ > 0) {
+        for (std::size_t f = 0; f < frames; ++f) {
+            deckAStereo[f * 2] = deckAOneBarLoopBuffer_[deckALoopReadPos_ * 2];
+            deckAStereo[f * 2 + 1] = deckAOneBarLoopBuffer_[deckALoopReadPos_ * 2 + 1];
+            deckALoopReadPos_ = (deckALoopReadPos_ + 1) % deckALoopFrames_;
+        }
     }
+
+    // 3. Single Texture FX Auto-Chooser (t >= 0.40):
+    const auto fx = static_cast<TransitionTextureFx>(planTextureFx_.load(std::memory_order_relaxed));
     if (progress >= 0.40f && fx != TransitionTextureFx::None) {
         const float send = std::clamp((progress - 0.40f) / 0.20f, 0.0f, 0.35f);
         if (fx == TransitionTextureFx::SubtlePhaser) {
@@ -513,7 +499,6 @@ void AutoMixEngine::processDeckA(float* deckAStereo, std::size_t frames, float p
                 subtlePhaser_.process(deckAStereo[f * 2], deckAStereo[f * 2 + 1], send);
             }
         } else if (fx == TransitionTextureFx::StereoWidthExpander) {
-            // Stereo width expander on Deck A
             const float width = 1.0f + send * 0.8f;
             for (std::size_t f = 0; f < frames; ++f) {
                 const float m = (deckAStereo[f * 2] + deckAStereo[f * 2 + 1]) * 0.5f;
@@ -524,37 +509,45 @@ void AutoMixEngine::processDeckA(float* deckAStereo, std::size_t frames, float p
         }
     }
 
-    // 4. Equal-power gain curve with -1.5 dB center overlap trim
-    // gainA = cos(t * PI / 2) * centerTrim
-    const float gainA = std::cos(progress * static_cast<float>(M_PI) * 0.5f);
-    const float centerTrim = 1.0f - 0.1586f * (4.0f * progress * (1.0f - progress));
-    const float effGainA = gainA * centerTrim;
+    // 4. Equal-power gain curve with correlated-bass headroom compensation factor
+    const float headroomComp = 1.0f - 0.25f * std::sin(progress * static_cast<float>(M_PI));
+    const float targetGainA = std::cos(progress * static_cast<float>(M_PI) * 0.5f) * headroomComp;
 
-    // 5. Complementary 3-Band Crossover & Hard Downbeat Bass-Swap
-    if (progress < 0.55f) {
-        // Phase 1 (t = 0.00 to 0.55): Deck A holds 100% of the sub-bass (<180 Hz at 0.0 dB)!
-        deckAFilter_.processBassAttenuate(deckAStereo, frames, 1.0f, 1.0f);
-
-        for (std::size_t i = 0; i < frames * 2; ++i) {
-            deckAStereo[i] *= effGainA;
-        }
+    // 5. Smooth 3-Second S-Curve Bass Swap:
+    // Across the middle 35% to 65% of transition, cross-fade Deck A HPF from 20 Hz up to 350 Hz
+    // using continuous cosine S-curve: (0.5f - 0.5f * cos(PI * localProgress))
+    float targetCutoffA = 20.0f;
+    if (progress < 0.35f) {
+        targetCutoffA = 20.0f;
+    } else if (progress > 0.65f) {
+        targetCutoffA = 350.0f;
     } else {
-        // Midpoint Downbeat Swap (t = 0.55):
-        // Over 1 beat (~400ms), sweep Deck A's resonant High-Pass Filter (Q = 1.25) from 60 Hz up to 550 Hz
-        const float swapProgress = std::clamp((progress - 0.55f) / 0.10f, 0.0f, 1.0f);
-        const double cutoffHz = 60.0 + swapProgress * (550.0 - 60.0);
-        deckAHpfResonant_.update(ResonantFilter::Mode::HighPass, sampleRate_, cutoffHz, 1.25);
+        const float localProgress = (progress - 0.35f) / 0.30f;
+        const float sCurve = 0.5f - 0.5f * std::cos(static_cast<float>(M_PI) * localProgress);
+        targetCutoffA = 20.0f + sCurve * (350.0f - 20.0f);
+    }
 
-        for (std::size_t f = 0; f < frames; ++f) {
-            deckAStereo[f * 2] = deckAHpfResonant_.tick(deckAStereo[f * 2], 0) * effGainA;
-            deckAStereo[f * 2 + 1] = deckAHpfResonant_.tick(deckAStereo[f * 2 + 1], 1) * effGainA;
-        }
+    // Zero Zipper Noise: Per-sample smoothing (one-pole low-pass: val += 0.0015f * (target - val)) + Cytomic SVF
+    const float sr = static_cast<float>(sampleRate_);
+    for (std::size_t f = 0; f < frames; ++f) {
+        currentGainA_ += 0.0015f * (targetGainA - currentGainA_);
+        currentCutoffA_ += 0.0015f * (targetCutoffA - currentCutoffA_);
 
-        // Outgoing Reverb Wash Tail (t = 0.50 to 1.00 + 1.4s):
-        // Auxiliary send (0.0 -> 0.50 wet) into stereo damping reverb + 1/2-beat echo
-        const float wetSend = std::clamp((progress - 0.50f) / 0.50f * 0.50f, 0.0f, 0.50f);
-        const float dryGain = (1.0f - progress);
-        deckAEcho_.process(deckAStereo, frames, wetSend, dryGain, /*apply55WetMix=*/true);
+        const float inL = deckAStereo[f * 2];
+        const float inR = deckAStereo[f * 2 + 1];
+        deckAStereo[f * 2] = deckAHpfL_.tickHighPass(inL, currentCutoffA_, sr, 0.7071f) * currentGainA_;
+        deckAStereo[f * 2 + 1] = deckAHpfR_.tickHighPass(inR, currentCutoffA_, sr, 0.7071f) * currentGainA_;
+    }
+
+    // 6. Outgoing Reverb Wash Tail (t = 0.50 to 1.00):
+    // Scale reverb/echo wet returns by 0.22f maximum and attenuate dry Deck A proportionally (dryGain *= (1.0f - 0.35f * wetSend))
+    if (progress >= 0.50f) {
+        const float rawWet = std::clamp((progress - 0.50f) / 0.50f, 0.0f, 1.0f);
+        const float wetSend = std::clamp(rawWet * 0.22f, 0.0f, 0.22f);
+        float dryGain = (1.0f - progress);
+        dryGain *= (1.0f - 0.35f * wetSend);
+        const float wetReturn = wetSend;
+        deckAEcho_.process(deckAStereo, frames, wetSend, dryGain, wetReturn);
     }
 }
 
@@ -564,48 +557,53 @@ void AutoMixEngine::processDeckB(float* deckBStereo, std::size_t frames, float p
 
     progress = std::clamp(progress, 0.0f, 1.0f);
 
-    // 1. Equal-power gain curve with -1.5 dB center overlap trim
-    // gainB = sin(t * PI / 2) * centerTrim
-    const float gainB = std::sin(progress * static_cast<float>(M_PI) * 0.5f);
-    const float centerTrim = 1.0f - 0.1586f * (4.0f * progress * (1.0f - progress));
+    // 1. Equal-power gain curve with correlated-bass headroom compensation factor
+    const float headroomComp = 1.0f - 0.25f * std::sin(progress * static_cast<float>(M_PI));
 
-    // 2. Windowed LUFS / RMS Loudness Makeup Gain
+    // 2. Windowed RMS Loudness Matching: attenuation only, clamp(targetRmsDb - deckRmsDb, -6.0f, 0.0f)
+    // Never amplify a deck above 1.0f (0.0 dBFS)
     float makeupLinear = 1.0f;
-    {
-        std::lock_guard<std::mutex> lock(planMutex_);
-        if (state_.load(std::memory_order_acquire) == AutoMixState::PostRestore) {
-            // Decay gainOffsetDb linearly back to 0.0 dB over 10.0 seconds
-            if (postRestoreTotalFrames_ > 0 && postRestoreFramesElapsed_ < postRestoreTotalFrames_) {
-                const float decayFactor = 1.0f - static_cast<float>(postRestoreFramesElapsed_) / static_cast<float>(postRestoreTotalFrames_);
-                const float decayingDb = currentPlan_.gainOffsetDb * decayFactor;
-                makeupLinear = std::pow(10.0f, decayingDb / 20.0f);
-                postRestoreFramesElapsed_ += frames;
-            } else {
-                makeupLinear = 1.0f;
-            }
+    const float planGain = planGainOffsetDb_.load(std::memory_order_relaxed);
+    const float clampedGainDb = std::clamp(planGain, -6.0f, 0.0f); // Attenuation only!
+    if (state_.load(std::memory_order_acquire) == AutoMixState::PostRestore) {
+        if (postRestoreTotalFrames_ > 0 && postRestoreFramesElapsed_ < postRestoreTotalFrames_) {
+            const float decayFactor = 1.0f - static_cast<float>(postRestoreFramesElapsed_) / static_cast<float>(postRestoreTotalFrames_);
+            const float decayingDb = clampedGainDb * decayFactor;
+            makeupLinear = std::pow(10.0f, decayingDb / 20.0f);
+            postRestoreFramesElapsed_ += frames;
         } else {
-            makeupLinear = std::pow(10.0f, currentPlan_.gainOffsetDb / 20.0f);
-        }
-    }
-
-    const float effGainB = gainB * centerTrim * makeupLinear;
-
-    // 3. Complementary 3-Band Crossover & Hard Downbeat Bass-Swap
-    if (progress < 0.55f) {
-        // Phase 1 (t = 0.00 to 0.55): Deck B has 2nd-order Linkwitz-Riley HPF at 200 Hz (-18 dB on sub-bass)
-        // Hi-hats, percussion, and intro melody glide in cleanly without clashing kicks
-        deckBHpf200_.processHighPass(deckBStereo, frames);
-
-        for (std::size_t i = 0; i < frames * 2; ++i) {
-            deckBStereo[i] *= effGainB;
+            makeupLinear = 1.0f;
         }
     } else {
-        // Midpoint Downbeat Swap (t = 0.55):
-        // Instantaneously drop Deck B HPF to 20 Hz (full 0.0 dB sub-bass slam)!
-        // Zero bass holes, 100% full sub-bass punch and crisp high-end
-        for (std::size_t i = 0; i < frames * 2; ++i) {
-            deckBStereo[i] *= effGainB;
-        }
+        makeupLinear = std::pow(10.0f, clampedGainDb / 20.0f);
+    }
+
+    const float targetGainB = std::sin(progress * static_cast<float>(M_PI) * 0.5f) * headroomComp * makeupLinear;
+
+    // 3. Smooth 3-Second S-Curve Bass Swap:
+    // Across the middle 35% to 65% of transition, cross-fade Deck B HPF from 200 Hz down to 20 Hz
+    // using continuous cosine S-curve: (0.5f - 0.5f * cos(PI * localProgress))
+    float targetCutoffB = 200.0f;
+    if (progress < 0.35f) {
+        targetCutoffB = 200.0f;
+    } else if (progress > 0.65f) {
+        targetCutoffB = 20.0f;
+    } else {
+        const float localProgress = (progress - 0.35f) / 0.30f;
+        const float sCurve = 0.5f - 0.5f * std::cos(static_cast<float>(M_PI) * localProgress);
+        targetCutoffB = 200.0f - sCurve * (200.0f - 20.0f);
+    }
+
+    // Zero Zipper Noise: Per-sample smoothing (one-pole low-pass: val += 0.0015f * (target - val)) + Cytomic SVF
+    const float sr = static_cast<float>(sampleRate_);
+    for (std::size_t f = 0; f < frames; ++f) {
+        currentGainB_ += 0.0015f * (targetGainB - currentGainB_);
+        currentCutoffB_ += 0.0015f * (targetCutoffB - currentCutoffB_);
+
+        const float inL = deckBStereo[f * 2];
+        const float inR = deckBStereo[f * 2 + 1];
+        deckBStereo[f * 2] = deckBHpfL_.tickHighPass(inL, currentCutoffB_, sr, 0.7071f) * currentGainB_;
+        deckBStereo[f * 2 + 1] = deckBHpfR_.tickHighPass(inR, currentCutoffB_, sr, 0.7071f) * currentGainB_;
     }
 }
 
@@ -614,7 +612,7 @@ void AutoMixEngine::process(float* deckAStereo, std::size_t frames) noexcept {
     if (!enabled_.load(std::memory_order_acquire)) return;
     if (paused_.load(std::memory_order_acquire)) return;
 
-    deckADetector_.process(deckAStereo, frames);
+    // Strict lock-free real-time audio thread: zero FFT/BPM calculations on audio thread
     feedDeckARollingBuffer(deckAStereo, frames);
 
     AutoMixState currState = state_.load(std::memory_order_acquire);
@@ -647,32 +645,17 @@ void AutoMixEngine::process(float* deckAStereo, std::size_t frames) noexcept {
             : 1.0f;
         transitionProgress_ = std::clamp(p, 0.0f, 1.0f);
 
-        if (deckBScratch_.size() < frames * 2) {
-            deckBScratch_.resize(frames * 2, 0.0f);
-        }
-
-        std::size_t actualDeckBFrames = 0;
-        {
-            std::lock_guard<std::mutex> lock(bufferMutex_);
-            const std::size_t totalCapacityFrames = deckBRingBuffer_.size() / 2;
-            actualDeckBFrames = std::min(frames, deckBAvailableFrames_);
-            for (std::size_t f = 0; f < actualDeckBFrames; ++f) {
-                deckBScratch_[f * 2] = deckBRingBuffer_[deckBReadPos_ * 2];
-                deckBScratch_[f * 2 + 1] = deckBRingBuffer_[deckBReadPos_ * 2 + 1];
-                deckBReadPos_ = (deckBReadPos_ + 1) % totalCapacityFrames;
-            }
-            deckBAvailableFrames_ -= actualDeckBFrames;
-        }
+        const std::size_t framesToRead = std::min(frames, deckBScratch_.size() / 2);
+        const std::size_t readSamples = deckBRingBuffer_.read(deckBScratch_.data(), framesToRead * 2);
+        const std::size_t actualDeckBFrames = readSamples / 2;
         if (actualDeckBFrames < frames) {
-            std::fill(deckBScratch_.begin() + actualDeckBFrames * 2, deckBScratch_.begin() + frames * 2, 0.0f);
+            std::fill(deckBScratch_.data() + actualDeckBFrames * 2, deckBScratch_.data() + frames * 2, 0.0f);
         }
 
         // Time-stretch Deck B
-        if (deckBStretchedScratch_.size() < frames * 4) {
-            deckBStretchedScratch_.resize(frames * 4, 0.0f);
-        }
+        const std::size_t stretchedCap = deckBStretchedScratch_.size() / 2;
         std::size_t stretchedFrames = deckBStretcher_.process(
-            deckBScratch_.data(), frames, deckBStretchedScratch_.data(), frames * 2);
+            deckBScratch_.data(), frames, deckBStretchedScratch_.data(), stretchedCap);
         if (stretchedFrames < frames) {
             std::copy(deckBScratch_.begin() + stretchedFrames * 2, deckBScratch_.begin() + frames * 2,
                       deckBStretchedScratch_.begin() + stretchedFrames * 2);
@@ -682,7 +665,7 @@ void AutoMixEngine::process(float* deckAStereo, std::size_t frames) noexcept {
         processDeckA(deckAStereo, frames, transitionProgress_);
         processDeckB(deckBStretchedScratch_.data(), frames, transitionProgress_);
 
-        // Sum signals and apply -0.5 dBFS soft-knee tanh limiter
+        // Sum signals and apply -0.85f threshold / 0.98f ceiling soft-knee limiter
         for (std::size_t i = 0; i < frames * 2; ++i) {
             const float mixed = deckAStereo[i] + deckBStretchedScratch_[i];
             deckAStereo[i] = applySoftKneeLimiter(mixed);
@@ -703,6 +686,7 @@ void AutoMixEngine::process(float* deckAStereo, std::size_t frames) noexcept {
     }
 }
 
+
 bool AutoMixEngine::processDeckBuffer(
     void* pcm,
     std::size_t frameCount,
@@ -718,9 +702,7 @@ bool AutoMixEngine::processDeckBuffer(
         return false;
     }
 
-    if (conversionScratch_.size() < frameCount * 2) {
-        conversionScratch_.resize(frameCount * 2);
-    }
+    frameCount = std::min(frameCount, conversionScratch_.size() / 2);
     float* scratch = conversionScratch_.data();
 
     // 1. Unpack PCM to Float32 stereo
@@ -838,9 +820,8 @@ void AutoMixEngine::captureDeckALoop(float bpmA) noexcept {
     const std::size_t loopFrames = static_cast<std::size_t>(barSec * sampleRate_);
     const std::size_t capacityFrames = deckARollingBuffer_.size() / 2;
 
-    if (loopFrames == 0 || loopFrames > capacityFrames) return;
+    if (loopFrames == 0 || loopFrames > capacityFrames || loopFrames * 2 > deckAOneBarLoopBuffer_.size()) return;
 
-    deckAOneBarLoopBuffer_.resize(loopFrames * 2);
     const std::size_t startPos = (deckARollingWritePos_ + capacityFrames - loopFrames) % capacityFrames;
     for (std::size_t f = 0; f < loopFrames; ++f) {
         const std::size_t rPos = (startPos + f) % capacityFrames;

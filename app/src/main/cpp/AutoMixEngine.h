@@ -5,6 +5,7 @@
 #include "BpmPhaseDetector.h"
 #include "EchoTailProcessor.h"
 #include "TransitionPlanner.h"
+#include "LockFreeRingBuffer.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -12,6 +13,7 @@
 #include <array>
 #include <atomic>
 #include <mutex>
+#include <algorithm>
 
 namespace lastwave::audio {
 
@@ -23,6 +25,51 @@ enum class AutoMixState : int {
     FadingAuto = 4,
     FadingFast = 5,
     PostRestore = 6
+};
+
+// Trapezoidal Integrated State Variable Filter (Cytomic SVF) with Butterworth Q=0.7071
+struct CytomicSVF final {
+    float s1{0.0f};
+    float s2{0.0f};
+
+    void reset() noexcept {
+        s1 = 0.0f;
+        s2 = 0.0f;
+    }
+
+    [[nodiscard]] inline float tickHighPass(float v0, float cutoffHz, float sampleRate, float Q = 0.7071f) noexcept {
+        cutoffHz = std::clamp(cutoffHz, 10.0f, sampleRate * 0.45f);
+        const float g = std::tan(static_cast<float>(M_PI) * cutoffHz / sampleRate);
+        const float k = 1.0f / std::max(0.01f, Q);
+        const float a1 = 1.0f / (1.0f + g * (g + k));
+        const float a2 = g * a1;
+        const float a3 = g * a2;
+
+        const float v3 = v0 - s2;
+        const float v1 = a1 * s1 + a2 * v3;
+        const float v2 = s2 + a2 * s1 + a3 * v3;
+        s1 = 2.0f * v1 - s1;
+        s2 = 2.0f * v2 - s2;
+
+        return v0 - k * v1 - v2;
+    }
+
+    [[nodiscard]] inline float tickLowPass(float v0, float cutoffHz, float sampleRate, float Q = 0.7071f) noexcept {
+        cutoffHz = std::clamp(cutoffHz, 10.0f, sampleRate * 0.45f);
+        const float g = std::tan(static_cast<float>(M_PI) * cutoffHz / sampleRate);
+        const float k = 1.0f / std::max(0.01f, Q);
+        const float a1 = 1.0f / (1.0f + g * (g + k));
+        const float a2 = g * a1;
+        const float a3 = g * a2;
+
+        const float v3 = v0 - s2;
+        const float v1 = a1 * s1 + a2 * v3;
+        const float v2 = s2 + a2 * s1 + a3 * v3;
+        s1 = 2.0f * v1 - s1;
+        s2 = 2.0f * v2 - s2;
+
+        return v2;
+    }
 };
 
 // 2nd-order resonant Biquad filter for DJ sweeps and peaking cuts
@@ -104,6 +151,8 @@ public:
     [[nodiscard]] AutoMixState getState() const noexcept;
     [[nodiscard]] float getTransitionProgress() const noexcept;
     [[nodiscard]] std::size_t getDeckBLeadingTrimFrames() const noexcept;
+    [[nodiscard]] std::size_t getDeckBAvailableFrames() const noexcept;
+    [[nodiscard]] float getDeckBAvailableSeconds() const noexcept;
     [[nodiscard]] std::int64_t getDeckBFirstBeatMs() const noexcept;
     [[nodiscard]] float getDeckABpm() const noexcept;
     [[nodiscard]] float getDeckBBpm() const noexcept;
@@ -120,30 +169,35 @@ private:
     std::atomic<AutoMixState> state_{AutoMixState::Idle};
     std::atomic<bool> paused_{false};
 
-    // Filters and Processors
-    LinkwitzRileyFilter deckAFilter_;
-    LinkwitzRileyFilter deckBFilter_;
-    LinkwitzRileyFilter deckBHpf200_; // 2nd-order LR HPF at 200 Hz for Deck B (Phase 1: t in [0.0, 0.55])
+    // Filters and Processors: Cytomic SVF for high-pass/low-pass crossover and S-curve bass swap
+    CytomicSVF deckAHpfL_;
+    CytomicSVF deckAHpfR_;
+    CytomicSVF deckBHpfL_;
+    CytomicSVF deckBHpfR_;
+    float currentGainA_{1.0f};
+    float currentGainB_{0.0f};
+    float currentCutoffA_{20.0f};
+    float currentCutoffB_{200.0f};
+
     WsolaTimeStretcher deckBStretcher_;
     BpmPhaseDetector deckADetector_;
     BpmPhaseDetector deckBDetector_;
     EchoTailProcessor deckAEcho_;
 
-    ResonantFilter deckAHpfResonant_; // Resonant HPF (Q=1.25) swept from 60 Hz to 550 Hz on midpoint bass swap
     ResonantFilter deckAVocalDuckFilter_; // Dynamic -9.0 dB peaking cut (1200 Hz, Q=0.7) when Deck B has vocals
     SubtlePhaser subtlePhaser_;
 
     mutable std::mutex planMutex_;
     TransitionPlan currentPlan_{};
+    std::atomic<float> planBpmA_{120.0f};
+    std::atomic<float> planBpmB_{120.0f};
+    std::atomic<float> planBpmRatio_{1.0f};
+    std::atomic<float> planGainOffsetDb_{0.0f};
+    std::atomic<int> planTextureFx_{0};
     std::atomic<bool> deckBVocalsActive_{false};
     std::atomic<bool> deckAVocalFree_{true};
 
-    mutable std::mutex bufferMutex_;
-    std::vector<float> deckBRingBuffer_;
-    std::size_t deckBReadPos_{0};
-    std::size_t deckBWritePos_{0};
-    std::size_t deckBAvailableFrames_{0};
-
+    LockFreeRingBuffer<float> deckBRingBuffer_;
     std::size_t deckBLeadingTrimFrames_{0};
     std::int64_t deckBFirstBeatMs_{0};
     std::int64_t deckBDropBeatMs_{0};

@@ -682,6 +682,16 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
                 : recoveryGain * currentOutputVolume_;
             output[offset] *= gain;
             output[offset + 1U] *= gain;
+
+            if (!outputBitPerfect) {
+                float s0 = output[offset];
+                if (std::abs(s0) > 0.85F) s0 = std::tanh(s0);
+                output[offset] = std::clamp(s0, -0.98F, 0.98F);
+
+                float s1 = output[offset + 1U];
+                if (std::abs(s1) > 0.85F) s1 = std::tanh(s1);
+                output[offset + 1U] = std::clamp(s1, -0.98F, 0.98F);
+            }
         }
         lastOutput_[0] = output[(validFrames - 1U) * kOutputChannels];
         lastOutput_[1] = output[(validFrames - 1U) * kOutputChannels + 1U];

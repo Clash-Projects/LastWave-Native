@@ -854,6 +854,7 @@ class MusicPlayer @Inject constructor(
                     unavailableMediaIds.remove(it)
                     unavailableAttemptCounts.remove(it)
                 }
+                autoDJController.get().onPlaybackStarted()
             }
         }
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, playWhenReadyChangeReason: Int) {
@@ -1733,10 +1734,17 @@ class MusicPlayer @Inject constructor(
                 val standby = currentStandby()
                 val nextIndex = player.nextMediaItemIndex
                 if (standby != null && nextIndex != C.INDEX_UNSET && crossfadeStandbyArmed && standby.playbackState == Player.STATE_READY) {
+                    val bufferedMs = getStandbyBufferedMsInternal(standby)
+                    if (bufferedMs < 8_000L) {
+                        android.util.Log.w("MusicPlayer", "AutoDJ triggerAutoTransition abort: Deck B buffered ${bufferedMs}ms < 8000ms, falling back to natural track end")
+                        return@launch
+                    }
                     handOffCrossfade(standby, overlapMs)
                 }
             }
         }
+
+        override fun getStandbyBufferedMs(): Long = getStandbyBufferedMsInternal()
 
         override fun setLateTrackBuffering(isWaiting: Boolean) {
             applicationScope.launch(Dispatchers.Main.immediate) {
@@ -3224,6 +3232,18 @@ class MusicPlayer @Inject constructor(
      * refresh swaps it), and torn down by [cancelCrossfade] on every queue edit.
      */
     @MainThread
+    private fun getStandbyBufferedMsInternal(standby: ExoPlayer? = currentStandby()): Long {
+        val availableSec = if (nativeAutoMixEngine.get().isAvailable) {
+            nativeAutoMixEngine.get().deckBAvailableSeconds
+        } else 0f
+        return if (availableSec > 0f) {
+            (availableSec * 1000f).toLong()
+        } else if (standby != null && crossfadeStandbyArmed) {
+            runCatching { standby.bufferedPosition }.getOrDefault(0L)
+        } else 0L
+    }
+
+    @MainThread
     private fun armCrossfadeStandby(nextIndex: Int, nextItem: MediaItem): ExoPlayer {
         val standby = standbyOrCreate()
         standbyQueue = (0 until player.mediaItemCount).map(player::getMediaItemAt)
@@ -3231,14 +3251,15 @@ class MusicPlayer @Inject constructor(
         standby.volume = 0f
         standby.setAudioAttributes(player.audioAttributes, false)
         standby.pause()
-        standby.setMediaItems(standbyQueue, nextIndex, 0L)
+        val firstBeatMs = if (nativeAutoMixEngine.get().isAvailable) {
+            nativeAutoMixEngine.get().deckBFirstBeatMs
+        } else null
+        val startPosMs = if (firstBeatMs != null && firstBeatMs in 100L..35_000L) firstBeatMs else 0L
+        standby.setMediaItems(standbyQueue, nextIndex, startPosMs)
         standby.prepare()
         crossfadeStandbyArmed = true
         crossfadeStandbyPreparing = true
         val nextTrack = nextItem.toPlayableTrack()
-        val firstBeatMs = if (nativeAutoMixEngine.get().isAvailable) {
-            nativeAutoMixEngine.get().deckBFirstBeatMs
-        } else null
         if (automixEnabled) {
             _state.update {
                 it.copy(
@@ -3396,9 +3417,7 @@ class MusicPlayer @Inject constructor(
                     standbyArmedForNext = armedForNext,
                     standbyReady = armedForNext && standby?.playbackState == Player.STATE_READY,
                     standbyDurationMs = if (armedForNext) standby?.duration ?: 0L else 0L,
-                    standbyBufferedMs = if (armedForNext) {
-                        runCatching { standby?.bufferedPosition ?: 0L }.getOrDefault(0L)
-                    } else 0L,
+                    standbyBufferedMs = if (armedForNext) getStandbyBufferedMsInternal(standby) else 0L,
                 )
             )) {
                 is AutoMixDecision.Idle -> CrossfadeDecision.Idle(
@@ -3521,6 +3540,14 @@ class MusicPlayer @Inject constructor(
                     cancelCrossfade()
                     return false
                 }
+                val bufferedMs = getStandbyBufferedMsInternal(standby)
+                if (automixEnabled && bufferedMs < 8_000L) {
+                    logCrossfadeDecision(
+                        "handoff-fallback-unbuffered",
+                        "Deck B buffered ${bufferedMs}ms < 8000ms at outCueMs, falling back to natural track end",
+                    )
+                    return false
+                }
                 handOffCrossfade(standby, plan.overlapMs)
                 return true
             }
@@ -3553,8 +3580,11 @@ class MusicPlayer @Inject constructor(
                 nativeAutoMixEngine.get().deckBFirstBeatMs
             } else 0L
             if (firstBeatMs in 100L..35_000L) {
-                android.util.Log.i("MusicPlayer", "AutoMix: Seeking Deck B directly to first beat onset ($firstBeatMs ms)")
-                standby.seekTo(firstBeatMs)
+                val currentPos = standby.currentPosition
+                if (currentPos < firstBeatMs - 150L || currentPos > firstBeatMs + 150L) {
+                    android.util.Log.i("MusicPlayer", "AutoMix: Seeking Deck B directly to first beat onset ($firstBeatMs ms, was $currentPos ms)")
+                    standby.seekTo(firstBeatMs)
+                }
             }
             if (nativeAutoMixEngine.get().isAvailable) {
                 nativeAutoMixEngine.get().startTransition(overlapMs.toInt())
@@ -7393,6 +7423,29 @@ class MusicPlayer @Inject constructor(
         return false
     }
 
+    @MainThread
+    private fun isStreamSwapLocked(): Boolean {
+        if (!playerDelegate.isInitialized()) return true
+        val dur = player.duration
+        val pos = player.currentPosition
+        if (dur > 0L && pos > dur - 35_000L) return true
+        if (outgoingPlayer != null || crossfadeStandbyPreparing || crossfadeStandbyArmed) return true
+        if (_state.value.isAutoMixActive) return true
+        val autoMix = autoDJController.get()
+        val nextIndex = player.nextMediaItemIndex
+        if (nextIndex in 0 until player.mediaItemCount) {
+            val nextTrack = player.getMediaItemAt(nextIndex).toPlayableTrack()
+            val stage = autoMix.getTrackStage(nextTrack.mediaIdKey())
+            if (stage == TrackLifecycleStage.DECODING_HEAD_WINDOW ||
+                stage == TrackLifecycleStage.ARMED_READY ||
+                stage == TrackLifecycleStage.TRANSITIONING
+            ) {
+                return true
+            }
+        }
+        return false
+    }
+
     private fun scheduleQualityUpgrade(
         track: PlayableTrack,
         expectedMediaId: String,
@@ -7401,6 +7454,10 @@ class MusicPlayer @Inject constructor(
     ) {
         if (expectedMediaId == activeUpgradeMediaId && activeUpgradeJob?.isActive == true) {
             android.util.Log.i("MusicPlayer", "[STREAM UPGRADE] already running for '${track.title}'")
+            return
+        }
+        if (isStreamSwapLocked()) {
+            android.util.Log.i("MusicPlayer", "[STREAM UPGRADE] Stream swap locked within 35s of track end or during pre-decoding/transition, omitting upgrade")
             return
         }
         val misc = runCatching { runBlocking { settingsPreferences.settings.first() } }.getOrDefault(MiscSettings())
@@ -7515,14 +7572,9 @@ class MusicPlayer @Inject constructor(
                     val currentItem = player.getMediaItemAt(currentIndex)
                     if (currentItem.mediaId != expectedMediaId && currentItem.mediaId != track.mediaIdKey()) return@withContext -1L
 
-                    val dur = player.duration
                     val pos = player.currentPosition
-                    if (dur > 0L && pos > dur - 12_000L) {
-                        android.util.Log.d("MusicPlayer", "[STREAM UPGRADE] Near end of track (${pos}/${dur}ms), omitting swap")
-                        return@withContext -1L
-                    }
-                    if (outgoingPlayer != null || crossfadeStandbyPreparing || crossfadeStandbyArmed) {
-                        android.util.Log.d("MusicPlayer", "[STREAM UPGRADE] Crossfade in flight, omitting swap")
+                    if (isStreamSwapLocked()) {
+                        android.util.Log.d("MusicPlayer", "[STREAM UPGRADE] Stream swap locked within 35s of track end or during pre-decoding/transition, omitting swap")
                         return@withContext -1L
                     }
                     pos
@@ -7596,14 +7648,9 @@ class MusicPlayer @Inject constructor(
                     val currentItem = player.getMediaItemAt(currentIndex)
                     if (currentItem.mediaId != expectedMediaId && currentItem.mediaId != track.mediaIdKey()) return@withContext
 
-                    val dur = player.duration
                     val swapPos = player.currentPosition
-                    if (dur > 0L && swapPos > dur - 10_000L) {
-                        android.util.Log.d("MusicPlayer", "[STREAM UPGRADE] Near end of track (${swapPos}/${dur}ms), omitting swap")
-                        return@withContext
-                    }
-                    if (outgoingPlayer != null || crossfadeStandbyPreparing || crossfadeStandbyArmed) {
-                        android.util.Log.d("MusicPlayer", "[STREAM UPGRADE] Crossfade in flight, omitting swap")
+                    if (isStreamSwapLocked()) {
+                        android.util.Log.d("MusicPlayer", "[STREAM UPGRADE] Stream swap locked within 35s of track end or during pre-decoding/transition, omitting swap")
                         return@withContext
                     }
 
