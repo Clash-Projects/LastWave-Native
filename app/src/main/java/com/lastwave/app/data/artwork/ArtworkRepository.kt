@@ -126,17 +126,7 @@ class ArtworkRepository @Inject constructor(
         }.getOrNull()
         if (!url.isNullOrBlank()) {
             val upscaled = ArtworkNormalizer.upscaleYoutubeArtwork(url)
-            runCatching {
-                cacheDao.insert(
-                    ArtworkCacheEntity(
-                        cacheKey = key,
-                        url = upscaled,
-                        provider = "youtube_artist",
-                        timestampMillis = System.currentTimeMillis(),
-                    )
-                )
-            }
-            publish(key, upscaled)
+            save(key, "youtube_artist", upscaled)
             return upscaled
         }
         return null
@@ -164,17 +154,7 @@ class ArtworkRepository @Inject constructor(
                 }.getOrNull()
                 if (!url.isNullOrBlank()) {
                     val upscaled = ArtworkNormalizer.upscaleYoutubeArtwork(url)
-                    runCatching {
-                        cacheDao.insert(
-                            ArtworkCacheEntity(
-                                cacheKey = key,
-                                url = upscaled,
-                                provider = "youtube_artist",
-                                timestampMillis = System.currentTimeMillis(),
-                            )
-                        )
-                    }
-                    publish(key, upscaled)
+                    save(key, "youtube_artist", upscaled)
                 }
                 return
             }

@@ -870,7 +870,7 @@ fun PlayerHost(
             }
         }
     }
-    val miniPlayerVisible = state.current != null && !expanded && !misc.buttonNowPlayingEnabled
+    val miniPlayerVisible = state.current != null && !expanded && !settings.buttonNowPlayingEnabled
 
     // Sibling pattern: ONE backdrop capturing feed content,
     // consumed by the sibling MiniPlayer. Unconditional remember keeps composition stable.
@@ -890,7 +890,7 @@ fun PlayerHost(
     CompositionLocalProvider(
         LocalMusicPlayer provides viewModel.player,
         LocalAddToPlaylist provides requestAddToPlaylist,
-        LocalMiniPlayerScrollClearance provides if (state.current != null && !misc.buttonNowPlayingEnabled) 98.dp else 0.dp,
+        LocalMiniPlayerScrollClearance provides if (state.current != null && !settings.buttonNowPlayingEnabled) 98.dp else 0.dp,
         LocalBottomNavSlot provides bottomNavSlot,
     ) {
         Box(Modifier.fillMaxSize()) {
@@ -925,9 +925,10 @@ fun PlayerHost(
                     )
                 }
             }
-            if (state.current != null && !expanded && misc.buttonNowPlayingEnabled) {
+            val currentTrack = state.current
+            if (currentTrack != null && !expanded && settings.buttonNowPlayingEnabled) {
                 DraggableNowPlayingButton(
-                    track = state.current,
+                    track = currentTrack,
                     progressState = viewModel.progressState,
                     isPlaying = state.isPlaying,
                     onExpand = { expanded = true },

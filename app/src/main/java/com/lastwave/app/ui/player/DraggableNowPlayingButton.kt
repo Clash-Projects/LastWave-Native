@@ -68,9 +68,9 @@ fun DraggableNowPlayingButton(
     val liveProgress by progressState?.collectAsStateWithLifecycle()
         ?: remember { mutableStateOf(PlaybackProgressState(0L, 0L)) }
 
-    val progressFraction = remember(liveProgress.currentPositionMs, liveProgress.durationMs) {
+    val progressFraction = remember(liveProgress.positionMs, liveProgress.durationMs) {
         val dur = liveProgress.durationMs.takeIf { it > 0 } ?: track.durationMs ?: 0L
-        if (dur > 0) (liveProgress.currentPositionMs.toFloat() / dur.toFloat()).coerceIn(0f, 1f)
+        if (dur > 0) (liveProgress.positionMs.toFloat() / dur.toFloat()).coerceIn(0f, 1f)
         else 0f
     }
 
