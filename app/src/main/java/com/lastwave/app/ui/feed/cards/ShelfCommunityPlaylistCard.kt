@@ -1,5 +1,8 @@
 package com.lastwave.app.ui.feed.cards
 
+import android.graphics.drawable.BitmapDrawable
+import android.util.LruCache
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -13,6 +16,10 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -20,6 +27,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -31,9 +39,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.palette.graphics.Palette
 import coil.compose.AsyncImage
+import coil.imageLoader
 import coil.request.ImageRequest
+import coil.request.SuccessResult
+import coil.size.Precision
 import com.lastwave.app.data.music.YouTubeMusicTrack
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** Fixed slots keep the carousel still while the one-page preview arrives. */
 @Composable
@@ -52,13 +67,21 @@ fun ShelfCommunityPlaylistCard(
     isLoading: Boolean = false,
     previewFailed: Boolean = false,
     songPlayCounts: Map<String, String> = emptyMap(),
+    playlistId: String? = null,
 ) {
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     val rowHeight = 56.dp * fontScale
+    val coverUrl = collageUrls.firstOrNull(String::isNotBlank) ?: artworkUrl?.takeIf(String::isNotBlank)
+    val tint = rememberCommunityPlaylistTint(playlistId, coverUrl)
+    val defaultSurface = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.76f)
+    val background by animateColorAsState(
+        targetValue = tint?.copy(alpha = 0.22f)?.compositeOver(defaultSurface) ?: defaultSurface,
+        animationSpec = tween(300), label = "community playlist tint",
+    )
     Surface(
         modifier = modifier.width(cardWidth),
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.76f),
+        color = background,
         border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.09f)),
     ) {
         Column(Modifier.background(Brush.linearGradient(listOf(
@@ -114,6 +137,40 @@ fun ShelfCommunityPlaylistCard(
             }
         }
     }
+}
+
+// Store only colours, never bitmaps; a changed cover invalidates the playlist's cached tint.
+private val communityPlaylistTints = LruCache<String, Pair<String, Color>>(128)
+
+@Composable
+private fun rememberCommunityPlaylistTint(playlistId: String?, coverUrl: String?): Color? {
+    val context = LocalContext.current.applicationContext
+    val tint = remember(playlistId, coverUrl) {
+        mutableStateOf(playlistId?.let { communityPlaylistTints.get(it) }
+            ?.takeIf { it.first == coverUrl }?.second)
+    }
+    LaunchedEffect(playlistId, coverUrl) {
+        if (coverUrl == null || tint.value != null) return@LaunchedEffect
+        val extracted = withContext(Dispatchers.IO) {
+            try {
+                val request = ImageRequest.Builder(context).data(coverUrl)
+                    .size(64, 64).precision(Precision.EXACT).allowHardware(false).build()
+                val result = context.imageLoader.execute(request) as? SuccessResult
+                val bitmap = (result?.drawable as? BitmapDrawable)?.bitmap ?: return@withContext null
+                Palette.from(bitmap).resizeBitmapArea(64 * 64).maximumColorCount(8)
+                    .clearFilters().generate().dominantSwatch?.rgb?.let(::tintFromColor)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+        }
+        if (extracted != null) {
+            playlistId?.let { communityPlaylistTints.put(it, coverUrl to extracted) }
+            tint.value = extracted
+        }
+    }
+    return tint.value
 }
 
 @Composable
