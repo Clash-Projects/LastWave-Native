@@ -125,7 +125,7 @@ class ArtworkRepository @Inject constructor(
                 ?.takeIf(ArtworkNormalizer::isRealImage)
         }.getOrNull()
         if (!url.isNullOrBlank()) {
-            val upscaled = ArtworkNormalizer.upscaleYoutubeArtwork(url)
+            val upscaled = ArtworkNormalizer.upscaleYoutubeArtwork(url) ?: url
             save(key, "youtube_artist", upscaled)
             return upscaled
         }
@@ -153,7 +153,7 @@ class ArtworkRepository @Inject constructor(
                         ?.takeIf(ArtworkNormalizer::isRealImage)
                 }.getOrNull()
                 if (!url.isNullOrBlank()) {
-                    val upscaled = ArtworkNormalizer.upscaleYoutubeArtwork(url)
+                    val upscaled = ArtworkNormalizer.upscaleYoutubeArtwork(url) ?: url
                     save(key, "youtube_artist", upscaled)
                 }
                 return
