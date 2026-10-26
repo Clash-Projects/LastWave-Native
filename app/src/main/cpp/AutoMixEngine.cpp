@@ -852,6 +852,15 @@ std::size_t AutoMixEngine::getDeckBLeadingTrimFrames() const noexcept {
     return deckBLeadingTrimFrames_;
 }
 
+std::size_t AutoMixEngine::getDeckBAvailableFrames() const noexcept {
+    return deckBRingBuffer_.availableToRead() / 2;
+}
+
+float AutoMixEngine::getDeckBAvailableSeconds() const noexcept {
+    if (sampleRate_ <= 0.0) return 0.0f;
+    return static_cast<float>(static_cast<double>(getDeckBAvailableFrames()) / sampleRate_);
+}
+
 std::int64_t AutoMixEngine::getDeckBFirstBeatMs() const noexcept {
     return deckBFirstBeatMs_;
 }
