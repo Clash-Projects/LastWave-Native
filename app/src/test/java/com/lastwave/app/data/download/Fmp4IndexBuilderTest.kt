@@ -188,7 +188,7 @@ class Fmp4IndexBuilderTest {
                 ((footer[13].toInt() and 0xFF) shl 16) or
                 ((footer[14].toInt() and 0xFF) shl 8) or
                 (footer[15].toInt() and 0xFF)
-            assertThat(mfraSize).isEqualTo((len - initialLength).toInt())
+            assertThat(mfraSize).isGreaterThan(16)
 
             // Verify mfra box start
             raf.seek(len - mfraSize)
@@ -196,6 +196,24 @@ class Fmp4IndexBuilderTest {
             raf.readFully(mfraHeader)
             val mfraType = String(mfraHeader, 4, 4, Charsets.US_ASCII)
             assertThat(mfraType).isEqualTo("mfra")
+
+            // Verify sidx box is present
+            var hasSidx = false
+            var pos = 0L
+            val hdr = ByteArray(8)
+            while (pos + 8 <= len) {
+                raf.seek(pos)
+                raf.readFully(hdr)
+                val sz = ((hdr[0].toInt() and 0xFF) shl 24) or
+                    ((hdr[1].toInt() and 0xFF) shl 16) or
+                    ((hdr[2].toInt() and 0xFF) shl 8) or
+                    (hdr[3].toInt() and 0xFF)
+                val type = String(hdr, 4, 4, Charsets.US_ASCII)
+                if (type == "sidx") hasSidx = true
+                if (sz <= 0) break
+                pos += sz
+            }
+            assertThat(hasSidx).isTrue()
         }
 
         // Idempotency test: calling finalize again does not duplicate mfra

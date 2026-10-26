@@ -3,12 +3,14 @@ package com.lastwave.app.data.download
 import android.util.Log
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.RandomAccessFile
 
 /**
- * Builds Movie Fragment Random Access (mfra/tfra/mfro) indexing and patches
- * duration headers for fragmented MP4 (fMP4) audio files (such as Dolby Atmos
- * E-AC-3 and AAC DASH downloads).
+ * Builds Segment Index (sidx) and Movie Fragment Random Access (mfra/tfra/mfro)
+ * indexing, and patches duration headers for fragmented MP4 (fMP4) audio files
+ * (such as Dolby Atmos E-AC-3 and AAC DASH downloads).
  *
  * DASH segments concatenate `0.mp4` (init chunk with duration=0) and media chunks
  * (`moof` + `mdat`) without an inline seek index. ExoPlayer's FragmentedMp4Extractor
@@ -16,19 +18,24 @@ import java.io.RandomAccessFile
  * display 0:00 duration or fail to seek.
  *
  * This builder:
- * 1. Scans `moof` boxes and reads `tfdt` (baseMediaDecodeTime) presentation times.
+ * 1. Scans `moof` + `mdat` fragments and reads `tfdt` decode times and subsegment sizes.
  * 2. Patches `duration` in `mvhd`, `tkhd`, and `mdhd` headers so players immediately
  *    know the true duration.
- * 3. Appends an ISO/IEC 14496-12 compliant `mfra` box (`tfra` + `mfro`) so ExoPlayer
- *    and other media players can seek with sample-accurate random access.
+ * 3. Inserts a standard `sidx` box (ISO/IEC 14496-12) between `moov` and the first `moof`
+ *    so Media3 / ExoPlayer generates a ChunkIndex seek map for instant seeking.
+ * 4. Appends a terminal `mfra` box (`tfra` + `mfro`) so all external players and
+ *    tools can seek with sample-accurate random access.
  */
 object Fmp4IndexBuilder {
     private const val TAG = "Fmp4IndexBuilder"
     private const val MFRO_BOX_SIZE = 16
+    private const val COPY_BUFFER_SIZE = 64 * 1024
 
-    data class MoofEntry(
+    data class FragmentInfo(
         val time: Long,
+        val duration: Long,
         val moofOffset: Long,
+        val totalSize: Long, // moof size + mdat size
     )
 
     data class MoovInfo(
@@ -104,23 +111,29 @@ object Fmp4IndexBuilder {
     /**
      * Finalizes a fragmented MP4 file:
      * - Patches `mvhd`, `tkhd`, `mdhd` duration headers if zero.
-     * - Appends an `mfra` box (`tfra` + `mfro`) if missing.
+     * - Inserts `sidx` box between `moov` and the first `moof` if missing.
+     * - Appends `mfra` box (`tfra` + `mfro`) if missing.
      *
      * Returns true if indexing/patching succeeded or file was already indexed.
      */
     fun finalizeFmp4(file: File, knownDurationMs: Long = 0L): Boolean = runCatching {
         if (!file.isFile || file.length() < 32) return false
-        RandomAccessFile(file, "rw").use { raf ->
-            val length = raf.length()
-            val moovInfo = MoovInfo()
-            val moofEntries = mutableListOf<MoofEntry>()
-            var lastFragTime = 0L
-            var lastFragDuration = 0L
-            var hasMoof = false
 
-            // 1. Scan top-level boxes
+        val moovInfo = MoovInfo()
+        val fragments = mutableListOf<FragmentInfo>()
+        var firstMoofOffset = -1L
+        var hasSidx = false
+        var currentMoofOffset = -1L
+        var currentMoofSize = 0L
+        var currentFragTime = 0L
+        var currentFragDuration = 0L
+        var lastFragEnd = 0L
+
+        RandomAccessFile(file, "r").use { raf ->
+            val length = raf.length()
             var pos = 0L
             val header = ByteArray(16)
+
             while (pos + 8 <= length) {
                 raf.seek(pos)
                 if (raf.read(header, 0, 8) < 8) break
@@ -146,61 +159,129 @@ object Fmp4IndexBuilder {
                             parseMoovBox(raf, payloadStart, payloadSize, moovInfo)
                         }
                     }
+                    "sidx" -> {
+                        hasSidx = true
+                    }
                     "moof" -> {
-                        hasMoof = true
+                        if (firstMoofOffset < 0L) {
+                            firstMoofOffset = pos
+                        }
+                        currentMoofOffset = pos
+                        currentMoofSize = boxSize
                         val (fragTime, fragDuration) = parseMoofBox(
                             raf = raf,
                             payloadStart = payloadStart,
                             payloadSize = payloadSize,
                             expectedTrackId = moovInfo.trackId,
-                            fallbackTime = lastFragTime + lastFragDuration,
+                            fallbackTime = lastFragEnd,
                         )
-                        moofEntries.add(MoofEntry(time = fragTime, moofOffset = pos))
-                        lastFragTime = fragTime
-                        lastFragDuration = fragDuration
+                        currentFragTime = fragTime
+                        currentFragDuration = fragDuration
+                        lastFragEnd = fragTime + fragDuration
+                    }
+                    "mdat" -> {
+                        if (currentMoofOffset >= 0L) {
+                            val totalSubsegmentSize = currentMoofSize + boxSize
+                            fragments.add(
+                                FragmentInfo(
+                                    time = currentFragTime,
+                                    duration = currentFragDuration,
+                                    moofOffset = currentMoofOffset,
+                                    totalSize = totalSubsegmentSize,
+                                )
+                            )
+                            currentMoofOffset = -1L
+                        }
                     }
                 }
 
                 pos += boxSize
             }
+        }
 
-            if (!hasMoof) {
-                // Progressive (non-fragmented) MP4: just patch duration if missing and known
-                if (knownDurationMs > 0L) {
+        if (firstMoofOffset < 0L || fragments.isEmpty()) {
+            // Progressive MP4: patch duration if zero and known
+            if (knownDurationMs > 0L) {
+                RandomAccessFile(file, "rw").use { raf ->
                     patchDurationsIfZero(raf, moovInfo, knownDurationMs)
                 }
-                return true
             }
+            return true
+        }
 
-            // Calculate total duration in media timescale
-            val totalMediaDuration = if (lastFragTime + lastFragDuration > 0L) {
-                lastFragTime + lastFragDuration
-            } else if (knownDurationMs > 0L && moovInfo.mediaTimescale > 0L) {
-                (knownDurationMs * moovInfo.mediaTimescale) / 1000L
-            } else {
-                0L
+        // Calculate total duration in media timescale
+        val totalMediaDuration = if (lastFragEnd > 0L) {
+            lastFragEnd
+        } else if (knownDurationMs > 0L && moovInfo.mediaTimescale > 0L) {
+            (knownDurationMs * moovInfo.mediaTimescale) / 1000L
+        } else {
+            0L
+        }
+
+        // 1. Insert sidx box before the first moof if not already present
+        var finalFile = file
+        var sidxInsertedSize = 0L
+
+        if (!hasSidx && fragments.size <= 65535) {
+            val sidxBytes = buildSidxBox(
+                trackId = moovInfo.trackId,
+                timescale = moovInfo.mediaTimescale,
+                earliestPresentationTime = fragments.first().time,
+                fragments = fragments,
+            )
+            val tempFile = File.createTempFile("fmp4_sidx_", ".tmp", file.parentFile ?: file.canonicalFile.parentFile)
+            var insertSuccess = false
+            try {
+                FileOutputStream(tempFile).buffered(COPY_BUFFER_SIZE).use { out ->
+                    FileInputStream(file).use { input ->
+                        copyExactly(input, out, firstMoofOffset)
+                        out.write(sidxBytes)
+                        copyStream(input, out)
+                    }
+                    out.flush()
+                }
+                if (tempFile.length() == file.length() + sidxBytes.size) {
+                    if (file.delete() && tempFile.renameTo(file)) {
+                        insertSuccess = true
+                        sidxInsertedSize = sidxBytes.size.toLong()
+                        Log.i(TAG, "Inserted sidx box (${sidxBytes.size} bytes) before first moof in ${file.name}")
+                    }
+                }
+            } catch (err: Exception) {
+                Log.w(TAG, "Could not insert sidx box for ${file.name}: ${err.message}", err)
+            } finally {
+                if (!insertSuccess && tempFile.exists()) {
+                    runCatching { tempFile.delete() }
+                }
             }
+        }
 
-            // Patch durations in mvhd, tkhd, mdhd if zero
+        // 2. Patch duration in mvhd, tkhd, mdhd and append mfra
+        RandomAccessFile(file, "rw").use { raf ->
             patchDurations(raf, moovInfo, totalMediaDuration, knownDurationMs)
 
-            // Check if mfra is already present
-            val alreadyHasMfra = if (length >= MFRO_BOX_SIZE) {
-                raf.seek(length - MFRO_BOX_SIZE)
+            val currentLength = raf.length()
+            val alreadyHasMfra = if (currentLength >= MFRO_BOX_SIZE) {
+                raf.seek(currentLength - MFRO_BOX_SIZE)
                 val footer = ByteArray(MFRO_BOX_SIZE)
                 raf.readFully(footer)
                 String(footer, 4, 4, Charsets.US_ASCII) == "mfro"
             } else false
 
-            if (!alreadyHasMfra && moofEntries.isNotEmpty()) {
-                val mfraBytes = buildMfraBox(moovInfo.trackId, moofEntries)
-                raf.seek(length)
+            if (!alreadyHasMfra) {
+                val shiftedFragments = if (sidxInsertedSize > 0L) {
+                    fragments.map { it.copy(moofOffset = it.moofOffset + sidxInsertedSize) }
+                } else {
+                    fragments
+                }
+                val mfraBytes = buildMfraBox(moovInfo.trackId, shiftedFragments)
+                raf.seek(currentLength)
                 raf.write(mfraBytes)
-                Log.i(TAG, "Appended mfra index with ${moofEntries.size} fragments (${mfraBytes.size} bytes) to ${file.name}")
+                Log.i(TAG, "Appended mfra index with ${fragments.size} fragments (${mfraBytes.size} bytes) to ${file.name}")
             }
-
-            true
         }
+
+        true
     }.getOrElse { error ->
         Log.w(TAG, "Failed to finalize fMP4 for ${file.name}: ${error.message}", error)
         false
@@ -342,7 +423,6 @@ object Fmp4IndexBuilder {
 
         var fragTime = fallbackTime
         var fragDuration = 0L
-        var foundTfdt = false
 
         var pos = 0
         while (pos + 8 <= moofBytes.size) {
@@ -371,9 +451,9 @@ object Fmp4IndexBuilder {
                                 val flags = (moofBytes[subPayload + 1].toInt() and 0xFF shl 16) or
                                     (moofBytes[subPayload + 2].toInt() and 0xFF shl 8) or
                                     (moofBytes[subPayload + 3].toInt() and 0xFF)
-                                var cursor = subPayload + 8 // skip version/flags (4) and trackId (4)
-                                if ((flags and 0x000001) != 0 && cursor + 8 <= trafEnd) cursor += 8 // baseDataOffset
-                                if ((flags and 0x000002) != 0 && cursor + 4 <= trafEnd) cursor += 4 // sampleDescIndex
+                                var cursor = subPayload + 8
+                                if ((flags and 0x000001) != 0 && cursor + 8 <= trafEnd) cursor += 8
+                                if ((flags and 0x000002) != 0 && cursor + 4 <= trafEnd) cursor += 4
                                 if ((flags and 0x000008) != 0 && cursor + 4 <= trafEnd) {
                                     defaultSampleDuration = be32(moofBytes, cursor).toLong() and 0xFFFF_FFFFL
                                 }
@@ -384,10 +464,8 @@ object Fmp4IndexBuilder {
                                 val version = moofBytes[subPayload].toInt() and 0xFF
                                 if (version == 1 && subPayloadSize >= 12) {
                                     fragTime = be64(moofBytes, subPayload + 4)
-                                    foundTfdt = true
                                 } else if (version == 0 && subPayloadSize >= 8) {
                                     fragTime = be32(moofBytes, subPayload + 4).toLong() and 0xFFFF_FFFFL
-                                    foundTfdt = true
                                 }
                             }
                         }
@@ -397,15 +475,15 @@ object Fmp4IndexBuilder {
                                     (moofBytes[subPayload + 2].toInt() and 0xFF shl 8) or
                                     (moofBytes[subPayload + 3].toInt() and 0xFF)
                                 val sampleCount = be32(moofBytes, subPayload + 4)
-                                if ((flags and 0x000100) != 0) { // sample-duration-present
+                                if ((flags and 0x000100) != 0) {
                                     var cursor = subPayload + 8
-                                    if ((flags and 0x000001) != 0) cursor += 4 // data-offset
-                                    if ((flags and 0x000004) != 0) cursor += 4 // first-sample-flags
+                                    if ((flags and 0x000001) != 0) cursor += 4
+                                    if ((flags and 0x000004) != 0) cursor += 4
                                     var totalDuration = 0L
                                     val entrySize = 4 +
-                                        (if ((flags and 0x000200) != 0) 4 else 0) + // sample_size
-                                        (if ((flags and 0x000400) != 0) 4 else 0) + // sample_flags
-                                        (if ((flags and 0x000800) != 0) 4 else 0)   // sample_comp_time
+                                        (if ((flags and 0x000200) != 0) 4 else 0) +
+                                        (if ((flags and 0x000400) != 0) 4 else 0) +
+                                        (if ((flags and 0x000800) != 0) 4 else 0)
                                     for (i in 0 until minOf(sampleCount, 4096)) {
                                         if (cursor + 4 <= trafEnd) {
                                             totalDuration += be32(moofBytes, cursor).toLong() and 0xFFFF_FFFFL
@@ -491,30 +569,87 @@ object Fmp4IndexBuilder {
     }
 
     /**
+     * Builds an ISO/IEC 14496-12 compliant `sidx` (Segment Index) box.
+     * When parsed by Media3's FragmentedMp4Extractor.parseSidx(), this produces
+     * a sample-accurate ChunkIndex seek map.
+     */
+    fun buildSidxBox(
+        trackId: Long,
+        timescale: Long,
+        earliestPresentationTime: Long,
+        fragments: List<FragmentInfo>,
+    ): ByteArray {
+        val referenceCount = fragments.size
+        val totalBoxSize = 32 + referenceCount * 12
+        val out = ByteArrayOutputStream(totalBoxSize)
+
+        // Box header
+        writeBe32(out, totalBoxSize)
+        out.write("sidx".toByteArray(Charsets.US_ASCII))
+
+        // FullBox: version=0 (1 byte), flags=0 (3 bytes)
+        out.write(0)
+        out.write(0)
+        out.write(0)
+        out.write(0)
+
+        // reference_ID (4 bytes)
+        writeBe32(out, trackId.toInt())
+
+        // timescale (4 bytes)
+        writeBe32(out, (timescale.takeIf { it > 0 } ?: 48000L).toInt())
+
+        // earliest_presentation_time (4 bytes, v0)
+        writeBe32(out, (earliestPresentationTime and 0xFFFF_FFFFL).toInt())
+
+        // first_offset (4 bytes, v0): distance from the end of this sidx box to the first moof = 0
+        writeBe32(out, 0)
+
+        // reserved (2 bytes: 0)
+        out.write(0)
+        out.write(0)
+
+        // reference_count (2 bytes)
+        out.write((referenceCount ushr 8) and 0xFF)
+        out.write(referenceCount and 0xFF)
+
+        // References: 12 bytes each
+        for (frag in fragments) {
+            // reference_type (1 bit = 0) + referenced_size (31 bits)
+            val refSize = (frag.totalSize and 0x7FFFFFFF).toInt()
+            writeBe32(out, refSize)
+
+            // subsegment_duration (4 bytes)
+            val dur = (frag.duration and 0xFFFF_FFFFL).toInt()
+            writeBe32(out, dur)
+
+            // starts_with_SAP(1 bit = 1) | SAP_type(3 bits = 1) | SAP_delta_time(28 bits = 0) = 0x90000000
+            writeBe32(out, 0x90000000.toInt())
+        }
+
+        return out.toByteArray()
+    }
+
+    /**
      * Builds an ISO/IEC 14496-12 compliant `mfra` container box consisting of
      * a version 1 `tfra` box (with 64-bit time and 64-bit moof byte offsets)
      * and a terminal `mfro` box.
      */
-    fun buildMfraBox(trackId: Long, entries: List<MoofEntry>): ByteArray {
+    fun buildMfraBox(trackId: Long, entries: List<FragmentInfo>): ByteArray {
         val tfraStream = ByteArrayOutputStream()
-        // tfra FullBox header: version=1 (1 byte), flags=0 (3 bytes)
         tfraStream.write(1) // version 1
         tfraStream.write(0)
         tfraStream.write(0)
         tfraStream.write(0)
-        // track_ID (4 bytes)
         writeBe32(tfraStream, trackId.toInt())
-        // reserved (26 bits: 0) + traf_len(0) + trun_len(0) + sample_len(0) = 4 bytes zero
         writeBe32(tfraStream, 0)
-        // number_of_entry (4 bytes)
         writeBe32(tfraStream, entries.size)
-        // Entries
         for (entry in entries) {
             writeBe64(tfraStream, entry.time)
             writeBe64(tfraStream, entry.moofOffset)
-            tfraStream.write(1) // traf_number = 1 (1 byte)
-            tfraStream.write(1) // trun_number = 1 (1 byte)
-            tfraStream.write(1) // sample_number = 1 (1 byte)
+            tfraStream.write(1)
+            tfraStream.write(1)
+            tfraStream.write(1)
         }
         val tfraPayload = tfraStream.toByteArray()
         val tfraBoxSize = 8 + tfraPayload.size
@@ -523,25 +658,43 @@ object Fmp4IndexBuilder {
         val totalMfraSize = 8 + tfraBoxSize + mfroBoxSize
 
         val out = ByteArrayOutputStream(totalMfraSize)
-        // mfra box header
         writeBe32(out, totalMfraSize)
         out.write("mfra".toByteArray(Charsets.US_ASCII))
 
-        // tfra box
         writeBe32(out, tfraBoxSize)
         out.write("tfra".toByteArray(Charsets.US_ASCII))
         out.write(tfraPayload)
 
-        // mfro box
         writeBe32(out, mfroBoxSize)
         out.write("mfro".toByteArray(Charsets.US_ASCII))
-        out.write(0) // version 0
+        out.write(0)
         out.write(0)
         out.write(0)
         out.write(0)
         writeBe32(out, totalMfraSize)
 
         return out.toByteArray()
+    }
+
+    private fun copyExactly(input: FileInputStream, output: FileOutputStream, count: Long) {
+        var remaining = count
+        val buffer = ByteArray(COPY_BUFFER_SIZE)
+        while (remaining > 0L) {
+            val toRead = minOf(buffer.size.toLong(), remaining).toInt()
+            val read = input.read(buffer, 0, toRead)
+            if (read < 0) break
+            output.write(buffer, 0, read)
+            remaining -= read
+        }
+    }
+
+    private fun copyStream(input: FileInputStream, output: FileOutputStream) {
+        val buffer = ByteArray(COPY_BUFFER_SIZE)
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            output.write(buffer, 0, read)
+        }
     }
 
     private fun be32(bytes: ByteArray, offset: Int): Int {

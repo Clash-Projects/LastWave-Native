@@ -52,7 +52,6 @@ import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ExtractorsFactory
 import androidx.media3.extractor.mp3.Mp3Extractor
-import androidx.media3.extractor.mp4.FragmentedMp4Extractor
 import androidx.media3.extractor.ts.AdtsExtractor
 import com.lastwave.app.data.download.Fmp4IndexBuilder
 import com.lastwave.app.data.plugin.SegmentedMpdBuilder
@@ -288,10 +287,6 @@ class MusicPlayer @Inject constructor(
             )
             .setAdtsExtractorFlags(
                 AdtsExtractor.FLAG_ENABLE_CONSTANT_BITRATE_SEEKING
-            )
-            .setFragmentedMp4ExtractorFlags(
-                FragmentedMp4Extractor.FLAG_READ_MFRA_FOR_SEEK_MAP or
-                    FragmentedMp4Extractor.FLAG_MERGE_FRAGMENTED_SIDX
             )
     }
     private var castPlayback: com.lastwave.app.playback.cast.CastPlayback? = null
