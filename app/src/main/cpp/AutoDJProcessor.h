@@ -9,25 +9,29 @@ namespace lastwave {
 
 enum class TrackLifecycleStage : int32_t {
     QUEUED = 0,
-    RESOLVING = 1,
-    RESOLVED = 2,
-    PREPARING = 3,
-    READY = 4,
-    PLAYING = 5,
-    FINISHED = 6,
-    WAITING_LATE = 7,
-    FAILED = 8,
-    CANCELLED = 9
+    RESOLVING_STREAM = 1,
+    STREAM_RESOLVED = 2,
+    DECODING_HEAD_WINDOW = 3,
+    ARMED_READY = 4,
+    TRANSITIONING = 5,
+    PLAYING = 6,
+    COMPLETED = 7,
+    EXPIRED = 8,
+    FAILED_RETRYING = 9,
+    SKIPPED_UNPLAYABLE = 10,
+    CANCELLED = 11
 };
 
 enum class AutoDJDecision : int32_t {
     DO_NOTHING = 0,
-    PREFETCH_NEXT = 1,
-    PREPARE_STANDBY = 2,
-    TRIGGER_TRANSITION = 3,
-    WAIT_FOR_LATE_TRACK = 4,
-    SKIP_FAILED_TRACK = 5,
-    REFILL_QUEUE = 6
+    RESOLVE_NEXT_STREAM = 1,
+    DECODE_HEAD_WINDOW = 2,
+    ARM_STANDBY = 3,
+    TRIGGER_TRANSITION = 4,
+    WAIT_FOR_LATE_TRACK = 5,
+    SKIP_UNPLAYABLE = 6,
+    REFILL_QUEUE = 7,
+    REFRESH_EXPIRED_STREAM = 8
 };
 
 class LatencyEstimator {
@@ -40,7 +44,6 @@ public:
 
     void recordSample(double latencyMs, bool wasSuccess) {
         if (!wasSuccess) {
-            // Penalize failure by nudging mean upward to be safer
             m_meanLatencyMs = std::min(m_meanLatencyMs * 1.15, 15000.0);
             return;
         }
@@ -56,7 +59,7 @@ public:
 
     int64_t calculateDynamicLeadWindowMs(int64_t transitionDurationMs, int64_t bufferMarginMs = 5000) const {
         double lead = static_cast<double>(transitionDurationMs) + m_meanLatencyMs + (2.5 * getStdDevMs()) + static_cast<double>(bufferMarginMs);
-        int64_t leadClamped = static_cast<int64_t>(std::clamp(lead, 15000.0, 60000.0));
+        int64_t leadClamped = static_cast<int64_t>(std::clamp(lead, 20000.0, 70000.0));
         return leadClamped;
     }
 
@@ -69,8 +72,9 @@ private:
 
 class AutoDJProcessor {
 public:
-    static constexpr int32_t DEFAULT_MAX_RETRIES = 3;
-    static constexpr int32_t DEFAULT_REFILL_THRESHOLD = 5; // Maintain 6-song Auto DJ queue horizon (1 playing + 5 upcoming)
+    static constexpr int32_t DEFAULT_MAX_RETRIES = 2; // Bounded 2 retries before SKIPPED_UNPLAYABLE
+    static constexpr int32_t DEFAULT_REFILL_THRESHOLD = 2; // Refill when <= 2 tracks remaining
+    static constexpr int64_t ADVANCE_ARM_LEAD_MS = 40000;  // Fully armed 40s before exit cue
 
     AutoDJProcessor(int32_t maxRetries = DEFAULT_MAX_RETRIES, int32_t refillThreshold = DEFAULT_REFILL_THRESHOLD);
     ~AutoDJProcessor() = default;

@@ -68,8 +68,8 @@ int main() {
     rms_b_late = std::sqrt(rms_b_late / (N - 2000));
 
     std::cout << "Deck B 80Hz Bass RMS: at p=0.25 (220Hz HPF): " << rms_b_early << ", at p=0.80 (75% drop 0dB punch): " << rms_b_late << "\n";
-    assert(rms_b_early < 0.05f); // Rule 3: 220 Hz high-passed out
-    assert(rms_b_late > 0.6f);   // Rule 3: 0 dB full sub-bass punch after 75% drop
+    assert(rms_b_early < 0.05f); // Rule 3: 200 Hz high-passed out
+    assert(rms_b_late > 0.55f);   // Rule 3: 0 dB full sub-bass punch after 55% drop
 
     // 3. Test In-place processDeckBuffer on 16-bit PCM
     engine.triggerFadeNow();

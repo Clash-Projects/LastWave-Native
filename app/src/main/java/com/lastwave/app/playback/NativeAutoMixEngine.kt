@@ -20,11 +20,36 @@ enum class AutoMixState(val nativeValue: Int) {
     }
 }
 
+enum class PhraseLengthMode(val nativeValue: Int) {
+    AUTO(0),
+    BARS_8(8),
+    BARS_16(16),
+    FAST_SKIP_4(4);
+
+    companion object {
+        fun fromNative(value: Int): PhraseLengthMode = entries.firstOrNull { it.nativeValue == value } ?: AUTO
+    }
+}
+
+data class TransitionPlan(
+    val outCueMs: Long,
+    val inCueMs: Long,
+    val durationMs: Long,
+    val bars: Int,
+    val bpmA: Float,
+    val bpmB: Float,
+    val bpmRatio: Float,
+    val gainOffsetDb: Float,
+    val textureFx: Int,
+    val isVocalSafeLoop: Boolean,
+    val isSkitSkipped: Boolean,
+)
+
 /**
  * Kotlin owner for the native C++ AutoDJ Automix engine.
  * Coordinates Mixxx-style dual-deck state transitions, silence trimming,
- * kick-band BPM & phase matching via WSOLA, 160Hz Linkwitz-Riley bass-swap,
- * and 1.2s echo fade-out tail.
+ * kick-band BPM & phase matching via WSOLA, 200Hz/180Hz Linkwitz-Riley bass-swap,
+ * vocal-pocket ducking, and 1.4s echo reverb tail.
  */
 @Singleton
 class NativeAutoMixEngine @Inject constructor() : Closeable {
@@ -55,6 +80,18 @@ class NativeAutoMixEngine @Inject constructor() : Closeable {
 
     fun setBarMode(bars: Int) {
         withHandle(Unit) { nativeSetBarMode(it, bars) }
+    }
+
+    fun setPaused(paused: Boolean) {
+        withHandle(Unit) { nativeSetPaused(it, paused) }
+    }
+
+    fun setDeckBVocalsActive(active: Boolean) {
+        withHandle(Unit) { nativeSetDeckBVocalsActive(it, active) }
+    }
+
+    fun setDeckAVocalFree(free: Boolean) {
+        withHandle(Unit) { nativeSetDeckAVocalFree(it, free) }
     }
 
     fun triggerFadeNow() {
@@ -115,6 +152,47 @@ class NativeAutoMixEngine @Inject constructor() : Closeable {
         }
     }
 
+    fun planTransition(
+        durationMsA: Long,
+        durationMsB: Long,
+        sampleRate: Double,
+        phraseMode: PhraseLengthMode,
+        isManualSkip: Boolean = false,
+        currentDeckAPosMs: Long = 0L,
+        lyricsAIntervals: LongArray? = null,
+        lyricsBIntervals: LongArray? = null,
+    ): TransitionPlan? {
+        if (nativeHandle == 0L) return null
+        val arr = withHandle(null) {
+            nativePlanTransition(
+                it,
+                durationMsA,
+                durationMsB,
+                sampleRate,
+                phraseMode.nativeValue,
+                isManualSkip,
+                currentDeckAPosMs,
+                lyricsAIntervals,
+                lyricsBIntervals,
+            )
+        } ?: return null
+
+        if (arr.size < 11) return null
+        return TransitionPlan(
+            outCueMs = arr[0].toLong(),
+            inCueMs = arr[1].toLong(),
+            durationMs = arr[2].toLong(),
+            bars = arr[3].toInt(),
+            bpmA = arr[4].toFloat(),
+            bpmB = arr[5].toFloat(),
+            bpmRatio = arr[6].toFloat(),
+            gainOffsetDb = arr[7].toFloat(),
+            textureFx = arr[8].toInt(),
+            isVocalSafeLoop = arr[9] > 0.5,
+            isSkitSkipped = arr[10] > 0.5,
+        )
+    }
+
     override fun close() {
         val handleToDestroy = synchronized(handleLock) {
             val handle = nativeHandle
@@ -139,6 +217,9 @@ class NativeAutoMixEngine @Inject constructor() : Closeable {
         @JvmStatic private external fun nativeConfigure(handle: Long, sampleRate: Double)
         @JvmStatic private external fun nativeSetEnabled(handle: Long, enabled: Boolean)
         @JvmStatic private external fun nativeSetBarMode(handle: Long, bars: Int)
+        @JvmStatic private external fun nativeSetPaused(handle: Long, paused: Boolean)
+        @JvmStatic private external fun nativeSetDeckBVocalsActive(handle: Long, active: Boolean)
+        @JvmStatic private external fun nativeSetDeckAVocalFree(handle: Long, free: Boolean)
         @JvmStatic private external fun nativeTriggerFadeNow(handle: Long)
         @JvmStatic private external fun nativeStartTransition(handle: Long, durationMs: Int)
         @JvmStatic private external fun nativeSetTransitionProgress(handle: Long, progress: Float)
@@ -164,6 +245,17 @@ class NativeAutoMixEngine @Inject constructor() : Closeable {
             sampleRate: Int,
             isDeckA: Boolean,
         ): Boolean
+        @JvmStatic private external fun nativePlanTransition(
+            handle: Long,
+            durationMsA: Long,
+            durationMsB: Long,
+            sampleRate: Double,
+            phraseModeInt: Int,
+            isManualSkip: Boolean,
+            currentDeckAPosMs: Long,
+            lyricsAIntervals: LongArray?,
+            lyricsBIntervals: LongArray?,
+        ): DoubleArray?
         @JvmStatic private external fun nativeGetState(handle: Long): Int
         @JvmStatic private external fun nativeGetTransitionProgress(handle: Long): Float
         @JvmStatic private external fun nativeGetDeckBLeadingTrimFrames(handle: Long): Long

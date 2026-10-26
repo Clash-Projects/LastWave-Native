@@ -3023,13 +3023,33 @@ private fun FullPlayer(
                                                 Box(Modifier.fillMaxSize()) {
                                                     PlayerArtwork(
                                                         track = track,
-                                                        modifier = Modifier.fillMaxSize(),
+                                                        modifier = Modifier
+                                                            .fillMaxSize()
+                                                            .graphicsLayer {
+                                                                alpha = if (state.isAutoMixActive && state.autoMixNextTrack != null) {
+                                                                    (1f - state.autoMixProgress).coerceIn(0f, 1f)
+                                                                } else 1f
+                                                            },
                                                         corner = 22.dp,
                                                         canvas = if (showSleeveCanvas) canvas else null,
                                                         isPlaying = state.isPlaying,
                                                         pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
                                                         onAspectRatioChanged = { canvasAspect = it },
                                                     )
+                                                    if (state.isAutoMixActive && state.autoMixNextTrack != null) {
+                                                        PlayerArtwork(
+                                                            track = state.autoMixNextTrack,
+                                                            modifier = Modifier
+                                                                .fillMaxSize()
+                                                                .graphicsLayer {
+                                                                    alpha = state.autoMixProgress.coerceIn(0f, 1f)
+                                                                },
+                                                            corner = 22.dp,
+                                                            canvas = null,
+                                                            isPlaying = state.isPlaying,
+                                                            pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
@@ -3599,13 +3619,33 @@ private fun FullPlayerLandscape(
                 Box(Modifier.fillMaxSize()) {
                     PlayerArtwork(
                         track = track,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                alpha = if (state.isAutoMixActive && state.autoMixNextTrack != null) {
+                                    (1f - state.autoMixProgress).coerceIn(0f, 1f)
+                                } else 1f
+                            },
                         corner = 24.dp,
                         canvas = if (showSleeveCanvas) canvas else null,
                         isPlaying = state.isPlaying,
                         pausedForTransition = shownDismissY > 1f,
                         onAspectRatioChanged = { canvasAspect = it },
                     )
+                    if (state.isAutoMixActive && state.autoMixNextTrack != null) {
+                        PlayerArtwork(
+                            track = state.autoMixNextTrack,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    alpha = state.autoMixProgress.coerceIn(0f, 1f)
+                                },
+                            corner = 24.dp,
+                            canvas = null,
+                            isPlaying = state.isPlaying,
+                            pausedForTransition = shownDismissY > 1f,
+                        )
+                    }
                 }
             }
 
@@ -4459,48 +4499,75 @@ private fun NowPlayingAutoDJBadgeRow(
     val isAnyActive = state.isAutoMixActive || state.isAutoMixEnabled || state.isAutoDJActive
     if (!isAnyActive) return
 
-    val isBlending = state.autoMixState == AutoMixState.FADING_AUTO || state.autoMixState == AutoMixState.FADING_FAST
-    val isArmed = state.autoMixState == AutoMixState.MONITORING_OUTRO
-    val hasPrefetch = state.autoDJStatus != null
+    val isBlending = state.isAutoMixActive || state.autoMixState == AutoMixState.FADING_AUTO || state.autoMixState == AutoMixState.FADING_FAST
+    val isArmed = state.autoMixState == AutoMixState.MONITORING_OUTRO || state.autoDJStatus?.contains("Armed") == true
 
+    val infiniteTransition = rememberInfiniteTransition(label = "automix_glow")
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.30f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1100, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glowAlpha"
+    )
+
+    val bars = state.autoMixBars ?: 8
     val (badgeText, badgeBg, badgeFg) = when {
         isBlending -> Triple(
-            "⚡ LIVE CLUB BLEND ${(state.autoMixProgress * 100).roundToInt()}%",
-            Color(0xFF8B5CF6).copy(alpha = if (isTranslucent) 0.35f else 0.20f),
+            "Automix · $bars-Bar Bass Swap [BPM Synced]",
+            Color(0xFF8B5CF6).copy(alpha = if (isTranslucent) 0.35f else 0.22f),
             Color(0xFFDDD6FE)
         )
+        state.autoDJStatus != null -> Triple(
+            state.autoDJStatus,
+            if (isArmed) Color(0xFF10B981).copy(alpha = if (isTranslucent) 0.35f else 0.20f)
+            else Color(0xFFF59E0B).copy(alpha = if (isTranslucent) 0.35f else 0.20f),
+            if (isArmed) Color(0xFFA7F3D0) else Color(0xFFFDE68A)
+        )
         isArmed -> Triple(
-            "⚡ OUTRO DROP ARMED (8-BAR)",
+            "Auto DJ · Next Armed",
             Color(0xFF10B981).copy(alpha = if (isTranslucent) 0.35f else 0.20f),
             Color(0xFFA7F3D0)
         )
-        hasPrefetch -> Triple(
-            "⚡ AUTO DJ: ${state.autoDJStatus}",
-            Color(0xFFF59E0B).copy(alpha = if (isTranslucent) 0.35f else 0.20f),
-            Color(0xFFFDE68A)
-        )
-        state.isAutoMixEnabled && state.isAutoDJActive -> Triple(
-            "⚡ Auto DJ & Automix Active",
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isTranslucent) 0.40f else 0.60f),
-            MaterialTheme.colorScheme.onPrimaryContainer
+        state.isAutoDJActive && state.isAutoMixEnabled -> Triple(
+            "Auto DJ · Next Armed",
+            Color(0xFF10B981).copy(alpha = if (isTranslucent) 0.30f else 0.18f),
+            Color(0xFFA7F3D0)
         )
         state.isAutoMixEnabled -> Triple(
-            "⚡ Club Automix Active",
+            "Automix Ready",
             MaterialTheme.colorScheme.secondaryContainer.copy(alpha = if (isTranslucent) 0.40f else 0.60f),
             MaterialTheme.colorScheme.onSecondaryContainer
         )
         else -> Triple(
-            "⚡ Auto DJ Continuous Queue",
+            "Auto DJ · Standby",
             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isTranslucent) 0.40f else 0.60f),
             MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
+
+    val glowBorderModifier = if (isBlending) {
+        Modifier.border(
+            width = 1.2.dp,
+            brush = Brush.horizontalGradient(
+                listOf(
+                    Color(0xFFA78BFA).copy(alpha = glowAlpha),
+                    Color(0xFFEC4899).copy(alpha = glowAlpha),
+                    Color(0xFFA78BFA).copy(alpha = glowAlpha),
+                )
+            ),
+            shape = RoundedCornerShape(50)
+        )
+    } else Modifier
 
     Surface(
         shape = RoundedCornerShape(50),
         color = badgeBg,
         modifier = modifier
             .clip(RoundedCornerShape(50))
+            .then(glowBorderModifier)
             .clickable(onClick = onClick)
             .padding(horizontal = 4.dp, vertical = 2.dp),
     ) {

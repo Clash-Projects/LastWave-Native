@@ -4,6 +4,7 @@
 #include "WsolaTimeStretcher.h"
 #include "BpmPhaseDetector.h"
 #include "EchoTailProcessor.h"
+#include "TransitionPlanner.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -24,18 +25,41 @@ enum class AutoMixState : int {
     PostRestore = 6
 };
 
-// 2nd-order resonant Biquad filter for DJ sweeps (HPF Q=1.35 club peak, LPF)
+// 2nd-order resonant Biquad filter for DJ sweeps and peaking cuts
 struct ResonantFilter final {
-    enum class Mode { HighPass, LowPass };
+    enum class Mode { HighPass, LowPass, PeakingCut };
 
     double b0{1.0}, b1{0.0}, b2{0.0};
     double a1{0.0}, a2{0.0};
     std::array<double, 2> z1{0.0, 0.0};
     std::array<double, 2> z2{0.0, 0.0};
 
-    void update(Mode mode, double sampleRate, double cutoffHz, double q) noexcept;
+    void update(Mode mode, double sampleRate, double cutoffHz, double q, double gainDb = 0.0) noexcept;
     void reset() noexcept;
     [[nodiscard]] float tick(float in, std::size_t ch) noexcept;
+};
+
+// Subtle Phaser for single texture FX
+struct SubtlePhaser final {
+    double sampleRate{48000.0};
+    double lfoPhase{0.0};
+    std::array<double, 4> allpassStateL{0.0, 0.0, 0.0, 0.0};
+    std::array<double, 4> allpassStateR{0.0, 0.0, 0.0, 0.0};
+
+    void configure(double sr) noexcept {
+        sampleRate = (sr > 0.0) ? sr : 48000.0;
+        lfoPhase = 0.0;
+        allpassStateL.fill(0.0);
+        allpassStateR.fill(0.0);
+    }
+
+    void reset() noexcept {
+        lfoPhase = 0.0;
+        allpassStateL.fill(0.0);
+        allpassStateR.fill(0.0);
+    }
+
+    void process(float& left, float& right, float send) noexcept;
 };
 
 class AutoMixEngine final {
@@ -47,10 +71,19 @@ public:
     void setEnabled(bool enabled) noexcept;
     [[nodiscard]] bool isEnabled() const noexcept;
 
-    void setBarMode(int bars) noexcept; // 8 or 16 bars
+    void setBarMode(int bars) noexcept; // 0 = Auto, 8, or 16 bars
     [[nodiscard]] int getBarMode() const noexcept;
 
-    void triggerFadeNow() noexcept; // 4 bars fast blend (~4-5s) on user Next button
+    void setPaused(bool paused) noexcept;
+    [[nodiscard]] bool isPaused() const noexcept;
+
+    void setTransitionPlan(const TransitionPlan& plan) noexcept;
+    [[nodiscard]] TransitionPlan getTransitionPlan() const noexcept;
+
+    void setDeckBVocalsActive(bool active) noexcept;
+    void setDeckAVocalFree(bool vocalFree) noexcept;
+
+    void triggerFadeNow() noexcept; // Fast 4-bar blend (~5.0s-7.0s) on user Next button
     void startTransition(int durationMs) noexcept;
     void setTransitionProgress(float progress) noexcept;
     void reset() noexcept;
@@ -85,17 +118,25 @@ private:
     std::atomic<bool> enabled_{false};
     std::atomic<int> barMode_{8};
     std::atomic<AutoMixState> state_{AutoMixState::Idle};
+    std::atomic<bool> paused_{false};
 
+    // Filters and Processors
     LinkwitzRileyFilter deckAFilter_;
     LinkwitzRileyFilter deckBFilter_;
-    LinkwitzRileyFilter deckBHpf220_; // Strict complementary 220Hz HPF for Deck B (0% to 75%)
+    LinkwitzRileyFilter deckBHpf200_; // 2nd-order LR HPF at 200 Hz for Deck B (Phase 1: t in [0.0, 0.55])
     WsolaTimeStretcher deckBStretcher_;
     BpmPhaseDetector deckADetector_;
     BpmPhaseDetector deckBDetector_;
     EchoTailProcessor deckAEcho_;
 
-    ResonantFilter deckAHpf_; // 2nd-order resonant HPF for 500Hz downbeat tail
-    ResonantFilter deckAVocalDetectorBp_; // 300-3500 Hz vocal detector
+    ResonantFilter deckAHpfResonant_; // Resonant HPF (Q=1.25) swept from 60 Hz to 550 Hz on midpoint bass swap
+    ResonantFilter deckAVocalDuckFilter_; // Dynamic -9.0 dB peaking cut (1200 Hz, Q=0.7) when Deck B has vocals
+    SubtlePhaser subtlePhaser_;
+
+    mutable std::mutex planMutex_;
+    TransitionPlan currentPlan_{};
+    std::atomic<bool> deckBVocalsActive_{false};
+    std::atomic<bool> deckAVocalFree_{true};
 
     mutable std::mutex bufferMutex_;
     std::vector<float> deckBRingBuffer_;
@@ -108,7 +149,7 @@ private:
     std::int64_t deckBDropBeatMs_{0};
     bool deckBTrimCalculated_{false};
 
-    // Rule 2: 1-Bar Beat-Loop Exit Buffer for Deck A
+    // 1-Bar Beat-Loop Exit Buffer for Deck A
     std::vector<float> deckARollingBuffer_;
     std::size_t deckARollingWritePos_{0};
     std::vector<float> deckAOneBarLoopBuffer_;
@@ -122,18 +163,24 @@ private:
     float transitionProgress_{0.0F};
     bool bassSwapped_{false};
 
+    // Post-transition loudness and tempo restoration
+    float activeGainOffsetDb_{0.0F};
+    std::size_t postRestoreFramesElapsed_{0};
+    std::size_t postRestoreTotalFrames_{0};
+
     // Outro energy tracking
     float baselineEnergy_{0.0F};
     float shortTermEnergy_{0.0F};
     std::size_t energyHistoryFrames_{0};
 
-    // Scratch buffers for real-time mixing and format conversion
+    // Scratch buffers
     std::vector<float> deckBScratch_;
     std::vector<float> deckBStretchedScratch_;
     std::vector<float> conversionScratch_;
 
     void startTransition(AutoMixState mode, int bars) noexcept;
     void detectDeckBFirstBeatAndSilence() noexcept;
+    [[nodiscard]] static float applySoftKneeLimiter(float x) noexcept;
 };
 
 } // namespace lastwave::audio
