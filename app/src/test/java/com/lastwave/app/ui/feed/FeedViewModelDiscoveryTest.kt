@@ -5,6 +5,7 @@ import com.lastwave.app.data.discover.DiscoverRepository
 import com.lastwave.app.data.feed.FeedData
 import com.lastwave.app.data.feed.FeedRepository
 import com.lastwave.app.data.generate.GeneratedTrack
+import com.lastwave.app.data.generate.GenresRepository
 import com.lastwave.app.data.local.SessionData
 import com.lastwave.app.data.local.SessionPreferences
 import com.lastwave.app.data.local.SettingsPreferences
@@ -47,6 +48,7 @@ class FeedViewModelDiscoveryTest {
     private val ytAuth: YtMusicAuthManager = mockk(relaxed = true)
     private val homeRepository: HomeRepository = mockk(relaxed = true)
     private val discoverRepository: DiscoverRepository = mockk(relaxed = true)
+    private val genresRepository: GenresRepository = mockk(relaxed = true)
 
     @Before
     fun setUp() {
@@ -78,6 +80,7 @@ class FeedViewModelDiscoveryTest {
             ytAuth,
             homeRepository,
             discoverRepository,
+            genresRepository,
         )
 
         assertThat(viewModel.discoveryTracks.value).containsExactly(mockTrack)
@@ -99,6 +102,7 @@ class FeedViewModelDiscoveryTest {
             ytAuth,
             homeRepository,
             discoverRepository,
+            genresRepository,
         )
 
         assertThat(viewModel.discoveryTracks.value).isEmpty()

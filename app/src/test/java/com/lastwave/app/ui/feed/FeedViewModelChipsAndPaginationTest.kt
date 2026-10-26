@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import com.lastwave.app.data.discover.DiscoverRepository
 import com.lastwave.app.data.feed.FeedData
 import com.lastwave.app.data.feed.FeedRepository
+import com.lastwave.app.data.generate.GenresRepository
 import com.lastwave.app.data.local.SessionData
 import com.lastwave.app.data.local.SessionPreferences
 import com.lastwave.app.data.local.SettingsPreferences
@@ -51,6 +52,7 @@ class FeedViewModelChipsAndPaginationTest {
     private val ytAuth: YtMusicAuthManager = mockk(relaxed = true)
     private val homeRepository: HomeRepository = mockk(relaxed = true)
     private val discoverRepository: DiscoverRepository = mockk(relaxed = true)
+    private val genresRepository: GenresRepository = mockk(relaxed = true)
 
     private fun createShelf(title: String, videoId: String): HomeShelf {
         return HomeShelf(
@@ -102,6 +104,7 @@ class FeedViewModelChipsAndPaginationTest {
             ytAuth,
             homeRepository,
             discoverRepository,
+            genresRepository,
         )
     }
 
