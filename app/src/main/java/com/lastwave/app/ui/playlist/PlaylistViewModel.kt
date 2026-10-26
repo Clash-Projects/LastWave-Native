@@ -235,7 +235,7 @@ class PlaylistViewModel @Inject constructor(
                 ytMusicLibraryManager.loadDetail(playlistId) { updated ->
                     _uiState.update { current ->
                         current.copy(
-                            isDetailLoading = false,
+                            isDetailLoading = updated.tracks.isEmpty() && current.isDetailLoading,
                             detailPlaylist = updated,
                             playlists = current.playlists.map { existing ->
                                 if (existing.id == updated.id) updated else existing

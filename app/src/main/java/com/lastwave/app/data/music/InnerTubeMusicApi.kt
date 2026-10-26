@@ -349,7 +349,7 @@ class InnerTubeMusicApi @Inject constructor(
         // cannot return anything, on the path that pages through thousands of
         // songs.
         val browseId = when {
-            com.lastwave.app.data.playlist.PlaylistImportManager.isYtLikedId(rawId) -> "VLM"
+            com.lastwave.app.data.playlist.PlaylistImportManager.isYtLikedId(rawId) -> YT_LIKED_BROWSE_ID
             rawId.startsWith("VL") || rawId.startsWith("RDCLAK") || rawId.startsWith("FE") || rawId.startsWith("MPRE") || rawId.startsWith("UC") -> rawId
             else -> "VL$rawId"
         }
@@ -417,7 +417,7 @@ class InnerTubeMusicApi @Inject constructor(
         // purpose (60k tracks) — it only exists to bound a pathological loop.
         fun continuation(containers: List<JsonElement>, pageJson: JsonElement): String? =
             if (playlistPage) {
-                containers.firstNotNullOfOrNull(::playlistTrackContinuationToken)
+                containers.firstNotNullOfOrNull(::playlistTrackContinuationToken) ?: genericContinuationToken(pageJson)
             } else {
                 containers.firstNotNullOfOrNull(::genericContinuationToken) ?: genericContinuationToken(pageJson)
             }
@@ -438,17 +438,25 @@ class InnerTubeMusicApi @Inject constructor(
                 truncated = true
                 break
             }
-            val nextPage = runCatching {
-                browseContinuation(currentToken, authenticated = authenticatedAs)
-            }.getOrNull()
+            var nextPage: JsonObject? = null
+            for (attempt in 1..3) {
+                try {
+                    nextPage = browseContinuation(currentToken, authenticated = authenticatedAs)
+                    break
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (e: Exception) {
+                    if (attempt == 3) {
+                        android.util.Log.w(
+                            PLAYLIST_LOG_TAG,
+                            "playlist-continuation-failed browseId=$browseId page=$page collected=${songs.size} attempt=$attempt error=${e.message}",
+                        )
+                    } else {
+                        delay(200L * attempt)
+                    }
+                }
+            }
             if (nextPage == null) {
-                // Transient page failure (rate-limit/offline): keep the tracks
-                // already collected instead of failing the whole playlist —
-                // callers surface isComplete=false with a retry affordance.
-                android.util.Log.w(
-                    PLAYLIST_LOG_TAG,
-                    "playlist-continuation-failed browseId=$browseId page=$page collected=${songs.size}",
-                )
                 truncated = true
                 break
             }
@@ -458,13 +466,21 @@ class InnerTubeMusicApi @Inject constructor(
             } else {
                 parseSongRenderers(nextPage)
             }
+            val nextToken = continuation(pageContainers, nextPage)
             if (pageSongs.isEmpty()) {
-                android.util.Log.w(
-                    PLAYLIST_LOG_TAG,
-                    "playlist-continuation-empty browseId=$browseId page=$page collected=${songs.size}",
-                )
-                truncated = true
-                break
+                if (nextToken.isNullOrBlank()) {
+                    android.util.Log.w(
+                        PLAYLIST_LOG_TAG,
+                        "playlist-continuation-empty browseId=$browseId page=$page collected=${songs.size}",
+                    )
+                    truncated = true
+                    break
+                } else {
+                    // Skip unavailable/deleted video batches and keep following pagination
+                    token = nextToken
+                    page++
+                    continue
+                }
             }
             val knownVideoIds = songs.mapTo(mutableSetOf()) { it.videoId }
             val newSongs = pageSongs
@@ -472,8 +488,9 @@ class InnerTubeMusicApi @Inject constructor(
                 .let { parsed -> trackLimit?.let { parsed.take(it - songs.size) } ?: parsed }
             songs += newSongs
             if (trackLimit != null || progressive) onPageLoaded?.invoke(songs.toList())
-            token = continuation(pageContainers, nextPage)
+            token = nextToken
             page++
+            if (page % 5 == 0) delay(40L)
         }
         if (!token.isNullOrBlank() && (trackLimit == null || songs.size < trackLimit)) truncated = true
         if (trackLimit == null && songs.isNotEmpty()) onPageLoaded?.invoke(songs.toList())
@@ -540,9 +557,9 @@ class InnerTubeMusicApi @Inject constructor(
     suspend fun fetchPlaylistArtwork(playlistIdOrUrl: String): String? = withContext(Dispatchers.IO) {
         val rawId = extractPlaylistId(playlistIdOrUrl)
         if (rawId.isBlank()) return@withContext null
-        // The account's liked list is browsed as "VLM"; "LM" is not a browse id.
+        // The account's liked list is browsed as "VLLM"; "LM" is not a browse id.
         val browseId = when {
-            com.lastwave.app.data.playlist.PlaylistImportManager.isYtLikedId(rawId) -> "VLM"
+            com.lastwave.app.data.playlist.PlaylistImportManager.isYtLikedId(rawId) -> YT_LIKED_BROWSE_ID
             rawId.startsWith("VL") || rawId.startsWith("RDCLAK") || rawId.startsWith("FE") || rawId.startsWith("MPRE") || rawId.startsWith("UC") -> rawId
             else -> "VL$rawId"
         }
@@ -570,8 +587,8 @@ class InnerTubeMusicApi @Inject constructor(
                         if (hasPlaylistContent(it)) return it to true
                     }
                 }
-                if (browseId != "VLM") {
-                    runCatching { browseRoot("VLM", authenticated = true) }.getOrNull()?.let {
+                if (browseId != YT_LIKED_BROWSE_ID) {
+                    runCatching { browseRoot(YT_LIKED_BROWSE_ID, authenticated = true) }.getOrNull()?.let {
                         if (hasPlaylistContent(it)) return it to true
                     }
                 }
@@ -582,8 +599,7 @@ class InnerTubeMusicApi @Inject constructor(
         }
         // RDCLAK / RD-prefixed IDs (radio/mix) or Liked Music fall back to the "next" endpoint
         if (browseId.startsWith("RDCLAK") || browseId.startsWith("RD") || isLiked) {
-            // The liked list is browsed as "VLM"; "LM" is not a browse id.
-            val playlistId = if (isLiked) "VLM" else browseId.removePrefix("VL")
+            val playlistId = if (isLiked) "LM" else browseId.removePrefix("VL")
             val auth = ytAuth.connection.value.isConnected
             runCatching { fetchPlaylistViaNext(playlistId, authenticated = auth) }.getOrNull()?.let {
                 return it to auth
@@ -3923,11 +3939,9 @@ class InnerTubeMusicApi @Inject constructor(
         collectObjects(root, "playlistPanelVideoRenderer", queueRenderers)
         songs.addAll(queueRenderers.mapNotNull(::parsePlaylistPanelSong))
 
-        if (songs.isEmpty()) {
-            val ytVideos = mutableListOf<JsonObject>()
-            collectObjects(root, "playlistVideoRenderer", ytVideos)
-            songs.addAll(ytVideos.mapNotNull(::parsePlaylistVideoRenderer))
-        }
+        val ytVideos = mutableListOf<JsonObject>()
+        collectObjects(root, "playlistVideoRenderer", ytVideos)
+        songs.addAll(ytVideos.mapNotNull(::parsePlaylistVideoRenderer))
 
         if (songs.isEmpty()) {
             val generalVideos = mutableListOf<JsonObject>()

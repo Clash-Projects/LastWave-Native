@@ -27,7 +27,7 @@ class PlaylistImportManager @Inject constructor(
             val clean = id.trim()
             return clean == "LM" || clean == "VLLM" || clean.removePrefix("VL") == "LM" ||
                 clean == "LL" || clean == "VLLL" || clean.removePrefix("VL") == "LL" ||
-                clean == "FEmusic_liked_videos"
+                clean == "FEmusic_liked_videos" || clean == "yt_liked" || clean == "VLM"
         }
     }
 
