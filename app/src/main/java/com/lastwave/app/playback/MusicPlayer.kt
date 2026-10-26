@@ -33,6 +33,7 @@ import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.database.StandaloneDatabaseProvider
 import android.media.MediaCodecList
 import android.os.Handler
+import android.os.Looper
 import androidx.core.content.ContextCompat
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -787,7 +788,12 @@ class MusicPlayer @Inject constructor(
 
     private val listener: Player.Listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
-            if (player === this@MusicPlayer.player) refresh(player)
+            if (player === this@MusicPlayer.player) {
+                refresh(player)
+                if (events.contains(Player.EVENT_TIMELINE_CHANGED)) {
+                    autoDJController.get().onQueueChanged()
+                }
+            }
         }
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (isCasting) return
@@ -1670,20 +1676,34 @@ class MusicPlayer @Inject constructor(
 
     private val autoDJHost = object : com.lastwave.app.playback.autodj.AutoDJPlaybackHost {
         override fun getTrackAt(index: Int): PlayableTrack? {
-            if (!playerDelegate.isInitialized() || index !in 0 until player.mediaItemCount) return null
-            return player.getMediaItemAt(index).toPlayableTrack()
+            if (Looper.myLooper() == Looper.getMainLooper() && playerDelegate.isInitialized()) {
+                if (index in 0 until player.mediaItemCount) {
+                    return player.getMediaItemAt(index).toPlayableTrack()
+                }
+            }
+            val q = _state.value.queue
+            return if (index in q.indices) q[index] else null
         }
 
         override fun getQueueSize(): Int {
-            return if (playerDelegate.isInitialized()) player.mediaItemCount else 0
+            if (Looper.myLooper() == Looper.getMainLooper() && playerDelegate.isInitialized()) {
+                return player.mediaItemCount
+            }
+            return _state.value.queue.size
         }
 
         override fun getCurrentIndex(): Int {
-            return if (playerDelegate.isInitialized()) player.currentMediaItemIndex else C.INDEX_UNSET
+            if (Looper.myLooper() == Looper.getMainLooper() && playerDelegate.isInitialized()) {
+                return player.currentMediaItemIndex
+            }
+            return _state.value.currentIndex
         }
 
         override fun isCurrentItem(index: Int): Boolean {
-            return playerDelegate.isInitialized() && index == player.currentMediaItemIndex
+            if (Looper.myLooper() == Looper.getMainLooper() && playerDelegate.isInitialized()) {
+                return index == player.currentMediaItemIndex
+            }
+            return index == _state.value.currentIndex
         }
 
         override fun registerResolvedStream(index: Int, track: PlayableTrack, stream: ResolvedStream) {
@@ -1765,7 +1785,7 @@ class MusicPlayer @Inject constructor(
         }
 
         override fun getRecentPlayedTrackIds(): List<String> {
-            return playHistory.takeLast(50)
+            return synchronized(playHistory) { playHistory.takeLast(50).toList() }
         }
 
         override fun scoreAndReorderCandidates(fromIndex: Int, count: Int, currentBpm: Float) {
@@ -2905,8 +2925,12 @@ class MusicPlayer @Inject constructor(
         return true
     }
     /** Returns the live sub-millisecond playback position of the active audio player. */
-    fun currentPositionMs(): Long =
-        runCatching { player.currentPosition.coerceAtLeast(0L) }.getOrDefault(_state.value.positionMs)
+    fun currentPositionMs(): Long {
+        if (Looper.myLooper() == Looper.getMainLooper() && playerDelegate.isInitialized()) {
+            return runCatching { player.currentPosition.coerceAtLeast(0L) }.getOrDefault(_state.value.positionMs)
+        }
+        return _state.value.positionMs
+    }
     fun seekTo(positionMs: Long) = onMain {
         if (isCasting) {
             castPlayback?.seek(positionMs.coerceAtLeast(0))
@@ -4349,9 +4373,11 @@ class MusicPlayer @Inject constructor(
 
     private fun recordHistory(mediaIdKey: String?) {
         if (mediaIdKey.isNullOrBlank()) return
-        if (playHistory.lastOrNull() == mediaIdKey) return
-        playHistory.addLast(mediaIdKey)
-        while (playHistory.size > MAX_PLAY_HISTORY) playHistory.removeFirst()
+        synchronized(playHistory) {
+            if (playHistory.lastOrNull() == mediaIdKey) return
+            playHistory.addLast(mediaIdKey)
+            while (playHistory.size > MAX_PLAY_HISTORY) playHistory.removeFirst()
+        }
     }
 
     /**
