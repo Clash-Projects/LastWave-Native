@@ -56,7 +56,7 @@ class NativeAutoDJEngine @Inject constructor() : Closeable {
     @Volatile
     private var nativeHandle = if (NativeAudioEngine.libraryLoaded) {
         try {
-            nativeCreate(maxRetries = 3, refillThreshold = 2)
+            nativeCreate(maxRetries = 3, refillThreshold = 5)
         } catch (error: LinkageError) {
             Log.e(TAG, "Native AutoDJ engine unavailable", error)
             0L
@@ -112,8 +112,8 @@ class NativeAutoDJEngine @Inject constructor() : Closeable {
             return AutoDJDecision.fromNative(decisionInt)
         }
 
-        // Fallback pure Kotlin evaluation
-        if (unplayedCount <= 2 && (durationMs <= 0 || currentPositionMs >= (durationMs / 2) || (durationMs - currentPositionMs) <= 60000)) {
+        // Fallback pure Kotlin evaluation (maintain 6-song Auto DJ queue horizon)
+        if (unplayedCount < 5) {
             return AutoDJDecision.REFILL_QUEUE
         }
         if (nextStage == TrackLifecycleStage.FAILED) {

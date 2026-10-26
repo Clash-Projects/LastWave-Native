@@ -81,6 +81,30 @@ Java_com_lastwave_app_playback_NativeAutoMixEngine_nativeTriggerFadeNow(
 }
 
 JNIEXPORT void JNICALL
+Java_com_lastwave_app_playback_NativeAutoMixEngine_nativeStartTransition(
+    JNIEnv*,
+    jclass,
+    jlong handle,
+    jint durationMs) {
+    auto* engine = fromHandle(handle);
+    if (engine != nullptr) {
+        engine->startTransition(static_cast<int>(durationMs));
+    }
+}
+
+JNIEXPORT void JNICALL
+Java_com_lastwave_app_playback_NativeAutoMixEngine_nativeSetTransitionProgress(
+    JNIEnv*,
+    jclass,
+    jlong handle,
+    jfloat progress) {
+    auto* engine = fromHandle(handle);
+    if (engine != nullptr) {
+        engine->setTransitionProgress(static_cast<float>(progress));
+    }
+}
+
+JNIEXPORT void JNICALL
 Java_com_lastwave_app_playback_NativeAutoMixEngine_nativeReset(
     JNIEnv*,
     jclass,
@@ -178,6 +202,64 @@ Java_com_lastwave_app_playback_NativeAutoMixEngine_nativeGetDeckBBpm(
     jlong handle) {
     auto* engine = fromHandle(handle);
     return (engine != nullptr) ? engine->getDeckBBpm() : 120.0F;
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_lastwave_app_playback_NativeAutoMixEngine_nativeGetDeckBFirstBeatMs(
+    JNIEnv*,
+    jclass,
+    jlong handle) {
+    auto* engine = fromHandle(handle);
+    return (engine != nullptr) ? static_cast<jlong>(engine->getDeckBFirstBeatMs()) : 0L;
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_lastwave_app_playback_NativeAutoMixEngine_nativeGetDeckBDropBeatMs(
+    JNIEnv*,
+    jclass,
+    jlong handle) {
+    auto* engine = fromHandle(handle);
+    return (engine != nullptr) ? static_cast<jlong>(engine->getDeckBDropBeatMs()) : 0L;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_lastwave_app_playback_NativeAutoMixEngine_nativeProcessDeckBuffer(
+    JNIEnv* env,
+    jclass,
+    jlong handle,
+    jobject byteBuffer,
+    jint offset,
+    jint length,
+    jint encoding,
+    jint sampleRate,
+    jboolean isDeckA) {
+    auto* engine = fromHandle(handle);
+    if (engine == nullptr || byteBuffer == nullptr || length <= 0) return JNI_FALSE;
+
+    auto* directAddress = static_cast<std::uint8_t*>(env->GetDirectBufferAddress(byteBuffer));
+    if (directAddress == nullptr) return JNI_FALSE;
+
+    std::size_t bytesPerSample = 2;
+    switch (encoding) {
+        case 0: bytesPerSample = 2; break; // PCM_I16
+        case 1: bytesPerSample = 3; break; // PCM_I24_PACKED
+        case 2: bytesPerSample = 4; break; // PCM_I32
+        case 3: bytesPerSample = 4; break; // PCM_FLOAT
+        default: return JNI_FALSE;
+    }
+    const std::size_t bytesPerFrame = bytesPerSample * 2; // stereo
+    if (bytesPerFrame == 0) return JNI_FALSE;
+    const std::size_t frameCount = static_cast<std::size_t>(length) / bytesPerFrame;
+    if (frameCount == 0) return JNI_FALSE;
+
+    const bool ok = engine->processDeckBuffer(
+        directAddress + offset,
+        frameCount,
+        encoding,
+        sampleRate,
+        isDeckA == JNI_TRUE);
+
+    return ok ? JNI_TRUE : JNI_FALSE;
 }
 
 } // extern "C"

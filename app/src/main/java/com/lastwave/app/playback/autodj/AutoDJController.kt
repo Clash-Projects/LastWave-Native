@@ -43,6 +43,7 @@ interface AutoDJPlaybackHost {
     fun setLateTrackBuffering(isWaiting: Boolean)
     fun skipToNextPlayableItem(failedIndex: Int)
     fun requestQueueRefill()
+    fun requestTrackResolution(index: Int, track: PlayableTrack)
 }
 
 sealed interface AutoDJStatus {
@@ -71,11 +72,11 @@ class AutoDJController @Inject constructor(
     private val retryCounts = ConcurrentHashMap<String, Int>()
     private val inFlightJobs = ConcurrentHashMap<String, Job>()
 
-    private val _status = MutableStateFlow<AutoDJStatus>(AutoDJStatus.Idle)
+    private val _status = MutableStateFlow<AutoDJStatus>(AutoDJStatus.Disabled)
     val status: StateFlow<AutoDJStatus> = _status.asStateFlow()
 
     @Volatile
-    var isEnabled: Boolean = true
+    var isEnabled: Boolean = false
         private set
 
     fun attachHost(
@@ -92,8 +93,17 @@ class AutoDJController @Inject constructor(
                 if (!isEnabled) {
                     cancelAllPrefetches("autodj-disabled")
                     _status.value = AutoDJStatus.Disabled
-                } else if (_status.value is AutoDJStatus.Disabled) {
-                    _status.value = AutoDJStatus.Idle
+                } else {
+                    if (_status.value is AutoDJStatus.Disabled) {
+                        _status.value = AutoDJStatus.Idle
+                    }
+                    val h = host
+                    if (h != null) {
+                        val unplayed = maxOf(0, h.getQueueSize() - h.getCurrentIndex() - 1)
+                        if (unplayed < 5) {
+                            h.requestQueueRefill()
+                        }
+                    }
                 }
             }
         }
@@ -128,6 +138,12 @@ class AutoDJController @Inject constructor(
                 inFlightJobs.remove(key)?.cancel()
                 iterator.remove()
                 retryCounts.remove(key)
+            }
+        }
+        if (isEnabled) {
+            val unplayed = maxOf(0, queueSize - h.getCurrentIndex() - 1)
+            if (unplayed < 5) {
+                h.requestQueueRefill()
             }
         }
     }
@@ -246,7 +262,14 @@ class AutoDJController @Inject constructor(
         if (currentStage == TrackLifecycleStage.READY || currentStage == TrackLifecycleStage.PLAYING) return
 
         val coroutineScope = scope ?: return
-        val identity = track.playbackIdentity() ?: return
+        val identity = track.playbackIdentity()
+        if (identity == null) {
+            // VideoId not yet resolved for track; delegate to host to query innerTube match
+            trackStages[key] = TrackLifecycleStage.RESOLVING
+            _status.value = AutoDJStatus.Resolving(track.title, index, 1)
+            host?.requestTrackResolution(index, track)
+            return
+        }
         val attempt = (retryCounts[key] ?: 0) + 1
         trackStages[key] = TrackLifecycleStage.RESOLVING
         _status.value = AutoDJStatus.Resolving(track.title, index, attempt)
@@ -294,7 +317,11 @@ class AutoDJController @Inject constructor(
         val upcomingTrack = h.getTrackAt(upcomingIndex) ?: return
         val upcomingKey = upcomingTrack.mediaIdKey()
         if (getTrackStage(upcomingKey) != TrackLifecycleStage.QUEUED || inFlightJobs[upcomingKey]?.isActive == true) return
-        val identity = upcomingTrack.playbackIdentity() ?: return
+        val identity = upcomingTrack.playbackIdentity()
+        if (identity == null) {
+            h.requestTrackResolution(upcomingIndex, upcomingTrack)
+            return
+        }
         val resolver = streamResolver ?: return
 
         val coroutineScope = scope ?: return

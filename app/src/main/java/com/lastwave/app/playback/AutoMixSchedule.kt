@@ -49,7 +49,7 @@ data class AutoMixPlanInput(
     val standbyReady: Boolean,
     val standbyDurationMs: Long,
     val standbyBufferedMs: Long,
-    val armLeadMs: Long = 15_000L,
+    val armLeadMs: Long = 35_000L,
     val refreshLeadMs: Long = 5_000L,
 ) {
     /** 1 bar = 4 beats at current BPM */
@@ -59,11 +59,13 @@ data class AutoMixPlanInput(
             return ((4.0 * (60.0 / safeBpm)) * 1000.0).toLong().coerceIn(1000L, 5000L)
         }
 
-    /** 8-bar or 16-bar duration, bounded by 1/3 of total track duration */
+    /** 8-bar or 16-bar outro phrase duration, snapped to 12s–24s beat boundary */
     val transitionMs: Long
         get() {
-            val fullBars = barMode.coerceIn(4, 16) * barMs
-            return if (durationMs > 0L) minOf(fullBars, durationMs / 3) else fullBars
+            val bars = barMode.coerceIn(8, 16)
+            val fullPhraseMs = (bars * barMs).coerceIn(12_000L, 24_000L)
+            val snappedMs = (fullPhraseMs / barMs) * barMs
+            return if (durationMs > 0L) minOf(snappedMs, durationMs / 3).coerceAtLeast(4000L) else snappedMs
         }
 
     val remainingMs: Long

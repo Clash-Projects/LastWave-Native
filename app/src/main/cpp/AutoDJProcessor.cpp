@@ -20,11 +20,9 @@ AutoDJDecision AutoDJProcessor::evaluate(
     int32_t retryCount,
     int32_t unplayedCount
 ) {
-    // 1. Refill check: if queue is running out of unplayed tracks, refill early
-    if (unplayedCount <= m_refillThreshold) {
-        if (durationMs <= 0 || currentPositionMs >= (durationMs / 2) || (durationMs - currentPositionMs) <= 60000) {
-            return AutoDJDecision::REFILL_QUEUE;
-        }
+    // 1. Refill check: maintain 6-song Auto DJ queue horizon (1 dominant + up to 5 upcoming)
+    if (unplayedCount < m_refillThreshold) {
+        return AutoDJDecision::REFILL_QUEUE;
     }
 
     // 2. Terminal failure handling

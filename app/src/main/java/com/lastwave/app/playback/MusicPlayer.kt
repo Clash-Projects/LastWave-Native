@@ -82,6 +82,7 @@ import com.lastwave.app.playback.resolve.TrackIdentity
 import com.lastwave.app.playback.resolve.playbackIdentity
 import com.lastwave.app.playback.resolve.toYouTubeAudioStream
 import com.lastwave.app.playback.usb.UsbExclusivePrefs
+import com.lastwave.app.playback.autodj.AutoDJStatus
 import com.lastwave.app.widget.WidgetUpdater
 import kotlinx.coroutines.flow.first
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -194,8 +195,10 @@ data class MusicPlayerState(
     val autoMixState: AutoMixState = AutoMixState.IDLE,
     val autoMixProgress: Float = 0f,
     val autoMixBpm: Float? = null,
-    val isAutoDJActive: Boolean = true,
+    val isAutoDJActive: Boolean = false,
     val autoDJStatus: String? = null,
+    val autoMixDeckBFirstBeatMs: Long? = null,
+    val autoMixNextTrack: PlayableTrack? = null,
 )
 
 /**
@@ -555,6 +558,7 @@ class MusicPlayer @Inject constructor(
     }
     /** Every ExoPlayer audio sink, so DAC routing/rate follow player rebuilds. */
     private val audioSinks = CopyOnWriteArrayList<NativeProcessingAudioSink>()
+    private val playerToSink = java.util.Collections.synchronizedMap(java.util.WeakHashMap<Player, NativeProcessingAudioSink>())
     /** True while the usbdevfs exclusive session owns output. */
     @Volatile private var usbExclusiveSinkActive = false
     @Volatile private var usbExclusivePrefEnabled = false
@@ -1291,6 +1295,7 @@ class MusicPlayer @Inject constructor(
             .setPrioritizeTimeOverSizeThresholds(true)
             .setBackBuffer(15_000, true)
             .build()
+        var builtSink: NativeProcessingAudioSink? = null
         val renderersFactory = object : DefaultRenderersFactory(appContext) {
             override fun buildAudioSink(
                 context: Context,
@@ -1332,7 +1337,7 @@ class MusicPlayer @Inject constructor(
                     effects.setFallbackRequired(true)
                 }
                 val processorEngine = engine ?: nativeAudioEngine.get()
-                return NativeProcessingAudioSink(
+                val sink = NativeProcessingAudioSink(
                     enhancedDelegate = enhancedSink,
                     fallbackDelegate = fallbackSink,
                     processor = NativePcmAudioProcessor(processorEngine),
@@ -1344,8 +1349,11 @@ class MusicPlayer @Inject constructor(
                     exclusiveUsb = if (handleAudioFocus) exclusiveUsbOutput else null,
                     // Same rule as USB: the crossfade standby never claims the endpoint.
                     internalDirect = if (handleAudioFocus) internalDirectOutput else null,
-                ).also { sink ->
-                    sink.onConfiguredFormat = { rateHz, _, _ ->
+                ).also { s ->
+                    if (nativeAutoMixEngine.get().isAvailable) {
+                        s.autoMixEngine = nativeAutoMixEngine.get()
+                    }
+                    s.onConfiguredFormat = { rateHz, _, _ ->
                         // The crossfade standby arms early and configures its
                         // sink while the OUTGOING track is still the live one.
                         // Only the active player may publish sample rate and
@@ -1387,6 +1395,8 @@ class MusicPlayer @Inject constructor(
                         routedDacDeviceId?.let { id -> findOutputDevice(id)?.let(sink::setPreferredDevice) }
                     }
                 }
+                builtSink = sink
+                return sink
             }
 
             override fun buildAudioRenderers(
@@ -1583,6 +1593,8 @@ class MusicPlayer @Inject constructor(
                         runCatching { systemEffectsBridge.onSessionChanged(audioSessionId) }
                     }
                 })
+            }.also { playerInstance ->
+                builtSink?.let { s -> playerToSink[playerInstance] = s }
             }
     }
 
@@ -1727,6 +1739,12 @@ class MusicPlayer @Inject constructor(
                         startRadioQueue(cur, resumePlaybackImmediately = false)
                     }
                 }
+            }
+        }
+
+        override fun requestTrackResolution(index: Int, track: PlayableTrack) {
+            applicationScope.launch(Dispatchers.Main.immediate) {
+                preloadNextTrack(index, track)
             }
         }
     }
@@ -1996,13 +2014,19 @@ class MusicPlayer @Inject constructor(
 
         applicationScope.launch {
             settingsPreferences.settings.collect { settings ->
-                crossfadeEnabled = settings.crossfadeEnabled
-                crossfadeDurationMs = settings.crossfadeSeconds.coerceIn(1, 12) * 1000L
                 automixEnabled = settings.automixEnabled
+                crossfadeEnabled = settings.crossfadeEnabled && !settings.automixEnabled
+                crossfadeDurationMs = settings.crossfadeSeconds.coerceIn(1, 12) * 1000L
                 automixBars = settings.automixBars
                 if (nativeAutoMixEngine.get().isAvailable) {
                     nativeAutoMixEngine.get().setEnabled(automixEnabled)
                     nativeAutoMixEngine.get().setBarMode(automixBars)
+                }
+                _state.update {
+                    it.copy(
+                        isAutoMixEnabled = automixEnabled,
+                        isAutoDJActive = settings.autoDJEnabled,
+                    )
                 }
                 val wasBitPerfect = bitPerfectEnabled
                 bitPerfectEnabled = settings.isBitPerfectEnabled
@@ -2048,6 +2072,24 @@ class MusicPlayer @Inject constructor(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        applicationScope.launch {
+            autoDJController.get().status.collect { djStatus ->
+                val statusString = when (djStatus) {
+                    is com.lastwave.app.playback.autodj.AutoDJStatus.Disabled -> null
+                    is com.lastwave.app.playback.autodj.AutoDJStatus.Idle -> "Idle"
+                    is com.lastwave.app.playback.autodj.AutoDJStatus.Resolving -> "Resolving ${djStatus.title}"
+                    is com.lastwave.app.playback.autodj.AutoDJStatus.Ready -> "Ready: ${djStatus.title}"
+                    is com.lastwave.app.playback.autodj.AutoDJStatus.WaitingLate -> "Buffering: ${djStatus.title}"
+                }
+                _state.update {
+                    it.copy(
+                        isAutoDJActive = djStatus !is com.lastwave.app.playback.autodj.AutoDJStatus.Disabled,
+                        autoDJStatus = statusString,
+                    )
                 }
             }
         }
@@ -3017,6 +3059,8 @@ class MusicPlayer @Inject constructor(
         crossfadeStandbyPreparing = false
         lastCrossfadeLogKey = null
         if (!playerDelegate.isInitialized()) return
+        outgoingPlayer?.let { playerToSink[it]?.autoMixRole = AutoMixDeckRole.NONE }
+        playerToSink[player]?.autoMixRole = AutoMixDeckRole.NONE
         outgoingPlayer = null
         val standby = if (player === secondaryPlayer) playerDelegate.value else secondaryPlayer
         standby?.stop()
@@ -3029,6 +3073,15 @@ class MusicPlayer @Inject constructor(
         }
         if (autoDJController.get().isEnabled) {
             autoDJController.get().cancelAllPrefetches("cancel-crossfade")
+        }
+        _state.update {
+            it.copy(
+                isAutoMixActive = false,
+                autoMixState = AutoMixState.IDLE,
+                autoMixProgress = 0f,
+                autoMixNextTrack = null,
+                autoMixDeckBFirstBeatMs = null,
+            )
         }
     }
 
@@ -3063,7 +3116,7 @@ class MusicPlayer @Inject constructor(
      * refresh swaps it), and torn down by [cancelCrossfade] on every queue edit.
      */
     @MainThread
-    private fun armCrossfadeStandby(nextIndex: Int, nextItem: MediaItem) {
+    private fun armCrossfadeStandby(nextIndex: Int, nextItem: MediaItem): ExoPlayer {
         val standby = standbyOrCreate()
         standbyQueue = (0 until player.mediaItemCount).map(player::getMediaItemAt)
         standbyIndex = nextIndex
@@ -3074,10 +3127,24 @@ class MusicPlayer @Inject constructor(
         standby.prepare()
         crossfadeStandbyArmed = true
         crossfadeStandbyPreparing = true
+        val nextTrack = nextItem.toPlayableTrack()
+        val firstBeatMs = if (nativeAutoMixEngine.get().isAvailable) {
+            nativeAutoMixEngine.get().deckBFirstBeatMs
+        } else null
+        if (automixEnabled) {
+            _state.update {
+                it.copy(
+                    autoMixState = AutoMixState.MONITORING_OUTRO,
+                    autoMixNextTrack = nextTrack,
+                    autoMixDeckBFirstBeatMs = firstBeatMs,
+                )
+            }
+        }
         logCrossfadeDecision(
             "armed",
             "index=$nextIndex track='${nextItem.mediaMetadata.title}'",
         )
+        return standby
     }
 
     /**
@@ -3116,11 +3183,29 @@ class MusicPlayer @Inject constructor(
             if (progress >= 1f || outgoing.playbackState == Player.STATE_ENDED || outgoing.playerError != null) {
                 cancelCrossfade()
             } else {
-                // Perceptual fade: outgoing ramps down, incoming ramps up.
-                val outGain = (1f - progress) * (1f - progress)
-                val inGain = progress * progress
-                player.volume = inGain
-                outgoing.volume = outGain
+                if (automixEnabled) {
+                    if (nativeAutoMixEngine.get().isAvailable) {
+                        nativeAutoMixEngine.get().setTransitionProgress(progress)
+                    }
+                    // C++ DSP handles the resonant filter sweep, -18dB bass swap, and echo freeze tail
+                    player.volume = 1f
+                    outgoing.volume = 1f
+                    val deckBpm = if (nativeAutoMixEngine.get().isAvailable) nativeAutoMixEngine.get().deckABpm else null
+                    _state.update {
+                        it.copy(
+                            isAutoMixActive = true,
+                            autoMixState = AutoMixState.FADING_AUTO,
+                            autoMixProgress = progress,
+                            autoMixBpm = deckBpm,
+                        )
+                    }
+                } else {
+                    // Perceptual fade: outgoing ramps down, incoming ramps up.
+                    val outGain = (1f - progress) * (1f - progress)
+                    val inGain = progress * progress
+                    player.volume = inGain
+                    outgoing.volume = outGain
+                }
                 outgoing.playWhenReady = player.isPlaying
             }
             return false
@@ -3310,8 +3395,34 @@ class MusicPlayer @Inject constructor(
         standby.repeatMode = outgoing.repeatMode
         standby.playbackParameters = outgoing.playbackParameters
         overlapDurationMs = overlapMs
-        outgoing.volume = 1f
-        standby.volume = 0f
+        if (automixEnabled) {
+            val firstBeatMs = if (nativeAutoMixEngine.get().isAvailable) {
+                nativeAutoMixEngine.get().deckBFirstBeatMs
+            } else 0L
+            if (firstBeatMs in 100L..35_000L) {
+                android.util.Log.i("MusicPlayer", "AutoMix: Seeking Deck B directly to first beat onset ($firstBeatMs ms)")
+                standby.seekTo(firstBeatMs)
+            }
+            if (nativeAutoMixEngine.get().isAvailable) {
+                nativeAutoMixEngine.get().startTransition(overlapMs.toInt())
+            }
+            playerToSink[outgoing]?.autoMixRole = AutoMixDeckRole.DECK_A
+            playerToSink[standby]?.autoMixRole = AutoMixDeckRole.DECK_B
+            outgoing.volume = 1f
+            standby.volume = 1f
+            val deckBpm = if (nativeAutoMixEngine.get().isAvailable) nativeAutoMixEngine.get().deckABpm else null
+            _state.update {
+                it.copy(
+                    isAutoMixActive = true,
+                    autoMixState = AutoMixState.FADING_AUTO,
+                    autoMixProgress = 0f,
+                    autoMixBpm = deckBpm,
+                )
+            }
+        } else {
+            outgoing.volume = 1f
+            standby.volume = 0f
+        }
         outgoing.removeListener(listener)
         outgoing.setAudioAttributes(outgoing.audioAttributes, false)
         outgoing.repeatMode = Player.REPEAT_MODE_OFF
@@ -3975,24 +4086,74 @@ class MusicPlayer @Inject constructor(
             }
         }
     }
+
+    fun triggerAutoMixNow() = onMain {
+        if (!playerDelegate.isInitialized() || !player.isPlaying) return@onMain
+        val nextIndex = player.nextMediaItemIndex
+        if (nextIndex == C.INDEX_UNSET || nextIndex !in 0 until player.mediaItemCount) return@onMain
+        val nextItem = player.getMediaItemAt(nextIndex)
+        val standby = currentStandby()
+        val targetStandby = if (crossfadeStandbyArmed && standby?.playbackState == Player.STATE_READY) {
+            standby
+        } else {
+            armCrossfadeStandby(nextIndex, nextItem)
+        }
+        if (nativeAutoMixEngine.get().isAvailable) {
+            nativeAutoMixEngine.get().triggerFadeNow()
+        }
+        val bpm = if (nativeAutoMixEngine.get().isAvailable) nativeAutoMixEngine.get().deckABpm else 120f
+        val safeBpm = if (bpm in 50f..220f) bpm else 120f
+        val barMs = ((4.0 * (60.0 / safeBpm)) * 1000.0).toLong().coerceIn(1000L, 1500L)
+        val fastFadeMs = (4 * barMs).coerceIn(4000L, 5500L) // Fast 4-bar (~4-5s) club transition
+        handOffCrossfade(targetStandby, fastFadeMs)
+    }
+
+    fun setAutoDJEnabled(enabled: Boolean) {
+        applicationScope.launch {
+            settingsPreferences.setAutoDJEnabled(enabled)
+        }
+    }
+
+    fun setAutomixEnabled(enabled: Boolean) {
+        applicationScope.launch {
+            settingsPreferences.setAutomixEnabled(enabled)
+        }
+    }
+
     fun next() = onMain {
         if (isCasting) {
             seekToQueueItem(nextQueueIndex(_state.value))
             return@onMain
         }
         if (automixEnabled && player.isPlaying) {
-            val standby = currentStandby()
             val nextIndex = player.nextMediaItemIndex
-            if (standby != null && nextIndex != C.INDEX_UNSET && crossfadeStandbyArmed && standby.playbackState == Player.STATE_READY) {
-                if (nativeAutoMixEngine.get().isAvailable) {
-                    nativeAutoMixEngine.get().triggerFadeNow()
+            if (nextIndex != C.INDEX_UNSET && nextIndex in 0 until player.mediaItemCount) {
+                val nextItem = player.getMediaItemAt(nextIndex)
+                val stream = nextItem.localConfiguration?.customCacheKey?.let(preparedStreams::get)
+                val isNextLocal = nextItem.mediaId.startsWith("local:")
+                val isResolved = if (isNextLocal) {
+                    nextItem.localConfiguration?.uri?.scheme != "lastwave"
+                } else {
+                    nextItem.localConfiguration?.uri?.scheme != "lastwave" && stream != null && !stream.isExpired()
                 }
-                val bpm = if (nativeAutoMixEngine.get().isAvailable) nativeAutoMixEngine.get().deckABpm else 120f
-                val safeBpm = if (bpm in 50f..220f) bpm else 120f
-                val barMs = ((4.0 * (60.0 / safeBpm)) * 1000.0).toLong().coerceIn(1000L, 5000L)
-                val fastFadeMs = (4 * barMs).coerceAtMost((player.duration.takeIf { it > 0 } ?: 60000L) / 3).coerceAtLeast(1500L)
-                handOffCrossfade(standby, fastFadeMs)
-                return@onMain
+                val autoDJReady = (autoDJController.get().status.value as? AutoDJStatus.Ready)?.index == nextIndex
+                val standby = currentStandby()
+                val isStandbyReady = crossfadeStandbyArmed && standby?.playbackState == Player.STATE_READY
+
+                if (isStandbyReady || ((autoDJReady || isResolved) && !bitPerfectEnabled)) {
+                    val targetStandby = if (isStandbyReady) standby!! else armCrossfadeStandby(nextIndex, nextItem)
+                    if (targetStandby != null) {
+                        if (nativeAutoMixEngine.get().isAvailable) {
+                            nativeAutoMixEngine.get().triggerFadeNow()
+                        }
+                        val bpm = if (nativeAutoMixEngine.get().isAvailable) nativeAutoMixEngine.get().deckABpm else 120f
+                        val safeBpm = if (bpm in 50f..220f) bpm else 120f
+                        val barMs = ((4.0 * (60.0 / safeBpm)) * 1000.0).toLong().coerceIn(1000L, 1500L)
+                        val fastFadeMs = (4 * barMs).coerceIn(4000L, 5500L) // Fast 4-bar (~4-5s) DJ mix
+                        handOffCrossfade(targetStandby, fastFadeMs)
+                        return@onMain
+                    }
+                }
             }
         }
         val pendingState = _state.value

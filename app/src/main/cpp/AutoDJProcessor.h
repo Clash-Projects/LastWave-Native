@@ -70,7 +70,7 @@ private:
 class AutoDJProcessor {
 public:
     static constexpr int32_t DEFAULT_MAX_RETRIES = 3;
-    static constexpr int32_t DEFAULT_REFILL_THRESHOLD = 2;
+    static constexpr int32_t DEFAULT_REFILL_THRESHOLD = 5; // Maintain 6-song Auto DJ queue horizon (1 playing + 5 upcoming)
 
     AutoDJProcessor(int32_t maxRetries = DEFAULT_MAX_RETRIES, int32_t refillThreshold = DEFAULT_REFILL_THRESHOLD);
     ~AutoDJProcessor() = default;

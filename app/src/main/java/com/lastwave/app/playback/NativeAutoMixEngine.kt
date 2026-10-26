@@ -61,6 +61,14 @@ class NativeAutoMixEngine @Inject constructor() : Closeable {
         withHandle(Unit) { nativeTriggerFadeNow(it) }
     }
 
+    fun startTransition(durationMs: Int) {
+        withHandle(Unit) { nativeStartTransition(it, durationMs) }
+    }
+
+    fun setTransitionProgress(progress: Float) {
+        withHandle(Unit) { nativeSetTransitionProgress(it, progress) }
+    }
+
     fun reset() {
         withHandle(Unit) { nativeReset(it) }
     }
@@ -86,11 +94,26 @@ class NativeAutoMixEngine @Inject constructor() : Closeable {
     val deckBLeadingTrimFrames: Long
         get() = withHandle(0L, ::nativeGetDeckBLeadingTrimFrames)
 
+    val deckBFirstBeatMs: Long
+        get() = withHandle(0L, ::nativeGetDeckBFirstBeatMs)
+
+    val deckBDropBeatMs: Long
+        get() = withHandle(0L, ::nativeGetDeckBDropBeatMs)
+
     val deckABpm: Float
         get() = withHandle(120.0F, ::nativeGetDeckABpm)
 
     val deckBBpm: Float
         get() = withHandle(120.0F, ::nativeGetDeckBBpm)
+
+    fun processDeckBuffer(buffer: ByteBuffer, encoding: Int, sampleRate: Int, isDeckA: Boolean): Boolean {
+        if (!buffer.isDirect) return false
+        val offset = buffer.position()
+        val length = buffer.remaining()
+        return withHandle(false) {
+            nativeProcessDeckBuffer(it, buffer, offset, length, encoding, sampleRate, isDeckA)
+        }
+    }
 
     override fun close() {
         val handleToDestroy = synchronized(handleLock) {
@@ -117,6 +140,8 @@ class NativeAutoMixEngine @Inject constructor() : Closeable {
         @JvmStatic private external fun nativeSetEnabled(handle: Long, enabled: Boolean)
         @JvmStatic private external fun nativeSetBarMode(handle: Long, bars: Int)
         @JvmStatic private external fun nativeTriggerFadeNow(handle: Long)
+        @JvmStatic private external fun nativeStartTransition(handle: Long, durationMs: Int)
+        @JvmStatic private external fun nativeSetTransitionProgress(handle: Long, progress: Float)
         @JvmStatic private external fun nativeReset(handle: Long)
         @JvmStatic private external fun nativeWriteDeckBPcm(
             handle: Long,
@@ -130,9 +155,20 @@ class NativeAutoMixEngine @Inject constructor() : Closeable {
             offsetBytes: Int,
             frameCount: Int,
         )
+        @JvmStatic private external fun nativeProcessDeckBuffer(
+            handle: Long,
+            buffer: ByteBuffer,
+            offsetBytes: Int,
+            lengthBytes: Int,
+            encoding: Int,
+            sampleRate: Int,
+            isDeckA: Boolean,
+        ): Boolean
         @JvmStatic private external fun nativeGetState(handle: Long): Int
         @JvmStatic private external fun nativeGetTransitionProgress(handle: Long): Float
         @JvmStatic private external fun nativeGetDeckBLeadingTrimFrames(handle: Long): Long
+        @JvmStatic private external fun nativeGetDeckBFirstBeatMs(handle: Long): Long
+        @JvmStatic private external fun nativeGetDeckBDropBeatMs(handle: Long): Long
         @JvmStatic private external fun nativeGetDeckABpm(handle: Long): Float
         @JvmStatic private external fun nativeGetDeckBBpm(handle: Long): Float
     }

@@ -133,7 +133,7 @@ data class MiscSettings(
     /** Automix phrase transition duration in bars (8 or 16 bars). */
     val automixBars: Int = 8,
     /** Autonomous queue controller with predictive background resolution. */
-    val autoDJEnabled: Boolean = true,
+    val autoDJEnabled: Boolean = false,
     /** When true (default), uses the multi-layer dynamic wavy seekbar.
      *  When false, uses the classic standard progress slider in the player tab. */
     val wavySeekbarEnabled: Boolean = true,
@@ -385,7 +385,7 @@ class SettingsPreferences @Inject constructor(
                 crossfadeSeconds = (p.readSafely(Keys.CROSSFADE_SECONDS) ?: 5).coerceIn(1, 12),
                 automixEnabled = p.readSafely(Keys.AUTOMIX_ENABLED) ?: false,
                 automixBars = (p.readSafely(Keys.AUTOMIX_BARS) ?: 8).let { if (it >= 16) 16 else 8 },
-                autoDJEnabled = p.readSafely(Keys.AUTODJ_ENABLED) ?: true,
+                autoDJEnabled = p.readSafely(Keys.AUTODJ_ENABLED) ?: false,
                 wavySeekbarEnabled = p.readSafely(Keys.WAVY_SEEKBAR_ENABLED) ?: true,
                 rotatingBackgroundEnabled = p.readSafely(Keys.ROTATING_BACKGROUND_ENABLED) ?: true,
                 lyricsRotatingBackgroundEnabled = p.readSafely(Keys.LYRICS_ROTATING_BACKGROUND_ENABLED) ?: true,

@@ -33,6 +33,12 @@ import java.nio.ByteOrder
  * no Float conversion, no libsoxr resampler, no DSP container, no AudioFX.
  * The source sample rate therefore drives the opened AudioTrack directly.
  */
+enum class AutoMixDeckRole {
+    NONE,
+    DECK_A,
+    DECK_B,
+}
+
 class NativeProcessingAudioSink(
     private val enhancedDelegate: DefaultAudioSink,
     private val fallbackDelegate: DefaultAudioSink,
@@ -467,6 +473,10 @@ class NativeProcessingAudioSink(
         }
     }
 
+    @Volatile var autoMixRole: AutoMixDeckRole = AutoMixDeckRole.NONE
+    var autoMixEngine: NativeAutoMixEngine? = null
+    private var automixProcessedBuffer: ByteBuffer? = null
+
     override fun handleBuffer(
         buffer: ByteBuffer,
         presentationTimeUs: Long,
@@ -478,10 +488,31 @@ class NativeProcessingAudioSink(
             directEq.process(buffer)
             directEqBuffer = buffer
         }
+        val role = autoMixRole
+        if (role != AutoMixDeckRole.NONE && automixProcessedBuffer !== buffer) {
+            val engine = autoMixEngine
+            if (engine != null && engine.isAvailable) {
+                val enc = when (configuredFormat?.pcmEncoding) {
+                    C.ENCODING_PCM_16BIT -> 0
+                    C.ENCODING_PCM_24BIT -> 1
+                    C.ENCODING_PCM_32BIT -> 2
+                    C.ENCODING_PCM_FLOAT -> 3
+                    else -> -1
+                }
+                if (enc >= 0) {
+                    val rate = configuredFormat?.sampleRate ?: 48000
+                    engine.processDeckBuffer(buffer, enc, rate, isDeckA = (role == AutoMixDeckRole.DECK_A))
+                    automixProcessedBuffer = buffer
+                }
+            }
+        }
         val consumed = handleRoutedBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
         // Decoder buffers are recycled objects: once consumed, the next
         // payload in the same object must be equalised again.
-        if (consumed) directEqBuffer = null
+        if (consumed) {
+            directEqBuffer = null
+            automixProcessedBuffer = null
+        }
         return consumed
     }
 
