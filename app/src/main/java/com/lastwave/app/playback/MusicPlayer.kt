@@ -1358,11 +1358,11 @@ class MusicPlayer @Inject constructor(
                     exclusiveUsb = if (handleAudioFocus) exclusiveUsbOutput else null,
                     // Same rule as USB: the crossfade standby never claims the endpoint.
                     internalDirect = if (handleAudioFocus) internalDirectOutput else null,
-                ).also { s ->
+                ).also { createdSink ->
                     if (nativeAutoMixEngine.get().isAvailable) {
-                        s.autoMixEngine = nativeAutoMixEngine.get()
+                        createdSink.autoMixEngine = nativeAutoMixEngine.get()
                     }
-                    s.onConfiguredFormat = { rateHz, _, _ ->
+                    createdSink.onConfiguredFormat = { rateHz, _, _ ->
                         // The crossfade standby arms early and configures its
                         // sink while the OUTGOING track is still the live one.
                         // Only the active player may publish sample rate and
@@ -1372,9 +1372,9 @@ class MusicPlayer @Inject constructor(
                             onDecodedPcmFormatConfigured(rateHz)
                         }
                     }
-                    sink.bitDepthHintProvider = {
-                        val s = _state.value
-                        val hintRate = s.samplingRateKHz
+                    createdSink.bitDepthHintProvider = {
+                        val stateSnapshot = _state.value
+                        val hintRate = stateSnapshot.samplingRateKHz
                             ?: (if (decodedSampleRateHz > 0) decodedSampleRateHz / 1000.0 else 0.0)
                         // Output sizing biases UP safely: an unknown depth must not size a
                         // 16-bit output that would truncate a true 24-bit source,
@@ -1383,25 +1383,24 @@ class MusicPlayer @Inject constructor(
                         // rate guess. A reported 16 is trusted even at >48kHz —
                         // 16/96 and 16/192 are real, and the sources no longer
                         // send a placeholder 16.
-                        val hintKnown = s.bitDepth?.takeIf { it > 0 }
-                        parseQualityFromCodec(s.audioCodec)?.substringBefore('/')?.toIntOrNull()
+                        val hintKnown = stateSnapshot.bitDepth?.takeIf { it > 0 }
+                        val fallbackDepth: Int? = when {
+                            hintRate > 192.0 -> 32
+                            hintRate > 48.0 -> 24
+                            else -> null
+                        }
+                        parseQualityFromCodec(stateSnapshot.audioCodec)?.substringBefore('/')?.toIntOrNull()
                             ?: hintKnown
-                            ?: inferBitDepth(s.copy(bitDepth = hintKnown))
-                            ?: run {
-                                when {
-                                    hintRate > 192.0 -> 32
-                                    hintRate > 48.0 -> 24
-                                    else -> null
-                                }
-                            }
+                            ?: inferBitDepth(stateSnapshot.copy(bitDepth = hintKnown))
+                            ?: fallbackDepth
                     }
                     val isSpatial = isSpatialAudioCodec(_state.value.audioCodec)
-                    sink.setBitPerfectRequested(!isSpatial && bitPerfectEnabled)
-                    sink.syncExclusiveUsb(handleAudioFocus && exclusiveUsbWanted())
-                    sink.syncInternalDirect(handleAudioFocus && !isSpatial && internalDirectWanted())
-                    audioSinks.add(sink)
+                    createdSink.setBitPerfectRequested(!isSpatial && bitPerfectEnabled)
+                    createdSink.syncExclusiveUsb(handleAudioFocus && exclusiveUsbWanted())
+                    createdSink.syncInternalDirect(handleAudioFocus && !isSpatial && internalDirectWanted())
+                    audioSinks.add(createdSink)
                     runCatching {
-                        routedDacDeviceId?.let { id -> findOutputDevice(id)?.let(sink::setPreferredDevice) }
+                        routedDacDeviceId?.let { id -> findOutputDevice(id)?.let(createdSink::setPreferredDevice) }
                     }
                 }
                 builtSink = sink
@@ -2130,9 +2129,11 @@ class MusicPlayer @Inject constructor(
             autoDJController.get().status.collect { djStatus ->
                 val statusString = when (djStatus) {
                     is com.lastwave.app.playback.autodj.AutoDJStatus.Disabled -> null
-                    is com.lastwave.app.playback.autodj.AutoDJStatus.Idle -> "Idle"
+                    is com.lastwave.app.playback.autodj.AutoDJStatus.Idle -> "Auto DJ · Standby"
                     is com.lastwave.app.playback.autodj.AutoDJStatus.Resolving -> "Resolving ${djStatus.title}"
-                    is com.lastwave.app.playback.autodj.AutoDJStatus.Ready -> "Ready: ${djStatus.title}"
+                    is com.lastwave.app.playback.autodj.AutoDJStatus.Decoding -> "Decoding ${djStatus.title}"
+                    is com.lastwave.app.playback.autodj.AutoDJStatus.ArmedReady -> "Auto DJ · Next Armed"
+                    is com.lastwave.app.playback.autodj.AutoDJStatus.Transitioning -> "Transitioning ${djStatus.title}"
                     is com.lastwave.app.playback.autodj.AutoDJStatus.WaitingLate -> "Buffering: ${djStatus.title}"
                 }
                 _state.update {
@@ -4283,7 +4284,7 @@ class MusicPlayer @Inject constructor(
                     } else {
                         nextItem.localConfiguration?.uri?.scheme != "lastwave" && stream != null && !stream.isExpired()
                     }
-                    val autoDJReady = (autoDJController.get().status.value as? AutoDJStatus.Ready)?.index == nextIndex
+                    val autoDJReady = (autoDJController.get().status.value as? AutoDJStatus.ArmedReady)?.index == nextIndex
                     val standby = currentStandby()
                     val isStandbyReady = crossfadeStandbyArmed && standby?.playbackState == Player.STATE_READY
 
@@ -5895,7 +5896,7 @@ class MusicPlayer @Inject constructor(
         }
         val nextMediaId = player.getMediaItemAt(nextIndex).mediaId
         val nextStage = autoDJController.get().getTrackStage(nextMediaId)
-        if (nextStage == TrackLifecycleStage.RESOLVING || nextStage == TrackLifecycleStage.PREPARING) {
+        if (nextStage == TrackLifecycleStage.RESOLVING_STREAM || nextStage == TrackLifecycleStage.DECODING_HEAD_WINDOW) {
             _state.update { it.copy(isBuffering = true) }
             return
         }
