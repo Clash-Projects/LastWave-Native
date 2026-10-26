@@ -209,6 +209,12 @@ data class MiscSettings(
      *  Existing progress is preserved so re-enabling resumes where you left off. */
     val podcastsEnabled: Boolean = true,
     val suppressYouTubeLoginPrompt: Boolean = false,
+    /** Display name used in LastWave Jam sessions. */
+    val jamDisplayName: String = "",
+    /** Custom Jam WebSocket server URL. */
+    val jamServerUrl: String = "wss://jam.clashprojects.qd.je/ws",
+    /** Jam Room Mode default: "collaborative" or "host_only". */
+    val jamRoomMode: String = "collaborative",
 )
 
 /** Toggleable sections of the Home tab (see FeedScreen). Hero greeting and
@@ -342,6 +348,9 @@ class SettingsPreferences @Inject constructor(
         val LIKED_SONGS_LOCAL_ONLY = stringPreferencesKey("lw_liked_songs_local_only")
         val PODCASTS_ENABLED = booleanPreferencesKey("lw_podcasts_enabled")
         val SUPPRESS_YOUTUBE_LOGIN_PROMPT = booleanPreferencesKey("lw_suppress_youtube_login_prompt")
+        val JAM_DISPLAY_NAME = stringPreferencesKey("lw_jam_display_name")
+        val JAM_SERVER_URL = stringPreferencesKey("lw_jam_server_url")
+        val JAM_ROOM_MODE = stringPreferencesKey("lw_jam_room_mode")
     }
 
     val settings: Flow<MiscSettings> = dataStore.data
@@ -432,6 +441,9 @@ class SettingsPreferences @Inject constructor(
                 likedSongsLocalSync = p.readSafely(Keys.LIKED_SONGS_LOCAL_SYNC) ?: true,
                 podcastsEnabled = p.readSafely(Keys.PODCASTS_ENABLED) ?: true,
                 suppressYouTubeLoginPrompt = p.readSafely(Keys.SUPPRESS_YOUTUBE_LOGIN_PROMPT) ?: false,
+                jamDisplayName = p.readSafely(Keys.JAM_DISPLAY_NAME)?.trim().orEmpty(),
+                jamServerUrl = p.readSafely(Keys.JAM_SERVER_URL)?.trim().takeIf { !it.isNullOrBlank() } ?: "wss://jam.clashprojects.qd.je/ws",
+                jamRoomMode = p.readSafely(Keys.JAM_ROOM_MODE)?.trim().takeIf { it == "host_only" || it == "collaborative" } ?: "collaborative",
             )
         }
 
@@ -863,6 +875,19 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setLocalOnlyLikedTracks(value: String) {
         dataStore.edit { it[Keys.LIKED_SONGS_LOCAL_ONLY] = value }
+    }
+
+    suspend fun setJamDisplayName(name: String) {
+        dataStore.edit { it[Keys.JAM_DISPLAY_NAME] = name.trim() }
+    }
+
+    suspend fun setJamServerUrl(url: String) {
+        val trimmed = url.trim().ifEmpty { "wss://jam.clashprojects.qd.je/ws" }
+        dataStore.edit { it[Keys.JAM_SERVER_URL] = trimmed }
+    }
+
+    suspend fun setJamRoomMode(mode: String) {
+        dataStore.edit { it[Keys.JAM_ROOM_MODE] = mode }
     }
 
     private companion object {
