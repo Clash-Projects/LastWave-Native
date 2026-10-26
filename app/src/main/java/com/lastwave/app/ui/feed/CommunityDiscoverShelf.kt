@@ -112,6 +112,7 @@ private fun CommunityPlaylistShelfItem(
         preview?.songCount?.let { if (it == 1) "1 song" else "$it songs" },
     ).joinToString(" • ")
     ShelfCommunityPlaylistCard(
+        playlistId = item.playlist.id,
         title = item.playlist.title, subtitle = subtitle,
         collageUrls = preview?.collageArtworkUrls.orEmpty(), songs = preview?.songs.orEmpty(),
         artworkUrl = item.playlist.artworkUrl, onClick = onOpen, onPlayClick = onPlay,
