@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Headset
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Schedule
@@ -176,6 +177,9 @@ fun HomeScreen(
     artistAlbumNavigator: com.lastwave.app.ui.navigation.ArtistAlbumNavigator = hiltViewModel<ArtistAlbumNavBridgeHome>().navigator,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val jamViewModel: com.lastwave.app.ui.jam.LastWaveJamViewModel = hiltViewModel()
+    val jamUiState by jamViewModel.uiState.collectAsStateWithLifecycle()
+    var showJamSheet by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
 
     LaunchedEffect(viewModel) {
@@ -194,6 +198,23 @@ fun HomeScreen(
                     title = "Statistics",
                     modifier = Modifier.adaptiveContentWidth(maxWidth = 860.dp),
                     actions = {
+                        Box {
+                            HeaderActionIcon(
+                                icon = Icons.Filled.Group,
+                                contentDescription = "LastWave Jam",
+                                onClick = { showJamSheet = true },
+                            )
+                            if (jamUiState.isConnected) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(4.dp)
+                                        .size(9.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFC9FB00)),
+                                )
+                            }
+                        }
                         HeaderActionIcon(Icons.Filled.Download, "Downloads", onOpenDownloads)
                         HeaderActionIcon(Icons.Filled.Search, "Search", onOpenSearch)
                         IconButton(onClick = onOpenSettings) {
@@ -428,6 +449,12 @@ fun HomeScreen(
         )
     }
 
+    if (showJamSheet) {
+        com.lastwave.app.ui.jam.LastWaveJamSheet(
+            viewModel = jamViewModel,
+            onDismiss = { showJamSheet = false },
+        )
+    }
 }
 
 private suspend fun snapshotFlowNearEnd(listState: LazyListState, onNearEnd: () -> Unit) {

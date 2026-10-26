@@ -19,6 +19,8 @@ object JamProtocolConstants {
     const val MSG_CHAT_MESSAGE = "chat_message"
     const val MSG_SYNC_PLAYBACK = "sync_playback"
     const val MSG_HOST_CHANGED = "host_changed"
+    const val MSG_CHANGE_ROOM_MODE = "change_room_mode"
+    const val MSG_ROOM_MODE_CHANGED = "room_mode_changed"
     const val MSG_PONG = "pong"
     const val MSG_ERROR = "error"
 
@@ -60,15 +62,47 @@ data class SendChatRequest(
 data class RoomCreatedPayload(
     @SerialName("room_code") val roomCode: String,
     @SerialName("user_id") val userId: String,
-    @SerialName("is_host") val isHost: Boolean,
+    @SerialName("name") val name: String = "",
+    @SerialName("is_host") val isHost: Boolean = true,
+    @SerialName("room_mode") val roomMode: String = JamProtocolConstants.MODE_COLLABORATIVE,
 )
 
 @Serializable
 data class ParticipantPayload(
-    @SerialName("user_id") val userId: String,
-    @SerialName("name") val name: String,
-    @SerialName("is_host") val isHost: Boolean,
+    @SerialName("user_id") val userId: String = "",
+    @SerialName("name") val name: String = "",
+    @SerialName("is_host") val isHost: Boolean = false,
     @SerialName("joined_at") val joinedAt: Long = 0L,
+)
+
+@Serializable
+data class HostChangedPayload(
+    @SerialName("new_host_id") val newHostId: String = "",
+    @SerialName("new_host_name") val newHostName: String = "",
+    @SerialName("user_id") val userId: String = "",
+    @SerialName("name") val name: String = "",
+) {
+    val effectiveHostId: String get() = newHostId.ifEmpty { userId }
+    val effectiveHostName: String get() = newHostName.ifEmpty { name }
+}
+
+@Serializable
+data class UserLeftPayload(
+    @SerialName("user_id") val userId: String = "",
+    @SerialName("name") val name: String = "",
+    @SerialName("is_host") val isHost: Boolean = false,
+    @SerialName("total_users") val totalUsers: Int = 0,
+)
+
+@Serializable
+data class ChangeRoomModeRequest(
+    @SerialName("room_mode") val roomMode: String,
+)
+
+@Serializable
+data class RoomModeChangedPayload(
+    @SerialName("room_mode") val roomMode: String = JamProtocolConstants.MODE_COLLABORATIVE,
+    @SerialName("changed_by") val changedBy: String = "",
 )
 
 @Serializable
