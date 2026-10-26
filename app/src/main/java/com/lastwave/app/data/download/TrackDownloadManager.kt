@@ -1329,9 +1329,7 @@ class TrackDownloadManager @Inject constructor(
                         expectedContentLength = ytStream.contentLength
                             ?: runCatching { Uri.parse(ytStream.url).getQueryParameter("clen")?.toLongOrNull() }.getOrNull()
                         if (durationMs <= 0L) {
-                            val candidateMs = chosenTrack?.durationMs
-                                ?: preloadedBestMatch?.durationMs
-                                ?: pickedStream?.duration?.times(1000L)
+                            val candidateMs = pickedStream?.durationMs
                                 ?: (chosenTrack?.durationSeconds?.takeIf { it > 0 }?.times(1000L))
                                 ?: (preloadedBestMatch?.durationSeconds?.takeIf { it > 0 }?.times(1000L))
                             if (candidateMs != null && candidateMs > 0L) {

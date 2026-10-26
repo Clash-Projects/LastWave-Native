@@ -5,6 +5,8 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStream
+import java.io.OutputStream
 import java.io.RandomAccessFile
 
 /**
@@ -676,7 +678,7 @@ object Fmp4IndexBuilder {
         return out.toByteArray()
     }
 
-    private fun copyExactly(input: FileInputStream, output: FileOutputStream, count: Long) {
+    private fun copyExactly(input: InputStream, output: OutputStream, count: Long) {
         var remaining = count
         val buffer = ByteArray(COPY_BUFFER_SIZE)
         while (remaining > 0L) {
@@ -688,7 +690,7 @@ object Fmp4IndexBuilder {
         }
     }
 
-    private fun copyStream(input: FileInputStream, output: FileOutputStream) {
+    private fun copyStream(input: InputStream, output: OutputStream) {
         val buffer = ByteArray(COPY_BUFFER_SIZE)
         while (true) {
             val read = input.read(buffer)
