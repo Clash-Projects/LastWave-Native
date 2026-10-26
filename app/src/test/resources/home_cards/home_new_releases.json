@@ -1,0 +1,190 @@
+{
+  "header": {
+    "musicCarouselShelfBasicHeaderRenderer": {
+      "title": {
+        "runs": [
+          {
+            "text": "New releases",
+            "navigationEndpoint": {
+              "browseEndpoint": {
+                "browseId": "FEmusic_new_releases_albums",
+                "params": "ggMEgALSAg%3D%3D"
+              }
+            }
+          }
+        ]
+      },
+      "moreContentButton": {
+        "buttonRenderer": {
+          "text": {
+            "runs": [
+              {
+                "text": "More"
+              }
+            ]
+          },
+          "navigationEndpoint": {
+            "browseEndpoint": {
+              "browseId": "FEmusic_new_releases_albums",
+              "params": "ggMEgALSAg%3D%3D"
+            }
+          }
+        }
+      }
+    }
+  },
+  "contents": [
+    {
+      "musicTwoRowItemRenderer": {
+        "thumbnailRenderer": {
+          "musicThumbnailRenderer": {
+            "thumbnail": {
+              "thumbnails": [
+                {
+                  "url": "https://yt3.googleusercontent.com/aHsUWKb0xtW17G5hur4Evnyz2LXfB5R272GJ6Bat3eCqsnR_eG4a1g1Ts4ZmG3Nfvaojzwcg9RkEPk0=w226-h226-l90-rj",
+                  "width": 226,
+                  "height": 226
+                },
+                {
+                  "url": "https://yt3.googleusercontent.com/aHsUWKb0xtW17G5hur4Evnyz2LXfB5R272GJ6Bat3eCqsnR_eG4a1g1Ts4ZmG3Nfvaojzwcg9RkEPk0=w544-h544-l90-rj",
+                  "width": 544,
+                  "height": 544
+                }
+              ]
+            }
+          }
+        },
+        "aspectRatio": "MUSIC_TWO_ROW_ITEM_THUMBNAIL_ASPECT_RATIO_SQUARE",
+        "title": {
+          "runs": [
+            {
+              "text": "Aarzu",
+              "navigationEndpoint": {
+                "browseEndpoint": {
+                  "browseId": "MPREb_qPjxOpc0kpe",
+                  "params": "ggMvGilPTEFLNXV5X2xkREpmb25tUUJzWC02Q1NWYUNVWkk5QUdYTF95TWFRMIAC0gI%3D",
+                  "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                      "pageType": "MUSIC_PAGE_TYPE_ALBUM"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "subtitle": {
+          "runs": [
+            {
+              "text": "EP"
+            },
+            {
+              "text": " • "
+            },
+            {
+              "text": "KhoslaRaghu",
+              "navigationEndpoint": {
+                "browseEndpoint": {
+                  "browseId": "UC6heaYvZllZBOrbPZIOttAA",
+                  "params": "ggMEgALSAg%3D%3D",
+                  "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                      "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "navigationEndpoint": {
+          "browseEndpoint": {
+            "browseId": "MPREb_qPjxOpc0kpe",
+            "params": "ggMvGilPTEFLNXV5X2xkREpmb25tUUJzWC02Q1NWYUNVWkk5QUdYTF95TWFRMIAC0gI%3D",
+            "browseEndpointContextSupportedConfigs": {
+              "browseEndpointContextMusicConfig": {
+                "pageType": "MUSIC_PAGE_TYPE_ALBUM"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "musicTwoRowItemRenderer": {
+        "thumbnailRenderer": {
+          "musicThumbnailRenderer": {
+            "thumbnail": {
+              "thumbnails": [
+                {
+                  "url": "https://yt3.googleusercontent.com/jQ7FdBBNSTLUV6K8ns_f6GlQ52FkkuffbwwdFUzrAMQDHVuoH0C7WHFDw7mj0LZ2Ac3pKzXjdxF0YTci=w226-h226-l90-rj",
+                  "width": 226,
+                  "height": 226
+                },
+                {
+                  "url": "https://yt3.googleusercontent.com/jQ7FdBBNSTLUV6K8ns_f6GlQ52FkkuffbwwdFUzrAMQDHVuoH0C7WHFDw7mj0LZ2Ac3pKzXjdxF0YTci=w544-h544-l90-rj",
+                  "width": 544,
+                  "height": 544
+                }
+              ]
+            }
+          }
+        },
+        "aspectRatio": "MUSIC_TWO_ROW_ITEM_THUMBNAIL_ASPECT_RATIO_SQUARE",
+        "title": {
+          "runs": [
+            {
+              "text": "GIRL I'M WITH",
+              "navigationEndpoint": {
+                "browseEndpoint": {
+                  "browseId": "MPREb_wGP8pujObPQ",
+                  "params": "ggMvGilPTEFLNXV5X20wMHd6Wi1FWUJqSjJ1N2ZrcE8xRjhIT0k2M0R6SXZyUYAC0gI%3D",
+                  "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                      "pageType": "MUSIC_PAGE_TYPE_ALBUM"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "subtitle": {
+          "runs": [
+            {
+              "text": "Single"
+            },
+            {
+              "text": " • "
+            },
+            {
+              "text": "CITIZEN",
+              "navigationEndpoint": {
+                "browseEndpoint": {
+                  "browseId": "UCqEgp0-8zw6KpzBnXN6Jbtw",
+                  "params": "ggMEgALSAg%3D%3D",
+                  "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                      "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "navigationEndpoint": {
+          "browseEndpoint": {
+            "browseId": "MPREb_wGP8pujObPQ",
+            "params": "ggMvGilPTEFLNXV5X20wMHd6Wi1FWUJqSjJ1N2ZrcE8xRjhIT0k2M0R6SXZyUYAC0gI%3D",
+            "browseEndpointContextSupportedConfigs": {
+              "browseEndpointContextMusicConfig": {
+                "pageType": "MUSIC_PAGE_TYPE_ALBUM"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
