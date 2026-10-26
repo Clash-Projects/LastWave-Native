@@ -19,6 +19,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
@@ -462,7 +463,7 @@ enum class SettingsTab(
         subtitleRes = R.string.set_cat_about_sub,
         title = "About & Community",
         subtitle = "Version info, Telegram community, GitHub repository",
-        icon = Icons.Filled.AutoAwesome,
+        icon = Icons.Filled.Info,
     ),
 }
 
@@ -854,7 +855,7 @@ fun SettingsScreen(
                                             position = position,
                                         )
                                         else -> SettingsActionCard(
-                                            icon = Icons.Filled.AutoAwesome,
+                                            icon = Icons.Filled.Info,
                                             iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                             iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                             title = stringResource(R.string.set_cat_about),
@@ -1387,7 +1388,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_experimental))
-                    SettingsGroup(rowCount = 10) { index, position ->
+                    SettingsGroup(rowCount = 11) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.Lyrics,
@@ -1541,6 +1542,21 @@ fun SettingsScreen(
                                 onCheckedChange = viewModel::setMusicVideoEnabled,
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.music_video"),
+                            )
+                            10 -> SettingsToggleCard(
+                                icon = Icons.Filled.PlayCircle,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = "Button Now playing",
+                                subtitle = if (misc.buttonNowPlayingEnabled) {
+                                    "Floating button mode active • Card hidden"
+                                } else {
+                                    "Classic bottom now playing card"
+                                },
+                                checked = misc.buttonNowPlayingEnabled,
+                                onCheckedChange = viewModel::setButtonNowPlayingEnabled,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.button_now_playing"),
                             )
                         }
                     }
@@ -2456,58 +2472,150 @@ fun SettingsScreen(
         )
     }
 
-    // -- App language picker (Settings -> Language) --
+    // -- App language picker (Settings -> Language) styled like reference screenshot --
     if (showLanguageDialog) {
-        AlertDialog(
-            onDismissRequest = { showLanguageDialog = false },
-            title = { Text(stringResource(R.string.settings_language_dialog_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                    AppLanguage.SELECTABLE.forEach { language ->
-                        val selected = language == currentLanguage
-                        Row(
+        var selectedLanguage by remember(currentLanguage) { mutableStateOf(currentLanguage) }
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showLanguageDialog = false }) {
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp, vertical = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Icon(
+                        Icons.Filled.Language,
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        stringResource(R.string.settings_language_dialog_title),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Spacer(Modifier.height(18.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable {
-                                    viewModel.setAppLanguage(language)
-                                    showLanguageDialog = false
-                                }
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                                .heightIn(max = 380.dp),
                         ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    language.nativeDisplayName(),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                )
-                                if (language == AppLanguage.SYSTEM) {
+                            items(AppLanguage.SELECTABLE) { language ->
+                                val isSelected = language == selectedLanguage
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                            else Color.Transparent
+                                        )
+                                        .clickable { selectedLanguage = language }
+                                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    if (language == AppLanguage.SYSTEM) {
+                                        Icon(
+                                            Icons.Filled.Android,
+                                            contentDescription = null,
+                                            tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                                                   else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(24.dp),
+                                        )
+                                    } else {
+                                        val flag = when (language) {
+                                            AppLanguage.ENGLISH -> "🇺🇸"
+                                            AppLanguage.TURKISH -> "🇹🇷"
+                                            AppLanguage.CHINESE_SIMPLIFIED -> "🇨🇳"
+                                            AppLanguage.RUSSIAN -> "🇷🇺"
+                                            AppLanguage.PORTUGUESE_BRAZIL -> "🇧🇷"
+                                            AppLanguage.SPANISH -> "🇪🇸"
+                                            AppLanguage.INDONESIAN -> "🇮🇩"
+                                            AppLanguage.HINDI -> "🇮🇳"
+                                            AppLanguage.GERMAN -> "🇩🇪"
+                                            AppLanguage.FRENCH -> "🇫🇷"
+                                            AppLanguage.ITALIAN -> "🇮🇹"
+                                            AppLanguage.JAPANESE -> "🇯🇵"
+                                            AppLanguage.KOREAN -> "🇰🇷"
+                                            AppLanguage.ARABIC -> "🇸🇦"
+                                            else -> "🌐"
+                                        }
+                                        Text(
+                                            flag,
+                                            style = MaterialTheme.typography.titleMedium,
+                                        )
+                                    }
+                                    Spacer(Modifier.width(14.dp))
                                     Text(
-                                        stringResource(R.string.settings_language_system_sub),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        language.nativeDisplayName(),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onSurface
+                                               else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick = { selectedLanguage = language },
                                     )
                                 }
                             }
-                            if (selected) {
-                                Icon(
-                                    Icons.Filled.Check,
-                                    contentDescription = stringResource(R.string.common_selected),
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(20.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(
+                            onClick = { showLanguageDialog = false },
+                            shape = CircleShape,
+                        ) {
+                            Text(
+                                stringResource(R.string.common_cancel),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                viewModel.setAppLanguage(selectedLanguage)
+                                showLanguageDialog = false
+                            },
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            ),
+                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp),
+                        ) {
+                            Text(
+                                stringResource(R.string.common_ok),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                            )
                         }
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { showLanguageDialog = false }) {
-                    Text(stringResource(R.string.common_done))
-                }
-            },
-        )
+            }
+        }
     }
 
     // -- Enable Scrobbling password dialog --

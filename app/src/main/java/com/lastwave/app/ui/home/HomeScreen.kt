@@ -1411,7 +1411,7 @@ private fun ArtistRow(
                 modifier = Modifier.size(52.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest),
             ) {
                 ArtworkImage(
-                    name = artist.name,
+                    name = "artist:${artist.name}",
                     artist = artist.name,
                     embeddedUrl = artist.artworkUrl,
                     fallbackIcon = Icons.Filled.People,

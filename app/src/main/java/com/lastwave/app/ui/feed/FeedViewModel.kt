@@ -75,12 +75,16 @@ class FeedViewModel @Inject constructor(
     private val ytAuth: YtMusicAuthManager,
     private val homeRepository: com.lastwave.app.data.repository.HomeRepository,
     private val discoverRepository: com.lastwave.app.data.discover.DiscoverRepository,
+    private val genresRepository: com.lastwave.app.data.generate.GenresRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FeedUiState())
     val uiState: StateFlow<FeedUiState> = _uiState.asStateFlow()
     private val _discoveryTracks = MutableStateFlow<List<GeneratedTrack>>(emptyList())
     val discoveryTracks: StateFlow<List<GeneratedTrack>> = _discoveryTracks.asStateFlow()
+
+    private val _topGenres = MutableStateFlow<List<String>>(emptyList())
+    val topGenres: StateFlow<List<String>> = _topGenres.asStateFlow()
 
     /** Ids of Home sections the user hid in Settings → Home sections. */
     val hiddenHomeSections: StateFlow<Set<String>> = settingsPreferences.settings
@@ -111,6 +115,7 @@ class FeedViewModel @Inject constructor(
 
     init {
         loadDiscovery()
+        loadTopGenres()
         viewModelScope.launch {
             // The podcast shelf is part of the feed, so flipping the setting
             // has to re-run the feed: the cached copy still holds the shelf.
@@ -161,7 +166,20 @@ class FeedViewModel @Inject constructor(
 
     fun refresh() {
         loadDiscovery()
+        loadTopGenres()
         fetchFeed(refreshing = true)
+    }
+
+    fun loadTopGenres() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val stats = runCatching { genresRepository.fetchGenreStats("overall") }.getOrNull().orEmpty()
+            val list = if (stats.isNotEmpty()) {
+                stats.map { it.name.trim() }.filter { it.isNotBlank() }
+            } else {
+                listOf("Pop", "Rock", "Hip-Hop", "Indie", "Electronic", "R&B", "Metal", "Jazz", "Classical", "Lo-Fi", "Country", "Alternative")
+            }
+            _topGenres.value = list
+        }
     }
 
     fun onVisible() {

@@ -34,6 +34,10 @@ object WidgetUpdater {
     var animationFrame: Int = 0
         private set
 
+    @Volatile
+    var memoryArtBitmap: Bitmap? = null
+        internal set
+
     // Live ticker removed (audit #9). The functions stay as no-ops so
     // MusicPlaybackService / MusicPlayer callers keep compiling unchanged.
     fun startWaveAnimation(@Suppress("UNUSED_PARAMETER") context: Context) {
@@ -62,6 +66,9 @@ object WidgetUpdater {
         art: Bitmap?,
         isPlaying: Boolean,
     ) = publishMutex.withLock {
+        memoryArtBitmap = art
+        // Push update immediately with in-memory art for zero-latency response
+        pushAll(context)
         val artPath = art?.let { bitmap -> writeArt(context, bitmap) }
         // Snapshot the position now: the controller is fresh at publish time.
         val fraction = readLiveFraction(context, 0f)
@@ -79,11 +86,11 @@ object WidgetUpdater {
                 progress = fraction,
             ),
         )
-        pushAll(context)
         if (isPlaying) startWaveAnimation(context) else stopWaveAnimation()
     }
 
     suspend fun clear(context: Context) = publishMutex.withLock {
+        memoryArtBitmap = null
         stopWaveAnimation()
         val current = WidgetSnapshot.read(context)
         WidgetSnapshot.write(
@@ -130,15 +137,10 @@ object WidgetUpdater {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, NowPlayingWidgetReceiver::class.java))
             for (appWidgetId in ids) {
-                val views = WidgetViews.build(context, appWidgetId, eqFrame, progressOverride)
-                runCatching { manager.partiallyUpdateAppWidget(appWidgetId, views) }
+                val views = WidgetViews.build(context, appWidgetId, eqFrame, progressOverride, memoryArtBitmap)
+                runCatching { manager.updateAppWidget(appWidgetId, views) }
             }
-            val obsidianIds = manager.getAppWidgetIds(ComponentName(context, ObsidianGlassWidgetReceiver::class.java))
-            for (appWidgetId in obsidianIds) {
-                val views = ObsidianWidgetViews.build(context, appWidgetId, eqFrame, progressOverride)
-                runCatching { manager.partiallyUpdateAppWidget(appWidgetId, views) }
-            }
-            ids.isNotEmpty() || obsidianIds.isNotEmpty()
+            ids.isNotEmpty()
         }.onFailure { Log.w(TAG, "widget push failed", it) }.getOrDefault(false)
 
     /** Live position 0..1 off the MediaController, extrapolated while playing. */

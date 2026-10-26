@@ -317,14 +317,15 @@ fun FeedScreen(
                 },
             )
 
-            // Pinned YTM chip row under the app bar — stays visible while the
-            // feed scrolls beneath it. Rendered only when chips exist; its
-            // loading/filtering/selection behaviour is unchanged.
-            if (state.homeChips.isNotEmpty()) {
-                PinnedChipsBar(
-                    chips = state.homeChips,
-                    selectedChip = state.selectedChip,
-                    onChipClick = viewModel::onHomeChipSelected,
+            // Pinned overall top genres row under the app bar — clicking any genre immediately plays songs of that genre
+            val topGenres by viewModel.topGenres.collectAsStateWithLifecycle()
+            if (topGenres.isNotEmpty()) {
+                PinnedTopGenresBar(
+                    genres = topGenres,
+                    launchingGenre = state.launchingRadio,
+                    onGenreClick = { genre ->
+                        viewModel.playDiscoveryQuery(genre, genre)
+                    },
                 )
             }
 
@@ -365,15 +366,46 @@ fun FeedScreen(
                     }.distinctBy { it.name.trim().lowercase() }
                 }
 
+                val normalizedHidden = remember(ytHidden) {
+                    ytHidden.map { it.trim().lowercase() }.toSet()
+                }
+
+                fun isTitleHidden(title: String): Boolean {
+                    val t = title.trim().lowercase()
+                    return normalizedHidden.any { h ->
+                        t == h || t.startsWith(h) || h.startsWith(t) ||
+                        (h == "listen again" && (t.contains("listen again") || t.contains("jump back"))) ||
+                        (h == "quick picks" && (t.contains("quick pick") || t.contains("picked for you"))) ||
+                        (h == "mixed for you" && (t.contains("mixed for you") || t.contains("mixes"))) ||
+                        (h == "trending" && t.contains("trend")) ||
+                        (h == "new releases" && (t.contains("new release") || t.contains("fresh drop"))) ||
+                        (h == "community playlists" && t.contains("community")) ||
+                        (h == "forgotten favorites" && t.contains("forgotten"))
+                    }
+                }
+
                 val visibleNativeShelves = remember(state.feedData.nativeShelves, ytHidden, ytOrder) {
                     state.feedData.nativeShelves
-                        .filter { shelf -> shelf.title !in ytHidden && shelf.items.isNotEmpty() }
+                        .filter { shelf -> !isTitleHidden(shelf.title) && shelf.items.isNotEmpty() }
                         .let { list ->
                             if (ytOrder.isEmpty()) list
                             else {
                                 list.sortedWith(compareBy { shelf ->
-                                    val idx = ytOrder.indexOfFirst { it.equals(shelf.title, ignoreCase = true) }
-                                    if (idx >= 0) idx else Int.MAX_VALUE
+                                    val t = shelf.title.trim().lowercase()
+                                    val idx = ytOrder.indexOfFirst { o ->
+                                        val opt = o.trim().lowercase()
+                                        t == opt || t.startsWith(opt) || opt.startsWith(t) ||
+                                        (opt == "listen again" && (t.contains("listen again") || t.contains("jump back"))) ||
+                                        (opt == "quick picks" && (t.contains("quick pick") || t.contains("picked for you"))) ||
+                                        (opt == "mixed for you" && (t.contains("mixed for you") || t.contains("mixes"))) ||
+                                        (opt == "trending" && t.contains("trend")) ||
+                                        (opt == "new releases" && t.contains("new release")) ||
+                                        (opt == "community playlists" && t.contains("community")) ||
+                                        (opt == "forgotten favorites" && t.contains("forgotten")) ||
+                                        (opt == "similar to" && t.contains("similar")) ||
+                                        (opt == "from your library" && t.contains("library"))
+                                    }
+                                    if (idx >= 0) idx else 999
                                 })
                             }
                         }
@@ -512,78 +544,24 @@ fun FeedScreen(
                         }
                     }
 
-                    // 3. "Your Sound" Section - ALWAYS visible below Quick Access
-                    if (showSynthetic) {
-                        val displayTags = state.feedData.tasteTags.ifEmpty {
-                            listOf("Rock", "Indie", "Pop", "Electronic", "Hip-Hop", "R&B", "Synthwave", "Alternative")
-                        }
-                        item(key = "taste_strip") {
-                            TasteStrip(
-                                tags = displayTags,
-                                launching = state.launchingRadio,
-                                onTagClick = { tag -> viewModel.playDiscoveryQuery(tag.displayName(), tag) },
+                    // Native YouTube Music shelves (filtered & ordered via Settings → Home sections → YouTube Music Selection)
+                    for ((shelfIndex, shelf) in visibleNativeShelves.withIndex()) {
+                        item(key = "native_shelf_${shelfIndex}_${shelf.title}") {
+                            HomeShelfCard(
+                                shelf = shelf,
+                                onPlayTrack = { track, title -> viewModel.playTrack(track, title) },
+                                onPlayTracksQueue = { tracks, idx, title -> viewModel.playTracksQueue(tracks, idx, title) },
+                                onShuffleTracksQueue = { tracks, title -> viewModel.shuffleTracksQueue(tracks, title) },
+                                onOpenFeedPlaylist = onOpenFeedPlaylist,
+                                onOpenAlbum = { title, artist, id -> artistAlbumNavigator.openAlbum(title, artist, id) },
+                                onTrackLongClick = { tray -> miniTrayTrack = tray },
+                                onPlayPlaylist = viewModel::playPlaylistSummary,
+                                onTrackMenu = { menuTrack = it },
                             )
                         }
                     }
 
-                    // YouTube Music mood/activity chips (Relax, Energize, Workout,
-                    // ...) are pinned at the top under the app bar — see the
-                    // PinnedChipsBar rendered above the LazyColumn. Loading,
-                    // filtering and selection logic are unchanged; only the
-                    // row's position moved from between feed sections to the top.
-
-                    if (state.isChipActive) {
-                        if (state.isChipLoading) {
-                            // Card-shaped shimmer placeholders that mirror the
-                            // native shelf layout the chip page will render.
-                            item(key = "chip_loading_skeleton") {
-                                Column(verticalArrangement = Arrangement.spacedBy(CardTokens.sectionGap)) {
-                                    com.lastwave.app.ui.feed.cards.ShelfSquareSkeletonRow(
-                                        cardWidth = com.lastwave.app.ui.feed.cards.rememberSquareCardWidth(),
-                                    )
-                                    com.lastwave.app.ui.feed.cards.ShelfWideSkeletonRow(
-                                        cardWidth = com.lastwave.app.ui.feed.cards.rememberWideCardWidth(),
-                                    )
-                                }
-                            }
-                        } else {
-                            for ((shelfIndex, shelf) in state.chipShelves.withIndex()) {
-                                if (shelf.items.isEmpty()) continue
-                                item(key = "chip_shelf_${shelfIndex}_${shelf.title}") {
-                                    HomeShelfCard(
-                                        shelf = shelf,
-                                        onPlayTrack = { track, title -> viewModel.playTrack(track, title) },
-                                        onPlayTracksQueue = { tracks, idx, title -> viewModel.playTracksQueue(tracks, idx, title) },
-                                        onShuffleTracksQueue = { tracks, title -> viewModel.shuffleTracksQueue(tracks, title) },
-                                        onOpenFeedPlaylist = onOpenFeedPlaylist,
-                                        onOpenAlbum = { title, artist, id -> artistAlbumNavigator.openAlbum(title, artist, id) },
-                                        onTrackLongClick = { tray -> miniTrayTrack = tray },
-                                        onPlayPlaylist = viewModel::playPlaylistSummary,
-                                        onTrackMenu = { menuTrack = it },
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        // Native YouTube Music shelves (filtered & ordered via Settings → Home sections → YouTube Music Selection)
-                        for ((shelfIndex, shelf) in visibleNativeShelves.withIndex()) {
-                            item(key = "native_shelf_${shelfIndex}_${shelf.title}") {
-                                HomeShelfCard(
-                                    shelf = shelf,
-                                    onPlayTrack = { track, title -> viewModel.playTrack(track, title) },
-                                    onPlayTracksQueue = { tracks, idx, title -> viewModel.playTracksQueue(tracks, idx, title) },
-                                    onShuffleTracksQueue = { tracks, title -> viewModel.shuffleTracksQueue(tracks, title) },
-                                    onOpenFeedPlaylist = onOpenFeedPlaylist,
-                                    onOpenAlbum = { title, artist, id -> artistAlbumNavigator.openAlbum(title, artist, id) },
-                                    onTrackLongClick = { tray -> miniTrayTrack = tray },
-                                    onPlayPlaylist = viewModel::playPlaylistSummary,
-                                    onTrackMenu = { menuTrack = it },
-                                )
-                            }
-                        }
-                    }
-
-                    if (showSynthetic && isSectionVisible(HomeSection.QUICK_PICKS) && state.feedData.quickPicks.isNotEmpty()) {
+                    if (showSynthetic && isSectionVisible(HomeSection.QUICK_PICKS) && !isTitleHidden("Quick picks") && state.feedData.quickPicks.isNotEmpty()) {
                         item(key = "quick_picks") {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -776,7 +754,7 @@ fun FeedScreen(
                         }
                     }
 
-                    if (showSynthetic && isSectionVisible(HomeSection.JUMP_BACK_IN) && state.feedData.jumpBackIn.isNotEmpty()) {
+                    if (showSynthetic && isSectionVisible(HomeSection.JUMP_BACK_IN) && !isTitleHidden("Listen again") && state.feedData.jumpBackIn.isNotEmpty()) {
                         item(key = "jump_back_in") {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -816,7 +794,7 @@ fun FeedScreen(
                         }
                     }
 
-                    if (showSynthetic && isSectionVisible(HomeSection.MIXES) && state.feedData.mixes.isNotEmpty()) {
+                    if (showSynthetic && isSectionVisible(HomeSection.MIXES) && !isTitleHidden("Mixed for you") && state.feedData.mixes.isNotEmpty()) {
                         item(key = "mixed_for_you") {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -1031,7 +1009,7 @@ fun FeedScreen(
                         }
                     }
 
-                    if (showSynthetic && isSectionVisible(HomeSection.NEW_RELEASES) && state.feedData.newReleases.isNotEmpty()) {
+                    if (showSynthetic && isSectionVisible(HomeSection.NEW_RELEASES) && !isTitleHidden("New releases") && state.feedData.newReleases.isNotEmpty()) {
                         item(key = "new_releases") {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -1106,10 +1084,9 @@ fun FeedScreen(
                         }
                     }
 
-                    if (!state.isChipActive) {
-                        for ((shelfIndex, shelf) in state.pagedShelves.withIndex()) {
-                            if (shelf.items.isEmpty()) continue
-                            item(key = "paged_shelf_${shelfIndex}_${shelf.title}") {
+                    for ((shelfIndex, shelf) in state.pagedShelves.withIndex()) {
+                        if (shelf.items.isEmpty() || isTitleHidden(shelf.title)) continue
+                        item(key = "paged_shelf_${shelfIndex}_${shelf.title}") {
                                 HomeShelfCard(
                                     shelf = shelf,
                                     onPlayTrack = { track, title -> viewModel.playTrack(track, title) },
@@ -1123,7 +1100,6 @@ fun FeedScreen(
                                 )
                             }
                         }
-                    }
 
                     if (state.isLoadingMore) {
                         item(key = "loading_more_indicator", contentType = "loading") {
@@ -1444,33 +1420,85 @@ fun HomeChipsRow(
 }
 
 /**
- * Pinned container for the YTM chip row. Sits directly under the app bar and
- * stays visible while the feed scrolls, with a subtle gradient scrim behind
- * it so content sliding underneath stays legible. Liquid-glass styled.
+ * Pinned overall top genres row under the app bar.
+ * Tapping any genre chip immediately plays songs for that genre.
  */
 @Composable
-private fun PinnedChipsBar(
-    chips: List<HomeChip>,
-    selectedChip: HomeChip?,
-    onChipClick: (HomeChip) -> Unit,
+private fun PinnedTopGenresBar(
+    genres: List<String>,
+    launchingGenre: String?,
+    onGenreClick: (String) -> Unit,
 ) {
+    val haptics = LocalHapticFeedback.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .background(
                 Brush.verticalGradient(
                     0f to MaterialTheme.colorScheme.background.copy(alpha = 0.96f),
-                    0.7f to MaterialTheme.colorScheme.background.copy(alpha = 0.82f),
+                    0.7f to MaterialTheme.colorScheme.background.copy(alpha = 0.85f),
                     1f to MaterialTheme.colorScheme.background.copy(alpha = 0f),
                 )
             ),
     ) {
-        HomeChipsRow(
-            chips = chips,
-            selectedChip = selectedChip,
-            onChipClick = onChipClick,
-            modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
-        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 2.dp, bottom = 8.dp),
+        ) {
+            items(genres, key = { it }) { genre ->
+                val isLaunching = launchingGenre?.equals(genre, ignoreCase = true) == true
+                Surface(
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onGenreClick(genre)
+                    },
+                    shape = CircleShape,
+                    color = if (isLaunching) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f)
+                    },
+                    border = BorderStroke(
+                        width = 1.dp,
+                        color = if (isLaunching) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)
+                        },
+                    ),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        if (isLaunching) {
+                            CircularProgressIndicator(
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(13.dp),
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Filled.PlayArrow,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp),
+                            )
+                        }
+                        Text(
+                            text = genre,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

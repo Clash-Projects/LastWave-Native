@@ -510,6 +510,23 @@ fun TrackContextMenuSheet(
                 // Local songs: imported files get an explicit row.
                 val isLocalFile = com.lastwave.app.data.generate.LocalAudioFormats.importedPathOrNull(playable.playbackUrl) != null
                 val rows = buildList<@Composable (GroupPosition) -> Unit> {
+                    // 1. Genres ALWAYS at the very top of the menu
+                    add { pos ->
+                        val genre = resolvedGenre
+                        MenuInfoRow(
+                            icon = Icons.Filled.Sell,
+                            text = if (resolvingGenre) stringResource(R.string.menu_resolving_genre) else stringResource(
+                                R.string.menu_genre_value,
+                                genre?.takeIf { it.isNotBlank() } ?: stringResource(R.string.menu_genre_unknown),
+                            ),
+                            loading = resolvingGenre,
+                            position = pos,
+                            onClick = if (!resolvingGenre && !genre.isNullOrBlank()) {
+                                { exploreGenre(genre); onDismiss() }
+                            } else null,
+                        )
+                    }
+
                     if (musicVideoEnabled) {
                         add { pos ->
                             MenuActionRow(
@@ -537,23 +554,6 @@ fun TrackContextMenuSheet(
                                 addToPlaylist(playable)
                                 onDismiss()
                             }
-                        }
-                    }
-                    if (resolvingGenre || !resolvedGenre.isNullOrBlank()) {
-                        add { pos ->
-                            val genre = resolvedGenre
-                            MenuInfoRow(
-                                icon = Icons.Filled.Sell,
-                                text = if (resolvingGenre) stringResource(R.string.menu_resolving_genre) else stringResource(
-                                    R.string.menu_genre_value,
-                                    genre?.takeIf { it.isNotBlank() } ?: stringResource(R.string.menu_genre_unknown),
-                                ),
-                                loading = resolvingGenre,
-                                position = pos,
-                                onClick = if (!resolvingGenre && !genre.isNullOrBlank()) {
-                                    { exploreGenre(genre); onDismiss() }
-                                } else null,
-                            )
                         }
                     }
                     add { pos -> MenuActionRow(Icons.Filled.Timer, stringResource(R.string.menu_sleep_timer), position = pos) { showTimerDialog = true } }

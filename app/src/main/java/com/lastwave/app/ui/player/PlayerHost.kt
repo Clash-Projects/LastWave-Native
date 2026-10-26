@@ -869,7 +869,7 @@ fun PlayerHost(
             }
         }
     }
-    val miniPlayerVisible = state.current != null && !expanded
+    val miniPlayerVisible = state.current != null && !expanded && !misc.buttonNowPlayingEnabled
 
     // Sibling pattern: ONE backdrop capturing feed content,
     // consumed by the sibling MiniPlayer. Unconditional remember keeps composition stable.
@@ -889,7 +889,7 @@ fun PlayerHost(
     CompositionLocalProvider(
         LocalMusicPlayer provides viewModel.player,
         LocalAddToPlaylist provides requestAddToPlaylist,
-        LocalMiniPlayerScrollClearance provides if (state.current != null) 98.dp else 0.dp,
+        LocalMiniPlayerScrollClearance provides if (state.current != null && !misc.buttonNowPlayingEnabled) 98.dp else 0.dp,
         LocalBottomNavSlot provides bottomNavSlot,
     ) {
         Box(Modifier.fillMaxSize()) {
@@ -923,6 +923,14 @@ fun PlayerHost(
                         onCloseTimer = { viewModel.player.setSleepTimerMinutes(0) },
                     )
                 }
+            }
+            if (state.current != null && !expanded && misc.buttonNowPlayingEnabled) {
+                DraggableNowPlayingButton(
+                    track = state.current,
+                    progressState = viewModel.progressState,
+                    isPlaying = state.isPlaying,
+                    onExpand = { expanded = true },
+                )
             }
             if (activeDownloads.isNotEmpty() && !expanded) {
                 val latestProgress = activeDownloads.firstOrNull()?.progressPercent ?: 0
@@ -3301,7 +3309,7 @@ private fun FullPlayer(
                                         secondaryColor = ambientCompanion,
                                         tertiaryColor = ambientDeep,
                                     )
-                                    Spacer(Modifier.height(8.dp))
+                                    Spacer(Modifier.height(2.dp))
                                     AppleMusicQualityBadge(
                                         state = state,
                                         signalPath = signalPath,
@@ -3315,7 +3323,7 @@ private fun FullPlayer(
                                     )
                                     Spacer(Modifier.height(8.dp))
                                     MainControls(state, player, isTranslucent = LocalLiquidGlass.current || showFullBleed)
-                                    Spacer(Modifier.height(12.dp))
+                                    Spacer(Modifier.height(22.dp))
                                     PlayerUtilityControls(
                                         state = state,
                                         player = player,
@@ -3902,7 +3910,7 @@ private fun FullPlayerLandscape(
                 tertiaryColor = ambientDeep,
             )
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(2.dp))
 
             val signalPath by player.signalPath.collectAsStateWithLifecycle()
             AppleMusicQualityBadge(
@@ -3920,7 +3928,7 @@ private fun FullPlayerLandscape(
 
             MainControls(state, player, isTranslucent = LocalLiquidGlass.current)
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(22.dp))
 
             PlayerUtilityControls(
                 state = state,
@@ -5752,38 +5760,69 @@ private fun AudioControlsSheet(
                             )
                         }
 
-                        // Lock Button Toggle
-                        FilterChip(
-                            selected = isLocked,
-                            onClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                isLocked = !isLocked
-                                if (isLocked) {
-                                    // Snap pitch to speed
-                                    currentPitch = currentSpeed
-                                    player.setPlaybackParameters(currentSpeed, currentSpeed)
-                                }
-                            },
-                            label = {
-                                Text(
-                                    if (isLocked) "Linked" else "Free",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = if (isLocked) Icons.Filled.Lock else Icons.Filled.LockOpen,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
-                                )
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            ),
-                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            // Lock Button Toggle
+                            FilterChip(
+                                selected = isLocked,
+                                onClick = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    isLocked = !isLocked
+                                    if (isLocked) {
+                                        // Snap pitch to speed
+                                        currentPitch = currentSpeed
+                                        player.setPlaybackParameters(currentSpeed, currentSpeed)
+                                    }
+                                },
+                                label = {
+                                    Text(
+                                        if (isLocked) "Linked" else "Free",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = if (isLocked) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                },
+                                border = null,
+                                shape = RoundedCornerShape(16.dp),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    iconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                ),
+                            )
+
+                            // Reset Button placed right next to Lock button
+                            androidx.compose.material3.FilledTonalButton(
+                                onClick = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    currentSpeed = 1.0f
+                                    currentPitch = 1.0f
+                                    player.resetPlaybackParameters()
+                                },
+                                shape = RoundedCornerShape(16.dp),
+                                colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                    contentColor = MaterialTheme.colorScheme.onSurface,
+                                ),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.height(32.dp),
+                            ) {
+                                Icon(Icons.Filled.RestartAlt, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Reset", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
 
                     // Speed Slider
@@ -5878,11 +5917,15 @@ private fun AudioControlsSheet(
                         )
                     }
 
-                    // Quick Presets - Exactly 2 lines for compact and clean layout
+                    // Quick Presets - Material You Expressive Design without outline/stroke
                     Text(
                         text = "Studio Presets",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    val presetColors = SuggestionChipDefaults.suggestionChipColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        labelColor = MaterialTheme.colorScheme.onSurface,
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -5896,6 +5939,9 @@ private fun AudioControlsSheet(
                                 player.setPlaybackParameters(0.85f, 0.85f)
                             },
                             label = { Text("Slowed", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
+                            border = null,
+                            shape = RoundedCornerShape(16.dp),
+                            colors = presetColors,
                             modifier = Modifier.weight(1f),
                         )
                         SuggestionChip(
@@ -5906,6 +5952,9 @@ private fun AudioControlsSheet(
                                 player.setPlaybackParameters(0.75f, 0.75f)
                             },
                             label = { Text("Deep Slow", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
+                            border = null,
+                            shape = RoundedCornerShape(16.dp),
+                            colors = presetColors,
                             modifier = Modifier.weight(1f),
                         )
                         SuggestionChip(
@@ -5916,6 +5965,9 @@ private fun AudioControlsSheet(
                                 player.resetPlaybackParameters()
                             },
                             label = { Text("Normal", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
+                            border = null,
+                            shape = RoundedCornerShape(16.dp),
+                            colors = presetColors,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -5931,6 +5983,9 @@ private fun AudioControlsSheet(
                                 player.setPlaybackParameters(1.15f, 1.15f)
                             },
                             label = { Text("Nightcore", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
+                            border = null,
+                            shape = RoundedCornerShape(16.dp),
+                            colors = presetColors,
                             modifier = Modifier.weight(1f),
                         )
                         SuggestionChip(
@@ -5941,17 +5996,25 @@ private fun AudioControlsSheet(
                                 player.setPlaybackParameters(1.25f, 1.25f)
                             },
                             label = { Text("Sped Up", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
+                            border = null,
+                            shape = RoundedCornerShape(16.dp),
+                            colors = presetColors,
                             modifier = Modifier.weight(1f),
                         )
                         SuggestionChip(
                             onClick = {
                                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                currentSpeed = 1.0f
-                                currentPitch = 1.0f
-                                player.resetPlaybackParameters()
+                                currentSpeed = 0.80f
+                                currentPitch = 0.70f
+                                player.setPlaybackParameters(0.80f, 0.70f)
                             },
-                            label = { Text("Reset", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
-                            icon = { Icon(Icons.Filled.RestartAlt, null, modifier = Modifier.size(14.dp)) },
+                            label = { Text("Vaporwave", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
+                            border = null,
+                            shape = RoundedCornerShape(16.dp),
+                            colors = SuggestionChipDefaults.suggestionChipColors(
+                                containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.65f),
+                                labelColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                            ),
                             modifier = Modifier.weight(1f),
                         )
                     }

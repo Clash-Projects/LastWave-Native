@@ -556,6 +556,10 @@ class SettingsViewModel @Inject constructor(
         settingsPreferences.setMusicVideoEnabled(enabled)
     }
 
+    fun setButtonNowPlayingEnabled(enabled: Boolean) = launchSettingsAction("update button now playing setting") {
+        settingsPreferences.setButtonNowPlayingEnabled(enabled)
+    }
+
     // ── USB exclusive output (direct DAC, default OFF) ──
 
     val usbExclusiveEnabled: StateFlow<Boolean> =
