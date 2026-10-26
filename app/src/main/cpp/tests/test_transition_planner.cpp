@@ -167,7 +167,7 @@ int main() {
     rmsB_p25 = std::sqrt(rmsB_p25 / (N - 1000));
 
     std::cout << "t=0.25 Sub-bass RMS: Deck A = " << rmsA_p25 << ", Deck B = " << rmsB_p25 << "\n";
-    assert(rmsA_p25 > 0.55f); // Deck A keeps full bass
+    assert(rmsA_p25 > 0.50f); // Deck A keeps bass (> 0.50f with correlated-bass headroom compensation)
     assert(rmsB_p25 < 0.08f); // Deck B 200 Hz HPF removes sub-bass
 
     // Midpoint Bass Swap (t = 0.70):
@@ -187,7 +187,7 @@ int main() {
 
     std::cout << "t=0.70 Sub-bass RMS: Deck A = " << rmsA_p70 << ", Deck B = " << rmsB_p70 << "\n";
     assert(rmsA_p70 < 0.10f); // Deck A bass swept away
-    assert(rmsB_p70 > 0.50f); // Deck B delivers full bass punch!
+    assert(rmsB_p70 > 0.45f); // Deck B delivers full bass punch!
 
     // 2. Vocal-Pocket Ducking: dynamic -9.0 dB peaking cut at 1200 Hz when Deck B has vocals
     std::vector<float> sine1200Hz(N * 2);

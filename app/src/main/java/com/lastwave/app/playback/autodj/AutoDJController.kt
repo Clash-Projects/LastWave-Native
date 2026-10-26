@@ -50,6 +50,7 @@ interface AutoDJPlaybackHost {
     fun decodeHeadWindowForNext(index: Int, track: PlayableTrack)
     fun getRecentPlayedTrackIds(): List<String>
     fun scoreAndReorderCandidates(fromIndex: Int, count: Int, currentBpm: Float)
+    fun getStandbyBufferedMs(): Long
 }
 
 sealed interface AutoDJStatus {
@@ -216,6 +217,29 @@ class AutoDJController @Inject constructor(
         }
     }
 
+    fun onPlaybackStarted() {
+        val h = host ?: return
+        val nextIndex = h.getCurrentIndex() + 1
+        if (nextIndex in 0 until h.getQueueSize()) {
+            val nextTrack = h.getTrackAt(nextIndex)
+            if (nextTrack != null && getTrackStage(nextTrack.mediaIdKey()) == TrackLifecycleStage.QUEUED) {
+                prefetchTrack(nextIndex, nextTrack)
+            }
+        }
+    }
+
+    fun onDeckBArmedReady(index: Int) {
+        val h = host ?: return
+        if (index in 0 until h.getQueueSize()) {
+            val track = h.getTrackAt(index)
+            if (track != null) {
+                val key = track.mediaIdKey()
+                trackStages[key] = TrackLifecycleStage.ARMED_READY
+                _status.value = AutoDJStatus.ArmedReady(track.title, index)
+            }
+        }
+    }
+
     fun cancelAllPrefetches(reason: String) {
         inFlightJobs.values.forEach { it.cancel() }
         inFlightJobs.clear()
@@ -246,12 +270,30 @@ class AutoDJController @Inject constructor(
         val nextStage = if (nextKey.isNotEmpty()) getTrackStage(nextKey) else TrackLifecycleStage.COMPLETED
         val retryCount = if (nextKey.isNotEmpty()) retryCounts[nextKey] ?: 0 else 0
 
+        // Eager prefetch trigger within 2s of playback start if track is still queued
+        if (isPlaying && currentPositionMs <= 2000L && nextTrack != null && nextStage == TrackLifecycleStage.QUEUED) {
+            prefetchTrack(nextIndex, nextTrack)
+        }
+
+        // Check if head window decoding has reached ready threshold (>= 12.0s raw float PCM)
+        if (nextStage == TrackLifecycleStage.DECODING_HEAD_WINDOW && nextTrack != null) {
+            val bufferedMs = h.getStandbyBufferedMs()
+            if (bufferedMs >= 12_000L || (nextTrack.durationMs in 1..11999L && bufferedMs >= nextTrack.durationMs)) {
+                trackStages[nextKey] = TrackLifecycleStage.ARMED_READY
+                h.armStandbyForNext(nextIndex, nextTrack)
+                _status.value = AutoDJStatus.ArmedReady(nextTrack.title, nextIndex)
+                Log.i(TAG, "[HEAD_WINDOW_READY] index=$nextIndex title='${nextTrack.title}' buffered=${bufferedMs}ms >= 12000ms -> ARMED_READY")
+            }
+        }
+
+        val effectiveStage = if (nextKey.isNotEmpty()) getTrackStage(nextKey) else TrackLifecycleStage.COMPLETED
+
         val decision = nativeEngine.evaluate(
             currentPositionMs = currentPositionMs,
             durationMs = durationMs,
             isPlaying = isPlaying,
             transitionDurationMs = transitionDurationMs,
-            nextStage = nextStage,
+            nextStage = effectiveStage,
             retryCount = retryCount,
             unplayedCount = unplayedCount,
         )
@@ -295,9 +337,15 @@ class AutoDJController @Inject constructor(
 
             AutoDJDecision.ARM_STANDBY -> {
                 if (nextTrack != null && nextIndex in 0 until queueSize) {
-                    trackStages[nextKey] = TrackLifecycleStage.ARMED_READY
-                    h.armStandbyForNext(nextIndex, nextTrack)
-                    _status.value = AutoDJStatus.ArmedReady(nextTrack.title, nextIndex)
+                    val bufferedMs = h.getStandbyBufferedMs()
+                    if (bufferedMs >= 12_000L || (nextTrack.durationMs in 1..11999L && bufferedMs >= nextTrack.durationMs)) {
+                        trackStages[nextKey] = TrackLifecycleStage.ARMED_READY
+                        h.armStandbyForNext(nextIndex, nextTrack)
+                        _status.value = AutoDJStatus.ArmedReady(nextTrack.title, nextIndex)
+                    } else {
+                        trackStages[nextKey] = TrackLifecycleStage.DECODING_HEAD_WINDOW
+                        _status.value = AutoDJStatus.Decoding(nextTrack.title, nextIndex)
+                    }
                 }
             }
 
@@ -378,10 +426,10 @@ class AutoDJController @Inject constructor(
 
                         host?.registerResolvedStream(index, track, resolvedStream)
 
-                        // Immediately decode first 35 seconds into Deck B
+                        // Immediately decode first 35 seconds into Deck B ring buffer
                         host?.decodeHeadWindowForNext(index, track)
-                        trackStages[key] = TrackLifecycleStage.ARMED_READY
-                        _status.value = AutoDJStatus.ArmedReady(track.title, index)
+                        trackStages[key] = TrackLifecycleStage.DECODING_HEAD_WINDOW
+                        _status.value = AutoDJStatus.Decoding(track.title, index)
 
                         // Optionally warm-prefetch stream URL for index + 2
                         prefetchWarmUpcoming(index + 1)

@@ -87,8 +87,6 @@ public:
 
         // 1.5s Schroeder reverb decay time (T60 = 1.5s)
         const double decayTime = 1.5;
-        // Comb feedback: g = exp(-6.907755 * (combDelaySec / decayTime))
-        const double sScale = sampleRate_ / 44100.0;
         const std::array<double, 4> combDelaysMs{29.7, 37.1, 41.1, 43.7};
 
         for (std::size_t i = 0; i < 4; ++i) {
@@ -145,14 +143,17 @@ public:
         return delayFrames_;
     }
 
-    // Processes Deck A audio: sends into 1/2-beat delay + 1.5s Schroeder reverb tail with 55% wet mix
+    // Processes Deck A audio: sends into 1/2-beat delay + 1.5s Schroeder reverb tail
     void process(
         float* stereoInterleaved,
         std::size_t frames,
         float sendGain,
         float dryGain,
-        bool apply55WetMix = false) noexcept {
+        float wetReturn = 0.75F) noexcept {
         if (stereoInterleaved == nullptr || frames == 0) return;
+
+        sendGain = std::clamp(sendGain, 0.0F, 1.0F);
+        wetReturn = std::clamp(wetReturn, 0.0F, 1.0F);
 
         if (!enabled_ && sendGain <= 0.0F) {
             if (std::abs(dryGain - 1.0F) > 0.0001F) {
@@ -207,14 +208,8 @@ public:
             const float wetL = echoL * 0.70F + revL * 0.45F;
             const float wetR = echoR * 0.70F + revR * 0.45F;
 
-            if (apply55WetMix) {
-                // Exact 55% wet mix: 45% dry + 55% wet
-                stereoInterleaved[inOffset] = (inL * dryGain) * 0.45F + wetL * 0.55F;
-                stereoInterleaved[inOffset + 1] = (inR * dryGain) * 0.45F + wetR * 0.55F;
-            } else {
-                stereoInterleaved[inOffset] = inL * dryGain + wetL * sendGain;
-                stereoInterleaved[inOffset + 1] = inR * dryGain + wetR * sendGain;
-            }
+            stereoInterleaved[inOffset] = inL * dryGain + wetL * wetReturn;
+            stereoInterleaved[inOffset + 1] = inR * dryGain + wetR * wetReturn;
         }
     }
 

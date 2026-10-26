@@ -131,6 +131,12 @@ class NativeAutoMixEngine @Inject constructor() : Closeable {
     val deckBLeadingTrimFrames: Long
         get() = withHandle(0L, ::nativeGetDeckBLeadingTrimFrames)
 
+    val deckBAvailableSeconds: Float
+        get() = withHandle(0.0F, ::nativeGetDeckBAvailableSeconds)
+
+    val deckBAvailableFrames: Long
+        get() = withHandle(0L, ::nativeGetDeckBAvailableFrames)
+
     val deckBFirstBeatMs: Long
         get() = withHandle(0L, ::nativeGetDeckBFirstBeatMs)
 
@@ -259,6 +265,8 @@ class NativeAutoMixEngine @Inject constructor() : Closeable {
         @JvmStatic private external fun nativeGetState(handle: Long): Int
         @JvmStatic private external fun nativeGetTransitionProgress(handle: Long): Float
         @JvmStatic private external fun nativeGetDeckBLeadingTrimFrames(handle: Long): Long
+        @JvmStatic private external fun nativeGetDeckBAvailableSeconds(handle: Long): Float
+        @JvmStatic private external fun nativeGetDeckBAvailableFrames(handle: Long): Long
         @JvmStatic private external fun nativeGetDeckBFirstBeatMs(handle: Long): Long
         @JvmStatic private external fun nativeGetDeckBDropBeatMs(handle: Long): Long
         @JvmStatic private external fun nativeGetDeckABpm(handle: Long): Float

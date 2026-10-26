@@ -229,6 +229,24 @@ Java_com_lastwave_app_playback_NativeAutoMixEngine_nativeGetDeckBLeadingTrimFram
 }
 
 JNIEXPORT jfloat JNICALL
+Java_com_lastwave_app_playback_NativeAutoMixEngine_nativeGetDeckBAvailableSeconds(
+    JNIEnv*,
+    jclass,
+    jlong handle) {
+    auto* engine = fromHandle(handle);
+    return (engine != nullptr) ? engine->getDeckBAvailableSeconds() : 0.0F;
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_lastwave_app_playback_NativeAutoMixEngine_nativeGetDeckBAvailableFrames(
+    JNIEnv*,
+    jclass,
+    jlong handle) {
+    auto* engine = fromHandle(handle);
+    return (engine != nullptr) ? static_cast<jlong>(engine->getDeckBAvailableFrames()) : 0L;
+}
+
+JNIEXPORT jfloat JNICALL
 Java_com_lastwave_app_playback_NativeAutoMixEngine_nativeGetDeckABpm(
     JNIEnv*,
     jclass,

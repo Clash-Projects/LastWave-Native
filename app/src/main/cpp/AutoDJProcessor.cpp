@@ -46,17 +46,12 @@ AutoDJDecision AutoDJProcessor::evaluate(
         if (nextStage == TrackLifecycleStage::STREAM_RESOLVED) {
             return AutoDJDecision::DECODE_HEAD_WINDOW;
         }
-        if (nextStage == TrackLifecycleStage::DECODING_HEAD_WINDOW) {
-            return AutoDJDecision::ARM_STANDBY;
-        }
         return AutoDJDecision::DO_NOTHING;
     }
 
     const int64_t remainingMs = std::max<int64_t>(0, durationMs - currentPositionMs);
-    const int64_t leadWindowMs = m_latencyEstimator.calculateDynamicLeadWindowMs(transitionDurationMs);
-    const int64_t armLeadThresholdMs = ADVANCE_ARM_LEAD_MS + transitionDurationMs; // 40s + transition
 
-    // 5. Track finished or at transition edge
+    // 5. Track finished: remainingMs <= 0
     if (remainingMs <= 0) {
         if (nextStage == TrackLifecycleStage::ARMED_READY) {
             return AutoDJDecision::TRIGGER_TRANSITION;
@@ -74,33 +69,20 @@ AutoDJDecision AutoDJProcessor::evaluate(
 
     // 6. Active playback progression
     if (isPlaying) {
-        // Trigger transition right at exit cue
+        // Trigger transition right at exit cue ONLY if armed and ready
         if (remainingMs <= transitionDurationMs && nextStage == TrackLifecycleStage::ARMED_READY) {
             return AutoDJDecision::TRIGGER_TRANSITION;
         }
 
-        // Keep index + 1 fully armed at least 40s before planned exit cue
-        if (remainingMs <= armLeadThresholdMs) {
-            if (nextStage == TrackLifecycleStage::STREAM_RESOLVED) {
-                return AutoDJDecision::DECODE_HEAD_WINDOW;
-            }
-            if (nextStage == TrackLifecycleStage::DECODING_HEAD_WINDOW) {
-                return AutoDJDecision::ARM_STANDBY;
-            }
-        }
-
-        // Never wait until track end: start resolving immediate next track as early as leadWindowMs
-        // (or immediately at track start)
+        // Immediate eager prefetch and pre-decode:
         if (nextStage == TrackLifecycleStage::QUEUED) {
             return AutoDJDecision::RESOLVE_NEXT_STREAM;
         }
-
-        // If inside transition window and next track is still in-flight
-        if (remainingMs <= transitionDurationMs &&
-            (nextStage == TrackLifecycleStage::RESOLVING_STREAM ||
-             nextStage == TrackLifecycleStage::DECODING_HEAD_WINDOW)) {
-            return AutoDJDecision::WAIT_FOR_LATE_TRACK;
+        if (nextStage == TrackLifecycleStage::STREAM_RESOLVED) {
+            return AutoDJDecision::DECODE_HEAD_WINDOW;
         }
+
+        // At transition edge, if not armed ready, return DO_NOTHING so Deck A plays naturally to end
     }
 
     return AutoDJDecision::DO_NOTHING;

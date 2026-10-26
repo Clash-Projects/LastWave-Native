@@ -58,6 +58,27 @@ public:
         return readable;
     }
 
+    std::size_t peek(T* destination, std::size_t count) const noexcept {
+        if (destination == nullptr || count == 0) return 0;
+        const auto read = readIndex_.load(std::memory_order_relaxed);
+        const auto write = writeIndex_.load(std::memory_order_acquire);
+        const auto readable = std::min(count, static_cast<std::size_t>(write - read));
+        const auto offset = static_cast<std::size_t>(read % capacity_);
+        const auto first = std::min(readable, capacity_ - offset);
+        std::memcpy(destination, data_.get() + offset, first * sizeof(T));
+        std::memcpy(destination + first, data_.get(), (readable - first) * sizeof(T));
+        return readable;
+    }
+
+    std::size_t discard(std::size_t count) noexcept {
+        if (count == 0) return 0;
+        const auto read = readIndex_.load(std::memory_order_relaxed);
+        const auto write = writeIndex_.load(std::memory_order_acquire);
+        const auto readable = std::min(count, static_cast<std::size_t>(write - read));
+        readIndex_.store(read + readable, std::memory_order_release);
+        return readable;
+    }
+
     // Drops all buffered samples. The producer must be quiesced and the
     // consumer parked on another buffer before calling this. Advancing the
     // read index (instead of zeroing both) keeps any already-in-flight read

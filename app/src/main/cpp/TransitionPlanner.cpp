@@ -384,8 +384,8 @@ TransitionPlan TransitionPlanner::planTransition(
     );
     const float rmsB_dB = computeGatedRmsDb(deckBHeadPcm, frames15sB);
 
-    // Makeup gain offset: clamp(rmsA_dB - rmsB_dB, -4.0f, +5.5f)
-    plan.gainOffsetDb = std::clamp(rmsA_dB - rmsB_dB, -4.0f, 5.5f);
+    // Attenuation only: clamp(rmsA_dB - rmsB_dB, -6.0f, 0.0f) to prevent clipping/distortion
+    plan.gainOffsetDb = std::clamp(rmsA_dB - rmsB_dB, -6.0f, 0.0f);
 
     // 7. Vocal-Safe Loop / Beat-Repeat Slicer Eligibility on Deck A (t >= 0.55)
     // Check if Deck A is vocal-free from outCueMs + 0.55 * durationMs to track end

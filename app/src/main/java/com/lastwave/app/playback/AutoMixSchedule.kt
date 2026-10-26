@@ -109,12 +109,9 @@ fun planAutoMix(input: AutoMixPlanInput): AutoMixDecision = with(input) {
             else -> null
         }
         if (resolveReason != null) {
-            if (remainingMs > refreshWindowMs) {
-                return AutoMixDecision.Idle(AutoMixIdleReason.TooEarly)
-            }
             return AutoMixDecision.ResolveNext(resolveReason)
         }
-        if (!standbyArmedForNext && remainingMs <= refreshWindowMs) {
+        if (!standbyArmedForNext) {
             return AutoMixDecision.Arm
         }
         return AutoMixDecision.Idle(AutoMixIdleReason.OutsideClamped30sWindow)
@@ -130,7 +127,7 @@ fun planAutoMix(input: AutoMixPlanInput): AutoMixDecision = with(input) {
     }
 
     if (!standbyArmedForNext) return AutoMixDecision.Arm
-    if (!standbyReady) return AutoMixDecision.WaitingForReady
+    if (!standbyReady || standbyBufferedMs < 8000L) return AutoMixDecision.WaitingForReady
     if (remainingMs > transitionMs) return AutoMixDecision.WaitingForWindow
 
     val sustainableMs = standbyBufferedMs.takeIf { it > 0L } ?: transitionMs
