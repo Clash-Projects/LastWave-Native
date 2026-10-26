@@ -52,7 +52,9 @@ import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ExtractorsFactory
 import androidx.media3.extractor.mp3.Mp3Extractor
+import androidx.media3.extractor.mp4.FragmentedMp4Extractor
 import androidx.media3.extractor.ts.AdtsExtractor
+import com.lastwave.app.data.download.Fmp4IndexBuilder
 import com.lastwave.app.data.plugin.SegmentedMpdBuilder
 import coil.imageLoader
 import coil.request.ImageRequest
@@ -286,6 +288,10 @@ class MusicPlayer @Inject constructor(
             )
             .setAdtsExtractorFlags(
                 AdtsExtractor.FLAG_ENABLE_CONSTANT_BITRATE_SEEKING
+            )
+            .setFragmentedMp4ExtractorFlags(
+                FragmentedMp4Extractor.FLAG_READ_MFRA_FOR_SEEK_MAP or
+                    FragmentedMp4Extractor.FLAG_MERGE_FRAGMENTED_SIDX
             )
     }
     private var castPlayback: com.lastwave.app.playback.cast.CastPlayback? = null
@@ -6346,6 +6352,7 @@ class MusicPlayer @Inject constructor(
         isLosslessTrack: Boolean? = null,
         knownBitrate: Int? = null,
         fallbackMime: String? = null,
+        knownDurationMs: Long? = null,
     ): ResolvedStream? {
         val uri = if (targetUrl.startsWith("/") && !targetUrl.startsWith("file://")) {
             Uri.fromFile(File(targetUrl))
@@ -6394,6 +6401,7 @@ class MusicPlayer @Inject constructor(
         var bitrateKbps: Int? = knownBitrate
         var bitDepth: Int? = null
         var samplingRateKHz: Double? = null
+        var fileDurationMs: Long? = null
 
         runCatching {
             val retriever = android.media.MediaMetadataRetriever()
@@ -6403,6 +6411,8 @@ class MusicPlayer @Inject constructor(
                 } else {
                     retriever.setDataSource(uri.path ?: targetUrl.removePrefix("file://"))
                 }
+                fileDurationMs = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                    ?.toLongOrNull()?.takeIf { it > 0 }
                 if (bitrateKbps == null || bitrateKbps == 0) {
                     bitrateKbps = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_BITRATE)
                         ?.toIntOrNull()?.let { it / 1000 }
@@ -6417,6 +6427,24 @@ class MusicPlayer @Inject constructor(
                 retriever.release()
             }
         }
+
+        // Heal unindexed fragmented MP4s (Atmos / AAC DASH downloads):
+        // If file is local and writable, build mfra seek index and patch duration in-place.
+        if (pathLower.endsWith(".m4a") || pathLower.endsWith(".mp4")) {
+            runCatching {
+                val candidatePath = uri.path ?: targetUrl.removePrefix("file://")
+                val localFile = File(candidatePath)
+                if (localFile.isFile && localFile.canWrite()) {
+                    val finalDurationHint = fileDurationMs ?: knownDurationMs ?: 0L
+                    if (Fmp4IndexBuilder.finalizeFmp4(localFile, finalDurationHint)) {
+                        if (fileDurationMs == null || fileDurationMs <= 0L) {
+                            fileDurationMs = knownDurationMs?.takeIf { it > 0 }
+                        }
+                    }
+                }
+            }
+        }
+
         // FLAC STREAMINFO fallback: device- and API-independent ground truth.
         // The retriever keys above need API 31+ and still return null on
         // several OEMs/files, which left bitDepth null and the pill stuck at
@@ -6457,6 +6485,7 @@ class MusicPlayer @Inject constructor(
 
         val isLossless = isLosslessTrack ?: mime.contains("flac")
         val trackKey = "${displayArtist.lowercase()}_${displayTitle.lowercase()}"
+        val effectiveDurationMs = fileDurationMs ?: knownDurationMs?.takeIf { it > 0 }
 
         return ResolvedStream(
             url = uri.toString(),
@@ -6467,6 +6496,7 @@ class MusicPlayer @Inject constructor(
             isLossless = isLossless,
             bitDepth = if (isLossless) bitDepth?.takeIf { it > 0 } else null,
             samplingRateKHz = samplingRateKHz?.takeIf { it > 0.0 },
+            durationMs = effectiveDurationMs,
         )
     }
 
@@ -6551,6 +6581,7 @@ class MusicPlayer @Inject constructor(
                 displayTitle = title,
                 displayArtist = artist,
                 fallbackMime = track.playbackMimeType,
+                knownDurationMs = track.durationMs ?: findKnownDuration(track),
             )
             if (resolved != null) return resolved
         }
@@ -6607,6 +6638,7 @@ class MusicPlayer @Inject constructor(
                     badge = downloaded.formatBadge,
                     isLosslessTrack = downloaded.isLossless,
                     knownBitrate = downloaded.bitrateKbps,
+                    knownDurationMs = downloaded.durationMs.takeIf { it > 0L },
                 )
                 if (resolved != null) {
                     if (candidate != downloaded.filePath && candidate.startsWith("/")) {
@@ -6648,6 +6680,7 @@ class MusicPlayer @Inject constructor(
                     targetUrl = candidateFile.absolutePath,
                     displayTitle = title,
                     displayArtist = artist,
+                    knownDurationMs = track.durationMs ?: findKnownDuration(track),
                 )
                 if (resolved != null) {
                     runCatching {
