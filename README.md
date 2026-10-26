@@ -166,9 +166,6 @@ cd LastWave-native
 
 ---
 
-<div align="center">
-  <p><b>LastWave</b> is built with ❤️ by <a href="https://github.com/duxtami">Duxtami</a> & <a href="https://github.com/ajisth69">Ajisth</a>.</p>
-</div>
 
 ---
 
