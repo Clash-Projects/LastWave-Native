@@ -443,7 +443,7 @@ class InnerTubeMusicApi @Inject constructor(
                 try {
                     nextPage = browseContinuation(currentToken, authenticated = authenticatedAs)
                     break
-                } catch (cancellation: CancellationException) {
+                } catch (cancellation: kotlinx.coroutines.CancellationException) {
                     throw cancellation
                 } catch (e: Exception) {
                     if (attempt == 3) {
