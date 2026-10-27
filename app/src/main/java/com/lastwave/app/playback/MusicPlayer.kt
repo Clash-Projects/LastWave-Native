@@ -4082,6 +4082,7 @@ class MusicPlayer @Inject constructor(
                         autoMixNextTrack = null,
                     )
                 }
+            }
 
             val newTrack = standby.currentMediaItem?.toPlayableTrack()
             if (newTrack != null) {
