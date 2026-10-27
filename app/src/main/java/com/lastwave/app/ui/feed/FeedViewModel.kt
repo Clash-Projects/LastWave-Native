@@ -21,6 +21,7 @@ import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistSummary
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.PlayableTrack
+import com.lastwave.app.data.music.toPlayableTrack
 import com.lastwave.app.data.repository.RelatedGraphRepository
 import com.lastwave.app.data.ytmusic.YtMusicAuthManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -57,6 +58,7 @@ data class FeedUiState(
     val chipShelves: List<HomeShelf> = emptyList(),
     val chipContinuationToken: String? = null,
     val defaultContinuationToken: String? = null,
+    val chipBackgroundUrl: String? = null,
 ) {
     /** True when a mood/activity chip is active; synthetic sections are hidden in this mode. */
     val isChipActive: Boolean get() = selectedChip != null
@@ -223,6 +225,7 @@ class FeedViewModel @Inject constructor(
                     chipShelves = if (refreshing) emptyList() else it.chipShelves,
                     chipContinuationToken = if (refreshing) null else it.chipContinuationToken,
                     defaultContinuationToken = if (refreshing) null else it.defaultContinuationToken,
+                    chipBackgroundUrl = if (refreshing) null else it.chipBackgroundUrl,
                 )
             }
             try {
@@ -298,6 +301,7 @@ class FeedViewModel @Inject constructor(
                     isChipLoading = false,
                     chipShelves = emptyList(),
                     chipContinuationToken = null,
+                    chipBackgroundUrl = null,
                 )
             }
             return
@@ -312,6 +316,7 @@ class FeedViewModel @Inject constructor(
                 isChipLoading = true,
                 chipShelves = emptyList(),
                 chipContinuationToken = null,
+                chipBackgroundUrl = null,
                 error = null,
             )
         }
@@ -326,6 +331,7 @@ class FeedViewModel @Inject constructor(
                         isChipLoading = false,
                         chipShelves = page.shelves,
                         chipContinuationToken = page.continuationToken,
+                        chipBackgroundUrl = page.backgroundUrl,
                     )
                 }
             } catch (cancellation: CancellationException) {
@@ -337,6 +343,7 @@ class FeedViewModel @Inject constructor(
                         it.copy(
                             selectedChip = null,
                             isChipLoading = false,
+                            chipBackgroundUrl = null,
                             error = appContext.getString(com.lastwave.app.R.string.feed_update_error),
                         )
                     }
@@ -420,9 +427,26 @@ class FeedViewModel @Inject constructor(
         val firstId = when (val item = shelf.items.firstOrNull()) {
             is HomeShelfItem.Track -> item.track.videoId
             is HomeShelfItem.Playlist -> item.playlist.id
+            is HomeShelfItem.PodcastEpisode -> item.videoId
+            is HomeShelfItem.PodcastShow -> item.browseId
             null -> ""
         }
         return "${shelf.title.trim().lowercase()}_$firstId"
+    }
+
+    fun playPodcastEpisode(
+        episode: HomeShelfItem.PodcastEpisode,
+        queue: List<HomeShelfItem.PodcastEpisode> = listOf(episode),
+        sourceLabel: String = "Podcasts",
+    ) {
+        val tracks = queue.map { it.toPlayableTrack() }
+        val index = queue.indexOfFirst { it.videoId == episode.videoId }.coerceAtLeast(0)
+        musicPlayer.playPodcastQueue(
+            tracks = tracks,
+            startIndex = index,
+            startPositionMs = 0L,
+            sourceLabel = episode.showName?.takeIf { it.isNotBlank() } ?: sourceLabel,
+        )
     }
 
     fun playTrack(track: YouTubeMusicTrack, sourceLabel: String = "Feed") {

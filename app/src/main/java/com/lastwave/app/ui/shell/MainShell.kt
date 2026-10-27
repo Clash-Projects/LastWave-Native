@@ -391,6 +391,7 @@ fun MainShell(
                         onOpenDownloads = onOpenDownloads,
                         onOpenPodcasts = onOpenPodcasts,
                         onOpenPodcastShow = onOpenPodcastShow,
+                        onOpenYouTubeLogin = onOpenYouTubeLogin,
                         feedTapEvents = feedTapEvents,
                     )
                     MainTab.STATS -> HomeScreen(

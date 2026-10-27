@@ -21,6 +21,8 @@ enum class HomeCardVariant {
     FEATURED,
     /** Collage cover + title + up to 3 song rows. Community playlists. */
     COMMUNITY,
+    /** Large 16:9 episode card for podcast category shelves. */
+    PODCAST_EPISODE,
 }
 
 /**
@@ -33,6 +35,8 @@ fun selectCardVariant(item: HomeShelfItem, shelf: HomeShelf? = null): HomeCardVa
     return when (item) {
         is HomeShelfItem.Playlist -> selectPlaylistVariant(item)
         is HomeShelfItem.Track -> selectTrackVariant(item)
+        is HomeShelfItem.PodcastEpisode -> HomeCardVariant.PODCAST_EPISODE
+        is HomeShelfItem.PodcastShow -> HomeCardVariant.SQUARE
     }
 }
 

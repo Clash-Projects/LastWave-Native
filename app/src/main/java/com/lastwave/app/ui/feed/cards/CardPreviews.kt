@@ -263,3 +263,137 @@ fun CardMixedShelfRowPreview() {
         }
     }
 }
+
+@Preview(name = "6. Podcast Hero Preview", showBackground = true, backgroundColor = 0xFF0D0D0D)
+@Composable
+fun PodcastHeroPreview() {
+    Box(modifier = Modifier.fillMaxWidth().height(320.dp)) {
+        PodcastHeroBackground(
+            backgroundUrl = null,
+            scrollOffsetY = 0f,
+        )
+    }
+}
+
+@Preview(name = "7. Episode Card - Long Title", showBackground = true, backgroundColor = 0xFF121212)
+@Composable
+fun EpisodeCardLongTitlePreview() {
+    ShelfPodcastEpisodeCard(
+        title = "The Extreme Engineering and Architecture Behind Modern Space Exploration and Human Settlement on Other Planets",
+        infoLine = "1.1M views • Jun 12 • Redefining Work & Worth",
+        artworkUrl = null,
+        durationText = "1 hr 14 min",
+        progressPercentage = null,
+        onClick = {},
+        cardWidth = 320.dp,
+    )
+}
+
+@Preview(name = "8. Episode Card - Hindi / Marathi Title", showBackground = true, backgroundColor = 0xFF121212)
+@Composable
+fun EpisodeCardHindiMarathiTitlePreview() {
+    ShelfPodcastEpisodeCard(
+        title = "पॉडकास्ट: आधुनिक तंत्रज्ञान आणि विश्वाची रहस्ये - संपूर्ण चर्चा",
+        infoLine = "86K views • 17h ago • मराठी विचारमंच",
+        artworkUrl = null,
+        durationText = "45:20",
+        progressPercentage = null,
+        onClick = {},
+        cardWidth = 320.dp,
+    )
+}
+
+@Preview(name = "9. Episode Card - With Progress", showBackground = true, backgroundColor = 0xFF121212)
+@Composable
+fun EpisodeCardWithProgressPreview() {
+    ShelfPodcastEpisodeCard(
+        title = "what happens to Corporate Employees After 45? Financial Realities",
+        infoLine = "675K views • 4d ago • Business Insiders",
+        artworkUrl = null,
+        durationText = "19:14",
+        progressPercentage = 0.65f,
+        onClick = {},
+        cardWidth = 320.dp,
+    )
+}
+
+@Preview(name = "10. Episode Card - Without Progress", showBackground = true, backgroundColor = 0xFF121212)
+@Composable
+fun EpisodeCardWithoutProgressPreview() {
+    ShelfPodcastEpisodeCard(
+        title = "Prepare for the Worst. And start saving cash right now.",
+        infoLine = "861K views • Oct 14 • Let's Chat",
+        artworkUrl = null,
+        durationText = "20:24",
+        progressPercentage = null,
+        onClick = {},
+        cardWidth = 320.dp,
+    )
+}
+
+@Preview(name = "11. Popular Shows Row Preview", showBackground = true, backgroundColor = 0xFF121212)
+@Composable
+fun PopularShowsRowPreview() {
+    val sampleShows = listOf(
+        com.lastwave.app.data.podcast.PodcastShow(
+            showId = "show_1",
+            title = "Financial Audit",
+            publisher = "Caleb Hammer",
+        ),
+        com.lastwave.app.data.podcast.PodcastShow(
+            showId = "show_2",
+            title = "Good Mythical Morning",
+            publisher = "Good Mythical Morning",
+        ),
+        com.lastwave.app.data.podcast.PodcastShow(
+            showId = "show_3",
+            title = "The Diary Of A CEO",
+            publisher = "The Diary Of A CEO",
+        ),
+    )
+
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = Color(0xFF1E1E1E),
+        modifier = Modifier.padding(16.dp),
+    ) {
+        Column(modifier = Modifier.padding(vertical = 12.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Popular shows",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                )
+                Text(
+                    text = "See all >",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(sampleShows.size) { index ->
+                    val show = sampleShows[index]
+                    ShelfSquareCard(
+                        title = show.title,
+                        infoLine = show.publisher.orEmpty(),
+                        artworkUrl = null,
+                        onClick = {},
+                        cardWidth = 140.dp,
+                    )
+                }
+            }
+        }
+    }
+}
+

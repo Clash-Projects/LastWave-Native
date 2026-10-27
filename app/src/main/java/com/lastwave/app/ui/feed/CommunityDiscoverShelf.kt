@@ -129,6 +129,8 @@ internal fun stableShelfCardKeys(items: List<HomeShelfItem>): List<String> {
         val id = when (it) {
             is HomeShelfItem.Track -> "track:${it.track.videoId}"
             is HomeShelfItem.Playlist -> "playlist:${it.playlist.id}"
+            is HomeShelfItem.PodcastEpisode -> "episode:${it.videoId}"
+            is HomeShelfItem.PodcastShow -> "show:${it.browseId}"
         }
         val occurrence = occurrences.getOrDefault(id, 0)
         occurrences[id] = occurrence + 1
