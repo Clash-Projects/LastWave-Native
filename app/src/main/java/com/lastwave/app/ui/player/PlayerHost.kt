@@ -3030,13 +3030,14 @@ private fun FullPlayer(
                                                         alpha = sleeveAlpha
                                                     },
                                             ) {
+                                                val heroArtworkTrack = if (state.isAutoDJActive && state.autoDJSeedTrack != null) state.autoDJSeedTrack else track
                                                 Box(Modifier.fillMaxSize()) {
                                                     PlayerArtwork(
-                                                        track = track,
+                                                        track = heroArtworkTrack,
                                                         modifier = Modifier
                                                             .fillMaxSize()
                                                             .graphicsLayer {
-                                                                alpha = if (state.isAutoMixActive && state.autoMixNextTrack != null) {
+                                                                alpha = if (state.isAutoMixActive && state.autoMixNextTrack != null && !state.isAutoDJActive) {
                                                                     (1f - state.autoMixProgress).coerceIn(0f, 1f)
                                                                 } else 1f
                                                             },
@@ -3046,7 +3047,7 @@ private fun FullPlayer(
                                                         pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
                                                         onAspectRatioChanged = { canvasAspect = it },
                                                     )
-                                                    if (state.isAutoMixActive && state.autoMixNextTrack != null) {
+                                                    if (state.isAutoMixActive && state.autoMixNextTrack != null && !state.isAutoDJActive) {
                                                         PlayerArtwork(
                                                             track = state.autoMixNextTrack,
                                                             modifier = Modifier
@@ -4524,11 +4525,25 @@ private fun NowPlayingAutoDJBadgeRow(
     )
 
     val bars = state.autoMixBars ?: 8
+    val isAutoDJMix = state.isAutoDJActive
+    val curIdx = state.autoDJSetCurrentIndex ?: 1
+    val totalTracks = state.autoDJSetTotalTracks ?: 6
     val (badgeText, badgeBg, badgeFg) = when {
+        isBlending && isAutoDJMix -> Triple(
+            "Auto DJ: 5-Min Mix · Track $curIdx of $totalTracks (Mixing into ${state.autoMixNextTrack?.title ?: "Next"})",
+            Color(0xFF8B5CF6).copy(alpha = if (isTranslucent) 0.35f else 0.22f),
+            Color(0xFFDDD6FE)
+        )
         isBlending -> Triple(
             "Automix · $bars-Bar Bass Swap [BPM Synced]",
             Color(0xFF8B5CF6).copy(alpha = if (isTranslucent) 0.35f else 0.22f),
             Color(0xFFDDD6FE)
+        )
+        isAutoDJMix -> Triple(
+            "Auto DJ: 5-Min Mix · Track $curIdx of $totalTracks",
+            if (isArmed) Color(0xFF10B981).copy(alpha = if (isTranslucent) 0.35f else 0.20f)
+            else Color(0xFFF59E0B).copy(alpha = if (isTranslucent) 0.35f else 0.20f),
+            if (isArmed) Color(0xFFA7F3D0) else Color(0xFFFDE68A)
         )
         state.autoDJStatus != null -> Triple(
             state.autoDJStatus,
@@ -5016,7 +5031,12 @@ private fun AutoDJLiveMonitorCard(
                     },
                     label = {
                         Text(
-                            text = if (state.isAutoDJActive) "Auto DJ: ON" else "Auto DJ: OFF",
+                            text = if (state.isAutoDJActive) {
+                                val total = state.autoDJSetTotalTracks ?: 6
+                                "Auto DJ: 5-Min Mix ($total)"
+                            } else {
+                                "Auto DJ: OFF"
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                         )
