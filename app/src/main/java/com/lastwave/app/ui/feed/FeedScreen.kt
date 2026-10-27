@@ -1622,6 +1622,7 @@ private fun HomeShelfCard(
                                 onOpenAlbum = onOpenAlbum,
                                 onTrackLongClick = onTrackLongClick,
                                 onOpenPodcastShow = onOpenPodcastShow,
+                                onTrackMenu = onTrackMenu,
                             )
                         }
                     }
@@ -1645,8 +1646,16 @@ private fun NativeShelfItemCard(
     onOpenAlbum: (title: String, artist: String, browseId: String) -> Unit,
     onTrackLongClick: (TrackMiniTrayData) -> Unit,
     onOpenPodcastShow: (String) -> Unit = {},
+    onTrackMenu: (YouTubeMusicTrack) -> Unit = {},
 ) {
     when (val variant = com.lastwave.app.ui.feed.cards.selectCardVariant(shelfItem)) {
+        com.lastwave.app.ui.feed.cards.HomeCardVariant.PODCAST_EPISODE -> PodcastEpisodeItemCard(
+            shelfItem = shelfItem,
+            shelfTitle = shelfTitle,
+            onPlayTrack = onPlayTrack,
+            onTrackLongClick = onTrackLongClick,
+            onTrackMenu = onTrackMenu,
+        )
         com.lastwave.app.ui.feed.cards.HomeCardVariant.WIDE -> WideItemCard(
             shelfItem = shelfItem,
             shelfTitle = shelfTitle,
@@ -1686,6 +1695,33 @@ private fun NativeShelfItemCard(
             onOpenPodcastShow = onOpenPodcastShow,
         )
     }
+}
+
+@Composable
+private fun PodcastEpisodeItemCard(
+    shelfItem: HomeShelfItem,
+    shelfTitle: String,
+    onPlayTrack: (YouTubeMusicTrack, String) -> Unit,
+    onTrackLongClick: (TrackMiniTrayData) -> Unit,
+    onTrackMenu: (YouTubeMusicTrack) -> Unit = {},
+) {
+    val ep = shelfItem as? HomeShelfItem.PodcastEpisode ?: return
+    val track = ep.toYouTubeMusicTrack()
+    val infoLine = listOfNotNull(
+        ep.viewsAndDate?.takeIf { it.isNotBlank() } ?: ep.subtitle?.takeIf { it.isNotBlank() },
+        ep.showName?.takeIf { it.isNotBlank() },
+    ).joinToString(" • ")
+
+    com.lastwave.app.ui.feed.cards.ShelfPodcastEpisodeCard(
+        title = ep.title,
+        infoLine = infoLine,
+        artworkUrl = ep.artworkUrl,
+        durationText = ep.durationText,
+        progressPercentage = ep.playbackProgress,
+        onClick = { onPlayTrack(track, shelfTitle) },
+        onLongClick = { onTrackLongClick(trackTray(track, shelfTitle, onPlayTrack)) },
+        onMenuClick = { onTrackMenu(track) },
+    )
 }
 
 /** Builds the track mini-tray payload used by every card's long-press. */
