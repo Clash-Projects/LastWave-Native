@@ -78,28 +78,35 @@ fun ExpressiveHeader(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
+    containerColor: Color = Color.Unspecified,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val liquidGlass = LocalLiquidGlass.current
     val backdrop = LocalLiquidGlassBackdrop.current
     val glow = MaterialTheme.colorScheme.primary
     val secondaryGlow = MaterialTheme.colorScheme.tertiary
-    val containerColor = liquidGlassContainerColor(
-        MaterialTheme.colorScheme.surfaceContainer,
-        enabled = liquidGlass,
-        backdrop = backdrop,
-    )
+    val isCustomColor = containerColor != Color.Unspecified
+    val isTransparent = isCustomColor && containerColor == Color.Transparent
+    val resolvedContainerColor = if (isCustomColor) {
+        containerColor
+    } else {
+        liquidGlassContainerColor(
+            MaterialTheme.colorScheme.surfaceContainer,
+            enabled = liquidGlass,
+            backdrop = backdrop,
+        )
+    }
 
     Box(modifier.fillMaxWidth().zIndex(1f)) {
         Surface(
-            shape = HeaderShape,
-            color = containerColor,
-            tonalElevation = if (liquidGlass) 0.dp else 2.dp,
-            shadowElevation = if (liquidGlass) 0.dp else 4.dp,
+            shape = if (isTransparent) androidx.compose.ui.graphics.RectangleShape else HeaderShape,
+            color = resolvedContainerColor,
+            tonalElevation = if (liquidGlass || isTransparent) 0.dp else 2.dp,
+            shadowElevation = if (liquidGlass || isTransparent) 0.dp else 4.dp,
             modifier = Modifier
                 .fillMaxWidth()
                 .then(
-                    if (liquidGlass) {
+                    if (liquidGlass && !isTransparent) {
                         Modifier.liquidGlassChrome(
                             shape = HeaderShape,
                             enabled = liquidGlass,
@@ -115,7 +122,7 @@ fun ExpressiveHeader(
                 Modifier
                     .fillMaxWidth()
                     .then(
-                        if (!liquidGlass) {
+                        if (!liquidGlass && !isTransparent) {
                             Modifier.drawGlowBackground(glow, secondaryGlow)
                         } else {
                             Modifier

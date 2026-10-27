@@ -297,12 +297,29 @@ fun FeedScreen(
             viewModel.dismissError()
             if (result == SnackbarResult.ActionPerformed) viewModel.refresh()
         }
+    val isPodcastsActive = state.selectedChip?.title.equals("Podcasts", ignoreCase = true)
+    val podcastHeroScrollOffset by remember(listState) {
+        derivedStateOf {
+            val firstItem = listState.layoutInfo.visibleItemsInfo.firstOrNull()
+            if (firstItem == null || firstItem.index > 0) {
+                10000f
+            } else {
+                listState.firstVisibleItemScrollOffset.toFloat()
+            }
+        }
     }
 
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
+        if (isPodcastsActive) {
+            com.lastwave.app.ui.feed.cards.PodcastHeroBackground(
+                backgroundUrl = state.chipBackgroundUrl,
+                scrollOffsetY = podcastHeroScrollOffset,
+            )
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -310,6 +327,7 @@ fun FeedScreen(
         ) {
             ExpressiveHeader(
                 title = stringResource(R.string.feed_home),
+                containerColor = if (isPodcastsActive) Color.Transparent else Color.Unspecified,
                 actions = {
                     HeaderActionIcon(Icons.Filled.Download, "Downloads", onOpenDownloads)
                     HeaderActionIcon(Icons.Filled.Search, "Search", onOpenSearch)
@@ -327,6 +345,7 @@ fun FeedScreen(
                     chips = state.homeChips,
                     selectedChip = state.selectedChip,
                     onChipClick = viewModel::onHomeChipSelected,
+                    transparentBackground = isPodcastsActive,
                 )
             }
 
@@ -1488,16 +1507,23 @@ private fun PinnedChipsBar(
     chips: List<HomeChip>,
     selectedChip: HomeChip?,
     onChipClick: (HomeChip) -> Unit,
+    transparentBackground: Boolean = false,
 ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(
-                    0f to MaterialTheme.colorScheme.background.copy(alpha = 0.96f),
-                    0.7f to MaterialTheme.colorScheme.background.copy(alpha = 0.82f),
-                    1f to MaterialTheme.colorScheme.background.copy(alpha = 0f),
-                )
+            .then(
+                if (transparentBackground) {
+                    Modifier
+                } else {
+                    Modifier.background(
+                        Brush.verticalGradient(
+                            0f to MaterialTheme.colorScheme.background.copy(alpha = 0.96f),
+                            0.7f to MaterialTheme.colorScheme.background.copy(alpha = 0.82f),
+                            1f to MaterialTheme.colorScheme.background.copy(alpha = 0f),
+                        )
+                    )
+                }
             ),
     ) {
         HomeChipsRow(
