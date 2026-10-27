@@ -1948,6 +1948,8 @@ class MusicPlayer @Inject constructor(
                     extendDiscoverQueueIfNeeded(player.currentMediaItemIndex)
                 } else if (radioQueueActive) {
                     extendRadioQueueIfNeeded(player.currentMediaItemIndex, forceIfAtEnd = true)
+                } else if (_state.value.isAutoDJActive) {
+                    fillAutoDJQueueIfNeeded(_state.value.autoDJSeedTrack ?: _state.value.current, targetTotal = 6)
                 }
             }
         }
@@ -3582,15 +3584,15 @@ class MusicPlayer @Inject constructor(
         val currentIdx = active.currentMediaItemIndex
         val totalCount = active.mediaItemCount
         val remainingInQueue = if (currentIdx in 0 until totalCount) (totalCount - currentIdx) else 6
-        val setTotal = _state.value.autoDJSetTotalTracks ?: remainingInQueue.coerceIn(2, 6)
+        val setTotal = _state.value.autoDJSetTotalTracks ?: remainingInQueue.coerceIn(5, 6)
         val setCur = _state.value.autoDJSetCurrentIndex ?: 1
         val isLastTrack = setCur >= setTotal
-        val n = setTotal.coerceIn(2, 6)
+        val n = setTotal.coerceIn(5, 6)
 
-        // Dynamically partition around 5 min (~300s) across N tracks (2, 3, 4, 5, 6) with 16s transitions:
+        // Dynamically partition around 5 min (~300s) across N mini-tracks (at least 4-5 transitions of ~16s):
         // Total duration = N * targetTrackDuration - (N - 1) * 16s ≈ 300s
         // => targetTrackDuration = (300s + (N - 1) * 16s) / N
-        val targetTrackDurationMs = ((300_000L + (n - 1) * 16_000L) / n).coerceIn(45_000L, 160_000L)
+        val targetTrackDurationMs = ((300_000L + (n - 1) * 16_000L) / n).coerceIn(45_000L, 75_000L)
         val targetMs = startCueMs + targetTrackDurationMs
         val minTarget = (startCueMs + targetTrackDurationMs - 15_000L).coerceAtLeast(startCueMs + 20_000L)
         // Allow the final song stanza to breathe naturally around 5 min (up to +45s) to complete its musical stanza with zero cut:
@@ -4963,6 +4965,8 @@ class MusicPlayer @Inject constructor(
         handOffCrossfade(targetStandby, fastFadeMs, isManualSkip = true)
     }
 
+    private var autoDJFillJob: Job? = null
+
     fun setAutoDJEnabled(enabled: Boolean) {
         applicationScope.launch {
             settingsPreferences.setAutoDJEnabled(enabled)
@@ -4972,7 +4976,8 @@ class MusicPlayer @Inject constructor(
             val curIdx = curDeck.currentMediaItemIndex
             val totalCount = curDeck.mediaItemCount
             val remaining = if (curIdx in 0 until totalCount) (totalCount - curIdx) else 6
-            val setTotal = remaining.coerceIn(2, 6)
+            // Auto DJ set is always targeted at 6 mini-tracks (5 transitions) under ~5 min
+            val setTotal = 6
             val seed = _state.value.current
             _state.update {
                 it.copy(
@@ -4983,8 +4988,12 @@ class MusicPlayer @Inject constructor(
                     autoDJStatus = "Auto DJ: ~5-Min Mix (Track 1 of $setTotal)"
                 )
             }
+            if (remaining < setTotal) {
+                fillAutoDJQueueIfNeeded(seed, targetTotal = setTotal)
+            }
         } else {
             isCompletingAutoDJMix = false
+            autoDJFillJob?.cancel()
             _state.update {
                 it.copy(
                     isAutoDJActive = false,
@@ -4993,6 +5002,64 @@ class MusicPlayer @Inject constructor(
                     autoDJSetTotalTracks = null,
                     autoDJSetCurrentIndex = null,
                 )
+            }
+        }
+    }
+
+    private fun fillAutoDJQueueIfNeeded(seed: PlayableTrack?, targetTotal: Int = 6) {
+        if (autoDJFillJob?.isActive == true) return
+        val currentDeck = activeDeck ?: player
+        val currentIndex = currentDeck.currentMediaItemIndex
+        val totalCount = currentDeck.mediaItemCount
+        val remaining = if (currentIndex in 0 until totalCount) (totalCount - currentIndex) else 0
+        val needed = targetTotal - remaining
+        if (needed <= 0) return
+
+        val seedVideoId = seed?.videoId ?: currentDeck.currentMediaItem?.mediaId
+        autoDJFillJob = applicationScope.launch(Dispatchers.IO) {
+            try {
+                var fetchedTracks: List<PlayableTrack> = emptyList()
+                if (!seedVideoId.isNullOrBlank()) {
+                    val result = retryRadioRequest { innerTube.fetchRadio(seedVideoId) }
+                    if (result != null && result.tracks.isNotEmpty()) {
+                        fetchedTracks = result.tracks.map { it.toPlayableTrack() }
+                    }
+                }
+
+                withContext(Dispatchers.Main.immediate) {
+                    if (!_state.value.isAutoDJActive || !playerDelegate.isInitialized()) return@withContext
+                    val currentQueue = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).toPlayableTrack() }
+                    val currentKeys = currentQueue.mapTo(mutableSetOf()) { it.queueKey() }
+                    val currentVideoIds = currentQueue.mapNotNullTo(mutableSetOf()) { it.videoId }
+
+                    val validToAdd = fetchedTracks.filter { 
+                        it.queueKey() !in currentKeys && (it.videoId == null || it.videoId !in currentVideoIds)
+                    }.take(needed)
+
+                    val tracksToAppend = if (validToAdd.isNotEmpty()) {
+                        validToAdd
+                    } else if (currentQueue.isNotEmpty()) {
+                        val cycleList = mutableListOf<PlayableTrack>()
+                        var cycleIdx = 0
+                        while (cycleList.size < needed) {
+                            cycleList.add(currentQueue[cycleIdx % currentQueue.size])
+                            cycleIdx++
+                        }
+                        cycleList
+                    } else {
+                        emptyList()
+                    }
+
+                    if (tracksToAppend.isNotEmpty()) {
+                        player.addMediaItems(tracksToAppend.map(PlayableTrack::toMediaItem))
+                        refresh(player)
+                        enrichUpcomingQueue(player.currentMediaItemIndex)
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (e: Exception) {
+                android.util.Log.d("MusicPlayer", "Failed to fill Auto DJ queue", e)
             }
         }
     }
