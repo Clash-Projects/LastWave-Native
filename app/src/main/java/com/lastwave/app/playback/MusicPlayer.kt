@@ -3581,9 +3581,9 @@ class MusicPlayer @Inject constructor(
     }
 
     private fun computeAutoDJOutCueMs(startCueMs: Long): Long {
-        val targetMs = startCueMs + 50_000L
-        val minTarget = startCueMs + 45_000L
-        val maxTarget = startCueMs + 60_000L
+        val targetMs = startCueMs + 55_000L
+        val minTarget = startCueMs + 50_000L
+        val maxTarget = startCueMs + 65_000L
 
         val lines = activeTrackLyrics
         if (lines.isNullOrEmpty()) {
@@ -3693,7 +3693,7 @@ class MusicPlayer @Inject constructor(
         autoMixNextTrack = nextTrack
         autoMixHandedOver = false
 
-        val durationMs = 6_000L
+        val durationMs = 9_000L
         overlapDurationMs = durationMs
 
         if (nativeAutoMixEngine.get().isAvailable) {
@@ -3705,10 +3705,10 @@ class MusicPlayer @Inject constructor(
 
         val bpmA = if (nativeAutoMixEngine.get().isAvailable) nativeAutoMixEngine.get().deckABpm else 0f
         val bpmB = if (nativeAutoMixEngine.get().isAvailable) nativeAutoMixEngine.get().deckBBpm else 0f
-        val canTempoMatch = (bpmA > 40f && bpmB > 40f && kotlin.math.abs(bpmA - bpmB) / bpmB <= 0.08f)
-        val initialSpeedB = if (canTempoMatch) (bpmA / bpmB).coerceIn(0.92f, 1.08f) else 1.0f
 
-        standby.playbackParameters = PlaybackParameters(initialSpeedB, 1.0f)
+        // Native 1.0f playback speed: zero time-stretching or tempo-match warble
+        active.playbackParameters = PlaybackParameters(1.0f, 1.0f)
+        standby.playbackParameters = PlaybackParameters(1.0f, 1.0f)
 
         val dspA = deckDspProcessors[if (active === deckAPlayer) "deckA" else "deckB"]
         val dspB = deckDspProcessors[if (standby === deckBPlayer) "deckB" else "deckA"]
@@ -3744,17 +3744,11 @@ class MusicPlayer @Inject constructor(
                     nativeAutoMixEngine.get().setTransitionProgress(t)
                 }
 
-                // Envelope shaping driven smoothly via DeckTransitionAudioProcessor
+                // Envelope shaping driven smoothly via 9-second pure-stereo 3-band DJ isolator
                 dspA?.targetT = t
                 dspB?.targetT = t
                 active.volume = 1.0f
                 standby.volume = 1.0f
-
-                if (canTempoMatch && t >= 0.60f) {
-                    val speedT = ((t - 0.60f) / 0.40f).coerceIn(0f, 1f)
-                    val curSpeed = initialSpeedB + (1.0f - initialSpeedB) * speedT
-                    standby.playbackParameters = PlaybackParameters(curSpeed, 1.0f)
-                }
 
                 if (t >= 0.55f && !autoMixHandedOver) {
                     autoMixHandedOver = true

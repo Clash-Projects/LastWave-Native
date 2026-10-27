@@ -321,8 +321,12 @@ void AutoMixEngine::reset() noexcept {
 
     deckALowL_ = 0.0f;
     deckALowR_ = 0.0f;
+    deckALpHighL_ = 0.0f;
+    deckALpHighR_ = 0.0f;
     deckBLowL_ = 0.0f;
     deckBLowR_ = 0.0f;
+    deckBLpHighL_ = 0.0f;
+    deckBLpHighR_ = 0.0f;
     smoothTA_ = 0.0f;
     smoothTB_ = 0.0f;
     filterInitA_ = false;
@@ -484,10 +488,11 @@ void AutoMixEngine::processDeckA(float* deckAStereo, std::size_t frames, float p
     if (paused_.load(std::memory_order_acquire)) return;
 
     const float targetT = std::clamp(progress, 0.0f, 1.0f);
-    const float alpha = std::clamp(static_cast<float>(2.0 * M_PI * 180.0 / sampleRate_), 0.005f, 0.05f);
+    const float alphaLow = std::clamp(static_cast<float>(2.0 * M_PI * 200.0 / sampleRate_), 0.005f, 0.08f);
+    const float alphaHigh = std::clamp(static_cast<float>(2.0 * M_PI * 3200.0 / sampleRate_), 0.05f, 0.55f);
 
     for (std::size_t f = 0; f < frames; ++f) {
-        smoothTA_ += 0.0005f * (targetT - smoothTA_);
+        smoothTA_ += 0.0003f * (targetT - smoothTA_);
         const float st = std::clamp(smoothTA_, 0.0f, 1.0f);
 
         const float inL = deckAStereo[f * 2];
@@ -500,27 +505,32 @@ void AutoMixEngine::processDeckA(float* deckAStereo, std::size_t frames, float p
         if (!filterInitA_) {
             deckALowL_ = inL;
             deckALowR_ = inR;
+            deckALpHighL_ = inL;
+            deckALpHighR_ = inR;
             filterInitA_ = true;
         } else {
-            deckALowL_ += alpha * (inL - deckALowL_);
-            deckALowR_ += alpha * (inR - deckALowR_);
+            deckALowL_ += alphaLow * (inL - deckALowL_);
+            deckALowR_ += alphaLow * (inR - deckALowR_);
+            deckALpHighL_ += alphaHigh * (inL - deckALpHighL_);
+            deckALpHighR_ += alphaHigh * (inR - deckALpHighR_);
         }
 
-        const float highL = inL - deckALowL_;
-        const float highR = inR - deckALowR_;
+        // Exact 3-band split where (low + mid + high == in) with ZERO phase blur:
+        const float midL = deckALpHighL_ - deckALowL_;
+        const float midR = deckALpHighR_ - deckALowR_;
+        const float highL = inL - deckALpHighL_;
+        const float highR = inR - deckALpHighR_;
 
-        const float midVocal = 0.5f * (highL + highR);
-        const float sideInst = 0.5f * (highL - highR);
+        // High Band (>3200 Hz): Blends across the entire 9.0 seconds
+        const float highGainA = std::cos(st * static_cast<float>(M_PI) * 0.5f);
+        // Low Band (<200 Hz): Smoothly swaps in the middle (t = 0.30 -> 0.65)
+        const float lowGainA = 1.0f - calcSCurve((st - 0.30f) / 0.35f);
+        // Mid Band (200-3200 Hz): Staggered in pure stereo
+        const float midGainA = 1.0f - calcSCurve((st - 0.05f) / 0.50f);
 
-        const float vocalGainA = 1.0f - calcSCurve(st / 0.42f);
-        const float bassGainA  = 1.0f - calcSCurve((st - 0.25f) / 0.40f);
-        const float sideGainA  = 1.0f - calcSCurve(st);
-
-        float outL = deckALowL_ * bassGainA + midVocal * vocalGainA + sideInst * sideGainA;
-        float outR = deckALowR_ * bassGainA + midVocal * vocalGainA - sideInst * sideGainA;
-
-        if (std::abs(outL) > 0.85f) outL = std::tanh(outL * 0.90f);
-        if (std::abs(outR) > 0.85f) outR = std::tanh(outR * 0.90f);
+        const float headroom = 1.0f - 0.18f * std::sin(st * static_cast<float>(M_PI));
+        const float outL = (deckALowL_ * lowGainA + midL * midGainA + highL * highGainA) * headroom;
+        const float outR = (deckALowR_ * lowGainA + midR * midGainA + highR * highGainA) * headroom;
 
         deckAStereo[f * 2] = std::clamp(outL, -0.999f, 0.999f);
         deckAStereo[f * 2 + 1] = std::clamp(outR, -0.999f, 0.999f);
@@ -532,10 +542,11 @@ void AutoMixEngine::processDeckB(float* deckBStereo, std::size_t frames, float p
     if (paused_.load(std::memory_order_acquire)) return;
 
     const float targetT = std::clamp(progress, 0.0f, 1.0f);
-    const float alpha = std::clamp(static_cast<float>(2.0 * M_PI * 180.0 / sampleRate_), 0.005f, 0.05f);
+    const float alphaLow = std::clamp(static_cast<float>(2.0 * M_PI * 200.0 / sampleRate_), 0.005f, 0.08f);
+    const float alphaHigh = std::clamp(static_cast<float>(2.0 * M_PI * 3200.0 / sampleRate_), 0.05f, 0.55f);
 
     for (std::size_t f = 0; f < frames; ++f) {
-        smoothTB_ += 0.0005f * (targetT - smoothTB_);
+        smoothTB_ += 0.0003f * (targetT - smoothTB_);
         const float st = std::clamp(smoothTB_, 0.0f, 1.0f);
 
         const float inL = deckBStereo[f * 2];
@@ -548,27 +559,32 @@ void AutoMixEngine::processDeckB(float* deckBStereo, std::size_t frames, float p
         if (!filterInitB_) {
             deckBLowL_ = inL;
             deckBLowR_ = inR;
+            deckBLpHighL_ = inL;
+            deckBLpHighR_ = inR;
             filterInitB_ = true;
         } else {
-            deckBLowL_ += alpha * (inL - deckBLowL_);
-            deckBLowR_ += alpha * (inR - deckBLowR_);
+            deckBLowL_ += alphaLow * (inL - deckBLowL_);
+            deckBLowR_ += alphaLow * (inR - deckBLowR_);
+            deckBLpHighL_ += alphaHigh * (inL - deckBLpHighL_);
+            deckBLpHighR_ += alphaHigh * (inR - deckBLpHighR_);
         }
 
-        const float highL = inL - deckBLowL_;
-        const float highR = inR - deckBLowR_;
+        // Exact 3-band split where (low + mid + high == in) with ZERO phase blur:
+        const float midL = deckBLpHighL_ - deckBLowL_;
+        const float midR = deckBLpHighR_ - deckBLowR_;
+        const float highL = inL - deckBLpHighL_;
+        const float highR = inR - deckBLpHighR_;
 
-        const float midVocal = 0.5f * (highL + highR);
-        const float sideInst = 0.5f * (highL - highR);
+        // High Band (>3200 Hz): Blends across the entire 9.0 seconds
+        const float highGainB = std::sin(st * static_cast<float>(M_PI) * 0.5f);
+        // Low Band (<200 Hz): Smoothly swaps in the middle (t = 0.30 -> 0.65)
+        const float lowGainB = calcSCurve((st - 0.30f) / 0.35f);
+        // Mid Band (200-3200 Hz): Staggered in pure stereo
+        const float midGainB = calcSCurve((st - 0.35f) / 0.50f);
 
-        const float sideGainB  = calcSCurve(st);
-        const float bassGainB  = calcSCurve((st - 0.25f) / 0.40f);
-        const float vocalGainB = calcSCurve((st - 0.34f) / 0.42f);
-
-        float outL = deckBLowL_ * bassGainB + midVocal * vocalGainB + sideInst * sideGainB;
-        float outR = deckBLowR_ * bassGainB + midVocal * vocalGainB - sideInst * sideGainB;
-
-        if (std::abs(outL) > 0.85f) outL = std::tanh(outL * 0.90f);
-        if (std::abs(outR) > 0.85f) outR = std::tanh(outR * 0.90f);
+        const float headroom = 1.0f - 0.18f * std::sin(st * static_cast<float>(M_PI));
+        const float outL = (deckBLowL_ * lowGainB + midL * midGainB + highL * highGainB) * headroom;
+        const float outR = (deckBLowR_ * lowGainB + midR * midGainB + highR * highGainB) * headroom;
 
         deckBStereo[f * 2] = std::clamp(outL, -0.999f, 0.999f);
         deckBStereo[f * 2 + 1] = std::clamp(outR, -0.999f, 0.999f);
@@ -620,14 +636,9 @@ void AutoMixEngine::process(float* deckAStereo, std::size_t frames) noexcept {
             std::fill(deckBScratch_.data() + actualDeckBFrames * 2, deckBScratch_.data() + frames * 2, 0.0f);
         }
 
-        // Time-stretch Deck B
-        const std::size_t stretchedCap = deckBStretchedScratch_.size() / 2;
-        std::size_t stretchedFrames = deckBStretcher_.process(
-            deckBScratch_.data(), frames, deckBStretchedScratch_.data(), stretchedCap);
-        if (stretchedFrames < frames) {
-            std::copy(deckBScratch_.begin() + stretchedFrames * 2, deckBScratch_.begin() + frames * 2,
-                      deckBStretchedScratch_.begin() + stretchedFrames * 2);
-        }
+        // Zero time-stretching: native 1.0f playback speed
+        std::copy(deckBScratch_.begin(), deckBScratch_.begin() + frames * 2,
+                  deckBStretchedScratch_.begin());
 
         // Apply DSP on Deck A and Deck B
         processDeckA(deckAStereo, frames, transitionProgress_);
@@ -728,19 +739,13 @@ bool AutoMixEngine::processDeckBuffer(
         processDeckB(scratch, frameCount, p);
     }
 
-    // Apply soft-knee limiter
-    for (std::size_t i = 0; i < frameCount * 2; ++i) {
-        scratch[i] = applySoftKneeLimiter(scratch[i]);
-    }
-
     // 3. Pack Float32 back to wire format
     if (encoding != 3) {
         switch (encoding) {
             case 0: { // PCM_I16
                 auto* out = static_cast<std::int16_t*>(pcm);
                 for (std::size_t i = 0; i < frameCount * 2; ++i) {
-                    const float s = std::tanh(scratch[i] * 0.85f) * 1.12f;
-                    const auto pcmVal = static_cast<std::int32_t>(std::lrintf(s * 32767.0f));
+                    const auto pcmVal = static_cast<std::int32_t>(std::lrintf(scratch[i] * 32767.0f));
                     out[i] = static_cast<std::int16_t>(std::clamp(pcmVal, -32767, 32767));
                 }
                 break;
@@ -748,8 +753,7 @@ bool AutoMixEngine::processDeckBuffer(
             case 1: { // PCM_I24_PACKED
                 auto* out = static_cast<std::uint8_t*>(pcm);
                 for (std::size_t i = 0; i < frameCount * 2; ++i) {
-                    const float s = std::tanh(scratch[i] * 0.85f) * 1.12f;
-                    const auto val = std::clamp(static_cast<std::int32_t>(std::lrintf(s * 8388607.0f)), -8388607, 8388607);
+                    const auto val = std::clamp(static_cast<std::int32_t>(std::lrintf(scratch[i] * 8388607.0f)), -8388607, 8388607);
                     const std::size_t offset = i * 3;
                     out[offset] = static_cast<std::uint8_t>(val & 0xFF);
                     out[offset + 1] = static_cast<std::uint8_t>((val >> 8) & 0xFF);
@@ -760,8 +764,7 @@ bool AutoMixEngine::processDeckBuffer(
             case 2: { // PCM_I32
                 auto* out = static_cast<std::int32_t*>(pcm);
                 for (std::size_t i = 0; i < frameCount * 2; ++i) {
-                    const float s = std::tanh(scratch[i] * 0.85f) * 1.12f;
-                    const double scaled = static_cast<double>(s) * 2147483647.0;
+                    const double scaled = static_cast<double>(scratch[i]) * 2147483647.0;
                     out[i] = static_cast<std::int32_t>(std::clamp(scaled, -2147483647.0, 2147483647.0));
                 }
                 break;
