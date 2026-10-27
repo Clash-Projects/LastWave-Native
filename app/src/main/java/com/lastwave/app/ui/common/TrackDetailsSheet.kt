@@ -99,45 +99,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import java.net.URLEncoder
+import com.lastwave.app.data.network.ITunesSearchClient
+import com.lastwave.app.data.network.ITunesSong
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
-
-@Serializable
-private data class ITunesTrackResult(
-    val artistName: String? = null,
-    val collectionName: String? = null,
-    @SerialName("trackName") val trackName: String? = null,
-    val primaryGenreName: String? = null,
-    val releaseDate: String? = null,
-    val trackNumber: Int? = null,
-    val trackCount: Int? = null,
-    val discNumber: Int? = null,
-    val discCount: Int? = null,
-    val trackTimeMillis: Long? = null,
-    val copyright: String? = null,
-    val contentAdvisoryRating: String? = null,
-    @SerialName("isStreamable") val isStreamable: Boolean? = null,
-)
-
-@Serializable
-private data class ITunesSearchResponse(
-    val resultCount: Int = 0,
-    val results: List<ITunesTrackResult> = emptyList(),
-)
 
 data class TrackSpecs(
     val title: String,
@@ -244,7 +218,7 @@ class TrackDetailsViewModel @Inject constructor(
     private val lastFmApi: LastFmApiService,
     private val sessionPreferences: SessionPreferences,
     private val genreResolver: GenreResolver,
-    private val okHttpClient: OkHttpClient,
+    private val iTunesSearchClient: ITunesSearchClient,
     private val canvasRepository: CanvasRepository,
 ) : ViewModel() {
 
@@ -614,19 +588,9 @@ class TrackDetailsViewModel @Inject constructor(
         }
     }
 
-    private fun fetchITunesMetadata(title: String, artist: String): ITunesTrackResult? {
-        val term = "$title $artist"
-        val url = "https://itunes.apple.com/search?term=${URLEncoder.encode(term, "UTF-8")}&media=music&entity=song&limit=3"
-        val request = Request.Builder().url(url).build()
-        val response = okHttpClient.newCall(request).execute()
-        if (!response.isSuccessful) return null
-        val body = response.body?.string().orEmpty()
-        val parsed = json.decodeFromString<ITunesSearchResponse>(body)
-        // Best match: prefer exact title+artist match
-        return parsed.results.firstOrNull { result ->
-            result.trackName.equals(title, ignoreCase = true) &&
-                result.artistName?.contains(artist, ignoreCase = true) == true
-        } ?: parsed.results.firstOrNull()
+    private suspend fun fetchITunesMetadata(title: String, artist: String): ITunesSong? {
+        return iTunesSearchClient.searchBestMatch(title, artist)
+            ?: iTunesSearchClient.searchSongs("$title $artist", limit = 3).firstOrNull()
     }
 
     private fun formatReleaseDate(isoDate: String): String? {

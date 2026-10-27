@@ -2,29 +2,17 @@ package com.lastwave.app.data.genre
 
 import android.util.Log
 import com.lastwave.app.data.local.SessionPreferences
+import com.lastwave.app.data.network.ITunesSearchClient
 import com.lastwave.app.data.network.LastFmApiService
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import java.net.URLEncoder
-import java.util.concurrent.TimeUnit
 import java.util.LinkedHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val TAG = "GenreResolver"
 private const val CACHE_MAX = 300
-
-@Serializable
-private data class ITunesGenreResult(val primaryGenreName: String? = null)
-
-@Serializable
-private data class ITunesGenreSearchResponse(val results: List<ITunesGenreResult> = emptyList())
 
 /**
  * Faithful port of _resolveTrackGenre(): track.getInfo's top 2 tags
@@ -37,10 +25,9 @@ private data class ITunesGenreSearchResponse(val results: List<ITunesGenreResult
 class GenreResolver @Inject constructor(
     private val api: LastFmApiService,
     private val sessionPreferences: SessionPreferences,
-    okHttpClient: OkHttpClient,
+    private val iTunesSearchClient: ITunesSearchClient,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
-    private val client = okHttpClient.newBuilder().callTimeout(6, TimeUnit.SECONDS).build()
 
     // Simple LRU: LinkedHashMap with access order + manual eviction, guarded
     // by a lock since resolve() can be called concurrently from many rows.
@@ -87,22 +74,11 @@ class GenreResolver @Inject constructor(
 
         // Step 2: iTunes primaryGenreName fallback
         if (result.isEmpty()) {
-            result = withContext(Dispatchers.IO) {
-                try {
-                    val term = "$name $artist"
-                    val url = "https://itunes.apple.com/search?term=${URLEncoder.encode(term, "UTF-8")}&media=music&entity=song&limit=1"
-                    val request = Request.Builder().url(url).build()
-                    client.newCall(request).execute().use { resp ->
-                        if (!resp.isSuccessful) return@withContext ""
-                        val body = resp.body?.string().orEmpty()
-                        val parsed = json.decodeFromString<ITunesGenreSearchResponse>(body)
-                        val genre = parsed.results.firstOrNull()?.primaryGenreName
-                        if (!genre.isNullOrBlank() && genre != "Music") genre else ""
-                    }
-                } catch (e: Exception) {
-                    Log.d(TAG, "iTunes genre lookup miss for $name / $artist", e)
-                    ""
-                }
+            val song = iTunesSearchClient.searchBestMatch(name, artist)
+                ?: iTunesSearchClient.searchSongs("$name $artist", limit = 1).firstOrNull()
+            val genre = song?.primaryGenreName
+            if (!genre.isNullOrBlank() && genre != "Music") {
+                result = genre
             }
         }
 
