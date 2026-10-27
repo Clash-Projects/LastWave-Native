@@ -29,11 +29,13 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -173,6 +175,41 @@ fun SpotifyLoginScreen(
                 subtitle = "Sign in to unlock Spotify Canvas video loops",
                 onBack = onBack,
                 actions = {
+                    if (isConnected) {
+                        FilledTonalIconButton(
+                            onClick = {
+                                viewModel.clearConnection()
+                                runCatching {
+                                    val cm = CookieManager.getInstance()
+                                    for (domain in listOf("https://spotify.com", "https://accounts.spotify.com", "https://open.spotify.com")) {
+                                        val cookies = cm.getCookie(domain) ?: continue
+                                        for (cookie in cookies.split(";")) {
+                                            val name = cookie.substringBefore("=").trim()
+                                            if (name.isNotEmpty()) {
+                                                cm.setCookie(domain, "$name=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/")
+                                            }
+                                        }
+                                    }
+                                    cm.flush()
+                                }
+                                captured = false
+                                capturedSpdc = null
+                                webViewRef?.loadUrl(SpotifyLoginUrls.LOGIN_URL)
+                                android.widget.Toast.makeText(context, "Spotify disconnected", android.widget.Toast.LENGTH_SHORT).show()
+                            },
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                            ),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Logout,
+                                contentDescription = "Log out of Spotify",
+                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                    }
                     FilledTonalIconButton(
                         onClick = { showManualDialog = true },
                         colors = IconButtonDefaults.filledTonalIconButtonColors(

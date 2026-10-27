@@ -65,6 +65,8 @@
     <string name="theme_mode_system">System</string>
     <string name="theme_mode_light">Light</string>
     <string name="theme_mode_dark">Dark</string>
+    <string name="settings_lastwave_theme">LastWave Signature Theme</string>
+    <string name="settings_lastwave_theme_sub">Bespoke logo palette • Electric Lime &amp; Obsidian Teal</string>
     <string name="settings_amoled">AMOLED Mode</string>
     <string name="settings_amoled_sub">Pure black background (Dark mode only)</string>
     <string name="settings_dynamic_color">Dynamic Color</string>
@@ -76,10 +78,27 @@
     <string name="settings_section_accent">Accent</string>
 
     <string name="settings_section_experimental">Experimental</string>
+    <string name="settings_music_video">Music Video</string>
+    <string name="settings_music_video_on">Watch synced music videos in Now Playing menu</string>
+    <string name="settings_music_video_off">Disabled (enable to watch synced video in player menu)</string>
+    <string name="menu_watch_video">Watch Video</string>
+    <string name="menu_watch_video_sub">Exact ms sync with playing music</string>
+    <string name="video_sync_tag">SYNCED</string>
+    <string name="video_buffering">Syncing video stream…</string>
+    <string name="video_stream_unavailable">Unable to load video stream for this track</string>
+    <string name="video_retry">Retry</string>
+    <string name="video_exit_fullscreen">Exit full screen</string>
+    <string name="video_enter_fullscreen">Full screen</string>
+    <string name="video_quality">Quality</string>
+    <string name="video_quality_title">Select Video Quality</string>
+    <string name="video_quality_auto">Auto</string>
+    <string name="video_quality_auto_recommended">Auto (Recommended)</string>
     <string name="settings_liquid_glass">Liquid Glass</string>
     <string name="settings_liquid_glass_sub">iOS-style translucent materials across the app</string>
     <string name="settings_md3_nav_bar">Material 3 Navigation Bar</string>
-    <string name="settings_md3_nav_bar_sub">Use classic full-width bottom navigation instead of the floating dock</string>
+    <string name="settings_md3_nav_bar_sub">Enable modern floating dock navigation instead of classic bottom tabs</string>
+    <string name="settings_hide_nav_tabs">Hide Navigation Tabs</string>
+    <string name="settings_hide_nav_tabs_sub">Completely hide navigation tabs and switch between screens using swipe gestures only</string>
     <string name="settings_lyrics_animation">Lyrics Animation</string>
     <string name="settings_lyrics_provider">Lyrics provider</string>
     <string name="settings_lyrics_provider_desc">Tried first for every song. If it returns nothing, the app automatically falls through to the other providers.</string>
@@ -718,6 +737,7 @@
     <string name="search_hint_users">Search Last.fm users…</string>
     <string name="search_hint_yt">Search YouTube Music…</string>
     <string name="search_tab_tracks">Tracks</string>
+    <string name="search_tab_podcasts">Podcasts</string>
     <string name="search_tab_artists">Artists</string>
     <string name="search_tab_albums">Albums</string>
     <string name="search_tab_playlists">Playlists</string>
@@ -1000,7 +1020,7 @@
     <string name="ytimp_refresh">Refresh</string>
     <string name="ytimp_no_library">No library playlists found</string>
     <string name="ytimp_no_library_sub">Create a playlist in YouTube Music (or refresh) and it will show up here.</string>
-    <string name="ytimp_search_hint">Search YouTube Music playlists…</string>
+    <string name="ytimp_search_hint">Search playlists or paste a YouTube URL…</string>
     <string name="ytimp_searching">Searching YouTube Music playlists…</string>
     <string name="ytimp_resolving">Resolving Playlist…</string>
     <string name="ytimp_preview_import">Preview &amp; Import Link</string>
@@ -1099,7 +1119,7 @@
 
     <!-- Genres -->
     <string name="ge_title">Your Genres</string>
-    <string name="ge_sub">Based on your listening history</string>
+    <string name="ge_sub">Your Genres</string>
     <string name="ge_empty">No genre data yet</string>
     <string name="ge_tracks">Your Tracks</string>
     <string name="ge_discover">Discover More</string>

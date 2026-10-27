@@ -44,7 +44,11 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
@@ -123,6 +127,7 @@ import java.util.Locale
 @Composable
 fun PlaylistScreen(
     onOpenPlaylist: (Long) -> Unit = {},
+    onOpenGenerator: () -> Unit = {},
     viewModel: PlaylistViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -130,6 +135,7 @@ fun PlaylistScreen(
     val musicPlayer = com.lastwave.app.ui.player.LocalMusicPlayer.current
     val playbackState by musicPlayer.chromeState.collectAsStateWithLifecycle()
     val addToPlaylist = com.lastwave.app.ui.player.LocalAddToPlaylist.current
+    var searchQuery by remember { mutableStateOf("") }
     var coverEditorPlaylistId by remember { mutableStateOf<Long?>(null) }
     var coverPickerPlaylistId by remember { mutableStateOf<Long?>(null) }
     val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -236,6 +242,76 @@ fun PlaylistScreen(
                 },
             )
 
+            // Search Bar + Generator button matching Downloads tab design
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = {
+                        Text(
+                            "Search playlists...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Filled.Search, contentDescription = "Search", modifier = Modifier.size(20.dp))
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Filled.Clear, contentDescription = "Clear", modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(52.dp),
+                )
+
+                FilledTonalButton(
+                    onClick = onOpenGenerator,
+                    shape = RoundedCornerShape(16.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                    modifier = Modifier.height(52.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.AutoAwesome,
+                        contentDescription = "Generator",
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "Generator",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+
+            val filteredPlaylists = remember(state.playlists, searchQuery) {
+                if (searchQuery.isBlank()) state.playlists
+                else state.playlists.filter {
+                    it.title.contains(searchQuery, ignoreCase = true) ||
+                        it.tracks.any { t -> t.name.contains(searchQuery, ignoreCase = true) || t.artist.contains(searchQuery, ignoreCase = true) }
+                }
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -243,9 +319,9 @@ fun PlaylistScreen(
             ) {
                 when {
                     state.isLoading && state.playlists.isEmpty() && !state.isGenerating -> LoadingState()
-                    state.playlists.isEmpty() && !state.isGenerating -> EmptyState()
+                    filteredPlaylists.isEmpty() && !state.isGenerating -> EmptyState()
                     else -> LazyColumn(
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = FloatingNavDefaults.contentBottomPadding()),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = FloatingNavDefaults.contentBottomPadding()),
                         verticalArrangement = Arrangement.spacedBy(com.lastwave.app.ui.common.GroupGap),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
@@ -276,13 +352,8 @@ fun PlaylistScreen(
                             }
                         }
 
-                        // Stable id-only keys: embedding the index makes every key
-                        // change on pin/sort/insert, which combined with
-                        // animateItem() crashes Lazy layout at the scroll edge
-                        // ("key was already used" / anchor OOB). Ids are unique
-                        // Room PKs so they are stable across reorder.
                         itemsIndexed(
-                            items = state.playlists,
+                            items = filteredPlaylists,
                             key = { _, playlist -> "pl_${playlist.id}_${playlist.remotePlaylistId ?: "local"}" },
                         ) { index, playlist ->
                             val isNewest = playlist.id == state.newestId
@@ -290,7 +361,7 @@ fun PlaylistScreen(
                                 PlaylistCard(
                                     playlist = playlist,
                                     isNewest = isNewest,
-                                    position = com.lastwave.app.ui.common.groupPositionFor(index, state.playlists.size),
+                                    position = com.lastwave.app.ui.common.groupPositionFor(index, filteredPlaylists.size),
                                     isRegenerating = state.regeneratingId == playlist.id,
                                     currentTrack = playbackState.current,
                                     isPlaying = playbackState.isPlaying,

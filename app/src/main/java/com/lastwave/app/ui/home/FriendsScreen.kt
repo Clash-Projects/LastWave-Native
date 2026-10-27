@@ -80,7 +80,7 @@ fun FriendsScreen(
         ) {
         ExpressiveHeader(
             title = "Friends",
-            subtitle = if (friends.isNotEmpty()) "Long-press a friend to pin them to the top" else null,
+            subtitle = if (friends.isNotEmpty()) "Long-press a friend to pin" else null,
             onBack = onBack,
         )
 

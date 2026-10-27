@@ -49,8 +49,21 @@ class AlbumRepository @Inject constructor(
             if (targetBrowseId == null) {
                 val query = if (cleanArtist.isNotBlank()) "$cleanTitle $cleanArtist" else cleanTitle
                 val searchResults = runCatching { innerTube.searchAlbums(query, limit = 5) }.getOrNull().orEmpty()
-                val match = searchResults.firstOrNull { it.name.equals(cleanTitle, ignoreCase = true) }
+                var match = searchResults.firstOrNull { it.name.equals(cleanTitle, ignoreCase = true) }
                     ?: searchResults.firstOrNull()
+                if (match == null && cleanArtist.isNotBlank()) {
+                    val split = com.lastwave.app.util.ArtistHelper.splitArtists(cleanArtist)
+                    if (split.size > 1) {
+                        val secondaryResults = runCatching { innerTube.searchAlbums("$cleanTitle ${split.first()}", limit = 5) }.getOrNull().orEmpty()
+                        match = secondaryResults.firstOrNull { it.name.equals(cleanTitle, ignoreCase = true) }
+                            ?: secondaryResults.firstOrNull()
+                    }
+                    if (match == null) {
+                        val titleOnlyResults = runCatching { innerTube.searchAlbums(cleanTitle, limit = 5) }.getOrNull().orEmpty()
+                        match = titleOnlyResults.firstOrNull { it.name.equals(cleanTitle, ignoreCase = true) }
+                            ?: titleOnlyResults.firstOrNull()
+                    }
+                }
                 targetBrowseId = match?.browseId
             }
             val resolvedId = targetBrowseId

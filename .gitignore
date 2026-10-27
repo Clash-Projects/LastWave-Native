@@ -46,6 +46,9 @@ Thumbs.db
 *.codex
 *.codex*
 *.pid
+*.exe
+*.raw
+*.obj
 
 # Credentials & Environment
 Screenshot/release.jks
@@ -84,3 +87,7 @@ lastwave-jam/
 # Superpowers artifacts and documentation
 docs/superpowers/
 .superpowers/
+
+# Reference screenshots
+reference screenshot/
+

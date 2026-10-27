@@ -154,6 +154,56 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "audio.autodj",
+                    title = "Auto DJ",
+                    subtitle = "Autonomous queue replenishment & predictive background resolution",
+                    keywords = listOf(
+                        "auto dj", "autodj", "prefetch", "predictive", "queue", "automatic queue",
+                        "mixxx", "background resolve", "endless playback"
+                    ),
+                    icon = Icons.Filled.AutoAwesome,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Audio & Playback",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "audio.automix",
+                    title = "Automix (AutoDJ)",
+                    subtitle = "Seamless tempo-synced DJ blends between queued tracks",
+                    keywords = listOf(
+                        "automix", "autodj", "bpm", "tempo sync", "beat match", "crossfade", "mixxx",
+                        "dj blend", "bass swap", "fade now", "transition"
+                    ),
+                    icon = Icons.Filled.AutoAwesome,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Audio & Playback",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "audio.automix_bars",
+                    title = "Automix Transition Length",
+                    subtitle = "Select 8-bar or 16-bar phrase transition length for Automix blends",
+                    keywords = listOf(
+                        "automix bars", "transition length", "8 bars", "16 bars", "phrase", "automix duration", "dj blend length"
+                    ),
+                    icon = Icons.Filled.AutoAwesome,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Audio & Playback",
+                    type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "audio.crossfade",
                     title = "Crossfade",
                     subtitle = "Blend the end of a track smoothly into the next one",
@@ -429,6 +479,23 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "appearance.lastwave_theme",
+                    title = "LastWave Signature Theme",
+                    subtitle = "Bespoke logo palette with Electric Lime and Obsidian Teal",
+                    keywords = listOf(
+                        "lastwave theme", "brand theme", "special theme", "logo theme", "lime",
+                        "teal", "obsidian", "electric lime", "iconic theme", "brand colors"
+                    ),
+                    icon = Icons.Filled.AutoAwesome,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Appearance",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "appearance.amoled",
                     title = "Pure Black AMOLED",
                     subtitle = "Pitch black surfaces for OLED and AMOLED screens to save battery",
@@ -592,6 +659,23 @@ object SettingsSearchIndex {
                     icon = Icons.Filled.Waves,
                     iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Experimental & Features",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "appearance.music_video",
+                    title = "Music Video",
+                    subtitle = "Watch exact-sync music video of currently playing song in player menu",
+                    keywords = listOf(
+                        "video", "music video", "watch video", "mv", "synced video", "youtube video",
+                        "fullscreen video", "exact ms sync", "now playing video"
+                    ),
+                    icon = Icons.Filled.SmartDisplay,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
                     parentTab = SettingsTab.APPEARANCE,
                     section = "Experimental & Features",
                     type = EntryType.TOGGLE,
@@ -898,7 +982,7 @@ object SettingsSearchIndex {
                     subtitle = "Sign in to enable official Spotify Canvas video loops & library sync",
                     keywords = listOf(
                         "spotify", "spotify account", "connect spotify", "sp_dc", "spotify login",
-                        "canvas login"
+                        "canvas login", "disconnect spotify", "logout spotify", "sign out"
                     ),
                     icon = Icons.Filled.PlayCircle,
                     iconContainer = { MaterialTheme.colorScheme.primaryContainer },

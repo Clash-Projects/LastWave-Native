@@ -23,7 +23,7 @@ import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
 
-enum class SearchTab { TRACKS, ARTISTS, ALBUMS, PLAYLISTS, USERS }
+enum class SearchTab { TRACKS, PODCASTS, ARTISTS, ALBUMS, PLAYLISTS, USERS }
 
 @Immutable
 data class SearchResultItem(
@@ -129,6 +129,19 @@ class SearchRepository @Inject constructor(
                     artworkUrl = playlist.artworkUrl,
                     subtitle = playlist.author?.takeIf(String::isNotBlank) ?: "YouTube Music playlist",
                     entityId = playlist.id,
+                )
+            }
+            SearchTab.PODCASTS -> innerTube.searchPodcasts(trimmed).map { episode ->
+                SearchResultItem(
+                    name = episode.title,
+                    artist = episode.showTitle ?: "Podcast",
+                    artworkUrl = episode.artworkUrl,
+                    subtitle = listOfNotNull(episode.showTitle, episode.publishedLabel)
+                        .filter(String::isNotBlank)
+                        .joinToString(" • ")
+                        .ifBlank { "Podcast" },
+                    videoId = episode.videoId,
+                    entityId = episode.videoId,
                 )
             }
             // No shared key: user search needs a personal key, otherwise empty.

@@ -1,0 +1,165 @@
+{
+  "header": {
+    "musicCarouselShelfBasicHeaderRenderer": {
+      "title": {
+        "runs": [
+          {
+            "text": "Trending community playlists"
+          }
+        ]
+      }
+    }
+  },
+  "contents": [
+    {
+      "musicTwoRowItemRenderer": {
+        "thumbnailRenderer": {
+          "musicThumbnailRenderer": {
+            "thumbnail": {
+              "thumbnails": [
+                {
+                  "url": "https://yt3.googleusercontent.com/hH2kXWQIaaf8RjmSZDltmAIh1FE4oCcNPv-t493831WldxBedr_ncqFIhgxPL7e279MR7BHzDQ=s192",
+                  "width": 192,
+                  "height": 192
+                },
+                {
+                  "url": "https://yt3.googleusercontent.com/hH2kXWQIaaf8RjmSZDltmAIh1FE4oCcNPv-t493831WldxBedr_ncqFIhgxPL7e279MR7BHzDQ=s576",
+                  "width": 576,
+                  "height": 576
+                }
+              ]
+            }
+          }
+        },
+        "aspectRatio": "MUSIC_TWO_ROW_ITEM_THUMBNAIL_ASPECT_RATIO_SQUARE",
+        "title": {
+          "runs": [
+            {
+              "text": "Nostalgia",
+              "navigationEndpoint": {
+                "browseEndpoint": {
+                  "browseId": "VLPLOU-L7v5VnxIQ8X8MkMJ4fcC-TWdGiUop",
+                  "params": "ggMEgALDCg%3D%3D",
+                  "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                      "pageType": "MUSIC_PAGE_TYPE_PLAYLIST"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "subtitle": {
+          "runs": [
+            {
+              "text": "Julkernine's Diary",
+              "navigationEndpoint": {
+                "browseEndpoint": {
+                  "browseId": "UCJ5weOL0Sg7WYaRtTcmrfwg",
+                  "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                      "pageType": "MUSIC_PAGE_TYPE_USER_CHANNEL"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "text": " • "
+            },
+            {
+              "text": "1M views"
+            }
+          ]
+        },
+        "navigationEndpoint": {
+          "browseEndpoint": {
+            "browseId": "VLPLOU-L7v5VnxIQ8X8MkMJ4fcC-TWdGiUop",
+            "params": "ggMEgALDCg%3D%3D",
+            "browseEndpointContextSupportedConfigs": {
+              "browseEndpointContextMusicConfig": {
+                "pageType": "MUSIC_PAGE_TYPE_PLAYLIST"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "musicTwoRowItemRenderer": {
+        "thumbnailRenderer": {
+          "musicThumbnailRenderer": {
+            "thumbnail": {
+              "thumbnails": [
+                {
+                  "url": "https://yt3.googleusercontent.com/vqB3i3G9MGhsF1_8Zc_2nDMKNv7EVek2IeIyH0V7H9y5ABBTBoKPr6e7VsWWvc32LDjYXNU1Jc4=s192",
+                  "width": 192,
+                  "height": 192
+                },
+                {
+                  "url": "https://yt3.googleusercontent.com/vqB3i3G9MGhsF1_8Zc_2nDMKNv7EVek2IeIyH0V7H9y5ABBTBoKPr6e7VsWWvc32LDjYXNU1Jc4=s576",
+                  "width": 576,
+                  "height": 576
+                }
+              ]
+            }
+          }
+        },
+        "aspectRatio": "MUSIC_TWO_ROW_ITEM_THUMBNAIL_ASPECT_RATIO_SQUARE",
+        "title": {
+          "runs": [
+            {
+              "text": "Bollywood Offbeats",
+              "navigationEndpoint": {
+                "browseEndpoint": {
+                  "browseId": "VLPLOrOAuTE-niAgQfgSt1vxde5zc2uBdbwH",
+                  "params": "ggMEgALDCg%3D%3D",
+                  "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                      "pageType": "MUSIC_PAGE_TYPE_PLAYLIST"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "subtitle": {
+          "runs": [
+            {
+              "text": "anotherAbhishek",
+              "navigationEndpoint": {
+                "browseEndpoint": {
+                  "browseId": "UCZ-sTcng1pQWRtOEeG2PKFw",
+                  "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                      "pageType": "MUSIC_PAGE_TYPE_USER_CHANNEL"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "text": " • "
+            },
+            {
+              "text": "2.2M views"
+            }
+          ]
+        },
+        "navigationEndpoint": {
+          "browseEndpoint": {
+            "browseId": "VLPLOrOAuTE-niAgQfgSt1vxde5zc2uBdbwH",
+            "params": "ggMEgALDCg%3D%3D",
+            "browseEndpointContextSupportedConfigs": {
+              "browseEndpointContextMusicConfig": {
+                "pageType": "MUSIC_PAGE_TYPE_PLAYLIST"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

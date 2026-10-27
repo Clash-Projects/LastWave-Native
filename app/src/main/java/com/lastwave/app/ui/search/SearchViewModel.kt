@@ -183,6 +183,18 @@ class SearchViewModel @Inject constructor(
                     }, sourceLabel = "Search")
                 }
             }
+            SearchTab.PODCASTS -> {
+                val selected = PlayableTrack(
+                    title = item.name,
+                    artist = item.artist.orEmpty().ifBlank { "Podcast" },
+                    album = item.subtitle,
+                    artworkUrl = item.artworkUrl,
+                    videoId = item.videoId,
+                    mediaType = com.lastwave.app.playback.MediaType.PODCAST_EPISODE,
+                    showId = item.entityId,
+                )
+                musicPlayer.playPodcastQueue(listOf(selected), startIndex = 0, sourceLabel = "Search")
+            }
             SearchTab.PLAYLISTS, SearchTab.USERS -> Unit
         }
     }

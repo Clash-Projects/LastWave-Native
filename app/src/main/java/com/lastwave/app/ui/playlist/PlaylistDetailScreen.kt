@@ -59,6 +59,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
@@ -161,10 +162,12 @@ enum class PlaylistTrackSort(val labelRes: Int) {
  */
 internal object PlaylistSortMemory {
     private const val PREFS = "playlist_track_sort"
+    private const val GLOBAL_KEY = "global_last_sort"
 
     fun load(context: android.content.Context, playlistId: Long): Pair<PlaylistTrackSort, Boolean> {
-        val raw = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
-            .getString(playlistId.toString(), null)
+        val prefs = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+        val raw = prefs.getString(playlistId.toString(), null)
+            ?: prefs.getString(GLOBAL_KEY, null)
             ?: return PlaylistTrackSort.CUSTOM to true
         val sort = PlaylistTrackSort.entries.firstOrNull { it.name == raw.substringBefore(':') }
             ?: return PlaylistTrackSort.CUSTOM to true
@@ -173,11 +176,9 @@ internal object PlaylistSortMemory {
 
     fun save(context: android.content.Context, playlistId: Long, sort: PlaylistTrackSort, ascending: Boolean) {
         val prefs = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit()
-        if (sort == PlaylistTrackSort.CUSTOM && ascending) {
-            prefs.remove(playlistId.toString())
-        } else {
-            prefs.putString(playlistId.toString(), "${sort.name}:${if (ascending) "asc" else "desc"}")
-        }
+        val serialized = "${sort.name}:${if (ascending) "asc" else "desc"}"
+        prefs.putString(playlistId.toString(), serialized)
+        prefs.putString(GLOBAL_KEY, serialized)
         prefs.apply()
     }
 }
@@ -220,14 +221,19 @@ fun PlaylistDetailScreen(
     }
     val playlist = currentFound ?: cachedPlaylist
 
-    if (playlist == null) {
+    if (playlist == null || (state.isDetailLoading && playlist.tracks.isEmpty())) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            ExpressiveLoadingIndicator(message = "Loading playlist...")
+            ExpressiveLoadingIndicator(message = stringResource(com.lastwave.app.R.string.pd_loading))
         }
         return
     }
 
     val isThisPlaylistPlaying = playbackState.isPlaying && playbackState.sourceLabel == playlist.title
+    val localSongsViewModel: LocalSongsViewModel = hiltViewModel()
+    val localFolders by localSongsViewModel.folders.collectAsStateWithLifecycle()
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) localSongsViewModel.addFolder(uri)
+    }
     var coverEditorOpen by remember { mutableStateOf(false) }
     var coverPickerPending by remember { mutableStateOf(false) }
     val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -536,9 +542,9 @@ fun PlaylistDetailScreen(
                         }
                     }
 
-                    if (playlist.mode == LOCAL_SONGS_MODE) {
+                    if (playlist.mode == LOCAL_SONGS_MODE && localFolders.isEmpty() && playlist.tracks.isEmpty()) {
                         Spacer(Modifier.height(14.dp))
-                        LocalSongsPanel(trackCount = playlist.tracks.size)
+                        LocalSongsPanel(trackCount = playlist.tracks.size, viewModel = localSongsViewModel)
                     }
 
                     Spacer(Modifier.height(18.dp))
@@ -1048,6 +1054,15 @@ fun PlaylistDetailScreen(
                                 },
                             )
                             val isLocalSongs = playlist.mode == LOCAL_SONGS_MODE
+                            if (isLocalSongs) DropdownMenuItem(
+                                text = { Text("Change selected folder") },
+                                leadingIcon = { Icon(Icons.Filled.CreateNewFolder, contentDescription = null) },
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    folderPicker.launch(null)
+                                    overflowMenuOpen = false
+                                },
+                            )
                             if (!isLocalSongs) DropdownMenuItem(
                                 text = { Text(stringResource(com.lastwave.app.R.string.pl_download_all)) },
                                 leadingIcon = { Icon(Icons.Filled.Download, contentDescription = null) },
@@ -1364,35 +1379,29 @@ private fun NativeTrackRow(
         label = "rowBg",
     )
 
-    val rowModifier = if (isPlaying) {
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(
-                Brush.horizontalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
-                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f),
-                    ),
-                ),
-            )
-            .graphicsLayer {
-                scaleX = rowScale
-                scaleY = rowScale
-            }
+    val containerColor = if (isPlaying) {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
     } else {
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .graphicsLayer {
-                scaleX = rowScale
-                scaleY = rowScale
-            }
+        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.70f)
+    }
+    val containerBorder = if (isPlaying) {
+        androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f))
+    } else {
+        androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f))
     }
 
+    val rowModifier = Modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(16.dp))
+        .graphicsLayer {
+            scaleX = rowScale
+            scaleY = rowScale
+        }
+
     Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = Color.Transparent,
+        shape = RoundedCornerShape(16.dp),
+        color = containerColor,
+        border = containerBorder,
         modifier = rowModifier,
     ) {
         Row(
@@ -1507,18 +1516,8 @@ private fun NativeTrackRow(
 
             // Drag handle (only when reorder is enabled by the caller)
             dragHandle?.invoke()
-            // Options menu button
-            IconButton(
-                onClick = onMenu,
-                modifier = Modifier.size(36.dp),
-            ) {
-                Icon(
-                    Icons.Filled.MoreVert,
-                    contentDescription = stringResource(com.lastwave.app.R.string.pd_song_options_cd),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
-                    modifier = Modifier.size(18.dp),
-                )
-            }
+            // Options menu button with stroke / outline container matching Discover and Statistics
+            com.lastwave.app.ui.common.OverflowMenuButton(onClick = onMenu)
         }
     }
 }

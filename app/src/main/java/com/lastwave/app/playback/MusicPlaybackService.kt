@@ -657,27 +657,18 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             ACTION_REPEAT -> musicPlayer.cycleRepeatMode()
             ACTION_STOP -> musicPlayer.stopAndClear()
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        if (musicPlayer.state.value.isPlaying) {
-            // Something is actively playing — leave it running. The
-            // foreground notification is what keeps the service (and the
-            // process) alive; swiping the app from Recents shouldn't kill
-            // playback out from under the user.
-            super.onTaskRemoved(rootIntent)
-            return
-        }
-        // Nothing is playing when the task is removed. Stop the service to
-        // free resources, but do NOT clear the persisted session
-        // (clearSession = false): the old unconditional stopAndClear() wiped
-        // clearPersistedPlaybackSession() here too, so the paused/idle track
-        // and queue vanished and could never be restored on the next
-        // launch. Every other stopAndClear() call site (explicit stop
-        // action, notification "stop", media session onStop) is untouched
-        // and still clears the session as before.
-        musicPlayer.stopAndClear(clearSession = false)
+        // With android:stopWithTask="true" in the Manifest, the system now
+        // automatically stops this service when the task is removed from Recents.
+        // If playback is active, the service is a foreground service (promoted
+        // in onStartCommand) and will survive the task removal.
+        // If nothing is playing, the service is not foreground and will be
+        // stopped by the system, releasing wake/wifi locks via onDestroy().
+        // We no longer need to manually call stopAndClear() here — the system
+        // handles it correctly based on foreground state.
         super.onTaskRemoved(rootIntent)
     }
 
@@ -729,7 +720,9 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
 
     private fun detectTransition(state: MusicPlayerState) {
         val track = state.current ?: return
-        val isEpisode = track.mediaType != com.lastwave.app.playback.MediaType.SONG
+        val isEpisode = track.mediaType != com.lastwave.app.playback.MediaType.SONG ||
+            !track.showId.isNullOrBlank() ||
+            track.artist.equals("Podcast", ignoreCase = true)
         val (cleanTitle, cleanArtist) = cleanTrackMetadata(track.title, track.artist)
         val key = if (isEpisode) "podcast:${track.videoId.orEmpty()}" else "${cleanArtist.lowercase()}|${cleanTitle.lowercase()}"
         if (key == detectedKey) {
@@ -776,7 +769,10 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     }
 
     private fun pingLiveTelemetry(track: PlayableTrack, force: Boolean = false) {
-        if (track.mediaType != com.lastwave.app.playback.MediaType.SONG) return
+        if (track.mediaType != com.lastwave.app.playback.MediaType.SONG ||
+            !track.showId.isNullOrBlank() ||
+            track.artist.equals("Podcast", ignoreCase = true)
+        ) return
         val (cleanTitle, cleanArtist) = cleanTrackMetadata(track.title, track.artist)
         val cover = artworkUrl ?: track.artworkUrl
         scope.launch(Dispatchers.IO) {
@@ -796,7 +792,10 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
 
     private fun announceNowPlaying(state: MusicPlayerState) {
         val track = state.current ?: return
-        if (track.mediaType != com.lastwave.app.playback.MediaType.SONG) return
+        if (track.mediaType != com.lastwave.app.playback.MediaType.SONG ||
+            !track.showId.isNullOrBlank() ||
+            track.artist.equals("Podcast", ignoreCase = true)
+        ) return
         if (!state.isPlaying || !settings.submitNowPlaying) return
         // One announcement in flight at a time: during a rate-limit cooldown
         // each write can wait seconds on the shared write mutex — without this
@@ -848,7 +847,10 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                     continue
                 }
 
-                if (track.mediaType != com.lastwave.app.playback.MediaType.SONG) {
+                if (track.mediaType != com.lastwave.app.playback.MediaType.SONG ||
+                    !track.showId.isNullOrBlank() ||
+                    track.artist.equals("Podcast", ignoreCase = true)
+                ) {
                     // Podcast episodes are never scrobbled. The detector still
                     // has to keep its position bookkeeping in sync so the
                     // timer below does not count stale seconds. The scrobble

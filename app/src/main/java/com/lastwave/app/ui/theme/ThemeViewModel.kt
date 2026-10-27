@@ -31,4 +31,8 @@ class ThemeViewModel @Inject constructor(
     fun setThemeMode(mode: com.lastwave.app.data.local.ThemeMode) = viewModelScope.launch {
         themeRepository.setThemeMode(mode)
     }
+
+    fun setLastWaveTheme(enabled: Boolean) = viewModelScope.launch {
+        themeRepository.setLastWaveTheme(enabled)
+    }
 }

@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.QueuePlayNext
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
@@ -73,7 +74,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -160,6 +161,10 @@ class DownloadMenuViewModel @Inject constructor(
     val downloadQuality = settingsPreferences.settings
         .map { it.downloadQuality }
         .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), 27)
+
+    val musicVideoEnabled = settingsPreferences.settings
+        .map { it.musicVideoEnabled }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), false)
 
     suspend fun checkStatus(title: String, artist: String): TrackDownloadStatus {
         if (downloadManager.isDownloading(title, artist)) return TrackDownloadStatus.DOWNLOADING
@@ -295,6 +300,7 @@ fun TrackContextMenuSheet(
     onRefreshArtwork: (() -> Unit)? = null,
     onRemoveFromPlaylist: (() -> Unit)? = null,
     onRemoveFromQueue: (() -> Unit)? = null,
+    onWatchVideo: (() -> Unit)? = null,
     genreResolverViewModel: GenreRowViewModel = hiltViewModel(),
     startMixViewModel: StartMixMenuViewModel = hiltViewModel(),
     exploreGenreViewModel: ExploreGenreMenuViewModel = hiltViewModel(),
@@ -309,6 +315,8 @@ fun TrackContextMenuSheet(
     val addToPlaylist = LocalAddToPlaylist.current
     var showDetailsSheet by remember { mutableStateOf(false) }
     var showJamSheet by remember { mutableStateOf(false) }
+    var showSyncedVideoDialog by remember { mutableStateOf(false) }
+    val musicVideoEnabled by downloadViewModel.musicVideoEnabled.collectAsStateWithLifecycle()
     var showTimerDialog by remember { mutableStateOf(false) }
     var resolvedGenre by remember(target) { mutableStateOf<String?>(null) }
     var resolvingGenre by remember(target) { mutableStateOf(false) }
@@ -353,6 +361,19 @@ fun TrackContextMenuSheet(
             },
             onPlayTrack = {
                 onPlayInLastWave?.invoke() ?: musicPlayer.play(playable, sourceLabel = playbackSourceLabel)
+            },
+        )
+        return
+    }
+
+    if (showSyncedVideoDialog && target is TrackMenuTarget.Track) {
+        val playable = playableTrack ?: PlayableTrack(title = target.name, artist = target.artist)
+        com.lastwave.app.ui.player.SyncedVideoPlayerDialog(
+            track = playable,
+            musicPlayer = musicPlayer,
+            onDismiss = {
+                showSyncedVideoDialog = false
+                onDismiss()
             },
         )
         return
@@ -489,6 +510,39 @@ fun TrackContextMenuSheet(
                 // Local songs: imported files get an explicit row.
                 val isLocalFile = com.lastwave.app.data.generate.LocalAudioFormats.importedPathOrNull(playable.playbackUrl) != null
                 val rows = buildList<@Composable (GroupPosition) -> Unit> {
+                    // 1. Genres ALWAYS at the very top of the menu
+                    add { pos ->
+                        val genre = resolvedGenre
+                        MenuInfoRow(
+                            icon = Icons.Filled.Sell,
+                            text = if (resolvingGenre) stringResource(R.string.menu_resolving_genre) else stringResource(
+                                R.string.menu_genre_value,
+                                genre?.takeIf { it.isNotBlank() } ?: stringResource(R.string.menu_genre_unknown),
+                            ),
+                            loading = resolvingGenre,
+                            position = pos,
+                            onClick = if (!resolvingGenre && !genre.isNullOrBlank()) {
+                                { exploreGenre(genre); onDismiss() }
+                            } else null,
+                        )
+                    }
+
+                    if (musicVideoEnabled) {
+                        add { pos ->
+                            MenuActionRow(
+                                icon = Icons.Filled.SmartDisplay,
+                                label = stringResource(R.string.menu_watch_video),
+                                position = pos,
+                            ) {
+                                if (onWatchVideo != null) {
+                                    onWatchVideo()
+                                    onDismiss()
+                                } else {
+                                    showSyncedVideoDialog = true
+                                }
+                            }
+                        }
+                    }
                     val t = target
                     if (isLocalFile) {
                         add { pos ->
@@ -500,23 +554,6 @@ fun TrackContextMenuSheet(
                                 addToPlaylist(playable)
                                 onDismiss()
                             }
-                        }
-                    }
-                    if (resolvingGenre || !resolvedGenre.isNullOrBlank()) {
-                        add { pos ->
-                            val genre = resolvedGenre
-                            MenuInfoRow(
-                                icon = Icons.Filled.Sell,
-                                text = if (resolvingGenre) stringResource(R.string.menu_resolving_genre) else stringResource(
-                                    R.string.menu_genre_value,
-                                    genre?.takeIf { it.isNotBlank() } ?: stringResource(R.string.menu_genre_unknown),
-                                ),
-                                loading = resolvingGenre,
-                                position = pos,
-                                onClick = if (!resolvingGenre && !genre.isNullOrBlank()) {
-                                    { exploreGenre(genre); onDismiss() }
-                                } else null,
-                            )
                         }
                     }
                     add { pos -> MenuActionRow(Icons.Filled.Timer, stringResource(R.string.menu_sleep_timer), position = pos) { showTimerDialog = true } }
@@ -531,11 +568,11 @@ fun TrackContextMenuSheet(
                     }
                     if (!playable.album.isNullOrBlank()) {
                         add { pos ->
-                            val primaryArt = splitArtists.firstOrNull() ?: t.artist
+                            val albumArtist = playable.artist.ifBlank { t.artist }
                             val album = playable.album
                             if (album.isNullOrBlank()) return@add
                             MenuActionRow(Icons.Filled.Album, stringResource(R.string.menu_go_album, album), position = pos) {
-                                artistAlbumViewModel.openAlbum(album, primaryArt)
+                                artistAlbumViewModel.openAlbum(album, albumArtist)
                                 onDismiss()
                             }
                         }
@@ -599,15 +636,6 @@ fun TrackContextMenuSheet(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             PlayerCastMenuRow(musicPlayer)
-                        }
-                    }
-                    add { pos ->
-                        MenuActionRow(
-                            icon = Icons.Filled.Group,
-                            label = "LastWave Jam (Listen Together)",
-                            position = pos,
-                        ) {
-                            showJamSheet = true
                         }
                     }
                     add { pos -> MenuActionRow(Icons.Filled.Language, stringResource(R.string.menu_open_lastfm), position = pos) { openUrl(context, buildLastFmUrl(target)); onDismiss() } }
@@ -725,7 +753,10 @@ private fun StartMixCard(onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .scale(scale),
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            },
     ) {
         Row(
             Modifier.padding(horizontal = 18.dp, vertical = 12.dp).fillMaxWidth(),
@@ -773,6 +804,93 @@ private fun QuickActionsRow(
 }
 
 @Composable
+private fun WatchVideoCard(
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val scale = rememberGroupPressScale(interactionSource)
+    Card(
+        onClick = onClick,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+        shape = RoundedCornerShape(22.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        interactionSource = interactionSource,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            },
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.SmartDisplay,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = stringResource(R.string.menu_watch_video),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.video_sync_tag),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(R.string.menu_watch_video_sub),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.size(16.dp),
+            )
+        }
+    }
+}
+
+@Composable
 private fun QuickActionCard(
     icon: ImageVector,
     label: String,
@@ -787,7 +905,10 @@ private fun QuickActionCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         shape = RoundedCornerShape(22.dp),
         interactionSource = interactionSource,
-        modifier = modifier.scale(scale),
+        modifier = modifier.graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        },
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 14.dp),
@@ -825,7 +946,10 @@ private fun MenuActionRow(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         shape = groupShape(position),
         interactionSource = interactionSource,
-        modifier = Modifier.fillMaxWidth().scale(scale),
+        modifier = Modifier.fillMaxWidth().graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        },
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 14.dp),

@@ -42,6 +42,10 @@ data class ThemePrefs(
     val liquidGlass: Boolean = true,
     /** Optional Material 3 full-width navigation bar instead of the default floating dock. */
     val md3NavBar: Boolean = false,
+    /** Whether bottom navigation tabs are completely hidden. */
+    val hideNavTabs: Boolean = false,
+    /** Dedicated LastWave Signature Theme inspired by the app logo icon (#C9FB00 & #012226). */
+    val lastWaveTheme: Boolean = false,
 )
 
 @Singleton
@@ -56,6 +60,8 @@ class ThemePreferences @Inject constructor(
         val AMOLED = booleanPreferencesKey("lw_amoled")
         val LIQUID_GLASS = booleanPreferencesKey("lw_liquidGlass")
         val MD3_NAV_BAR = booleanPreferencesKey("lw_md3NavBar")
+        val HIDE_NAV_TABS = booleanPreferencesKey("lw_hideNavTabs")
+        val LASTWAVE_THEME = booleanPreferencesKey("lw_lastwave_theme")
     }
 
     val prefs: Flow<ThemePrefs> = dataStore.data
@@ -69,6 +75,8 @@ class ThemePreferences @Inject constructor(
                 amoled = p.readSafely(Keys.AMOLED) ?: false,
                 liquidGlass = p.readSafely(Keys.LIQUID_GLASS) ?: true,
                 md3NavBar = p.readSafely(Keys.MD3_NAV_BAR) ?: false,
+                hideNavTabs = p.readSafely(Keys.HIDE_NAV_TABS) ?: false,
+                lastWaveTheme = p.readSafely(Keys.LASTWAVE_THEME) ?: false,
             )
         }
 
@@ -81,11 +89,17 @@ class ThemePreferences @Inject constructor(
             it[Keys.ACCENT_COLOR] = color
             it[Keys.ACCENT_LIGHT] = light
             it[Keys.ACCENT_MODE] = AccentMode.MANUAL.storageValue
+            it[Keys.LASTWAVE_THEME] = false
         }
     }
 
     suspend fun setMode(mode: AccentMode) {
-        dataStore.edit { it[Keys.ACCENT_MODE] = mode.storageValue }
+        dataStore.edit {
+            it[Keys.ACCENT_MODE] = mode.storageValue
+            if (mode == AccentMode.DYNAMIC || mode == AccentMode.MONOCHROME) {
+                it[Keys.LASTWAVE_THEME] = false
+            }
+        }
     }
 
     suspend fun setAmoled(enabled: Boolean) {
@@ -98,5 +112,20 @@ class ThemePreferences @Inject constructor(
 
     suspend fun setMd3NavBar(enabled: Boolean) {
         dataStore.edit { it[Keys.MD3_NAV_BAR] = enabled }
+    }
+
+    suspend fun setHideNavTabs(enabled: Boolean) {
+        dataStore.edit { it[Keys.HIDE_NAV_TABS] = enabled }
+    }
+
+    suspend fun setLastWaveTheme(enabled: Boolean) {
+        dataStore.edit {
+            it[Keys.LASTWAVE_THEME] = enabled
+            if (enabled) {
+                it[Keys.ACCENT_COLOR] = "#C9FB00"
+                it[Keys.ACCENT_LIGHT] = "#C9FB00"
+                it[Keys.ACCENT_MODE] = AccentMode.MANUAL.storageValue
+            }
+        }
     }
 }

@@ -96,7 +96,7 @@ class ArtworkRepository @Inject constructor(
     /** Public entry point. Deliberately catches Throwable, not just
      *  Exception — an artwork miss must never take the app down, full stop. */
     suspend fun resolve(name: String, artist: String) {
-        val key = ArtworkNormalizer.cacheKey(name, artist)
+        val key = if (name.startsWith("artist:")) name.trim().lowercase() else ArtworkNormalizer.cacheKey(name, artist)
         try {
             resolveInternal(key, name, artist)
         } catch (cancellation: CancellationException) {
@@ -106,6 +106,30 @@ class ArtworkRepository @Inject constructor(
             Log.e(CRASH_TAG, "Artwork lookup crashed and was suppressed | Track: $name | Artist: $artist | Cache key: $key", t)
             inFlightMutex.withLock { inFlight.remove(key) }
         }
+    }
+
+    suspend fun resolveArtist(artistName: String): String? {
+        val cleanName = artistName.trim()
+        if (cleanName.isBlank()) return null
+        val key = "artist:${cleanName.lowercase()}"
+        _resolved.value[key]?.takeIf { it.isNotBlank() }?.let { return it }
+        val cached = runCatching { cacheDao.get(key) }.getOrNull()
+        if (cached != null && cached.url.isNotBlank()) {
+            publish(key, cached.url)
+            return cached.url
+        }
+        val url = runCatching {
+            innerTube.searchArtists(cleanName, limit = 2)
+                .firstOrNull()
+                ?.artworkUrl
+                ?.takeIf(ArtworkNormalizer::isRealImage)
+        }.getOrNull()
+        if (!url.isNullOrBlank()) {
+            val upscaled = ArtworkNormalizer.upscaleYoutubeArtwork(url) ?: url
+            save(key, "youtube_artist", upscaled)
+            return upscaled
+        }
+        return null
     }
 
     private suspend fun resolveInternal(key: String, name: String, artist: String) {
@@ -120,6 +144,20 @@ class ArtworkRepository @Inject constructor(
         if (alreadyRunning) return
 
         try {
+            if (key.startsWith("artist:") || name.startsWith("artist:")) {
+                val cleanName = artist.ifBlank { name.removePrefix("artist:") }.trim()
+                val url = runCatching {
+                    innerTube.searchArtists(cleanName, limit = 2)
+                        .firstOrNull()
+                        ?.artworkUrl
+                        ?.takeIf(ArtworkNormalizer::isRealImage)
+                }.getOrNull()
+                if (!url.isNullOrBlank()) {
+                    val upscaled = ArtworkNormalizer.upscaleYoutubeArtwork(url) ?: url
+                    save(key, "youtube_artist", upscaled)
+                }
+                return
+            }
             // 2. Disk (Room) cache — persists across relaunches.
             val cached = try {
                 cacheDao.get(key)

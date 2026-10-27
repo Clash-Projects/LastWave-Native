@@ -51,7 +51,7 @@ class SpotifyPreferences @Inject constructor(
      */
     val preferSpotifyCanvas: Flow<Boolean> = dataStore.data
         .recoverPreferences("SpotifyPreferences")
-        .map { it.readSafely(PREFER_SPOTIFY_CANVAS_KEY) ?: false }
+        .map { it.readSafely(PREFER_SPOTIFY_CANVAS_KEY) ?: true }
 
     val isConnected: Flow<Boolean> = spdc.map { !it.isNullOrBlank() }
     /** The per-install device id the client-token profile presents. */

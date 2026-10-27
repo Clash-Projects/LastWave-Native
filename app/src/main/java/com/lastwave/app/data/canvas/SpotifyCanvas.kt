@@ -76,7 +76,7 @@ class SpotifyCanvas @Inject constructor(
         try {
             // 1. Search for matching track on Spotify Pathfinder, falling back to Web API search
             val trackMatch = searchTrack(personalToken, clientToken, title, artist, durationMs)
-            val trackId = trackMatch?.id ?: searchTrackFallback(personalToken, title, artist, durationMs)
+            val trackId = trackMatch?.resolvedId ?: searchTrackFallback(personalToken, title, artist, durationMs)
                 ?: run {
                     Log.d(TAG, "No Spotify track matched '$title' - '$artist'")
                     return@withContext null
@@ -91,7 +91,7 @@ class SpotifyCanvas @Inject constructor(
                 ?.joinToString(", ")
                 ?: artist
 
-            // 2. Fetch the canvas: the web player's own query first, the protobuf route second
+            // 2. Fetch the canvas: the protobuf route first, the web player query second
             val canvasUrl = fetchCanvasUrl(personalToken, clientToken, trackId)
                 ?: run {
                     Log.d(TAG, "Spotify track $trackId ('$trackTitle') has no canvas")
@@ -102,8 +102,8 @@ class SpotifyCanvas @Inject constructor(
             CanvasArtwork(
                 url = canvasUrl,
                 tallUrl = canvasUrl,
-                title = trackTitle,
-                artist = trackArtist,
+                title = title,
+                artist = artist,
                 album = album,
                 source = CanvasSource.SPOTIFY,
             )
@@ -163,18 +163,20 @@ class SpotifyCanvas @Inject constructor(
         artist: String,
         durationMs: Long? = null,
     ): SpotifySearchResponse.Data.Search.TracksV2.Items.Item.TrackData? {
-        val query = "$title $artist"
-        // The operation was called `searchTracks` and is now `assistedCurationSearch`,
-        // and the term it takes is called `term` rather than `searchTerm`. The hash is
-        // read out of the web player, because an operation that the player no longer
-        // declares is refused with "persisted query not found" and the answer looks
-        // exactly like a track that is not on Spotify.
-        val hash = searchHash()
-        val variables = """{"term":"$query","offset":0,"limit":3,"numberOfTopResults":3}"""
-        val extensions = """{"persistedQuery":{"version":1,"sha256Hash":"$hash"}}"""
+        val cleanTitle = title
+            .replace(CLEAN_TITLE_REGEX, "")
+            .trim()
+        val primaryArtist = splitArtists(artist).firstOrNull() ?: artist
+        val candidateQueries = listOfNotNull(
+            "$cleanTitle $primaryArtist".trim().takeIf { it.isNotBlank() },
+            "$title $artist".takeIf { it != "$cleanTitle $primaryArtist" },
+        )
 
-        for (endpoint in SEARCH_ENDPOINTS) {
-            val url = "$endpoint?operationName=${SpotifyWebPlayer.SEARCH_OPERATION}" +
+        // 1. Primary: searchTracks Pathfinder query (SimpMusic method, returns full track details & duration)
+        for (query in candidateQueries) {
+            val variables = """{"searchTerm":"$query","offset":0,"limit":5,"numberOfTopResults":5,"includeAudiobooks":false,"includePreReleases":false}"""
+            val extensions = """{"persistedQuery":{"version":1,"sha256Hash":"$HASH_SEARCH_TRACKS"}}"""
+            val url = "$PATHFINDER_ENDPOINT?operationName=searchTracks" +
                 "&variables=${Uri.encode(variables)}&extensions=${Uri.encode(extensions)}"
 
             val request = Request.Builder()
@@ -185,24 +187,70 @@ class SpotifyCanvas @Inject constructor(
                 .header("Accept", "application/json")
                 .build()
 
-            val items = okHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Log.w(
-                        TAG,
-                        "Track search on $endpoint failed: HTTP ${response.code}" +
-                            sessionHint(response.code),
-                    )
-                    return@use emptyList<SpotifySearchResponse.Data.Search.TracksV2.Items.Item.TrackData>()
+            val items = runCatching {
+                okHttpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        Log.w(
+                            TAG,
+                            "searchTracks query failed: HTTP ${response.code}" + sessionHint(response.code),
+                        )
+                        emptyList<SpotifySearchResponse.Data.Search.TracksV2.Items.Item.TrackData>()
+                    } else {
+                        val body = response.body?.string().orEmpty()
+                        val parsed = runCatching { json.decodeFromString<SpotifySearchResponse>(body) }.getOrNull()
+                        parsed?.data?.searchV2?.tracksV2?.items.orEmpty().mapNotNull { it.item?.data }
+                    }
                 }
-                val body = response.body?.string().orEmpty()
-                val parsed = runCatching { json.decodeFromString<SpotifySearchResponse>(body) }.getOrNull()
-                parsed?.data?.searchV2?.tracksV2?.items.orEmpty().mapNotNull { it.item?.data }
+            }.getOrElse {
+                Log.w(TAG, "searchTracks call error: ${it.message}")
+                emptyList()
             }
 
-            if (items.isEmpty()) continue
-            return pickBestTrack(items, title, durationMs)
+            if (items.isNotEmpty()) {
+                val match = pickBestTrack(items, title, durationMs)
+                if (match != null) return match
+            }
         }
-        Log.d(TAG, "The track search answered with no tracks for '$query'")
+
+        // 2. Fallback: assistedCurationSearch via WebPlayer
+        val hash = searchHash()
+        for (query in candidateQueries) {
+            val variables = """{"term":"$query","offset":0,"limit":3,"numberOfTopResults":3}"""
+            val extensions = """{"persistedQuery":{"version":1,"sha256Hash":"$hash"}}"""
+
+            for (endpoint in SEARCH_ENDPOINTS) {
+                val url = "$endpoint?operationName=${SpotifyWebPlayer.SEARCH_OPERATION}" +
+                    "&variables=${Uri.encode(variables)}&extensions=${Uri.encode(extensions)}"
+
+                val request = Request.Builder()
+                    .url(url)
+                    .header("Authorization", "Bearer $personalToken")
+                    .header("Client-Token", clientToken)
+                    .header("User-Agent", USER_AGENT)
+                    .header("Accept", "application/json")
+                    .build()
+
+                val items = okHttpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        Log.w(
+                            TAG,
+                            "Track search on $endpoint failed: HTTP ${response.code}" +
+                                sessionHint(response.code),
+                        )
+                        return@use emptyList<SpotifySearchResponse.Data.Search.TracksV2.Items.Item.TrackData>()
+                    }
+                    val body = response.body?.string().orEmpty()
+                    val parsed = runCatching { json.decodeFromString<SpotifySearchResponse>(body) }.getOrNull()
+                    parsed?.data?.searchV2?.tracksV2?.items.orEmpty().mapNotNull { it.item?.data }
+                }
+
+                if (items.isNotEmpty()) {
+                    val match = pickBestTrack(items, title, durationMs)
+                    if (match != null) return match
+                }
+            }
+        }
+        Log.d(TAG, "The track search answered with no tracks for '$title' - '$artist'")
         return null
     }
 
@@ -250,8 +298,10 @@ class SpotifyCanvas @Inject constructor(
         trackId: String,
     ): String? {
         val trackUri = "spotify:track:$trackId"
-        fetchCanvasViaQuery(personalToken, clientToken, trackUri)?.let { return it }
-        return fetchCanvasViaProtobuf(personalToken, clientToken, trackUri)
+        // Try SimpMusic's proven protobuf route first
+        fetchCanvasViaProtobuf(personalToken, clientToken, trackUri)?.let { return it }
+        // Fallback to web player GraphQL query
+        return fetchCanvasViaQuery(personalToken, clientToken, trackUri)
     }
 
     /**
@@ -277,6 +327,7 @@ class SpotifyCanvas @Inject constructor(
             .header("User-Agent", USER_AGENT)
             .post(
                 SpotifyCanvasQuery.requestBody(trackUri, hash)
+                    .toByteArray(Charsets.UTF_8)
                     .toRequestBody("application/json".toMediaType()),
             )
             .build()
@@ -318,10 +369,7 @@ class SpotifyCanvas @Inject constructor(
     }
 
     /**
-     * The canvas from the older protobuf endpoint.
-     *
-     * The answer can carry a clip for another track as well, so the one asked about is taken
-     * first and only the first clip with a url is used when there is no exact match.
+     * The canvas from the protobuf endpoint (SimpMusic method).
      */
     @OptIn(ExperimentalSerializationApi::class)
     private fun fetchCanvasViaProtobuf(
@@ -355,10 +403,19 @@ class SpotifyCanvas @Inject constructor(
             val respBytes = response.body?.bytes() ?: return@use null
             val canvasResp = runCatching {
                 ProtoBuf.decodeFromByteArray<CanvasResponse>(respBytes)
-            }.getOrNull() ?: return@use null
-            val canvases = canvasResp.canvases.filter { !it.canvasUrl.isNullOrBlank() }
+            }.getOrNull()
+            val canvases = canvasResp?.canvases?.filter { !it.canvasUrl.isNullOrBlank() }.orEmpty()
             val exact = canvases.firstOrNull { it.trackUri == trackUri }
-            (exact ?: canvases.firstOrNull())?.canvasUrl
+            val parsedUrl = (exact ?: canvases.firstOrNull())?.canvasUrl
+            if (!parsedUrl.isNullOrBlank()) {
+                return@use parsedUrl
+            }
+
+            // Fallback: direct binary/text regex scan for mp4 canvas URL if protobuf decoding missed a tag
+            val directMatch = Regex("""https://[^\x00-\x20"']+\.mp4[^\x00-\x20"']*""")
+                .find(String(respBytes, Charsets.ISO_8859_1))
+                ?.value
+            directMatch
         }
     }
 
@@ -379,6 +436,9 @@ class SpotifyCanvas @Inject constructor(
     private companion object {
         private const val TAG = "SpotifyCanvas"
 
+        /** SimpMusic proven searchTracks operation hash */
+        private const val HASH_SEARCH_TRACKS = "bc1ca2fcd0ba1013a0fc88e6cc4f190af501851e3dafd3e1ef85840297694428"
+
         /**
          * The search operation's hash as of the last time it was read off the web player.
          *
@@ -388,14 +448,19 @@ class SpotifyCanvas @Inject constructor(
         private const val FALLBACK_SEARCH_HASH =
             "f78953bf9207d73493c27284103f5aeb6e728876d5793851bf79bc706127ff70"
 
-        /** Both pathfinder versions, in the order they are tried. */
+        /** Pathfinder query endpoint. */
+        private const val PATHFINDER_ENDPOINT = "https://api-partner.spotify.com/pathfinder/v1/query"
         private val SEARCH_ENDPOINTS = listOf(
-            "https://api-partner.spotify.com/pathfinder/v1/query",
-            "https://api-partner.spotify.com/pathfinder/v2/query",
+            PATHFINDER_ENDPOINT,
         )
 
         private const val CANVAS_ENDPOINT = "https://spclient.wg.spotify.com/canvaz-cache/v0/canvases"
         private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         private const val CANVAS_UA = "Spotify/9.0.34.593 iOS/18.4 (iPhone15,3)"
+
+        private val CLEAN_TITLE_REGEX = Regex(
+            """\s*[\(\[](?:feat\.?|ft\.?|official|video|audio|remastered|lyric|lyrics|hd|4k)[^\)\]]*[\)\]]""",
+            RegexOption.IGNORE_CASE,
+        )
     }
 }

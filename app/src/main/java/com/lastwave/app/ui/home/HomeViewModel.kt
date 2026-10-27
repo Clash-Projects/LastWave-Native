@@ -225,6 +225,7 @@ class HomeViewModel @Inject constructor(
     private val viewingProfileState: com.lastwave.app.data.repository.ViewingProfileState,
     private val settingsPreferences: com.lastwave.app.data.local.SettingsPreferences,
     private val scrobbleRepository: com.lastwave.app.data.repository.ScrobbleRepository,
+    private val artworkRepository: com.lastwave.app.data.artwork.ArtworkRepository,
 ) : ViewModel() {
 
     companion object {
@@ -437,6 +438,7 @@ class HomeViewModel @Inject constructor(
                             )
                         }
                         preloadLocalTags()
+                        enrichArtistArtworks(local.topArtists.take(10))
                     } ?: _uiState.update {
                         it.copy(isLoading = false, username = username, viewingUsername = username, error = e.message ?: "Couldn't load your data")
                     }
@@ -509,7 +511,11 @@ class HomeViewModel @Inject constructor(
     private fun preloadTopMeta(username: String, period: String = "overall") {
         viewModelScope.launch(Dispatchers.IO) {
             homeRepository.fetchTopArtistsForPeriod(period, 10, username = username)
-                .onSuccess { artists -> _uiState.update { it.copy(topArtists = artists.take(10)) } }
+                .onSuccess { artists ->
+                    val top = artists.take(10)
+                    _uiState.update { it.copy(topArtists = top) }
+                    enrichArtistArtworks(top)
+                }
         }
         viewModelScope.launch(Dispatchers.IO) {
             homeRepository.fetchTopAlbums(period = period, limit = 10, username = username)
@@ -541,6 +547,21 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             homeRepository.fetchTopTracksForPeriod("1month", 50, username = target).onSuccess { tracks ->
                 _uiState.update { it.copy(topTracks30Days = tracks) }
+            }
+        }
+    }
+
+    private fun enrichArtistArtworks(artists: List<HomeArtistItem>) {
+        if (artists.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val updated = artists.map { artist ->
+                if (artist.artworkUrl.isNullOrBlank()) {
+                    val resolved = artworkRepository.resolveArtist(artist.name)
+                    if (resolved != null) artist.copy(artworkUrl = resolved) else artist
+                } else artist
+            }
+            _uiState.update { state ->
+                state.copy(topArtists = updated)
             }
         }
     }
@@ -773,6 +794,7 @@ class HomeViewModel @Inject constructor(
                                 )
                             }
                             preloadLocalTags()
+                        enrichArtistArtworks(local.topArtists.take(10))
                         } ?: _uiState.update {
                             it.copy(isLoading = false, error = e.message ?: "Couldn't load that profile")
                         }

@@ -27,7 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -100,7 +100,10 @@ fun ConnectedButtonGroup(
                 modifier = Modifier
                     .weight(1f)
                     .zIndex(if (isSelected) 1f else 0f)
-                    .scale(scale)
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                    }
                     .clickable(
                         interactionSource = interactionSource,
                         indication = ripple(),

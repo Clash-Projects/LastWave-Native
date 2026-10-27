@@ -36,6 +36,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.lastwave.app.ui.theme.LiquidGlassPreset
+import com.lastwave.app.ui.theme.LocalLiquidGlass
+import com.lastwave.app.ui.theme.LocalLiquidGlassBackdrop
+import com.lastwave.app.ui.theme.liquidGlassChrome
+import com.lastwave.app.ui.theme.liquidGlassContainerColor
 
 
 /** Only the bottom corners are rounded, and a modest 24dp at that (not
@@ -75,19 +80,47 @@ fun ExpressiveHeader(
     onBack: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
+    val liquidGlass = LocalLiquidGlass.current
+    val backdrop = LocalLiquidGlassBackdrop.current
     val glow = MaterialTheme.colorScheme.primary
     val secondaryGlow = MaterialTheme.colorScheme.tertiary
+    val containerColor = liquidGlassContainerColor(
+        MaterialTheme.colorScheme.surfaceContainer,
+        enabled = liquidGlass,
+        backdrop = backdrop,
+    )
+
     Box(modifier.fillMaxWidth().zIndex(1f)) {
         Surface(
             shape = HeaderShape,
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            tonalElevation = 2.dp,
-            modifier = Modifier.fillMaxWidth(),
+            color = containerColor,
+            tonalElevation = if (liquidGlass) 0.dp else 2.dp,
+            shadowElevation = if (liquidGlass) 0.dp else 4.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (liquidGlass) {
+                        Modifier.liquidGlassChrome(
+                            shape = HeaderShape,
+                            enabled = liquidGlass,
+                            preset = LiquidGlassPreset.FloatingControls,
+                            backdrop = backdrop,
+                        )
+                    } else {
+                        Modifier
+                    }
+                ),
         ) {
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .drawGlowBackground(glow, secondaryGlow)
+                    .then(
+                        if (!liquidGlass) {
+                            Modifier.drawGlowBackground(glow, secondaryGlow)
+                        } else {
+                            Modifier
+                        }
+                    )
                     .windowInsetsPadding(
                         WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
                     )
@@ -102,7 +135,8 @@ fun ExpressiveHeader(
                         FilledTonalIconButton(
                             onClick = onBack,
                             colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                containerColor = if (liquidGlass) MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)
+                                else MaterialTheme.colorScheme.surfaceContainerHighest,
                             ),
                         ) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -139,8 +173,8 @@ fun ExpressiveHeader(
     }
 }
 
-/** Cached accent glows for [ExpressiveHeader]. Keeping these static avoids
- * repainting two full-width gradients every frame on every screen. */
+/** Cached accent glows for [ExpressiveHeader]. Subtly tuned so it harmonizes
+ * with dark and signature schemes without creating jarring color washes. */
 @Composable
 private fun Modifier.drawGlowBackground(color: Color, secondaryColor: Color): Modifier {
     return this.drawWithCache {
@@ -151,8 +185,8 @@ private fun Modifier.drawGlowBackground(color: Color, secondaryColor: Color): Mo
         val secondaryRadius = (size.width.coerceAtLeast(size.height) * 0.72f).coerceAtLeast(1f)
         val secondaryBrush = Brush.radialGradient(
             colors = listOf(
-                secondaryColor.copy(alpha = 0.13f),
-                secondaryColor.copy(alpha = 0.045f),
+                secondaryColor.copy(alpha = 0.05f),
+                secondaryColor.copy(alpha = 0.015f),
                 secondaryColor.copy(alpha = 0f),
             ),
             center = Offset(secondaryCx, size.height * 0.78f),
@@ -160,8 +194,8 @@ private fun Modifier.drawGlowBackground(color: Color, secondaryColor: Color): Mo
         )
         val primaryBrush = Brush.radialGradient(
             colors = listOf(
-                color.copy(alpha = 0.23f),
-                color.copy(alpha = 0.07f),
+                color.copy(alpha = 0.08f),
+                color.copy(alpha = 0.025f),
                 color.copy(alpha = 0f),
             ),
             center = Offset(cx, cy),

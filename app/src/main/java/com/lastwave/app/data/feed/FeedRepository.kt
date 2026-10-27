@@ -13,6 +13,10 @@ import com.lastwave.app.data.generate.TasteProfileProvider
 import com.lastwave.app.data.model.FriendEntry
 import com.lastwave.app.data.model.RecentTrack
 import com.lastwave.app.data.music.InnerTubeMusicApi
+import com.lastwave.app.data.music.HomeChip
+import com.lastwave.app.data.music.HomePage
+import com.lastwave.app.data.music.HomeShelf
+import com.lastwave.app.data.music.HomeShelfItem
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistSummary
 import com.lastwave.app.data.podcast.PodcastRepository
@@ -89,6 +93,9 @@ data class FeedData(
     val hasYtMixes: Boolean = false,
     val hasPersonalContent: Boolean = false,
     val tasteTags: List<String> = emptyList(),
+    val nativeShelves: List<HomeShelf> = emptyList(),
+    val homeChips: List<HomeChip> = emptyList(),
+    val homeContinuationToken: String? = null,
     val ytSuggestedPlaylists: List<YouTubePlaylistSummary> = emptyList(),
     val spotlight: FeedSpotlight? = null,
     val quickTiles: List<FeedQuickTile> = emptyList(),
@@ -144,7 +151,10 @@ class FeedRepository @Inject constructor(
         val chartsDef = async(Dispatchers.IO) { runCatching { innerTube.fetchCharts() }.getOrDefault(emptyList()) }
         val homeMixesDef = async(Dispatchers.IO) { runCatching { innerTube.fetchHomeMixes() }.getOrDefault(emptyList()) }
         val homeSongsDef = async(Dispatchers.IO) {
-            if (isYtConnected) emptyList() else runCatching { innerTube.fetchHomeSongs() }.getOrDefault(emptyList())
+            runCatching { innerTube.fetchHomeSongs() }.getOrDefault(emptyList())
+        }
+        val homePageDef = async(Dispatchers.IO) {
+            runCatching { innerTube.fetchHomePage() }.getOrDefault(HomePage())
         }
         // Podcast shelf rides along with the rest of the feed. Disabled in
         // settings -> the fetch never happens and the shelf stays empty.
@@ -202,6 +212,12 @@ class FeedRepository @Inject constructor(
             it.id.startsWith("PL") || it.id.startsWith("RD") || it.id.startsWith("OLAK") || it.id == "LM"
         }
         val homeSongs = homeSongsDef.await()
+        val homePage = homePageDef.await()
+        val nativeShelves = homePage.shelves.ifEmpty {
+            runCatching { innerTube.fetchHomeShelves() }.getOrDefault(emptyList())
+        }
+        val homeChips = homePage.chips
+        val homeContinuationToken = homePage.continuationToken
         val recentTracks = recentTracksDef.await()
         val friends = friendsDef.await()
         val tasteProfile = tasteProfileDef.await()
@@ -236,9 +252,8 @@ class FeedRepository @Inject constructor(
             val hasVideo = t.videoId.isNotBlank()
             val hasArt = ArtworkNormalizer.isRealImage(t.artworkUrl)
             val positionDecay = 1.0 / (1.0 + index / 9.0)
-            val jitter = random.nextDouble()
             return aff * 60.0 + sourceBoost * 14.0 * positionDecay +
-                (if (hasVideo) 10.0 else -6.0) + (if (hasArt) 4.0 else 0.0) + jitter * 35.0 - (if (t.videoId in previousPickIds) 30.0 else 0.0)
+                (if (hasVideo) 10.0 else -6.0) + (if (hasArt) 4.0 else 0.0) - (if (t.videoId in previousPickIds) 30.0 else 0.0)
         }
         fun <T> diversify(
             items: List<T>,
@@ -317,6 +332,9 @@ class FeedRepository @Inject constructor(
             userName = username,
             hasYtRecommendations = ytTaste?.feedTracks?.isNotEmpty() == true,
             hasPersonalContent = tasteProfile?.hasPersonalSignals == true || ytLikedSongs.isNotEmpty() || ytRecentSongs.isNotEmpty(),
+            nativeShelves = nativeShelves.ifEmpty { previous?.nativeShelves.orEmpty() },
+            homeChips = homeChips.ifEmpty { previous?.homeChips.orEmpty() },
+            homeContinuationToken = homeContinuationToken ?: previous?.homeContinuationToken,
             quickPicks = quickPicks,
             ytLikedSongs = ytLikedSongs,
             ytRecentSongs = ytRecentSongs,
@@ -743,8 +761,8 @@ class FeedRepository @Inject constructor(
             }
             if (isYtConnected) {
                 add(FeedQuickTile(
-                    title = "Liked on YouTube",
-                    subtitle = "",
+                    title = "Liked on YT",
+                    subtitle = "Your collection",
                     artworkUrl = ytLikedSongs.firstOrNull()?.artworkUrl,
                     playlistId = "yt_liked",
                     collection = "yt_liked",
@@ -759,9 +777,11 @@ class FeedRepository @Inject constructor(
                 artworkUrl = quickPicks.lastOrNull()?.artworkUrl ?: quickPicks.firstOrNull()?.artworkUrl, collection = "radio"))
 
             // 3. Discover Mix
-            val savedDiscoverMix = homePlaylists.firstOrNull { it.title.equals("Discover Mix", ignoreCase = true) }
+            val savedDiscoverMix = homePlaylists.firstOrNull { it.title.contains("Discover Mix", ignoreCase = true) }
+                ?: nativeShelves.flatMap { it.items }.filterIsInstance<HomeShelfItem.Playlist>()
+                    .map { it.playlist }.firstOrNull { it.title.contains("Discover Mix", ignoreCase = true) }
             add(savedDiscoverMix?.let {
-                FeedQuickTile(title = it.title, subtitle = it.author.takeIf { a -> !a.isNullOrBlank() } ?: "New discoveries", artworkUrl = it.artworkUrl, playlistId = it.id)
+                FeedQuickTile(title = "Discover Mix", subtitle = it.author.takeIf { a -> !a.isNullOrBlank() } ?: "New discoveries", artworkUrl = it.artworkUrl, playlistId = it.id, collection = "discover_mix")
             } ?: FeedQuickTile(title = "Discover Mix", subtitle = "New discoveries",
                 artworkUrl = ytRecentSongs.firstOrNull()?.artworkUrl, collection = "discover_mix"))
 
@@ -805,6 +825,9 @@ class FeedRepository @Inject constructor(
             hasYtMixes = false,
             hasPersonalContent = hasPersonalContent,
             tasteTags = tasteTags,
+            nativeShelves = nativeShelves,
+            homeChips = homeChips,
+            homeContinuationToken = homeContinuationToken,
             ytSuggestedPlaylists = homePlaylists.filter { it.id != "LM" }.take(12),
             spotlight = spotlight,
             quickTiles = quickTiles,

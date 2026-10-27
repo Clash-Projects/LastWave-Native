@@ -156,6 +156,10 @@ class SettingsViewModel @Inject constructor(
     fun setSpotifyCanvasEnabled(enabled: Boolean) {
         viewModelScope.launch {
             spotifyPreferences.setCanvasEnabled(enabled)
+            settingsPreferences.setCanvasEnabled(enabled)
+            if (enabled) {
+                spotifyPreferences.setPreferSpotifyCanvas(true)
+            }
         }
     }
 
@@ -168,6 +172,7 @@ class SettingsViewModel @Inject constructor(
     fun disconnectSpotify() {
         viewModelScope.launch {
             spotifyPreferences.clearConnection()
+            _uiState.update { it.copy(toastMessage = "Spotify account disconnected") }
         }
     }
 
@@ -493,9 +498,11 @@ class SettingsViewModel @Inject constructor(
     // ── Appearance (§8.2 / §8.3 / §8.4) ──
 
     fun setThemeMode(mode: ThemeMode) = launchSettingsAction("update theme mode") { themeRepository.setThemeMode(mode) }
+    fun setLastWaveTheme(enabled: Boolean) = launchSettingsAction("update LastWave signature theme") { themeRepository.setLastWaveTheme(enabled) }
     fun setAmoled(enabled: Boolean) = launchSettingsAction("update AMOLED mode") { themeRepository.setAmoled(enabled) }
     fun setLiquidGlass(enabled: Boolean) = launchSettingsAction("update Liquid Glass") { themeRepository.setLiquidGlass(enabled) }
     fun setMd3NavBar(enabled: Boolean) = launchSettingsAction("update MD3 Navigation Bar") { themeRepository.setMd3NavBar(enabled) }
+    fun setHideNavTabs(enabled: Boolean) = launchSettingsAction("update Hide Navigation Tabs") { themeRepository.setHideNavTabs(enabled) }
     fun setAccentMode(mode: AccentMode) = launchSettingsAction("update accent mode") { themeRepository.setMode(mode) }
     fun setManualAccent(color: Color) = launchSettingsAction("update accent color") { themeRepository.setManualAccent(color) }
     fun openColorWheel() = _uiState.update { it.copy(showColorWheel = true) }
@@ -542,6 +549,15 @@ class SettingsViewModel @Inject constructor(
      *  it automatically in the player; no native call needed here. */
     fun setSystemEffectsMode(enabled: Boolean) = launchSettingsAction("update system effects mode") {
         settingsPreferences.setSystemEffectsMode(enabled)
+    }
+
+    /** Synced Music Video (Settings -> Experimental, default OFF). */
+    fun setMusicVideoEnabled(enabled: Boolean) = launchSettingsAction("update music video setting") {
+        settingsPreferences.setMusicVideoEnabled(enabled)
+    }
+
+    fun setButtonNowPlayingEnabled(enabled: Boolean) = launchSettingsAction("update button now playing setting") {
+        settingsPreferences.setButtonNowPlayingEnabled(enabled)
     }
 
     // ── USB exclusive output (direct DAC, default OFF) ──
@@ -644,6 +660,11 @@ class SettingsViewModel @Inject constructor(
     fun setCrossfadeSeconds(seconds: Int) = launchSettingsAction("update crossfade duration") {
         settingsPreferences.setCrossfadeSeconds(seconds.coerceIn(1, 12))
     }
+    fun setAutomixEnabled(enabled: Boolean) = launchSettingsAction("update automix") { settingsPreferences.setAutomixEnabled(enabled) }
+    fun setAutomixBars(bars: Int) = launchSettingsAction("update automix bars") {
+        settingsPreferences.setAutomixBars(bars)
+    }
+    fun setAutoDJEnabled(enabled: Boolean) = launchSettingsAction("update autodj") { settingsPreferences.setAutoDJEnabled(enabled) }
     fun setWavySeekbarEnabled(enabled: Boolean) = launchSettingsAction("update seekbar style") {
         settingsPreferences.setWavySeekbarEnabled(enabled)
     }

@@ -802,10 +802,13 @@ class TrackDownloadManager @Inject constructor(
                     val qualitiesToAttempt =
                         LosslessMusicApi.getQualityAttemptOrder(requestedDownloadQuality)
                     for (downloadQuality in qualitiesToAttempt) {
-                    // Spatial-tier veto (mirrors playback): never download an
-                    // Atmos manifest on a device that cannot render it. The
-                    // stereo tiers later in this same list are the fallback.
-                    if (downloadQuality == LosslessMusicApi.QUALITY_DOLBY_ATMOS && !atmosCapable) {
+                    // Spatial-tier veto: if the device cannot render spatial audio,
+                    // fallback to stereo tiers unless the user explicitly configured
+                    // Download Quality = Dolby Atmos.
+                    if (downloadQuality == LosslessMusicApi.QUALITY_DOLBY_ATMOS &&
+                        !atmosCapable &&
+                        requestedDownloadQuality != LosslessMusicApi.QUALITY_DOLBY_ATMOS
+                    ) {
                         android.util.Log.i(
                             "TrackDownloadManager",
                             "Atmos veto for $finalTitle by $finalArtist: device cannot render spatial; trying stereo tiers",
@@ -861,6 +864,7 @@ class TrackDownloadManager @Inject constructor(
                                     // spatial manifest on an incapable device
                                     // is unplayable — cascade to stereo tiers.
                                     if (!atmosCapable &&
+                                        requestedDownloadQuality != LosslessMusicApi.QUALITY_DOLBY_ATMOS &&
                                         (manifestCodec.startsWith("ec-3") ||
                                             manifestCodec.startsWith("eac3") ||
                                             manifestCodec.startsWith("ac-3"))
@@ -967,6 +971,7 @@ class TrackDownloadManager @Inject constructor(
                                     // request could be stored as AAC while claiming FLAC.
                                     val manifestCodec = parsedDash.codec.ifBlank { s.codec.lowercase() }
                                     if (!atmosCapable &&
+                                        requestedDownloadQuality != LosslessMusicApi.QUALITY_DOLBY_ATMOS &&
                                         (manifestCodec.startsWith("ec-3") ||
                                             manifestCodec.startsWith("eac3") ||
                                             manifestCodec.startsWith("ac-3"))
@@ -1323,6 +1328,14 @@ class TrackDownloadManager @Inject constructor(
                         downloadHeaders = ytStream.requestHeaders
                         expectedContentLength = ytStream.contentLength
                             ?: runCatching { Uri.parse(ytStream.url).getQueryParameter("clen")?.toLongOrNull() }.getOrNull()
+                        if (durationMs <= 0L) {
+                            val candidateMs = pickedStream?.durationMs
+                                ?: (chosenTrack?.durationSeconds?.takeIf { it > 0 }?.times(1000L))
+                                ?: (preloadedBestMatch?.durationSeconds?.takeIf { it > 0 }?.times(1000L))
+                            if (candidateMs != null && candidateMs > 0L) {
+                                durationMs = candidateMs
+                            }
+                        }
                         useParallelDownload = true
                         val rawMime = ytStream.mimeType.orEmpty().lowercase()
                         if (rawMime.contains("mp4") || rawMime.contains("m4a") || rawMime.contains("aac")) {
@@ -1695,6 +1708,13 @@ class TrackDownloadManager @Inject constructor(
                     )
                     if (!metadataEmbedded) {
                         android.util.Log.w("TrackDownloadManager", "Could not safely embed audio metadata; preserving audio file")
+                    }
+
+                    // 4b. Finalize fragmented MP4 indexing (Atmos & AAC .m4a):
+                    // Patch duration into mvhd/mdhd and append Movie Fragment Random
+                    // Access (mfra) index so ExoPlayer and external players can seek.
+                    if (extension.equals("m4a", ignoreCase = true) || extension.equals("mp4", ignoreCase = true)) {
+                        Fmp4IndexBuilder.finalizeFmp4(currentAudioFile, durationMs)
                     }
 
                     // 5. Transfer tagged file to public storage / MediaStore

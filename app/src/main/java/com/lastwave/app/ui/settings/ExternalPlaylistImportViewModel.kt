@@ -202,6 +202,14 @@ class ExternalPlaylistImportViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(isLoading = false, preview = result, errorMessage = null, lastResult = null)
                     }
+                    val playlistId = ExternalPlaylistLink.extractId(raw.trim(), ExternalPlaylistSource.SPOTIFY)
+                    if (!playlistId.isNullOrBlank()) {
+                        _userPlaylists.update { currentList ->
+                            currentList.map { pl ->
+                                if (pl.id == playlistId) pl.copy(trackCount = rows.size) else pl
+                            }
+                        }
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e

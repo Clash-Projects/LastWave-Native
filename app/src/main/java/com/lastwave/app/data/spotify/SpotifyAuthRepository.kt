@@ -26,6 +26,7 @@ class SpotifyAuthRepository @Inject constructor(
     private val json = Json {
         ignoreUnknownKeys = true
         coerceInputValues = true
+        encodeDefaults = true
     }
 
     private val clientTokenMutex = Mutex()
@@ -49,15 +50,23 @@ class SpotifyAuthRepository @Inject constructor(
                 // browser it describes: an endpoint that is told "macos" by the body and
                 // "Windows" by the header is being handed two different machines.
                 val deviceId = spotifyPreferences.getOrCreateDeviceId()
-                val reqBody = json.encodeToString(
+                val reqBytes = json.encodeToString(
                     ClientTokenRequest(
                         client_data = ClientTokenRequest.ClientData(
+                            client_version = SPOTIFY_APP_VERSION,
+                            client_id = SPOTIFY_CLIENT_ID,
                             js_sdk_data = ClientTokenRequest.JsSdkData(
+                                device_brand = "Apple",
+                                device_model = "unknown",
+                                os = "macos",
+                                os_version = "10.15.7",
                                 device_id = deviceId,
+                                device_type = "computer",
                             ),
                         ),
                     ),
-                ).toRequestBody("application/json".toMediaType())
+                ).toByteArray(Charsets.UTF_8)
+                val reqBody = reqBytes.toRequestBody("application/json".toMediaType())
 
                 val request = Request.Builder()
                     .url(CLIENT_TOKEN_URL)
@@ -69,7 +78,8 @@ class SpotifyAuthRepository @Inject constructor(
 
                 okHttpClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
-                        Log.w(TAG, "Client token request failed with HTTP ${response.code}")
+                        val errBody = runCatching { response.body?.string() }.getOrNull()
+                        Log.w(TAG, "Client token request failed with HTTP ${response.code}: $errBody")
                         return@withContext cached
                     }
                     val bodyString = response.body?.string().orEmpty()
@@ -117,19 +127,17 @@ class SpotifyAuthRepository @Inject constructor(
             try {
                 val totp = computeTotp(spdc) ?: return@withContext cached
 
-                val transport = requestPersonalToken(spdc, totp.otp, REASON_TRANSPORT, totp.version)
+                val transport = requestPersonalToken(spdc, totp, REASON_TRANSPORT)
                 val init = if (transport.isUsable()) {
                     null
                 } else {
-                    requestPersonalToken(spdc, totp.otp, REASON_INIT, totp.version)
+                    requestPersonalToken(spdc, totp, REASON_INIT)
                 }
 
                 val chosen = listOfNotNull(transport, init).firstOrNull { it.isUsable() }
                 if (chosen == null) {
                     if (transport?.isAnonymous == true || init?.isAnonymous == true) {
-                        Log.w(TAG, "Spotify session is anonymous; the stored cookie is no longer signed in")
-                        spotifyPreferences.clearConnection()
-                        return@withContext null
+                        Log.w(TAG, "Spotify session returned anonymous; stored cookie may need re-login")
                     }
                     return@withContext cached
                 }
@@ -162,9 +170,26 @@ class SpotifyAuthRepository @Inject constructor(
     }
 
     /**
-     * The one-time password and the secret version it was derived from.
+     * The one-time passwords for client time and server time, plus the secret version.
      */
-    private data class Totp(val otp: String, val version: Int)
+    private data class Totp(val otpClient: String, val otpServer: String, val version: Int)
+
+    private fun generateOtp(secretKeyBytes: ByteArray, timestampSeconds: Long): String {
+        val counter = timestampSeconds / 30L
+        val counterBytes = ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN).putLong(counter).array()
+
+        val mac = Mac.getInstance("HmacSHA1")
+        mac.init(SecretKeySpec(secretKeyBytes, "HmacSHA1"))
+        val hmacResult = mac.doFinal(counterBytes)
+
+        val offset = hmacResult[hmacResult.size - 1].toInt() and 0x0F
+        val binary = ((hmacResult[offset].toInt() and 0x7F) shl 24) or
+            ((hmacResult[offset + 1].toInt() and 0xFF) shl 16) or
+            ((hmacResult[offset + 2].toInt() and 0xFF) shl 8) or
+            (hmacResult[offset + 3].toInt() and 0xFF)
+
+        return (binary % 1_000_000).toString().padStart(6, '0')
+    }
 
     /**
      * Derives the one-time password from the secret the web player is carrying.
@@ -206,21 +231,10 @@ class SpotifyAuthRepository @Inject constructor(
             }
         } ?: (System.currentTimeMillis() / 1000L)
 
-        val counter = serverTimeSeconds / 30L
-        val counterBytes = ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN).putLong(counter).array()
-
-        val mac = Mac.getInstance("HmacSHA1")
-        mac.init(SecretKeySpec(secretKeyBytes, "HmacSHA1"))
-        val hmacResult = mac.doFinal(counterBytes)
-
-        val offset = hmacResult[hmacResult.size - 1].toInt() and 0x0F
-        val binary = ((hmacResult[offset].toInt() and 0x7F) shl 24) or
-            ((hmacResult[offset + 1].toInt() and 0xFF) shl 16) or
-            ((hmacResult[offset + 2].toInt() and 0xFF) shl 8) or
-            (hmacResult[offset + 3].toInt() and 0xFF)
-
-        val otp = (binary % 1_000_000).toString().padStart(6, '0')
-        return Totp(otp, version)
+        val clientTimeSeconds = System.currentTimeMillis() / 1000L
+        val otpClient = generateOtp(secretKeyBytes, clientTimeSeconds)
+        val otpServer = generateOtp(secretKeyBytes, serverTimeSeconds)
+        return Totp(otpClient, otpServer, version)
     }
 
     /**
@@ -269,12 +283,11 @@ class SpotifyAuthRepository @Inject constructor(
      */
     private suspend fun requestPersonalToken(
         spdc: String,
-        otp: String,
+        totp: Totp,
         reason: String,
-        totpVersion: Int,
     ): SpotifyPersonalTokenResponse? {
-        val tokenUrl = "$SESSION_TOKEN_URL?reason=$reason&productType=mobile-web-player" +
-            "&totp=$otp&totpServer=$otp&totpVer=$totpVersion"
+        val tokenUrl = "$SESSION_TOKEN_URL?reason=$reason&productType=web-player" +
+            "&totp=${totp.otpClient}&totpServer=${totp.otpServer}&totpVer=${totp.version}"
 
         val tokenRequest = Request.Builder()
             .url(tokenUrl)
@@ -315,6 +328,7 @@ class SpotifyAuthRepository @Inject constructor(
 
         private const val SPOTIFY_ORIGIN = "https://open.spotify.com"
         private const val SPOTIFY_APP_VERSION = "1.2.62.476.g2ad6e7f3"
+        private const val SPOTIFY_CLIENT_ID = "d8a5ed958d274c2e8ee717e6a4b0971d"
 
         private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         private const val CLIENT_TOKEN_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"

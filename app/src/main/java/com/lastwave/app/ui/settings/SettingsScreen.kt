@@ -19,6 +19,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
@@ -141,12 +142,23 @@ import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
@@ -179,6 +191,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
@@ -245,6 +258,14 @@ private val ACCENT_PRESETS = listOf(
     AccentPreset("Amber", "#E0A030"),
     AccentPreset("Rose", "#E0507A"),
 )
+
+data class ToggleDetailInfo(
+    val title: String,
+    val subtitle: String,
+    val checked: Boolean,
+)
+
+val LocalToggleDetailViewer = staticCompositionLocalOf<((ToggleDetailInfo) -> Unit)?> { null }
 
 // -- Expressive shape scale used only within this screen --
 private val CardOuterShape = RoundedCornerShape(28.dp)
@@ -443,7 +464,7 @@ enum class SettingsTab(
         subtitleRes = R.string.set_cat_about_sub,
         title = "About & Community",
         subtitle = "Version info, Telegram community, GitHub repository",
-        icon = Icons.Filled.AutoAwesome,
+        icon = Icons.Filled.Info,
     ),
 }
 
@@ -526,9 +547,11 @@ fun SettingsScreen(
     var showYtLibraryVisibilitySheet by remember { mutableStateOf(false) }
     var showYtChannelSheet by remember { mutableStateOf(false) }
     var showYtDisconnectConfirm by remember { mutableStateOf(false) }
+    var showSpotifyDisconnectConfirm by remember { mutableStateOf(false) }
     var showCookieLoginDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showJamSheet by remember { mutableStateOf(false) }
+    var activeToggleDetail by remember { mutableStateOf<ToggleDetailInfo?>(null) }
     val currentLanguage = remember(misc.appLanguageTag) { AppLanguage.fromTag(misc.appLanguageTag) }
 
     // Sends the user to Android's own Notification Listener access screen
@@ -561,9 +584,8 @@ fun SettingsScreen(
         if (uri != null) viewModel.exportBackup(uri, appVersionName(context))
     }
 
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.TopCenter,
+    CompositionLocalProvider(
+        LocalToggleDetailViewer provides { activeToggleDetail = it },
     ) {
         Column(
             Modifier
@@ -785,21 +807,21 @@ fun SettingsScreen(
                                 SettingsGroup(rowCount = 3) { index, position ->
                                     when (index) {
                                         0 -> SettingsActionCard(
-                                            icon = Icons.Filled.GraphicEq,
-                                            iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                            iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            title = stringResource(R.string.set_cat_audio),
-                                            subtitle = stringResource(R.string.set_cat_audio_sub),
-                                            onClick = { activeTab = SettingsTab.AUDIO },
-                                            position = position,
-                                        )
-                                        1 -> SettingsActionCard(
                                             icon = Icons.Filled.Palette,
                                             iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                             iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
                                             title = stringResource(R.string.set_cat_appear),
                                             subtitle = stringResource(R.string.set_cat_appear_sub),
                                             onClick = { activeTab = SettingsTab.APPEARANCE },
+                                            position = position,
+                                        )
+                                        1 -> SettingsActionCard(
+                                            icon = Icons.Filled.GraphicEq,
+                                            iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            title = stringResource(R.string.set_cat_audio),
+                                            subtitle = stringResource(R.string.set_cat_audio_sub),
+                                            onClick = { activeTab = SettingsTab.AUDIO },
                                             position = position,
                                         )
                                         else -> SettingsActionCard(
@@ -834,7 +856,7 @@ fun SettingsScreen(
                                             position = position,
                                         )
                                         else -> SettingsActionCard(
-                                            icon = Icons.Filled.AutoAwesome,
+                                            icon = Icons.Filled.Info,
                                             iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                             iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                             title = stringResource(R.string.set_cat_about),
@@ -874,14 +896,9 @@ fun SettingsScreen(
                     }
 
                     val isIgnored = BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)
-                    val totalAudioRows = if (misc.crossfadeEnabled) {
-                        if (isIgnored) 7 else 8
-                    } else {
-                        if (isIgnored) 6 else 7
-                    }
-                    SettingsGroup(rowCount = totalAudioRows) { index, position ->
-                        when (index) {
-                            0 -> SettingsActionCard(
+                    val audioRows = buildList<@Composable (GroupPosition) -> Unit> {
+                        add { position ->
+                            SettingsActionCard(
                                 icon = Icons.Filled.HighQuality,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -891,7 +908,9 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.streaming_quality"),
                             )
-                            1 -> SettingsActionCard(
+                        }
+                        add { position ->
+                            SettingsActionCard(
                                 icon = Icons.Filled.CloudDownload,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -901,7 +920,9 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.download_quality"),
                             )
-                            2 -> SettingsToggleCard(
+                        }
+                        add { position ->
+                            SettingsToggleCard(
                                 icon = Icons.Filled.Tune,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -916,12 +937,60 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.bit_perfect"),
                             )
-                            3 -> SettingsToggleCard(
-                                icon = Icons.Filled.GraphicEq,
+                        }
+                        add { position ->
+                            SettingsToggleCard(
+                                icon = Icons.Filled.AutoAwesome,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = "Auto DJ",
+                                subtitle = if (misc.autoDJEnabled) {
+                                    "Autonomous queue replenishment & predictive background prefetch"
+                                } else {
+                                    "Automatic queue management and prefetching disabled"
+                                },
+                                checked = misc.autoDJEnabled,
+                                onCheckedChange = viewModel::setAutoDJEnabled,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.autodj"),
+                            )
+                        }
+                        add { position ->
+                            SettingsToggleCard(
+                                icon = Icons.Filled.AutoAwesome,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = "Automix (AutoDJ)",
+                                subtitle = if (misc.automixEnabled) {
+                                    "Beat-synced transitions with bass crossover swap \u2022 ${misc.automixBars} bars"
+                                } else {
+                                    "Seamless tempo-synced DJ blends between queued tracks"
+                                },
+                                checked = misc.automixEnabled,
+                                onCheckedChange = viewModel::setAutomixEnabled,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.automix"),
+                            )
+                        }
+                        if (misc.automixEnabled) {
+                            add { position ->
+                                AutomixBarsRow(
+                                    bars = misc.automixBars,
+                                    onBarsChange = viewModel::setAutomixBars,
+                                    position = position,
+                                    isHighlighted = (highlightedSettingId == "audio.automix_bars"),
+                                )
+                            }
+                        }
+                        add { position ->
+                            SettingsToggleCard(
+                                icon = Icons.Filled.GraphicEq,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                                 title = stringResource(R.string.settings_crossfade),
-                                subtitle = if (misc.crossfadeEnabled && misc.isBitPerfectEnabled) {
+                                subtitle = if (misc.automixEnabled) {
+                                    "Disabled while Automix is active"
+                                } else if (misc.crossfadeEnabled && misc.isBitPerfectEnabled) {
                                     "Paused while Bit-Perfect is enabled"
                                 } else if (misc.crossfadeEnabled) {
                                     "Smooth transition between tracks \u2022 ${misc.crossfadeSeconds} sec"
@@ -933,84 +1002,49 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.crossfade"),
                             )
-                            4 -> if (misc.crossfadeEnabled) {
+                        }
+                        if (misc.crossfadeEnabled) {
+                            add { position ->
                                 CrossfadeDurationRow(
                                     seconds = misc.crossfadeSeconds,
                                     onSecondsChange = viewModel::setCrossfadeSeconds,
                                     position = position,
                                     isHighlighted = (highlightedSettingId == "audio.crossfade_duration"),
                                 )
-                            } else {
-                                SettingsToggleCard(
-                                    icon = Icons.Filled.Lyrics,
-                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    title = stringResource(R.string.settings_keep_lyrics_screen_awake),
-                                    subtitle = stringResource(R.string.settings_keep_lyrics_screen_awake_desc),
-                                    checked = misc.keepLyricsScreenAwake,
-                                    onCheckedChange = viewModel::setKeepLyricsScreenAwake,
-                                    position = position,
-                                    isHighlighted = (highlightedSettingId == "audio.keep_lyrics_screen_awake"),
-                                )
                             }
-                            5 -> if (misc.crossfadeEnabled) {
-                                SettingsToggleCard(
-                                    icon = Icons.Filled.Lyrics,
-                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    title = stringResource(R.string.settings_keep_lyrics_screen_awake),
-                                    subtitle = stringResource(R.string.settings_keep_lyrics_screen_awake_desc),
-                                    checked = misc.keepLyricsScreenAwake,
-                                    onCheckedChange = viewModel::setKeepLyricsScreenAwake,
-                                    position = position,
-                                    isHighlighted = (highlightedSettingId == "audio.keep_lyrics_screen_awake"),
-                                )
-                            } else {
-                                SettingsToggleCard(
-                                    icon = Icons.Filled.Lyrics,
-                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    title = stringResource(R.string.settings_download_lyrics),
-                                    subtitle = if (misc.downloadLyrics) {
-                                        "Save .lrc companion files & embed lyrics in downloads"
-                                    } else {
-                                        "Do not fetch or save lyrics when downloading"
-                                    },
-                                    checked = misc.downloadLyrics,
-                                    onCheckedChange = viewModel::setDownloadLyrics,
-                                    position = position,
-                                    isHighlighted = (highlightedSettingId == "audio.download_lyrics"),
-                                )
-                            }
-                            6 -> if (misc.crossfadeEnabled) {
-                                SettingsToggleCard(
-                                    icon = Icons.Filled.Lyrics,
-                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    title = stringResource(R.string.settings_download_lyrics),
-                                    subtitle = if (misc.downloadLyrics) {
-                                        "Save .lrc companion files & embed lyrics in downloads"
-                                    } else {
-                                        "Do not fetch or save lyrics when downloading"
-                                    },
-                                    checked = misc.downloadLyrics,
-                                    onCheckedChange = viewModel::setDownloadLyrics,
-                                    position = position,
-                                    isHighlighted = (highlightedSettingId == "audio.download_lyrics"),
-                                )
-                            } else if (!isIgnored) {
-                                SettingsActionCard(
-                                    icon = Icons.Filled.Bolt,
-                                    iconContainer = MaterialTheme.colorScheme.errorContainer,
-                                    iconTint = MaterialTheme.colorScheme.onErrorContainer,
-                                    title = stringResource(R.string.settings_battery_title),
-                                    subtitle = stringResource(R.string.set_battery_restricted),
-                                    onClick = { BatteryOptimizationHelper.requestIgnoreBatteryOptimizations(context) },
-                                    position = position,
-                                    isHighlighted = (highlightedSettingId == "audio.battery_optimization"),
-                                )
-                            }
-                            7 -> if (!isIgnored) {
+                        }
+                        add { position ->
+                            SettingsToggleCard(
+                                icon = Icons.Filled.Lyrics,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_keep_lyrics_screen_awake),
+                                subtitle = stringResource(R.string.settings_keep_lyrics_screen_awake_desc),
+                                checked = misc.keepLyricsScreenAwake,
+                                onCheckedChange = viewModel::setKeepLyricsScreenAwake,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.keep_lyrics_screen_awake"),
+                            )
+                        }
+                        add { position ->
+                            SettingsToggleCard(
+                                icon = Icons.Filled.Lyrics,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_download_lyrics),
+                                subtitle = if (misc.downloadLyrics) {
+                                    "Save .lrc companion files & embed lyrics in downloads"
+                                } else {
+                                    "Do not fetch or save lyrics when downloading"
+                                },
+                                checked = misc.downloadLyrics,
+                                onCheckedChange = viewModel::setDownloadLyrics,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.download_lyrics"),
+                            )
+                        }
+                        if (!isIgnored) {
+                            add { position ->
                                 SettingsActionCard(
                                     icon = Icons.Filled.Bolt,
                                     iconContainer = MaterialTheme.colorScheme.errorContainer,
@@ -1023,6 +1057,9 @@ fun SettingsScreen(
                                 )
                             }
                         }
+                    }
+                    SettingsGroup(rowCount = audioRows.size) { index, position ->
+                        audioRows[index](position)
                     }
                 }
             }
@@ -1202,7 +1239,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_appearance))
-                    SettingsGroup(rowCount = 8) { index, position ->
+                    SettingsGroup(rowCount = 9) { index, position ->
                         when (index) {
                             0 -> ThemeModeSelectorCard(
                                 currentThemeMode = theme?.themeMode ?: ThemeMode.SYSTEM,
@@ -1211,6 +1248,17 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "appearance.theme_mode"),
                             )
                             1 -> SettingsToggleCard(
+                                icon = Icons.Filled.AutoAwesome,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.settings_lastwave_theme),
+                                subtitle = stringResource(R.string.settings_lastwave_theme_sub),
+                                checked = theme?.isLastWaveTheme ?: false,
+                                onCheckedChange = viewModel::setLastWaveTheme,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.lastwave_theme"),
+                            )
+                            2 -> SettingsToggleCard(
                                 icon = Icons.Filled.Contrast,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1222,20 +1270,23 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.amoled"),
                             )
-                            2 -> SettingsToggleCard(
+                            3 -> SettingsToggleCard(
                                 icon = Icons.Filled.Palette,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                 title = stringResource(R.string.settings_dynamic_color),
                                 subtitle = stringResource(R.string.settings_dynamic_color_sub),
-                                checked = theme?.mode == AccentMode.DYNAMIC,
+                                checked = theme?.mode == AccentMode.DYNAMIC && !(theme?.isLastWaveTheme ?: false),
                                 onCheckedChange = { enabled ->
+                                    if (enabled && (theme?.isLastWaveTheme == true)) {
+                                        viewModel.setLastWaveTheme(false)
+                                    }
                                     viewModel.setAccentMode(if (enabled) AccentMode.DYNAMIC else AccentMode.MANUAL)
                                 },
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.dynamic_color"),
                             )
-                            3 -> SettingsToggleCard(
+                            4 -> SettingsToggleCard(
                                 icon = Icons.Filled.BubbleChart,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1246,7 +1297,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.liquid_glass"),
                             )
-                            4 -> SettingsToggleCard(
+                            5 -> SettingsToggleCard(
                                 icon = Icons.Filled.Apps,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1257,7 +1308,18 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.md3_nav_bar"),
                             )
-                            5 -> SettingsToggleCard(
+                            6 -> SettingsToggleCard(
+                                icon = Icons.Filled.VisibilityOff,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_hide_nav_tabs),
+                                subtitle = stringResource(R.string.settings_hide_nav_tabs_sub),
+                                checked = theme?.hideNavTabs ?: false,
+                                onCheckedChange = viewModel::setHideNavTabs,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.hide_nav_tabs"),
+                            )
+                            7 -> SettingsToggleCard(
                                 icon = Icons.Filled.Album,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1268,7 +1330,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.dynamic_now_playing"),
                             )
-                            6 -> SettingsToggleCard(
+                            8 -> SettingsToggleCard(
                                 icon = Icons.Filled.TextFields,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1278,20 +1340,6 @@ fun SettingsScreen(
                                 onCheckedChange = viewModel::setUseCustomFont,
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.app_font"),
-                            )
-                            7 -> SettingsActionCard(
-                                icon = Icons.Filled.Dashboard,
-                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = stringResource(R.string.settings_home_sections),
-                                subtitle = run {
-                                    val total = com.lastwave.app.data.local.HomeSection.entries.size
-                                    val visible = total - misc.hiddenHomeSections.size
-                                    stringResource(R.string.home_sections_visible, visible, total)
-                                },
-                                onClick = onOpenHomeSections,
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "appearance.home_sections"),
                             )
                         }
                     }
@@ -1319,8 +1367,18 @@ fun SettingsScreen(
                             AccentPresetGrid(
                                 currentMode = theme?.mode ?: AccentMode.MANUAL,
                                 selectedHex = theme?.accentColorHex,
-                                onPickPreset = { hex -> viewModel.setManualAccent(Color(android.graphics.Color.parseColor(hex))) },
-                                onPickMono = { viewModel.setAccentMode(AccentMode.MONOCHROME) },
+                                onPickPreset = { hex ->
+                                    if (theme?.isLastWaveTheme == true) {
+                                        viewModel.setLastWaveTheme(false)
+                                    }
+                                    viewModel.setManualAccent(Color(android.graphics.Color.parseColor(hex)))
+                                },
+                                onPickMono = {
+                                    if (theme?.isLastWaveTheme == true) {
+                                        viewModel.setLastWaveTheme(false)
+                                    }
+                                    viewModel.setAccentMode(AccentMode.MONOCHROME)
+                                },
                                 onPickCustom = viewModel::openColorWheel,
                             )
                         }
@@ -1331,7 +1389,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_experimental))
-                    SettingsGroup(rowCount = 9) { index, position ->
+                    SettingsGroup(rowCount = 11) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.Lyrics,
@@ -1470,6 +1528,36 @@ fun SettingsScreen(
                                 onClick = { showTranslationLanguageDialog = true },
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.translation_language"),
+                            )
+                            9 -> SettingsToggleCard(
+                                icon = Icons.Filled.SmartDisplay,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.settings_music_video),
+                                subtitle = if (misc.musicVideoEnabled) {
+                                    stringResource(R.string.settings_music_video_on)
+                                } else {
+                                    stringResource(R.string.settings_music_video_off)
+                                },
+                                checked = misc.musicVideoEnabled,
+                                onCheckedChange = viewModel::setMusicVideoEnabled,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.music_video"),
+                            )
+                            10 -> SettingsToggleCard(
+                                icon = Icons.Filled.PlayCircle,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = "Button Now playing",
+                                subtitle = if (misc.buttonNowPlayingEnabled) {
+                                    "Floating button mode active • Card hidden"
+                                } else {
+                                    "Classic bottom now playing card"
+                                },
+                                checked = misc.buttonNowPlayingEnabled,
+                                onCheckedChange = viewModel::setButtonNowPlayingEnabled,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.button_now_playing"),
                             )
                         }
                     }
@@ -1742,16 +1830,25 @@ fun SettingsScreen(
                                 val spotifyPreferCanvas by viewModel.spotifyPreferCanvas.collectAsStateWithLifecycle()
                                 SettingsGroup(rowCount = if (spotifyConnected) 4 else 3) { index, position ->
                                     when (index) {
-                                        0 -> SettingsActionCard(
-                                            icon = Icons.Filled.PlayCircle,
-                                            iconContainer = if (spotifyConnected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                                            iconTint = if (spotifyConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            title = if (spotifyConnected) "Spotify Account Connected" else "Connect Spotify Account",
-                                            subtitle = if (spotifyConnected) "Connected (sp_dc). Tap to reconnect or manage session." else "Sign in to enable official Spotify Canvas video loops & library sync",
-                                            onClick = onOpenSpotifyLogin,
-                                            position = position,
-                                            isHighlighted = (highlightedSettingId == "spotify.account"),
-                                        )
+                                        0 -> if (spotifyConnected) {
+                                            SpotifyAccountRow(
+                                                onDisconnect = { showSpotifyDisconnectConfirm = true },
+                                                onClick = onOpenSpotifyLogin,
+                                                position = position,
+                                                isHighlighted = (highlightedSettingId == "spotify.account"),
+                                            )
+                                        } else {
+                                            SettingsActionCard(
+                                                icon = Icons.Filled.PlayCircle,
+                                                iconContainer = MaterialTheme.colorScheme.surfaceVariant,
+                                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                title = "Connect Spotify Account",
+                                                subtitle = "Sign in to enable official Spotify Canvas video loops & library sync",
+                                                onClick = onOpenSpotifyLogin,
+                                                position = position,
+                                                isHighlighted = (highlightedSettingId == "spotify.account"),
+                                            )
+                                        }
                                         1 -> SettingsActionCard(
                                             icon = Icons.Filled.QueueMusic,
                                             iconContainer = MaterialTheme.colorScheme.secondaryContainer,
@@ -2315,6 +2412,37 @@ fun SettingsScreen(
         )
     }
 
+    // -- Spotify disconnect confirm --
+    if (showSpotifyDisconnectConfirm) {
+        AlertDialog(
+            onDismissRequest = { showSpotifyDisconnectConfirm = false },
+            title = { Text("Disconnect Spotify?") },
+            text = { Text("This will remove your Spotify session and log you out. Spotify Canvas loops and synced playlists will be disabled until you reconnect.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showSpotifyDisconnectConfirm = false
+                    viewModel.disconnectSpotify()
+                    runCatching {
+                        val cm = android.webkit.CookieManager.getInstance()
+                        for (domain in listOf("https://spotify.com", "https://accounts.spotify.com", "https://open.spotify.com")) {
+                            val cookies = cm.getCookie(domain) ?: continue
+                            for (cookie in cookies.split(";")) {
+                                val name = cookie.substringBefore("=").trim()
+                                if (name.isNotEmpty()) {
+                                    cm.setCookie(domain, "$name=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/")
+                                }
+                            }
+                        }
+                        cm.flush()
+                    }
+                }) { Text(stringResource(R.string.common_disconnect)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSpotifyDisconnectConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
+            },
+        )
+    }
+
     if (showCookieLoginDialog) {
         CookieLoginDialog(
             onDismiss = { showCookieLoginDialog = false },
@@ -2345,58 +2473,150 @@ fun SettingsScreen(
         )
     }
 
-    // -- App language picker (Settings -> Language) --
+    // -- App language picker (Settings -> Language) styled like reference screenshot --
     if (showLanguageDialog) {
-        AlertDialog(
-            onDismissRequest = { showLanguageDialog = false },
-            title = { Text(stringResource(R.string.settings_language_dialog_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                    AppLanguage.SELECTABLE.forEach { language ->
-                        val selected = language == currentLanguage
-                        Row(
+        var selectedLanguage by remember(currentLanguage) { mutableStateOf(currentLanguage) }
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showLanguageDialog = false }) {
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp, vertical = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Icon(
+                        Icons.Filled.Language,
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        stringResource(R.string.settings_language_dialog_title),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Spacer(Modifier.height(18.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable {
-                                    viewModel.setAppLanguage(language)
-                                    showLanguageDialog = false
-                                }
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                                .heightIn(max = 380.dp),
                         ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    language.nativeDisplayName(),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                )
-                                if (language == AppLanguage.SYSTEM) {
+                            items(AppLanguage.SELECTABLE) { language ->
+                                val isSelected = language == selectedLanguage
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                            else Color.Transparent
+                                        )
+                                        .clickable { selectedLanguage = language }
+                                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    if (language == AppLanguage.SYSTEM) {
+                                        Icon(
+                                            Icons.Filled.Android,
+                                            contentDescription = null,
+                                            tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                                                   else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(24.dp),
+                                        )
+                                    } else {
+                                        val flag = when (language) {
+                                            AppLanguage.ENGLISH -> "🇺🇸"
+                                            AppLanguage.TURKISH -> "🇹🇷"
+                                            AppLanguage.CHINESE_SIMPLIFIED -> "🇨🇳"
+                                            AppLanguage.RUSSIAN -> "🇷🇺"
+                                            AppLanguage.PORTUGUESE_BRAZIL -> "🇧🇷"
+                                            AppLanguage.SPANISH -> "🇪🇸"
+                                            AppLanguage.INDONESIAN -> "🇮🇩"
+                                            AppLanguage.HINDI -> "🇮🇳"
+                                            AppLanguage.GERMAN -> "🇩🇪"
+                                            AppLanguage.FRENCH -> "🇫🇷"
+                                            AppLanguage.ITALIAN -> "🇮🇹"
+                                            AppLanguage.JAPANESE -> "🇯🇵"
+                                            AppLanguage.KOREAN -> "🇰🇷"
+                                            AppLanguage.ARABIC -> "🇸🇦"
+                                            else -> "🌐"
+                                        }
+                                        Text(
+                                            flag,
+                                            style = MaterialTheme.typography.titleMedium,
+                                        )
+                                    }
+                                    Spacer(Modifier.width(14.dp))
                                     Text(
-                                        stringResource(R.string.settings_language_system_sub),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        language.nativeDisplayName(),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onSurface
+                                               else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick = { selectedLanguage = language },
                                     )
                                 }
                             }
-                            if (selected) {
-                                Icon(
-                                    Icons.Filled.Check,
-                                    contentDescription = stringResource(R.string.common_selected),
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(20.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(
+                            onClick = { showLanguageDialog = false },
+                            shape = CircleShape,
+                        ) {
+                            Text(
+                                stringResource(R.string.common_cancel),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                viewModel.setAppLanguage(selectedLanguage)
+                                showLanguageDialog = false
+                            },
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            ),
+                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp),
+                        ) {
+                            Text(
+                                stringResource(android.R.string.ok),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                            )
                         }
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { showLanguageDialog = false }) {
-                    Text(stringResource(R.string.common_done))
-                }
-            },
-        )
+            }
+        }
     }
 
     // -- Enable Scrobbling password dialog --
@@ -2913,6 +3133,103 @@ fun SettingsScreen(
             }
         }
     }
+
+    if (activeToggleDetail != null) {
+        val detail = activeToggleDetail!!
+        Dialog(
+            onDismissRequest = { activeToggleDetail = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .blur(16.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { activeToggleDetail = null },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Card(
+                    shape = RoundedCornerShape(28.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth(0.88f)
+                        .widthIn(max = 420.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {},
+                        ),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.Start,
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = if (detail.checked) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                modifier = Modifier.size(44.dp),
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                    Icon(
+                                        imageVector = if (detail.checked) Icons.Filled.Check else Icons.Filled.Info,
+                                        contentDescription = null,
+                                        tint = if (detail.checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                }
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (detail.checked) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
+                            ) {
+                                Text(
+                                    text = if (detail.checked) "Enabled" else "Disabled",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (detail.checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            text = detail.title,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = detail.subtitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 22.sp,
+                        )
+                        Spacer(Modifier.height(20.dp))
+                        FilledTonalButton(
+                            onClick = { activeToggleDetail = null },
+                            modifier = Modifier.align(Alignment.End),
+                            shape = CircleShape,
+                        ) {
+                            Text("Close", fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 private fun appVersionName(context: android.content.Context): String = try {
@@ -2959,6 +3276,19 @@ private fun IconBadge(icon: ImageVector, container: Color, tint: Color, modifier
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+    }
+}
+
+@Composable
+private fun IconBadge(painter: Painter, container: Color, tint: Color, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .size(44.dp)
+            .clip(IconBadgeShape)
+            .background(container),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(painter, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -3033,6 +3363,98 @@ private fun ThemeModeSelectorCard(
 
 @Composable
 private fun SettingsToggleCard(
+    painter: Painter,
+    iconContainer: Color,
+    iconTint: Color,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    position: GroupPosition = GroupPosition.SINGLE,
+    enabled: Boolean = true,
+    isHighlighted: Boolean = false,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val scale = rememberPressScale(interactionSource)
+    val shape = groupShape(position)
+    val haptic = LocalHapticFeedback.current
+    val detailViewer = LocalToggleDetailViewer.current
+
+    Card(
+        shape = shape,
+        colors = CardDefaults.cardColors(
+            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh,
+            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                val s = if (enabled) scale else 1f
+                scaleX = s
+                scaleY = s
+            }
+            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape)
+            .clip(shape)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = androidx.compose.material3.ripple(),
+                enabled = enabled,
+                onClick = { onCheckedChange(!checked) },
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    detailViewer?.invoke(ToggleDetailInfo(title, subtitle, checked))
+                },
+            ),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconBadge(
+                painter,
+                if (enabled) iconContainer else iconContainer.copy(alpha = 0.5f),
+                if (enabled) iconTint else iconTint.copy(alpha = 0.5f),
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Switch(
+                checked = checked,
+                enabled = enabled,
+                onCheckedChange = if (enabled) onCheckedChange else null,
+                thumbContent = if (checked) {
+                    {
+                        Icon(
+                            Icons.Filled.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(SwitchDefaults.IconSize),
+                        )
+                    }
+                } else null,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsToggleCard(
     icon: ImageVector,
     iconContainer: Color,
     iconTint: Color,
@@ -3047,21 +3469,35 @@ private fun SettingsToggleCard(
     val interactionSource = remember { MutableInteractionSource() }
     val scale = rememberPressScale(interactionSource)
     val shape = groupShape(position)
+    val haptic = LocalHapticFeedback.current
+    val detailViewer = LocalToggleDetailViewer.current
 
     Card(
-        onClick = { if (enabled) onCheckedChange(!checked) },
         shape = shape,
-        enabled = enabled,
         colors = CardDefaults.cardColors(
             containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh,
             disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
-            .scale(if (enabled) scale else 1f)
-            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
+            .graphicsLayer {
+                val s = if (enabled) scale else 1f
+                scaleX = s
+                scaleY = s
+            }
+            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape)
+            .clip(shape)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = androidx.compose.material3.ripple(),
+                enabled = enabled,
+                onClick = { onCheckedChange(!checked) },
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    detailViewer?.invoke(ToggleDetailInfo(title, subtitle, checked))
+                },
+            ),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
@@ -3110,6 +3546,71 @@ private fun SettingsToggleCard(
 }
 
 
+
+@Composable
+private fun AutomixBarsRow(
+    bars: Int,
+    onBarsChange: (Int) -> Unit,
+    position: GroupPosition = GroupPosition.SINGLE,
+    isHighlighted: Boolean = false,
+) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val shape = groupShape(position)
+
+    Card(
+        shape = shape,
+        colors = CardDefaults.cardColors(
+            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconBadge(
+                    Icons.Filled.AutoAwesome,
+                    MaterialTheme.colorScheme.tertiaryContainer,
+                    MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Automix Transition Length", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                    Text(
+                        if (bars >= 16) "16 bars \u2022 Extended club blend" else "8 bars \u2022 Standard DJ transition",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChip(
+                    selected = bars <= 8,
+                    onClick = {
+                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        onBarsChange(8)
+                    },
+                    label = { Text("8 Bars (Standard)", style = MaterialTheme.typography.labelMedium) },
+                    modifier = Modifier.weight(1f),
+                )
+                FilterChip(
+                    selected = bars >= 16,
+                    onClick = {
+                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        onBarsChange(16)
+                    },
+                    label = { Text("16 Bars (Extended)", style = MaterialTheme.typography.labelMedium) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun CrossfadeDurationRow(
@@ -3231,7 +3732,10 @@ private fun SettingsActionCard(
         interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
-            .scale(scale)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
     ) {
         Row(
@@ -3420,7 +3924,10 @@ private fun SearchResultCard(
         interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
-            .scale(scale),
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            },
     ) {
         Column(
             modifier = Modifier
@@ -3574,6 +4081,69 @@ private fun YouTubeAccountRow(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+            Spacer(Modifier.width(8.dp))
+            FilledTonalIconButton(
+                onClick = onDisconnect,
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                ),
+            ) {
+                Icon(Icons.Filled.Logout, contentDescription = stringResource(R.string.set_disconnect_cd))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpotifyAccountRow(
+    onDisconnect: () -> Unit,
+    onClick: () -> Unit,
+    position: GroupPosition,
+    isHighlighted: Boolean = false,
+) {
+    val shape = groupShape(position)
+    Card(
+        onClick = onClick,
+        shape = shape,
+        colors = CardDefaults.cardColors(
+            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize()
+            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconBadge(
+                Icons.Filled.PlayCircle,
+                MaterialTheme.colorScheme.primaryContainer,
+                MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Spotify Account",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "Connected (sp_dc)",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+                Text(
+                    "Tap to manage session",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             Spacer(Modifier.width(8.dp))
             FilledTonalIconButton(
@@ -4011,7 +4581,10 @@ private fun ColorTile(
     val tileShape = RoundedCornerShape(20.dp)
 
     Column(
-        modifier = modifier.scale(scale),
+        modifier = modifier.graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
@@ -4117,7 +4690,7 @@ private fun AboutCard(versionName: String) {
             }
             Spacer(Modifier.height(12.dp))
             Text(
-                "Built with the Last.fm API",
+                "Build With Love ♥️ By - ℘ꪊᦓᛕꪖ᥅",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

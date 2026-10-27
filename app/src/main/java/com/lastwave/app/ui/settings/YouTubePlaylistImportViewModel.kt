@@ -26,7 +26,9 @@ enum class ImportTab(val titleRes: Int) {
 }
 
 data class YouTubeImportUiState(
-    val selectedTab: ImportTab = ImportTab.SEARCH,
+    // Default to LINK so guests land on the paste-URL flow immediately (works
+    // without a YouTube Music account). Switches to LIBRARY once connected.
+    val selectedTab: ImportTab = ImportTab.LINK,
     val query: String = "",
     val directLink: String = "",
     val isSearching: Boolean = false,
@@ -77,7 +79,9 @@ class YouTubePlaylistImportViewModel @Inject constructor(
                 if (nowConnected && !wasConnected) {
                     // Freshly connected (or reconnected): land on the account's
                     // own library so the "select & import" flow is front and center.
-                    if (_uiState.value.selectedTab == ImportTab.SEARCH && _uiState.value.searchResults.isEmpty()) {
+                    if (_uiState.value.selectedTab in listOf(ImportTab.LINK, ImportTab.SEARCH) &&
+                        _uiState.value.searchResults.isEmpty()
+                    ) {
                         selectTab(ImportTab.LIBRARY)
                     }
                     loadLibrary()

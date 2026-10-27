@@ -73,6 +73,9 @@ class ScrobbleRepository @Inject constructor(
     }
 
     suspend fun updateNowPlaying(artist: String, track: String, album: String?): Result {
+        if (artist.equals("Podcast", ignoreCase = true) || track.equals("Podcast", ignoreCase = true)) {
+            return Result.Success
+        }
         val key = "${artist.lowercase().trim()}|${track.lowercase().trim()}"
         if (key == lastNowPlayingKey) {
             return Result.Success // Already announced on Last.fm, 0 network calls
@@ -93,6 +96,9 @@ class ScrobbleRepository @Inject constructor(
     }
 
     suspend fun scrobble(artist: String, track: String, album: String?, timestampSec: Long): Result {
+        if (artist.equals("Podcast", ignoreCase = true) || track.equals("Podcast", ignoreCase = true)) {
+            return Result.Success
+        }
         // Try flushing any previously queued offline scrobbles first
         flushPendingScrobbles()
 

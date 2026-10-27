@@ -58,10 +58,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lyrics
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.MusicOff
 import androidx.compose.material.icons.filled.Refresh
@@ -1629,6 +1631,8 @@ private fun ModernLyricsControls(
             }
         }
 
+        var showLyricsOptions by remember { mutableStateOf(false) }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1637,212 +1641,6 @@ private fun ModernLyricsControls(
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (onOpenLyricsSource != null) {
-                val sourceInteraction = remember { MutableInteractionSource() }
-                val isSourcePressed by sourceInteraction.collectIsPressedAsState()
-                val sourceScale by animateFloatAsState(
-                    targetValue = if (isSourcePressed) 0.82f else 1.0f,
-                    animationSpec = ExpressiveMotion.spatialSpring(),
-                    label = "sourceBtnScale",
-                )
-                IconButton(
-                    onClick = onOpenLyricsSource,
-                    enabled = controlsVisible,
-                    interactionSource = sourceInteraction,
-                    modifier = Modifier
-                        .size(44.dp)
-                        .graphicsLayer {
-                            scaleX = sourceScale
-                            scaleY = sourceScale
-                        }
-                        .clip(CircleShape)
-                        .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = sourceInteraction)
-                        .background(
-                            liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
-                        ),
-                ) {
-                    Icon(
-                        Icons.Filled.Lyrics,
-                        contentDescription = stringResource(R.string.ly_source_cd),
-                        modifier = Modifier.size(22.dp),
-                        tint = Color.White.copy(alpha = 0.90f),
-                    )
-                }
-
-                Spacer(Modifier.width(10.dp))
-            }
-
-            // Translation and romanization toggles sit left of the size
-            // controls. The active mode's button tints with the theme colour
-            // and turns itself off on a second tap; while its request is in
-            // flight it shows the standard inline spinner.
-            val translationActive = displayMode == LyricsDisplayMode.Translated
-            val translateInteraction = remember { MutableInteractionSource() }
-            val isTranslatePressed by translateInteraction.collectIsPressedAsState()
-            val translatePressScale by animateFloatAsState(
-                targetValue = if (isTranslatePressed) 0.82f else 1.0f,
-                animationSpec = ExpressiveMotion.spatialSpring(),
-                label = "translateBtnScale",
-            )
-            IconButton(
-                onClick = onToggleTranslation,
-                enabled = controlsVisible && translationAvailable,
-                interactionSource = translateInteraction,
-                modifier = Modifier
-                    .size(44.dp)
-                    .graphicsLayer {
-                        scaleX = translatePressScale
-                        scaleY = translatePressScale
-                    }
-                    .clip(CircleShape)
-                    .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = translateInteraction)
-                    .background(
-                        liquidGlassContainerColor(
-                            if (translationActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
-                            else Color.White.copy(alpha = 0.14f)
-                        ),
-                    ),
-            ) {
-                if (translationLoading) {
-                    ExpressiveInlineLoadingIndicator(
-                        size = 20.dp,
-                        strokeWidth = 2.2.dp,
-                        color = Color.White,
-                    )
-                } else {
-                    Icon(
-                        Icons.Filled.Translate,
-                        contentDescription = stringResource(
-                            if (translationActive) R.string.ly_show_original_cd else R.string.ly_translate_cd
-                        ),
-                        modifier = Modifier.size(22.dp),
-                        tint = if (translationActive) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.90f),
-                    )
-                }
-            }
-
-            Spacer(Modifier.width(10.dp))
-
-            val romanizationActive = displayMode == LyricsDisplayMode.Romanized
-            val romanizeInteraction = remember { MutableInteractionSource() }
-            val isRomanizePressed by romanizeInteraction.collectIsPressedAsState()
-            val romanizePressScale by animateFloatAsState(
-                targetValue = if (isRomanizePressed) 0.82f else 1.0f,
-                animationSpec = ExpressiveMotion.spatialSpring(),
-                label = "romanizeBtnScale",
-            )
-            IconButton(
-                onClick = onToggleRomanization,
-                enabled = controlsVisible && translationAvailable,
-                interactionSource = romanizeInteraction,
-                modifier = Modifier
-                    .size(44.dp)
-                    .graphicsLayer {
-                        scaleX = romanizePressScale
-                        scaleY = romanizePressScale
-                    }
-                    .clip(CircleShape)
-                    .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = romanizeInteraction)
-                    .background(
-                        liquidGlassContainerColor(
-                            if (romanizationActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
-                            else Color.White.copy(alpha = 0.14f)
-                        ),
-                    ),
-            ) {
-                if (romanizationLoading) {
-                    ExpressiveInlineLoadingIndicator(
-                        size = 20.dp,
-                        strokeWidth = 2.2.dp,
-                        color = Color.White,
-                    )
-                } else {
-                    Icon(
-                        Icons.Filled.Language,
-                        contentDescription = stringResource(
-                            if (romanizationActive) R.string.ly_show_original_cd else R.string.ly_romanize_cd
-                        ),
-                        modifier = Modifier.size(22.dp),
-                        tint = if (romanizationActive) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.90f),
-                    )
-                }
-            }
-
-            Spacer(Modifier.width(10.dp))
-
-            if (canShareLyrics) {
-                val shareInteraction = remember { MutableInteractionSource() }
-                val isSharePressed by shareInteraction.collectIsPressedAsState()
-                val sharePressScale by animateFloatAsState(
-                    targetValue = if (isSharePressed) 0.82f else 1.0f,
-                    animationSpec = ExpressiveMotion.spatialSpring(),
-                    label = "shareBtnScale",
-                )
-                IconButton(
-                    onClick = onShareLyrics,
-                    enabled = controlsVisible,
-                    interactionSource = shareInteraction,
-                    modifier = Modifier
-                        .size(44.dp)
-                        .graphicsLayer {
-                            scaleX = sharePressScale
-                            scaleY = sharePressScale
-                        }
-                        .clip(CircleShape)
-                        .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = shareInteraction)
-                        .background(
-                            liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
-                        ),
-                ) {
-                    Icon(
-                        Icons.Filled.Share,
-                        contentDescription = stringResource(R.string.lyshare_button_cd),
-                        modifier = Modifier.size(22.dp),
-                        tint = Color.White.copy(alpha = 0.90f),
-                    )
-                }
-
-                Spacer(Modifier.width(10.dp))
-            }
-
-            // Lyrics Font Scale toggle button placed immediately to the LEFT of Full Screen
-            val fontInteraction = remember { MutableInteractionSource() }
-            val isFontPressed by fontInteraction.collectIsPressedAsState()
-            val fontScaleAnim by animateFloatAsState(
-                targetValue = if (isFontPressed) 0.82f else 1.0f,
-                animationSpec = ExpressiveMotion.spatialSpring(),
-                label = "fontScaleAnim",
-            )
-            val isCustomFont = lyricsFontScale != 1.0f
-            IconButton(
-                onClick = { onShowFontSliderChange(!showFontSlider) },
-                enabled = controlsVisible,
-                interactionSource = fontInteraction,
-                modifier = Modifier
-                    .size(44.dp)
-                    .graphicsLayer {
-                        scaleX = fontScaleAnim
-                        scaleY = fontScaleAnim
-                    }
-                    .clip(CircleShape)
-                    .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = fontInteraction)
-                    .background(
-                        liquidGlassContainerColor(
-                            if (showFontSlider || isCustomFont) MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
-                            else Color.White.copy(alpha = 0.14f)
-                        ),
-                    ),
-            ) {
-                Icon(
-                    Icons.Filled.FormatSize,
-                    contentDescription = stringResource(R.string.ly_size_cd),
-                    modifier = Modifier.size(22.dp),
-                    tint = if (showFontSlider || isCustomFont) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.90f),
-                )
-            }
-
-            Spacer(Modifier.width(10.dp))
-
             if (onToggleFullscreen != null) {
                 val playerInteraction = remember { MutableInteractionSource() }
                 val isPlayerPressed by playerInteraction.collectIsPressedAsState()
@@ -1874,7 +1672,59 @@ private fun ModernLyricsControls(
                         tint = Color.White.copy(alpha = 0.90f),
                     )
                 }
+
+                Spacer(Modifier.width(10.dp))
             }
+
+            // 3-dots button placed right AFTER the fullscreen button
+            val moreInteraction = remember { MutableInteractionSource() }
+            val isMorePressed by moreInteraction.collectIsPressedAsState()
+            val moreScale by animateFloatAsState(
+                targetValue = if (isMorePressed) 0.82f else 1.0f,
+                animationSpec = ExpressiveMotion.spatialSpring(),
+                label = "moreBtnScale",
+            )
+            IconButton(
+                onClick = { showLyricsOptions = true },
+                enabled = controlsVisible,
+                interactionSource = moreInteraction,
+                modifier = Modifier
+                    .size(44.dp)
+                    .graphicsLayer {
+                        scaleX = moreScale
+                        scaleY = moreScale
+                    }
+                    .clip(CircleShape)
+                    .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = moreInteraction)
+                    .background(
+                        liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
+                    ),
+            ) {
+                Icon(
+                    Icons.Filled.MoreVert,
+                    contentDescription = "Lyrics options",
+                    modifier = Modifier.size(24.dp),
+                    tint = Color.White.copy(alpha = 0.90f),
+                )
+            }
+        }
+
+        if (showLyricsOptions) {
+            LyricsOptionsMenuDialog(
+                onDismiss = { showLyricsOptions = false },
+                onOpenLyricsSource = onOpenLyricsSource,
+                canShareLyrics = canShareLyrics,
+                onShareLyrics = onShareLyrics,
+                lyricsFontScale = lyricsFontScale,
+                onLyricsFontScaleChange = onLyricsFontScaleChange,
+                onLyricsFontScalePreview = onLyricsFontScalePreview,
+                displayMode = displayMode,
+                translationAvailable = translationAvailable,
+                onToggleTranslation = onToggleTranslation,
+                onToggleRomanization = onToggleRomanization,
+                lyricsOffsetMs = lyricsOffsetMs,
+                onOpenLyricsOffset = onOpenLyricsOffset,
+            )
         }
 
         if (isFullscreen) return@Column
@@ -2194,5 +2044,234 @@ internal fun resolveSyllableDisplayTexts(line: LyricLine): List<String> {
     }
 
     return syllables.map { it.text }
+}
+
+@Composable
+private fun LyricsOptionsMenuDialog(
+    onDismiss: () -> Unit,
+    onOpenLyricsSource: (() -> Unit)?,
+    canShareLyrics: Boolean,
+    onShareLyrics: () -> Unit,
+    lyricsFontScale: Float,
+    onLyricsFontScaleChange: (Float) -> Unit,
+    onLyricsFontScalePreview: (Float) -> Unit,
+    displayMode: LyricsDisplayMode,
+    translationAvailable: Boolean,
+    onToggleTranslation: () -> Unit,
+    onToggleRomanization: () -> Unit,
+    lyricsOffsetMs: Long,
+    onOpenLyricsOffset: (() -> Unit)?,
+) {
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .padding(vertical = 16.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(52.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Filled.Lyrics,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(28.dp),
+                        )
+                    }
+                }
+                Text(
+                    text = "Lyrics Options",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                        if (onOpenLyricsSource != null) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onDismiss()
+                                        onOpenLyricsSource()
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            ) {
+                                Icon(Icons.Filled.Lyrics, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                                Text("Lyrics Provider", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                                Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                            }
+                            androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                        }
+
+                        if (canShareLyrics) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onDismiss()
+                                        onShareLyrics()
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            ) {
+                                Icon(Icons.Filled.Share, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                                Text("Share Lyrics", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                                Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                            }
+                            androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                        }
+
+                        var localScale by remember(lyricsFontScale) { mutableFloatStateOf(lyricsFontScale) }
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                ) {
+                                    Icon(Icons.Filled.FormatSize, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                                    Text("Text Size: ${(localScale * 100).roundToInt()}%", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                                }
+                                if (localScale != 1.0f) {
+                                    TextButton(
+                                        onClick = {
+                                            localScale = 1.0f
+                                            onLyricsFontScalePreview(1.0f)
+                                            onLyricsFontScaleChange(1.0f)
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                        modifier = Modifier.height(28.dp),
+                                    ) {
+                                        Text("Reset", style = MaterialTheme.typography.labelMedium)
+                                    }
+                                }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text("A", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Slider(
+                                    value = localScale,
+                                    onValueChange = {
+                                        localScale = it
+                                        onLyricsFontScalePreview(it)
+                                    },
+                                    onValueChangeFinished = {
+                                        onLyricsFontScaleChange(localScale)
+                                    },
+                                    valueRange = 0.7f..1.5f,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text("A", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                            }
+                        }
+
+                        if (translationAvailable) {
+                            androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(onClick = onToggleTranslation)
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            ) {
+                                Icon(Icons.Filled.Translate, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                                Text("Translate Lyrics", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                                androidx.compose.material3.Switch(
+                                    checked = displayMode == LyricsDisplayMode.Translated,
+                                    onCheckedChange = { onToggleTranslation() },
+                                )
+                            }
+
+                            androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(onClick = onToggleRomanization)
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            ) {
+                                Icon(Icons.Filled.Language, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                                Text("Romanize Lyrics", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                                androidx.compose.material3.Switch(
+                                    checked = displayMode == LyricsDisplayMode.Romanized,
+                                    onCheckedChange = { onToggleRomanization() },
+                                )
+                            }
+                        }
+
+                        if (onOpenLyricsOffset != null) {
+                            androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onDismiss()
+                                        onOpenLyricsOffset()
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            ) {
+                                Icon(Icons.Filled.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                                Text("Lyrics Sync Offset", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                                Text(
+                                    "${lyricsOffsetMs}ms",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                }
+
+                androidx.compose.material3.FilledTonalButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.fillMaxWidth().height(46.dp),
+                ) {
+                    Text("Done", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
 }
 
