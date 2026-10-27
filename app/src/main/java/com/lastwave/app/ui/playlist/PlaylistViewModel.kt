@@ -145,7 +145,7 @@ class PlaylistViewModel @Inject constructor(
                     ?.id
                 _uiState.update { current ->
                     val local = current.playlists.filterNot { it.isYouTubeOnly }
-                    current.copy(playlists = sortPlaylists(local + remote, current.sortMode))
+                    current.copy(playlists = mergeAndDeduplicatePlaylists(local, remote, current.sortMode))
                 }
                 if (openRemoteId != null && remote.any { it.id == openRemoteId }) {
                     ytMusicLibraryManager.loadDetail(openRemoteId)?.let { refreshed ->
@@ -184,10 +184,7 @@ class PlaylistViewModel @Inject constructor(
                 emptyList()
             }
             val remote = runCatching { ytMusicLibraryManager.playlists.value }.getOrDefault(emptyList())
-            val dedupedRemote = remote.filterNot { r ->
-                local.any { l -> (l.remotePlaylistId != null && l.remotePlaylistId == r.remotePlaylistId) || (l.title.equals(r.title, ignoreCase = true) && l.mode == "custom") }
-            }
-            val all = sortPlaylists(local + dedupedRemote, _uiState.value.sortMode).distinctBy { it.id }
+            val all = mergeAndDeduplicatePlaylists(local, remote, _uiState.value.sortMode)
             val newest = justGeneratedId ?: all.maxByOrNull { it.createdAtMillis }?.id
             _uiState.update { current ->
                 val currentDetailId = current.detailPlaylist?.id
@@ -304,6 +301,20 @@ class PlaylistViewModel @Inject constructor(
                     .thenByDescending { it.remoteTrackCount ?: it.tracks.size }
             },
         )
+
+    private fun mergeAndDeduplicatePlaylists(
+        local: List<SavedPlaylist>,
+        remote: List<SavedPlaylist>,
+        mode: PlaylistSortMode,
+    ): List<SavedPlaylist> {
+        val dedupedRemote = remote.filterNot { r ->
+            local.any { l ->
+                (l.remotePlaylistId != null && l.remotePlaylistId == r.remotePlaylistId) ||
+                l.title.equals(r.title, ignoreCase = true)
+            }
+        }
+        return sortPlaylists(local + dedupedRemote, mode).distinctBy { it.id }
+    }
 
     fun regenerateLatest() {
         val newest = _uiState.value.playlists.maxByOrNull { it.createdAtMillis } ?: return

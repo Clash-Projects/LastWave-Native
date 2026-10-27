@@ -164,9 +164,13 @@ class AndroidAutoMediaLibrary @Inject constructor(
     private suspend fun getMergedPlaylists(): List<SavedPlaylist> {
         val local = runCatching { playlistRepository.getAll() }.getOrDefault(emptyList())
         val remote = runCatching { ytMusicLibraryManager.playlists.value }.getOrDefault(emptyList())
-        val localRemoteIds = local.mapNotNull { it.remotePlaylistId?.removePrefix("VL") }.toSet()
-        val filteredRemote = remote.filterNot { it.remotePlaylistId?.removePrefix("VL") in localRemoteIds }
-        return (local + filteredRemote).sortedByDescending { it.createdAtMillis }
+        val filteredRemote = remote.filterNot { r ->
+            local.any { l ->
+                (l.remotePlaylistId != null && l.remotePlaylistId.removePrefix("VL") == r.remotePlaylistId?.removePrefix("VL")) ||
+                l.title.equals(r.title, ignoreCase = true)
+            }
+        }
+        return (local + filteredRemote).distinctBy { it.id }.sortedByDescending { it.createdAtMillis }
     }
 
     private suspend fun resolvePlaylistWithTracks(playlistId: Long): SavedPlaylist? {

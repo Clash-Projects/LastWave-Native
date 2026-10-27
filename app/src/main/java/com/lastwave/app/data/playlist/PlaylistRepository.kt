@@ -280,7 +280,7 @@ class PlaylistRepository @Inject constructor(
         existing.firstOrNull {
             it.mode == mode &&
                 it.title.equals(title, ignoreCase = true) &&
-                sameOrderedTrackIdentity(it.tracks, playableTracks)
+                (sameOrderedTrackIdentity(it.tracks, playableTracks) || playableTracks.isEmpty())
         }
             ?.let { return@withLock it }
 

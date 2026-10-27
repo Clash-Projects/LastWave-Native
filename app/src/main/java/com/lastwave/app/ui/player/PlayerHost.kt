@@ -511,10 +511,16 @@ class PlayerViewModel @Inject constructor(
 
     private suspend fun refreshCustomPlaylists() {
         try {
-            _customPlaylists.value = (playlistRepository.getAll()
+            val local = playlistRepository.getAll()
                 .filter { it.mode == "custom" || it.mode == LIKED_SONGS_MODE }
-                .sortedByDescending { it.mode == LIKED_SONGS_MODE } + ytMusicLibraryManager.playlists.value)
-                .distinctBy { it.id }
+                .sortedByDescending { it.mode == LIKED_SONGS_MODE }
+            val remote = ytMusicLibraryManager.playlists.value.filterNot { r ->
+                local.any { l ->
+                    (l.remotePlaylistId != null && l.remotePlaylistId == r.remotePlaylistId) ||
+                    l.title.equals(r.title, ignoreCase = true)
+                }
+            }
+            _customPlaylists.value = (local + remote).distinctBy { it.id }
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
