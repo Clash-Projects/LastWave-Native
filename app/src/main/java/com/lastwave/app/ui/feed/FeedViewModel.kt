@@ -433,6 +433,21 @@ class FeedViewModel @Inject constructor(
         return "${shelf.title.trim().lowercase()}_$firstId"
     }
 
+    fun playPodcastEpisode(
+        episode: HomeShelfItem.PodcastEpisode,
+        queue: List<HomeShelfItem.PodcastEpisode> = listOf(episode),
+        sourceLabel: String = "Podcasts",
+    ) {
+        val tracks = queue.map { it.toPlayableTrack() }
+        val index = queue.indexOfFirst { it.videoId == episode.videoId }.coerceAtLeast(0)
+        musicPlayer.playPodcastQueue(
+            tracks = tracks,
+            startIndex = index,
+            startPositionMs = 0L,
+            sourceLabel = episode.showName?.takeIf { it.isNotBlank() } ?: sourceLabel,
+        )
+    }
+
     fun playTrack(track: YouTubeMusicTrack, sourceLabel: String = "Feed") {
         musicPlayer.play(track.toPlayableTrack(), sourceLabel = sourceLabel, startRadio = true)
     }

@@ -173,6 +173,7 @@ fun FeedScreen(
     onOpenNewReleases: () -> Unit = {},
     onOpenPodcasts: () -> Unit = {},
     onOpenPodcastShow: (String) -> Unit = {},
+    onOpenYouTubeLogin: () -> Unit = {},
     feedTapEvents: SharedFlow<Unit>? = null,
     viewModel: FeedViewModel = hiltViewModel(),
     artistAlbumNavigator: ArtistAlbumNavigator = hiltViewModel<ArtistAlbumNavBridgeFeed>().navigator,
@@ -598,6 +599,12 @@ fun FeedScreen(
                                     )
                                 }
                             }
+                        } else if (state.chipShelves.isEmpty()) {
+                            item(key = "chip_empty_state") {
+                                PodcastGuestEmptyState(
+                                    onLoginClick = onOpenYouTubeLogin,
+                                )
+                            }
                         } else {
                             for ((shelfIndex, shelf) in state.chipShelves.withIndex()) {
                                 if (shelf.items.isEmpty()) continue
@@ -613,6 +620,7 @@ fun FeedScreen(
                                         onPlayPlaylist = viewModel::playPlaylistSummary,
                                         onTrackMenu = { menuTrack = it },
                                         onOpenPodcastShow = onOpenPodcastShow,
+                                        onPlayPodcastEpisode = { ep, q, title -> viewModel.playPodcastEpisode(ep, q, title) },
                                     )
                                 }
                             }
@@ -632,6 +640,7 @@ fun FeedScreen(
                                     onPlayPlaylist = viewModel::playPlaylistSummary,
                                     onTrackMenu = { menuTrack = it },
                                     onOpenPodcastShow = onOpenPodcastShow,
+                                    onPlayPodcastEpisode = { ep, q, title -> viewModel.playPodcastEpisode(ep, q, title) },
                                 )
                             }
                         }
@@ -1552,6 +1561,7 @@ private fun HomeShelfCard(
     onTrackLongClick: (TrackMiniTrayData) -> Unit,
     onPlayPlaylist: (com.lastwave.app.data.music.YouTubePlaylistSummary) -> Unit,
     onTrackMenu: (YouTubeMusicTrack) -> Unit,
+    onPlayPodcastEpisode: (HomeShelfItem.PodcastEpisode, List<HomeShelfItem.PodcastEpisode>, String) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     if (shelf.items.isEmpty()) return
@@ -1578,6 +1588,9 @@ private fun HomeShelfCard(
         Column(modifier = Modifier.padding(vertical = 12.dp)) {
             val tracksInShelf = remember(shelf.items) {
                 shelf.items.mapNotNull { (it as? HomeShelfItem.Track)?.track }
+            }
+            val episodesInShelf = remember(shelf.items) {
+                shelf.items.filterIsInstance<HomeShelfItem.PodcastEpisode>()
             }
             // "More" only when the shelf's destination is a playlist/album id
             // the app already knows how to open; mood/genre/chart browse ids
@@ -1623,6 +1636,7 @@ private fun HomeShelfCard(
                                 onTrackLongClick = onTrackLongClick,
                                 onOpenPodcastShow = onOpenPodcastShow,
                                 onTrackMenu = onTrackMenu,
+                                onPlayPodcastEpisode = { ep -> onPlayPodcastEpisode(ep, episodesInShelf, shelf.title) },
                             )
                         }
                     }
@@ -1647,6 +1661,7 @@ private fun NativeShelfItemCard(
     onTrackLongClick: (TrackMiniTrayData) -> Unit,
     onOpenPodcastShow: (String) -> Unit = {},
     onTrackMenu: (YouTubeMusicTrack) -> Unit = {},
+    onPlayPodcastEpisode: ((HomeShelfItem.PodcastEpisode) -> Unit)? = null,
 ) {
     when (val variant = com.lastwave.app.ui.feed.cards.selectCardVariant(shelfItem)) {
         com.lastwave.app.ui.feed.cards.HomeCardVariant.PODCAST_EPISODE -> PodcastEpisodeItemCard(
@@ -1655,6 +1670,7 @@ private fun NativeShelfItemCard(
             onPlayTrack = onPlayTrack,
             onTrackLongClick = onTrackLongClick,
             onTrackMenu = onTrackMenu,
+            onPlayPodcastEpisode = onPlayPodcastEpisode,
         )
         com.lastwave.app.ui.feed.cards.HomeCardVariant.WIDE -> WideItemCard(
             shelfItem = shelfItem,
@@ -1704,6 +1720,7 @@ private fun PodcastEpisodeItemCard(
     onPlayTrack: (YouTubeMusicTrack, String) -> Unit,
     onTrackLongClick: (TrackMiniTrayData) -> Unit,
     onTrackMenu: (YouTubeMusicTrack) -> Unit = {},
+    onPlayPodcastEpisode: ((HomeShelfItem.PodcastEpisode) -> Unit)? = null,
 ) {
     val ep = shelfItem as? HomeShelfItem.PodcastEpisode ?: return
     val track = ep.toYouTubeMusicTrack()
@@ -1718,10 +1735,61 @@ private fun PodcastEpisodeItemCard(
         artworkUrl = ep.artworkUrl,
         durationText = ep.durationText,
         progressPercentage = ep.playbackProgress,
-        onClick = { onPlayTrack(track, shelfTitle) },
+        onClick = {
+            if (onPlayPodcastEpisode != null) {
+                onPlayPodcastEpisode(ep)
+            } else {
+                onPlayTrack(track, shelfTitle)
+            }
+        },
         onLongClick = { onTrackLongClick(trackTray(track, shelfTitle, onPlayTrack)) },
         onMenuClick = { onTrackMenu(track) },
     )
+}
+
+/**
+ * Short glass empty state displayed when the Podcasts chip has no shelves (e.g. unauthenticated guest).
+ */
+@Composable
+private fun PodcastGuestEmptyState(
+    onLoginClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 32.dp),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f),
+        tonalElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Mic,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(40.dp),
+            )
+            Text(
+                text = "Discover personalized podcasts and shows",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+            Button(
+                onClick = onLoginClick,
+                shape = RoundedCornerShape(20.dp),
+            ) {
+                Text("Log in to YouTube Music")
+            }
+        }
+    }
 }
 
 /** Builds the track mini-tray payload used by every card's long-press. */
