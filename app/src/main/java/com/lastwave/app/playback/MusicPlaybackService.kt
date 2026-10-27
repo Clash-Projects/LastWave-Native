@@ -159,6 +159,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
 
     override fun onCreate() {
         super.onCreate()
+        musicPlayer.ensureDecksInitialized()
         val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
         playbackWakeLock = powerManager?.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
@@ -694,6 +695,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         platformSessionToken = null
         ownController?.let { controller -> ActiveMediaSessionHolder.clear(controller) }
         ActiveMediaSessionHolder.clearToken(releasedToken)
+        runCatching { musicPlayer.releaseDecks() }
         scope.cancel()
         super.onDestroy()
     }

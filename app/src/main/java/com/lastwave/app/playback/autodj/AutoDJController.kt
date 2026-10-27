@@ -275,15 +275,15 @@ class AutoDJController @Inject constructor(
             prefetchTrack(nextIndex, nextTrack)
         }
 
-        // Check if head window decoding has reached ready threshold (>= 12.0s raw float PCM)
+        // Check if head window decoding has reached ready threshold (>= 8.0s buffered)
         if (nextStage == TrackLifecycleStage.DECODING_HEAD_WINDOW && nextTrack != null) {
             val bufferedMs = h.getStandbyBufferedMs()
             val trackDur = nextTrack.durationMs
-            if (bufferedMs >= 12_000L || (trackDur != null && trackDur in 1L..11999L && bufferedMs >= trackDur)) {
+            if (bufferedMs >= 8_000L || (trackDur != null && trackDur in 1L..7999L && bufferedMs >= trackDur)) {
                 trackStages[nextKey] = TrackLifecycleStage.ARMED_READY
                 h.armStandbyForNext(nextIndex, nextTrack)
                 _status.value = AutoDJStatus.ArmedReady(nextTrack.title, nextIndex)
-                Log.i(TAG, "[HEAD_WINDOW_READY] index=$nextIndex title='${nextTrack.title}' buffered=${bufferedMs}ms >= 12000ms -> ARMED_READY")
+                Log.i(TAG, "[HEAD_WINDOW_READY] index=$nextIndex title='${nextTrack.title}' buffered=${bufferedMs}ms >= 8000ms -> ARMED_READY")
             }
         }
 
@@ -340,7 +340,7 @@ class AutoDJController @Inject constructor(
                 if (nextTrack != null && nextIndex in 0 until queueSize) {
                     val bufferedMs = h.getStandbyBufferedMs()
                     val trackDur = nextTrack.durationMs
-                    if (bufferedMs >= 12_000L || (trackDur != null && trackDur in 1L..11999L && bufferedMs >= trackDur)) {
+                    if (bufferedMs >= 8_000L || (trackDur != null && trackDur in 1L..7999L && bufferedMs >= trackDur)) {
                         trackStages[nextKey] = TrackLifecycleStage.ARMED_READY
                         h.armStandbyForNext(nextIndex, nextTrack)
                         _status.value = AutoDJStatus.ArmedReady(nextTrack.title, nextIndex)

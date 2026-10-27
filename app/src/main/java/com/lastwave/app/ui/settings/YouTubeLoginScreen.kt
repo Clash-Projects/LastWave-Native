@@ -148,12 +148,15 @@ fun YouTubeLoginScreen(
                         clearFormData()
                         // Google blocks the default WebView user agent on
                         // accounts.google.com ("may not be secure"). Stripping
-                        // embedded WebView markers ("; wv" and "Version/X.X")
+                        // embedded WebView markers ("; wv" and "Version/4.0" / "Version/X.X")
                         // preserves the device's real Chrome engine version,
-                        // avoiding client-hint and security fingerprint mismatches.
+                        // avoiding client-hint and security fingerprint mismatches on ColorOS/Realme UI.
                         val defaultUa = settings.userAgentString
                         val cleanUa = if (!defaultUa.isNullOrBlank()) {
-                            defaultUa.replace("; wv", "").replace(Regex("Version/\\d+\\.\\d+\\s*"), "")
+                            defaultUa.replace("; wv", "")
+                                .replace("Version/4.0 ", "")
+                                .replace("Version/4.0", "")
+                                .replace(Regex("Version/\\d+\\.\\d+\\s*"), "")
                         } else {
                             "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
                         }
@@ -166,25 +169,33 @@ fun YouTubeLoginScreen(
                                 super.doUpdateVisitedHistory(view, url, isReload)
                                 val current = viewModel.uiState.value
                                 if (current.verifying || current.connectedName != null) return
-                                if (url?.contains("music.youtube.com") == true) {
-                                    val cookies = readYouTubeCookies()
-                                    if (hasSessionTokens(cookies)) {
-                                        viewModel.attemptConnect(cookies)
-                                    }
+                                CookieManager.getInstance().flush()
+                                val cookies = readYouTubeCookies()
+                                if (hasSessionTokens(cookies)) {
+                                    viewModel.attemptConnect(cookies)
+                                }
+                            }
+
+                            override fun onPageCommitVisible(view: WebView?, url: String?) {
+                                super.onPageCommitVisible(view, url)
+                                CookieManager.getInstance().flush()
+                                val current = viewModel.uiState.value
+                                if (current.verifying || current.connectedName != null) return
+                                val cookies = readYouTubeCookies()
+                                if (hasSessionTokens(cookies)) {
+                                    viewModel.attemptConnect(cookies)
                                 }
                             }
 
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 super.onPageFinished(view, url)
                                 loadProgressVisible = false
-                                // Read state live — a factory-captured copy would be stale.
+                                CookieManager.getInstance().flush()
                                 val current = viewModel.uiState.value
                                 if (current.verifying || current.connectedName != null) return
-                                if (url?.contains("music.youtube.com") == true) {
-                                    val cookies = readYouTubeCookies()
-                                    if (hasSessionTokens(cookies)) {
-                                        viewModel.attemptConnect(cookies)
-                                    }
+                                val cookies = readYouTubeCookies()
+                                if (hasSessionTokens(cookies)) {
+                                    viewModel.attemptConnect(cookies)
                                 }
                             }
                         }
@@ -373,22 +384,36 @@ private const val LOGIN_URL =
     "https://accounts.google.com/ServiceLogin?service=youtube&uilel=3&passive=true&continue=https%3A%2F%2Fwww.youtube.com%2Fsignin%3Faction_handle_signin%3Dtrue%26app%3Ddesktop%26hl%3Den%26next%3Dhttps%253A%252F%252Fmusic.youtube.com%252F&hl=en"
 
 private fun hasSessionTokens(cookies: String?): Boolean {
-    if (cookies == null) return false
-    // 4.1.0 rule: a real YouTube session is proven by its SAPISID alone.
-    return listOf("__Secure-3PAPISID=", "SAPISID=", "APISID=").any { cookies.contains(it) }
+    if (cookies.isNullOrBlank()) return false
+    val hasSapisid = cookies.contains("SAPISID=") || cookies.contains("__Secure-3PAPISID=")
+    val hasSid = cookies.contains("SID=") || cookies.contains("__Secure-3PSID=")
+    return hasSapisid && hasSid
 }
 
 private fun readYouTubeCookies(): String? = try {
     val cm = CookieManager.getInstance()
     cm.flush()
-    // First YouTube-domain jar wins — never concatenate domains: a later
-    // .google.com set would overwrite the YouTube session cookies in the
-    // parsed map, producing a mixed session the APIs reject.
-    listOf(
+    val domains = listOf(
         "https://music.youtube.com",
         "https://www.youtube.com",
+        "https://accounts.google.com",
         "https://youtube.com",
-    ).firstNotNullOfOrNull { cm.getCookie(it)?.takeIf(String::isNotBlank) }
+    )
+    val cookieMap = mutableMapOf<String, String>()
+    for (domain in domains) {
+        val raw = cm.getCookie(domain) ?: continue
+        for (part in raw.split(';')) {
+            val idx = part.indexOf('=')
+            if (idx > 0) {
+                val name = part.substring(0, idx).trim()
+                val value = part.substring(idx + 1).trim()
+                if (name.isNotBlank() && value.isNotBlank()) {
+                    cookieMap[name] = value
+                }
+            }
+        }
+    }
+    if (cookieMap.isEmpty()) null else cookieMap.entries.joinToString("; ") { "${it.key}=${it.value}" }
 } catch (error: Exception) {
     null
 } catch (error: LinkageError) {

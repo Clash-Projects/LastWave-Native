@@ -85,8 +85,8 @@ public:
 
         delayFrames_ = static_cast<std::size_t>(std::round(delaySeconds * sampleRate_));
 
-        // 1.5s Schroeder reverb decay time (T60 = 1.5s)
-        const double decayTime = 1.5;
+        // 1.2s Schroeder reverb decay time (T60 = 1.2s)
+        const double decayTime = 1.2;
         const std::array<double, 4> combDelaysMs{29.7, 37.1, 41.1, 43.7};
 
         for (std::size_t i = 0; i < 4; ++i) {
@@ -103,7 +103,7 @@ public:
         allPassR_[0].init(static_cast<std::size_t>(std::round(5.3 * 0.001 * sampleRate_)), 0.5F);
         allPassR_[1].init(static_cast<std::size_t>(std::round(1.9 * 0.001 * sampleRate_)), 0.5F);
 
-        // Feedback calculation for main 1/2 beat delay line with T60 = 1.5s
+        // Feedback calculation for main 1/2 beat delay line with T60 = 1.2s
         delayFeedback_ = static_cast<float>(std::exp(-6.907755 * (delaySeconds / decayTime)));
 
         // 1-pole damping filter at 4500 Hz

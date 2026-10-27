@@ -42,10 +42,10 @@ class YtMusicAuthManager @Inject constructor(
         }
     }
 
-    /** SAPISID token, extracted in priority order exactly like music.youtube.com. */
+    /** SAPISID token, extracted with SAPISID falling back to __Secure-3PAPISID if absent. */
     fun sapisid(account: YtConnection = connection.value): String? =
-        account.cookies[COOKIE_SAPISID_PRIMARY]
-            ?: account.cookies["SAPISID"]
+        account.cookies["SAPISID"]
+            ?: account.cookies[COOKIE_SAPISID_PRIMARY]
             ?: account.cookies["APISID"]
 
     fun cookieHeaderValue(account: YtConnection = connection.value): String? {
@@ -139,18 +139,20 @@ class YtMusicAuthManager @Inject constructor(
 
         return try {
             val cm = CookieManager.getInstance()
-            val musicCookies = cm.getCookie("https://music.youtube.com").orEmpty()
-            val ytCookies = cm.getCookie("https://www.youtube.com").orEmpty()
-            val combined = when {
-                musicCookies.isBlank() -> ytCookies
-                ytCookies.isBlank() -> musicCookies
-                else -> "$musicCookies; $ytCookies"
-            }
+            cm.flush()
+            val domains = listOf(
+                "https://music.youtube.com",
+                "https://www.youtube.com",
+                "https://accounts.google.com",
+                "https://youtube.com",
+            )
+            val combined = domains.mapNotNull { cm.getCookie(it)?.takeIf(String::isNotBlank) }
+                .joinToString("; ")
             if (combined.isBlank()) return false
             val cookies = parseCookieHeader(combined)
-            val hasSapisid = listOf(COOKIE_SAPISID_PRIMARY, "SAPISID", "APISID").any { cookies.containsKey(it) }
-            val hasLogin = cookies.containsKey("LOGIN_INFO")
-            if (!hasSapisid || !hasLogin) return false
+            val hasSapisid = cookies.containsKey("SAPISID") || cookies.containsKey(COOKIE_SAPISID_PRIMARY) || cookies.containsKey("APISID")
+            val hasSid = cookies.containsKey("SID") || cookies.containsKey("__Secure-3PSID")
+            if (!hasSapisid || !hasSid) return false
 
             if (current.cookies == cookies) return false
 

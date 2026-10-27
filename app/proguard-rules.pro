@@ -84,3 +84,11 @@
 -dontwarn com.metrolist.innertubex.**
 -dontwarn io.ktor.**
 
+# Keep all InnerTube Search, Browse, and Music JSON data models
+-keep @androidx.annotation.Keep class * { *; }
+-keepclassmembers @androidx.annotation.Keep class * { *; }
+-keep class com.lastwave.app.data.music.** { *; }
+-keepclassmembers class com.lastwave.app.data.music.** { *; }
+-keep class com.lastwave.app.data.podcast.** { *; }
+-keepclassmembers class com.lastwave.app.data.podcast.** { *; }
+

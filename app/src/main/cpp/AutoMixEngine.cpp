@@ -267,7 +267,7 @@ void AutoMixEngine::startTransition(AutoMixState mode, int bars) noexcept {
     currentGainA_ = 1.0f;
     currentGainB_ = 0.0f;
     currentCutoffA_ = 20.0f;
-    currentCutoffB_ = 200.0f;
+    currentCutoffB_ = 220.0f;
 
     deckAVocalDuckFilter_.reset();
     deckAVocalDuckFilter_.update(ResonantFilter::Mode::PeakingCut, sampleRate_, 1200.0, 0.7, -9.0);
@@ -461,10 +461,17 @@ void AutoMixEngine::detectDeckBFirstBeatAndSilence() noexcept {
     deckBTrimCalculated_ = true;
 }
 float AutoMixEngine::applySoftKneeLimiter(float x) noexcept {
-    if (std::abs(x) > 0.85f) {
-        x = std::tanh(x);
+    constexpr float threshold = 0.85f;
+    constexpr float ceiling = 0.98f;
+    constexpr float margin = ceiling - threshold; // 0.13f
+    const float absX = std::abs(x);
+    if (absX <= threshold) {
+        return x;
     }
-    return std::clamp(x, -0.98f, 0.98f);
+    const float excess = absX - threshold;
+    const float compressed = threshold + margin * std::tanh(excess / margin);
+    const float limited = std::copysign(compressed, x);
+    return std::clamp(limited, -ceiling, ceiling);
 }
 
 void AutoMixEngine::processDeckA(float* deckAStereo, std::size_t frames, float progress) noexcept {
@@ -493,7 +500,7 @@ void AutoMixEngine::processDeckA(float* deckAStereo, std::size_t frames, float p
     // 3. Single Texture FX Auto-Chooser (t >= 0.40):
     const auto fx = static_cast<TransitionTextureFx>(planTextureFx_.load(std::memory_order_relaxed));
     if (progress >= 0.40f && fx != TransitionTextureFx::None) {
-        const float send = std::clamp((progress - 0.40f) / 0.20f, 0.0f, 0.35f);
+        const float send = std::clamp((progress - 0.40f) / 0.25f, 0.0f, 0.35f);
         if (fx == TransitionTextureFx::SubtlePhaser) {
             for (std::size_t f = 0; f < frames; ++f) {
                 subtlePhaser_.process(deckAStereo[f * 2], deckAStereo[f * 2 + 1], send);
@@ -509,25 +516,27 @@ void AutoMixEngine::processDeckA(float* deckAStereo, std::size_t frames, float p
         }
     }
 
-    // 4. Equal-power gain curve with correlated-bass headroom compensation factor
-    const float headroomComp = 1.0f - 0.25f * std::sin(progress * static_cast<float>(M_PI));
+    // 4. Equal-power gain curve with anti-clip headroom compensation factor (0.22f):
+    // scale equal-power cos volume by (1.0f - 0.22f * sin(t * PI))
+    const float headroomComp = 1.0f - 0.22f * std::sin(progress * static_cast<float>(M_PI));
     const float targetGainA = std::cos(progress * static_cast<float>(M_PI) * 0.5f) * headroomComp;
 
-    // 5. Smooth 3-Second S-Curve Bass Swap:
-    // Across the middle 35% to 65% of transition, cross-fade Deck A HPF from 20 Hz up to 350 Hz
-    // using continuous cosine S-curve: (0.5f - 0.5f * cos(PI * localProgress))
+    // 5. Complementary S-Curve Bass-Swap:
+    // From t = 0.0 to 0.40: activeDeck keeps 100% of <180 Hz bass (HPF = 20 Hz)
+    // From t = 0.40 to 0.65: cross-sweep activeDeck HPF 20 Hz -> 450 Hz using cosine S-curve
+    // From t > 0.65: HPF = 450 Hz
     float targetCutoffA = 20.0f;
-    if (progress < 0.35f) {
+    if (progress < 0.40f) {
         targetCutoffA = 20.0f;
     } else if (progress > 0.65f) {
-        targetCutoffA = 350.0f;
+        targetCutoffA = 450.0f;
     } else {
-        const float localProgress = (progress - 0.35f) / 0.30f;
-        const float sCurve = 0.5f - 0.5f * std::cos(static_cast<float>(M_PI) * localProgress);
-        targetCutoffA = 20.0f + sCurve * (350.0f - 20.0f);
+        const float u = (progress - 0.40f) / 0.25f;
+        const float sCurve = 0.5f - 0.5f * std::cos(static_cast<float>(M_PI) * u);
+        targetCutoffA = 20.0f + sCurve * (450.0f - 20.0f);
     }
 
-    // Zero Zipper Noise: Per-sample smoothing (one-pole low-pass: val += 0.0015f * (target - val)) + Cytomic SVF
+    // Zero Zipper Noise: Per-sample smoothing (alpha = 0.0015f) + Cytomic SVF
     const float sr = static_cast<float>(sampleRate_);
     for (std::size_t f = 0; f < frames; ++f) {
         currentGainA_ += 0.0015f * (targetGainA - currentGainA_);
@@ -539,15 +548,19 @@ void AutoMixEngine::processDeckA(float* deckAStereo, std::size_t frames, float p
         deckAStereo[f * 2 + 1] = deckAHpfR_.tickHighPass(inR, currentCutoffA_, sr, 0.7071f) * currentGainA_;
     }
 
-    // 6. Outgoing Reverb Wash Tail (t = 0.50 to 1.00):
-    // Scale reverb/echo wet returns by 0.22f maximum and attenuate dry Deck A proportionally (dryGain *= (1.0f - 0.35f * wetSend))
-    if (progress >= 0.50f) {
-        const float rawWet = std::clamp((progress - 0.50f) / 0.50f, 0.0f, 1.0f);
-        const float wetSend = std::clamp(rawWet * 0.22f, 0.0f, 0.22f);
+    // 6. Outgoing 1.2s stereo echo/reverb tail (max 0.22f wet) on activeDeck (t >= 0.40):
+    if (progress >= 0.40f) {
+        const float u = std::clamp((progress - 0.40f) / 0.25f, 0.0f, 1.0f);
+        const float wetSend = std::clamp(u * 0.22f, 0.0f, 0.22f);
         float dryGain = (1.0f - progress);
         dryGain *= (1.0f - 0.35f * wetSend);
-        const float wetReturn = wetSend;
-        deckAEcho_.process(deckAStereo, frames, wetSend, dryGain, wetReturn);
+        deckAEcho_.process(deckAStereo, frames, wetSend, dryGain, wetSend);
+    }
+
+    // 7. Per-deck std::tanh soft-knee safety limiter (threshold = 0.85f, ceiling = 0.98f)
+    for (std::size_t f = 0; f < frames; ++f) {
+        deckAStereo[f * 2] = applySoftKneeLimiter(deckAStereo[f * 2]);
+        deckAStereo[f * 2 + 1] = applySoftKneeLimiter(deckAStereo[f * 2 + 1]);
     }
 }
 
@@ -557,11 +570,11 @@ void AutoMixEngine::processDeckB(float* deckBStereo, std::size_t frames, float p
 
     progress = std::clamp(progress, 0.0f, 1.0f);
 
-    // 1. Equal-power gain curve with correlated-bass headroom compensation factor
-    const float headroomComp = 1.0f - 0.25f * std::sin(progress * static_cast<float>(M_PI));
+    // 1. Equal-power gain curve with anti-clip headroom compensation factor (0.22f):
+    // scale equal-power sin volume by (1.0f - 0.22f * sin(t * PI))
+    const float headroomComp = 1.0f - 0.22f * std::sin(progress * static_cast<float>(M_PI));
 
-    // 2. Windowed RMS Loudness Matching: attenuation only, clamp(targetRmsDb - deckRmsDb, -6.0f, 0.0f)
-    // Never amplify a deck above 1.0f (0.0 dBFS)
+    // 2. Windowed RMS Loudness Matching: attenuation only (-6.0 dB .. 0.0 dB, never boost > 0 dB)
     float makeupLinear = 1.0f;
     const float planGain = planGainOffsetDb_.load(std::memory_order_relaxed);
     const float clampedGainDb = std::clamp(planGain, -6.0f, 0.0f); // Attenuation only!
@@ -580,21 +593,22 @@ void AutoMixEngine::processDeckB(float* deckBStereo, std::size_t frames, float p
 
     const float targetGainB = std::sin(progress * static_cast<float>(M_PI) * 0.5f) * headroomComp * makeupLinear;
 
-    // 3. Smooth 3-Second S-Curve Bass Swap:
-    // Across the middle 35% to 65% of transition, cross-fade Deck B HPF from 200 Hz down to 20 Hz
-    // using continuous cosine S-curve: (0.5f - 0.5f * cos(PI * localProgress))
+    // 3. Complementary S-Curve Bass-Swap:
+    // From t = 0.0 to 0.40: standbyDeck is high-passed at 200 Hz (Q = 0.7071f Butterworth SVF)
+    // From t = 0.40 to 0.65: smoothly cross-sweep standbyDeck HPF 200 Hz -> 20 Hz using cosine S-curve
+    // From t > 0.65: HPF = 20 Hz
     float targetCutoffB = 200.0f;
-    if (progress < 0.35f) {
+    if (progress < 0.40f) {
         targetCutoffB = 200.0f;
     } else if (progress > 0.65f) {
         targetCutoffB = 20.0f;
     } else {
-        const float localProgress = (progress - 0.35f) / 0.30f;
-        const float sCurve = 0.5f - 0.5f * std::cos(static_cast<float>(M_PI) * localProgress);
+        const float u = (progress - 0.40f) / 0.25f;
+        const float sCurve = 0.5f - 0.5f * std::cos(static_cast<float>(M_PI) * u);
         targetCutoffB = 200.0f - sCurve * (200.0f - 20.0f);
     }
 
-    // Zero Zipper Noise: Per-sample smoothing (one-pole low-pass: val += 0.0015f * (target - val)) + Cytomic SVF
+    // Zero Zipper Noise: Per-sample smoothing (alpha = 0.0015f) + Cytomic SVF
     const float sr = static_cast<float>(sampleRate_);
     for (std::size_t f = 0; f < frames; ++f) {
         currentGainB_ += 0.0015f * (targetGainB - currentGainB_);
@@ -604,6 +618,12 @@ void AutoMixEngine::processDeckB(float* deckBStereo, std::size_t frames, float p
         const float inR = deckBStereo[f * 2 + 1];
         deckBStereo[f * 2] = deckBHpfL_.tickHighPass(inL, currentCutoffB_, sr, 0.7071f) * currentGainB_;
         deckBStereo[f * 2 + 1] = deckBHpfR_.tickHighPass(inR, currentCutoffB_, sr, 0.7071f) * currentGainB_;
+    }
+
+    // 4. Per-deck std::tanh soft-knee safety limiter (threshold = 0.85f, ceiling = 0.98f)
+    for (std::size_t f = 0; f < frames; ++f) {
+        deckBStereo[f * 2] = applySoftKneeLimiter(deckBStereo[f * 2]);
+        deckBStereo[f * 2 + 1] = applySoftKneeLimiter(deckBStereo[f * 2 + 1]);
     }
 }
 
