@@ -237,4 +237,99 @@ class FeedViewModelChipsAndPaginationTest {
         assertThat(vm.uiState.value.isLoadingMore).isFalse()
         assertThat(vm.uiState.value.pagedShelves).isEmpty()
     }
+
+    private fun createEpisodeShelf(title: String, videoId: String): HomeShelf {
+        return HomeShelf(
+            title = title,
+            items = listOf(
+                HomeShelfItem.PodcastEpisode(
+                    videoId = videoId,
+                    title = "Episode in $title",
+                    showTitle = "Show name",
+                    viewsAndDate = "10K views",
+                    durationText = "45:00",
+                )
+            )
+        )
+    }
+
+    private fun createShowShelf(title: String, browseId: String): HomeShelf {
+        return HomeShelf(
+            title = title,
+            items = listOf(
+                HomeShelfItem.PodcastShow(
+                    browseId = browseId,
+                    title = "Show in $title",
+                    author = "Host",
+                )
+            )
+        )
+    }
+
+    @Test
+    fun selectPodcastsChip_loadsAllShelves_andSetsBackgroundUrl() {
+        val chip = HomeChip(title = "Podcasts", params = "podcast_params")
+        val showsShelf = createShowShelf("Shows for you", "MPSP_show_1")
+        val episodeShelf = createEpisodeShelf("Government", "ep_gov_1")
+        val bgUrl = "https://example.com/podcast_hero.jpg"
+        coEvery { innerTube.fetchHomeChip(chip) } returns HomePage(
+            shelves = listOf(showsShelf, episodeShelf),
+            chips = emptyList(),
+            continuationToken = "podcast_cont_1",
+            backgroundUrl = bgUrl,
+        )
+
+        val vm = createViewModel()
+        vm.selectChip(chip)
+        waitFor { !vm.uiState.value.isChipLoading }
+
+        val state = vm.uiState.value
+        assertThat(state.selectedChip).isEqualTo(chip)
+        assertThat(state.isChipActive).isTrue()
+        assertThat(state.chipShelves).containsExactly(showsShelf, episodeShelf).inOrder()
+        assertThat(state.chipContinuationToken).isEqualTo("podcast_cont_1")
+        assertThat(state.chipBackgroundUrl).isEqualTo(bgUrl)
+
+        // Deselecting clears the backgroundUrl as well
+        vm.selectChip(chip)
+        val stateAfterDeselect = vm.uiState.value
+        assertThat(stateAfterDeselect.selectedChip).isNull()
+        assertThat(stateAfterDeselect.chipBackgroundUrl).isNull()
+    }
+
+    @Test
+    fun loadMoreHomeShelves_inChipMode_appendsPage2Shelves_skippingDuplicates() {
+        val chip = HomeChip(title = "Podcasts", params = "podcast_params")
+        val showsShelf = createShowShelf("Shows for you", "MPSP_show_1")
+        val govShelf = createEpisodeShelf("Government", "ep_gov_1")
+        coEvery { innerTube.fetchHomeChip(chip) } returns HomePage(
+            shelves = listOf(showsShelf, govShelf),
+            chips = emptyList(),
+            continuationToken = "podcast_cont_1",
+            backgroundUrl = "https://example.com/hero.jpg",
+        )
+
+        val duplicateGovShelf = createEpisodeShelf("Government", "ep_gov_1")
+        val filmsShelf = createEpisodeShelf("Films", "ep_film_1")
+        coEvery { innerTube.fetchHomeContinuation("podcast_cont_1") } returns HomePage(
+            shelves = listOf(duplicateGovShelf, filmsShelf),
+            chips = emptyList(),
+            continuationToken = "podcast_cont_2",
+        )
+
+        val vm = createViewModel()
+        vm.selectChip(chip)
+        waitFor { !vm.uiState.value.isChipLoading }
+
+        // Initial chip shelves
+        assertThat(vm.uiState.value.chipShelves).containsExactly(showsShelf, govShelf).inOrder()
+
+        // Paginate in chip mode
+        vm.loadMoreHomeShelves()
+        waitFor { !vm.uiState.value.isLoadingMore }
+
+        val stateAfter = vm.uiState.value
+        assertThat(stateAfter.chipShelves).containsExactly(showsShelf, govShelf, filmsShelf).inOrder()
+        assertThat(stateAfter.chipContinuationToken).isEqualTo("podcast_cont_2")
+    }
 }

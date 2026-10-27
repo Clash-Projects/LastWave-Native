@@ -57,6 +57,7 @@ data class FeedUiState(
     val chipShelves: List<HomeShelf> = emptyList(),
     val chipContinuationToken: String? = null,
     val defaultContinuationToken: String? = null,
+    val chipBackgroundUrl: String? = null,
 ) {
     /** True when a mood/activity chip is active; synthetic sections are hidden in this mode. */
     val isChipActive: Boolean get() = selectedChip != null
@@ -223,6 +224,7 @@ class FeedViewModel @Inject constructor(
                     chipShelves = if (refreshing) emptyList() else it.chipShelves,
                     chipContinuationToken = if (refreshing) null else it.chipContinuationToken,
                     defaultContinuationToken = if (refreshing) null else it.defaultContinuationToken,
+                    chipBackgroundUrl = if (refreshing) null else it.chipBackgroundUrl,
                 )
             }
             try {
@@ -298,6 +300,7 @@ class FeedViewModel @Inject constructor(
                     isChipLoading = false,
                     chipShelves = emptyList(),
                     chipContinuationToken = null,
+                    chipBackgroundUrl = null,
                 )
             }
             return
@@ -312,6 +315,7 @@ class FeedViewModel @Inject constructor(
                 isChipLoading = true,
                 chipShelves = emptyList(),
                 chipContinuationToken = null,
+                chipBackgroundUrl = null,
                 error = null,
             )
         }
@@ -326,6 +330,7 @@ class FeedViewModel @Inject constructor(
                         isChipLoading = false,
                         chipShelves = page.shelves,
                         chipContinuationToken = page.continuationToken,
+                        chipBackgroundUrl = page.backgroundUrl,
                     )
                 }
             } catch (cancellation: CancellationException) {
@@ -337,6 +342,7 @@ class FeedViewModel @Inject constructor(
                         it.copy(
                             selectedChip = null,
                             isChipLoading = false,
+                            chipBackgroundUrl = null,
                             error = appContext.getString(com.lastwave.app.R.string.feed_update_error),
                         )
                     }
