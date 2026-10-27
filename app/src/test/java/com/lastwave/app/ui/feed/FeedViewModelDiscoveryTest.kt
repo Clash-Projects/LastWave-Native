@@ -57,6 +57,7 @@ class FeedViewModelDiscoveryTest {
         coEvery { ytAuth.awaitLoadedConnection() } returns YtConnection()
         coEvery { sessionPreferences.session } returns MutableStateFlow(SessionData(username = "test_user"))
         coEvery { settingsPreferences.settings } returns MutableStateFlow(mockk(relaxed = true))
+        coEvery { homeRepository.fetchStats() } returns Result.failure(Exception("no stats"))
     }
 
     @After

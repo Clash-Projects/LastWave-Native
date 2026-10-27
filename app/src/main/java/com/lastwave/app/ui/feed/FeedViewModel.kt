@@ -145,7 +145,7 @@ class FeedViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            val stats = homeRepository.fetchStats().getOrNull()
+            val stats = runCatching { homeRepository.fetchStats().getOrNull() }.getOrNull()
             if (stats != null) {
                 _uiState.update { it.copy(avatarUrl = stats.avatarUrl) }
             }
