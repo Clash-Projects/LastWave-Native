@@ -2077,7 +2077,7 @@ class MusicPlayer @Inject constructor(
                                 currentPositionMs = pos,
                                 durationMs = dur,
                                 isPlaying = player.isPlaying,
-                                transitionDurationMs = if (automixEnabled) 15000L else crossfadeDurationMs,
+                                transitionDurationMs = if (automixEnabled) 20_000L else crossfadeDurationMs,
                             )
                             checkAndTriggerDualDeckTransition(activeDeck ?: player, pos, dur)
                             if (updateCrossfade(pos)) {
@@ -3581,9 +3581,9 @@ class MusicPlayer @Inject constructor(
     }
 
     private fun computeAutoDJOutCueMs(startCueMs: Long): Long {
-        val targetMs = startCueMs + 55_000L
-        val minTarget = startCueMs + 50_000L
-        val maxTarget = startCueMs + 65_000L
+        val targetMs = startCueMs + 65_000L
+        val minTarget = startCueMs + 55_000L
+        val maxTarget = startCueMs + 75_000L
 
         val lines = activeTrackLyrics
         if (lines.isNullOrEmpty()) {
@@ -3634,14 +3634,14 @@ class MusicPlayer @Inject constructor(
         var shouldTrigger = false
 
         if (isAutoDJ) {
-            // Rule 1: Auto DJ acts as 45-60s Peak-Highlight Controller
+            // Auto DJ: 15-18s transition across highlight stanzas
             val outCueMs = computeAutoDJOutCueMs(activeDeckStartCueMs)
-            if (activePos >= outCueMs || (activeDur > 0L && activePos >= activeDur - 10_000L)) {
+            if (activePos >= outCueMs || (activeDur > 0L && activePos >= activeDur - 16_000L)) {
                 shouldTrigger = true
             }
         } else if (isAutomix) {
-            // Rule 1: Automix plays full tracks and triggers overlap across final 12-18s outro
-            val outroOverlapMs = ((automixBars.coerceIn(8, 16) * 1750L)).coerceIn(12_000L, 18_000L)
+            // Automix without Auto DJ: 18-22s transition at full track outro
+            val outroOverlapMs = ((automixBars.coerceIn(8, 16) * 1250L)).coerceIn(18_000L, 22_000L)
             if (activeDur > 0L && activePos >= activeDur - outroOverlapMs) {
                 shouldTrigger = true
             }
@@ -3693,7 +3693,12 @@ class MusicPlayer @Inject constructor(
         autoMixNextTrack = nextTrack
         autoMixHandedOver = false
 
-        val durationMs = 9_000L
+        val isAutoDJ = autoDJController.get().isEnabled || _state.value.isAutoDJActive
+        val durationMs = if (isAutoDJ) {
+            16_000L // 15-18 sec for Auto DJ highlight mixes (16.0s)
+        } else {
+            ((automixBars.coerceIn(8, 16) * 1250L)).coerceIn(18_000L, 22_000L) // 18-22 sec for full track Automix (default 20.0s for 16 bars)
+        }
         overlapDurationMs = durationMs
 
         if (nativeAutoMixEngine.get().isAvailable) {
