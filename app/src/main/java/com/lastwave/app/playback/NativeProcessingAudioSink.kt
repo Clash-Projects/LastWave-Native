@@ -652,9 +652,10 @@ class NativeProcessingAudioSink(
                     var pos = startPos
                     while (pos + 1 < endPos) {
                         val sample = buffer.getShort(pos).toInt()
-                        val scaled = (sample * gain + if (sample >= 0) 0.5f else -0.5f).toInt()
-                            .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-                        buffer.putShort(pos, scaled.toShort())
+                        val rawFloat = (sample / 32768f) * gain
+                        val s = kotlin.math.tanh(rawFloat * 0.85f) * 1.12f
+                        val pcm = (s * 32767f).toInt().coerceIn(-32767, 32767).toShort()
+                        buffer.putShort(pos, pcm)
                         pos += 2
                     }
                 }

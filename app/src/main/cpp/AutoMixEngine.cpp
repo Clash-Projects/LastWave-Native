@@ -17,7 +17,7 @@ namespace lastwave::audio {
 void ResonantFilter::update(Mode mode, double sampleRate, double cutoffHz, double q, double gainDb) noexcept {
     if (sampleRate <= 0.0) sampleRate = 48000.0;
     cutoffHz = std::clamp(cutoffHz, 10.0, sampleRate * 0.48);
-    q = std::clamp(q, 0.1, 20.0);
+    q = std::clamp(q, 0.1, 0.7071);
 
     const double w0 = 2.0 * M_PI * cutoffHz / sampleRate;
     const double cosW0 = std::cos(w0);
@@ -461,17 +461,8 @@ void AutoMixEngine::detectDeckBFirstBeatAndSilence() noexcept {
     deckBTrimCalculated_ = true;
 }
 float AutoMixEngine::applySoftKneeLimiter(float x) noexcept {
-    constexpr float threshold = 0.85f;
-    constexpr float ceiling = 0.98f;
-    constexpr float margin = ceiling - threshold; // 0.13f
-    const float absX = std::abs(x);
-    if (absX <= threshold) {
-        return x;
-    }
-    const float excess = absX - threshold;
-    const float compressed = threshold + margin * std::tanh(excess / margin);
-    const float limited = std::copysign(compressed, x);
-    return std::clamp(limited, -ceiling, ceiling);
+    const float s = std::tanh(x * 0.85f) * 1.12f;
+    return std::clamp(s, -0.999f, 0.999f);
 }
 
 void AutoMixEngine::processDeckA(float* deckAStereo, std::size_t frames, float progress) noexcept {
@@ -480,8 +471,26 @@ void AutoMixEngine::processDeckA(float* deckAStereo, std::size_t frames, float p
 
     progress = std::clamp(progress, 0.0f, 1.0f);
 
-    // 1. Vocal-Pocket Ducking: dynamic -9.0 dB peaking cut at 1200 Hz
-    if (deckBVocalsActive_.load(std::memory_order_relaxed)) {
+    // Apply -3.0 dB (0.7071f) Transition Headroom Pre-Scale before filtering
+    for (std::size_t f = 0; f < frames * 2; ++f) {
+        deckAStereo[f] *= 0.7071f;
+    }
+
+    // 1. Vocal-Kill Mid-Band Cut (300 Hz - 4000 Hz, -18 dB attenuation) from t = 0.20 to t = 0.45:
+    // Carves out vocal pocket on Deck A so incoming Deck B vocals sit 100% clear with zero vocal clashing
+    float vocalDuckDb = 0.0f;
+    if (progress < 0.20f) {
+        vocalDuckDb = 0.0f;
+    } else if (progress > 0.45f) {
+        vocalDuckDb = -18.0f;
+    } else {
+        const float u = (progress - 0.20f) / 0.25f;
+        const float sCurve = 0.5f - 0.5f * std::cos(static_cast<float>(M_PI) * u);
+        vocalDuckDb = -18.0f * sCurve;
+    }
+    if (vocalDuckDb < -0.01f || deckBVocalsActive_.load(std::memory_order_relaxed)) {
+        const float effectiveDb = std::min(vocalDuckDb, deckBVocalsActive_.load(std::memory_order_relaxed) ? -9.0f : 0.0f);
+        deckAVocalDuckFilter_.update(ResonantFilter::Mode::PeakingCut, sampleRate_, 1100.0, 0.45, effectiveDb);
         for (std::size_t f = 0; f < frames; ++f) {
             deckAStereo[f * 2] = deckAVocalDuckFilter_.tick(deckAStereo[f * 2], 0);
             deckAStereo[f * 2 + 1] = deckAVocalDuckFilter_.tick(deckAStereo[f * 2 + 1], 1);
@@ -557,7 +566,7 @@ void AutoMixEngine::processDeckA(float* deckAStereo, std::size_t frames, float p
         deckAEcho_.process(deckAStereo, frames, wetSend, dryGain, wetSend);
     }
 
-    // 7. Per-deck std::tanh soft-knee safety limiter (threshold = 0.85f, ceiling = 0.98f)
+    // 7. Per-deck std::tanh soft-knee safety limiter
     for (std::size_t f = 0; f < frames; ++f) {
         deckAStereo[f * 2] = applySoftKneeLimiter(deckAStereo[f * 2]);
         deckAStereo[f * 2 + 1] = applySoftKneeLimiter(deckAStereo[f * 2 + 1]);
@@ -569,6 +578,11 @@ void AutoMixEngine::processDeckB(float* deckBStereo, std::size_t frames, float p
     if (paused_.load(std::memory_order_acquire)) return;
 
     progress = std::clamp(progress, 0.0f, 1.0f);
+
+    // Apply -3.0 dB (0.7071f) Transition Headroom Pre-Scale before filtering
+    for (std::size_t f = 0; f < frames * 2; ++f) {
+        deckBStereo[f] *= 0.7071f;
+    }
 
     // 1. Equal-power gain curve with anti-clip headroom compensation factor (0.22f):
     // scale equal-power sin volume by (1.0f - 0.22f * sin(t * PI))
@@ -791,16 +805,17 @@ bool AutoMixEngine::processDeckBuffer(
             case 0: { // PCM_I16
                 auto* out = static_cast<std::int16_t*>(pcm);
                 for (std::size_t i = 0; i < frameCount * 2; ++i) {
-                    const float clamped = std::clamp(scratch[i], -1.0f, 1.0f);
-                    out[i] = static_cast<std::int16_t>(std::round(clamped * 32767.0f));
+                    const float s = std::tanh(scratch[i] * 0.85f) * 1.12f;
+                    const auto pcmVal = static_cast<std::int32_t>(std::lrintf(s * 32767.0f));
+                    out[i] = static_cast<std::int16_t>(std::clamp(pcmVal, -32767, 32767));
                 }
                 break;
             }
             case 1: { // PCM_I24_PACKED
                 auto* out = static_cast<std::uint8_t*>(pcm);
                 for (std::size_t i = 0; i < frameCount * 2; ++i) {
-                    const float clamped = std::clamp(scratch[i], -1.0f, 1.0f);
-                    const auto val = static_cast<std::int32_t>(std::round(clamped * 8388607.0f));
+                    const float s = std::tanh(scratch[i] * 0.85f) * 1.12f;
+                    const auto val = std::clamp(static_cast<std::int32_t>(std::lrintf(s * 8388607.0f)), -8388607, 8388607);
                     const std::size_t offset = i * 3;
                     out[offset] = static_cast<std::uint8_t>(val & 0xFF);
                     out[offset + 1] = static_cast<std::uint8_t>((val >> 8) & 0xFF);
@@ -811,8 +826,9 @@ bool AutoMixEngine::processDeckBuffer(
             case 2: { // PCM_I32
                 auto* out = static_cast<std::int32_t*>(pcm);
                 for (std::size_t i = 0; i < frameCount * 2; ++i) {
-                    const float clamped = std::clamp(scratch[i], -1.0f, 1.0f);
-                    out[i] = static_cast<std::int32_t>(std::round(clamped * 2147483647.0f));
+                    const float s = std::tanh(scratch[i] * 0.85f) * 1.12f;
+                    const double scaled = static_cast<double>(s) * 2147483647.0;
+                    out[i] = static_cast<std::int32_t>(std::clamp(scaled, -2147483647.0, 2147483647.0));
                 }
                 break;
             }
