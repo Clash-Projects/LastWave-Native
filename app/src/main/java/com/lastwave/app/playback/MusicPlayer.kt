@@ -9557,6 +9557,7 @@ internal fun com.lastwave.app.playback.resolve.StreamCache.toPlayerStream(): Mus
         rawCodec.contains("M4A") || rawCodec.contains("MP4") || rawCodec.contains("MP4A") || rawCodec.contains("AAC") -> "AAC"
         else -> rawCodec
     }
+    val cleanMime = ytStream.mimeType?.substringBefore(';')?.trim().orEmpty()
     val headers = buildMap {
         putAll(ytStream.requestHeaders)
         if (!ytStream.userAgent.isNullOrBlank()) {

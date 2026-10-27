@@ -108,5 +108,5 @@ fun StreamCache.toYouTubeAudioStream(): YouTubeAudioStream = YouTubeAudioStream(
     authScope = authScope,
     requestHeaders = requestHeaders,
     expiresAtEpochMs = expiresAt.takeIf { it > 0L },
-    userAgent = userAgent ?: requestHeaders["User-Agent"],
+    userAgent = userAgent ?: requestHeaders["User-Agent"] ?: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0",
 )
