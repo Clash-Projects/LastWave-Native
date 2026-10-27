@@ -319,6 +319,15 @@ void AutoMixEngine::reset() noexcept {
     currentCutoffB_ = 200.0f;
     deckAVocalDuckFilter_.reset();
 
+    deckALowL_ = 0.0f;
+    deckALowR_ = 0.0f;
+    deckBLowL_ = 0.0f;
+    deckBLowR_ = 0.0f;
+    smoothTA_ = 0.0f;
+    smoothTB_ = 0.0f;
+    filterInitA_ = false;
+    filterInitB_ = false;
+
     deckBRingBuffer_.clear();
     deckBLeadingTrimFrames_ = 0;
     deckBFirstBeatMs_ = 0;
@@ -465,111 +474,56 @@ float AutoMixEngine::applySoftKneeLimiter(float x) noexcept {
     return std::clamp(s, -0.999f, 0.999f);
 }
 
+static inline float calcSCurve(float x) noexcept {
+    const float c = std::clamp(x, 0.0f, 1.0f);
+    return 0.5f - 0.5f * std::cos(c * static_cast<float>(M_PI));
+}
+
 void AutoMixEngine::processDeckA(float* deckAStereo, std::size_t frames, float progress) noexcept {
     if (deckAStereo == nullptr || frames == 0) return;
     if (paused_.load(std::memory_order_acquire)) return;
 
-    progress = std::clamp(progress, 0.0f, 1.0f);
+    const float targetT = std::clamp(progress, 0.0f, 1.0f);
+    const float alpha = std::clamp(static_cast<float>(2.0 * M_PI * 180.0 / sampleRate_), 0.005f, 0.05f);
 
-    // Apply -3.0 dB (0.7071f) Transition Headroom Pre-Scale before filtering
-    for (std::size_t f = 0; f < frames * 2; ++f) {
-        deckAStereo[f] *= 0.7071f;
-    }
-
-    // 1. Vocal-Kill Mid-Band Cut (300 Hz - 4000 Hz, -18 dB attenuation) from t = 0.20 to t = 0.45:
-    // Carves out vocal pocket on Deck A so incoming Deck B vocals sit 100% clear with zero vocal clashing
-    float vocalDuckDb = 0.0f;
-    if (progress < 0.20f) {
-        vocalDuckDb = 0.0f;
-    } else if (progress > 0.45f) {
-        vocalDuckDb = -18.0f;
-    } else {
-        const float u = (progress - 0.20f) / 0.25f;
-        const float sCurve = 0.5f - 0.5f * std::cos(static_cast<float>(M_PI) * u);
-        vocalDuckDb = -18.0f * sCurve;
-    }
-    if (vocalDuckDb < -0.01f || deckBVocalsActive_.load(std::memory_order_relaxed)) {
-        const float effectiveDb = std::min(vocalDuckDb, deckBVocalsActive_.load(std::memory_order_relaxed) ? -9.0f : 0.0f);
-        deckAVocalDuckFilter_.update(ResonantFilter::Mode::PeakingCut, sampleRate_, 1100.0, 0.45, effectiveDb);
-        for (std::size_t f = 0; f < frames; ++f) {
-            deckAStereo[f * 2] = deckAVocalDuckFilter_.tick(deckAStereo[f * 2], 0);
-            deckAStereo[f * 2 + 1] = deckAVocalDuckFilter_.tick(deckAStereo[f * 2 + 1], 1);
-        }
-    }
-
-    // 2. Vocal-Safe Loop / Beat-Repeat Exit Buffer (t >= 0.55):
-    if (progress >= 0.55f && deckALoopActive_ && deckALoopFrames_ > 0) {
-        for (std::size_t f = 0; f < frames; ++f) {
-            deckAStereo[f * 2] = deckAOneBarLoopBuffer_[deckALoopReadPos_ * 2];
-            deckAStereo[f * 2 + 1] = deckAOneBarLoopBuffer_[deckALoopReadPos_ * 2 + 1];
-            deckALoopReadPos_ = (deckALoopReadPos_ + 1) % deckALoopFrames_;
-        }
-    }
-
-    // 3. Single Texture FX Auto-Chooser (t >= 0.40):
-    const auto fx = static_cast<TransitionTextureFx>(planTextureFx_.load(std::memory_order_relaxed));
-    if (progress >= 0.40f && fx != TransitionTextureFx::None) {
-        const float send = std::clamp((progress - 0.40f) / 0.25f, 0.0f, 0.35f);
-        if (fx == TransitionTextureFx::SubtlePhaser) {
-            for (std::size_t f = 0; f < frames; ++f) {
-                subtlePhaser_.process(deckAStereo[f * 2], deckAStereo[f * 2 + 1], send);
-            }
-        } else if (fx == TransitionTextureFx::StereoWidthExpander) {
-            const float width = 1.0f + send * 0.8f;
-            for (std::size_t f = 0; f < frames; ++f) {
-                const float m = (deckAStereo[f * 2] + deckAStereo[f * 2 + 1]) * 0.5f;
-                const float s = (deckAStereo[f * 2] - deckAStereo[f * 2 + 1]) * 0.5f * width;
-                deckAStereo[f * 2] = m + s;
-                deckAStereo[f * 2 + 1] = m - s;
-            }
-        }
-    }
-
-    // 4. Equal-power gain curve with anti-clip headroom compensation factor (0.22f):
-    // scale equal-power cos volume by (1.0f - 0.22f * sin(t * PI))
-    const float headroomComp = 1.0f - 0.22f * std::sin(progress * static_cast<float>(M_PI));
-    const float targetGainA = std::cos(progress * static_cast<float>(M_PI) * 0.5f) * headroomComp;
-
-    // 5. Complementary S-Curve Bass-Swap:
-    // From t = 0.0 to 0.40: activeDeck keeps 100% of <180 Hz bass (HPF = 20 Hz)
-    // From t = 0.40 to 0.65: cross-sweep activeDeck HPF 20 Hz -> 450 Hz using cosine S-curve
-    // From t > 0.65: HPF = 450 Hz
-    float targetCutoffA = 20.0f;
-    if (progress < 0.40f) {
-        targetCutoffA = 20.0f;
-    } else if (progress > 0.65f) {
-        targetCutoffA = 450.0f;
-    } else {
-        const float u = (progress - 0.40f) / 0.25f;
-        const float sCurve = 0.5f - 0.5f * std::cos(static_cast<float>(M_PI) * u);
-        targetCutoffA = 20.0f + sCurve * (450.0f - 20.0f);
-    }
-
-    // Zero Zipper Noise: Per-sample smoothing (alpha = 0.0015f) + Cytomic SVF
-    const float sr = static_cast<float>(sampleRate_);
     for (std::size_t f = 0; f < frames; ++f) {
-        currentGainA_ += 0.0015f * (targetGainA - currentGainA_);
-        currentCutoffA_ += 0.0015f * (targetCutoffA - currentCutoffA_);
+        smoothTA_ += 0.0005f * (targetT - smoothTA_);
+        const float st = std::clamp(smoothTA_, 0.0f, 1.0f);
 
         const float inL = deckAStereo[f * 2];
         const float inR = deckAStereo[f * 2 + 1];
-        deckAStereo[f * 2] = deckAHpfL_.tickHighPass(inL, currentCutoffA_, sr, 0.7071f) * currentGainA_;
-        deckAStereo[f * 2 + 1] = deckAHpfR_.tickHighPass(inR, currentCutoffA_, sr, 0.7071f) * currentGainA_;
-    }
 
-    // 6. Outgoing 1.2s stereo echo/reverb tail (max 0.22f wet) on activeDeck (t >= 0.40):
-    if (progress >= 0.40f) {
-        const float u = std::clamp((progress - 0.40f) / 0.25f, 0.0f, 1.0f);
-        const float wetSend = std::clamp(u * 0.22f, 0.0f, 0.22f);
-        float dryGain = (1.0f - progress);
-        dryGain *= (1.0f - 0.35f * wetSend);
-        deckAEcho_.process(deckAStereo, frames, wetSend, dryGain, wetSend);
-    }
+        if (st <= 0.0001f) {
+            continue;
+        }
 
-    // 7. Per-deck std::tanh soft-knee safety limiter
-    for (std::size_t f = 0; f < frames; ++f) {
-        deckAStereo[f * 2] = applySoftKneeLimiter(deckAStereo[f * 2]);
-        deckAStereo[f * 2 + 1] = applySoftKneeLimiter(deckAStereo[f * 2 + 1]);
+        if (!filterInitA_) {
+            deckALowL_ = inL;
+            deckALowR_ = inR;
+            filterInitA_ = true;
+        } else {
+            deckALowL_ += alpha * (inL - deckALowL_);
+            deckALowR_ += alpha * (inR - deckALowR_);
+        }
+
+        const float highL = inL - deckALowL_;
+        const float highR = inR - deckALowR_;
+
+        const float midVocal = 0.5f * (highL + highR);
+        const float sideInst = 0.5f * (highL - highR);
+
+        const float vocalGainA = 1.0f - calcSCurve(st / 0.42f);
+        const float bassGainA  = 1.0f - calcSCurve((st - 0.25f) / 0.40f);
+        const float sideGainA  = 1.0f - calcSCurve(st);
+
+        float outL = deckALowL_ * bassGainA + midVocal * vocalGainA + sideInst * sideGainA;
+        float outR = deckALowR_ * bassGainA + midVocal * vocalGainA - sideInst * sideGainA;
+
+        if (std::abs(outL) > 0.85f) outL = std::tanh(outL * 0.90f);
+        if (std::abs(outR) > 0.85f) outR = std::tanh(outR * 0.90f);
+
+        deckAStereo[f * 2] = std::clamp(outL, -0.999f, 0.999f);
+        deckAStereo[f * 2 + 1] = std::clamp(outR, -0.999f, 0.999f);
     }
 }
 
@@ -577,67 +531,47 @@ void AutoMixEngine::processDeckB(float* deckBStereo, std::size_t frames, float p
     if (deckBStereo == nullptr || frames == 0) return;
     if (paused_.load(std::memory_order_acquire)) return;
 
-    progress = std::clamp(progress, 0.0f, 1.0f);
+    const float targetT = std::clamp(progress, 0.0f, 1.0f);
+    const float alpha = std::clamp(static_cast<float>(2.0 * M_PI * 180.0 / sampleRate_), 0.005f, 0.05f);
 
-    // Apply -3.0 dB (0.7071f) Transition Headroom Pre-Scale before filtering
-    for (std::size_t f = 0; f < frames * 2; ++f) {
-        deckBStereo[f] *= 0.7071f;
-    }
-
-    // 1. Equal-power gain curve with anti-clip headroom compensation factor (0.22f):
-    // scale equal-power sin volume by (1.0f - 0.22f * sin(t * PI))
-    const float headroomComp = 1.0f - 0.22f * std::sin(progress * static_cast<float>(M_PI));
-
-    // 2. Windowed RMS Loudness Matching: attenuation only (-6.0 dB .. 0.0 dB, never boost > 0 dB)
-    float makeupLinear = 1.0f;
-    const float planGain = planGainOffsetDb_.load(std::memory_order_relaxed);
-    const float clampedGainDb = std::clamp(planGain, -6.0f, 0.0f); // Attenuation only!
-    if (state_.load(std::memory_order_acquire) == AutoMixState::PostRestore) {
-        if (postRestoreTotalFrames_ > 0 && postRestoreFramesElapsed_ < postRestoreTotalFrames_) {
-            const float decayFactor = 1.0f - static_cast<float>(postRestoreFramesElapsed_) / static_cast<float>(postRestoreTotalFrames_);
-            const float decayingDb = clampedGainDb * decayFactor;
-            makeupLinear = std::pow(10.0f, decayingDb / 20.0f);
-            postRestoreFramesElapsed_ += frames;
-        } else {
-            makeupLinear = 1.0f;
-        }
-    } else {
-        makeupLinear = std::pow(10.0f, clampedGainDb / 20.0f);
-    }
-
-    const float targetGainB = std::sin(progress * static_cast<float>(M_PI) * 0.5f) * headroomComp * makeupLinear;
-
-    // 3. Complementary S-Curve Bass-Swap:
-    // From t = 0.0 to 0.40: standbyDeck is high-passed at 200 Hz (Q = 0.7071f Butterworth SVF)
-    // From t = 0.40 to 0.65: smoothly cross-sweep standbyDeck HPF 200 Hz -> 20 Hz using cosine S-curve
-    // From t > 0.65: HPF = 20 Hz
-    float targetCutoffB = 200.0f;
-    if (progress < 0.40f) {
-        targetCutoffB = 200.0f;
-    } else if (progress > 0.65f) {
-        targetCutoffB = 20.0f;
-    } else {
-        const float u = (progress - 0.40f) / 0.25f;
-        const float sCurve = 0.5f - 0.5f * std::cos(static_cast<float>(M_PI) * u);
-        targetCutoffB = 200.0f - sCurve * (200.0f - 20.0f);
-    }
-
-    // Zero Zipper Noise: Per-sample smoothing (alpha = 0.0015f) + Cytomic SVF
-    const float sr = static_cast<float>(sampleRate_);
     for (std::size_t f = 0; f < frames; ++f) {
-        currentGainB_ += 0.0015f * (targetGainB - currentGainB_);
-        currentCutoffB_ += 0.0015f * (targetCutoffB - currentCutoffB_);
+        smoothTB_ += 0.0005f * (targetT - smoothTB_);
+        const float st = std::clamp(smoothTB_, 0.0f, 1.0f);
 
         const float inL = deckBStereo[f * 2];
         const float inR = deckBStereo[f * 2 + 1];
-        deckBStereo[f * 2] = deckBHpfL_.tickHighPass(inL, currentCutoffB_, sr, 0.7071f) * currentGainB_;
-        deckBStereo[f * 2 + 1] = deckBHpfR_.tickHighPass(inR, currentCutoffB_, sr, 0.7071f) * currentGainB_;
-    }
 
-    // 4. Per-deck std::tanh soft-knee safety limiter (threshold = 0.85f, ceiling = 0.98f)
-    for (std::size_t f = 0; f < frames; ++f) {
-        deckBStereo[f * 2] = applySoftKneeLimiter(deckBStereo[f * 2]);
-        deckBStereo[f * 2 + 1] = applySoftKneeLimiter(deckBStereo[f * 2 + 1]);
+        if (st >= 0.9999f) {
+            continue;
+        }
+
+        if (!filterInitB_) {
+            deckBLowL_ = inL;
+            deckBLowR_ = inR;
+            filterInitB_ = true;
+        } else {
+            deckBLowL_ += alpha * (inL - deckBLowL_);
+            deckBLowR_ += alpha * (inR - deckBLowR_);
+        }
+
+        const float highL = inL - deckBLowL_;
+        const float highR = inR - deckBLowR_;
+
+        const float midVocal = 0.5f * (highL + highR);
+        const float sideInst = 0.5f * (highL - highR);
+
+        const float sideGainB  = calcSCurve(st);
+        const float bassGainB  = calcSCurve((st - 0.25f) / 0.40f);
+        const float vocalGainB = calcSCurve((st - 0.34f) / 0.42f);
+
+        float outL = deckBLowL_ * bassGainB + midVocal * vocalGainB + sideInst * sideGainB;
+        float outR = deckBLowR_ * bassGainB + midVocal * vocalGainB - sideInst * sideGainB;
+
+        if (std::abs(outL) > 0.85f) outL = std::tanh(outL * 0.90f);
+        if (std::abs(outR) > 0.85f) outR = std::tanh(outR * 0.90f);
+
+        deckBStereo[f * 2] = std::clamp(outL, -0.999f, 0.999f);
+        deckBStereo[f * 2 + 1] = std::clamp(outR, -0.999f, 0.999f);
     }
 }
 
