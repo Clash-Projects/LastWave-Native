@@ -179,6 +179,16 @@ private:
     float currentCutoffA_{20.0f};
     float currentCutoffB_{200.0f};
 
+    // 3-Stem M/S Vocal-Split Crossfader state
+    float deckALowL_{0.0f};
+    float deckALowR_{0.0f};
+    float deckBLowL_{0.0f};
+    float deckBLowR_{0.0f};
+    float smoothTA_{0.0f};
+    float smoothTB_{0.0f};
+    bool filterInitA_{false};
+    bool filterInitB_{false};
+
     WsolaTimeStretcher deckBStretcher_;
     BpmPhaseDetector deckADetector_;
     BpmPhaseDetector deckBDetector_;

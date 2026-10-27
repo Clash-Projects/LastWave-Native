@@ -3444,22 +3444,22 @@ class MusicPlayer @Inject constructor(
                 }
             } else null
 
-            // Snap Deck B Entry Cue (inCueMs) to 800ms-1200ms before a complete lyric line:
+            // Snap Deck B Entry Cue (inCueMs) to 1.5s before a complete lyric line:
             // Never enter mid-sentence. Prefer lines preceded by >= 500ms vocal gap or chorus entry.
             var chosenLine: com.lastwave.app.data.lyrics.LyricLine? = null
             if (!lyricsLines.isNullOrEmpty()) {
-                val linesInWindow = lyricsLines.filter { it.timeMs in (minWin + 1_000L)..maxWin }
+                val linesInWindow = lyricsLines.filter { (it.timeMs - 1_500L) in minWin..maxWin }
                 chosenLine = linesInWindow.firstOrNull { line ->
                     val idx = lyricsLines.indexOf(line)
                     val prev = if (idx > 0) lyricsLines[idx - 1] else null
                     val gap = if (prev != null) line.timeMs - (prev.timeMs + prev.durationMs.coerceAtLeast(0L)) else 10_000L
                     val isChorus = line.text.contains("chorus", ignoreCase = true) || line.text.contains("hook", ignoreCase = true)
                     gap >= 500L || isChorus
-                } ?: linesInWindow.firstOrNull() ?: lyricsLines.firstOrNull { it.timeMs >= minWin }
+                } ?: linesInWindow.firstOrNull() ?: lyricsLines.firstOrNull { (it.timeMs - 1_500L) >= minWin }
             }
 
             return if (chosenLine != null) {
-                (chosenLine.timeMs - 1_000L).coerceIn(minWin, maxWin)
+                (chosenLine.timeMs - 1_500L).coerceIn(minWin, maxWin)
             } else if (kickBeatMs != null) {
                 kickBeatMs.coerceIn(minWin, maxWin)
             } else {
@@ -3469,7 +3469,7 @@ class MusicPlayer @Inject constructor(
             val defaultIntro = (durationMs * 0.15).toLong().coerceIn(0L, 15_000L)
             val firstLine = lyricsLines?.firstOrNull { it.timeMs > 2_000L }
             return if (firstLine != null) {
-                (firstLine.timeMs - 1_000L).coerceIn(0L, defaultIntro)
+                (firstLine.timeMs - 1_500L).coerceAtLeast(0L)
             } else {
                 defaultIntro
             }
@@ -3480,7 +3480,7 @@ class MusicPlayer @Inject constructor(
             } else null
             val firstLyric = lyricsLines?.firstOrNull { it.timeMs > 0L }
             val candidate = when {
-                firstLyric != null -> firstLyric.timeMs - 1_000L
+                firstLyric != null -> (firstLyric.timeMs - 1_500L).coerceAtLeast(0L)
                 firstBeatMs != null && firstBeatMs > 0L -> firstBeatMs
                 else -> 0L
             }
@@ -3598,17 +3598,19 @@ class MusicPlayer @Inject constructor(
                 i + 1 < lines.size -> lines[i + 1].timeMs
                 else -> line.timeMs + 3_000L
             }
-            if (lineEnd in minTarget..maxTarget) {
-                candidates.add(lineEnd)
+            // Snap Deck A Exit Cue (outCueMs) to 1.5s before the end of a lyric line
+            val cue = lineEnd - 1_500L
+            if (cue in minTarget..maxTarget) {
+                candidates.add(cue)
             }
         }
 
         return if (candidates.isNotEmpty()) {
             candidates.minByOrNull { kotlin.math.abs(it - targetMs) } ?: targetMs
         } else {
-            val lineInWindow = lines.firstOrNull { it.timeMs in minTarget..maxTarget }
+            val lineInWindow = lines.firstOrNull { (it.timeMs - 1_500L) in minTarget..maxTarget }
             if (lineInWindow != null) {
-                lineInWindow.timeMs.coerceIn(minTarget, maxTarget)
+                (lineInWindow.timeMs - 1_500L).coerceIn(minTarget, maxTarget)
             } else {
                 targetMs
             }
@@ -3691,15 +3693,15 @@ class MusicPlayer @Inject constructor(
         autoMixNextTrack = nextTrack
         autoMixHandedOver = false
 
-        val durationMs = if (isManualSkip) 6_000L else 8_000L
+        val durationMs = 6_000L
         overlapDurationMs = durationMs
 
         if (nativeAutoMixEngine.get().isAvailable) {
             nativeAutoMixEngine.get().startTransition(durationMs.toInt())
         }
 
-        playerToSink[active]?.autoMixRole = AutoMixDeckRole.DECK_A
-        playerToSink[standby]?.autoMixRole = AutoMixDeckRole.DECK_B
+        playerToSink[active]?.autoMixRole = AutoMixDeckRole.NONE
+        playerToSink[standby]?.autoMixRole = AutoMixDeckRole.NONE
 
         val bpmA = if (nativeAutoMixEngine.get().isAvailable) nativeAutoMixEngine.get().deckABpm else 0f
         val bpmB = if (nativeAutoMixEngine.get().isAvailable) nativeAutoMixEngine.get().deckBBpm else 0f
@@ -3708,22 +3710,18 @@ class MusicPlayer @Inject constructor(
 
         standby.playbackParameters = PlaybackParameters(initialSpeedB, 1.0f)
 
-        active.play()
-        standby.play()
-
         val dspA = deckDspProcessors[if (active === deckAPlayer) "deckA" else "deckB"]
         val dspB = deckDspProcessors[if (standby === deckBPlayer) "deckB" else "deckA"]
 
-        dspA?.isDeckA = true
-        dspB?.isDeckA = false
+        dspA?.startTransition(asDeckA = true, initialT = 0.0f)
+        dspB?.startTransition(asDeckA = false, initialT = 0.0f)
 
-        val pi = Math.PI.toFloat()
+        // Keep per-player volume = 1.0f; all envelope shaping happens inside DeckDspAudioProcessor
         active.volume = 1.0f
-        standby.volume = 0.0f
-        dspA?.hpfCutoffHz = 20.0f
-        dspA?.echoReverbTail = 0.0f
-        dspB?.hpfCutoffHz = 200.0f
-        dspB?.echoReverbTail = 0.0f
+        standby.volume = 1.0f
+
+        active.play()
+        standby.play()
 
         _state.update {
             it.copy(
@@ -3746,36 +3744,11 @@ class MusicPlayer @Inject constructor(
                     nativeAutoMixEngine.get().setTransitionProgress(t)
                 }
 
-                val headroom = 1.0f - 0.22f * kotlin.math.sin(t * pi)
-                val volActive = (kotlin.math.cos(t * pi / 2f) * headroom).coerceIn(0f, 1f)
-                val volStandby = (kotlin.math.sin(t * pi / 2f) * headroom).coerceIn(0f, 1f)
-                active.volume = volActive
-                standby.volume = volStandby
-
-                when {
-                    t < 0.40f -> {
-                        dspA?.hpfCutoffHz = 20.0f
-                        dspA?.echoReverbTail = 0.0f
-                        dspB?.hpfCutoffHz = 200.0f
-                        dspB?.echoReverbTail = 0.0f
-                    }
-                    t in 0.40f..0.65f -> {
-                        val u = (t - 0.40f) / 0.25f
-                        val sCurve = 0.5f - 0.5f * kotlin.math.cos(pi * u)
-                        dspB?.hpfCutoffHz = 200f - sCurve * (200f - 20f)
-                        dspB?.echoReverbTail = 0.0f
-
-                        dspA?.hpfCutoffHz = 20f + sCurve * (450f - 20f)
-                        dspA?.echoReverbTail = u * 0.22f
-                    }
-                    else -> {
-                        dspB?.hpfCutoffHz = 20.0f
-                        dspB?.echoReverbTail = 0.0f
-
-                        dspA?.hpfCutoffHz = 450.0f
-                        dspA?.echoReverbTail = 0.22f
-                    }
-                }
+                // Envelope shaping driven smoothly via DeckTransitionAudioProcessor
+                dspA?.targetT = t
+                dspB?.targetT = t
+                active.volume = 1.0f
+                standby.volume = 1.0f
 
                 if (canTempoMatch && t >= 0.60f) {
                     val speedT = ((t - 0.60f) / 0.40f).coerceIn(0f, 1f)
@@ -3830,10 +3803,8 @@ class MusicPlayer @Inject constructor(
             standby.volume = 1.0f
             standby.playbackParameters = PlaybackParameters(1.0f, 1.0f)
 
-            dspA?.hpfCutoffHz = 20.0f
-            dspA?.echoReverbTail = 0.0f
-            dspB?.hpfCutoffHz = 20.0f
-            dspB?.echoReverbTail = 0.0f
+            dspA?.endTransition()
+            dspB?.endTransition()
 
             val prevActive = active
             activeDeck = standby
@@ -3872,6 +3843,7 @@ class MusicPlayer @Inject constructor(
         standbyWaitJob = null
         standbyPreloadJob?.cancel()
         standbyPreloadJob = null
+        deckDspProcessors.values.forEach { it.endTransition() }
         isOverlapMixActive = false
         isTriggeringTransition = false
     }
