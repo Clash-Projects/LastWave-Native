@@ -420,6 +420,8 @@ class FeedViewModel @Inject constructor(
         val firstId = when (val item = shelf.items.firstOrNull()) {
             is HomeShelfItem.Track -> item.track.videoId
             is HomeShelfItem.Playlist -> item.playlist.id
+            is HomeShelfItem.PodcastEpisode -> item.videoId
+            is HomeShelfItem.PodcastShow -> item.browseId
             null -> ""
         }
         return "${shelf.title.trim().lowercase()}_$firstId"

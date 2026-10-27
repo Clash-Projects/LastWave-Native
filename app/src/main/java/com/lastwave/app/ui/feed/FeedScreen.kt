@@ -593,6 +593,7 @@ fun FeedScreen(
                                         onTrackLongClick = { tray -> miniTrayTrack = tray },
                                         onPlayPlaylist = viewModel::playPlaylistSummary,
                                         onTrackMenu = { menuTrack = it },
+                                        onOpenPodcastShow = onOpenPodcastShow,
                                     )
                                 }
                             }
@@ -611,6 +612,7 @@ fun FeedScreen(
                                     onTrackLongClick = { tray -> miniTrayTrack = tray },
                                     onPlayPlaylist = viewModel::playPlaylistSummary,
                                     onTrackMenu = { menuTrack = it },
+                                    onOpenPodcastShow = onOpenPodcastShow,
                                 )
                             }
                         }
@@ -1580,6 +1582,8 @@ private fun HomeShelfCard(
                             when (item) {
                                 is HomeShelfItem.Track -> "t_${item.track.videoId}"
                                 is HomeShelfItem.Playlist -> "p_${item.playlist.id}"
+                                is HomeShelfItem.PodcastEpisode -> "e_${item.videoId}"
+                                is HomeShelfItem.PodcastShow -> "s_${item.browseId}"
                             }
                         },
                     ) { _, shelfItem ->
@@ -1591,6 +1595,7 @@ private fun HomeShelfCard(
                                 onOpenFeedPlaylist = onOpenFeedPlaylist,
                                 onOpenAlbum = onOpenAlbum,
                                 onTrackLongClick = onTrackLongClick,
+                                onOpenPodcastShow = onOpenPodcastShow,
                             )
                         }
                     }
@@ -1613,6 +1618,7 @@ private fun NativeShelfItemCard(
     onOpenFeedPlaylist: (String) -> Unit,
     onOpenAlbum: (title: String, artist: String, browseId: String) -> Unit,
     onTrackLongClick: (TrackMiniTrayData) -> Unit,
+    onOpenPodcastShow: (String) -> Unit = {},
 ) {
     when (val variant = com.lastwave.app.ui.feed.cards.selectCardVariant(shelfItem)) {
         com.lastwave.app.ui.feed.cards.HomeCardVariant.WIDE -> WideItemCard(
@@ -1622,6 +1628,7 @@ private fun NativeShelfItemCard(
             onOpenFeedPlaylist = onOpenFeedPlaylist,
             onOpenAlbum = onOpenAlbum,
             onTrackLongClick = onTrackLongClick,
+            onOpenPodcastShow = onOpenPodcastShow,
         )
         com.lastwave.app.ui.feed.cards.HomeCardVariant.FEATURED -> FeaturedItemCard(
             shelfItem = shelfItem,
@@ -1630,6 +1637,7 @@ private fun NativeShelfItemCard(
             onOpenFeedPlaylist = onOpenFeedPlaylist,
             onOpenAlbum = onOpenAlbum,
             onTrackLongClick = onTrackLongClick,
+            onOpenPodcastShow = onOpenPodcastShow,
         )
         com.lastwave.app.ui.feed.cards.HomeCardVariant.COMMUNITY -> {
             val item = shelfItem as? HomeShelfItem.Playlist ?: return
@@ -1649,6 +1657,7 @@ private fun NativeShelfItemCard(
             onOpenFeedPlaylist = onOpenFeedPlaylist,
             onOpenAlbum = onOpenAlbum,
             onTrackLongClick = onTrackLongClick,
+            onOpenPodcastShow = onOpenPodcastShow,
         )
     }
 }
@@ -1691,6 +1700,7 @@ private fun SquareItemCard(
     onOpenFeedPlaylist: (String) -> Unit,
     onOpenAlbum: (title: String, artist: String, browseId: String) -> Unit,
     onTrackLongClick: (TrackMiniTrayData) -> Unit,
+    onOpenPodcastShow: (String) -> Unit = {},
 ) {
     when (shelfItem) {
         is HomeShelfItem.Track -> {
@@ -1717,6 +1727,28 @@ private fun SquareItemCard(
                 cardWidth = com.lastwave.app.ui.feed.cards.rememberSquareCardWidth(),
             )
         }
+        is HomeShelfItem.PodcastShow -> {
+            val show = shelfItem
+            com.lastwave.app.ui.feed.cards.ShelfSquareCard(
+                title = show.title,
+                infoLine = show.author.orEmpty(),
+                artworkUrl = show.artworkUrl,
+                fallbackIcon = Icons.Filled.Mic,
+                onClick = { onOpenPodcastShow(show.browseId) },
+                cardWidth = com.lastwave.app.ui.feed.cards.rememberSquareCardWidth(),
+            )
+        }
+        is HomeShelfItem.PodcastEpisode -> {
+            val ep = shelfItem
+            com.lastwave.app.ui.feed.cards.ShelfSquareCard(
+                title = ep.title,
+                infoLine = listOfNotNull(ep.subtitle, ep.showName).joinToString(" • "),
+                artworkUrl = ep.artworkUrl,
+                fallbackIcon = Icons.Filled.Mic,
+                onClick = { onPlayTrack(ep.toYouTubeMusicTrack(), shelfTitle) },
+                cardWidth = com.lastwave.app.ui.feed.cards.rememberSquareCardWidth(),
+            )
+        }
     }
 }
 
@@ -1728,6 +1760,7 @@ private fun WideItemCard(
     onOpenFeedPlaylist: (String) -> Unit,
     onOpenAlbum: (title: String, artist: String, browseId: String) -> Unit,
     onTrackLongClick: (TrackMiniTrayData) -> Unit,
+    onOpenPodcastShow: (String) -> Unit = {},
 ) {
     when (shelfItem) {
         is HomeShelfItem.Track -> {
@@ -1753,6 +1786,26 @@ private fun WideItemCard(
                 cardWidth = com.lastwave.app.ui.feed.cards.rememberWideCardWidth(),
             )
         }
+        is HomeShelfItem.PodcastShow -> {
+            val show = shelfItem
+            com.lastwave.app.ui.feed.cards.ShelfWideCard(
+                title = show.title,
+                infoLine = show.author.orEmpty(),
+                artworkUrl = show.artworkUrl,
+                onClick = { onOpenPodcastShow(show.browseId) },
+                cardWidth = com.lastwave.app.ui.feed.cards.rememberWideCardWidth(),
+            )
+        }
+        is HomeShelfItem.PodcastEpisode -> {
+            val ep = shelfItem
+            com.lastwave.app.ui.feed.cards.ShelfWideCard(
+                title = ep.title,
+                infoLine = listOfNotNull(ep.subtitle, ep.showName).joinToString(" • "),
+                artworkUrl = ep.artworkUrl,
+                onClick = { onPlayTrack(ep.toYouTubeMusicTrack(), shelfTitle) },
+                cardWidth = com.lastwave.app.ui.feed.cards.rememberWideCardWidth(),
+            )
+        }
     }
 }
 
@@ -1764,6 +1817,7 @@ private fun FeaturedItemCard(
     onOpenFeedPlaylist: (String) -> Unit,
     onOpenAlbum: (title: String, artist: String, browseId: String) -> Unit,
     onTrackLongClick: (TrackMiniTrayData) -> Unit,
+    onOpenPodcastShow: (String) -> Unit = {},
 ) {
     when (shelfItem) {
         is HomeShelfItem.Track -> {
@@ -1787,6 +1841,28 @@ private fun FeaturedItemCard(
                 caption = shelfItem.caption,
                 fallbackIcon = Icons.AutoMirrored.Filled.QueueMusic,
                 onClick = { openPlaylistOrAlbum(p, onOpenFeedPlaylist, onOpenAlbum) },
+                cardWidth = com.lastwave.app.ui.feed.cards.rememberFeaturedCardWidth(),
+            )
+        }
+        is HomeShelfItem.PodcastShow -> {
+            val show = shelfItem
+            com.lastwave.app.ui.feed.cards.ShelfFeaturedCard(
+                title = show.title,
+                artist = show.author.orEmpty(),
+                artworkUrl = show.artworkUrl,
+                caption = shelfItem.caption,
+                onClick = { onOpenPodcastShow(show.browseId) },
+                cardWidth = com.lastwave.app.ui.feed.cards.rememberFeaturedCardWidth(),
+            )
+        }
+        is HomeShelfItem.PodcastEpisode -> {
+            val ep = shelfItem
+            com.lastwave.app.ui.feed.cards.ShelfFeaturedCard(
+                title = ep.title,
+                artist = listOfNotNull(ep.subtitle, ep.showName).joinToString(" • "),
+                artworkUrl = ep.artworkUrl,
+                caption = shelfItem.caption,
+                onClick = { onPlayTrack(ep.toYouTubeMusicTrack(), shelfTitle) },
                 cardWidth = com.lastwave.app.ui.feed.cards.rememberFeaturedCardWidth(),
             )
         }

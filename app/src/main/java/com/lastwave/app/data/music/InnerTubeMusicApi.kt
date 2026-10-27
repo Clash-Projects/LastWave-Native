@@ -1011,11 +1011,13 @@ class InnerTubeMusicApi @Inject constructor(
         val shelves = runCatching { parseHomeShelves(root) }.getOrDefault(emptyList())
         val chips = runCatching { parseHomeChips(root) }.getOrDefault(emptyList())
         val continuationToken = runCatching { parseHomeContinuationToken(root) }.getOrNull()
+        val backgroundUrl = runCatching { parseBackgroundHeroUrl(root) }.getOrNull()
 
         HomePage(
             shelves = shelves,
             chips = chips,
             continuationToken = continuationToken,
+            backgroundUrl = backgroundUrl,
         )
     }
 
@@ -1066,11 +1068,13 @@ class InnerTubeMusicApi @Inject constructor(
 
         val shelves = runCatching { parseHomeShelves(root) }.getOrDefault(emptyList())
         val continuationToken = runCatching { parseHomeContinuationToken(root) }.getOrNull()
+        val backgroundUrl = runCatching { parseBackgroundHeroUrl(root) }.getOrNull()
 
         HomePage(
             shelves = shelves,
             chips = emptyList(),
             continuationToken = continuationToken,
+            backgroundUrl = backgroundUrl,
         )
     }
 
@@ -4197,9 +4201,32 @@ class InnerTubeMusicApi @Inject constructor(
                     it.obj("navigationEndpoint")?.obj("browseEndpoint")?.string("browseId")?.startsWith("UC") == true
                 }?.string("text") ?: subtitleRuns.firstOrNull()?.string("text")
                     ?.takeUnless { it.equals("Playlist", ignoreCase = true) }
+                val artwork = extractThumbnailsUrl(twoRow)
+
+                val pageType = nav?.obj("browseEndpointContextSupportedConfigs")
+                    ?.obj("browseEndpointContextMusicConfig")?.string("pageType")
+                val isPodcastShow = browseId.startsWith("MPSP") ||
+                    pageType == "MUSIC_PAGE_TYPE_PODCAST_SHOW_DETAIL_PAGE"
+
+                if (isPodcastShow) {
+                    items.add(
+                        HomeShelfItem.PodcastShow(
+                            browseId = browseId,
+                            title = itemTitle,
+                            author = author?.trim(),
+                            artworkUrl = artwork,
+                            aspectRatio = extras.aspectRatio ?: "MUSIC_TWO_ROW_ITEM_THUMBNAIL_ASPECT_RATIO_SQUARE",
+                            itemType = "podcast_show",
+                            caption = extras.caption,
+                            cardData = cardData,
+                        )
+                    )
+                    continue
+                }
+
+                val playlistId = if (browseId.startsWith("VL")) browseId.removePrefix("VL") else browseId
                 val trackCountText = subtitleRuns.mapNotNull { it.string("text") }
                     .lastOrNull { "song" in it.lowercase() || "track" in it.lowercase() }
-                val artwork = extractThumbnailsUrl(twoRow)
 
                 items.add(
                     HomeShelfItem.Playlist(
@@ -4219,6 +4246,15 @@ class InnerTubeMusicApi @Inject constructor(
                     )
                 )
                 continue
+            }
+
+            val multiRow = contentObj.obj("musicMultiRowListItemRenderer")
+            if (multiRow != null) {
+                val episode = parseMultiRowEpisodeItem(multiRow)
+                if (episode != null) {
+                    items.add(episode)
+                    continue
+                }
             }
 
             val responsive = contentObj.obj("musicResponsiveListItemRenderer")
@@ -4278,6 +4314,85 @@ class InnerTubeMusicApi @Inject constructor(
             playAllButton = parseHomePlayAllButton(carouselRenderer),
             sourceItemCount = contents.size,
         )
+    }
+
+    internal fun parseMultiRowEpisodeItem(renderer: JsonObject): HomeShelfItem.PodcastEpisode? {
+        val videoId = directWatchVideoId(renderer)
+            ?: renderer.obj("onTap")?.obj("watchEndpoint")?.string("videoId")
+            ?: renderer.obj("navigationEndpoint")?.obj("watchEndpoint")?.string("videoId")
+            ?: renderer.obj("title")?.array("runs")?.firstOrNull()?.asObject()
+                ?.obj("navigationEndpoint")?.obj("watchEndpoint")?.string("videoId")
+            ?: findString(renderer, "videoId")
+            ?: return null
+        if (videoId.isBlank()) return null
+
+        val title = renderer.obj("title")?.array("runs")?.joinToString("") {
+            it.asObject()?.string("text").orEmpty()
+        }?.trim()?.takeIf { it.isNotBlank() }
+            ?: renderer.obj("title")?.string("simpleText")?.trim()?.takeIf { it.isNotBlank() }
+            ?: return null
+
+        val secondTitleRuns = renderer.obj("secondTitle")?.array("runs")?.mapNotNull { it.asObject() }.orEmpty()
+        val showName = secondTitleRuns.joinToString("") { it.string("text").orEmpty() }.trim().takeIf { it.isNotBlank() }
+        val showBrowseId = secondTitleRuns.firstNotNullOfOrNull {
+            it.obj("navigationEndpoint")?.obj("browseEndpoint")?.string("browseId")
+        } ?: renderer.obj("navigationEndpoint")?.obj("browseEndpoint")?.string("browseId")
+
+        val subtitleRuns = renderer.obj("subtitle")?.array("runs")?.mapNotNull { it.asObject() }.orEmpty()
+        val subtitle = subtitleRuns.mapNotNull { it.string("text") }
+            .filter { it.isNotBlank() && it.trim() != "•" }
+            .joinToString(" • ")
+            .takeIf { it.isNotBlank() }
+
+        val progressRenderer = renderer.obj("playbackProgress")?.obj("musicPlaybackProgressRenderer")
+        val rawDuration = progressRenderer?.obj("durationText")?.array("runs")
+            ?.mapNotNull { it.asObject()?.string("text") }
+            ?.filter { it.isNotBlank() && it.trim() != "•" }
+            ?.joinToString(" ")?.trim()
+            ?: progressRenderer?.obj("playbackProgressText")?.array("runs")
+                ?.mapNotNull { it.asObject()?.string("text") }
+                ?.filter { it.isNotBlank() && it.trim() != "•" }
+                ?.joinToString(" ")?.trim()
+        val durationText = rawDuration?.takeIf { it.isNotBlank() }
+
+        val pctNum = progressRenderer?.string("playbackProgressPercentage")?.toFloatOrNull()
+        val progressFraction = when {
+            pctNum == null || pctNum <= 0f -> null
+            pctNum > 1f -> (pctNum / 100f).coerceIn(0f, 1f)
+            else -> pctNum.coerceIn(0f, 1f)
+        }
+
+        val thumbList = renderer.obj("thumbnail")?.obj("musicThumbnailRenderer")
+            ?.obj("thumbnail")?.array("thumbnails")?.mapNotNull { it.asObject()?.string("url") }.orEmpty()
+            .ifEmpty {
+                val collected = mutableListOf<JsonObject>()
+                collectObjects(renderer, "thumbnails", collected)
+                collected.flatMap { it.array("thumbnails")?.mapNotNull { thumb -> thumb.asObject()?.string("url") }.orEmpty() }
+            }
+        val artworkUrl = thumbList.lastOrNull() ?: extractThumbnailsUrl(renderer)
+
+        return HomeShelfItem.PodcastEpisode(
+            videoId = videoId,
+            title = title,
+            showName = showName,
+            showBrowseId = showBrowseId,
+            subtitle = subtitle,
+            durationText = durationText,
+            progressFraction = progressFraction,
+            artworkUrl = artworkUrl,
+            thumbnailUrls = thumbList,
+        )
+    }
+
+    internal fun parseBackgroundHeroUrl(root: JsonElement): String? {
+        val rootObj = root.asObject() ?: return null
+        val bgThumbnails = rootObj.obj("background")
+            ?.obj("musicThumbnailRenderer")
+            ?.obj("thumbnail")
+            ?.array("thumbnails")
+            ?: return null
+        return bgThumbnails.mapNotNull { it.asObject()?.string("url") }
+            .lastOrNull { it.isNotBlank() && !it.contains("REDACTED") }
     }
 
     /**

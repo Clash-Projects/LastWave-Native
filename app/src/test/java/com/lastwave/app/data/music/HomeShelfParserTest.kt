@@ -349,4 +349,209 @@ class HomeShelfParserTest {
         assertThat(shelves[2].items).hasSize(1)
         assertThat((shelves[2].items[0] as HomeShelfItem.Track).track.videoId).isEqualTo("video_1_id")
     }
+
+    @Test
+    fun parseCarouselShelf_parsesPodcastEpisodesFromMultiRowRenderer() {
+        val json = """
+            {
+                "header": {
+                    "musicCarouselShelfBasicHeaderRenderer": {
+                        "title": { "runs": [{ "text": "Government" }] }
+                    }
+                },
+                "contents": [
+                    {
+                        "musicMultiRowListItemRenderer": {
+                            "title": { "runs": [{ "text": "Paris Is Burning | Regulating AI" }] },
+                            "secondTitle": {
+                                "runs": [{
+                                    "text": "The GoodFellows",
+                                    "navigationEndpoint": {
+                                        "browseEndpoint": { "browseId": "MPSPPLKruweaZqDNetb7uwJF1vS0mzmaTe8Kzg" }
+                                    }
+                                }]
+                            },
+                            "subtitle": {
+                                "runs": [
+                                    { "text": "675K views" },
+                                    { "text": " • " },
+                                    { "text": "4d ago" }
+                                ]
+                            },
+                            "playbackProgress": {
+                                "musicPlaybackProgressRenderer": {
+                                    "playbackProgressPercentage": "50.0",
+                                    "durationText": {
+                                        "runs": [
+                                            { "text": " • " },
+                                            { "text": "1 hr 6 min" }
+                                        ]
+                                    }
+                                }
+                            },
+                            "onTap": {
+                                "watchEndpoint": { "videoId": "YXdBzRQUdnQ" }
+                            },
+                            "thumbnail": {
+                                "musicThumbnailRenderer": {
+                                    "thumbnail": {
+                                        "thumbnails": [
+                                            { "url": "https://i.ytimg.com/vi/YXdBzRQUdnQ/400x225.jpg", "width": 400, "height": 225 },
+                                            { "url": "https://i.ytimg.com/vi/YXdBzRQUdnQ/800x450.jpg", "width": 800, "height": 450 }
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        """.trimIndent()
+
+        val shelf = api.parseCarouselShelf(Json.parseToJsonElement(json).jsonObject)
+        assertThat(shelf).isNotNull()
+        assertThat(shelf?.title).isEqualTo("Government")
+        assertThat(shelf?.items).hasSize(1)
+
+        val ep = shelf?.items?.first() as? HomeShelfItem.PodcastEpisode
+        assertThat(ep).isNotNull()
+        assertThat(ep?.videoId).isEqualTo("YXdBzRQUdnQ")
+        assertThat(ep?.title).isEqualTo("Paris Is Burning | Regulating AI")
+        assertThat(ep?.showName).isEqualTo("The GoodFellows")
+        assertThat(ep?.showBrowseId).isEqualTo("MPSPPLKruweaZqDNetb7uwJF1vS0mzmaTe8Kzg")
+        assertThat(ep?.subtitle).isEqualTo("675K views • 4d ago")
+        assertThat(ep?.durationText).isEqualTo("1 hr 6 min")
+        assertThat(ep?.progressFraction).isEqualTo(0.5f)
+        assertThat(ep?.artworkUrl).isEqualTo("https://i.ytimg.com/vi/YXdBzRQUdnQ/800x450.jpg")
+    }
+
+    @Test
+    fun parseCarouselShelf_parsesPodcastShowFromTwoRowRenderer() {
+        val json = """
+            {
+                "header": {
+                    "musicCarouselShelfBasicHeaderRenderer": {
+                        "title": { "runs": [{ "text": "Shows for you" }] }
+                    }
+                },
+                "contents": [
+                    {
+                        "musicTwoRowItemRenderer": {
+                            "title": { "runs": [{ "text": "The Dr. Jordan B. Peterson Podcast" }] },
+                            "subtitle": { "runs": [{ "text": "Jordan B Peterson" }] },
+                            "navigationEndpoint": {
+                                "browseEndpoint": {
+                                    "browseId": "MPSPPLHC72UlhAthDwnQV8ZAc6BGBf8l6J9swD",
+                                    "browseEndpointContextSupportedConfigs": {
+                                        "browseEndpointContextMusicConfig": {
+                                            "pageType": "MUSIC_PAGE_TYPE_PODCAST_SHOW_DETAIL_PAGE"
+                                        }
+                                    }
+                                }
+                            },
+                            "thumbnailRenderer": {
+                                "musicThumbnailRenderer": {
+                                    "thumbnail": {
+                                        "thumbnails": [
+                                            { "url": "https://yt3.ggpht.com/show_cover.jpg", "width": 540, "height": 540 }
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        """.trimIndent()
+
+        val shelf = api.parseCarouselShelf(Json.parseToJsonElement(json).jsonObject)
+        assertThat(shelf).isNotNull()
+        assertThat(shelf?.title).isEqualTo("Shows for you")
+        assertThat(shelf?.items).hasSize(1)
+
+        val show = shelf?.items?.first() as? HomeShelfItem.PodcastShow
+        assertThat(show).isNotNull()
+        assertThat(show?.browseId).isEqualTo("MPSPPLHC72UlhAthDwnQV8ZAc6BGBf8l6J9swD")
+        assertThat(show?.title).isEqualTo("The Dr. Jordan B. Peterson Podcast")
+        assertThat(show?.author).isEqualTo("Jordan B Peterson")
+        assertThat(show?.artworkUrl).isEqualTo("https://yt3.ggpht.com/show_cover.jpg")
+    }
+
+    @Test
+    fun parseBackgroundHeroUrl_extractsHighestQualityUrl() {
+        val json = """
+            {
+                "background": {
+                    "musicThumbnailRenderer": {
+                        "thumbnail": {
+                            "thumbnails": [
+                                { "url": "https://www.gstatic.com/youtube/bg_small.png", "width": 800, "height": 450 },
+                                { "url": "https://www.gstatic.com/youtube/bg_large.png", "width": 1500, "height": 844 }
+                            ]
+                        }
+                    }
+                }
+            }
+        """.trimIndent()
+
+        val heroUrl = api.parseBackgroundHeroUrl(Json.parseToJsonElement(json))
+        assertThat(heroUrl).isEqualTo("https://www.gstatic.com/youtube/bg_large.png")
+
+        val redactedJson = """
+            {
+                "background": {
+                    "musicThumbnailRenderer": {
+                        "thumbnail": {
+                            "thumbnails": [
+                                { "url": "https://www.gstatic.com/youtube/media/ytm/images/home_backgrounds/REDACTED" }
+                            ]
+                        }
+                    }
+                }
+            }
+        """.trimIndent()
+        assertThat(api.parseBackgroundHeroUrl(Json.parseToJsonElement(redactedJson))).isNull()
+    }
+
+    @Test
+    fun parseMultiRowEpisodeItem_skipsWhenMissingFields() {
+        // Missing videoId
+        val missingVideo = """
+            {
+                "musicMultiRowListItemRenderer": {
+                    "title": { "runs": [{ "text": "No video episode" }] }
+                }
+            }
+        """.trimIndent()
+        val ep1 = api.parseMultiRowEpisodeItem(Json.parseToJsonElement(missingVideo).jsonObject.obj("musicMultiRowListItemRenderer")!!)
+        assertThat(ep1).isNull()
+
+        // Missing title
+        val missingTitle = """
+            {
+                "musicMultiRowListItemRenderer": {
+                    "onTap": { "watchEndpoint": { "videoId": "abc12345678" } }
+                }
+            }
+        """.trimIndent()
+        val ep2 = api.parseMultiRowEpisodeItem(Json.parseToJsonElement(missingTitle).jsonObject.obj("musicMultiRowListItemRenderer")!!)
+        assertThat(ep2).isNull()
+
+        // Missing optional fields (duration, progress, showName) should parse gracefully with nulls
+        val minimal = """
+            {
+                "musicMultiRowListItemRenderer": {
+                    "title": { "runs": [{ "text": "Minimal episode" }] },
+                    "onTap": { "watchEndpoint": { "videoId": "abc12345678" } }
+                }
+            }
+        """.trimIndent()
+        val ep3 = api.parseMultiRowEpisodeItem(Json.parseToJsonElement(minimal).jsonObject.obj("musicMultiRowListItemRenderer")!!)
+        assertThat(ep3).isNotNull()
+        assertThat(ep3?.videoId).isEqualTo("abc12345678")
+        assertThat(ep3?.title).isEqualTo("Minimal episode")
+        assertThat(ep3?.showName).isNull()
+        assertThat(ep3?.durationText).isNull()
+        assertThat(ep3?.progressFraction).isNull()
+    }
 }
