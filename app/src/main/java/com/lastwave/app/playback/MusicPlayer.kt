@@ -1966,9 +1966,7 @@ class MusicPlayer @Inject constructor(
         override fun getStandbyBufferedMs(): Long = getStandbyBufferedMsInternal()
 
         override fun setLateTrackBuffering(isWaiting: Boolean) {
-            applicationScope.launch(Dispatchers.Main.immediate) {
-                _state.update { it.copy(isBuffering = isWaiting) }
-            }
+            // Standby background prefetch must never mark the active playing deck as buffering
         }
 
         override fun skipToNextPlayableItem(failedIndex: Int) {

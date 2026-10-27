@@ -4516,11 +4516,18 @@ private fun NowPlayingAutoDJBadgeRow(
     isTranslucent: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val isAnyActive = state.isAutoMixActive || state.isAutoMixEnabled || state.isAutoDJActive || state.isAutoDJGenerating || state.isAutoDJMixPlaying
-    if (!isAnyActive) return
+    // Keep generation and loading strictly in background & speaker tray console
+    if (state.isAutoDJGenerating) return
 
     val isBlending = state.isAutoMixActive || state.autoMixState == AutoMixState.FADING_AUTO || state.autoMixState == AutoMixState.FADING_FAST
-    val isArmed = state.autoMixState == AutoMixState.MONITORING_OUTRO || state.autoDJStatus?.contains("Armed") == true
+    val isAutoDJMix = state.isAutoDJMixPlaying
+    val isArmed = state.autoMixState == AutoMixState.MONITORING_OUTRO
+
+    // Only show badge when something musical is actively occurring:
+    // 1. AutoDJ megamix is actively playing
+    // 2. Dual deck blend/transition is currently fading
+    // 3. Automix outro is armed near the very end of track
+    if (!isAutoDJMix && !isBlending && !isArmed) return
 
     val infiniteTransition = rememberInfiniteTransition(label = "automix_glow")
     val glowAlpha by infiniteTransition.animateFloat(
@@ -4534,15 +4541,9 @@ private fun NowPlayingAutoDJBadgeRow(
     )
 
     val bars = state.autoMixBars ?: 8
-    val isAutoDJMix = state.isAutoDJMixPlaying
     val curIdx = state.autoDJSetCurrentIndex ?: 1
     val totalTracks = state.autoDJSetTotalTracks ?: 6
     val (badgeText, badgeBg, badgeFg) = when {
-        state.isAutoDJGenerating -> Triple(
-            state.autoDJStatus ?: "AutoDJ: Resolving 5–6 tracks in background...",
-            Color(0xFFF59E0B).copy(alpha = if (isTranslucent) 0.35f else 0.22f),
-            Color(0xFFFDE68A)
-        )
         isBlending && isAutoDJMix -> Triple(
             "AutoDJ Mix · Track $curIdx of $totalTracks (Blending into ${state.autoMixNextTrack?.title ?: "Next"})",
             Color(0xFF8B5CF6).copy(alpha = if (isTranslucent) 0.35f else 0.22f),
@@ -4558,21 +4559,10 @@ private fun NowPlayingAutoDJBadgeRow(
             Color(0xFF06B6D4).copy(alpha = if (isTranslucent) 0.35f else 0.20f),
             Color(0xFF67E8F9)
         )
-        state.autoDJStatus != null -> Triple(
-            state.autoDJStatus,
-            if (isArmed) Color(0xFF10B981).copy(alpha = if (isTranslucent) 0.35f else 0.20f)
-            else Color(0xFFF59E0B).copy(alpha = if (isTranslucent) 0.35f else 0.20f),
-            if (isArmed) Color(0xFFA7F3D0) else Color(0xFFFDE68A)
-        )
         isArmed -> Triple(
             "Automix · Outro Armed",
             Color(0xFF10B981).copy(alpha = if (isTranslucent) 0.35f else 0.20f),
             Color(0xFFA7F3D0)
-        )
-        state.isAutoMixEnabled -> Triple(
-            "Automix Ready",
-            Color(0xFF8B5CF6).copy(alpha = if (isTranslucent) 0.30f else 0.18f),
-            Color(0xFFDDD6FE)
         )
         else -> return
     }
