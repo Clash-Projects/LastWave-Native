@@ -245,8 +245,8 @@ class FeedViewModelChipsAndPaginationTest {
                 HomeShelfItem.PodcastEpisode(
                     videoId = videoId,
                     title = "Episode in $title",
-                    showTitle = "Show name",
-                    viewsAndDate = "10K views",
+                    showName = "Show name",
+                    subtitle = "10K views",
                     durationText = "45:00",
                 )
             )

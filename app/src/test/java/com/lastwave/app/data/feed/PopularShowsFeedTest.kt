@@ -1,7 +1,8 @@
 package com.lastwave.app.data.feed
 
 import com.google.common.truth.Truth.assertThat
-import com.lastwave.app.data.local.AppSettings
+import com.lastwave.app.data.generate.TasteProfileProvider
+import com.lastwave.app.data.local.MiscSettings
 import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.music.HomeChip
 import com.lastwave.app.data.music.HomePage
@@ -12,7 +13,6 @@ import com.lastwave.app.data.playlist.PlaylistRepository
 import com.lastwave.app.data.podcast.PodcastRepository
 import com.lastwave.app.data.repository.HomeRepository
 import com.lastwave.app.data.repository.RelatedGraphRepository
-import com.lastwave.app.data.taste.TasteProfileProvider
 import com.lastwave.app.data.ytmusic.YtConnection
 import com.lastwave.app.data.ytmusic.YtMusicAuthManager
 import io.mockk.coEvery
@@ -66,7 +66,7 @@ class PopularShowsFeedTest {
     fun setUp() {
         coEvery { ytAuth.awaitLoadedConnection() } returns YtConnection()
         coEvery { ytAuth.connection } returns MutableStateFlow(YtConnection())
-        coEvery { settingsPreferences.settings } returns MutableStateFlow(AppSettings(podcastsEnabled = true))
+        coEvery { settingsPreferences.settings } returns MutableStateFlow(MiscSettings(podcastsEnabled = true))
         coEvery { innerTube.fetchHomePage() } returns HomePage(
             shelves = emptyList(),
             chips = listOf(HomeChip(title = "Podcasts", params = "podcast_params_1")),
