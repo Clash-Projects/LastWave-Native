@@ -960,7 +960,7 @@ fun SettingsScreen(
                                 icon = Icons.Filled.AutoAwesome,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                title = "Automix (AutoDJ)",
+                                title = "Automix",
                                 subtitle = if (misc.automixEnabled) {
                                     "Beat-synced transitions with bass crossover swap \u2022 ${misc.automixBars} bars"
                                 } else {
