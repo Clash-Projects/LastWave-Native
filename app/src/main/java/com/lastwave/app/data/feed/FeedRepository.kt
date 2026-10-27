@@ -20,6 +20,7 @@ import com.lastwave.app.data.music.HomeShelfItem
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistSummary
 import com.lastwave.app.data.podcast.PodcastRepository
+import com.lastwave.app.data.podcast.PodcastShelf
 import com.lastwave.app.data.podcast.PodcastShow
 import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.playlist.PlaylistRepository
@@ -177,7 +178,7 @@ class FeedRepository @Inject constructor(
                             showId = show.browseId,
                             title = show.title,
                             publisher = show.author,
-                            artworkUrl = show.artworkUrl ?: show.thumbnail,
+                            artworkUrl = show.artworkUrl,
                         )
                     }
                     val shelfTitle = showsShelf?.title?.takeIf { it.isNotBlank() } ?: "Popular shows"

@@ -119,7 +119,6 @@ fun HomeShelfItem.PodcastEpisode.toYouTubeMusicTrack(): YouTubeMusicTrack =
         title = title,
         artist = showName?.takeIf { it.isNotBlank() } ?: "Podcast",
         album = null,
-        durationText = durationText,
         artworkUrl = artworkUrl,
     )
 

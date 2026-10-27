@@ -4189,7 +4189,6 @@ class InnerTubeMusicApi @Inject constructor(
                 // Skip cards with no id or artist cards (UC-prefixed browse IDs)
                 if (browseId.isNullOrBlank() || browseId.startsWith("UC")) continue
 
-                val playlistId = if (browseId.startsWith("VL")) browseId.removePrefix("VL") else browseId
                 val itemTitle = twoRow.obj("title")?.array("runs")?.joinToString("") {
                     it.asObject()?.string("text").orEmpty()
                 }?.trim()?.takeIf { it.isNotBlank() }

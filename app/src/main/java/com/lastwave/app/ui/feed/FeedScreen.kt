@@ -1205,6 +1205,8 @@ fun FeedScreen(
                                     onTrackLongClick = { tray -> miniTrayTrack = tray },
                                     onPlayPlaylist = viewModel::playPlaylistSummary,
                                     onTrackMenu = { menuTrack = it },
+                                    onOpenPodcastShow = onOpenPodcastShow,
+                                    onPlayPodcastEpisode = { ep, q, title -> viewModel.playPodcastEpisode(ep, q, title) },
                                 )
                             }
                         }
@@ -1583,6 +1585,7 @@ private fun HomeShelfCard(
     onTrackLongClick: (TrackMiniTrayData) -> Unit,
     onPlayPlaylist: (com.lastwave.app.data.music.YouTubePlaylistSummary) -> Unit,
     onTrackMenu: (YouTubeMusicTrack) -> Unit,
+    onOpenPodcastShow: (String) -> Unit = {},
     onPlayPodcastEpisode: (HomeShelfItem.PodcastEpisode, List<HomeShelfItem.PodcastEpisode>, String) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier,
 ) {
@@ -1596,7 +1599,15 @@ private fun HomeShelfCard(
             onTrackLongClick = { onTrackLongClick(trackTray(it, shelf.title, onPlayTrack)) },
             modifier = modifier,
         ) { item ->
-            NativeShelfItemCard(item, shelf.title, onPlayTrack, onOpenFeedPlaylist, onOpenAlbum, onTrackLongClick)
+            NativeShelfItemCard(
+                shelfItem = item,
+                shelfTitle = shelf.title,
+                onPlayTrack = onPlayTrack,
+                onOpenFeedPlaylist = onOpenFeedPlaylist,
+                onOpenAlbum = onOpenAlbum,
+                onTrackLongClick = onTrackLongClick,
+                onOpenPodcastShow = onOpenPodcastShow,
+            )
         }
         return
     }
