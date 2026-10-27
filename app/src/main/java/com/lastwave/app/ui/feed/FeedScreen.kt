@@ -554,12 +554,31 @@ fun FeedScreen(
                                         ?: stringResource(R.string.podcasts_title),
                                     actionText = stringResource(R.string.podcasts_see_all),
                                     actionIcon = Icons.AutoMirrored.Filled.ArrowForwardIos,
-                                    onActionClick = onOpenPodcasts,
+                                    onActionClick = {
+                                        val chip = state.homeChips.firstOrNull { it.title.equals("Podcasts", ignoreCase = true) }
+                                            ?: HomeChip(title = "Podcasts", params = "ggMPOg1mZWVkX3BvZGNhc3Rz")
+                                        viewModel.onHomeChipSelected(chip)
+                                    },
                                 )
                                 Spacer(Modifier.height(8.dp))
-                                PodcastShowRow(
-                                    shows = state.feedData.podcastShows,
-                                    onShowClick = { show -> onOpenPodcastShow(show.showId) },
+                                FeedMediaRow(
+                                    content = {
+                                        items(
+                                            state.feedData.podcastShows,
+                                            key = { "popular_show_${it.showId}" },
+                                        ) { show ->
+                                            Box(Modifier.animateItem()) {
+                                                com.lastwave.app.ui.feed.cards.ShelfSquareCard(
+                                                    title = show.title,
+                                                    infoLine = show.publisher.orEmpty(),
+                                                    artworkUrl = show.artworkUrl,
+                                                    fallbackIcon = Icons.Filled.Mic,
+                                                    onClick = { onOpenPodcastShow(show.showId) },
+                                                    cardWidth = com.lastwave.app.ui.feed.cards.rememberSquareCardWidth(),
+                                                )
+                                            }
+                                        }
+                                    },
                                 )
                             }
                         }
