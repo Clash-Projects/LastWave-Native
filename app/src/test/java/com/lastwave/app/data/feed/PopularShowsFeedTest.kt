@@ -67,6 +67,15 @@ class PopularShowsFeedTest {
         coEvery { ytAuth.awaitLoadedConnection() } returns YtConnection()
         coEvery { ytAuth.connection } returns MutableStateFlow(YtConnection())
         coEvery { settingsPreferences.settings } returns MutableStateFlow(MiscSettings(podcastsEnabled = true))
+        coEvery { homeRepository.fetchRecentTracks(any(), any(), any(), any()) } returns Result.success(
+            com.lastwave.app.data.repository.RecentTracksPage(
+                nowPlaying = null,
+                tracks = emptyList(),
+                page = 1,
+                totalPages = 1,
+            )
+        )
+        coEvery { homeRepository.fetchFriends(any()) } returns Result.success(emptyList())
         coEvery { innerTube.fetchHomePage() } returns HomePage(
             shelves = emptyList(),
             chips = listOf(HomeChip(title = "Podcasts", params = "podcast_params_1")),

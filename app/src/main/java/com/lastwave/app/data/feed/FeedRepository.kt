@@ -198,12 +198,16 @@ class FeedRepository @Inject constructor(
 
         val recentTracksDef = async(Dispatchers.IO) {
             if (!username.isNullOrBlank()) {
-                homeRepository.fetchRecentTracks(page = 1, limit = 30, username = username).getOrNull()?.tracks.orEmpty()
+                runCatching {
+                    homeRepository.fetchRecentTracks(page = 1, limit = 30, username = username).getOrNull()?.tracks.orEmpty()
+                }.getOrDefault(emptyList())
             } else emptyList()
         }
         val friendsDef = async(Dispatchers.IO) {
             if (!username.isNullOrBlank()) {
-                homeRepository.fetchFriends(limit = 20).getOrNull().orEmpty()
+                runCatching {
+                    homeRepository.fetchFriends(limit = 20).getOrNull().orEmpty()
+                }.getOrDefault(emptyList())
             } else emptyList()
         }
         val tasteProfileDef = async(Dispatchers.IO) {
