@@ -53,6 +53,8 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Mic
+import com.lastwave.app.data.music.toYouTubeMusicTrack
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.PlayArrow
@@ -298,6 +300,7 @@ fun FeedScreen(
             viewModel.dismissError()
             if (result == SnackbarResult.ActionPerformed) viewModel.refresh()
         }
+    }
     val isPodcastsActive = state.selectedChip?.title.equals("Podcasts", ignoreCase = true)
     val podcastHeroScrollOffset by remember(listState) {
         derivedStateOf {
@@ -1744,7 +1747,7 @@ private fun PodcastEpisodeItemCard(
     val ep = shelfItem as? HomeShelfItem.PodcastEpisode ?: return
     val track = ep.toYouTubeMusicTrack()
     val infoLine = listOfNotNull(
-        ep.viewsAndDate?.takeIf { it.isNotBlank() } ?: ep.subtitle?.takeIf { it.isNotBlank() },
+        ep.subtitle?.takeIf { it.isNotBlank() },
         ep.showName?.takeIf { it.isNotBlank() },
     ).joinToString(" • ")
 
@@ -1753,7 +1756,7 @@ private fun PodcastEpisodeItemCard(
         infoLine = infoLine,
         artworkUrl = ep.artworkUrl,
         durationText = ep.durationText,
-        progressPercentage = ep.playbackProgress,
+        progressPercentage = ep.progressFraction,
         onClick = {
             if (onPlayPodcastEpisode != null) {
                 onPlayPodcastEpisode(ep)

@@ -21,6 +21,7 @@ import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistSummary
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.PlayableTrack
+import com.lastwave.app.data.music.toPlayableTrack
 import com.lastwave.app.data.repository.RelatedGraphRepository
 import com.lastwave.app.data.ytmusic.YtMusicAuthManager
 import dagger.hilt.android.lifecycle.HiltViewModel
