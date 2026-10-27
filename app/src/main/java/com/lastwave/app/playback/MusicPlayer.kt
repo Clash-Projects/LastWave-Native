@@ -3896,7 +3896,7 @@ class MusicPlayer @Inject constructor(
             if (newTrack != null) {
                 applicationScope.launch(Dispatchers.IO) {
                     val lyricsRes = runCatching {
-                        lyricsRepository.getLyrics(
+                        lyricsRepository.get().getLyrics(
                             title = newTrack.title,
                             artist = newTrack.artist,
                             album = newTrack.album,
