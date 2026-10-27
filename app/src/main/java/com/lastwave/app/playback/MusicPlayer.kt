@@ -3811,21 +3811,18 @@ class MusicPlayer @Inject constructor(
                     nativeAutoMixEngine.get().setTransitionProgress(t)
                 }
 
-                // Envelope shaping driven smoothly via 9-second pure-stereo 3-band DJ isolator
+                // Envelope shaping driven smoothly via pure-stereo 3-band DJ isolator
                 dspA?.targetT = t
                 dspB?.targetT = t
-                active.volume = 1.0f
-                standby.volume = 1.0f
 
-                if (t >= 0.55f && !autoMixHandedOver) {
-                    autoMixHandedOver = true
-                    active.removeListener(listener)
-                    standby.addListener(listener)
-                    listener.onMediaItemTransition(standby.currentMediaItem, Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
-                    refresh(standby)
-                }
+                // Dual-protection: equal-power fade on native ExoPlayer volume as well
+                val piHalf = (Math.PI * 0.5).toFloat()
+                val outVol = kotlin.math.cos(t * piHalf)
+                val inVol = kotlin.math.sin(t * piHalf)
+                active.volume = outVol
+                standby.volume = inVol
 
-                if (!autoMixHandedOver) {
+                if (t < 0.50f) {
                     val outgoingPos = runCatching { active.currentPosition.coerceAtLeast(0L) }.getOrDefault(0L)
                     val outgoingDur = effectiveDuration(active.duration, active, _state.value.durationMs)
                     _state.update {
@@ -3866,6 +3863,11 @@ class MusicPlayer @Inject constructor(
 
             dspA?.endTransition()
             dspB?.endTransition()
+
+            active.removeListener(listener)
+            standby.addListener(listener)
+            listener.onMediaItemTransition(standby.currentMediaItem, Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
+            refresh(standby)
 
             val prevActive = active
             activeDeck = standby
