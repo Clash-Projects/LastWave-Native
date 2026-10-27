@@ -1800,6 +1800,7 @@ private fun CommunityItemCard(
 ) {
     val p = item.playlist
     com.lastwave.app.ui.feed.cards.ShelfCommunityPlaylistCard(
+        playlistId = p.id,
         title = p.title,
         subtitle = playlistInfoLine(p),
         collageUrls = item.collageArtworkUrls,
