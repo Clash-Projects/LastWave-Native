@@ -48,6 +48,19 @@ class DeckDspAudioProcessor(
         return 0.5f - 0.5f * kotlin.math.cos(c * Math.PI.toFloat())
     }
 
+    private fun calculateGains(isDeckA: Boolean, st: Float): Triple<Float, Float, Float> {
+        val rad = st.coerceIn(0f, 1f) * (Math.PI * 0.5).toFloat()
+        // Proper, evenly equal crossfade:
+        // Outgoing (Deck A) fades out: cos(st * pi/2) from 1.0 down to 0.0
+        // Incoming (Deck B) fades in: sin(st * pi/2) from 0.0 up to 1.0
+        // cos^2 + sin^2 == 1.0 (constant acoustic power, zero drop in vocals/instruments)
+        val highGain = if (isDeckA) kotlin.math.cos(rad) else kotlin.math.sin(rad)
+        val midGain  = if (isDeckA) kotlin.math.cos(rad) else kotlin.math.sin(rad)
+        // Symmetrical constant-energy bass crossfade:
+        val lowGain  = if (isDeckA) (1.0f - sCurve(st)) else sCurve(st)
+        return Triple(lowGain, midGain, highGain)
+    }
+
     fun startTransition(asDeckA: Boolean, initialT: Float = 0f) {
         isDeckA = asDeckA
         targetT = initialT
@@ -112,7 +125,7 @@ class DeckDspAudioProcessor(
                         val inL = inShortL / 32768.0f
                         val inR = inShortR / 32768.0f
 
-                        smoothT += 0.0003f * (targetT - smoothT)
+                        smoothT += 0.005f * (targetT - smoothT)
                         val st = smoothT.coerceIn(0f, 1f)
 
                         if (isDeckA && st <= 0.0001f) {
@@ -145,21 +158,8 @@ class DeckDspAudioProcessor(
                         val highL = inL - lpHighL
                         val highR = inR - lpHighR
 
-                        val lowGain: Float
-                        val midGain: Float
-                        val highGain: Float
-
-                        if (isDeckA) {
-                            highGain = kotlin.math.cos(st * pi * 0.5f)
-                            lowGain  = 1.0f - sCurve((st - 0.30f) / 0.35f)
-                            midGain  = 1.0f - sCurve((st - 0.05f) / 0.50f)
-                        } else {
-                            highGain = kotlin.math.sin(st * pi * 0.5f)
-                            lowGain  = sCurve((st - 0.30f) / 0.35f)
-                            midGain  = sCurve((st - 0.35f) / 0.50f)
-                        }
-
-                        val headroom = 1.0f - 0.18f * kotlin.math.sin(st * pi)
+                        val (lowGain, midGain, highGain) = calculateGains(isDeckA, st)
+                        val headroom = 1.0f - 0.15f * kotlin.math.sin(st * pi)
                         val outL = (lowL * lowGain + midL * midGain + highL * highGain) * headroom
                         val outR = (lowR * lowGain + midR * midGain + highR * highGain) * headroom
 
@@ -173,7 +173,7 @@ class DeckDspAudioProcessor(
                         val inShort = inputBuffer.short
                         val inM = inShort / 32768.0f
 
-                        smoothT += 0.0003f * (targetT - smoothT)
+                        smoothT += 0.005f * (targetT - smoothT)
                         val st = smoothT.coerceIn(0f, 1f)
 
                         if (isDeckA && st <= 0.0001f) {
@@ -197,21 +197,8 @@ class DeckDspAudioProcessor(
                         val midM = lpHighL - lowL
                         val highM = inM - lpHighL
 
-                        val lowGain: Float
-                        val midGain: Float
-                        val highGain: Float
-
-                        if (isDeckA) {
-                            highGain = kotlin.math.cos(st * pi * 0.5f)
-                            lowGain  = 1.0f - sCurve((st - 0.30f) / 0.35f)
-                            midGain  = 1.0f - sCurve((st - 0.05f) / 0.50f)
-                        } else {
-                            highGain = kotlin.math.sin(st * pi * 0.5f)
-                            lowGain  = sCurve((st - 0.30f) / 0.35f)
-                            midGain  = sCurve((st - 0.35f) / 0.50f)
-                        }
-
-                        val headroom = 1.0f - 0.18f * kotlin.math.sin(st * pi)
+                        val (lowGain, midGain, highGain) = calculateGains(isDeckA, st)
+                        val headroom = 1.0f - 0.15f * kotlin.math.sin(st * pi)
                         val outM = (lowL * lowGain + midM * midGain + highM * highGain) * headroom
                         val sM = (outM * 32767f).toInt().coerceIn(-32767, 32767).toShort()
                         out.putShort(sM)
@@ -224,7 +211,7 @@ class DeckDspAudioProcessor(
                         val inL = inputBuffer.float
                         val inR = inputBuffer.float
 
-                        smoothT += 0.0003f * (targetT - smoothT)
+                        smoothT += 0.005f * (targetT - smoothT)
                         val st = smoothT.coerceIn(0f, 1f)
 
                         if (isDeckA && st <= 0.0001f) {
@@ -256,21 +243,8 @@ class DeckDspAudioProcessor(
                         val highL = inL - lpHighL
                         val highR = inR - lpHighR
 
-                        val lowGain: Float
-                        val midGain: Float
-                        val highGain: Float
-
-                        if (isDeckA) {
-                            highGain = kotlin.math.cos(st * pi * 0.5f)
-                            lowGain  = 1.0f - sCurve((st - 0.30f) / 0.35f)
-                            midGain  = 1.0f - sCurve((st - 0.05f) / 0.50f)
-                        } else {
-                            highGain = kotlin.math.sin(st * pi * 0.5f)
-                            lowGain  = sCurve((st - 0.30f) / 0.35f)
-                            midGain  = sCurve((st - 0.35f) / 0.50f)
-                        }
-
-                        val headroom = 1.0f - 0.18f * kotlin.math.sin(st * pi)
+                        val (lowGain, midGain, highGain) = calculateGains(isDeckA, st)
+                        val headroom = 1.0f - 0.15f * kotlin.math.sin(st * pi)
                         val outL = (lowL * lowGain + midL * midGain + highL * highGain) * headroom
                         val outR = (lowR * lowGain + midR * midGain + highR * highGain) * headroom
 
@@ -281,7 +255,7 @@ class DeckDspAudioProcessor(
                     while (inputBuffer.remaining() >= 4) {
                         val inM = inputBuffer.float
 
-                        smoothT += 0.0003f * (targetT - smoothT)
+                        smoothT += 0.005f * (targetT - smoothT)
                         val st = smoothT.coerceIn(0f, 1f)
 
                         if (isDeckA && st <= 0.0001f) {
@@ -305,21 +279,8 @@ class DeckDspAudioProcessor(
                         val midM = lpHighL - lowL
                         val highM = inM - lpHighL
 
-                        val lowGain: Float
-                        val midGain: Float
-                        val highGain: Float
-
-                        if (isDeckA) {
-                            highGain = kotlin.math.cos(st * pi * 0.5f)
-                            lowGain  = 1.0f - sCurve((st - 0.30f) / 0.35f)
-                            midGain  = 1.0f - sCurve((st - 0.05f) / 0.50f)
-                        } else {
-                            highGain = kotlin.math.sin(st * pi * 0.5f)
-                            lowGain  = sCurve((st - 0.30f) / 0.35f)
-                            midGain  = sCurve((st - 0.35f) / 0.50f)
-                        }
-
-                        val headroom = 1.0f - 0.18f * kotlin.math.sin(st * pi)
+                        val (lowGain, midGain, highGain) = calculateGains(isDeckA, st)
+                        val headroom = 1.0f - 0.15f * kotlin.math.sin(st * pi)
                         val outM = (lowL * lowGain + midM * midGain + highM * highGain) * headroom
                         out.putFloat(outM.coerceIn(-1.0f, 1.0f))
                     }
@@ -342,7 +303,7 @@ class DeckDspAudioProcessor(
                         valR.toFloat() / 8388608.0f
                     } else inL
 
-                    smoothT += 0.0003f * (targetT - smoothT)
+                    smoothT += 0.005f * (targetT - smoothT)
                     val st = smoothT.coerceIn(0f, 1f)
 
                     if (!filterInitialized) {
@@ -363,21 +324,8 @@ class DeckDspAudioProcessor(
                     val highL = inL - lpHighL
                     val highR = inR - lpHighR
 
-                    val lowGain: Float
-                    val midGain: Float
-                    val highGain: Float
-
-                    if (isDeckA) {
-                        highGain = kotlin.math.cos(st * pi * 0.5f)
-                        lowGain  = 1.0f - sCurve((st - 0.30f) / 0.35f)
-                        midGain  = 1.0f - sCurve((st - 0.05f) / 0.50f)
-                    } else {
-                        highGain = kotlin.math.sin(st * pi * 0.5f)
-                        lowGain  = sCurve((st - 0.30f) / 0.35f)
-                        midGain  = sCurve((st - 0.35f) / 0.50f)
-                    }
-
-                    val headroom = 1.0f - 0.18f * kotlin.math.sin(st * pi)
+                    val (lowGain, midGain, highGain) = calculateGains(isDeckA, st)
+                    val headroom = 1.0f - 0.15f * kotlin.math.sin(st * pi)
                     val outL = (lowL * lowGain + midL * midGain + highL * highGain) * headroom
                     val outR = (lowR * lowGain + midR * midGain + highR * highGain) * headroom
 
@@ -400,7 +348,7 @@ class DeckDspAudioProcessor(
                     val inL = inputBuffer.int.toFloat() / 2147483648.0f
                     val inR = if (channelCount == 2) inputBuffer.int.toFloat() / 2147483648.0f else inL
 
-                    smoothT += 0.0003f * (targetT - smoothT)
+                    smoothT += 0.005f * (targetT - smoothT)
                     val st = smoothT.coerceIn(0f, 1f)
 
                     if (!filterInitialized) {
@@ -421,21 +369,8 @@ class DeckDspAudioProcessor(
                     val highL = inL - lpHighL
                     val highR = inR - lpHighR
 
-                    val lowGain: Float
-                    val midGain: Float
-                    val highGain: Float
-
-                    if (isDeckA) {
-                        highGain = kotlin.math.cos(st * pi * 0.5f)
-                        lowGain  = 1.0f - sCurve((st - 0.30f) / 0.35f)
-                        midGain  = 1.0f - sCurve((st - 0.05f) / 0.50f)
-                    } else {
-                        highGain = kotlin.math.sin(st * pi * 0.5f)
-                        lowGain  = sCurve((st - 0.30f) / 0.35f)
-                        midGain  = sCurve((st - 0.35f) / 0.50f)
-                    }
-
-                    val headroom = 1.0f - 0.18f * kotlin.math.sin(st * pi)
+                    val (lowGain, midGain, highGain) = calculateGains(isDeckA, st)
+                    val headroom = 1.0f - 0.15f * kotlin.math.sin(st * pi)
                     val outL = (lowL * lowGain + midL * midGain + highL * highGain) * headroom
                     val outR = (lowR * lowGain + midR * midGain + highR * highGain) * headroom
 
