@@ -3815,12 +3815,6 @@ class MusicPlayer @Inject constructor(
                 dspA?.targetT = t
                 dspB?.targetT = t
 
-                // Dual-protection: equal-power fade on native ExoPlayer volume as well
-                val piHalf = (Math.PI * 0.5).toFloat()
-                val outVol = kotlin.math.cos(t * piHalf)
-                val inVol = kotlin.math.sin(t * piHalf)
-                active.volume = outVol
-                standby.volume = inVol
 
                 if (t < 0.50f) {
                     val outgoingPos = runCatching { active.currentPosition.coerceAtLeast(0L) }.getOrDefault(0L)
