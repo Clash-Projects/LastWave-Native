@@ -3444,13 +3444,22 @@ class MusicPlayer @Inject constructor(
                 }
             } else null
 
-            // If synced lyrics (LRC/TTML) exist, snap inCueMs to 4.0s (1 bar) before
-            // the start timestamp of a complete Chorus/Verse lyric line so standbyDeck never enters mid-sentence
-            val firstLineInWindow = lyricsLines?.firstOrNull { it.timeMs in (minWin + 3_000L)..maxWin }
-                ?: lyricsLines?.firstOrNull { it.timeMs >= minWin }
+            // Snap Deck B Entry Cue (inCueMs) to 800ms-1200ms before a complete lyric line:
+            // Never enter mid-sentence. Prefer lines preceded by >= 500ms vocal gap or chorus entry.
+            var chosenLine: com.lastwave.app.data.lyrics.LyricLine? = null
+            if (!lyricsLines.isNullOrEmpty()) {
+                val linesInWindow = lyricsLines.filter { it.timeMs in (minWin + 1_000L)..maxWin }
+                chosenLine = linesInWindow.firstOrNull { line ->
+                    val idx = lyricsLines.indexOf(line)
+                    val prev = if (idx > 0) lyricsLines[idx - 1] else null
+                    val gap = if (prev != null) line.timeMs - (prev.timeMs + prev.durationMs.coerceAtLeast(0L)) else 10_000L
+                    val isChorus = line.text.contains("chorus", ignoreCase = true) || line.text.contains("hook", ignoreCase = true)
+                    gap >= 500L || isChorus
+                } ?: linesInWindow.firstOrNull() ?: lyricsLines.firstOrNull { it.timeMs >= minWin }
+            }
 
-            return if (firstLineInWindow != null) {
-                (firstLineInWindow.timeMs - 4_000L).coerceIn(minWin, maxWin)
+            return if (chosenLine != null) {
+                (chosenLine.timeMs - 1_000L).coerceIn(minWin, maxWin)
             } else if (kickBeatMs != null) {
                 kickBeatMs.coerceIn(minWin, maxWin)
             } else {
@@ -3458,9 +3467,9 @@ class MusicPlayer @Inject constructor(
             }
         } else if (isAutoDJ) {
             val defaultIntro = (durationMs * 0.15).toLong().coerceIn(0L, 15_000L)
-            val firstLine = lyricsLines?.firstOrNull { it.timeMs > 3_000L }
+            val firstLine = lyricsLines?.firstOrNull { it.timeMs > 2_000L }
             return if (firstLine != null) {
-                (firstLine.timeMs - 4_000L).coerceIn(0L, defaultIntro)
+                (firstLine.timeMs - 1_000L).coerceIn(0L, defaultIntro)
             } else {
                 defaultIntro
             }
@@ -3471,7 +3480,7 @@ class MusicPlayer @Inject constructor(
             } else null
             val firstLyric = lyricsLines?.firstOrNull { it.timeMs > 0L }
             val candidate = when {
-                firstLyric != null -> firstLyric.timeMs - 4_000L
+                firstLyric != null -> firstLyric.timeMs - 1_000L
                 firstBeatMs != null && firstBeatMs > 0L -> firstBeatMs
                 else -> 0L
             }
