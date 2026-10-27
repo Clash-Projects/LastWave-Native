@@ -5277,8 +5277,14 @@ private fun AutoDJLiveMonitorCard(
                                             color = if (isNextStandby) Color(0xFFF97316).copy(alpha = 0.30f)
                                             else MaterialTheme.colorScheme.surfaceVariant,
                                         ) {
+                                            val songNum = (state.autoDJSetCurrentIndex ?: 1) + idx + 1
+                                            val isFinale = idx == upcomingTracks.lastIndex && songNum >= (state.autoDJSetTotalTracks ?: 6)
                                             Text(
-                                                text = if (isNextStandby) "#1 NEXT" else "#${idx + 1}",
+                                                text = when {
+                                                    isFinale -> "#$songNum FINALE"
+                                                    isNextStandby -> "#$songNum NEXT"
+                                                    else -> "#$songNum"
+                                                },
                                                 style = MaterialTheme.typography.labelSmall.copy(
                                                     fontWeight = FontWeight.Black,
                                                     fontSize = 9.sp,
