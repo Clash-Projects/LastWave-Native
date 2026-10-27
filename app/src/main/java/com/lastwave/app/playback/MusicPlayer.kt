@@ -4201,25 +4201,8 @@ class MusicPlayer @Inject constructor(
             startDualDeckOverlapMix(standby.currentMediaItemIndex, isManualSkip)
             return
         }
-            playerToSink[outgoing]?.autoMixRole = AutoMixDeckRole.DECK_A
-            playerToSink[standby]?.autoMixRole = AutoMixDeckRole.DECK_B
-            outgoing.volume = 1f
-            standby.volume = 1f
-            val deckBpm = if (nativeAutoMixEngine.get().isAvailable) nativeAutoMixEngine.get().deckABpm else null
-            _state.update {
-                it.copy(
-                    isAutoMixActive = true,
-                    autoMixState = if (isManualSkip) AutoMixState.FADING_FAST else AutoMixState.FADING_AUTO,
-                    autoMixProgress = 0f,
-                    autoMixBpm = deckBpm,
-                    autoMixNextTrack = nextTrack,
-                    autoMixBars = if (automixBars > 0) automixBars else 8,
-                )
-            }
-        } else {
-            outgoing.volume = 1f
-            standby.volume = 0f
-        }
+        outgoing.volume = 1f
+        standby.volume = 0f
         outgoing.removeListener(listener)
         outgoing.setAudioAttributes(outgoing.audioAttributes, false)
         outgoing.repeatMode = Player.REPEAT_MODE_OFF
