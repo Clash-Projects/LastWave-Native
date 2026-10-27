@@ -3583,15 +3583,18 @@ class MusicPlayer @Inject constructor(
         val totalCount = active.mediaItemCount
         val remainingInQueue = if (currentIdx in 0 until totalCount) (totalCount - currentIdx) else 6
         val setTotal = _state.value.autoDJSetTotalTracks ?: remainingInQueue.coerceIn(2, 6)
+        val setCur = _state.value.autoDJSetCurrentIndex ?: 1
+        val isLastTrack = setCur >= setTotal
         val n = setTotal.coerceIn(2, 6)
 
-        // Dynamically partition ~5 min (300s) across N tracks (2, 3, 4, 5, 6) with 16s transitions:
+        // Dynamically partition around 5 min (~300s) across N tracks (2, 3, 4, 5, 6) with 16s transitions:
         // Total duration = N * targetTrackDuration - (N - 1) * 16s ≈ 300s
         // => targetTrackDuration = (300s + (N - 1) * 16s) / N
         val targetTrackDurationMs = ((300_000L + (n - 1) * 16_000L) / n).coerceIn(45_000L, 160_000L)
         val targetMs = startCueMs + targetTrackDurationMs
-        val minTarget = (startCueMs + targetTrackDurationMs - 14_000L).coerceAtLeast(startCueMs + 20_000L)
-        val maxTarget = startCueMs + targetTrackDurationMs + 16_000L
+        val minTarget = (startCueMs + targetTrackDurationMs - 15_000L).coerceAtLeast(startCueMs + 20_000L)
+        // Allow the final song stanza to breathe naturally around 5 min (up to +45s) to complete its musical stanza with zero cut:
+        val maxTarget = if (isLastTrack) (startCueMs + targetTrackDurationMs + 45_000L) else (startCueMs + targetTrackDurationMs + 16_000L)
 
         val lines = activeTrackLyrics
         if (lines.isNullOrEmpty()) {
@@ -3609,8 +3612,8 @@ class MusicPlayer @Inject constructor(
                 i + 1 < lines.size -> lines[i + 1].timeMs
                 else -> line.timeMs + 3_000L
             }
-            // Snap Deck A Exit Cue (outCueMs) to 1.5s before the end of a lyric line/stanza
-            val cue = lineEnd - 1_500L
+            // For the last track, cue right after the line ends (lineEnd + 500ms) so the vocal is 100% complete before fade
+            val cue = if (isLastTrack) (lineEnd + 500L) else (lineEnd - 1_500L)
             if (cue in minTarget..maxTarget) {
                 val nextStart = if (i + 1 < lines.size) lines[i + 1].timeMs else lineEnd + 3_000L
                 val gapToNext = nextStart - lineEnd
@@ -3633,9 +3636,13 @@ class MusicPlayer @Inject constructor(
             return bestGeneralCandidate.first
         }
 
-        val lineInWindow = lines.firstOrNull { (it.timeMs - 1_500L) in minTarget..maxTarget }
+        val lineInWindow = lines.firstOrNull { 
+            val cue = if (isLastTrack) (it.timeMs + (it.durationMs.takeIf { d -> d > 0 } ?: 3000L) + 500L) else (it.timeMs - 1500L)
+            cue in minTarget..maxTarget 
+        }
         return if (lineInWindow != null) {
-            (lineInWindow.timeMs - 1_500L).coerceIn(minTarget, maxTarget)
+            val cue = if (isLastTrack) (lineInWindow.timeMs + (lineInWindow.durationMs.takeIf { d -> d > 0 } ?: 3000L) + 500L) else (lineInWindow.timeMs - 1500L)
+            cue.coerceIn(minTarget, maxTarget)
         } else {
             targetMs
         }
@@ -3646,10 +3653,11 @@ class MusicPlayer @Inject constructor(
         isCompletingAutoDJMix = true
         applicationScope.launch(Dispatchers.Main.immediate) {
             val initialVol = runCatching { active.volume }.getOrDefault(1.0f)
-            val fadeSteps = 30 // ~3.0s smooth fade out at stanza completion
+            val fadeSteps = 50 // ~5.0s musical studio outro fade out at stanza completion (no abrupt cut)
             for (step in 1..fadeSteps) {
                 delay(100L)
-                val gain = (1.0f - (step.toFloat() / fadeSteps)).coerceIn(0.0f, 1.0f)
+                val progress = step.toFloat() / fadeSteps
+                val gain = kotlin.math.cos(progress * (Math.PI * 0.5).toFloat()).coerceIn(0.0f, 1.0f)
                 runCatching { active.volume = initialVol * gain }
             }
             pause()
@@ -3676,10 +3684,13 @@ class MusicPlayer @Inject constructor(
         val setCur = _state.value.autoDJSetCurrentIndex ?: 1
 
         if (isAutoDJ && setCur >= setTotal) {
-            // This is the last track of the Auto DJ 5-min mix set!
-            // Wait for it to reach its allocated stanza ending, then gracefully complete and stop playback.
+            // This is the last track of the Auto DJ ~5-min mix set!
+            // If the song is already near its natural end (< 30s remaining), let it complete naturally with zero cut.
+            if (activeDur > 0L && (activeDur - activePos) <= 30_000L) {
+                return
+            }
             val outCueMs = computeAutoDJOutCueMs(activeDeckStartCueMs)
-            if (activePos >= outCueMs || (activeDur > 0L && activePos >= activeDur - 16_000L)) {
+            if (activePos >= outCueMs) {
                 completeAutoDJMixSet(active)
             }
             return
@@ -3797,7 +3808,7 @@ class MusicPlayer @Inject constructor(
                 autoMixNextTrack = nextTrack,
                 autoMixBars = if (automixBars > 0) automixBars else 8,
                 autoDJSetCurrentIndex = nextSetCur,
-                autoDJStatus = if (isAutoDJ) "Auto DJ: 5-Min Mix (Track $nextSetCur of $setTotal)" else it.autoDJStatus,
+                autoDJStatus = if (isAutoDJ) "Auto DJ: ~5-Min Mix (Track $nextSetCur of $setTotal)" else it.autoDJStatus,
             )
         }
 
@@ -4969,7 +4980,7 @@ class MusicPlayer @Inject constructor(
                     autoDJSeedTrack = seed,
                     autoDJSetTotalTracks = setTotal,
                     autoDJSetCurrentIndex = 1,
-                    autoDJStatus = "Auto DJ: 5-Min Mix (Track 1 of $setTotal)"
+                    autoDJStatus = "Auto DJ: ~5-Min Mix (Track 1 of $setTotal)"
                 )
             }
         } else {

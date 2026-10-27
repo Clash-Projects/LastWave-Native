@@ -4530,7 +4530,7 @@ private fun NowPlayingAutoDJBadgeRow(
     val totalTracks = state.autoDJSetTotalTracks ?: 6
     val (badgeText, badgeBg, badgeFg) = when {
         isBlending && isAutoDJMix -> Triple(
-            "Auto DJ: 5-Min Mix · Track $curIdx of $totalTracks (Mixing into ${state.autoMixNextTrack?.title ?: "Next"})",
+            "Auto DJ: ~5-Min Mix · Track $curIdx of $totalTracks (Mixing into ${state.autoMixNextTrack?.title ?: "Next"})",
             Color(0xFF8B5CF6).copy(alpha = if (isTranslucent) 0.35f else 0.22f),
             Color(0xFFDDD6FE)
         )
@@ -4540,7 +4540,7 @@ private fun NowPlayingAutoDJBadgeRow(
             Color(0xFFDDD6FE)
         )
         isAutoDJMix -> Triple(
-            "Auto DJ: 5-Min Mix · Track $curIdx of $totalTracks",
+            "Auto DJ: ~5-Min Mix · Track $curIdx of $totalTracks",
             if (isArmed) Color(0xFF10B981).copy(alpha = if (isTranslucent) 0.35f else 0.20f)
             else Color(0xFFF59E0B).copy(alpha = if (isTranslucent) 0.35f else 0.20f),
             if (isArmed) Color(0xFFA7F3D0) else Color(0xFFFDE68A)
@@ -5033,7 +5033,7 @@ private fun AutoDJLiveMonitorCard(
                         Text(
                             text = if (state.isAutoDJActive) {
                                 val total = state.autoDJSetTotalTracks ?: 6
-                                "Auto DJ: 5-Min Mix ($total)"
+                                "Auto DJ: ~5-Min Mix ($total)"
                             } else {
                                 "Auto DJ: OFF"
                             },
@@ -5200,7 +5200,7 @@ private fun AutoDJLiveMonitorCard(
                         )
                         val totalInHorizon = 1 + upcomingTracks.size
                         Text(
-                            text = "AUTO DJ QUEUE HORIZON ($totalInHorizon OF 6)",
+                            text = "UPCOMING SET HORIZON ($totalInHorizon TRACKS)",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.Black,
                                 letterSpacing = 0.5.sp,
@@ -5680,7 +5680,7 @@ private fun AudioControlsSheet(
                 .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // Header Row
+            // 1. Studio Master Header Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -5688,57 +5688,113 @@ private fun AudioControlsSheet(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(42.dp)
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF8B5CF6), Color(0xFF06B6D4))
+                                )
+                            ),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.VolumeUp,
+                            imageVector = Icons.Filled.GraphicEq,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            tint = Color.White,
                             modifier = Modifier.size(22.dp),
                         )
                     }
                     Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text(
+                                text = "STUDIO MASTER CONSOLE",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 0.8.sp,
+                                ),
+                                color = Color(0xFF8B5CF6),
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF10B981))
+                            )
+                        }
                         Text(
-                            text = "Audio & Studio Controls",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            text = "Volume, Slowed & Pitch Engine",
+                            text = "Dual-Deck Hardware DSP • ~5-Min Auto DJ",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Medium,
                         )
                     }
                 }
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Filled.Close, contentDescription = "Close")
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Close",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
-            // Volume Section Card
+            // 2. Master System Volume Deck
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f)),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text(
-                        text = "System Volume",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.VolumeUp,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Text(
+                                text = "Master Output Level",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                        ) {
+                            Text(
+                                text = "HARDWARE SINK",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 9.sp,
+                                    letterSpacing = 0.5.sp,
+                                ),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
                     VolumeSlider(
                         isTranslucent = false,
                         primaryColor = MaterialTheme.colorScheme.primary,
