@@ -201,6 +201,7 @@ fun FeedScreen(
     val ytHidden by viewModel.ytMusicHiddenSections.collectAsStateWithLifecycle()
     val ytOrder by viewModel.ytMusicSectionsOrder.collectAsStateWithLifecycle()
     val podcastsEnabled by viewModel.podcastsEnabled.collectAsStateWithLifecycle()
+    val topGenres by viewModel.topGenres.collectAsStateWithLifecycle()
     fun isSectionVisible(section: HomeSection) = section.id !in hiddenSections
     val snackbarHostState = remember { SnackbarHostState() }
     val hasFeedContent = state.isChipActive || with(state.feedData) {
@@ -544,8 +545,21 @@ fun FeedScreen(
                         }
                     }
 
-
-                    // YouTube Music mood/activity chips (Relax, Energize, Workout,
+                    // 3. "Your Sound" Section - ALWAYS visible below Quick Access
+                    if (showSynthetic) {
+                        val displayTags = topGenres.ifEmpty {
+                            state.feedData.tasteTags.ifEmpty {
+                                listOf("Rock", "Indie", "Pop", "Electronic", "Hip-Hop", "R&B", "Synthwave", "Alternative")
+                            }
+                        }
+                        item(key = "taste_strip") {
+                            TasteStrip(
+                                tags = displayTags,
+                                launching = state.launchingRadio,
+                                onTagClick = { tag -> viewModel.playDiscoveryQuery(tag.displayName(), tag) },
+                            )
+                        }
+                    }
                     // ...) are pinned at the top under the app bar — see the
                     // PinnedChipsBar rendered above the LazyColumn. Loading,
                     // filtering and selection logic are unchanged; only the
