@@ -43,6 +43,7 @@ data class StreamCache(
     val bitrate: Int = 0,
     val sampleRateHz: Int? = null,
     val mediaCacheKey: String = "",
+    val userAgent: String? = null,
 ) {
     val cacheKey: String get() = "$trackId+$youtubeVideoId"
 
@@ -89,6 +90,7 @@ fun YouTubeAudioStream.toStreamCache(identity: TrackIdentity): StreamCache = Str
     bitrate = bitrate,
     sampleRateHz = sampleRateHz,
     mediaCacheKey = mediaCacheKey,
+    userAgent = userAgent,
 )
 
 fun StreamCache.toYouTubeAudioStream(): YouTubeAudioStream = YouTubeAudioStream(
@@ -106,4 +108,5 @@ fun StreamCache.toYouTubeAudioStream(): YouTubeAudioStream = YouTubeAudioStream(
     authScope = authScope,
     requestHeaders = requestHeaders,
     expiresAtEpochMs = expiresAt.takeIf { it > 0L },
+    userAgent = userAgent ?: requestHeaders["User-Agent"],
 )

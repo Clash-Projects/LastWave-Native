@@ -231,6 +231,7 @@ class YouTubeStreamExtractor @Inject constructor(
                 ?.toLongOrNull()
                 ?.times(1_000L)
                 ?: now + UNKNOWN_EXPIRY_TTL_MS,
+            userAgent = YOUTUBE_WEB_USER_AGENT,
         )
     }
 

@@ -127,7 +127,7 @@ fun planAutoMix(input: AutoMixPlanInput): AutoMixDecision = with(input) {
     }
 
     if (!standbyArmedForNext) return AutoMixDecision.Arm
-    if (!standbyReady || standbyBufferedMs < 8000L) return AutoMixDecision.WaitingForReady
+    if (!standbyReady || (standbyBufferedMs in 1L until 8000L)) return AutoMixDecision.WaitingForReady
     if (remainingMs > transitionMs) return AutoMixDecision.WaitingForWindow
 
     val sustainableMs = standbyBufferedMs.takeIf { it > 0L } ?: transitionMs

@@ -69,7 +69,7 @@ object NetworkModule {
             .connectionPool(ConnectionPool(10, 5, TimeUnit.MINUTES))
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
-            .writeTimeout(15, TimeUnit.SECONDS)
+            .dns(com.lastwave.app.data.network.Ipv4FirstDnsResolver())
             .retryOnConnectionFailure(true)
             .addInterceptor(TrafficPriorityInterceptor())
             .addInterceptor { chain ->
