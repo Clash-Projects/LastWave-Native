@@ -609,7 +609,8 @@ class InnerTubeMusicApi @Inject constructor(
         }
         // RDCLAK / RD-prefixed IDs (radio/mix) or Liked Music fall back to the "next" endpoint
         if (browseId.startsWith("RDCLAK") || browseId.startsWith("RD") || isLiked) {
-            val playlistId = if (isLiked) "LM" else browseId.removePrefix("VL")
+            // The liked list is browsed as "VLM"; "LM" is not a browse id.
+            val playlistId = if (isLiked) "VLM" else browseId.removePrefix("VL")
             val auth = ytAuth.connection.value.isConnected
             runCatching { fetchPlaylistViaNext(playlistId, authenticated = auth) }.getOrNull()?.let {
                 return it to auth

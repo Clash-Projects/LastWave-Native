@@ -896,7 +896,6 @@ class SettingsPreferences @Inject constructor(
     suspend fun setJamRoomMode(mode: String) {
         dataStore.edit { it[Keys.JAM_ROOM_MODE] = mode }
     }
-
     private companion object {
         val LOSSLESS_QUALITIES = setOf(-1, 4, 5, 6, 7, 27, 28)
         val DOWNLOAD_QUALITIES = setOf(-1, 4, 5, 6, 7, 27, 28)
