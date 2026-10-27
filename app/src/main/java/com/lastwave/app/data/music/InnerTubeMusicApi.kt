@@ -4224,7 +4224,6 @@ class InnerTubeMusicApi @Inject constructor(
                     continue
                 }
 
-                val playlistId = if (browseId.startsWith("VL")) browseId.removePrefix("VL") else browseId
                 val trackCountText = subtitleRuns.mapNotNull { it.string("text") }
                     .lastOrNull { "song" in it.lowercase() || "track" in it.lowercase() }
 

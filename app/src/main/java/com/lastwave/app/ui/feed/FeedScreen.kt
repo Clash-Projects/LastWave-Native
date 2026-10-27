@@ -1583,6 +1583,7 @@ private fun HomeShelfCard(
     onTrackLongClick: (TrackMiniTrayData) -> Unit,
     onPlayPlaylist: (com.lastwave.app.data.music.YouTubePlaylistSummary) -> Unit,
     onTrackMenu: (YouTubeMusicTrack) -> Unit,
+    onOpenPodcastShow: (String) -> Unit = {},
     onPlayPodcastEpisode: (HomeShelfItem.PodcastEpisode, List<HomeShelfItem.PodcastEpisode>, String) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier,
 ) {

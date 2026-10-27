@@ -5199,7 +5199,7 @@ class MusicPlayer @Inject constructor(
         }
 
         if (!savedQueue.isNullOrEmpty() && savedIdx in savedQueue.indices) {
-            play(savedQueue, savedIdx)
+            playQueue(savedQueue, savedIdx)
         }
     }
 
@@ -5400,13 +5400,12 @@ class MusicPlayer @Inject constructor(
     ) {
         val firstTrack = plan.seedTrack
         val combined = PlayableTrack(
-            id = plan.id,
+            internalTrackId = plan.id,
             title = plan.title,
             artist = "${plan.segments.size} Tracks: " + plan.segments.joinToString(", ") { it.track.title },
             album = "AutoDJ Studio Megamix",
             artworkUrl = firstTrack.artworkUrl,
             durationMs = plan.totalMixDurationMs,
-            source = firstTrack.source,
             videoId = firstTrack.videoId,
         )
         combinedAutoDJTrack = combined
