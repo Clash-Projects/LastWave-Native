@@ -3013,14 +3013,21 @@ class InnerTubeMusicApi @Inject constructor(
                     AUTHENTICATED_CIPHER_CLIENT_BUDGET_MS
                 } else DIRECT_FAST_CLIENT_TIMEOUT_MS
                 kotlinx.coroutines.withTimeoutOrNull(minOf(clientBudget, remaining)) {
-                    val sigTimestamp = if (client.needsSignatureTimestamp) {
+                    val cipherContext = if (signedIn && client.name == "WEB_REMIX") {
+                        innerTubeXExtractor.fetchCipherContext(videoId)
+                    } else null
+                    val sigTimestamp = cipherContext?.signatureTimestamp ?: if (client.needsSignatureTimestamp) {
                         streamExtractor.getSignatureTimestamp(videoId)
                     } else null
+                    if (cipherContext != null) {
+                        noteAttempt("client=${client.name} cipherContext=paired")
+                    }
                     resolveDirectClientStream(
                         videoId = videoId,
                         client = client,
                         visitorData = visitorData,
                         signatureTimestamp = sigTimestamp,
+                        cipherContext = cipherContext,
                         playerPoToken = if (client.needsPoToken) poToken?.playerToken else null,
                         gvsPoToken = if (client.needsGvsPoToken) poToken?.sessionToken else null,
                         authScope = authScope,
@@ -3202,6 +3209,7 @@ class InnerTubeMusicApi @Inject constructor(
         client: PlayerClient,
         visitorData: String?,
         signatureTimestamp: Int?,
+        cipherContext: PlaybackCipherContext?,
         playerPoToken: String?,
         gvsPoToken: String?,
         authScope: String,
@@ -3225,6 +3233,7 @@ class InnerTubeMusicApi @Inject constructor(
                 }
             })
         }
+        cipherContext?.requireMatches(videoId, ytAuth.connection.value)
         val body = playbackPlayerBody(videoId, playerContext, signatureTimestamp, playerPoToken)
         val playerApi = if (client.name == "WEB_REMIX") MUSIC_API else YOUTUBE_API
         val root = post(
@@ -3284,17 +3293,29 @@ class InnerTubeMusicApi @Inject constructor(
             if (format.string("mimeType")?.startsWith("audio/") != true) return@mapNotNull null
             format.string("signatureCipher") ?: format.string("cipher")
         }.distinct().take(8) else emptyList()
-        val deciphered = audioCiphers.mapNotNull { cipher ->
-            streamExtractor.decipherStreamUrl(videoId, cipher)?.let { cipher to it }
-        }.toMap().toMutableMap()
-        val unresolved = audioCiphers.filterNot(deciphered::containsKey)
-        if (client.name == "WEB_REMIX" && unresolved.isNotEmpty()) {
-            deciphered.putAll(innerTubeXExtractor.decipherAudioUrls(videoId, unresolved))
+        val directAudioUrls = if (cipherContext != null) formats.mapNotNull { (element, _) ->
+            val format = element as? JsonObject ?: return@mapNotNull null
+            format.string("url")?.takeIf { format.string("mimeType")?.startsWith("audio/") == true }
+        }.distinct().take(8) else emptyList()
+        // A decoder from a separately fetched player can return a plausible but
+        // invalid signature. Use the exact script paired with this request first.
+        val deciphered = if (cipherContext != null) {
+            innerTubeXExtractor.decipherAudioUrls(videoId, audioCiphers, cipherContext, directAudioUrls).toMutableMap()
+        } else {
+            audioCiphers.mapNotNull { cipher ->
+                streamExtractor.decipherStreamUrl(videoId, cipher)?.let { cipher to it }
+            }.toMap().toMutableMap().also { decoded ->
+                val unresolved = audioCiphers.filterNot(decoded::containsKey)
+                if (client.name == "WEB_REMIX" && unresolved.isNotEmpty()) {
+                    decoded.putAll(innerTubeXExtractor.decipherAudioUrls(videoId, unresolved))
+                }
+            }
         }
         val candidates = formats.mapNotNull { (element, isAdaptive) ->
                 val format = element as? JsonObject ?: return@mapNotNull null
-                val url = format.string("url")
-                    ?: if (allowCipherFormats) {
+                val url = format.string("url")?.let { direct ->
+                    if (cipherContext != null) deciphered[direct] else direct
+                } ?: if (allowCipherFormats) {
                         (format.string("signatureCipher") ?: format.string("cipher"))
                             ?.let(deciphered::get)
                     } else {
@@ -5081,7 +5102,7 @@ class InnerTubeMusicApi @Inject constructor(
         const val YOUTUBE_PROMOTE_BUDGET_MS = 12_000L
         /** No-cipher clients tried first, in order (mirrors limusic's fallback order). */
         val DIRECT_FAST_CLIENT_ORDER = listOf("ANDROID_VR", "IOS", "TVHTML5_SIMPLY_EMBEDDED_PLAYER", "WEB_REMIX")
-        const val MAX_FORMAT_PROBES_PER_CLIENT = 2
+        const val MAX_FORMAT_PROBES_PER_CLIENT = 4
         const val MAX_PLAYER_REQUEST_ATTEMPTS = 2
         const val CONFIG_REQUEST_TIMEOUT_MS = 6_000L
         /** Cooldown before a cached-but-synthetic web config is re-fetched. */
