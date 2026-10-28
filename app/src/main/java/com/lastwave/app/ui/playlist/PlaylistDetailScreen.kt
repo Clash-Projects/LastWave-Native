@@ -1357,7 +1357,6 @@ fun PlaylistDetailScreen(
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-@Composable
 private fun NativeTrackRow(
     track: GeneratedTrack,
     isPlaying: Boolean,
