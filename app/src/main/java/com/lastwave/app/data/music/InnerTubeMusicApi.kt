@@ -2988,7 +2988,7 @@ class InnerTubeMusicApi @Inject constructor(
                     kotlinx.coroutines.withTimeoutOrNull(VISITOR_BOOTSTRAP_BUDGET_MS) {
                         getWebConfig()
                     }?.visitorData
-                }.getOrNull() ?: visitorData
+                }.getOrNull()?.takeIf { it != FALLBACK_TOKEN_SESSION } ?: visitorData
             }
             noteAttempt("direct-fast=visitor-${if (!visitorData.isNullOrBlank()) "ok" else "missing"}")
         }
@@ -3000,13 +3000,15 @@ class InnerTubeMusicApi @Inject constructor(
         val ordered = DIRECT_FAST_CLIENT_ORDER
             .mapNotNull { name -> PLAYER_CLIENTS.firstOrNull { it.name == name } }
             .filter { nowMs >= (failedClientsUntil[clientFailureKey(videoId, it.key, authScope)] ?: 0L) }
-            .sortedByDescending { it.name == lastSuccessfulClientName }
+            .sortedBy { playbackClientPriority(it.name, ytAuth.connection.value.isConnected, lastSuccessfulClientName) }
         if (ordered.isEmpty()) {
             noteAttempt("direct-fast=no-clients")
             return null
         }
 
-        val deadline = SystemClock.elapsedRealtime() + DIRECT_FAST_PATH_BUDGET_MS
+        val signedIn = ytAuth.connection.value.isConnected
+        val deadline = SystemClock.elapsedRealtime() +
+            if (signedIn) AUTHENTICATED_CIPHER_PATH_BUDGET_MS else DIRECT_FAST_PATH_BUDGET_MS
         for (client in ordered) {
             val remaining = deadline - SystemClock.elapsedRealtime()
             if (remaining <= 0L) {
@@ -3015,19 +3017,29 @@ class InnerTubeMusicApi @Inject constructor(
             }
             var failed = false
             val stream = try {
-                kotlinx.coroutines.withTimeoutOrNull(minOf(DIRECT_FAST_CLIENT_TIMEOUT_MS, remaining)) {
-                    val sigTimestamp = if (client.needsSignatureTimestamp) {
-                        (System.currentTimeMillis() / 86_400_000L - 1L).toInt()
+                val clientBudget = if (signedIn && client.name == "WEB_REMIX") {
+                    AUTHENTICATED_CIPHER_CLIENT_BUDGET_MS
+                } else DIRECT_FAST_CLIENT_TIMEOUT_MS
+                kotlinx.coroutines.withTimeoutOrNull(minOf(clientBudget, remaining)) {
+                    val cipherContext = if (signedIn && client.name == "WEB_REMIX") {
+                        innerTubeXExtractor.fetchCipherContext(videoId)
                     } else null
+                    val sigTimestamp = cipherContext?.signatureTimestamp ?: if (client.needsSignatureTimestamp) {
+                        streamExtractor.getSignatureTimestamp(videoId)
+                    } else null
+                    if (cipherContext != null) {
+                        noteAttempt("client=${client.name} cipherContext=paired")
+                    }
                     resolveDirectClientStream(
                         videoId = videoId,
                         client = client,
                         visitorData = visitorData,
                         signatureTimestamp = sigTimestamp,
+                        cipherContext = cipherContext,
                         playerPoToken = if (client.needsPoToken) poToken?.playerToken else null,
                         gvsPoToken = if (client.needsGvsPoToken) poToken?.sessionToken else null,
                         authScope = authScope,
-                        probeCandidates = false,
+                        probeCandidates = true,
                         allowCipherFormats = client.name == "TVHTML5_SIMPLY_EMBEDDED_PLAYER" || client.name == "WEB_REMIX",
                         maxAttempts = 1,
                     )
@@ -3058,24 +3070,13 @@ class InnerTubeMusicApi @Inject constructor(
         kotlinx.coroutines.coroutineScope {
         val now = System.currentTimeMillis()
 
-        // Direct clients and the NewPipe/InnerTubeX race start together.
-        // The direct clients often return HTTP 200 with no playable URL; waiting
-        // for that miss before starting NewPipe added the whole fast-path RTT
-        // to every cold song.
-        val fallback = async { racePlayableFallback(videoId, authScope, now, startedAt) }
-        val fast = resolveDirectUrlFastPath(videoId, authScope)
-        if (fast != null && probeStream(fast, "direct-fast-probe")) {
-            fallback.cancel()
-            cacheResolvedStream(fast, now)
-            lastResolvedStreams[resolutionKey(videoId, authScope)] = fast
-            logStreamEvent("direct-fast-resolved", fast)
-            logStage(videoId, "direct-fast", startedAt)
-            noteAttempt("fallback=cancelled-after-direct")
-            logResolveAttempts(videoId, failed = false)
-            return@coroutineScope fast
-        }
+        // Use whichever validated source finishes first. In particular, a usable
+        // NewPipe URL must not wait for every authenticated client to miss.
         val resolved = try {
-            fallback.await()
+            racePlaybackCandidates(
+                first = { resolveDirectUrlFastPath(videoId, authScope) },
+                second = { racePlayableFallback(videoId, authScope, now, startedAt) },
+            )
         } catch (error: Throwable) {
             if (error.isCooperativeCancellation()) throw error
             noteAttempt("fallback=failed ${resolutionFailureDetail(error)}")
@@ -3087,6 +3088,9 @@ class InnerTubeMusicApi @Inject constructor(
             logResolveAttempts(videoId, failed = true)
             throw IOException("Unable to resolve a playable audio stream for $videoId")
         }
+        cacheResolvedStream(resolved, now)
+        lastResolvedStreams[resolutionKey(videoId, authScope)] = resolved
+
         logResolveAttempts(videoId, failed = false)
         resolved
         }
@@ -3186,14 +3190,16 @@ class InnerTubeMusicApi @Inject constructor(
     /**
      * One video-bound PoToken for the fast path, served from the minter's
      * cache whenever the pre-warmed engine is alive (milliseconds). Uses the
-     * same session rule as the startup pre-warm so the engine is actually
-     * reusable. Anything slower — cold WebView boot, missing WebView, dead
+     * real visitor session supplied to the player request. Missing visitor
+     * data skips minting. Anything slower — cold WebView boot, missing WebView, dead
      * challenge — returns null and the resolve proceeds without a token
      * instead of blocking audio on it.
      */
     private suspend fun fastPoToken(videoId: String, visitorData: String?): PoTokenResult? {
         if (videoId.isBlank()) return null
-        val session = visitorData?.takeIf { it.isNotBlank() } ?: FALLBACK_TOKEN_SESSION
+        // Tokens must be bound to the visitor actually sent in the player request.
+        val session = visitorData?.takeIf { it.isNotBlank() && it != FALLBACK_TOKEN_SESSION }
+            ?: return null
         return try {
             kotlinx.coroutines.withTimeoutOrNull(POTOKEN_FAST_BUDGET_MS) {
                 BotGuardTokenGenerator.mintToken(videoId, session)
@@ -3211,6 +3217,7 @@ class InnerTubeMusicApi @Inject constructor(
         client: PlayerClient,
         visitorData: String?,
         signatureTimestamp: Int?,
+        cipherContext: PlaybackCipherContext?,
         playerPoToken: String?,
         gvsPoToken: String?,
         authScope: String,
@@ -3218,39 +3225,24 @@ class InnerTubeMusicApi @Inject constructor(
         allowCipherFormats: Boolean = true,
         maxAttempts: Int = MAX_PLAYER_REQUEST_ATTEMPTS,
     ): YouTubeAudioStream {
-        val body = buildJsonObject {
-            put("context", buildJsonObject {
-                put("client", buildJsonObject {
-                    put("clientName", client.name)
-                    put("clientVersion", client.version)
-                    put("hl", "en")
-                    put("gl", "US")
-                    if (!visitorData.isNullOrBlank()) put("visitorData", visitorData)
-                    if (!client.osName.isNullOrBlank()) put("osName", client.osName)
-                    if (!client.osVersion.isNullOrBlank()) put("osVersion", client.osVersion)
-                    if (!client.deviceMake.isNullOrBlank()) put("deviceMake", client.deviceMake)
-                    if (!client.deviceModel.isNullOrBlank()) put("deviceModel", client.deviceModel)
-                    if (!client.androidSdkVersion.isNullOrBlank()) {
-                        put("androidSdkVersion", client.androidSdkVersion)
-                    }
-                })
-                if (!playerPoToken.isNullOrBlank()) {
-                    put("serviceIntegrityDimensions", buildJsonObject {
-                        put("poToken", playerPoToken)
-                    })
+        val playerContext = buildJsonObject {
+            put("client", buildJsonObject {
+                put("clientName", client.name)
+                put("clientVersion", client.version)
+                put("hl", "en")
+                put("gl", "US")
+                if (!visitorData.isNullOrBlank()) put("visitorData", visitorData)
+                if (!client.osName.isNullOrBlank()) put("osName", client.osName)
+                if (!client.osVersion.isNullOrBlank()) put("osVersion", client.osVersion)
+                if (!client.deviceMake.isNullOrBlank()) put("deviceMake", client.deviceMake)
+                if (!client.deviceModel.isNullOrBlank()) put("deviceModel", client.deviceModel)
+                if (!client.androidSdkVersion.isNullOrBlank()) {
+                    put("androidSdkVersion", client.androidSdkVersion)
                 }
             })
-            put("videoId", videoId)
-            put("contentCheckOk", true)
-            put("racyCheckOk", true)
-            if (signatureTimestamp != null) {
-                put("playbackContext", buildJsonObject {
-                    put("contentPlaybackContext", buildJsonObject {
-                        put("signatureTimestamp", signatureTimestamp)
-                    })
-                })
-            }
         }
+        cipherContext?.requireMatches(videoId, ytAuth.connection.value)
+        val body = playbackPlayerBody(videoId, playerContext, signatureTimestamp, playerPoToken)
         val playerApi = if (client.name == "WEB_REMIX") MUSIC_API else YOUTUBE_API
         val root = post(
             url = "$playerApi/player?key=${client.apiKey}&prettyPrint=false",
@@ -3268,6 +3260,11 @@ class InnerTubeMusicApi @Inject constructor(
             // racer for 30s+ across its two attempts.
             callTimeoutMs = PLAYER_REQUEST_CALL_TIMEOUT_MS,
         )
+        noteAttempt("client=${client.name} response ${youtubePlayerResponseSummary(root)} " +
+            "signedIn=${client.name == "WEB_REMIX" && ytAuth.connection.value.isConnected} " +
+            "visitorPresent=${!visitorData.isNullOrBlank()} " +
+            "playerTokenPresent=${!playerPoToken.isNullOrBlank()} " +
+            "signatureTimestampPresent=${signatureTimestamp != null}")
         val status = root.obj("playabilityStatus")
         val state = status?.string("status")
         if (state != "OK") {
@@ -3299,12 +3296,36 @@ class InnerTubeMusicApi @Inject constructor(
             streaming?.array("formats").orEmpty().forEach { add(it to false) }
             streaming?.array("adaptiveFormats").orEmpty().forEach { add(it to true) }
         }
+        val audioCiphers = if (allowCipherFormats) formats.mapNotNull { (element, _) ->
+            val format = element as? JsonObject ?: return@mapNotNull null
+            if (format.string("mimeType")?.startsWith("audio/") != true) return@mapNotNull null
+            format.string("signatureCipher") ?: format.string("cipher")
+        }.distinct().take(8) else emptyList()
+        val directAudioUrls = if (cipherContext != null) formats.mapNotNull { (element, _) ->
+            val format = element as? JsonObject ?: return@mapNotNull null
+            format.string("url")?.takeIf { format.string("mimeType")?.startsWith("audio/") == true }
+        }.distinct().take(8) else emptyList()
+        // A decoder from a separately fetched player can return a plausible but
+        // invalid signature. Use the exact script paired with this request first.
+        val deciphered = if (cipherContext != null) {
+            innerTubeXExtractor.decipherAudioUrls(videoId, audioCiphers, cipherContext, directAudioUrls).toMutableMap()
+        } else {
+            audioCiphers.mapNotNull { cipher ->
+                streamExtractor.decipherStreamUrl(videoId, cipher)?.let { cipher to it }
+            }.toMap().toMutableMap().also { decoded ->
+                val unresolved = audioCiphers.filterNot(decoded::containsKey)
+                if (client.name == "WEB_REMIX" && unresolved.isNotEmpty()) {
+                    decoded.putAll(innerTubeXExtractor.decipherAudioUrls(videoId, unresolved))
+                }
+            }
+        }
         val candidates = formats.mapNotNull { (element, isAdaptive) ->
                 val format = element as? JsonObject ?: return@mapNotNull null
-                val url = format.string("url")
-                    ?: if (allowCipherFormats) {
+                val url = format.string("url")?.let { direct ->
+                    if (cipherContext != null) deciphered[direct] else direct
+                } ?: if (allowCipherFormats) {
                         (format.string("signatureCipher") ?: format.string("cipher"))
-                            ?.let { streamExtractor.decipherStreamUrl(videoId, it) }
+                            ?.let(deciphered::get)
                     } else {
                         null
                     }
@@ -3336,7 +3357,9 @@ class InnerTubeMusicApi @Inject constructor(
                 compareBy<YouTubeAudioStream> { it.isAdaptive }
                     .thenByDescending { it.bitrate },
             )
-        // Direct fast path: no probeCandidates. Stage 2 still probes defensively for cipher clients.
+        noteAttempt("client=${client.name} compatibleCandidates=${candidates.size} cipherAllowed=$allowCipherFormats")
+        // Probe full playback ranges before choosing a format. Tiny probes can
+        // succeed even when the media request itself will receive HTTP 403.
         if (!probeCandidates) {
             return candidates.firstOrNull()
                 ?: throw IOException("${client.key} returned no usable audio URL")
@@ -3366,14 +3389,14 @@ class InnerTubeMusicApi @Inject constructor(
         val isHls = stream.mimeType?.contains("mpegurl", true) == true ||
             stream.url.substringBefore('?').endsWith(".m3u8", true) ||
             stream.codec?.equals("hls", true) == true
-        val requestBuilder = Request.Builder()
-            .url(stream.url)
-            .header("Accept-Encoding", "identity")
-            .apply {
-                if (!isHls) header("Range", "bytes=0-1")
-                stream.requestHeaders.forEach { (name, value) -> header(name, value) }
-            }
-        val request = requestBuilder.build()
+        val request = if (isHls) {
+            Request.Builder().url(stream.url)
+                .header("Accept-Encoding", "identity")
+                .apply { stream.requestHeaders.forEach { (name, value) -> header(name, value) } }
+                .build()
+        } else {
+            playbackProbeRequest(stream.url, stream.requestHeaders)
+        }
         val call = innerTubeClient.newCall(request)
         call.timeout().timeout(STREAM_PROBE_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
         val cancellationHandle = currentCoroutineContext()[kotlinx.coroutines.Job]
@@ -5072,12 +5095,15 @@ class InnerTubeMusicApi @Inject constructor(
         const val POTOKEN_FAST_BUDGET_MS = 1_000L
         /** Whole fast path must settle inside this budget before heavier stages run. */
         const val DIRECT_FAST_PATH_BUDGET_MS = 6_000L
+        // A signed-in web response may require a cold local JS solver; anonymous clients keep their short budget.
+        const val AUTHENTICATED_CIPHER_PATH_BUDGET_MS = 24_000L
+        const val AUTHENTICATED_CIPHER_CLIENT_BUDGET_MS = 20_000L
         /** Whole-call cap for one player-API POST (connect + read + body). */
         const val PLAYER_REQUEST_CALL_TIMEOUT_MS = 8_000L
         /** Max wait on the direct-client/NewPipe race before the last-resort stage. */
         const val CLIENT_RACE_TIMEOUT_MS = 8_000L
         /** Hard cap for one full stream resolution; callers retry with fresh state. */
-        const val STREAM_RESOLVE_TOTAL_TIMEOUT_MS = 20_000L
+        const val STREAM_RESOLVE_TOTAL_TIMEOUT_MS = 40_000L
         /** Bound for the InnerTubeX cipher stage so a hung resolve fails fast. */
         const val INNERTUBEX_STAGE_TIMEOUT_MS = 7_000L
         /** Bound for the last-resort NewPipe stage. */
@@ -5086,7 +5112,7 @@ class InnerTubeMusicApi @Inject constructor(
         const val YOUTUBE_PROMOTE_BUDGET_MS = 12_000L
         /** No-cipher clients tried first, in order (mirrors limusic's fallback order). */
         val DIRECT_FAST_CLIENT_ORDER = listOf("ANDROID_VR", "IOS", "TVHTML5_SIMPLY_EMBEDDED_PLAYER", "WEB_REMIX")
-        const val MAX_FORMAT_PROBES_PER_CLIENT = 2
+        const val MAX_FORMAT_PROBES_PER_CLIENT = 4
         const val MAX_PLAYER_REQUEST_ATTEMPTS = 2
         const val CONFIG_REQUEST_TIMEOUT_MS = 6_000L
         /** Cooldown before a cached-but-synthetic web config is re-fetched. */

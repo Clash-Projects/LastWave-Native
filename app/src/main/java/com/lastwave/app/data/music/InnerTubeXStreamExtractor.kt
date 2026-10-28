@@ -12,6 +12,8 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlin.coroutines.resume
 import kotlin.jvm.functions.Function1
+import kotlinx.serialization.DeserializationStrategy
+import kotlinx.serialization.json.Json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -88,6 +90,83 @@ class InnerTubeXStreamExtractor @Inject constructor(
             null
         }
     }
+
+    /** Keep the request timestamp and the decoding script from the same watch-page config. */
+    internal suspend fun fetchCipherContext(videoId: String): PlaybackCipherContext? = withContext(Dispatchers.IO) {
+        val stack = runtime ?: return@withContext null
+        val account = ytAuth.connection.value
+        try {
+            setProperty(stack.innerTube, "Cookie", ytAuth.cookieHeaderValue(account))
+            setProperty(stack.innerTube, "UseLoginForBrowse", account.isConnected)
+            val fetchConfig = stack.parser.javaClass.methods.first {
+                it.name == "fetchConfig" && it.parameterCount == 3
+            }
+            val config = invokeSuspend(stack.parser, fetchConfig, arrayOf(videoId, account.isConnected))
+                ?: return@withContext null
+            val playerUrl = readString(config, "getPlayerUrl") ?: return@withContext null
+            val timestamp = readInt(config, "getSignatureTimestamp") ?: return@withContext null
+            PlaybackCipherContext(videoId, playerUrl, timestamp, account).also {
+                it.requireMatches(videoId, ytAuth.connection.value)
+            }
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.w(TAG, "stage=cipher-context error=${error.javaClass.simpleName}")
+            null
+        }
+    }
+
+    /** Local QuickJS/EJS fallback for ciphers NewPipe cannot parse. No remote cipher service. */
+    internal suspend fun decipherAudioUrls(
+        videoId: String,
+        ciphers: List<String>,
+        context: PlaybackCipherContext? = null,
+        directUrls: List<String> = emptyList(),
+    ): Map<String, String> =
+        withContext(Dispatchers.IO) {
+            if (ciphers.isEmpty() && directUrls.isEmpty()) return@withContext emptyMap()
+            Log.i(TAG, "stage=local-cipher begin")
+            val stack = runtime ?: return@withContext emptyMap()
+            Log.i(TAG, "stage=local-cipher runtime-ready")
+            try {
+                val bound = context ?: fetchCipherContext(videoId) ?: return@withContext emptyMap()
+                bound.requireMatches(videoId, ytAuth.connection.value)
+                val playerUrl = bound.playerUrl
+                Log.i(TAG, "stage=local-cipher config-ready paired=${context != null}")
+                @Suppress("UNCHECKED_CAST")
+                val serializer = companionCall(
+                    "com.metrolist.innertubex.models.response.PlayerResponse\$StreamingData\$Format",
+                    "serializer",
+                ) as DeserializationStrategy<Any>
+                val inputs = playbackCipherInputs(ciphers, directUrls)
+                // processFormats batches signatures and n challenges into one local EJS execution.
+                val formats = inputs.map { input ->
+                    Json.decodeFromString(serializer, input.toFormatJson().toString())
+                }
+                val process = stack.cipher.javaClass.methods.first {
+                    it.name == "processFormats" && it.parameterCount == 3
+                }
+                Log.i(TAG, "stage=local-cipher batch-start count=${formats.size}")
+                val decoded = invokeSuspend(stack.cipher, process, arrayOf(playerUrl, formats)) as? List<*>
+                    ?: return@withContext emptyMap()
+                bound.requireMatches(videoId, ytAuth.connection.value)
+                val result = mutableMapOf<String, String>()
+                for ((input, format) in inputs.zip(decoded)) {
+                    val url = format?.let { readString(it, "getUrl") } ?: continue
+                    val host = Uri.parse(url).host.orEmpty()
+                    if (url.startsWith("https://") && (host == "googlevideo.com" || host.endsWith(".googlevideo.com"))) {
+                        result[input.source] = url
+                    }
+                }
+                Log.i(TAG, "stage=local-cipher requested=${inputs.size} cipherCount=${ciphers.size} directCount=${directUrls.size} decoded=${result.size}")
+                result
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.w(TAG, "stage=local-cipher error=${error.javaClass.simpleName}")
+                emptyMap()
+            }
+        }
 
     fun reportPlaybackFailure(videoId: String, authScope: String, clientProfile: String?) {
         val profile = clientProfile
@@ -177,7 +256,7 @@ class InnerTubeXStreamExtractor @Inject constructor(
             arrayOf(parser, cipher, innerTube),
             defaultMask = 120,
         )
-        return RuntimeStack(innerTube, extractor)
+        return RuntimeStack(innerTube, extractor, parser, cipher)
     }
 
     private fun createKtorHttpClient(): Any {
@@ -316,6 +395,8 @@ class InnerTubeXStreamExtractor @Inject constructor(
     private data class RuntimeStack(
         val innerTube: Any,
         val extractor: Any,
+        val parser: Any,
+        val cipher: Any,
     )
 
     private companion object {

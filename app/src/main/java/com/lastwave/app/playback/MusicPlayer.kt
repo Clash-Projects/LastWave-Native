@@ -28,7 +28,7 @@ import com.lastwave.app.data.lyrics.LyricsResult
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import androidx.media3.datasource.DataSpec
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.Cache
@@ -736,12 +736,19 @@ class MusicPlayer @Inject constructor(
         SimpleCache(cacheDir, evictor, dbProvider)
     }
 
-    private val httpUpstreamFactory: DefaultHttpDataSource.Factory by lazy {
-        DefaultHttpDataSource.Factory()
+    private val httpUpstreamFactory: OkHttpDataSource.Factory by lazy {
+        // Match extraction's IPv4-first routing. HttpURLConnection otherwise
+        // waits a full connect timeout on broken IPv6 routes before trying IPv4.
+        // Keep media off the API client's interceptors and disk HTTP cache.
+        val mediaHttp = okhttp3.OkHttpClient.Builder()
+            .dns(com.lastwave.app.data.network.Ipv4FirstDnsResolver())
+            .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .build()
+        OkHttpDataSource.Factory(mediaHttp)
             .setUserAgent(YOUTUBE_WEB_USER_AGENT)
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(8_000)
-            .setReadTimeoutMs(8_000)
             .setContentTypePredicate(HttpDataSource.REJECT_PAYWALL_TYPES)
             .setDefaultRequestProperties(
                 mapOf(
@@ -1763,7 +1770,7 @@ class MusicPlayer @Inject constructor(
         updateBitPerfectState()
     }
 
-    private val playerDelegate: Lazy<ExoPlayer> = lazy {
+    private val playerDelegate = ResettableLazy {
         val dspA = DeckDspAudioProcessor("deckA", nativeAutoMixEngine)
         deckDspProcessors["deckA"] = dspA
         createPlayer({ nativeAudioEngine.get() }, audioEffectsEngine, false, dspA)
@@ -1842,9 +1849,16 @@ class MusicPlayer @Inject constructor(
         activePlayer = null
         secondaryPlayer = null
         deckDspProcessors.clear()
+        // The service can die while this singleton and activity stay alive.
+        // A normal lazy would permanently return the released primary deck.
+        playerDelegate.reset()
+        forwardingPlayerDelegate.reset()
     }
 
-    val forwardingPlayer: ForwardingPlayer by lazy {
+    val forwardingPlayer: ForwardingPlayer
+        get() = forwardingPlayerDelegate.value
+
+    private val forwardingPlayerDelegate = ResettableLazy {
         object : ForwardingPlayer(playerDelegate.value) {
             private val currentActive: Player
                 get() = activeDeck ?: wrappedPlayer
