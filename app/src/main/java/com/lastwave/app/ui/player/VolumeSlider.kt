@@ -110,9 +110,14 @@ fun VolumeSlider(
                 if (intent?.action == "android.media.VOLUME_CHANGED_ACTION") {
                     val streamType = intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1)
                     if (streamType == AudioManager.STREAM_MUSIC || streamType == -1) {
-                        val updated = runCatching {
-                            audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC)
-                        }.getOrNull()
+                        val extraVol = intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_VALUE", -1)
+                        val updated = if (extraVol >= 0) {
+                            extraVol
+                        } else {
+                            runCatching {
+                                audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC)
+                            }.getOrNull()
+                        }
                         if (updated != null && !isInteracting) {
                             currentVolume = updated
                         }
@@ -125,12 +130,6 @@ fun VolumeSlider(
         onDispose {
             runCatching { context.unregisterReceiver(receiver) }
         }
-    }
-
-    // Refresh volume on composition
-    LaunchedEffect(audioManager) {
-        val vol = runCatching { audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) }.getOrNull()
-        if (vol != null) currentVolume = vol
     }
 
     val volumeRange = (maxVol - minVol).coerceAtLeast(1)

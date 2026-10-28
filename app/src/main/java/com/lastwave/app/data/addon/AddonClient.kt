@@ -212,12 +212,43 @@ class AddonClient(
         private const val DEFAULT_ADDON_SECRET = "36d96a751b12ee481c281a8a8e64c482d0c1634a22061ab72f40175017818b85"
 
         fun normalizeBase(raw: String): String {
-            val trimmed = raw.trim().trimEnd('/')
-            return if (trimmed.endsWith("/manifest.json", ignoreCase = true)) {
-                trimmed.substringBeforeLast("/manifest.json").trimEnd('/')
+            if (raw.isBlank()) return ""
+            // 1. Strip all ASCII whitespace, Unicode invisible / zero-width characters and BOM
+            val sanitized = raw
+                .replace(Regex("""[\u200B-\u200D\uFEFF\u00A0\u200E\u200F\u0000-\u001F]"""), "")
+                .trim()
+                .trimEnd('/')
+
+            if (sanitized.isBlank()) return ""
+
+            // 2. Ensure scheme is present (default to https:// if omitted by user)
+            val withScheme = if (!sanitized.startsWith("http://", ignoreCase = true) &&
+                !sanitized.startsWith("https://", ignoreCase = true)
+            ) {
+                "https://$sanitized"
             } else {
-                trimmed
+                sanitized
             }
+
+            // 3. Strip query parameters and hash fragments
+            val withoutQuery = withScheme.substringBefore('?').substringBefore('#').trimEnd('/')
+
+            // 4. Strip known trailing endpoints (e.g. /manifest.json, /manifest, /search, /stream)
+            val knownSuffixes = listOf(
+                "/manifest.json",
+                "/manifest",
+                "/search",
+                "/stream",
+            )
+            var cleanUrl = withoutQuery
+            for (suffix in knownSuffixes) {
+                if (cleanUrl.endsWith(suffix, ignoreCase = true)) {
+                    cleanUrl = cleanUrl.substring(0, cleanUrl.length - suffix.length).trimEnd('/')
+                    break
+                }
+            }
+
+            return cleanUrl
         }
     }
 }

@@ -145,6 +145,7 @@ import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.AlertDialog
@@ -4484,7 +4485,7 @@ private fun PlayerUtilityControls(
         val isCustomAudio = state.speed != 1f || state.pitch != 1f || state.isAutoMixActive || state.autoMixState == AutoMixState.MONITORING_OUTRO
         PlayerModeButton(
             active = isCustomAudio,
-            description = if (isCustomAudio) "Audio Controls (DJ / Mix Active)" else "Audio & Studio Controls",
+            description = if (isCustomAudio) "Audio Controls (Mix Active)" else "Audio Controls",
             icon = Icons.Filled.VolumeUp,
             onClick = onOpenAudioControls,
             background = edgeButtonBackground,
@@ -4516,8 +4517,8 @@ private fun NowPlayingAutoDJBadgeRow(
     isTranslucent: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    // Keep generation and loading strictly in background & speaker tray console
-    if (state.isAutoDJGenerating) return
+    // Hidden per user requirement: do not display automixing/AutoDJ status badge in Now Playing tab
+    return
 
     val isBlending = state.isAutoMixActive || state.autoMixState == AutoMixState.FADING_AUTO || state.autoMixState == AutoMixState.FADING_FAST
     val isAutoDJMix = state.isAutoDJMixPlaying
@@ -4903,11 +4904,11 @@ private fun AutoDJStudioConsoleCard(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        // 1. Standalone Automix Outro Blending Card
+        // 1. Automix Crossfade Card
         Surface(
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f)),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
             modifier = Modifier.fillMaxWidth(),
         ) {
             Row(
@@ -4926,27 +4927,25 @@ private fun AutoDJStudioConsoleCard(
                         modifier = Modifier
                             .size(38.dp)
                             .clip(CircleShape)
-                            .background(
-                                if (state.isAutoMixEnabled) Color(0xFF8B5CF6).copy(alpha = 0.25f)
-                                else MaterialTheme.colorScheme.surfaceContainerHighest
-                            ),
+                            .background(MaterialTheme.colorScheme.primaryContainer),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             imageVector = Icons.Filled.AutoAwesome,
                             contentDescription = null,
-                            tint = if (state.isAutoMixEnabled) Color(0xFFDDD6FE) else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(18.dp),
                         )
                     }
-                    Column {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            text = "Automix Outro Blending",
+                            text = "Automix",
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                         Text(
-                            text = "Seamless 16-bar bass-swap at the end of normal tracks",
+                            text = "Seamless transitions between queue tracks",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -4958,19 +4957,15 @@ private fun AutoDJStudioConsoleCard(
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         player.setAutomixEnabled(it)
                     },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = Color(0xFF8B5CF6),
-                    ),
                 )
             }
         }
 
-        // 2. Standalone AutoDJ Megamix (~5 min) Card
+        // 2. AutoDJ Mix Card
         Surface(
             shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f)),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(
@@ -4979,7 +4974,6 @@ private fun AutoDJStudioConsoleCard(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                // Header: Title + Feature Badges + Live Status Pill
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -4987,112 +4981,81 @@ private fun AutoDJStudioConsoleCard(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.weight(1f),
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(38.dp)
                                 .clip(CircleShape)
-                                .background(
-                                    if (state.isAutoDJMixPlaying) Color(0xFF06B6D4).copy(alpha = 0.25f)
-                                    else if (state.isAutoDJGenerating) Color(0xFFF59E0B).copy(alpha = 0.25f)
-                                    else MaterialTheme.colorScheme.primaryContainer
-                                ),
+                                .background(MaterialTheme.colorScheme.primaryContainer),
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.QueueMusic,
                                 contentDescription = null,
-                                tint = if (state.isAutoDJMixPlaying) Color(0xFF67E8F9)
-                                    else if (state.isAutoDJGenerating) Color(0xFFFDE68A)
-                                    else MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(22.dp),
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(18.dp),
                             )
                         }
-                        Column {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
-                                text = "AutoDJ Megamix (~5 min)",
+                                text = "AutoDJ Continuous Mix",
                                 style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
                             )
                             Text(
-                                text = if (state.isAutoDJMixPlaying) "Now Playing Single Combined Mix"
-                                else if (state.isAutoDJGenerating) "Resolving 5–6 queue tracks in background..."
-                                else "Blends 5–6 queue tracks into a continuous DJ mix",
+                                text = if (state.isAutoDJMixPlaying) "Continuous DJ set in progress"
+                                else if (state.isAutoDJGenerating) "Preparing upcoming tracks..."
+                                else "Blend queue songs into a continuous DJ set",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
 
-                    // Mode Pill
-                    val (pillText, pillBg, pillFg) = when {
-                        state.isAutoDJMixPlaying -> Triple("MEGAMIX LIVE", Color(0xFF06B6D4).copy(alpha = 0.25f), Color(0xFF67E8F9))
-                        state.isAutoDJGenerating -> Triple("RESOLVING", Color(0xFFF59E0B).copy(alpha = 0.25f), Color(0xFFFDE68A))
-                        else -> Triple("READY", MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = pillBg,
-                    ) {
-                        Text(
-                            text = pillText,
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Black, letterSpacing = 0.5.sp),
-                            color = pillFg,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        )
-                    }
-                }
-
-                // Feature Badges Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                    ) {
-                        Text(
-                            text = "⏱ ~5 MIN TOTAL",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-                        )
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                    ) {
-                        Text(
-                            text = "🎚 5–6 BALANCED TRACKS",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-                        )
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (state.isAutoMixEnabled) Color(0xFF8B5CF6).copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                    ) {
-                        Text(
-                            text = if (state.isAutoMixEnabled) "⚡ AUTOMIX DSP" else "🔀 EQUAL CROSSFADE",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
-                            color = if (state.isAutoMixEnabled) Color(0xFFDDD6FE) else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-                        )
+                    if (state.isAutoDJMixPlaying) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                        ) {
+                            Text(
+                                text = "ACTIVE",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp,
+                                ),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            )
+                        }
+                    } else if (state.isAutoDJGenerating) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f),
+                        ) {
+                            Text(
+                                text = "PREPARING",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp,
+                                ),
+                                color = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            )
+                        }
                     }
                 }
 
-                // Dynamic Action / Monitor Area
                 if (state.isAutoDJGenerating) {
-                    // Background Generating Progress
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f))
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -5100,24 +5063,28 @@ private fun AutoDJStudioConsoleCard(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
-                                text = state.autoDJStatus ?: "Resolving 5–6 tracks in background...",
+                                text = state.autoDJStatus ?: "Preparing tracks...",
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                             val pct = (state.autoDJGenerationProgress * 100).toInt()
                             Text(
                                 text = "$pct%",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = Color(0xFFF59E0B),
+                                color = MaterialTheme.colorScheme.primary,
                             )
                         }
                         LinearProgressIndicator(
                             progress = { state.autoDJGenerationProgress },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp)),
-                            color = Color(0xFFF59E0B),
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = MaterialTheme.colorScheme.primary,
                             trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                         )
                         Row(
@@ -5126,7 +5093,7 @@ private fun AutoDJStudioConsoleCard(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
-                                text = "Current song continues playing normally (~10s)",
+                                text = "Current playback continues normally",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f),
@@ -5142,14 +5109,13 @@ private fun AutoDJStudioConsoleCard(
                         }
                     }
                 } else if (state.isAutoDJMixPlaying) {
-                    // Live Mix Now Playing Hero Card
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f))
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.40f))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -5159,9 +5125,9 @@ private fun AutoDJStudioConsoleCard(
                             val artworkUrl = state.current?.artworkUrl ?: state.autoDJSeedTrack?.artworkUrl
                             Box(
                                 modifier = Modifier
-                                    .size(52.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color.Black.copy(alpha = 0.25f)),
+                                    .size(46.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 if (!artworkUrl.isNullOrBlank()) {
@@ -5175,28 +5141,28 @@ private fun AutoDJStudioConsoleCard(
                                     Icon(
                                         imageVector = Icons.Filled.MusicNote,
                                         contentDescription = null,
-                                        tint = Color(0xFF06B6D4),
-                                        modifier = Modifier.size(26.dp),
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(22.dp),
                                     )
                                 }
                             }
 
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = state.current?.title ?: "AutoDJ Megamix (~5 min)",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
                                 val curIdx = state.autoDJSetCurrentIndex ?: 1
                                 val totalTracks = state.autoDJSetTotalTracks ?: 6
                                 val segmentTitle = state.autoDJCurrentSegmentTitle
                                 Text(
-                                    text = if (!segmentTitle.isNullOrBlank()) "Track $curIdx of $totalTracks: $segmentTitle"
-                                    else "Track $curIdx of $totalTracks in continuous mix",
+                                    text = if (!segmentTitle.isNullOrBlank()) segmentTitle else (state.current?.title ?: "AutoDJ Mix"),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = "Track $curIdx of $totalTracks • AutoDJ Mix",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFF06B6D4),
+                                    color = MaterialTheme.colorScheme.primary,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -5207,8 +5173,8 @@ private fun AutoDJStudioConsoleCard(
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.Black.copy(alpha = 0.25f))
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.35f))
                                     .padding(horizontal = 10.dp, vertical = 6.dp),
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
@@ -5218,39 +5184,39 @@ private fun AutoDJStudioConsoleCard(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text(
-                                        text = if (state.isAutoMixEnabled) "AUTOMIX BASS-SWAP" else "EQUAL CROSSFADE",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Black, fontSize = 9.sp),
-                                        color = Color(0xFFDDD6FE),
+                                        text = "Crossfading into next track",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                     val blendPct = (state.autoMixProgress * 100).roundToInt()
                                     Text(
-                                        text = "$blendPct% BLEND",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp),
-                                        color = Color(0xFFEC4899),
+                                        text = "$blendPct%",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.primary,
                                     )
                                 }
                                 LinearProgressIndicator(
                                     progress = { state.autoMixProgress },
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(4.dp)
+                                        .height(3.dp)
                                         .clip(RoundedCornerShape(2.dp)),
-                                    color = Color(0xFF8B5CF6),
-                                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                                 )
                             }
                         }
 
-                        Button(
+                        OutlinedButton(
                             onClick = {
                                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 player.exitAutoDJMix()
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error,
                             ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.30f)),
                             shape = RoundedCornerShape(10.dp),
                         ) {
                             Icon(
@@ -5261,12 +5227,11 @@ private fun AutoDJStudioConsoleCard(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "Exit AutoDJ Mix",
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                             )
                         }
                     }
                 } else {
-                    // Ready: Large, clean "⚡ Generate AutoDJ Mix" button
                     Button(
                         onClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -5274,22 +5239,22 @@ private fun AutoDJStudioConsoleCard(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(50.dp),
-                        shape = RoundedCornerShape(14.dp),
+                            .height(44.dp),
+                        shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary,
                         ),
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.AutoAwesome,
+                            imageVector = Icons.Filled.PlayArrow,
                             contentDescription = null,
                             modifier = Modifier.size(20.dp),
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "⚡ Generate AutoDJ Mix",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            text = "Start AutoDJ Mix",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
                         )
                     }
                 }
@@ -5430,7 +5395,7 @@ private fun AudioControlsSheet(
                 .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // 1. Studio Master Header Row
+            // 1. Header Row: Clean, premium title without fake jargon or green dots
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -5442,64 +5407,50 @@ private fun AudioControlsSheet(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(42.dp)
+                            .size(40.dp)
                             .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(Color(0xFF8B5CF6), Color(0xFF06B6D4))
-                                )
-                            ),
+                            .background(MaterialTheme.colorScheme.primaryContainer),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.GraphicEq,
+                            imageVector = Icons.Filled.Tune,
                             contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(22.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(20.dp),
                         )
                     }
                     Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Text(
-                                text = "STUDIO MASTER CONSOLE",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = 0.8.sp,
-                                ),
-                                color = Color(0xFF8B5CF6),
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF10B981))
-                            )
-                        }
                         Text(
-                            text = "Dual-Deck Hardware DSP • ~5-Min Auto DJ",
+                            text = "Audio & Playback",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = "Volume, seamless transitions & speed",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Medium,
                         )
                     }
                 }
-                IconButton(onClick = onDismiss) {
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(36.dp),
+                ) {
                     Icon(
                         imageVector = Icons.Filled.Close,
                         contentDescription = "Close",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
                     )
                 }
             }
 
-            // 2. Master System Volume Deck
+            // 2. Volume Card: Clean and uncluttered, no tacky "HARDWARE SINK" badge
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(
@@ -5511,39 +5462,20 @@ private fun AudioControlsSheet(
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.VolumeUp,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Text(
-                                text = "Master Output Level",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                        ) {
-                            Text(
-                                text = "HARDWARE SINK",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 9.sp,
-                                    letterSpacing = 0.5.sp,
-                                ),
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Filled.VolumeUp,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            text = "Output Volume",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
                     }
                     VolumeSlider(
                         isTranslucent = false,
@@ -5552,16 +5484,17 @@ private fun AudioControlsSheet(
                 }
             }
 
-            // Auto DJ & Automix Live Section Card
+            // 3. Automix & AutoDJ Mixing Cards
             AutoDJStudioConsoleCard(
                 state = state,
                 player = player,
             )
 
-            // Studio Slowed & Pitch Section Card
+            // 4. Slowed & Pitch Section Card
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(
@@ -5577,12 +5510,13 @@ private fun AudioControlsSheet(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Slowed & Pitch Control",
+                                text = "Speed & Pitch",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
                             )
                             Text(
-                                text = if (isLocked) "Linked tape varispeed mode" else "Independent time/pitch stretch",
+                                text = if (isLocked) "Tempo & pitch linked" else "Independent tempo and pitch stretch",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -5592,14 +5526,12 @@ private fun AudioControlsSheet(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            // Lock Button Toggle
                             FilterChip(
                                 selected = isLocked,
                                 onClick = {
                                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     isLocked = !isLocked
                                     if (isLocked) {
-                                        // Snap pitch to speed
                                         currentPitch = currentSpeed
                                         player.setPlaybackParameters(currentSpeed, currentSpeed)
                                     }
@@ -5608,7 +5540,7 @@ private fun AudioControlsSheet(
                                     Text(
                                         if (isLocked) "Linked" else "Free",
                                         style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
+                                        fontWeight = FontWeight.SemiBold,
                                     )
                                 },
                                 leadingIcon = {
@@ -5630,7 +5562,6 @@ private fun AudioControlsSheet(
                                 ),
                             )
 
-                            // Reset Button placed right next to Lock button
                             androidx.compose.material3.FilledTonalButton(
                                 onClick = {
                                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -5648,7 +5579,7 @@ private fun AudioControlsSheet(
                             ) {
                                 Icon(Icons.Filled.RestartAlt, contentDescription = null, modifier = Modifier.size(14.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("Reset", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                Text("Reset", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
@@ -5661,9 +5592,10 @@ private fun AudioControlsSheet(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                text = "Playback Speed (Tempo)",
+                                text = "Playback Speed",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface,
                             )
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
@@ -5707,9 +5639,10 @@ private fun AudioControlsSheet(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                text = "Audio Pitch (Tone)",
+                                text = "Pitch",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface,
                             )
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
@@ -5745,9 +5678,9 @@ private fun AudioControlsSheet(
                         )
                     }
 
-                    // Quick Presets - Material You Expressive Design without outline/stroke
+                    // Quick Presets
                     Text(
-                        text = "Studio Presets",
+                        text = "Presets",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -5840,8 +5773,8 @@ private fun AudioControlsSheet(
                             border = null,
                             shape = RoundedCornerShape(16.dp),
                             colors = SuggestionChipDefaults.suggestionChipColors(
-                                containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.65f),
-                                labelColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                labelColor = MaterialTheme.colorScheme.onSurface,
                             ),
                             modifier = Modifier.weight(1f),
                         )

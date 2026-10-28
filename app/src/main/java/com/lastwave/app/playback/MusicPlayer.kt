@@ -101,6 +101,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -224,6 +225,7 @@ data class AutoDJTrackSegment(
     val durationInMixMs: Long,
     val cueOutMs: Long,
     val mixStartOffsetMs: Long,
+    val resolvedStream: MusicPlayer.ResolvedStream? = null,
 )
 
 data class AutoDJMixPlan(
@@ -299,6 +301,7 @@ class MusicPlayer @Inject constructor(
     private var combinedAutoDJTrack: PlayableTrack? = null
     private var savedQueueBeforeMix: List<PlayableTrack>? = null
     private var savedIndexBeforeMix: Int = -1
+    private val autoDJResolvedStreams = java.util.concurrent.ConcurrentHashMap<String, ResolvedStream>()
     private val appContext = context.applicationContext
     /**
      * Playback resolver is the only path allowed to publish a YouTube URL for
@@ -593,6 +596,14 @@ class MusicPlayer @Inject constructor(
     private val audioManager: AudioManager? by lazy {
         appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     }
+    @Volatile
+    private var cachedSysMaxVolume: Int = -1
+    @Volatile
+    private var cachedSysFixedVolume: Boolean? = null
+    @Volatile
+    private var lastCachedSysVolume: Int = 0
+    @Volatile
+    private var lastSysVolumeCheckMs: Long = 0L
     // ---- App-owned audio focus -------------------------------------------------
     // The player is built with handleAudioFocus=false (see createPlayer), so
     // Media3 never answers a focus change itself. Its automatic handling parks
@@ -731,8 +742,8 @@ class MusicPlayer @Inject constructor(
         // Keep media off the API client's interceptors and disk HTTP cache.
         val mediaHttp = okhttp3.OkHttpClient.Builder()
             .dns(com.lastwave.app.data.network.Ipv4FirstDnsResolver())
-            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
             .build()
@@ -937,7 +948,9 @@ class MusicPlayer @Inject constructor(
                 player.currentMediaItem?.mediaId?.let {
                     unavailableMediaIds.remove(it)
                     unavailableAttemptCounts.remove(it)
+                    silentRecoveries.remove(it)
                 }
+                resetRenderWatchdog()
                 autoDJController.get().onPlaybackStarted()
             }
         }
@@ -989,6 +1002,7 @@ class MusicPlayer @Inject constructor(
                 }
                 val currentIndex = player.currentMediaItemIndex
                 activeDeckStartCueMs = targetPos
+                resetRenderWatchdog()
                 autoDJController.get().onTrackTransition(currentIndex)
                 val currentTrack = mediaItem.toPlayableTrack()
                 val currentQueue = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).toPlayableTrack() }
@@ -2637,6 +2651,7 @@ class MusicPlayer @Inject constructor(
                 player.clearMediaItems()
             }
             resetPlayhead(startPositionMs, selectedTrack.mediaIdKey())
+            resetRenderWatchdog()
             _state.value = MusicPlayerState(
                 current = selectedTrack,
                 queue = tracks,
@@ -2711,6 +2726,7 @@ class MusicPlayer @Inject constructor(
                     }
                     player.repeatMode = _state.value.repeatMode
                     PlaybackStartupLog.prepareStart()
+                    resetRenderWatchdog()
                     player.prepare()
                     player.play()
                     enrichUpcomingQueue(selectedIndex)
@@ -3187,19 +3203,112 @@ class MusicPlayer @Inject constructor(
                 val seg = plan.segments[segIdx]
                 val offsetInSeg = target - seg.mixStartOffsetMs
                 val seekDeckPos = (seg.cueInMs + offsetInSeg).coerceAtLeast(0L)
+                val isNewSegment = (segIdx != activeAutoDGSegmentIndex)
+
+                cancelDualDeckOverlap()
+                isOverlapMixActive = false
+                isTriggeringTransition = false
+
                 activeAutoDGSegmentIndex = segIdx
                 val active = activeDeck ?: player
+                val standby = standbyDeck
+
                 val now = SystemClock.elapsedRealtime()
                 lastSeekTargetMs = target
                 lastSeekAtElapsedMs = now
                 playheadPosMs = target
                 playheadWallMs = now
-                active.seekTo(seekDeckPos)
+
+                val dspA = deckDspProcessors[if (active === deckAPlayer) "deckA" else "deckB"]
+                val dspB = deckDspProcessors[if (standby === deckBPlayer) "deckB" else "deckA"]
+                dspA?.endTransition()
+                dspB?.endTransition()
+
+                if (isNewSegment) {
+                    val segStream = seg.resolvedStream
+                        ?: autoDJResolvedStreams[seg.track.mediaIdKey()]
+                        ?: seg.track.videoId?.let { autoDJResolvedStreams[it] }
+                        ?: autoDJResolvedStreams["segment_$segIdx"]
+                    val activeItem = if (segStream != null) seg.track.toMediaItem(segStream) else seg.track.toMediaItem()
+
+                    active.removeListener(listener)
+                    active.clearMediaItems()
+                    active.setMediaItem(activeItem)
+                    active.prepare()
+                    active.seekTo(seekDeckPos)
+                    active.volume = 1.0f
+                    active.playbackParameters = PlaybackParameters(1.0f, 1.0f)
+                    active.play()
+                    active.addListener(listener)
+                    activeDeckStartCueMs = seg.cueInMs
+
+                    if (standby != null) {
+                        val nextIdx = segIdx + 1
+                        if (nextIdx in plan.segments.indices) {
+                            val nextSeg = plan.segments[nextIdx]
+                            val nextStream = nextSeg.resolvedStream
+                                ?: autoDJResolvedStreams[nextSeg.track.mediaIdKey()]
+                                ?: nextSeg.track.videoId?.let { autoDJResolvedStreams[it] }
+                                ?: autoDJResolvedStreams["segment_$nextIdx"]
+                            val nextItem = if (nextStream != null) nextSeg.track.toMediaItem(nextStream) else nextSeg.track.toMediaItem()
+                            standby.removeListener(listener)
+                            standby.clearMediaItems()
+                            standby.setMediaItem(nextItem)
+                            standby.prepare()
+                            standby.seekTo(nextSeg.cueInMs)
+                            standby.volume = 0f
+                            standby.playbackParameters = PlaybackParameters(1.0f, 1.0f)
+                            standby.pause()
+                            standbyInCueMs = nextSeg.cueInMs
+                        } else {
+                            standby.pause()
+                            standby.clearMediaItems()
+                        }
+                    }
+
+                    applicationScope.launch(Dispatchers.IO) {
+                        val lyricsRes = runCatching {
+                            lyricsRepository.get().getLyrics(
+                                title = seg.track.title,
+                                artist = seg.track.artist,
+                                album = seg.track.album,
+                                durationSeconds = (seg.track.durationMs?.div(1000))?.toInt(),
+                                videoId = seg.track.videoId,
+                            )
+                        }.getOrNull()
+                        if (lyricsRes is LyricsResult.Success && lyricsRes.isSynced) {
+                            activeTrackLyrics = lyricsRes.lines
+                        } else {
+                            activeTrackLyrics = null
+                        }
+                    }
+                } else {
+                    active.volume = 1.0f
+                    active.seekTo(seekDeckPos)
+                    if (!active.isPlaying && active.playbackState == Player.STATE_READY) {
+                        active.play()
+                    }
+                    if (standby != null && standby.isPlaying) {
+                        standby.pause()
+                        standby.volume = 0f
+                    }
+                }
+
+                resetRenderWatchdog()
+
                 _state.update {
                     it.copy(
                         positionMs = target,
+                        isPlaying = true,
+                        isBuffering = false,
+                        isAutoMixActive = false,
+                        autoMixState = AutoMixState.IDLE,
+                        autoMixProgress = 0f,
+                        autoMixNextTrack = null,
                         autoDJSetCurrentIndex = segIdx + 1,
                         autoDJCurrentSegmentTitle = seg.track.title,
+                        current = combinedAutoDJTrack ?: it.current,
+                        durationMs = plan.totalMixDurationMs,
                     )
                 }
                 return@onMain
@@ -3315,6 +3424,10 @@ class MusicPlayer @Inject constructor(
      */
     private fun advancePlayhead(playing: Boolean): Long {
         val now = SystemClock.elapsedRealtime()
+        val seekAge = now - lastSeekAtElapsedMs
+        if (lastSeekTargetMs >= 0L && seekAge in 0..SEEK_SETTLE_WINDOW_MS) {
+            return lastSeekTargetMs
+        }
         if (_state.value.isAutoDJMixPlaying) {
             val plan = activeAutoDJPlan
             if (plan != null && activeAutoDGSegmentIndex in plan.segments.indices) {
@@ -3332,7 +3445,6 @@ class MusicPlayer @Inject constructor(
         val key = _state.value.current?.let { track ->
             track.videoId?.takeIf { it.isNotBlank() } ?: "${track.title}|${track.artist}"
         }
-        val seekAge = now - lastSeekAtElapsedMs
         if (lastSeekTargetMs >= 0L) {
             if (seekAge in 0..SEEK_SETTLE_WINDOW_MS) {
                 playheadPosMs = lastSeekTargetMs
@@ -4070,21 +4182,21 @@ class MusicPlayer @Inject constructor(
                 val nextNextIdx = activeAutoDGSegmentIndex + 1
                 if (plan != null && nextNextIdx in plan.segments.indices) {
                     val nextNextSeg = plan.segments[nextNextIdx]
-                    applicationScope.launch(Dispatchers.IO) {
-                        val stream = try {
-                            resolveTrackAudioStream(nextNextSeg.track, nextNextSeg.track.videoId)
-                        } catch (e: Exception) { null }
-                        withContext(Dispatchers.Main.immediate) {
-                            val nextStandby = standbyDeck ?: return@withContext
-                            val item = if (stream != null) nextNextSeg.track.toMediaItem(stream) else nextNextSeg.track.toMediaItem()
-                            nextStandby.clearMediaItems()
-                            nextStandby.setMediaItem(item)
-                            nextStandby.prepare()
-                            nextStandby.seekTo(nextNextSeg.cueInMs)
-                            nextStandby.volume = 0f
-                            nextStandby.pause()
-                            standbyInCueMs = nextNextSeg.cueInMs
-                        }
+                    val stream = nextNextSeg.resolvedStream
+                        ?: autoDJResolvedStreams[nextNextSeg.track.mediaIdKey()]
+                        ?: nextNextSeg.track.videoId?.let { autoDJResolvedStreams[it] }
+                        ?: autoDJResolvedStreams["segment_$nextNextIdx"]
+                    val nextStandby = standbyDeck
+                    if (nextStandby != null && stream != null) {
+                        val item = nextNextSeg.track.toMediaItem(stream)
+                        nextStandby.clearMediaItems()
+                        nextStandby.setMediaItem(item)
+                        nextStandby.prepare()
+                        nextStandby.seekTo(nextNextSeg.cueInMs)
+                        nextStandby.volume = 0f
+                        nextStandby.playbackParameters = PlaybackParameters(1.0f, 1.0f)
+                        nextStandby.pause()
+                        standbyInCueMs = nextNextSeg.cueInMs
                     }
                 }
             } else {
@@ -4860,7 +4972,11 @@ class MusicPlayer @Inject constructor(
         if (dacVolumeManaged || persistedVolumeManaged()) {
             dacVolumeManaged = false
             val saved = savedSystemVolume.takeIf { it >= 0 } ?: persistedSavedVolume()
-            val max = runCatching { manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }.getOrDefault(0)
+            val max = if (cachedSysMaxVolume > 0) cachedSysMaxVolume else {
+                runCatching { manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }.getOrDefault(0).also {
+                    if (it > 0) cachedSysMaxVolume = it
+                }
+            }
             val current = runCatching { manager.getStreamVolume(AudioManager.STREAM_MUSIC) }.getOrDefault(-1)
             if (saved in 0 until max && current == max) {
                 runCatching { manager.setStreamVolume(AudioManager.STREAM_MUSIC, saved, 0) }
@@ -4954,15 +5070,23 @@ class MusicPlayer @Inject constructor(
         } else {
             1f
         }
-        val sysMax = runCatching {
-            audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        }.getOrNull() ?: 0
-        val sysVol = runCatching {
-            audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC)
-        }.getOrNull() ?: 0
-        val sysFixed = runCatching {
+        val sysMax = if (cachedSysMaxVolume > 0) cachedSysMaxVolume else {
+            runCatching {
+                audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            }.getOrNull()?.also { if (it > 0) cachedSysMaxVolume = it } ?: 0
+        }
+        val nowMs = SystemClock.elapsedRealtime()
+        val sysVol = if (nowMs - lastSysVolumeCheckMs < 2500L) {
+            lastCachedSysVolume
+        } else {
+            lastSysVolumeCheckMs = nowMs
+            runCatching {
+                audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC)
+            }.getOrNull()?.also { lastCachedSysVolume = it } ?: lastCachedSysVolume
+        }
+        val sysFixed = cachedSysFixedVolume ?: runCatching {
             audioManager?.isVolumeFixed()
-        }.getOrNull() == true
+        }.getOrNull().also { cachedSysFixedVolume = it } ?: false
         val dac = usbDacMonitor.state.value.dac
         val srcLabel = snapshot.audioCodec
             ?: if (snapshot.isLossless) "LOSSLESS" else "Audio"
@@ -5197,6 +5321,7 @@ class MusicPlayer @Inject constructor(
         activeAutoDJPlan = null
         combinedAutoDJTrack = null
         activeAutoDGSegmentIndex = 0
+        autoDJResolvedStreams.clear()
 
         _state.update {
             it.copy(
@@ -5250,19 +5375,33 @@ class MusicPlayer @Inject constructor(
 
                 val seedTrack = _state.value.current ?: queueTracks.getOrNull(curIdx)
 
-                // Select up to 5-6 upcoming tracks from queue
+                // Select strictly: currently playing song + 5 upcoming songs from current queue
                 val candidateList = mutableListOf<PlayableTrack>()
-                if (curIdx in queueTracks.indices) {
-                    val upcoming = queueTracks.drop(curIdx + 1).take(6)
-                    candidateList.addAll(upcoming)
+                if (seedTrack != null) {
+                    candidateList.add(seedTrack)
                 }
-                if (candidateList.size < 5 && seedTrack != null && candidateList.none { it.mediaIdKey() == seedTrack.mediaIdKey() }) {
-                    candidateList.add(0, seedTrack)
+                if (curIdx in queueTracks.indices) {
+                    val upcoming = queueTracks.drop(curIdx + 1)
+                    for (t in upcoming) {
+                        if (candidateList.size >= 6) break
+                        if (candidateList.none { it.mediaIdKey() == t.mediaIdKey() }) {
+                            candidateList.add(t)
+                        }
+                    }
+                }
+                // If fewer than 6, take earlier tracks from the current queue
+                if (candidateList.size < 6 && queueTracks.isNotEmpty()) {
+                    for (t in queueTracks) {
+                        if (candidateList.size >= 6) break
+                        if (candidateList.none { it.mediaIdKey() == t.mediaIdKey() }) {
+                            candidateList.add(t)
+                        }
+                    }
                 }
 
-                // If still fewer than 5 tracks, fetch radio tracks to guarantee 5-6 tracks
+                // Only when queue is empty or has fewer than 6 songs in total, fetch from radio
                 val targetCount = 6
-                if (candidateList.size < 5) {
+                if (candidateList.size < targetCount) {
                     val seedVideoId = seedTrack?.videoId ?: queueTracks.firstOrNull()?.videoId
                     if (!seedVideoId.isNullOrBlank()) {
                         val radioRes = retryRadioRequest { innerTube.fetchRadio(seedVideoId) }
@@ -5304,33 +5443,38 @@ class MusicPlayer @Inject constructor(
                 val useAutomix = automixEnabled
                 val transitionOverlapMs = if (useAutomix) 16_000L else 12_000L
 
-                // Target mix duration ~300_000L (~5 minutes total, flexible)
-                val targetPerTrackMs = ((300_000L + (n - 1) * transitionOverlapMs) / n).coerceIn(45_000L, 75_000L)
-
-                // Pre-resolve streams in background while current song continues playing uninterrupted (~10s)
-                val resolvedTracks = mutableListOf<Pair<PlayableTrack, ResolvedStream>>()
-                for ((idx, track) in finalTracks.withIndex()) {
-                    if (!isActive) return@launch
-                    withContext(Dispatchers.Main.immediate) {
-                        _state.update {
-                            it.copy(
-                                autoDJGenerationProgress = (idx + 1).toFloat() / (n + 1).toFloat(),
-                                autoDJStatus = "AutoDJ: Resolving track ${idx + 1} of $n (${track.title})...",
-                            )
+                // Pre-resolve all 5-6 YouTube tracks in parallel strictly using OPUS (never lossless, no addon delays)
+                val completedCount = java.util.concurrent.atomic.AtomicInteger(0)
+                val resolvedTracks = coroutineScope {
+                    finalTracks.map { track ->
+                        async(Dispatchers.IO) {
+                            if (!isActive) return@async null
+                            val stream = try {
+                                resolveTrackAudioStreamWithRetry(
+                                    track = track,
+                                    videoId = track.videoId,
+                                    allowLossless = false,
+                                    losslessBudget = LosslessBudget.Disabled,
+                                )
+                            } catch (e: Exception) {
+                                android.util.Log.w("MusicPlayer", "AutoDJ: Failed resolving OPUS stream for ${track.title}", e)
+                                null
+                            }
+                            val done = completedCount.incrementAndGet()
+                            withContext(Dispatchers.Main.immediate) {
+                                _state.update {
+                                    it.copy(
+                                        autoDJGenerationProgress = done.toFloat() / finalTracks.size.toFloat(),
+                                        autoDJStatus = "AutoDJ: Resolving track $done of ${finalTracks.size}...",
+                                    )
+                                }
+                            }
+                            if (stream != null && stream.url.isNotBlank()) track to stream else null
                         }
-                    }
-                    val stream = try {
-                        resolveTrackAudioStream(track, track.videoId)
-                    } catch (e: Exception) {
-                        android.util.Log.w("MusicPlayer", "AutoDJ: Failed resolving stream for ${track.title}", e)
-                        null
-                    }
-                    if (stream != null) {
-                        resolvedTracks.add(track to stream)
-                    }
+                    }.awaitAll().filterNotNull()
                 }
 
-                if (resolvedTracks.isEmpty()) {
+                if (resolvedTracks.size < 2) {
                     withContext(Dispatchers.Main.immediate) {
                         _state.update {
                             it.copy(
@@ -5343,17 +5487,15 @@ class MusicPlayer @Inject constructor(
                     return@launch
                 }
 
-                val mixTracks = resolvedTracks.map { it.first }
-                val actualN = mixTracks.size
-
+                val actualN = resolvedTracks.size
                 val segments = mutableListOf<AutoDJTrackSegment>()
                 var currentMixOffset = 0L
 
                 for (i in 0 until actualN) {
-                    val track = mixTracks[i]
-                    val isLast = i == actualN - 1
-                    val cueIn = if (i == 0) 0L else 15_000L
-                    val durationInMix = if (isLast) targetPerTrackMs + 10_000L else targetPerTrackMs
+                    val (track, stream) = resolvedTracks[i]
+                    val cueIn = 0L
+                    val rawDuration = track.durationMs?.takeIf { it > 30_000L } ?: 210_000L
+                    val durationInMix = rawDuration
                     val cueOut = cueIn + durationInMix
 
                     segments.add(
@@ -5363,17 +5505,18 @@ class MusicPlayer @Inject constructor(
                             durationInMixMs = durationInMix,
                             cueOutMs = cueOut,
                             mixStartOffsetMs = currentMixOffset,
+                            resolvedStream = stream,
                         )
                     )
-                    currentMixOffset += (durationInMix - transitionOverlapMs)
+                    currentMixOffset += (durationInMix - transitionOverlapMs).coerceAtLeast(0L)
                 }
 
                 val totalDurationMs = segments.last().mixStartOffsetMs + segments.last().durationInMixMs
 
-                val firstTrack = mixTracks.first()
+                val firstTrack = resolvedTracks.first().first
                 val plan = AutoDJMixPlan(
                     id = "autodj_mix_${System.currentTimeMillis()}",
-                    title = "AutoDJ Megamix (~5 min)",
+                    title = "AutoDJ Mix (${actualN} Tracks)",
                     seedTrack = firstTrack,
                     segments = segments,
                     totalMixDurationMs = totalDurationMs,
@@ -5386,7 +5529,7 @@ class MusicPlayer @Inject constructor(
                         it.copy(
                             isAutoDJGenerating = false,
                             autoDJGenerationProgress = 1.0f,
-                            autoDJStatus = "AutoDJ: Launching Megamix...",
+                            autoDJStatus = "AutoDJ: Launching Mix...",
                         )
                     }
                     launchAutoDJMixSession(plan, resolvedTracks)
@@ -5413,25 +5556,44 @@ class MusicPlayer @Inject constructor(
         resolvedStreams: List<Pair<PlayableTrack, ResolvedStream>>,
     ) {
         val firstTrack = plan.seedTrack
+        val validVideoId = firstTrack.videoId?.takeIf { it.isNotBlank() }
+            ?: resolvedStreams.firstNotNullOfOrNull { it.first.videoId?.takeIf { id -> id.isNotBlank() } }
+            ?: ""
         val combined = PlayableTrack(
             internalTrackId = plan.id,
             title = plan.title,
             artist = "${plan.segments.size} Tracks: " + plan.segments.joinToString(", ") { it.track.title },
-            album = "AutoDJ Studio Megamix",
+            album = "AutoDJ Mix",
             artworkUrl = firstTrack.artworkUrl,
             durationMs = plan.totalMixDurationMs,
-            videoId = firstTrack.videoId,
+            videoId = validVideoId,
         )
         combinedAutoDJTrack = combined
         activeAutoDJPlan = plan
         activeAutoDGSegmentIndex = 0
+
+        autoDJResolvedStreams.clear()
+        for ((t, s) in resolvedStreams) {
+            autoDJResolvedStreams[t.mediaIdKey()] = s
+            t.videoId?.takeIf { it.isNotBlank() }?.let { autoDJResolvedStreams[it] = s }
+            t.internalTrackId?.takeIf { it.isNotBlank() }?.let { autoDJResolvedStreams[it] = s }
+            autoDJResolvedStreams["${t.title.lowercase()}|${t.artist.lowercase()}"] = s
+        }
+        plan.segments.forEachIndexed { idx, seg ->
+            seg.resolvedStream?.let { s ->
+                autoDJResolvedStreams["segment_$idx"] = s
+            }
+        }
 
         val currentDeck = activeDeck ?: player
         savedQueueBeforeMix = (0 until currentDeck.mediaItemCount).map { currentDeck.getMediaItemAt(it).toPlayableTrack() }
         savedIndexBeforeMix = currentDeck.currentMediaItemIndex
 
         val seg0 = plan.segments[0]
-        val stream0 = resolvedStreams.firstOrNull { it.first.mediaIdKey() == seg0.track.mediaIdKey() }?.second
+        val stream0 = seg0.resolvedStream
+            ?: autoDJResolvedStreams[seg0.track.mediaIdKey()]
+            ?: seg0.track.videoId?.let { autoDJResolvedStreams[it] }
+            ?: autoDJResolvedStreams["segment_0"]
 
         val deckA = deckAPlayer ?: player
         val deckB = deckBPlayer ?: secondaryPlayer ?: standbyOrCreate()
@@ -5461,7 +5623,10 @@ class MusicPlayer @Inject constructor(
 
         if (plan.segments.size > 1) {
             val seg1 = plan.segments[1]
-            val stream1 = resolvedStreams.firstOrNull { it.first.mediaIdKey() == seg1.track.mediaIdKey() }?.second
+            val stream1 = seg1.resolvedStream
+                ?: autoDJResolvedStreams[seg1.track.mediaIdKey()]
+                ?: seg1.track.videoId?.let { autoDJResolvedStreams[it] }
+                ?: autoDJResolvedStreams["segment_1"]
             val mediaItem1 = if (stream1 != null) {
                 seg1.track.toMediaItem(stream1)
             } else {
@@ -5492,7 +5657,7 @@ class MusicPlayer @Inject constructor(
                 autoDJSetTotalTracks = plan.segments.size,
                 autoDJSetCurrentIndex = 1,
                 autoDJCurrentSegmentTitle = seg0.track.title,
-                autoDJStatus = "Auto DJ: ~5-Min Mix (Track 1 of ${plan.segments.size})",
+                autoDJStatus = "Auto DJ: Mix (Track 1 of ${plan.segments.size})",
             )
         }
     }
@@ -5835,6 +6000,7 @@ class MusicPlayer @Inject constructor(
         if (!alreadyAudible) {
             player.seekToDefaultPosition(index)
         }
+        resetRenderWatchdog()
         if (player.playbackState == Player.STATE_IDLE) {
             PlaybackStartupLog.prepareStart()
             player.prepare()
@@ -5910,6 +6076,7 @@ class MusicPlayer @Inject constructor(
 
         val expectedMediaId = mediaItem.mediaId
         resetPlayhead(0L, expectedMediaId)
+        resetRenderWatchdog()
         resolvingMediaIds[expectedMediaId] = generation
         // Screen-off continuity: do NOT player.pause() here. Pausing drops
         // ExoPlayer's WAKE_MODE_NETWORK wake/wifi lock and lets refresh()
@@ -7258,6 +7425,15 @@ class MusicPlayer @Inject constructor(
         resolveAndPlayQueueItem(nextIndex)
     }
 
+    @MainThread
+    private fun resetRenderWatchdog() {
+        renderStallSinceMs = 0L
+        inaudibleSinceMs = 0L
+        lastRenderPositionMs = -1L
+        lastRenderBufferedMs = -1L
+        lastAdvancingPositionMs = -1L
+    }
+
     /**
      * Rendering watchdog: the progress bar is a wall clock and [refresh]
      * preserves the playing flag while a track resolves, so the UI can show
@@ -7317,7 +7493,7 @@ class MusicPlayer @Inject constructor(
         if (!player.isPlaying) {
             // Parked branch: only a fully frozen loader counts as stalled.
             inaudibleSinceMs = 0L
-            if (progressed) {
+            if (progressed || player.isLoading) {
                 renderStallSinceMs = 0L
                 return
             }
@@ -7365,6 +7541,10 @@ class MusicPlayer @Inject constructor(
         if (isCasting) return
         if (!playerDelegate.isInitialized() || index !in 0 until player.mediaItemCount) return
         if (!isCurrentMediaMatch(player, _state.value.current) || !_state.value.isPlaying || _state.value.error != null) return
+        if (player.isLoading) {
+            renderStallSinceMs = 0L
+            return
+        }
         if (silentRecoveries.size > 64) silentRecoveries.clear()
         val attempt = (silentRecoveries[mediaId] ?: 0) + 1
         if (attempt > MAX_SILENT_RECOVERIES) return
@@ -7382,11 +7562,13 @@ class MusicPlayer @Inject constructor(
                 "resolved=$windowResolved -> ${if (windowResolved && attempt == 1) "renderer reset" else "re-resolve"}",
         )
         if (windowResolved && attempt == 1) {
+            resetRenderWatchdog()
             runCatching { player.seekTo(player.currentPosition.coerceAtLeast(0L)) }
             if (player.playbackState == Player.STATE_IDLE) runCatching { player.prepare() }
             runCatching { player.play() }
             return
         }
+        resetRenderWatchdog()
         resolveAndPlayQueueItem(index)
     }
 
@@ -8164,7 +8346,7 @@ class MusicPlayer @Inject constructor(
             val expectedSec = (track.durationMs?.takeIf { it > 0 })?.div(1_000)?.toInt()
             val timeoutMs = when (losslessBudget) {
                 LosslessBudget.Interactive -> 5_000L
-                LosslessBudget.Unbounded -> 30_000L
+                LosslessBudget.Unbounded -> 10_000L
                 LosslessBudget.Disabled -> 0L
             }
             val deferred = applicationScope.async(Dispatchers.IO) {

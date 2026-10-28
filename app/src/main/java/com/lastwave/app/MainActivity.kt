@@ -79,6 +79,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             .onFailure { android.util.Log.e(STARTUP_TAG, "Splash compatibility layer unavailable", it) }
             .getOrNull()
         super.onCreate(savedInstanceState)
+        volumeControlStream = android.media.AudioManager.STREAM_MUSIC
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             // Adopt choices made via system Settings -> App languages so the
             // in-app picker shows the truth. The framework recreates us itself.
