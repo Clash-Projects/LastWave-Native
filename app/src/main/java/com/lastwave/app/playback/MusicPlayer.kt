@@ -225,7 +225,7 @@ data class AutoDJTrackSegment(
     val durationInMixMs: Long,
     val cueOutMs: Long,
     val mixStartOffsetMs: Long,
-    val resolvedStream: ResolvedStream? = null,
+    val resolvedStream: MusicPlayer.ResolvedStream? = null,
 )
 
 data class AutoDJMixPlan(
@@ -3431,7 +3431,6 @@ class MusicPlayer @Inject constructor(
         val key = _state.value.current?.let { track ->
             track.videoId?.takeIf { it.isNotBlank() } ?: "${track.title}|${track.artist}"
         }
-        val seekAge = now - lastSeekAtElapsedMs
         if (lastSeekTargetMs >= 0L) {
             if (seekAge in 0..SEEK_SETTLE_WINDOW_MS) {
                 playheadPosMs = lastSeekTargetMs

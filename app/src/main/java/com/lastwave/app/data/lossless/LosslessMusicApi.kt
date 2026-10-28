@@ -11,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
@@ -732,24 +733,24 @@ class LosslessMusicApi @Inject constructor(
         }
 
         Log.i(TAG, "resolveStream racing for '$title' by '$artist' across ${allCreds.size} addons concurrently (preferredQuality=$preferredQuality, isDownload=$isDownload)")
-        val deferreds = allCreds.map { creds ->
-            async {
-                runCatching {
-                    resolveFromAddon(
-                        title = title,
-                        artist = artist,
-                        expectedDurationSeconds = expectedDurationSeconds,
-                        expectedAlbum = expectedAlbum,
-                        preferredQuality = preferredQuality,
-                        addonBaseUrl = creds.baseUrl,
-                        excludedUrls = excludedUrls,
-                        isDownload = isDownload,
-                    )
-                }.getOrNull()
-            }
+        val candidates = coroutineScope {
+            allCreds.map { creds ->
+                async {
+                    runCatching {
+                        resolveFromAddon(
+                            title = title,
+                            artist = artist,
+                            expectedDurationSeconds = expectedDurationSeconds,
+                            expectedAlbum = expectedAlbum,
+                            preferredQuality = preferredQuality,
+                            addonBaseUrl = creds.baseUrl,
+                            excludedUrls = excludedUrls,
+                            isDownload = isDownload,
+                        )
+                    }.getOrNull()
+                }
+            }.awaitAll().filterNotNull()
         }
-
-        val candidates = deferreds.awaitAll().filterNotNull()
         if (candidates.isEmpty()) {
             // Atmos fallback: if Dolby Atmos was selected but not found across addons,
             // fall back to stereo hi-res / lossless rather than failing and cooling down the backend.
