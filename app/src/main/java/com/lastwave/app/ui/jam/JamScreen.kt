@@ -112,7 +112,7 @@ import com.lastwave.app.ui.common.HeaderActionIcon
 import com.lastwave.app.ui.common.PredictiveBackScreen
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.theme.LocalLiquidGlass
-import com.lastwave.app.ui.theme.liquidGlass
+import com.lastwave.app.ui.theme.liquidGlassChrome
 
 private val LimeAccent = Color(0xFFC9FB00)
 private val DarkTeal = Color(0xFF012226)
@@ -224,7 +224,7 @@ fun JamScreen(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .liquidGlass(shape = RoundedCornerShape(20.dp), alpha = 0.5f),
+                                .liquidGlassChrome(shape = RoundedCornerShape(20.dp)),
                             shape = RoundedCornerShape(20.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
                         ) {
@@ -414,10 +414,10 @@ fun JamScreen(
                                         modifier = Modifier.weight(1f),
                                         keyboardOptions = KeyboardOptions(
                                             capitalization = KeyboardCapitalization.Characters,
-                                            imeAction = ImeAction.Join,
+                                            imeAction = ImeAction.Done,
                                         ),
                                         keyboardActions = KeyboardActions(
-                                            onJoin = { viewModel.joinJamSession() }
+                                            onDone = { viewModel.joinJamSession() }
                                         ),
                                         colors = OutlinedTextFieldDefaults.colors(
                                             focusedBorderColor = LimeAccent,
@@ -533,7 +533,7 @@ fun JamScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 20.dp, vertical = 8.dp)
-                                .liquidGlass(shape = RoundedCornerShape(20.dp), alpha = 0.6f),
+                                .liquidGlassChrome(shape = RoundedCornerShape(20.dp)),
                             shape = RoundedCornerShape(20.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
                         ) {
