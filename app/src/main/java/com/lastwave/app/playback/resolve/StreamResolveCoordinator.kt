@@ -47,7 +47,7 @@ class StreamResolveCoordinator(
         if (cached != null) return cached
         val stream = extraction.await(identity.youtubeVideoId)
         val entry = stream.toStreamCache(identity)
-        cache.put(entry)
+        cache.putIfAbsent(entry)
         return entry
     }
 
