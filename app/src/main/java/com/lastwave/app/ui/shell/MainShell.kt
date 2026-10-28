@@ -143,7 +143,6 @@ import com.kyant.backdrop.shadow.Shadow
 import kotlin.math.sign
 import com.lastwave.app.ui.theme.LocalIsDarkTheme
 import com.lastwave.app.ui.theme.LocalLiquidGlass
-import com.lastwave.app.ui.theme.LocalLiquidGlassBackdrop
 import com.lastwave.app.ui.theme.LocalMd3NavBar
 import com.lastwave.app.ui.theme.LiquidGlassPreset
 import com.lastwave.app.ui.theme.liquidGlassChrome
@@ -153,7 +152,6 @@ import com.lastwave.app.ui.theme.SquircleShape
 import com.lastwave.app.ui.theme.rememberLayerBackdrop
 import com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported
 import com.lastwave.app.ui.theme.liquidGlassSource
-import androidx.compose.runtime.CompositionLocalProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -375,14 +373,11 @@ fun MainShell(
             beyondViewportPageCount = 0,
             modifier = Modifier.fillMaxSize().liquidGlassSource(if (navGlass) navigationBackdrop else null),
         ) { page ->
-            CompositionLocalProvider(
-                LocalLiquidGlassBackdrop provides (if (navGlass) navigationBackdrop else null),
+            val isCurrent = page == pagerState.currentPage
+            PredictiveBackScreen(
+                enabled = isCurrent && tabs[page] != MainTab.FEED,
+                onBack = { scope.launch { pagerState.animateScrollToPage(feedIndex) } },
             ) {
-                val isCurrent = page == pagerState.currentPage
-                PredictiveBackScreen(
-                    enabled = isCurrent && tabs[page] != MainTab.FEED,
-                    onBack = { scope.launch { pagerState.animateScrollToPage(feedIndex) } },
-                ) {
                 when (tabs[page]) {
                     MainTab.FEED -> FeedScreen(
                         onOpenSettings = onOpenSettings,
@@ -415,7 +410,6 @@ fun MainShell(
                 }
             }
         }
-    }
 
         // App update prompt banner (only shown on app open when an update is available and not dismissed)
         AnimatedVisibility(

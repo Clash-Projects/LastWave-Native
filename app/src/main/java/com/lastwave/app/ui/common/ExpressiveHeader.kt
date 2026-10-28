@@ -8,12 +8,14 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -26,28 +28,53 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import com.lastwave.app.ui.theme.Backdrop
-import com.lastwave.app.ui.theme.LiquidGlassPreset
+import com.kyant.backdrop.highlight.Highlight
 import com.lastwave.app.ui.theme.LocalIsDarkTheme
 import com.lastwave.app.ui.theme.LocalLiquidGlass
-import com.lastwave.app.ui.theme.LocalLiquidGlassBackdrop
 import com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported
-import com.lastwave.app.ui.theme.liquidGlassChrome
-import com.lastwave.app.ui.theme.liquidGlassContainerColor
+import com.lastwave.app.ui.theme.liquidGlass
+import com.lastwave.app.ui.theme.liquidGlassSource
+import com.lastwave.app.ui.theme.rememberLayerBackdrop
 
-/** Only the bottom corners are rounded (24dp) for smooth full-bleed top alignment. */
+
+/** Only the bottom corners are rounded, and a modest 24dp at that (not
+ *  36dp) — a short header (just a title row, no back button, minimal
+ *  padding) can be barely taller than 2x a large radius, and when the two
+ *  bottom-corner arcs get close enough to touch they don't blend, they
+ *  clip into a visible seam right where they meet. 24dp stays safely
+ *  smaller than the shortest real header's content height on every screen
+ *  that uses this. */
 private val HeaderShape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)
 
 /**
- * The unified top container for all major screens.
- * Uses exact pure Kyant liquid glass chrome matching the navigation bar and player bar.
+ * The one container every major screen's header sits inside. Full-bleed
+ * width with no side margins and no gap above it — it IS the top of the
+ * screen, edge to edge, with only its bottom edge rounded.
+ *
+ * The depth behind it is a pair of broad radial gradients (accent colors
+ * fading to fully transparent) painted directly as a background, not a
+ * blurred solid shape — Modifier.blur() clamps/repeats pixels at its own
+ * layer bounds, which reads as a hard smear or a visible line right at the
+ * glow's edge instead of a smooth fade to nothing. A gradient that's
+ * already transparent at its own edge has no edge to see.
+ *
+ * Window-inset aware: its CONTENT pads for the status bar, while the
+ * colored surface itself extends up behind the status bar — callers never
+ * add their own top safe-drawing padding above this.
+ *
+ * For a screen with only a title (a tab root, no back target) pass
+ * `onBack = null`; for a pushed screen pass a pop callback and it renders a
+ * leading back button in the same tonal family as the trailing [actions].
  */
 @Composable
 fun ExpressiveHeader(
@@ -56,41 +83,60 @@ fun ExpressiveHeader(
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
     containerColor: Color = Color.Unspecified,
-    backdrop: Backdrop? = LocalLiquidGlassBackdrop.current,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val liquidGlass = LocalLiquidGlass.current
     val isGlass = liquidGlass && isLiquidGlassBackdropSupported()
     val isDark = LocalIsDarkTheme.current
+    val glow = MaterialTheme.colorScheme.primary
+    val secondaryGlow = MaterialTheme.colorScheme.tertiary
+    val backgroundColor = MaterialTheme.colorScheme.background
     val isCustomColor = containerColor != Color.Unspecified
     val isTransparent = isCustomColor && containerColor == Color.Transparent
-    val useGlass = isGlass && !isCustomColor && backdrop != null
+    val useGlass = isGlass && !isCustomColor
+
+    // Backdrop for liquid glass header board — unconditional remember keeps composition stable.
+    val headerBackdrop = rememberLayerBackdrop {
+        drawRect(backgroundColor)
+        drawContent()
+    }
 
     val resolvedContainerColor = when {
         isCustomColor -> containerColor
-        useGlass -> liquidGlassContainerColor(
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            enabled = true,
-            backdrop = backdrop,
-        )
+        useGlass -> Color.Transparent
         else -> MaterialTheme.colorScheme.surfaceContainer
     }
 
     Box(modifier.fillMaxWidth().zIndex(1f)) {
+        if (useGlass && headerBackdrop != null) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .clip(HeaderShape)
+                    .liquidGlassSource(headerBackdrop),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .drawFluidGlowBackground(glow, secondaryGlow),
+                )
+            }
+        }
+
         Surface(
-            shape = if (isTransparent) RectangleShape else HeaderShape,
+            shape = if (isTransparent) androidx.compose.ui.graphics.RectangleShape else HeaderShape,
             color = resolvedContainerColor,
             tonalElevation = if (useGlass || isTransparent) 0.dp else 2.dp,
             shadowElevation = if (useGlass || isTransparent) 0.dp else 4.dp,
             modifier = Modifier
                 .fillMaxWidth()
                 .then(
-                    if (useGlass && backdrop != null) {
-                        Modifier.liquidGlassChrome(
+                    if (useGlass && headerBackdrop != null) {
+                        Modifier.liquidGlass(
+                            backdrop = headerBackdrop,
                             shape = HeaderShape,
-                            enabled = true,
-                            preset = LiquidGlassPreset.Header,
-                            backdrop = backdrop,
+                            interactive = false,
+                            highlight = Highlight.Default,
                         )
                     } else {
                         Modifier
@@ -100,6 +146,15 @@ fun ExpressiveHeader(
             Column(
                 Modifier
                     .fillMaxWidth()
+                    .then(
+                        if (useGlass) {
+                            Modifier.drawGlassBase(isDark)
+                        } else if (!isTransparent) {
+                            Modifier.drawGlowBackground(glow, secondaryGlow)
+                        } else {
+                            Modifier
+                        }
+                    )
                     .windowInsetsPadding(
                         WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
                     )
@@ -114,7 +169,7 @@ fun ExpressiveHeader(
                         FilledTonalIconButton(
                             onClick = onBack,
                             colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                containerColor = if (useGlass) Color.White.copy(alpha = if (isDark) 0.12f else 0.20f)
+                                containerColor = if (liquidGlass) MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)
                                 else MaterialTheme.colorScheme.surfaceContainerHighest,
                             ),
                         ) {
@@ -152,20 +207,132 @@ fun ExpressiveHeader(
     }
 }
 
-/** A trailing action icon for [ExpressiveHeader] styled with glass-compatible translucent tonal styling. */
+/** Rich liquid glow background captured into [rememberLayerBackdrop] for the liquid glass base. */
+@Composable
+private fun Modifier.drawFluidGlowBackground(color: Color, secondaryColor: Color): Modifier {
+    return this.drawWithCache {
+        val cx = size.width * 0.65f
+        val cy = size.height * 0.45f
+        val radius = (size.width.coerceAtLeast(size.height) * 1.15f).coerceAtLeast(1f)
+        val secondaryCx = size.width * 0.32f
+        val secondaryRadius = (size.width.coerceAtLeast(size.height) * 0.75f).coerceAtLeast(1f)
+        val secondaryBrush = Brush.radialGradient(
+            colors = listOf(
+                secondaryColor.copy(alpha = 0.30f),
+                secondaryColor.copy(alpha = 0.12f),
+                secondaryColor.copy(alpha = 0f),
+            ),
+            center = Offset(secondaryCx, size.height * 0.78f),
+            radius = secondaryRadius,
+        )
+        val primaryBrush = Brush.radialGradient(
+            colors = listOf(
+                color.copy(alpha = 0.42f),
+                color.copy(alpha = 0.18f),
+                color.copy(alpha = 0f),
+            ),
+            center = Offset(cx, cy),
+            radius = radius,
+        )
+        val washBrush = Brush.verticalGradient(
+            colors = listOf(
+                color.copy(alpha = 0.15f),
+                secondaryColor.copy(alpha = 0.08f),
+                Color.Transparent,
+            ),
+        )
+        onDrawBehind {
+            drawRect(brush = secondaryBrush)
+            drawRect(brush = primaryBrush)
+            drawRect(brush = washBrush)
+        }
+    }
+}
+
+/** Liquid glass base styling: specular top reflection, translucent base tint, and bottom refraction sheen. */
+@Composable
+private fun Modifier.drawGlassBase(isDark: Boolean): Modifier {
+    val surfaceContainerHigh = MaterialTheme.colorScheme.surfaceContainerHigh
+    return this.drawWithCache {
+        val specularBrush = Brush.verticalGradient(
+            colors = listOf(
+                Color.White.copy(alpha = if (isDark) 0.18f else 0.32f),
+                Color.White.copy(alpha = if (isDark) 0.04f else 0.10f),
+                Color.Transparent,
+            ),
+            startY = 0f,
+            endY = size.height * 0.9f,
+        )
+        val glassBaseTint = if (isDark) {
+            surfaceContainerHigh.copy(alpha = 0.28f)
+        } else {
+            Color.White.copy(alpha = 0.35f)
+        }
+        val bottomSheen = Brush.verticalGradient(
+            colors = listOf(
+                Color.Transparent,
+                Color.White.copy(alpha = if (isDark) 0.05f else 0.08f),
+            ),
+            startY = size.height * 0.75f,
+            endY = size.height,
+        )
+        onDrawBehind {
+            drawRect(glassBaseTint)
+            drawRect(specularBrush)
+            drawRect(bottomSheen)
+        }
+    }
+}
+
+/** Cached accent glows for [ExpressiveHeader]. Subtly tuned so it harmonizes
+ * with dark and signature schemes without creating jarring color washes. */
+@Composable
+private fun Modifier.drawGlowBackground(color: Color, secondaryColor: Color): Modifier {
+    return this.drawWithCache {
+        val cx = size.width * 0.58f
+        val cy = size.height * 0.46f
+        val radius = (size.width.coerceAtLeast(size.height) * 1.08f).coerceAtLeast(1f)
+        val secondaryCx = size.width * 0.38f
+        val secondaryRadius = (size.width.coerceAtLeast(size.height) * 0.72f).coerceAtLeast(1f)
+        val secondaryBrush = Brush.radialGradient(
+            colors = listOf(
+                secondaryColor.copy(alpha = 0.05f),
+                secondaryColor.copy(alpha = 0.015f),
+                secondaryColor.copy(alpha = 0f),
+            ),
+            center = Offset(secondaryCx, size.height * 0.78f),
+            radius = secondaryRadius,
+        )
+        val primaryBrush = Brush.radialGradient(
+            colors = listOf(
+                color.copy(alpha = 0.08f),
+                color.copy(alpha = 0.025f),
+                color.copy(alpha = 0f),
+            ),
+            center = Offset(cx, cy),
+            radius = radius,
+        )
+        onDrawBehind {
+            drawRect(brush = secondaryBrush)
+            drawRect(brush = primaryBrush)
+        }
+    }
+}
+
+/** A trailing action icon for [ExpressiveHeader] (or any other header-style
+ *  surface) — a small filled-tonal circular button matching the leading
+ *  back button's tone, so every icon in a header reads as one family
+ *  instead of each screen picking its own IconButton style. */
 @Composable
 fun HeaderActionIcon(
     icon: ImageVector,
     contentDescription: String?,
     onClick: () -> Unit,
 ) {
-    val isGlass = LocalLiquidGlass.current && isLiquidGlassBackdropSupported()
-    val isDark = LocalIsDarkTheme.current
     FilledTonalIconButton(
         onClick = onClick,
         colors = IconButtonDefaults.filledTonalIconButtonColors(
-            containerColor = if (isGlass) Color.White.copy(alpha = if (isDark) 0.12f else 0.20f)
-            else MaterialTheme.colorScheme.surfaceContainerHighest,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
         ),
     ) {
         Icon(icon, contentDescription = contentDescription)
