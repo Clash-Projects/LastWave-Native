@@ -314,20 +314,35 @@ fun FluidArtworkBackground(
 
     val context = LocalContext.current
     val embeddedUrl = track.artworkUrl
-    val isReal = remember(embeddedUrl) { ArtworkNormalizer.isRealImage(embeddedUrl) }
-    
+
     val key = remember(track.title, track.artist) { ArtworkNormalizer.cacheKey(track.title, track.artist) }
     val resolvedUrl by remember(key) {
         artworkViewModel.resolved.map { it[key] }.distinctUntilChanged()
     }.collectAsStateWithLifecycle(initialValue = artworkViewModel.resolved.value[key])
-    
-    LaunchedEffect(key) {
-        if (!isReal && resolvedUrl.isNullOrBlank()) {
+
+    val localCover = embeddedUrl?.startsWith("file://") == true
+    val highResUrl = resolvedUrl?.takeIf { it.isNotBlank() }
+    val useHighRes = highResUrl != null
+
+    LaunchedEffect(key, localCover) {
+        if (localCover) return@LaunchedEffect
+        if (resolvedUrl == null) {
             artworkViewModel.resolve(track.title, track.artist)
         }
     }
-    
-    val artworkUrl = if (isReal) embeddedUrl else resolvedUrl
+
+    // High-resolution master artwork from metadata providers (Apple Music/Tidal/Deezer/Spotify/YTMusic)
+    // takes priority for the player wallpaper background.
+    // While resolving in background, embeddedUrl (upscaled) is shown as immediate placeholder.
+    val artworkUrl = if (localCover) {
+        embeddedUrl
+    } else if (useHighRes) {
+        highResUrl
+    } else if (ArtworkNormalizer.isRealImage(embeddedUrl)) {
+        ArtworkNormalizer.upscaleYoutubeArtwork(embeddedUrl)
+    } else {
+        null
+    }
     
     var current by remember { mutableStateOf<Bitmap?>(null) }
     var previous by remember { mutableStateOf<Bitmap?>(null) }

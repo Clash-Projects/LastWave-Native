@@ -211,10 +211,17 @@ class ArtworkRepository @Inject constructor(
                         return@withContext "spotify" to spotifyUrl
                     }
 
-                    // Priority 5: YouTube Music (Only as last fallback if providers 1-4 found no verified match)
+                    // Priority 5: Last.fm (Curated album art from Last.fm / Audioscrobbler metadata)
+                    val lastFmUrl = safeFetch("Last.fm", name, artist) { lastFm.fetchArtworkUrl(name, artist) }
+                    if (!lastFmUrl.isNullOrBlank()) {
+                        return@withContext "lastfm" to lastFmUrl
+                    }
+
+                    // Priority 6: YouTube Music (Preferring YouTube Music official album thumbnails)
                     val ytUrl = safeFetch("YouTube Music", name, artist) { fetchYouTubeMusic(name, artist) }
                     if (!ytUrl.isNullOrBlank()) {
-                        return@withContext "youtube" to ytUrl
+                        val prov = if (ArtworkNormalizer.isYtMusicThumbnail(ytUrl)) "youtube_music" else "youtube"
+                        return@withContext prov to ytUrl
                     }
 
                     null
@@ -413,20 +420,33 @@ class ArtworkRepository @Inject constructor(
 
     private suspend fun fetchYouTubeMusic(name: String, artist: String): String? = withContext(Dispatchers.IO) {
         try {
-            val query = if (artist.isNotBlank()) "$name $artist" else name
-            val results = innerTube.searchSongs(query, limit = 5, prefetchStreams = false)
-            if (results.isEmpty()) return@withContext null
-            val best = results
-                .filter { !it.artworkUrl.isNullOrBlank() }
-                .maxByOrNull { com.lastwave.app.data.music.TextMatch.matchScore(it, name, artist) }
-                ?.takeIf { ytVerified(it.title, it.artist, name, artist) }
-            val raw = best?.artworkUrl ?: return@withContext null
-            ArtworkNormalizer.upscaleYoutubeArtwork(raw)
+            val direct = queryYouTubeMusic(name, artist)
+            if (!direct.isNullOrBlank()) return@withContext direct
+            val cleanedTitle = ArtworkNormalizer.cleanTitle(name)
+            val cleanedArtist = ArtworkNormalizer.cleanArtist(artist)
+            if (cleanedTitle != name || cleanedArtist != artist) {
+                queryYouTubeMusic(cleanedTitle, cleanedArtist)
+            } else null
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Exception) {
             null
         }
+    }
+
+    private suspend fun queryYouTubeMusic(name: String, artist: String): String? {
+        val query = if (artist.isNotBlank()) "$name $artist" else name
+        val results = innerTube.searchSongs(query, limit = 5, prefetchStreams = false)
+        if (results.isEmpty()) return null
+        val verified = results
+            .filter { !it.artworkUrl.isNullOrBlank() }
+            .filter { ytVerified(it.title, it.artist, name, artist) }
+        // Strongly prefer official YouTube Music thumbnails (googleusercontent/ggpht) over YouTube video thumbnails (ytimg)
+        val best = verified.filter { ArtworkNormalizer.isYtMusicThumbnail(it.artworkUrl) }
+            .maxByOrNull { com.lastwave.app.data.music.TextMatch.matchScore(it, name, artist) }
+            ?: verified.maxByOrNull { com.lastwave.app.data.music.TextMatch.matchScore(it, name, artist) }
+        val raw = best?.artworkUrl ?: return null
+        return ArtworkNormalizer.upscaleYoutubeArtwork(raw)
     }
 
     /** Title must strictly agree in version and core title, AND artist must agree (when known). */
@@ -511,13 +531,20 @@ class ArtworkRepository @Inject constructor(
                             save(key, "spotify", fromSpotify)
                             fromSpotify
                         } else {
-                            val fromYt = safeFetch("YouTube Music (force)", name, artist) { fetchYouTubeMusic(name, artist) }
-                            if (!fromYt.isNullOrBlank()) {
-                                save(key, "youtube", fromYt)
-                                fromYt
+                            val fromLastFm = safeFetch("Last.fm (force)", name, artist) { lastFm.fetchArtworkUrl(name, artist) }
+                            if (!fromLastFm.isNullOrBlank()) {
+                                save(key, "lastfm", fromLastFm)
+                                fromLastFm
                             } else {
-                                save(key, "none", "")
-                                ""
+                                val fromYt = safeFetch("YouTube Music (force)", name, artist) { fetchYouTubeMusic(name, artist) }
+                                if (!fromYt.isNullOrBlank()) {
+                                    val prov = if (ArtworkNormalizer.isYtMusicThumbnail(fromYt)) "youtube_music" else "youtube"
+                                    save(key, prov, fromYt)
+                                    fromYt
+                                } else {
+                                    save(key, "none", "")
+                                    ""
+                                }
                             }
                         }
                     }

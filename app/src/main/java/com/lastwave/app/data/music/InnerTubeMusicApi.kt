@@ -1970,6 +1970,14 @@ class InnerTubeMusicApi @Inject constructor(
         val finalResults = candidates
             .distinctBy { it.videoId }
             .filter { it.videoId.isNotBlank() }
+            .sortedWith(
+                compareByDescending<YouTubeMusicTrack> {
+                    val isYtMusicThumb = it.artworkUrl?.let { url ->
+                        (url.contains("googleusercontent.com") || url.contains("ggpht.com")) && !url.contains("ytimg.com")
+                    } ?: false
+                    (if (isYtMusicThumb) 2 else 0) + (if (!it.album.isNullOrBlank()) 1 else 0)
+                }
+            )
             .take(limit)
         if (prefetchStreams) finalResults.take(2).forEach { prefetchStream(it.videoId) }
         finalResults
@@ -2797,7 +2805,7 @@ class InnerTubeMusicApi @Inject constructor(
             var artist = videoDetails?.string("author")
             val durationSec = videoDetails?.string("lengthSeconds")?.toIntOrNull()
             val thumbs = videoDetails?.obj("thumbnail")?.array("thumbnails")
-            val artworkUrl = thumbs?.lastOrNull()?.let { (it as? JsonObject)?.string("url") }
+            val artworkUrl = thumbs?.lastOrNull()?.let { (it as? JsonObject)?.string("url") }?.highResolutionArtwork()
 
             if (!title.isNullOrBlank() && !artist.isNullOrBlank()) {
                 if (artist.endsWith(" - Topic")) {
@@ -4919,8 +4927,10 @@ class InnerTubeMusicApi @Inject constructor(
     private fun String.highResolutionArtwork(): String {
         val url = if (startsWith("//")) "https:$this" else this
         return when {
-            (url.contains("googleusercontent.com") || url.contains("ggpht.com")) && '=' in url ->
-                url.substringBeforeLast('=') + "=w512-h512-l90-rj"
+            (url.contains("googleusercontent.com") || url.contains("ggpht.com")) -> {
+                if ('=' in url) url.substringBeforeLast('=') + "=w1200-h1200-l90-rj"
+                else "$url=w1200-h1200-l90-rj"
+            }
             else -> url
         }
     }

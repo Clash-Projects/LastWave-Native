@@ -178,6 +178,24 @@ internal object TextMatch {
         if (titleSim < 50) {
             score -= 1500
         }
+
+        // Strongly prefer official YouTube Music tracks (with album and YT Music thumbnails)
+        // over general YouTube videos (with ytimg video thumbnails or video keywords).
+        val art = candidate.artworkUrl.orEmpty()
+        val isYtMusicThumb = (art.contains("googleusercontent.com") || art.contains("ggpht.com")) && !art.contains("ytimg.com")
+        if (isYtMusicThumb) score += 350
+        if (!candidate.album.isNullOrBlank()) score += 200
+
+        val isVideoThumb = art.contains("ytimg.com") || art.contains("youtube.com/vi")
+        if (isVideoThumb) score -= 400
+
+        val candidateTokens = tokens(candidate.title)
+        val videoNoise = setOf("video", "mv", "musicvideo")
+        val unwantedVideoWords = candidateTokens.intersect(videoNoise) - tokens(title).intersect(videoNoise)
+        if (unwantedVideoWords.isNotEmpty()) {
+            score -= unwantedVideoWords.size * 200
+        }
+
         return score
     }
 }
