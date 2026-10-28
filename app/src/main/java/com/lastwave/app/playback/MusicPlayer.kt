@@ -1749,7 +1749,7 @@ class MusicPlayer @Inject constructor(
         updateBitPerfectState()
     }
 
-    private val playerDelegate: Lazy<ExoPlayer> = lazy {
+    private val playerDelegate = ResettableLazy {
         val dspA = DeckDspAudioProcessor("deckA", nativeAutoMixEngine)
         deckDspProcessors["deckA"] = dspA
         createPlayer({ nativeAudioEngine.get() }, audioEffectsEngine, false, dspA)
@@ -1828,9 +1828,16 @@ class MusicPlayer @Inject constructor(
         activePlayer = null
         secondaryPlayer = null
         deckDspProcessors.clear()
+        // The service can die while this singleton and activity stay alive.
+        // A normal lazy would permanently return the released primary deck.
+        playerDelegate.reset()
+        forwardingPlayerDelegate.reset()
     }
 
-    val forwardingPlayer: ForwardingPlayer by lazy {
+    val forwardingPlayer: ForwardingPlayer
+        get() = forwardingPlayerDelegate.value
+
+    private val forwardingPlayerDelegate = ResettableLazy {
         object : ForwardingPlayer(playerDelegate.value) {
             private val currentActive: Player
                 get() = activeDeck ?: wrappedPlayer
