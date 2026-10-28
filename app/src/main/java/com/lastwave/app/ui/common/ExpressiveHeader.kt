@@ -39,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.kyant.backdrop.highlight.Highlight
+import com.lastwave.app.ui.theme.LocalIsDarkTheme
 import com.lastwave.app.ui.theme.LocalLiquidGlass
 import com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported
 import com.lastwave.app.ui.theme.liquidGlass
@@ -86,6 +87,7 @@ fun ExpressiveHeader(
 ) {
     val liquidGlass = LocalLiquidGlass.current
     val isGlass = liquidGlass && isLiquidGlassBackdropSupported()
+    val isDark = LocalIsDarkTheme.current
     val glow = MaterialTheme.colorScheme.primary
     val secondaryGlow = MaterialTheme.colorScheme.tertiary
     val backgroundColor = MaterialTheme.colorScheme.background
@@ -116,7 +118,7 @@ fun ExpressiveHeader(
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .drawGlowBackground(glow, secondaryGlow),
+                        .drawFluidGlowBackground(glow, secondaryGlow),
                 )
             }
         }
@@ -145,7 +147,9 @@ fun ExpressiveHeader(
                 Modifier
                     .fillMaxWidth()
                     .then(
-                        if (!useGlass && !isTransparent) {
+                        if (useGlass) {
+                            Modifier.drawGlassBase(isDark)
+                        } else if (!isTransparent) {
                             Modifier.drawGlowBackground(glow, secondaryGlow)
                         } else {
                             Modifier
@@ -199,6 +203,83 @@ fun ExpressiveHeader(
                     }
                 }
             }
+        }
+    }
+}
+
+/** Rich liquid glow background captured into [rememberLayerBackdrop] for the liquid glass base. */
+@Composable
+private fun Modifier.drawFluidGlowBackground(color: Color, secondaryColor: Color): Modifier {
+    return this.drawWithCache {
+        val cx = size.width * 0.65f
+        val cy = size.height * 0.45f
+        val radius = (size.width.coerceAtLeast(size.height) * 1.15f).coerceAtLeast(1f)
+        val secondaryCx = size.width * 0.32f
+        val secondaryRadius = (size.width.coerceAtLeast(size.height) * 0.75f).coerceAtLeast(1f)
+        val secondaryBrush = Brush.radialGradient(
+            colors = listOf(
+                secondaryColor.copy(alpha = 0.30f),
+                secondaryColor.copy(alpha = 0.12f),
+                secondaryColor.copy(alpha = 0f),
+            ),
+            center = Offset(secondaryCx, size.height * 0.78f),
+            radius = secondaryRadius,
+        )
+        val primaryBrush = Brush.radialGradient(
+            colors = listOf(
+                color.copy(alpha = 0.42f),
+                color.copy(alpha = 0.18f),
+                color.copy(alpha = 0f),
+            ),
+            center = Offset(cx, cy),
+            radius = radius,
+        )
+        val washBrush = Brush.verticalGradient(
+            colors = listOf(
+                color.copy(alpha = 0.15f),
+                secondaryColor.copy(alpha = 0.08f),
+                Color.Transparent,
+            ),
+        )
+        onDrawBehind {
+            drawRect(brush = secondaryBrush)
+            drawRect(brush = primaryBrush)
+            drawRect(brush = washBrush)
+        }
+    }
+}
+
+/** Liquid glass base styling: specular top reflection, translucent base tint, and bottom refraction sheen. */
+@Composable
+private fun Modifier.drawGlassBase(isDark: Boolean): Modifier {
+    val surfaceContainerHigh = MaterialTheme.colorScheme.surfaceContainerHigh
+    return this.drawWithCache {
+        val specularBrush = Brush.verticalGradient(
+            colors = listOf(
+                Color.White.copy(alpha = if (isDark) 0.18f else 0.32f),
+                Color.White.copy(alpha = if (isDark) 0.04f else 0.10f),
+                Color.Transparent,
+            ),
+            startY = 0f,
+            endY = size.height * 0.9f,
+        )
+        val glassBaseTint = if (isDark) {
+            surfaceContainerHigh.copy(alpha = 0.28f)
+        } else {
+            Color.White.copy(alpha = 0.35f)
+        }
+        val bottomSheen = Brush.verticalGradient(
+            colors = listOf(
+                Color.Transparent,
+                Color.White.copy(alpha = if (isDark) 0.05f else 0.08f),
+            ),
+            startY = size.height * 0.75f,
+            endY = size.height,
+        )
+        onDrawBehind {
+            drawRect(glassBaseTint)
+            drawRect(specularBrush)
+            drawRect(bottomSheen)
         }
     }
 }
