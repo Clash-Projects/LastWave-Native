@@ -41,8 +41,7 @@ class ChunkedRangeDataSource(
 
         if (!isYouTube || (dataSpec.length != C.LENGTH_UNSET.toLong() && dataSpec.length <= chunkSize)) {
             // Non-YouTube requests or small requests pass through directly
-            isCurrentChunkOpen = true
-            return upstream.open(dataSpec)
+            return openUpstream(dataSpec)
         }
 
         openNextChunk()
@@ -68,9 +67,22 @@ class ChunkedRangeDataSource(
             .setLength(chunkLength)
             .build()
 
-        val opened = upstream.open(chunkSpec)
+        val opened = openUpstream(chunkSpec)
         currentChunkRemaining = if (opened != C.LENGTH_UNSET.toLong()) opened else chunkLength
+    }
+
+    private fun openUpstream(dataSpec: DataSpec): Long {
+        // DefaultDataSource assigns its active source before open() completes.
+        // Even a failed open therefore needs close() before the next request.
         isCurrentChunkOpen = true
+        return try {
+            upstream.open(dataSpec)
+        } catch (error: Exception) {
+            runCatching { upstream.close() }
+            isCurrentChunkOpen = false
+            currentChunkRemaining = 0L
+            throw error
+        }
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {

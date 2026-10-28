@@ -355,12 +355,13 @@ class YouTubeStreamExtractor @Inject constructor(
 
 internal const val YOUTUBE_ORIGIN = "https://www.youtube.com"
 
-/** Same Accept headers as the player's [androidx.media3.datasource.DefaultHttpDataSource]. No two-byte Range. */
+/** Match the player's first 1 MiB chunk; two-byte probes can hide media HTTP 403 failures. */
 internal fun playbackProbeRequest(url: String, headers: Map<String, String>): okhttp3.Request =
     okhttp3.Request.Builder()
         .url(url)
         .header("Accept", "audio/*,*/*;q=0.8")
         .header("Accept-Encoding", "identity")
+        .header("Range", "bytes=0-1048575")
         .apply {
             headers.forEach { (name, value) -> header(name, value) }
         }
