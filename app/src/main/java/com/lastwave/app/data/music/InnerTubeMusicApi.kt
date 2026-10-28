@@ -4950,10 +4950,8 @@ class InnerTubeMusicApi @Inject constructor(
     private fun String.highResolutionArtwork(): String {
         val url = if (startsWith("//")) "https:$this" else this
         return when {
-            (url.contains("googleusercontent.com") || url.contains("ggpht.com")) -> {
-                if ('=' in url) url.substringBeforeLast('=') + "=w1200-h1200-l90-rj"
-                else "$url=w1200-h1200-l90-rj"
-            }
+            (url.contains("googleusercontent.com") || url.contains("ggpht.com")) && '=' in url ->
+                url.substringBeforeLast('=') + "=w1200-h1200-l90-rj"
             else -> url
         }
     }

@@ -9,7 +9,7 @@ class ArtworkMatchingTest {
     @Test
     fun testHighResProvidersSet() {
         assertThat(ArtworkNormalizer.HIGH_RES_PROVIDERS).containsExactly(
-            "spotify", "apple", "itunes", "tidal", "deezer"
+            "spotify", "apple", "itunes", "tidal", "deezer", "lastfm", "youtube_music", "ytmusic"
         )
         assertThat(ArtworkNormalizer.HIGH_RES_PROVIDERS).doesNotContain("youtube")
         assertThat(ArtworkNormalizer.HIGH_RES_PROVIDERS).doesNotContain("none")
@@ -19,11 +19,11 @@ class ArtworkMatchingTest {
     fun testUpscaleYoutubeArtwork() {
         val lowResGoogle = "https://lh3.googleusercontent.com/test_image=w120-h120-l90-rj"
         assertThat(ArtworkNormalizer.upscaleYoutubeArtwork(lowResGoogle))
-            .isEqualTo("https://lh3.googleusercontent.com/test_image=s1200")
+            .isEqualTo("https://lh3.googleusercontent.com/test_image=w1200-h1200-l90-rj")
 
         val s544Google = "https://lh3.googleusercontent.com/test_image=s544"
         assertThat(ArtworkNormalizer.upscaleYoutubeArtwork(s544Google))
-            .isEqualTo("https://lh3.googleusercontent.com/test_image=s1200")
+            .isEqualTo("https://lh3.googleusercontent.com/test_image=w1200-h1200-l90-rj")
 
         val hqDefaultYt = "https://i.ytimg.com/vi/abc12345/hqdefault.jpg"
         assertThat(ArtworkNormalizer.upscaleYoutubeArtwork(hqDefaultYt))
