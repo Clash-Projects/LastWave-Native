@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -27,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -36,11 +38,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import com.lastwave.app.ui.theme.LiquidGlassPreset
+import com.kyant.backdrop.highlight.Highlight
 import com.lastwave.app.ui.theme.LocalLiquidGlass
-import com.lastwave.app.ui.theme.LocalLiquidGlassBackdrop
-import com.lastwave.app.ui.theme.liquidGlassChrome
-import com.lastwave.app.ui.theme.liquidGlassContainerColor
+import com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported
+import com.lastwave.app.ui.theme.liquidGlass
+import com.lastwave.app.ui.theme.liquidGlassSource
+import com.lastwave.app.ui.theme.rememberLayerBackdrop
 
 
 /** Only the bottom corners are rounded, and a modest 24dp at that (not
@@ -82,36 +85,56 @@ fun ExpressiveHeader(
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val liquidGlass = LocalLiquidGlass.current
-    val backdrop = LocalLiquidGlassBackdrop.current
+    val isGlass = liquidGlass && isLiquidGlassBackdropSupported()
     val glow = MaterialTheme.colorScheme.primary
     val secondaryGlow = MaterialTheme.colorScheme.tertiary
+    val backgroundColor = MaterialTheme.colorScheme.background
     val isCustomColor = containerColor != Color.Unspecified
     val isTransparent = isCustomColor && containerColor == Color.Transparent
-    val resolvedContainerColor = if (isCustomColor) {
-        containerColor
-    } else {
-        liquidGlassContainerColor(
-            MaterialTheme.colorScheme.surfaceContainer,
-            enabled = liquidGlass,
-            backdrop = backdrop,
-        )
+    val useGlass = isGlass && !isCustomColor
+
+    // Backdrop for liquid glass header board — unconditional remember keeps composition stable.
+    val headerBackdrop = rememberLayerBackdrop {
+        drawRect(backgroundColor)
+        drawContent()
+    }
+
+    val resolvedContainerColor = when {
+        isCustomColor -> containerColor
+        useGlass -> Color.Transparent
+        else -> MaterialTheme.colorScheme.surfaceContainer
     }
 
     Box(modifier.fillMaxWidth().zIndex(1f)) {
+        if (useGlass && headerBackdrop != null) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .clip(HeaderShape)
+                    .liquidGlassSource(headerBackdrop),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .drawGlowBackground(glow, secondaryGlow),
+                )
+            }
+        }
+
         Surface(
             shape = if (isTransparent) androidx.compose.ui.graphics.RectangleShape else HeaderShape,
             color = resolvedContainerColor,
-            tonalElevation = if (liquidGlass || isTransparent) 0.dp else 2.dp,
-            shadowElevation = if (liquidGlass || isTransparent) 0.dp else 4.dp,
+            tonalElevation = if (useGlass || isTransparent) 0.dp else 2.dp,
+            shadowElevation = if (useGlass || isTransparent) 0.dp else 4.dp,
             modifier = Modifier
                 .fillMaxWidth()
                 .then(
-                    if (liquidGlass && !isTransparent) {
-                        Modifier.liquidGlassChrome(
+                    if (useGlass && headerBackdrop != null) {
+                        Modifier.liquidGlass(
+                            backdrop = headerBackdrop,
                             shape = HeaderShape,
-                            enabled = liquidGlass,
-                            preset = LiquidGlassPreset.FloatingControls,
-                            backdrop = backdrop,
+                            interactive = false,
+                            highlight = Highlight.Default,
                         )
                     } else {
                         Modifier
@@ -122,7 +145,7 @@ fun ExpressiveHeader(
                 Modifier
                     .fillMaxWidth()
                     .then(
-                        if (!liquidGlass && !isTransparent) {
+                        if (!useGlass && !isTransparent) {
                             Modifier.drawGlowBackground(glow, secondaryGlow)
                         } else {
                             Modifier
