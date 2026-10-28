@@ -40,6 +40,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.RectangleShape
@@ -393,7 +394,7 @@ fun liquidGlassContainerColor(
     enabled: Boolean = LocalLiquidGlass.current,
     backdrop: Backdrop? = LocalLiquidGlassBackdrop.current,
 ): Color = if (enabled && isLiquidGlassBackdropSupported() && backdrop != null) {
-    Color.Transparent
+    if (color.isSpecified && color.alpha < 0.95f) color else Color.Transparent
 } else color
 
 @Composable
