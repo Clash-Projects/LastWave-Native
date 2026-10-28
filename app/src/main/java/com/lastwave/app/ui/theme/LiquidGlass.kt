@@ -573,6 +573,7 @@ fun Modifier.liquidGlass(
     shape: Shape = CircleShape,
     interactive: Boolean = true,
     highlight: Highlight = Highlight.Default,
+    forceDark: Boolean = false,
 ): Modifier {
     if (!LocalLiquidGlass.current) {
         return this
@@ -584,7 +585,7 @@ fun Modifier.liquidGlass(
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f))
     }
-    val isDark = LocalIsDarkTheme.current
+    val isDark = forceDark || LocalIsDarkTheme.current
     val layer = rememberGraphicsLayer()
     val interaction = rememberGlassInteraction()
     return this.drawInteractiveGlass(
@@ -609,13 +610,14 @@ fun Modifier.liquidGlass(
     blurScale: Float = 1f,
     minScrim: Float = GlassRecipe.MIN_SCRIM,
     maxScrim: Float = GlassRecipe.MAX_SCRIM,
+    forceDark: Boolean = false,
 ): Modifier {
     if (!LocalLiquidGlass.current || !isLiquidGlassBackdropSupported()) {
         return this
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f))
     }
-    val isDark = LocalIsDarkTheme.current
+    val isDark = forceDark || LocalIsDarkTheme.current
     val interaction = rememberGlassInteraction()
     return this.drawInteractiveGlass(
         isDark = isDark,
@@ -778,18 +780,22 @@ fun Modifier.liquidGlassChrome(
     ambientMotion: Boolean = false,
     contentBrightness: Float = 0f,
     onPointerPosition: ((Offset?) -> Unit)? = null,
+    forceDark: Boolean = false,
 ): Modifier {
     if (!enabled || !preset.isGlassTarget() || backdrop == null || !isLiquidGlassBackdropSupported()) {
         return this
     }
-    // interactionSource/ambient/contentBrightness deliberately ignored:
-    // Uses observe-only GlassInteraction, no haptics, no ambient drift.
-    // BottomNavigation stays completely static on press (no scale/jiggle).
+    // PlayerControls and FloatingControls in Now Playing always use dark-glass
+    // styling matching dark mode so they remain crisp and legible against immersive media backdrops.
+    val shouldForceDark = forceDark ||
+        preset == LiquidGlassPreset.PlayerControls ||
+        preset == LiquidGlassPreset.FloatingControls
     return this.liquidGlass(
         backdrop = backdrop,
         shape = shape,
         interactive = preset != LiquidGlassPreset.BottomNavigation,
         highlight = Highlight.Default,
+        forceDark = shouldForceDark,
     )
 }
 

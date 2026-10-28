@@ -2326,6 +2326,7 @@ private fun FullPlayer(
     CompositionLocalProvider(
         LocalLiquidGlassBackdrop provides if (fullGlass) playerBackdrop else null,
         LocalLiquidGlassOverlayBackdrop provides if (fullGlass) playerBackdrop else null,
+        LocalIsDarkTheme provides true,
     ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -3041,14 +3042,14 @@ private fun FullPlayer(
                                                         alpha = sleeveAlpha
                                                     },
                                             ) {
-                                                val heroArtworkTrack = if (state.isAutoDJActive && state.autoDJSeedTrack != null) state.autoDJSeedTrack else track
+                                                val heroArtworkTrack = track
                                                 Box(Modifier.fillMaxSize()) {
                                                     PlayerArtwork(
                                                         track = heroArtworkTrack,
                                                         modifier = Modifier
                                                             .fillMaxSize()
                                                             .graphicsLayer {
-                                                                alpha = if (state.isAutoMixActive && state.autoMixNextTrack != null && !state.isAutoDJActive) {
+                                                                alpha = if (state.isAutoMixActive && state.autoMixNextTrack != null) {
                                                                     (1f - state.autoMixProgress).coerceIn(0f, 1f)
                                                                 } else 1f
                                                             },
@@ -3058,7 +3059,7 @@ private fun FullPlayer(
                                                         pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
                                                         onAspectRatioChanged = { canvasAspect = it },
                                                     )
-                                                    if (state.isAutoMixActive && state.autoMixNextTrack != null && !state.isAutoDJActive) {
+                                                    if (state.isAutoMixActive && state.autoMixNextTrack != null) {
                                                         PlayerArtwork(
                                                             track = state.autoMixNextTrack,
                                                             modifier = Modifier
