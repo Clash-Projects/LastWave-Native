@@ -102,6 +102,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     @Inject lateinit var androidAutoLibrary: AndroidAutoMediaLibrary
     @Inject lateinit var trackLikeController: TrackLikeController
     @Inject lateinit var liveTelemetryRepository: com.lastwave.app.data.repository.LiveTelemetryRepository
+    @Inject lateinit var jamPlaybackSync: com.lastwave.app.playback.jam.JamPlaybackSync
 
     // SupervisorJob stops sibling failure propagation; the handler below
     // additionally stops an unexpected exception in any fire-and-forget

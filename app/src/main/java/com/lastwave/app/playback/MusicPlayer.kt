@@ -2482,6 +2482,7 @@ class MusicPlayer @Inject constructor(
         track: PlayableTrack,
         sourceLabel: String = "LastWave",
         startRadio: Boolean = true,
+        startPositionMs: Long = 0L,
     ) {
         pendingRestoredSession = null
         disableDiscoverQueue()
@@ -2499,7 +2500,7 @@ class MusicPlayer @Inject constructor(
         startResolvedQueuePlayback(
             tracks = listOf(track),
             selectedIndex = 0,
-            startPositionMs = 0L,
+            startPositionMs = startPositionMs,
             sourceLabel = sourceLabel,
             endlessDiscover = false,
         )

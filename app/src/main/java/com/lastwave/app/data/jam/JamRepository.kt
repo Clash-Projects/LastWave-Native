@@ -45,11 +45,14 @@ sealed interface JamSessionState {
 }
 
 sealed interface RemotePlaybackEvent {
-    data class Play(val positionMs: Long, val serverTimeMs: Long) : RemotePlaybackEvent
-    data class Pause(val positionMs: Long) : RemotePlaybackEvent
-    data class Seek(val positionMs: Long) : RemotePlaybackEvent
-    data class ChangeTrack(val track: TrackInfoPayload, val isPlaying: Boolean, val positionMs: Long) : RemotePlaybackEvent
-    data class FullSync(val playback: PlaybackStatePayload) : RemotePlaybackEvent
+    val fromUserId: String?
+    data class Play(val positionMs: Long, val serverTimeMs: Long, override val fromUserId: String? = null) : RemotePlaybackEvent
+    data class Pause(val positionMs: Long, override val fromUserId: String? = null) : RemotePlaybackEvent
+    data class Seek(val positionMs: Long, override val fromUserId: String? = null) : RemotePlaybackEvent
+    data class ChangeTrack(val track: TrackInfoPayload, val isPlaying: Boolean, val positionMs: Long, override val fromUserId: String? = null) : RemotePlaybackEvent
+    data class FullSync(val playback: PlaybackStatePayload) : RemotePlaybackEvent {
+        override val fromUserId: String? = null
+    }
 }
 
 @Singleton
@@ -360,17 +363,17 @@ class JamRepository @Inject constructor(
         scope.launch {
             when (action.action) {
                 JamProtocolConstants.ACTION_PLAY -> {
-                    _remotePlaybackEvents.emit(RemotePlaybackEvent.Play(action.positionMs, action.serverTimeMs))
+                    _remotePlaybackEvents.emit(RemotePlaybackEvent.Play(action.positionMs, action.serverTimeMs, action.fromUserId))
                 }
                 JamProtocolConstants.ACTION_PAUSE -> {
-                    _remotePlaybackEvents.emit(RemotePlaybackEvent.Pause(action.positionMs))
+                    _remotePlaybackEvents.emit(RemotePlaybackEvent.Pause(action.positionMs, action.fromUserId))
                 }
                 JamProtocolConstants.ACTION_SEEK -> {
-                    _remotePlaybackEvents.emit(RemotePlaybackEvent.Seek(action.positionMs))
+                    _remotePlaybackEvents.emit(RemotePlaybackEvent.Seek(action.positionMs, action.fromUserId))
                 }
                 JamProtocolConstants.ACTION_CHANGE_TRACK -> {
                     action.track?.let { track ->
-                        _remotePlaybackEvents.emit(RemotePlaybackEvent.ChangeTrack(track, action.isPlaying, action.positionMs))
+                        _remotePlaybackEvents.emit(RemotePlaybackEvent.ChangeTrack(track, action.isPlaying, action.positionMs, action.fromUserId))
                     }
                 }
             }

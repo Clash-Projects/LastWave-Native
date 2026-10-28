@@ -55,6 +55,7 @@ class LastWaveJamViewModel @Inject constructor(
     private val jamRepository: JamRepository,
     private val musicPlayer: MusicPlayer,
     private val settingsPreferences: SettingsPreferences,
+    private val jamPlaybackSync: com.lastwave.app.playback.jam.JamPlaybackSync,
 ) : ViewModel() {
 
     private val _pendingRoomCode = MutableStateFlow("")
@@ -67,9 +68,6 @@ class LastWaveJamViewModel @Inject constructor(
     val pendingRoomMode: StateFlow<String> = _pendingRoomMode.asStateFlow()
 
     val chatMessages: StateFlow<List<ChatMessagePayload>> = jamRepository.chatMessages
-
-    // Prevent echoing remote events back to the server
-    private var isApplyingRemoteAction = false
 
     val uiState: StateFlow<JamUiState> = combine(
         combine(jamRepository.sessionState, _pendingRoomCode, _pendingDisplayName, _pendingRoomMode) { session, code, name, mode ->
@@ -181,104 +179,6 @@ class LastWaveJamViewModel @Inject constructor(
                 }
                 _pendingRoomMode.value = settings.jamRoomMode
             }
-        }
-
-        // Listen to remote playback events and update local player
-        viewModelScope.launch {
-            jamRepository.remotePlaybackEvents.collect { event ->
-                handleRemotePlaybackEvent(event)
-            }
-        }
-
-        // Listen to local player changes and broadcast if in an active session
-        viewModelScope.launch {
-            musicPlayer.state
-                .map { it.isPlaying to it.current }
-                .distinctUntilChanged()
-                .collect { (isPlaying, current) ->
-                    if (isApplyingRemoteAction) return@collect
-                    val session = jamRepository.sessionState.value
-                    if (session is JamSessionState.Active && (session.isHost || session.roomMode == JamProtocolConstants.MODE_COLLABORATIVE)) {
-                        val pos = musicPlayer.progressState.value.positionMs
-                        if (current != null) {
-                            val trackPayload = TrackInfoPayload(
-                                id = current.videoId ?: current.title,
-                                title = current.title,
-                                artist = current.artist,
-                                album = current.album,
-                                artworkUrl = current.artworkUrl,
-                                durationMs = current.durationMs,
-                            )
-                            jamRepository.broadcastChangeTrack(trackPayload, pos, isPlaying)
-                        } else if (isPlaying) {
-                            jamRepository.broadcastPlay(pos)
-                        } else {
-                            jamRepository.broadcastPause(pos)
-                        }
-                    }
-                }
-        }
-    }
-
-    private fun handleRemotePlaybackEvent(event: RemotePlaybackEvent) {
-        isApplyingRemoteAction = true
-        try {
-            when (event) {
-                is RemotePlaybackEvent.Play -> {
-                    musicPlayer.seekTo(event.positionMs)
-                    val curr = musicPlayer.state.value.current
-                    if (curr != null && !musicPlayer.state.value.isPlaying) {
-                        musicPlayer.resume()
-                    }
-                }
-                is RemotePlaybackEvent.Pause -> {
-                    musicPlayer.seekTo(event.positionMs)
-                    musicPlayer.pause()
-                }
-                is RemotePlaybackEvent.Seek -> {
-                    musicPlayer.seekTo(event.positionMs)
-                }
-                is RemotePlaybackEvent.ChangeTrack -> {
-                    val localCurrent = musicPlayer.state.value.current
-                    val sameSong = localCurrent != null && (localCurrent.videoId == event.track.id || localCurrent.title.equals(event.track.title, ignoreCase = true))
-                    if (!sameSong) {
-                        val playable = PlayableTrack(
-                            title = event.track.title,
-                            artist = event.track.artist,
-                            album = event.track.album.orEmpty(),
-                            artworkUrl = event.track.artworkUrl,
-                            durationMs = event.track.durationMs ?: 0L,
-                            videoId = event.track.id,
-                        )
-                        musicPlayer.play(playable, sourceLabel = "LastWave Jam")
-                        if (event.positionMs > 0) {
-                            musicPlayer.seekTo(event.positionMs)
-                        }
-                    }
-                }
-                is RemotePlaybackEvent.FullSync -> {
-                    event.playback.currentTrack?.let { remoteTrack ->
-                        val localCurrent = musicPlayer.state.value.current
-                        if (localCurrent == null || localCurrent.videoId != remoteTrack.id) {
-                            val playable = PlayableTrack(
-                                title = remoteTrack.title,
-                                artist = remoteTrack.artist,
-                                album = remoteTrack.album.orEmpty(),
-                                artworkUrl = remoteTrack.artworkUrl,
-                                durationMs = remoteTrack.durationMs ?: 0L,
-                                videoId = remoteTrack.id,
-                            )
-                            musicPlayer.play(playable, sourceLabel = "LastWave Jam")
-                        }
-                        musicPlayer.seekTo(event.playback.positionMs)
-                        if (!event.playback.isPlaying) {
-                            musicPlayer.pause()
-                        }
-                    }
-                }
-            }
-        } finally {
-            isApplyingRemoteAction = false
         }
     }
 

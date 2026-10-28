@@ -482,6 +482,7 @@ fun SettingsScreen(
     onOpenExternalImport: () -> Unit = {},
     onOpenSpotifyLogin: () -> Unit = {},
     onOpenSpotifyTokenImport: () -> Unit = {},
+    onOpenJam: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     jamViewModel: LastWaveJamViewModel = hiltViewModel(),
 ) {
@@ -739,7 +740,7 @@ fun SettingsScreen(
                                         } else {
                                             stringResource(R.string.settings_jam_sub)
                                         },
-                                        onClick = { showJamSheet = true },
+                                        onClick = onOpenJam,
                                         position = position,
                                     )
                                 }

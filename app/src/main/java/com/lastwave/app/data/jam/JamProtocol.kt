@@ -130,6 +130,7 @@ data class TrackInfoPayload(
 @Serializable
 data class PlaybackActionPayload(
     @SerialName("action") val action: String,
+    @SerialName("from_user_id") val fromUserId: String? = null,
     @SerialName("track") val track: TrackInfoPayload? = null,
     @SerialName("position_ms") val positionMs: Long = 0L,
     @SerialName("client_time_ms") val clientTimeMs: Long? = null,
