@@ -38,7 +38,13 @@ object ArtworkNormalizer {
     private val FEAT_REGEX = Regex("(?i)\\s*[(|\\[](feat|ft|with|featuring)\\.?\\s+.*?[)|\\]]")
     private val REMASTER_REGEX = Regex("(?i)\\s*[(|\\[].*?(remaster|live|version|edit|mono|stereo|deluxe|bonus).*?[)|\\]]")
 
-    val HIGH_RES_PROVIDERS: Set<String> = setOf("spotify", "apple", "itunes", "tidal", "deezer")
+    val HIGH_RES_PROVIDERS: Set<String> = setOf("spotify", "apple", "itunes", "tidal", "deezer", "lastfm", "youtube_music", "ytmusic")
+
+    fun isYtMusicThumbnail(url: String?): Boolean =
+        !url.isNullOrBlank() && (url.contains("googleusercontent.com") || url.contains("ggpht.com")) && !url.contains("ytimg.com")
+
+    fun isYoutubeVideoThumbnail(url: String?): Boolean =
+        !url.isNullOrBlank() && (url.contains("ytimg.com") || url.contains("youtube.com/vi"))
 
     private val YT_SIZE_REGEX = Regex("""=w\d+-h\d+[^?#]*|=s\d+[^?#]*""")
 
@@ -52,11 +58,13 @@ object ArtworkNormalizer {
         var result = url
         if (result.contains("googleusercontent.com") || result.contains("ggpht.com")) {
             result = if (YT_SIZE_REGEX.containsMatchIn(result)) {
-                result.replace(YT_SIZE_REGEX, "=s1200")
+                result.replace(YT_SIZE_REGEX, "=w1200-h1200-l90-rj")
+            } else if ('=' in result) {
+                result.substringBeforeLast('=') + "=w1200-h1200-l90-rj"
             } else {
-                "$result=s1200"
+                "$result=w1200-h1200-l90-rj"
             }
-        } else if (result.contains("i.ytimg.com/vi/")) {
+        } else if (result.contains("i.ytimg.com/vi/") || result.contains("img.youtube.com/vi/")) {
             result = result.replace("/hqdefault.jpg", "/maxresdefault.jpg")
                 .replace("/sddefault.jpg", "/maxresdefault.jpg")
         }

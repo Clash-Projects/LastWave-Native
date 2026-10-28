@@ -1685,11 +1685,14 @@ class TrackDownloadManager @Inject constructor(
                         artworkFallback?.cancel()
                     }
                     if (resolvedArtworkUrl == null) {
-                        // Last resort (SimpMusic/Metrolist style): the YouTube
-                        // thumbnail for the exact downloaded video always exists.
-                        resolvedArtworkUrl = resolvedYtVideoId?.takeIf { it.isNotBlank() }
-                            ?.let { "https://i.ytimg.com/vi/$it/hqdefault.jpg" }
+                        // Last resort (SimpMusic/Metrolist style): prefer YouTube Music thumbnail if available,
+                        // otherwise the YouTube thumbnail for the exact downloaded video.
+                        val ytMusicThumb = preloadedBestMatch?.artworkUrl?.takeIf {
+                            ArtworkNormalizer.isRealImage(it) && ArtworkNormalizer.isYtMusicThumbnail(it)
+                        }
+                        resolvedArtworkUrl = ytMusicThumb
                             ?: preloadedBestMatch?.artworkUrl?.takeIf { ArtworkNormalizer.isRealImage(it) }
+                            ?: resolvedYtVideoId?.takeIf { it.isNotBlank() }?.let { "https://i.ytimg.com/vi/$it/hqdefault.jpg" }
                     }
 
                     // 4. Embed metadata, cover art AND lyrics directly into the
