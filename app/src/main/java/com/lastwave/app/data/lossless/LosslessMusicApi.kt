@@ -372,9 +372,14 @@ class LosslessMusicApi @Inject constructor(
             "live", "concert", "unplugged", "acoustic", "instrumental", "karaoke",
             "vocals", "vocal", "acapella", "acappella", "backing", "stems", "stem",
             "cover", "demo", "reprise", "remake", "rework", "extended", "edit",
+            "version", "mix", "dub", "vip", "session", "sessions",
             "sped", "slowed", "reverb", "nightcore", "lofi", "orchestral", "symphonic",
             "part", "pt", "chapter", "atmos", "dolby", "spatial",
-        )
+            "カバー", "カラオケ", "リミックス", "ライブ", "アコースティック",
+            "インスト", "バージョン", "歌ってみた", "踊ってみた", "弾いてみた",
+            "翻唱", "现场", "混音",
+            "커버", "라이브", "리믹스",
+        ) + LANGUAGE_TOKENS
 
         private val NEUTRAL_SEGMENTS = setOf(
             "albumversion", "originalversion", "originalmix", "singleversion",
@@ -390,7 +395,6 @@ class LosslessMusicApi @Inject constructor(
             "featuring", "with", "new", "latest", "free", "download", "remaster",
             "remastered", "explicit", "clean", "bonus", "track", "deluxe", "original",
             "album", "single", "hd", "hq", "4k", "mp3", "ost", "soundtrack", "mv",
-            "version", "versions", "mix", "mixes",
         )
 
         private val RECORD_LABELS = setOf(
@@ -530,6 +534,9 @@ class LosslessMusicApi @Inject constructor(
                 context = context,
             )
         }
+
+        internal fun albumVersionMarkers(album: String?): Set<String> =
+            if (album.isNullOrBlank()) emptySet() else parseTitle(album).versions
 
         private fun classifySegment(
             segment: String,
@@ -1139,8 +1146,10 @@ class LosslessMusicApi @Inject constructor(
 
         // 1. Version agreement: asking for original must never land on remix, live, acoustic, karaoke, etc.
         // And asking for remix must never land on original cut.
-        if (wanted.versions != got.versions) {
-            Log.d(TAG, "reject candidate id=${item.id}: version mismatch wanted=${wanted.versions} got=${got.versions} for '$title'")
+        val albumMarks = albumVersionMarkers(item.albumTitle)
+        val effectiveVersions = got.versions + (albumMarks intersect wanted.versions)
+        if (wanted.versions != effectiveVersions) {
+            Log.d(TAG, "reject candidate id=${item.id}: version mismatch wanted=${wanted.versions} got=$effectiveVersions for '$title'")
             return null
         }
 
@@ -1261,7 +1270,25 @@ class LosslessMusicApi @Inject constructor(
 
     private fun extractLanguages(raw: String): Set<String> {
         if (raw.isBlank()) return emptySet()
-        return normalizeText(raw).split(' ').toSet().intersect(LANGUAGE_TOKENS)
+        val result = mutableSetOf<String>()
+        if (Regex("""\p{IsTelugu}""").containsMatchIn(raw)) result += "telugu"
+        if (Regex("""\p{IsTamil}""").containsMatchIn(raw)) result += "tamil"
+        if (Regex("""\p{IsKannada}""").containsMatchIn(raw)) result += "kannada"
+        if (Regex("""\p{IsMalayalam}""").containsMatchIn(raw)) result += "malayalam"
+        if (Regex("""\p{IsGurmukhi}""").containsMatchIn(raw)) result += "punjabi"
+        if (Regex("""\p{IsBengali}""").containsMatchIn(raw)) result += "bengali"
+        if (Regex("""\p{IsGujarati}""").containsMatchIn(raw)) result += "gujarati"
+        if (Regex("""\p{IsDevanagari}""").containsMatchIn(raw)) result += "hindi"
+
+        val tokens = normalizeText(raw).split(' ').toSet()
+        for (token in tokens) {
+            when (token) {
+                in LANGUAGE_TOKENS -> result += token
+                "panjabi" -> result += "punjabi"
+                "bangla" -> result += "bengali"
+            }
+        }
+        return result
     }
 
     private fun hasAlbumOrContextOverlap(
@@ -1297,6 +1324,8 @@ class LosslessMusicApi @Inject constructor(
     /**
      * When multiple language releases exist and the request specifies an
      * expected language, filter candidates to match that language.
+     * When no language is specified, prefer clean/original candidates without
+     * dub/foreign-language markers over dubbed versions.
      * Never drops all candidates to empty.
      */
     private fun gateAmbiguousLanguage(
@@ -1309,9 +1338,15 @@ class LosslessMusicApi @Inject constructor(
         if (expectedLanguages.isNotEmpty()) {
             val matching = verified.filter {
                 val candidateLangs = extractLanguages("${it.title} ${it.albumTitle}")
-                candidateLangs.isEmpty() || candidateLangs.intersect(expectedLanguages).isNotEmpty()
+                candidateLangs.intersect(expectedLanguages).isNotEmpty()
             }
             if (matching.isNotEmpty()) return matching
+        } else {
+            val clean = verified.filter {
+                val candidateLangs = extractLanguages("${it.title} ${it.albumTitle}")
+                candidateLangs.isEmpty()
+            }
+            if (clean.isNotEmpty()) return clean
         }
         return verified
     }
