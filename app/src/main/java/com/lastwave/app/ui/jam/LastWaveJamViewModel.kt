@@ -47,6 +47,7 @@ data class JamUiState(
     val currentPositionMs: Long = 0L,
     val durationMs: Long = 0L,
     val serverUrl: String = JamRepository.DEFAULT_JAM_SERVER_WS,
+    val isRemoteAutoDJ: Boolean = false,
 )
 
 @HiltViewModel
@@ -85,10 +86,13 @@ class LastWaveJamViewModel @Inject constructor(
         val progress = extra.progress
         val currentTrack = playerState.current
         val activeSession = session as? JamSessionState.Active
+        val isRemoteAutoDJ = (activeSession?.isRemoteAutoDJActive == true) ||
+            jamRepository.isRemoteAutoDJActive.value ||
+            jamRepository.isAutoDJTrack(activeSession?.currentTrack)
 
-        val title = currentTrack?.title ?: activeSession?.currentTrack?.title.orEmpty()
-        val artist = currentTrack?.artist ?: activeSession?.currentTrack?.artist.orEmpty()
-        val artworkUrl = currentTrack?.artworkUrl ?: activeSession?.currentTrack?.artworkUrl
+        val title = if (isRemoteAutoDJ) "AutoDJ can't be paired" else (currentTrack?.title ?: activeSession?.currentTrack?.title.orEmpty())
+        val artist = if (isRemoteAutoDJ) "AutoDJ mixes cannot be synchronized in Jam" else (currentTrack?.artist ?: activeSession?.currentTrack?.artist.orEmpty())
+        val artworkUrl = if (isRemoteAutoDJ) null else (currentTrack?.artworkUrl ?: activeSession?.currentTrack?.artworkUrl)
         val isPlaying = playerState.isPlaying
         val pos = progress.positionMs
         val dur = progress.durationMs
@@ -111,6 +115,7 @@ class LastWaveJamViewModel @Inject constructor(
                 currentPositionMs = pos,
                 durationMs = dur,
                 serverUrl = extra.serverUrl,
+                isRemoteAutoDJ = isRemoteAutoDJ,
             )
             is JamSessionState.Connecting -> JamUiState(
                 sessionState = session,
@@ -221,6 +226,7 @@ class LastWaveJamViewModel @Inject constructor(
     }
 
     fun togglePlayback() {
+        if (uiState.value.isRemoteAutoDJ) return
         val isAllowed = !uiState.value.isConnected || uiState.value.isHost || uiState.value.roomMode == JamProtocolConstants.MODE_COLLABORATIVE
         if (isAllowed) {
             musicPlayer.togglePlayPause()
@@ -228,6 +234,7 @@ class LastWaveJamViewModel @Inject constructor(
     }
 
     fun skipNext() {
+        if (uiState.value.isRemoteAutoDJ) return
         val isAllowed = !uiState.value.isConnected || uiState.value.isHost || uiState.value.roomMode == JamProtocolConstants.MODE_COLLABORATIVE
         if (isAllowed) {
             musicPlayer.next()

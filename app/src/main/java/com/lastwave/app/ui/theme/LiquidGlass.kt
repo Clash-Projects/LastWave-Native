@@ -748,6 +748,7 @@ enum class LiquidGlassPreset {
     MiniPlayer,
     PlayerControls,
     FloatingControls,
+    Header,
     ModalSheet,
     ContextMenu,
     Overlay,
@@ -758,7 +759,8 @@ private fun LiquidGlassPreset.isGlassTarget(): Boolean = when (this) {
     LiquidGlassPreset.BottomNavigation,
     LiquidGlassPreset.MiniPlayer,
     LiquidGlassPreset.PlayerControls,
-    LiquidGlassPreset.FloatingControls -> true
+    LiquidGlassPreset.FloatingControls,
+    LiquidGlassPreset.Header -> true
     LiquidGlassPreset.ModalSheet,
     LiquidGlassPreset.ContextMenu,
     LiquidGlassPreset.Overlay,
@@ -793,7 +795,7 @@ fun Modifier.liquidGlassChrome(
     return this.liquidGlass(
         backdrop = backdrop,
         shape = shape,
-        interactive = preset != LiquidGlassPreset.BottomNavigation,
+        interactive = preset != LiquidGlassPreset.BottomNavigation && preset != LiquidGlassPreset.Header,
         highlight = Highlight.Default,
         forceDark = shouldForceDark,
     )

@@ -63,6 +63,12 @@ class JamPlaybackSync @Inject constructor(
                     quietUntilMs = 0L
                 } else {
                     Log.d(TAG, "Jam session active (${session.roomCode}), host=${session.isHost}")
+                    // AutoDJ is strictly disallowed during Jam: terminate immediately if running
+                    val local = musicPlayer.state.value
+                    if (local.isAutoDJActive || local.isAutoDJMixPlaying) {
+                        Log.i(TAG, "Terminating active AutoDJ session upon entering Jam room.")
+                        musicPlayer.setAutoDJEnabled(false)
+                    }
                 }
             }
         }
@@ -72,7 +78,24 @@ class JamPlaybackSync @Inject constructor(
             jamRepository.remotePlaybackEvents.collect { event ->
                 val session = jamRepository.sessionState.value as? JamSessionState.Active ?: return@collect
 
-                // Never sync during AutoDJ playback (explicit requirement)
+                // Never sync or play AutoDJ in Jam: isolate immediately
+                val isRemoteAutoDJ = when (event) {
+                    is RemotePlaybackEvent.ChangeTrack -> event.isAutoDJ || jamRepository.isAutoDJTrack(event.track)
+                    is RemotePlaybackEvent.FullSync -> event.isAutoDJ || jamRepository.isAutoDJTrack(event.playback.currentTrack)
+                    is RemotePlaybackEvent.Play -> event.isAutoDJ
+                    is RemotePlaybackEvent.Pause -> event.isAutoDJ
+                    is RemotePlaybackEvent.Seek -> event.isAutoDJ
+                }
+
+                if (isRemoteAutoDJ) {
+                    Log.w(TAG, "Remote participant is playing AutoDJ. AutoDJ cannot be paired in Jam. Sync suppressed.")
+                    jamRepository.setRemoteAutoDJActive(true)
+                    return@collect
+                } else if (jamRepository.isRemoteAutoDJActive.value && (event is RemotePlaybackEvent.ChangeTrack || event is RemotePlaybackEvent.FullSync)) {
+                    jamRepository.setRemoteAutoDJActive(false)
+                }
+
+                // Never sync during local AutoDJ playback (explicit requirement)
                 val playerState = musicPlayer.state.value
                 if (playerState.isAutoDJMixPlaying || playerState.isAutoDJActive) {
                     return@collect
@@ -227,6 +250,11 @@ class JamPlaybackSync @Inject constructor(
     }
 
     private fun applyTrackChange(remoteTrack: TrackInfoPayload, positionMs: Long, isPlaying: Boolean) {
+        if (jamRepository.isAutoDJTrack(remoteTrack)) {
+            Log.w(TAG, "Suppressed track change for AutoDJ payload: ${remoteTrack.title}")
+            jamRepository.setRemoteAutoDJActive(true)
+            return
+        }
         val localCurrent = musicPlayer.state.value.current
         val sameSong = isSameTrack(localCurrent, remoteTrack)
 

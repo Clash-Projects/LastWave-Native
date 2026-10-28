@@ -11,6 +11,10 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -53,6 +57,7 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -649,13 +654,61 @@ fun JamScreen(
                             }
                         }
 
+                        // AutoDJ Incompatible Banner
+                        AnimatedVisibility(
+                            visible = uiState.isRemoteAutoDJ,
+                            enter = fadeIn() + expandVertically(),
+                            exit = fadeOut() + shrinkVertically(),
+                        ) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp, vertical = 6.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.92f)),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Warning,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.size(26.dp),
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            text = "AutoDJ can't be paired",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
+                                            color = MaterialTheme.colorScheme.onErrorContainer,
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "Another listener is playing AutoDJ. AutoDJ mixes cannot be synchronized in Jam.",
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f),
+                                            lineHeight = 16.sp,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         // Now Playing in Jam Card
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 20.dp, vertical = 6.dp),
                             shape = RoundedCornerShape(20.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (uiState.isRemoteAutoDJ)
+                                    MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
+                                else
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                            ),
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Row(
@@ -666,7 +719,7 @@ fun JamScreen(
                                         name = uiState.currentTrackTitle,
                                         artist = uiState.currentTrackArtist,
                                         embeddedUrl = uiState.currentArtworkUrl,
-                                        fallbackIcon = Icons.Filled.MusicNote,
+                                        fallbackIcon = if (uiState.isRemoteAutoDJ) Icons.Filled.Warning else Icons.Filled.MusicNote,
                                         modifier = Modifier
                                             .size(56.dp)
                                             .clip(RoundedCornerShape(12.dp)),
@@ -679,6 +732,7 @@ fun JamScreen(
                                             text = uiState.currentTrackTitle.ifBlank { "No song playing" },
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 15.sp,
+                                            color = if (uiState.isRemoteAutoDJ) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                         )
@@ -692,33 +746,45 @@ fun JamScreen(
                                     }
 
                                     // Transport Controls
-                                    val canControl = uiState.isHost || uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE
+                                    val canControl = !uiState.isRemoteAutoDJ && (uiState.isHost || uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE)
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         IconButton(
-                                            onClick = { viewModel.togglePlayback() },
-                                            enabled = canControl,
+                                            onClick = {
+                                                if (uiState.isRemoteAutoDJ) {
+                                                    Toast.makeText(context, "AutoDJ can't be paired in Jam", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    viewModel.togglePlayback()
+                                                }
+                                            },
+                                            enabled = canControl || uiState.isRemoteAutoDJ,
                                         ) {
                                             Icon(
                                                 imageVector = if (uiState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                                 contentDescription = if (uiState.isPlaying) "Pause" else "Play",
-                                                tint = if (canControl) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                                tint = if (canControl) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
                                                 modifier = Modifier.size(28.dp),
                                             )
                                         }
                                         IconButton(
-                                            onClick = { viewModel.skipNext() },
-                                            enabled = canControl,
+                                            onClick = {
+                                                if (uiState.isRemoteAutoDJ) {
+                                                    Toast.makeText(context, "AutoDJ can't be paired in Jam", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    viewModel.skipNext()
+                                                }
+                                            },
+                                            enabled = canControl || uiState.isRemoteAutoDJ,
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Filled.SkipNext,
                                                 contentDescription = "Next",
-                                                tint = if (canControl) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
+                                                tint = if (canControl) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
                                             )
                                         }
                                     }
                                 }
 
-                                if (uiState.durationMs > 0L) {
+                                if (!uiState.isRemoteAutoDJ && uiState.durationMs > 0L) {
                                     Spacer(modifier = Modifier.height(12.dp))
                                     val progressFraction = (uiState.currentPositionMs.toFloat() / uiState.durationMs.toFloat()).coerceIn(0f, 1f)
                                     LinearProgressIndicator(

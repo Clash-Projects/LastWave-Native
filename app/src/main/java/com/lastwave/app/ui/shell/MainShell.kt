@@ -373,11 +373,14 @@ fun MainShell(
             beyondViewportPageCount = 0,
             modifier = Modifier.fillMaxSize().liquidGlassSource(if (navGlass) navigationBackdrop else null),
         ) { page ->
-            val isCurrent = page == pagerState.currentPage
-            PredictiveBackScreen(
-                enabled = isCurrent && tabs[page] != MainTab.FEED,
-                onBack = { scope.launch { pagerState.animateScrollToPage(feedIndex) } },
+            CompositionLocalProvider(
+                LocalLiquidGlassBackdrop provides (if (navGlass) navigationBackdrop else null),
             ) {
+                val isCurrent = page == pagerState.currentPage
+                PredictiveBackScreen(
+                    enabled = isCurrent && tabs[page] != MainTab.FEED,
+                    onBack = { scope.launch { pagerState.animateScrollToPage(feedIndex) } },
+                ) {
                 when (tabs[page]) {
                     MainTab.FEED -> FeedScreen(
                         onOpenSettings = onOpenSettings,
@@ -410,6 +413,7 @@ fun MainShell(
                 }
             }
         }
+    }
 
         // App update prompt banner (only shown on app open when an update is available and not dismissed)
         AnimatedVisibility(

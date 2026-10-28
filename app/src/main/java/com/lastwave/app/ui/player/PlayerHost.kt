@@ -903,6 +903,7 @@ fun PlayerHost(
         LocalAddToPlaylist provides requestAddToPlaylist,
         LocalMiniPlayerScrollClearance provides if (state.current != null && !settings.buttonNowPlayingEnabled) 98.dp else 0.dp,
         LocalBottomNavSlot provides bottomNavSlot,
+        LocalLiquidGlassBackdrop provides (if (miniGlass) miniBackdrop else null),
     ) {
         Box(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxSize().liquidGlassSource(if (miniGlass) miniBackdrop else null)) {
@@ -1258,6 +1259,7 @@ private fun MiniPlayer(
                                 color = miniTitleColor,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                             )
                             Text(
                                 track.artist,
@@ -1265,6 +1267,7 @@ private fun MiniPlayer(
                                 color = miniArtistColor,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                             )
                         }
                         // Inner controls sit plain on the glass card (no nested glass).
@@ -1370,6 +1373,7 @@ private fun MiniPlayer(
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                         )
                         Spacer(Modifier.height(1.dp))
                         Text(
@@ -1379,6 +1383,7 @@ private fun MiniPlayer(
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                         )
                     }
 
@@ -3198,9 +3203,11 @@ private fun FullPlayer(
                                             val splitArtists = remember(track.artist) {
                                                 com.lastwave.app.util.ArtistHelper.splitArtists(track.artist)
                                             }
-                                            FlowRow(
-                                                horizontalArrangement = Arrangement.spacedBy(0.dp),
-                                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .basicMarquee(iterations = Int.MAX_VALUE),
+                                                verticalAlignment = Alignment.CenterVertically,
                                             ) {
                                                 splitArtists.forEachIndexed { index, artName ->
                                                     Text(
@@ -3210,6 +3217,7 @@ private fun FullPlayer(
                                                             fontWeight = FontWeight.Medium,
                                                         ),
                                                         color = Color.White.copy(alpha = 0.72f),
+                                                        maxLines = 1,
                                                         modifier = Modifier
                                                             .clickable(
                                                                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
@@ -3224,6 +3232,7 @@ private fun FullPlayer(
                                                                 fontWeight = FontWeight.Normal,
                                                             ),
                                                             color = Color.White.copy(alpha = 0.50f),
+                                                            maxLines = 1,
                                                         )
                                                     }
                                                 }
@@ -3797,9 +3806,11 @@ private fun FullPlayerLandscape(
                     val splitArtists = remember(track.artist) {
                         com.lastwave.app.util.ArtistHelper.splitArtists(track.artist)
                     }
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(0.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .basicMarquee(iterations = Int.MAX_VALUE),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         splitArtists.forEachIndexed { index, artName ->
                             Text(
@@ -3809,6 +3820,7 @@ private fun FullPlayerLandscape(
                                     fontWeight = FontWeight.Medium,
                                 ),
                                 color = Color.White.copy(alpha = 0.72f),
+                                maxLines = 1,
                                 modifier = Modifier
                                     .clickable(
                                         interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
@@ -3823,6 +3835,7 @@ private fun FullPlayerLandscape(
                                         fontWeight = FontWeight.Normal,
                                     ),
                                     color = Color.White.copy(alpha = 0.50f),
+                                    maxLines = 1,
                                 )
                             }
                         }
@@ -5013,31 +5026,17 @@ private fun AutoDJStudioConsoleCard(
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
                             Text(
-                                text = if (state.isAutoDJMixPlaying) "Continuous DJ set in progress"
-                                else if (state.isAutoDJGenerating) "Preparing upcoming tracks..."
-                                else "Blend queue songs into a continuous DJ set",
+                                text = if (state.isJamActive) "AutoDJ cannot be paired during an active Jam session"
+                                else if (state.isAutoDJGenerating) "Generating ~5-min mix... Plays when ready"
+                                else if (state.isAutoDJActive) "Continuous ~5-min highlight set in progress"
+                                else "Blend queue songs into a ~5-min highlight DJ set",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = if (state.isJamActive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
 
-                    if (state.isAutoDJMixPlaying) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                        ) {
-                            Text(
-                                text = "ACTIVE",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 0.5.sp,
-                                ),
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                            )
-                        }
-                    } else if (state.isAutoDJGenerating) {
+                    if (state.isAutoDJGenerating) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
                             color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f),
@@ -5052,6 +5051,21 @@ private fun AutoDJStudioConsoleCard(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                             )
                         }
+                    } else if (state.isAutoDJActive) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                        ) {
+                            Text(
+                                text = "ACTIVE",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp,
+                                ),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            )
+                        }
                     }
                 }
 
@@ -5060,7 +5074,7 @@ private fun AutoDJStudioConsoleCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.50f))
                             .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
@@ -5070,11 +5084,11 @@ private fun AutoDJStudioConsoleCard(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
-                                text = state.autoDJStatus ?: "Preparing tracks...",
+                                text = state.autoDJStatus ?: "Preparing upcoming tracks...",
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).basicMarquee(iterations = Int.MAX_VALUE),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -5100,7 +5114,7 @@ private fun AutoDJStudioConsoleCard(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
-                                text = "Current playback continues normally",
+                                text = "Generation in progress • Plays when ready",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f),
@@ -5115,7 +5129,7 @@ private fun AutoDJStudioConsoleCard(
                             }
                         }
                     }
-                } else if (state.isAutoDJMixPlaying) {
+                } else if (state.isAutoDJActive) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -5157,14 +5171,15 @@ private fun AutoDJStudioConsoleCard(
                             Column(modifier = Modifier.weight(1f)) {
                                 val curIdx = state.autoDJSetCurrentIndex ?: 1
                                 val totalTracks = state.autoDJSetTotalTracks ?: 6
-                                val segmentTitle = state.autoDJCurrentSegmentTitle
+                                val segmentTitle = state.autoDJCurrentSegmentTitle ?: state.current?.title ?: "AutoDJ Set"
                                 Text(
-                                    text = if (!segmentTitle.isNullOrBlank()) segmentTitle else (state.current?.title ?: "AutoDJ Mix"),
+                                    text = segmentTitle,
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                                 )
                                 Text(
                                     text = "Track $curIdx of $totalTracks • AutoDJ Mix",
@@ -5217,7 +5232,7 @@ private fun AutoDJStudioConsoleCard(
                         OutlinedButton(
                             onClick = {
                                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                player.exitAutoDJMix()
+                                player.setAutoDJEnabled(false)
                             },
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.outlinedButtonColors(
@@ -5239,28 +5254,40 @@ private fun AutoDJStudioConsoleCard(
                         }
                     }
                 } else {
+                    val context = LocalContext.current
                     Button(
                         onClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            player.generateAndPlayAutoDJMix()
+                            if (state.isJamActive) {
+                                android.widget.Toast.makeText(context, "AutoDJ can't be paired in Jam", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                player.generateAndPlayAutoDJMix()
+                            }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(44.dp),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                        ),
+                        colors = if (state.isJamActive) {
+                            ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            )
+                        } else {
+                            ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            )
+                        },
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.PlayArrow,
+                            imageVector = if (state.isJamActive) Icons.Filled.ErrorOutline else Icons.Filled.PlayArrow,
                             contentDescription = null,
                             modifier = Modifier.size(20.dp),
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Start AutoDJ Mix",
+                            text = if (state.isJamActive) "AutoDJ can't be paired in Jam" else "Start AutoDJ Mix",
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
                         )
                     }

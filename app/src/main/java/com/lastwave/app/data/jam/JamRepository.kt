@@ -40,17 +40,19 @@ sealed interface JamSessionState {
         val currentTrack: TrackInfoPayload? = null,
         val isPlaying: Boolean = false,
         val positionMs: Long = 0L,
+        val isRemoteAutoDJActive: Boolean = false,
     ) : JamSessionState
     data class Error(val message: String) : JamSessionState
 }
 
 sealed interface RemotePlaybackEvent {
     val fromUserId: String?
-    data class Play(val positionMs: Long, val serverTimeMs: Long, override val fromUserId: String? = null) : RemotePlaybackEvent
-    data class Pause(val positionMs: Long, override val fromUserId: String? = null) : RemotePlaybackEvent
-    data class Seek(val positionMs: Long, override val fromUserId: String? = null) : RemotePlaybackEvent
-    data class ChangeTrack(val track: TrackInfoPayload, val isPlaying: Boolean, val positionMs: Long, override val fromUserId: String? = null) : RemotePlaybackEvent
-    data class FullSync(val playback: PlaybackStatePayload) : RemotePlaybackEvent {
+    val isAutoDJ: Boolean get() = false
+    data class Play(val positionMs: Long, val serverTimeMs: Long, override val fromUserId: String? = null, override val isAutoDJ: Boolean = false) : RemotePlaybackEvent
+    data class Pause(val positionMs: Long, override val fromUserId: String? = null, override val isAutoDJ: Boolean = false) : RemotePlaybackEvent
+    data class Seek(val positionMs: Long, override val fromUserId: String? = null, override val isAutoDJ: Boolean = false) : RemotePlaybackEvent
+    data class ChangeTrack(val track: TrackInfoPayload, val isPlaying: Boolean, val positionMs: Long, override val fromUserId: String? = null, override val isAutoDJ: Boolean = false) : RemotePlaybackEvent
+    data class FullSync(val playback: PlaybackStatePayload, override val isAutoDJ: Boolean = false) : RemotePlaybackEvent {
         override val fromUserId: String? = null
     }
 }
@@ -82,6 +84,25 @@ class JamRepository @Inject constructor(
 
     private val _remotePlaybackEvents = MutableSharedFlow<RemotePlaybackEvent>(extraBufferCapacity = 64)
     val remotePlaybackEvents: SharedFlow<RemotePlaybackEvent> = _remotePlaybackEvents.asSharedFlow()
+
+    private val _isRemoteAutoDJActive = MutableStateFlow(false)
+    val isRemoteAutoDJActive: StateFlow<Boolean> = _isRemoteAutoDJActive.asStateFlow()
+
+    fun setRemoteAutoDJActive(active: Boolean) {
+        _isRemoteAutoDJActive.value = active
+        val current = _sessionState.value
+        if (current is JamSessionState.Active && current.isRemoteAutoDJActive != active) {
+            _sessionState.value = current.copy(isRemoteAutoDJActive = active)
+        }
+    }
+
+    fun isAutoDJTrack(track: TrackInfoPayload?): Boolean {
+        if (track == null) return false
+        return track.isAutoDJ ||
+            track.source.equals("autodj", ignoreCase = true) ||
+            track.id.startsWith("autodj", ignoreCase = true) ||
+            track.title.contains("AutoDJ", ignoreCase = true)
+    }
 
     private var activeWebSocket: WebSocket? = null
     private var pendingAction: (() -> Unit)? = null
@@ -250,6 +271,7 @@ class JamRepository @Inject constructor(
                             isHost = true,
                             joinedAt = System.currentTimeMillis(),
                         )
+                        _isRemoteAutoDJActive.value = false
                         _sessionState.value = JamSessionState.Active(
                             roomCode = payload.roomCode,
                             userId = payload.userId,
@@ -260,6 +282,7 @@ class JamRepository @Inject constructor(
                             currentTrack = null,
                             isPlaying = false,
                             positionMs = 0L,
+                            isRemoteAutoDJActive = false,
                         )
                     }
                 }
@@ -267,6 +290,8 @@ class JamRepository @Inject constructor(
                 JamProtocolConstants.MSG_SYNC_STATE -> {
                     val payload = envelope.payload?.let { json.decodeFromJsonElement<SyncStatePayload>(it) }
                     if (payload != null) {
+                        val remoteIsAutoDJ = payload.playback.isAutoDJ || isAutoDJTrack(payload.playback.currentTrack)
+                        _isRemoteAutoDJActive.value = remoteIsAutoDJ
                         _sessionState.value = JamSessionState.Active(
                             roomCode = payload.roomCode,
                             userId = payload.userId,
@@ -277,10 +302,11 @@ class JamRepository @Inject constructor(
                             currentTrack = payload.playback.currentTrack,
                             isPlaying = payload.playback.isPlaying,
                             positionMs = payload.playback.positionMs,
+                            isRemoteAutoDJActive = remoteIsAutoDJ,
                         )
                         _chatMessages.value = payload.chatHistory
                         scope.launch {
-                            _remotePlaybackEvents.emit(RemotePlaybackEvent.FullSync(payload.playback))
+                            _remotePlaybackEvents.emit(RemotePlaybackEvent.FullSync(payload.playback, isAutoDJ = remoteIsAutoDJ))
                         }
                     }
                 }
@@ -351,29 +377,36 @@ class JamRepository @Inject constructor(
     }
 
     private fun applyPlaybackAction(action: PlaybackActionPayload) {
+        val actionIsAutoDJ = action.isAutoDJ || isAutoDJTrack(action.track)
+        if (actionIsAutoDJ) {
+            _isRemoteAutoDJActive.value = true
+        } else if (action.track != null) {
+            _isRemoteAutoDJActive.value = false
+        }
         val current = _sessionState.value
         if (current is JamSessionState.Active) {
             _sessionState.value = current.copy(
                 isPlaying = action.isPlaying,
                 positionMs = action.positionMs,
                 currentTrack = action.track ?: current.currentTrack,
+                isRemoteAutoDJActive = _isRemoteAutoDJActive.value,
             )
         }
 
         scope.launch {
             when (action.action) {
                 JamProtocolConstants.ACTION_PLAY -> {
-                    _remotePlaybackEvents.emit(RemotePlaybackEvent.Play(action.positionMs, action.serverTimeMs, action.fromUserId))
+                    _remotePlaybackEvents.emit(RemotePlaybackEvent.Play(action.positionMs, action.serverTimeMs, action.fromUserId, isAutoDJ = actionIsAutoDJ))
                 }
                 JamProtocolConstants.ACTION_PAUSE -> {
-                    _remotePlaybackEvents.emit(RemotePlaybackEvent.Pause(action.positionMs, action.fromUserId))
+                    _remotePlaybackEvents.emit(RemotePlaybackEvent.Pause(action.positionMs, action.fromUserId, isAutoDJ = actionIsAutoDJ))
                 }
                 JamProtocolConstants.ACTION_SEEK -> {
-                    _remotePlaybackEvents.emit(RemotePlaybackEvent.Seek(action.positionMs, action.fromUserId))
+                    _remotePlaybackEvents.emit(RemotePlaybackEvent.Seek(action.positionMs, action.fromUserId, isAutoDJ = actionIsAutoDJ))
                 }
                 JamProtocolConstants.ACTION_CHANGE_TRACK -> {
                     action.track?.let { track ->
-                        _remotePlaybackEvents.emit(RemotePlaybackEvent.ChangeTrack(track, action.isPlaying, action.positionMs, action.fromUserId))
+                        _remotePlaybackEvents.emit(RemotePlaybackEvent.ChangeTrack(track, action.isPlaying, action.positionMs, action.fromUserId, isAutoDJ = actionIsAutoDJ))
                     }
                 }
             }
@@ -393,6 +426,7 @@ class JamRepository @Inject constructor(
         stopPingLoop()
         activeWebSocket?.close(1000, "Normal closure")
         activeWebSocket = null
+        _isRemoteAutoDJActive.value = false
         _sessionState.value = JamSessionState.Disconnected
         _chatMessages.value = emptyList()
     }
