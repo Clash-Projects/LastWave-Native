@@ -206,6 +206,7 @@ data class MusicPlayerState(
     val autoMixProgress: Float = 0f,
     val autoMixBpm: Float? = null,
     val isAutoDJActive: Boolean = false,
+    val isAutoDJEnabled: Boolean = false,
     val autoDJStatus: String? = null,
     val autoMixDeckBFirstBeatMs: Long? = null,
     val autoMixNextTrack: PlayableTrack? = null,
@@ -2321,20 +2322,15 @@ class MusicPlayer @Inject constructor(
                 automixOnSkip = settings.automixOnSkip
                 sequentialAlbumBypass = settings.sequentialAlbumBypass
                 if (nativeAutoMixEngine.get().isAvailable) {
-                    val effectiveAutomix = (automixEnabled || settings.autoDJEnabled || _state.value.isAutoDJActive) && !bitPerfectEnabled && !usbExclusiveSinkActive
+                    val effectiveAutomix = (automixEnabled || _state.value.isAutoDJActive) && !bitPerfectEnabled && !usbExclusiveSinkActive
                     nativeAutoMixEngine.get().setEnabled(effectiveAutomix)
                     nativeAutoMixEngine.get().setBarMode(automixBars)
                 }
-                if (settings.autoDJEnabled != _state.value.isAutoDJActive && !_state.value.isAutoDJGenerating) {
-                    setAutoDJEnabled(settings.autoDJEnabled)
-                } else if (!_state.value.isAutoDJGenerating) {
-                    _state.update {
-                        it.copy(
-                            isAutoMixEnabled = automixEnabled,
-                            isAutoDJActive = settings.autoDJEnabled,
-                            isAutoDJMixPlaying = settings.autoDJEnabled,
-                        )
-                    }
+                _state.update {
+                    it.copy(
+                        isAutoMixEnabled = automixEnabled,
+                        isAutoDJEnabled = settings.autoDJEnabled,
+                    )
                 }
                 val wasBitPerfect = bitPerfectEnabled
                 bitPerfectEnabled = settings.isBitPerfectEnabled
@@ -5199,35 +5195,29 @@ class MusicPlayer @Inject constructor(
     private var autoDJGenerationJob: Job? = null
 
     fun setAutoDJEnabled(enabled: Boolean) {
-        if (enabled && _state.value.isJamActive) {
-            android.util.Log.w("MusicPlayer", "AutoDJ blocked: AutoDJ cannot be paired or enabled during a Jam session.")
-            return
-        }
         applicationScope.launch {
             settingsPreferences.setAutoDJEnabled(enabled)
         }
-        if (enabled) {
-            generateAndPlayAutoDJMix()
-        } else {
-            isCompletingAutoDJMix = false
-            cancelAutoDJGeneration()
-            autoDJFillJob?.cancel()
-            _state.update {
-                it.copy(
-                    isAutoDJActive = false,
-                    isAutoDJMixPlaying = false,
-                    autoDJStatus = null,
-                    autoDJSeedTrack = null,
-                    autoDJSetTotalTracks = null,
-                    autoDJSetCurrentIndex = null,
-                    autoDJCurrentSegmentTitle = null,
-                )
-            }
+        if (!enabled) {
+            exitAutoDJMix()
         }
     }
 
     fun exitAutoDJMix() {
-        setAutoDJEnabled(false)
+        isCompletingAutoDJMix = false
+        cancelAutoDJGeneration()
+        autoDJFillJob?.cancel()
+        _state.update {
+            it.copy(
+                isAutoDJActive = false,
+                isAutoDJMixPlaying = false,
+                autoDJStatus = null,
+                autoDJSeedTrack = null,
+                autoDJSetTotalTracks = null,
+                autoDJSetCurrentIndex = null,
+                autoDJCurrentSegmentTitle = null,
+            )
+        }
     }
 
     fun cancelAutoDJGeneration() {
@@ -5362,7 +5352,8 @@ class MusicPlayer @Inject constructor(
 
                 withContext(Dispatchers.Main.immediate) {
                     if (!isActive) return@withContext
-                    settingsPreferences.setAutoDJEnabled(true)
+                    val (deckA, deckB) = ensureDecksInitialized()
+                    val curDeck = deckA
                     val mediaItems = finalTracks.map { track ->
                         val stream = resolvedStreams[track.mediaIdKey()]
                         track.toMediaItem(stream)
@@ -5383,21 +5374,20 @@ class MusicPlayer @Inject constructor(
                     curDeck.addListener(listener)
 
                     if (finalTracks.size > 1) {
-                        val standby = standbyDeck
-                        if (standby != null) {
-                            val track1 = finalTracks[1]
-                            val stream1 = resolvedStreams[track1.mediaIdKey()]
-                            val cue1 = inCues.getOrNull(1) ?: 0L
-                            standby.removeListener(listener)
-                            standby.clearMediaItems()
-                            standby.setMediaItem(track1.toMediaItem(stream1))
-                            standby.prepare()
-                            standby.seekTo(cue1)
-                            standby.volume = 0f
-                            standby.playbackParameters = PlaybackParameters(1.0f, 1.0f)
-                            standby.pause()
-                            standbyInCueMs = cue1
-                        }
+                        val standby = deckB
+                        standbyDeck = deckB
+                        val track1 = finalTracks[1]
+                        val stream1 = resolvedStreams[track1.mediaIdKey()]
+                        val cue1 = inCues.getOrNull(1) ?: 0L
+                        standby.removeListener(listener)
+                        standby.clearMediaItems()
+                        standby.setMediaItem(track1.toMediaItem(stream1))
+                        standby.prepare()
+                        standby.seekTo(cue1)
+                        standby.volume = 0f
+                        standby.playbackParameters = PlaybackParameters(1.0f, 1.0f)
+                        standby.pause()
+                        standbyInCueMs = cue1
                     }
 
                     _state.update {
@@ -9952,6 +9942,7 @@ class MusicPlayer @Inject constructor(
             autoMixNextTrack = autoMixNextTrack,
             autoMixBars = if (automixBars > 0) automixBars else 8,
             isAutoDJActive = previous.isAutoDJActive,
+            isAutoDJEnabled = previous.isAutoDJEnabled,
             autoDJStatus = previous.autoDJStatus ?: when (val st = autoDJController.get().status.value) {
                 is com.lastwave.app.playback.autodj.AutoDJStatus.Resolving -> "Resolving ${st.title}..."
                 is com.lastwave.app.playback.autodj.AutoDJStatus.Decoding -> "Decoding ${st.title}..."

@@ -5232,7 +5232,7 @@ private fun AutoDJStudioConsoleCard(
                         OutlinedButton(
                             onClick = {
                                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                player.setAutoDJEnabled(false)
+                                player.exitAutoDJMix()
                             },
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.outlinedButtonColors(
@@ -5518,11 +5518,13 @@ private fun AudioControlsSheet(
                 }
             }
 
-            // 3. Automix & AutoDJ Mixing Cards
-            AutoDJStudioConsoleCard(
-                state = state,
-                player = player,
-            )
+            // 3. Automix & AutoDJ Mixing Cards: Only shown when AutoDJ is enabled in settings or actively running
+            if (state.isAutoDJEnabled || state.isAutoDJActive || state.isAutoDJGenerating || state.isAutoDJMixPlaying) {
+                AutoDJStudioConsoleCard(
+                    state = state,
+                    player = player,
+                )
+            }
 
             // 4. Slowed & Pitch Section Card
             Surface(

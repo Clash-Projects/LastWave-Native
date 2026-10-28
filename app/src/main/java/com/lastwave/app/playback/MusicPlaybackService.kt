@@ -1012,7 +1012,12 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                         OriginOsMusicCard.loopModeOf(state.shuffleEnabled, state.repeatMode).toLong(),
                     )
                     .apply {
-                        val art = artworkBitmap
+                        val rawArt = artworkBitmap
+                        val art = if (rawArt != null && (rawArt.width > 512 || rawArt.height > 512)) {
+                            val maxDim = maxOf(rawArt.width, rawArt.height).toFloat()
+                            val scale = 512f / maxDim
+                            Bitmap.createScaledBitmap(rawArt, (rawArt.width * scale).toInt(), (rawArt.height * scale).toInt(), true)
+                        } else rawArt
                         if (art != null) {
                             putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, art)
                             putBitmap(MediaMetadataCompat.METADATA_KEY_ART, art)
