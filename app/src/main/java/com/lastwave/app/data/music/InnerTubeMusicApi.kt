@@ -2998,7 +2998,9 @@ class InnerTubeMusicApi @Inject constructor(
             return null
         }
 
-        val deadline = SystemClock.elapsedRealtime() + DIRECT_FAST_PATH_BUDGET_MS
+        val signedIn = ytAuth.connection.value.isConnected
+        val deadline = SystemClock.elapsedRealtime() +
+            if (signedIn) AUTHENTICATED_CIPHER_PATH_BUDGET_MS else DIRECT_FAST_PATH_BUDGET_MS
         for (client in ordered) {
             val remaining = deadline - SystemClock.elapsedRealtime()
             if (remaining <= 0L) {
@@ -3007,7 +3009,10 @@ class InnerTubeMusicApi @Inject constructor(
             }
             var failed = false
             val stream = try {
-                kotlinx.coroutines.withTimeoutOrNull(minOf(DIRECT_FAST_CLIENT_TIMEOUT_MS, remaining)) {
+                val clientBudget = if (signedIn && client.name == "WEB_REMIX") {
+                    AUTHENTICATED_CIPHER_CLIENT_BUDGET_MS
+                } else DIRECT_FAST_CLIENT_TIMEOUT_MS
+                kotlinx.coroutines.withTimeoutOrNull(minOf(clientBudget, remaining)) {
                     val sigTimestamp = if (client.needsSignatureTimestamp) {
                         streamExtractor.getSignatureTimestamp(videoId)
                     } else null
@@ -3246,6 +3251,11 @@ class InnerTubeMusicApi @Inject constructor(
             // racer for 30s+ across its two attempts.
             callTimeoutMs = PLAYER_REQUEST_CALL_TIMEOUT_MS,
         )
+        noteAttempt("client=${client.name} response ${youtubePlayerResponseSummary(root)} " +
+            "signedIn=${client.name == "WEB_REMIX" && ytAuth.connection.value.isConnected} " +
+            "visitorPresent=${!visitorData.isNullOrBlank()} " +
+            "playerTokenPresent=${!playerPoToken.isNullOrBlank()} " +
+            "signatureTimestampPresent=${signatureTimestamp != null}")
         val status = root.obj("playabilityStatus")
         val state = status?.string("status")
         if (state != "OK") {
@@ -3277,12 +3287,24 @@ class InnerTubeMusicApi @Inject constructor(
             streaming?.array("formats").orEmpty().forEach { add(it to false) }
             streaming?.array("adaptiveFormats").orEmpty().forEach { add(it to true) }
         }
+        val audioCiphers = if (allowCipherFormats) formats.mapNotNull { (element, _) ->
+            val format = element as? JsonObject ?: return@mapNotNull null
+            if (format.string("mimeType")?.startsWith("audio/") != true) return@mapNotNull null
+            format.string("signatureCipher") ?: format.string("cipher")
+        }.distinct().take(8) else emptyList()
+        val deciphered = audioCiphers.mapNotNull { cipher ->
+            streamExtractor.decipherStreamUrl(videoId, cipher)?.let { cipher to it }
+        }.toMap().toMutableMap()
+        val unresolved = audioCiphers.filterNot(deciphered::containsKey)
+        if (client.name == "WEB_REMIX" && unresolved.isNotEmpty()) {
+            deciphered.putAll(innerTubeXExtractor.decipherAudioUrls(videoId, unresolved))
+        }
         val candidates = formats.mapNotNull { (element, isAdaptive) ->
                 val format = element as? JsonObject ?: return@mapNotNull null
                 val url = format.string("url")
                     ?: if (allowCipherFormats) {
                         (format.string("signatureCipher") ?: format.string("cipher"))
-                            ?.let { streamExtractor.decipherStreamUrl(videoId, it) }
+                            ?.let(deciphered::get)
                     } else {
                         null
                     }
@@ -3314,6 +3336,7 @@ class InnerTubeMusicApi @Inject constructor(
                 compareBy<YouTubeAudioStream> { it.isAdaptive }
                     .thenByDescending { it.bitrate },
             )
+        noteAttempt("client=${client.name} compatibleCandidates=${candidates.size} cipherAllowed=$allowCipherFormats")
         // Probe full playback ranges before choosing a format. Tiny probes can
         // succeed even when the media request itself will receive HTTP 403.
         if (!probeCandidates) {
@@ -5049,12 +5072,15 @@ class InnerTubeMusicApi @Inject constructor(
         const val POTOKEN_FAST_BUDGET_MS = 1_000L
         /** Whole fast path must settle inside this budget before heavier stages run. */
         const val DIRECT_FAST_PATH_BUDGET_MS = 6_000L
+        // A signed-in web response may require a cold local JS solver; anonymous clients keep their short budget.
+        const val AUTHENTICATED_CIPHER_PATH_BUDGET_MS = 24_000L
+        const val AUTHENTICATED_CIPHER_CLIENT_BUDGET_MS = 20_000L
         /** Whole-call cap for one player-API POST (connect + read + body). */
         const val PLAYER_REQUEST_CALL_TIMEOUT_MS = 8_000L
         /** Max wait on the direct-client/NewPipe race before the last-resort stage. */
         const val CLIENT_RACE_TIMEOUT_MS = 8_000L
         /** Hard cap for one full stream resolution; callers retry with fresh state. */
-        const val STREAM_RESOLVE_TOTAL_TIMEOUT_MS = 20_000L
+        const val STREAM_RESOLVE_TOTAL_TIMEOUT_MS = 40_000L
         /** Bound for the InnerTubeX cipher stage so a hung resolve fails fast. */
         const val INNERTUBEX_STAGE_TIMEOUT_MS = 7_000L
         /** Bound for the last-resort NewPipe stage. */

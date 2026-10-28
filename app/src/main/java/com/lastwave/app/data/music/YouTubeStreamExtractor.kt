@@ -1,6 +1,7 @@
 package com.lastwave.app.data.music
 
 import android.net.Uri
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -286,11 +287,17 @@ class YouTubeStreamExtractor @Inject constructor(
     fun decipherStreamUrl(videoId: String, signatureCipher: String): String? {
         initialize()
         val parameters = "https://cipher.invalid/?$signatureCipher".toHttpUrlOrNull() ?: return null
-        var resolvedUrl = parameters.queryParameter("url") ?: return null
+        var resolvedUrl = parameters.queryParameter("url") ?: run {
+            Log.w("LastWaveCipher", "stage=parse outcome=missing-url")
+            return null
+        }
         val encryptedSignature = parameters.queryParameter("s")
         if (!encryptedSignature.isNullOrBlank()) {
             val signature = runCatching {
                 YoutubeJavaScriptPlayerManager.deobfuscateSignature(videoId, encryptedSignature)
+            }.onFailure { error ->
+                // Exception messages can contain URLs or cipher material: log types only.
+                Log.w("LastWaveCipher", "stage=signature error=${error.javaClass.simpleName} cause=${error.cause?.javaClass?.simpleName}")
             }.getOrNull() ?: return null
             if (resolvedUrl.toHttpUrlOrNull() == null) return null
             resolvedUrl = appendQueryParameterPreservingUrl(

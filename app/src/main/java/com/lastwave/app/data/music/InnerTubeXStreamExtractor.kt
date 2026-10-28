@@ -12,6 +12,10 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlin.coroutines.resume
 import kotlin.jvm.functions.Function1
+import kotlinx.serialization.DeserializationStrategy
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -88,6 +92,61 @@ class InnerTubeXStreamExtractor @Inject constructor(
             null
         }
     }
+
+    /** Local QuickJS/EJS fallback for ciphers NewPipe cannot parse. No remote cipher service. */
+    suspend fun decipherAudioUrls(videoId: String, ciphers: List<String>): Map<String, String> =
+        withContext(Dispatchers.IO) {
+            if (ciphers.isEmpty()) return@withContext emptyMap()
+            Log.i(TAG, "stage=local-cipher begin")
+            val stack = runtime ?: return@withContext emptyMap()
+            Log.i(TAG, "stage=local-cipher runtime-ready")
+            try {
+                val account = ytAuth.connection.value
+                setProperty(stack.innerTube, "Cookie", ytAuth.cookieHeaderValue(account))
+                setProperty(stack.innerTube, "UseLoginForBrowse", account.isConnected)
+                val fetchConfig = stack.parser.javaClass.methods.first {
+                    it.name == "fetchConfig" && it.parameterCount == 3
+                }
+                val config = invokeSuspend(stack.parser, fetchConfig, arrayOf(videoId, account.isConnected))
+                    ?: return@withContext emptyMap()
+                val playerUrl = readString(config, "getPlayerUrl") ?: return@withContext emptyMap()
+                Log.i(TAG, "stage=local-cipher config-ready")
+                @Suppress("UNCHECKED_CAST")
+                val serializer = companionCall(
+                    "com.metrolist.innertubex.models.response.PlayerResponse\$StreamingData\$Format",
+                    "serializer",
+                ) as DeserializationStrategy<Any>
+                val inputs = ciphers.distinct().take(8)
+                // processFormats batches signatures and n challenges into one local EJS execution.
+                val formats = inputs.map { cipher ->
+                    Json.decodeFromString(serializer, buildJsonObject { put("signatureCipher", cipher) }.toString())
+                }
+                val process = stack.cipher.javaClass.methods.first {
+                    it.name == "processFormats" && it.parameterCount == 3
+                }
+                Log.i(TAG, "stage=local-cipher batch-start count=${formats.size}")
+                val decoded = invokeSuspend(stack.cipher, process, arrayOf(playerUrl, formats)) as? List<*>
+                    ?: return@withContext emptyMap()
+                if (ytAuth.connection.value != account) {
+                    throw kotlinx.coroutines.CancellationException("YouTube account changed")
+                }
+                val result = mutableMapOf<String, String>()
+                for ((cipher, format) in inputs.zip(decoded)) {
+                    val url = format?.let { readString(it, "getUrl") } ?: continue
+                    val host = Uri.parse(url).host.orEmpty()
+                    if (url.startsWith("https://") && (host == "googlevideo.com" || host.endsWith(".googlevideo.com"))) {
+                        result[cipher] = url
+                    }
+                }
+                Log.i(TAG, "stage=local-cipher requested=${ciphers.size} decoded=${result.size}")
+                result
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.w(TAG, "stage=local-cipher error=${error.javaClass.simpleName}")
+                emptyMap()
+            }
+        }
 
     fun reportPlaybackFailure(videoId: String, authScope: String, clientProfile: String?) {
         val profile = clientProfile
@@ -177,7 +236,7 @@ class InnerTubeXStreamExtractor @Inject constructor(
             arrayOf(parser, cipher, innerTube),
             defaultMask = 120,
         )
-        return RuntimeStack(innerTube, extractor)
+        return RuntimeStack(innerTube, extractor, parser, cipher)
     }
 
     private fun createKtorHttpClient(): Any {
@@ -316,6 +375,8 @@ class InnerTubeXStreamExtractor @Inject constructor(
     private data class RuntimeStack(
         val innerTube: Any,
         val extractor: Any,
+        val parser: Any,
+        val cipher: Any,
     )
 
     private companion object {
