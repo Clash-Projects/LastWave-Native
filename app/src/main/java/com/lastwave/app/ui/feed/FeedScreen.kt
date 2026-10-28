@@ -57,6 +57,9 @@ import androidx.compose.material.icons.filled.Mic
 import com.lastwave.app.data.music.toYouTubeMusicTrack
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NewReleases
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Refresh
@@ -203,6 +206,9 @@ fun FeedScreen(
     val hiddenSections by viewModel.hiddenHomeSections.collectAsStateWithLifecycle()
     val ytHidden by viewModel.ytMusicHiddenSections.collectAsStateWithLifecycle()
     val ytOrder by viewModel.ytMusicSectionsOrder.collectAsStateWithLifecycle()
+    val homeSectionsOrder by viewModel.homeSectionsOrder.collectAsStateWithLifecycle()
+    val pinnedHomeSections by viewModel.pinnedHomeSections.collectAsStateWithLifecycle()
+    var sectionMenuTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
     val podcastsEnabled by viewModel.podcastsEnabled.collectAsStateWithLifecycle()
     val topGenres by viewModel.topGenres.collectAsStateWithLifecycle()
     fun isSectionVisible(section: HomeSection) = section.id !in hiddenSections
@@ -498,7 +504,10 @@ fun FeedScreen(
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
                             ) {
                                 Column(modifier = Modifier.padding(vertical = 12.dp)) {
-                            FeedSectionHeader(title = stringResource(R.string.feed_quick_access))
+                            FeedSectionHeader(
+                                title = stringResource(R.string.feed_quick_access),
+                                onLongClick = { sectionMenuTarget = HomeSection.QUICK_TILES.id to "Quick Access" },
+                            )
                                     Spacer(modifier = Modifier.height(12.dp))
                             QuickTilesGrid(
                                 tiles = quickTiles,
@@ -643,6 +652,7 @@ fun FeedScreen(
                                         onTrackMenu = { menuTrack = it },
                                         onOpenPodcastShow = onOpenPodcastShow,
                                         onPlayPodcastEpisode = { ep, q, title -> viewModel.playPodcastEpisode(ep, q, title) },
+                                        onHeaderLongClick = { title -> sectionMenuTarget = "yt:$title" to title },
                                     )
                                 }
                             }
@@ -663,6 +673,7 @@ fun FeedScreen(
                                     onTrackMenu = { menuTrack = it },
                                     onOpenPodcastShow = onOpenPodcastShow,
                                     onPlayPodcastEpisode = { ep, q, title -> viewModel.playPodcastEpisode(ep, q, title) },
+                                    onHeaderLongClick = { title -> sectionMenuTarget = "yt:$title" to title },
                                 )
                             }
                         }
@@ -691,6 +702,7 @@ fun FeedScreen(
                                 actionIcon = Icons.Filled.PlayArrow,
                                 onActionClick = { viewModel.playTracksQueue(state.feedData.quickPicks, 0, "Quick Picks") },
                                 onShuffleClick = { viewModel.shuffleTracksQueue(state.feedData.quickPicks, "Quick Picks") },
+                                onLongClick = { sectionMenuTarget = HomeSection.QUICK_PICKS.id to title },
                             )
                             QuickPicksRows(
                                 tracks = state.feedData.quickPicks,
@@ -781,6 +793,7 @@ fun FeedScreen(
                                 actionIcon = Icons.Filled.PlayArrow,
                                 onActionClick = { viewModel.playTracksQueue(section.items, 0, section.title) },
                                 onShuffleClick = { viewModel.shuffleTracksQueue(section.items, section.title) },
+                                onLongClick = { sectionMenuTarget = HomeSection.BECAUSE_YOU_LISTEN_TO.id to section.title },
                             )
                             FeedMediaRow(
                                 content = {
@@ -829,6 +842,7 @@ fun FeedScreen(
                                         actionIcon = Icons.Filled.PlayArrow,
                                         onActionClick = { viewModel.playTracksQueue(state.feedData.freshFinds, 0, "Fresh Finds") },
                                         onShuffleClick = { viewModel.shuffleTracksQueue(state.feedData.freshFinds, "Fresh Finds") },
+                                        onLongClick = { sectionMenuTarget = HomeSection.FRESH_FINDS.id to "Fresh Finds" },
                                     )
                                     FeedMediaRow(
                                         content = {
@@ -875,6 +889,7 @@ fun FeedScreen(
                                 actionText = stringResource(R.string.feed_play_all),
                                 actionIcon = Icons.Filled.PlayArrow,
                                 onActionClick = { viewModel.playRecentQueue(state.feedData.jumpBackIn, 0) },
+                                onLongClick = { sectionMenuTarget = HomeSection.JUMP_BACK_IN.id to "Jump Back In" },
                             )
                             FeedMediaRow(
                                 content = {
@@ -917,6 +932,7 @@ fun FeedScreen(
                                 onActionClick = {
                                     state.feedData.mixes.randomOrNull()?.let(viewModel::playMix)
                                 },
+                                onLongClick = { sectionMenuTarget = HomeSection.MIXES.id to "Mixed For You" },
                             )
                             FeedMediaRow(
                                 content = {
@@ -962,9 +978,10 @@ fun FeedScreen(
                             ) {
                                 Column(modifier = Modifier.padding(vertical = 12.dp)) {
                             FeedSectionHeader(
-                                    title = stringResource(R.string.feed_artists),
-                                    subtitle = stringResource(R.string.feed_artists_sub),
-                                )
+                                title = stringResource(R.string.feed_artists),
+                                subtitle = stringResource(R.string.feed_artists_sub),
+                                onLongClick = { sectionMenuTarget = HomeSection.TOP_ARTISTS.id to "Top Artists" },
+                            )
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
                                     horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -1003,6 +1020,7 @@ fun FeedScreen(
                                 actionText = stringResource(R.string.feed_play_all),
                                 actionIcon = Icons.Filled.PlayArrow,
                                 onActionClick = { viewModel.playGeneratedQueue(state.feedData.heavyRotation, 0, "Heavy Rotation") },
+                                onLongClick = { sectionMenuTarget = HomeSection.HEAVY_ROTATION.id to "Heavy Rotation" },
                             )
                             FeedMediaRow(
                                 content = {
@@ -1044,6 +1062,7 @@ fun FeedScreen(
                             FeedSectionHeader(
                                 title = stringResource(R.string.feed_albums),
                                 subtitle = stringResource(R.string.feed_albums_sub),
+                                onLongClick = { sectionMenuTarget = HomeSection.ALBUMS.id to "Albums in Rotation" },
                             )
                             FeedMediaRow(
                                 content = {
@@ -1085,6 +1104,7 @@ fun FeedScreen(
                                 actionIcon = Icons.Filled.PlayArrow,
                                 onActionClick = { viewModel.playTracksQueue(state.feedData.charts, 0, "Top Charts") },
                                 onShuffleClick = { viewModel.shuffleTracksQueue(state.feedData.charts, "Top Charts") },
+                                onLongClick = { sectionMenuTarget = HomeSection.CHARTS.id to "Trending Charts" },
                             )
                             LazyRow(
                                 contentPadding = PaddingValues(horizontal = 16.dp),
@@ -1130,6 +1150,7 @@ fun FeedScreen(
                                 actionText = stringResource(R.string.feed_see_all),
                                 actionIcon = Icons.AutoMirrored.Filled.ArrowForwardIos,
                                 onActionClick = onOpenNewReleases,
+                                onLongClick = { sectionMenuTarget = HomeSection.NEW_RELEASES.id to "New Releases" },
                             )
                             FeedMediaRow(
                                 content = {
@@ -1171,6 +1192,7 @@ fun FeedScreen(
                                         actionText = stringResource(R.string.feed_see_all),
                                         actionIcon = Icons.AutoMirrored.Filled.ArrowForwardIos,
                                         onActionClick = onOpenFriends,
+                                        onLongClick = { sectionMenuTarget = HomeSection.FRIENDS.id to "Friends Activity" },
                                     )
                                     LazyRow(
                                         contentPadding = PaddingValues(horizontal = 16.dp),
@@ -1264,6 +1286,84 @@ fun FeedScreen(
         TrackMiniTraySheet(
             data = tray,
             onDismiss = { miniTrayTrack = null },
+        )
+    }
+
+    sectionMenuTarget?.let { (key, name) ->
+        val isPinned = key in pinnedHomeSections
+        AlertDialog(
+            onDismissRequest = { sectionMenuTarget = null },
+            shape = RoundedCornerShape(24.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            title = {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Surface(
+                        onClick = {
+                            viewModel.togglePinHomeSection(key)
+                            sectionMenuTarget = null
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Icon(
+                                if (isPinned) Icons.Outlined.PushPin else Icons.Filled.PushPin,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                if (isPinned) "Unpin from top" else "Pin at the top",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                    }
+                    Surface(
+                        onClick = {
+                            viewModel.hideHomeSection(key)
+                            sectionMenuTarget = null
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.VisibilityOff,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                            Text(
+                                "Hide section",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { sectionMenuTarget = null }) {
+                    Text("Cancel")
+                }
+            },
         )
     }
 }
@@ -1587,6 +1687,7 @@ private fun HomeShelfCard(
     onTrackMenu: (YouTubeMusicTrack) -> Unit,
     onOpenPodcastShow: (String) -> Unit = {},
     onPlayPodcastEpisode: (HomeShelfItem.PodcastEpisode, List<HomeShelfItem.PodcastEpisode>, String) -> Unit = { _, _, _ -> },
+    onHeaderLongClick: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     if (shelf.items.isEmpty()) return
@@ -1645,6 +1746,7 @@ private fun HomeShelfCard(
                 onShuffle = if (tracksInShelf.isNotEmpty()) {
                     { onShuffleTracksQueue(tracksInShelf, shelf.title) }
                 } else null,
+                onLongClick = onHeaderLongClick?.let { { it(shelf.title) } },
             )
             FeedMediaRow(
                 content = {
@@ -3068,6 +3170,7 @@ private fun FriendAvatarCard(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun FeedSectionHeader(
     title: String,
@@ -3076,6 +3179,7 @@ private fun FeedSectionHeader(
     actionIcon: ImageVector? = null,
     onActionClick: (() -> Unit)? = null,
     onShuffleClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val haptics = LocalHapticFeedback.current
     Row(
@@ -3088,14 +3192,16 @@ private fun FeedSectionHeader(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .then(
-                    if (onActionClick != null) {
-                        Modifier.clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onActionClick,
-                        )
-                    } else Modifier
+                .combinedClickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = { onActionClick?.invoke() },
+                    onLongClick = onLongClick?.let {
+                        {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            it()
+                        }
+                    },
                 ),
         ) {
             Text(

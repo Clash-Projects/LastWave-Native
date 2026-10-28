@@ -84,6 +84,8 @@ data class MiscSettings(
      *  font (see ui/theme/Type.kt); off: the device's own system font.
      *  Defaults on so the app ships with its own identity out of the box. */
     val useCustomFont: Boolean = true,
+    /** "Use Bold Font" — on: bold typography scale; off: clean thin/regular scale. */
+    val useBoldFont: Boolean = false,
     /** Last.fm usernames pinned to the top of Home's friend-switcher sheet
      *  (long-press a friend row to toggle). Order among pinned friends
      *  follows whatever order user.getfriends itself returns them in —
@@ -193,6 +195,10 @@ data class MiscSettings(
     val ytMusicHiddenSections: Set<String> = emptySet(),
     /** Custom order of YouTube Music shelves. */
     val ytMusicSectionsOrder: List<String> = emptyList(),
+    /** Universal custom order of Home screen sections (internal and YouTube Music). */
+    val homeSectionsOrder: List<String> = emptyList(),
+    /** Pinned Home screen section IDs. */
+    val pinnedHomeSections: Set<String> = emptySet(),
     /** When true, Animated Album Canvas motion video loops are displayed. */
     val canvasEnabled: Boolean = true,
     /** When true, portrait motion artwork is displayed edge-to-edge behind player controls. */
@@ -294,6 +300,7 @@ class SettingsPreferences @Inject constructor(
     private object Keys {
         val DYNAMIC_NOW_PLAYING = booleanPreferencesKey("lw_dynamic_now_playing")
         val USE_CUSTOM_FONT = booleanPreferencesKey("lw_use_custom_font")
+        val USE_BOLD_FONT = booleanPreferencesKey("lw_use_bold_font")
         val PINNED_FRIENDS = stringSetPreferencesKey("lw_pinned_friends")
         val PREFER_LOSSLESS_STREAMING = booleanPreferencesKey("lw_prefer_lossless_streaming")
         val PREFER_PROVIDER_MODULES = booleanPreferencesKey("lw_prefer_provider_modules")
@@ -336,6 +343,8 @@ class SettingsPreferences @Inject constructor(
         val HIDDEN_HOME_SECTIONS = stringSetPreferencesKey("lw_hidden_home_sections")
         val YT_MUSIC_HIDDEN_SECTIONS = stringSetPreferencesKey("lw_yt_music_hidden_sections")
         val YT_MUSIC_SECTIONS_ORDER = stringPreferencesKey("lw_yt_music_sections_order")
+        val HOME_SECTIONS_ORDER = stringPreferencesKey("lw_home_sections_order")
+        val PINNED_HOME_SECTIONS = stringSetPreferencesKey("lw_pinned_home_sections")
         val ADDON_URL = stringPreferencesKey("lw_addon_url")
         val ADDON_NAME = stringPreferencesKey("lw_addon_name")
         val ADDON_ENABLED = booleanPreferencesKey("lw_addon_enabled")
@@ -386,6 +395,7 @@ class SettingsPreferences @Inject constructor(
             MiscSettings(
                 dynamicNowPlayingEnabled = p.readSafely(Keys.DYNAMIC_NOW_PLAYING) ?: false,
                 useCustomFont = p.readSafely(Keys.USE_CUSTOM_FONT) ?: true,
+                useBoldFont = p.readSafely(Keys.USE_BOLD_FONT) ?: false,
                 pinnedFriends = p.readSafely(Keys.PINNED_FRIENDS) ?: emptySet(),
                 preferLosslessStreaming = p.readSafely(Keys.PREFER_LOSSLESS_STREAMING) ?: true,
                 preferProviderModules = p.readSafely(Keys.PREFER_PROVIDER_MODULES) ?: true,
@@ -431,6 +441,8 @@ class SettingsPreferences @Inject constructor(
                     ?: emptySet(),
                 ytMusicHiddenSections = p.readSafely(Keys.YT_MUSIC_HIDDEN_SECTIONS) ?: emptySet(),
                 ytMusicSectionsOrder = p.readSafely(Keys.YT_MUSIC_SECTIONS_ORDER)?.split("|||")?.filter { it.isNotBlank() } ?: emptyList(),
+                homeSectionsOrder = p.readSafely(Keys.HOME_SECTIONS_ORDER)?.split("|||")?.filter { it.isNotBlank() } ?: emptyList(),
+                pinnedHomeSections = p.readSafely(Keys.PINNED_HOME_SECTIONS) ?: emptySet(),
                 addonUrl = primaryAddon?.url ?: legacyUrl,
                 addonName = primaryAddon?.name ?: legacyName,
                 addonEnabled = primaryAddon?.enabled ?: legacyEnabled,
@@ -602,6 +614,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setUseCustomFont(enabled: Boolean) {
         dataStore.edit { it[Keys.USE_CUSTOM_FONT] = enabled }
+    }
+
+    suspend fun setUseBoldFont(enabled: Boolean) {
+        dataStore.edit { it[Keys.USE_BOLD_FONT] = enabled }
     }
 
     suspend fun setPodcastsEnabled(enabled: Boolean) {
@@ -808,6 +824,57 @@ class SettingsPreferences @Inject constructor(
         dataStore.edit { prefs ->
             prefs.remove(Keys.YT_MUSIC_SECTIONS_ORDER)
             prefs.remove(Keys.YT_MUSIC_HIDDEN_SECTIONS)
+        }
+    }
+
+    suspend fun saveUniversalHomeSections(order: List<String>, hidden: Set<String>, pinned: Set<String>) {
+        dataStore.edit { prefs ->
+            prefs[Keys.HOME_SECTIONS_ORDER] = order.joinToString("|||")
+            val inApp = hidden.filter { id -> HomeSection.entries.any { it.id == id } }.toSet()
+            val yt = hidden.filter { id -> id.startsWith("yt:") }.map { it.removePrefix("yt:") }.toSet()
+            prefs[Keys.HIDDEN_HOME_SECTIONS] = inApp
+            prefs[Keys.YT_MUSIC_HIDDEN_SECTIONS] = yt
+            prefs[Keys.PINNED_HOME_SECTIONS] = pinned
+        }
+    }
+
+    suspend fun togglePinHomeSection(sectionKey: String) {
+        dataStore.edit { prefs ->
+            val currentPinned = prefs.readSafely(Keys.PINNED_HOME_SECTIONS) ?: emptySet()
+            val isCurrentlyPinned = sectionKey in currentPinned
+            val newPinned = if (isCurrentlyPinned) currentPinned - sectionKey else currentPinned + sectionKey
+            prefs[Keys.PINNED_HOME_SECTIONS] = newPinned
+
+            val rawOrder = prefs.readSafely(Keys.HOME_SECTIONS_ORDER)?.split("|||")?.filter { it.isNotBlank() } ?: emptyList()
+            if (!isCurrentlyPinned && rawOrder.isNotEmpty()) {
+                val list = rawOrder.toMutableList()
+                list.remove(sectionKey)
+                list.add(0, sectionKey)
+                prefs[Keys.HOME_SECTIONS_ORDER] = list.joinToString("|||")
+            }
+        }
+    }
+
+    suspend fun hideHomeSectionById(sectionKey: String) {
+        dataStore.edit { prefs ->
+            if (sectionKey.startsWith("yt:")) {
+                val ytName = sectionKey.removePrefix("yt:")
+                val current = prefs.readSafely(Keys.YT_MUSIC_HIDDEN_SECTIONS) ?: emptySet()
+                prefs[Keys.YT_MUSIC_HIDDEN_SECTIONS] = current + ytName
+            } else {
+                val current = prefs.readSafely(Keys.HIDDEN_HOME_SECTIONS) ?: emptySet()
+                prefs[Keys.HIDDEN_HOME_SECTIONS] = current + sectionKey
+            }
+        }
+    }
+
+    suspend fun resetUniversalHomeSections() {
+        dataStore.edit { prefs ->
+            prefs.remove(Keys.HOME_SECTIONS_ORDER)
+            prefs.remove(Keys.PINNED_HOME_SECTIONS)
+            prefs.remove(Keys.HIDDEN_HOME_SECTIONS)
+            prefs.remove(Keys.YT_MUSIC_HIDDEN_SECTIONS)
+            prefs.remove(Keys.YT_MUSIC_SECTIONS_ORDER)
         }
     }
 

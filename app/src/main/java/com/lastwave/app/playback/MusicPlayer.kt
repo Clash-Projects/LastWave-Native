@@ -2913,6 +2913,37 @@ class MusicPlayer @Inject constructor(
         }
     }
 
+    /** Appends multiple tracks to the active queue without stopping or restarting current playback. */
+    fun appendTracksToQueue(tracks: List<PlayableTrack>) = onMain {
+        if (tracks.isEmpty()) return@onMain
+        val seenQueueKeys = (0 until player.mediaItemCount).mapTo(mutableSetOf()) {
+            player.getMediaItemAt(it).toPlayableTrack().queueKey()
+        }
+        val fresh = tracks.filter { track ->
+            track.title.isNotBlank() && track.artist.isNotBlank() && seenQueueKeys.add(track.queueKey())
+        }
+        if (fresh.isEmpty()) return@onMain
+
+        if (isCasting) {
+            _state.update { it.copy(queue = it.queue + fresh) }
+            persistPlaybackSession()
+        } else {
+            val wasEmpty = player.mediaItemCount == 0
+            val wasEnded = player.playbackState == Player.STATE_ENDED
+            val previousCount = player.mediaItemCount
+            player.addMediaItems(fresh.map(PlayableTrack::toMediaItem))
+            refresh(player)
+            val currentIndex = player.currentMediaItemIndex
+            enrichUpcomingQueue(currentIndex.coerceAtLeast(0))
+            if (wasEmpty || (wasEnded && currentIndex >= previousCount - 1)) {
+                player.seekToDefaultPosition(previousCount)
+                player.prepare()
+                player.play()
+            }
+            persistPlaybackSession()
+        }
+    }
+
     /** Adds the varied continuation loaded for a search-started track.
      * A stale response can never modify a newer playback queue. */
     fun appendSearchRecommendations(seed: PlayableTrack, tracks: List<PlayableTrack>) {

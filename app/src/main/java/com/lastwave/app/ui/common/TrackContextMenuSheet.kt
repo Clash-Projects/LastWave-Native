@@ -93,6 +93,7 @@ import androidx.lifecycle.viewModelScope
 import com.lastwave.app.ui.generate.MixLauncher
 import com.lastwave.app.ui.theme.LocalLiquidGlass
 import com.lastwave.app.ui.theme.liquidGlassChrome
+import com.lastwave.app.playback.toPlayableTrack
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.ui.navigation.ArtistAlbumNavigator
 import com.lastwave.app.ui.player.LocalMusicPlayer
@@ -132,13 +133,36 @@ class ArtistAlbumMenuViewModel @Inject constructor(
     }
 }
 
-/** Thin bridge so TrackContextMenuSheet can reach the MixLauncher singleton
- *  the same way it already reaches GenreRowViewModel — every caller gets
- *  "Start Mix with this Song" working for free, with no per-screen wiring. */
+/** Builds similar songs using YouTube Music + Last.fm and appends them to active queue
+ *  without generating a separate playlist or interrupting current playback. */
 @HiltViewModel
-class StartMixMenuViewModel @Inject constructor(private val mixLauncher: MixLauncher) : ViewModel() {
+class StartMixMenuViewModel @Inject constructor(
+    private val generateRepository: com.lastwave.app.data.generate.GenerateRepository,
+    private val musicPlayer: com.lastwave.app.playback.MusicPlayer,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
+) : ViewModel() {
     fun startMix(trackName: String, artistName: String, videoId: String? = null) {
-        mixLauncher.startMix(trackName, artistName, videoId)
+        if (trackName.isBlank() || artistName.isBlank()) return
+        viewModelScope.launch {
+            runCatching {
+                android.widget.Toast.makeText(appContext, "Finding similar songs for $trackName…", android.widget.Toast.LENGTH_SHORT).show()
+                val similar = generateRepository.fetchSimilarTracks(
+                    track = trackName,
+                    artist = artistName,
+                    limit = 30,
+                    seedVideoId = videoId,
+                )
+                if (similar.isNotEmpty()) {
+                    val playable = similar.map { it.toPlayableTrack() }
+                    musicPlayer.appendTracksToQueue(playable)
+                    android.widget.Toast.makeText(appContext, "Added ${playable.size} mix tracks to queue", android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    android.widget.Toast.makeText(appContext, "Could not find related tracks", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }.onFailure { error ->
+                android.util.Log.e("StartMix", "Failed to append mix tracks", error)
+            }
+        }
     }
 }
 
@@ -510,21 +534,24 @@ fun TrackContextMenuSheet(
                 // Local songs: imported files get an explicit row.
                 val isLocalFile = com.lastwave.app.data.generate.LocalAudioFormats.importedPathOrNull(playable.playbackUrl) != null
                 val rows = buildList<@Composable (GroupPosition) -> Unit> {
-                    // 1. Genres ALWAYS at the very top of the menu
-                    add { pos ->
-                        val genre = resolvedGenre
-                        MenuInfoRow(
-                            icon = Icons.Filled.Sell,
-                            text = if (resolvingGenre) stringResource(R.string.menu_resolving_genre) else stringResource(
-                                R.string.menu_genre_value,
-                                genre?.takeIf { it.isNotBlank() } ?: stringResource(R.string.menu_genre_unknown),
-                            ),
-                            loading = resolvingGenre,
-                            position = pos,
-                            onClick = if (!resolvingGenre && !genre.isNullOrBlank()) {
-                                { exploreGenre(genre); onDismiss() }
-                            } else null,
-                        )
+                    // 1. Genres at top of menu ONLY if available (completely hide if unknown/unavailable)
+                    val genre = resolvedGenre?.trim()
+                    val hasGenre = !genre.isNullOrBlank() && !genre.equals("unknown", ignoreCase = true)
+                    if (resolvingGenre || hasGenre) {
+                        add { pos ->
+                            MenuInfoRow(
+                                icon = Icons.Filled.Sell,
+                                text = if (resolvingGenre) stringResource(R.string.menu_resolving_genre) else stringResource(
+                                    R.string.menu_genre_value,
+                                    genre ?: "",
+                                ),
+                                loading = resolvingGenre,
+                                position = pos,
+                                onClick = if (!resolvingGenre && hasGenre) {
+                                    { exploreGenre(genre!!); onDismiss() }
+                                } else null,
+                            )
+                        }
                     }
 
                     if (musicVideoEnabled) {

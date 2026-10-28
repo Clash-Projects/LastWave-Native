@@ -116,15 +116,6 @@ class LaunchGateViewModel @Inject constructor(
 fun LastWaveNavHost(
     navController: NavHostController = rememberNavController(),
 ) {
-    val mixNavBridge: MixLauncherNavBridge = hiltViewModel()
-    val pendingMixSeed by mixNavBridge.mixLauncher.pendingSeed.collectAsStateWithLifecycle()
-    LaunchedEffect(pendingMixSeed) {
-        if (pendingMixSeed != null) {
-            navController.navigate(Screen.Create.route) {
-                launchSingleTop = true
-            }
-        }
-    }
     val appRouteBridge: AppRouteNavBridge = hiltViewModel()
     val pendingAppRoute by appRouteBridge.routeNavigator.pendingRoute.collectAsStateWithLifecycle()
     val currentBackStackEntry by navController.currentBackStackEntryAsState()

@@ -1227,6 +1227,16 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         artworkUrl = cleanUrl
         artworkJob?.cancel()
 
+        // Immediate memory cache lookup for zero-latency widget update
+        runCatching {
+            val cached = imageLoader.memoryCache?.get(coil.memory.MemoryCache.Key(cleanUrl))?.bitmap
+            if (cached != null && !cached.isRecycled) {
+                artworkBitmap = cached
+                widgetSignature = ""
+                publishWidget(musicPlayer.state.value)
+            }
+        }
+
         artworkJob = scope.launch {
             val expectedUrl = cleanUrl
             val result = kotlinx.coroutines.withContext(Dispatchers.IO) {

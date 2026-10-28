@@ -48,9 +48,11 @@ internal object ObsidianWidgetViews {
         appWidgetId: Int,
         eqFrame: Int? = null,
         progressOverride: Float? = null,
+        memoryArt: Bitmap? = null,
     ): RemoteViews {
         val resolved = WidgetViews.resolve(context)
-        val artBitmap = resolveArtBitmap(resolved.snapshot.artPath)
+        val artBitmap = memoryArt?.let { if (!it.isRecycled) roundedCorners(it, 0.22f) else null }
+            ?: resolveArtBitmap(resolved.snapshot.artPath)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val sizeMap = mapOf(
@@ -179,6 +181,46 @@ internal object ObsidianWidgetViews {
         runCatching {
             views.setInt(R.id.widget_prev, "setColorFilter", Color.WHITE)
             views.setInt(R.id.widget_next, "setColorFilter", Color.WHITE)
+        }
+
+        // Dynamic palette extraction for entire Obsidian widget card
+        if (artBitmap != null && !artBitmap.isRecycled) {
+            runCatching {
+                val palette = androidx.palette.graphics.Palette.from(artBitmap).maximumColorCount(16).generate()
+                val swatch = palette.vibrantSwatch
+                    ?: palette.dominantSwatch
+                    ?: palette.mutedSwatch
+                if (swatch != null) {
+                    val primaryColor = swatch.rgb
+                    val onPrimaryColor = swatch.titleTextColor
+
+                    views.setTextColor(R.id.widget_play_pause_text, onPrimaryColor)
+                    views.setInt(R.id.widget_play_pause_icon, "setColorFilter", onPrimaryColor)
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        val bgTint = androidx.core.graphics.ColorUtils.blendARGB(
+                            Color.parseColor("#18181B"),
+                            primaryColor,
+                            0.42f,
+                        )
+                        views.setColorStateList(
+                            R.id.widget_root,
+                            "setBackgroundTintList",
+                            android.content.res.ColorStateList.valueOf(bgTint),
+                        )
+                        views.setColorStateList(
+                            R.id.widget_play_pause,
+                            "setBackgroundTintList",
+                            android.content.res.ColorStateList.valueOf(primaryColor),
+                        )
+                        views.setColorStateList(
+                            R.id.widget_progress,
+                            "setProgressTintList",
+                            android.content.res.ColorStateList.valueOf(primaryColor),
+                        )
+                    }
+                }
+            }
         }
 
         // Pre-decoded squircle artwork

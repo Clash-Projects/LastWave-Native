@@ -46,6 +46,7 @@ import com.lastwave.app.R
  * subtitle, and an optional "more" chevron (only when the shelf actually has a
  * supported destination). Play all + shuffle pills appear for playable shelves.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun ShelfHeaderV2(
     title: String,
@@ -56,6 +57,7 @@ fun ShelfHeaderV2(
     onPlayAll: (() -> Unit)? = null,
     onShuffle: (() -> Unit)? = null,
     outlinedPlayAll: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val haptics = LocalHapticFeedback.current
     Row(
@@ -68,10 +70,16 @@ fun ShelfHeaderV2(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .then(
-                    if (showMore && onMoreClick != null) {
-                        Modifier.cardPressable(onClick = onMoreClick)
-                    } else Modifier
+                .combinedClickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null,
+                    onClick = { if (showMore && onMoreClick != null) onMoreClick() },
+                    onLongClick = onLongClick?.let {
+                        {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            it()
+                        }
+                    },
                 ),
         ) {
             if (!eyebrow.isNullOrBlank()) {

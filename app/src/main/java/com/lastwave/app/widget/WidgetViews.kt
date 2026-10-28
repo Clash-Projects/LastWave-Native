@@ -237,7 +237,7 @@ internal object WidgetViews {
                         val bgTint = androidx.core.graphics.ColorUtils.blendARGB(
                             ContextCompat.getColor(context, R.color.widget_surface),
                             primaryColor,
-                            0.14f,
+                            0.45f,
                         )
                         views.setColorStateList(
                             R.id.widget_root,

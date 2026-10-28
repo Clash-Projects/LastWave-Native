@@ -925,15 +925,15 @@ fun PlayerHost(
                     backdrop = if (miniGlass) miniBackdrop else null,
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
-                
-                // Sleep Timer Button
-                if (!expanded) {
-                    DraggableSleepTimerOverlay(
-                        sleepTimerRemainingMs = playbackState.sleepTimerRemainingMs,
-                        onCycleTimer = { viewModel.player.cycleSleepTimer() },
-                        onCloseTimer = { viewModel.player.setSleepTimerMinutes(0) },
-                    )
-                }
+            }
+
+            // Sleep Timer Overlay Button (shown whenever timer is active, regardless of mini-player or button mode)
+            if (!expanded && playbackState.sleepTimerRemainingMs != null) {
+                DraggableSleepTimerOverlay(
+                    sleepTimerRemainingMs = playbackState.sleepTimerRemainingMs,
+                    onCycleTimer = { viewModel.player.cycleSleepTimer() },
+                    onCloseTimer = { viewModel.player.setSleepTimerMinutes(0) },
+                )
             }
             val currentTrack = state.current
             if (currentTrack != null && !expanded && settings.buttonNowPlayingEnabled) {
@@ -3322,26 +3322,28 @@ private fun FullPlayer(
                                         secondaryColor = ambientCompanion,
                                         tertiaryColor = ambientDeep,
                                     )
-                                    Spacer(Modifier.height(2.dp))
+                                    Spacer(Modifier.height(0.dp))
                                     AppleMusicQualityBadge(
                                         state = state,
                                         signalPath = signalPath,
                                         isTranslucent = LocalLiquidGlass.current || showFullBleed,
                                         onClick = { showSignalPath = true },
+                                        modifier = Modifier.offset(y = (-4).dp),
                                     )
                                     NowPlayingAutoDJBadgeRow(
                                         state = state,
                                         onClick = { showAudioControls = true },
                                         isTranslucent = LocalLiquidGlass.current || showFullBleed,
                                     )
-                                    Spacer(Modifier.height(8.dp))
+                                    Spacer(Modifier.height(12.dp))
                                     MainControls(state, player, isTranslucent = LocalLiquidGlass.current || showFullBleed)
-                                    Spacer(Modifier.height(22.dp))
+                                    Spacer(Modifier.height(30.dp))
                                     PlayerUtilityControls(
                                         state = state,
                                         player = player,
                                         isTranslucent = LocalLiquidGlass.current || showFullBleed,
                                         onOpenAudioControls = { showAudioControls = true },
+                                        modifier = Modifier.padding(top = 4.dp),
                                     )
                                 }
                                 }
@@ -3923,7 +3925,7 @@ private fun FullPlayerLandscape(
                 tertiaryColor = ambientDeep,
             )
 
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(0.dp))
 
             val signalPath by player.signalPath.collectAsStateWithLifecycle()
             AppleMusicQualityBadge(
@@ -3931,23 +3933,25 @@ private fun FullPlayerLandscape(
                 signalPath = signalPath,
                 isTranslucent = LocalLiquidGlass.current,
                 onClick = onOpenSignalPath,
+                modifier = Modifier.offset(y = (-4).dp),
             )
             NowPlayingAutoDJBadgeRow(
                 state = state,
                 onClick = onOpenAudioControls,
                 isTranslucent = LocalLiquidGlass.current,
             )
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(14.dp))
 
             MainControls(state, player, isTranslucent = LocalLiquidGlass.current)
 
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(30.dp))
 
             PlayerUtilityControls(
                 state = state,
                 player = player,
                 isTranslucent = LocalLiquidGlass.current,
                 onOpenAudioControls = onOpenAudioControls,
+                modifier = Modifier.padding(top = 4.dp),
             )
         }
     }
@@ -4455,6 +4459,7 @@ private fun PlayerUtilityControls(
     player: MusicPlayer,
     isTranslucent: Boolean = false,
     onOpenAudioControls: () -> Unit = {},
+    modifier: Modifier = Modifier,
 ) {
     val edgeButtonBackground = if (isTranslucent) {
         Color.White.copy(alpha = 0.12f)
@@ -4468,7 +4473,7 @@ private fun PlayerUtilityControls(
     }
 
     Row(
-        Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(if (isTranslucent) 10.dp else 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -5561,26 +5566,6 @@ private fun AudioControlsSheet(
                                     iconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                 ),
                             )
-
-                            androidx.compose.material3.FilledTonalButton(
-                                onClick = {
-                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    currentSpeed = 1.0f
-                                    currentPitch = 1.0f
-                                    player.resetPlaybackParameters()
-                                },
-                                shape = RoundedCornerShape(16.dp),
-                                colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                    contentColor = MaterialTheme.colorScheme.onSurface,
-                                ),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                modifier = Modifier.height(32.dp),
-                            ) {
-                                Icon(Icons.Filled.RestartAlt, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Reset", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-                            }
                         }
                     }
 
@@ -5675,108 +5660,6 @@ private fun AudioControlsSheet(
                                 activeTrackColor = MaterialTheme.colorScheme.secondary,
                             ),
                             modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-
-                    // Quick Presets
-                    Text(
-                        text = "Presets",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    val presetColors = SuggestionChipDefaults.suggestionChipColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        labelColor = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        SuggestionChip(
-                            onClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                currentSpeed = 0.85f
-                                currentPitch = 0.85f
-                                player.setPlaybackParameters(0.85f, 0.85f)
-                            },
-                            label = { Text("Slowed", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
-                            border = null,
-                            shape = RoundedCornerShape(16.dp),
-                            colors = presetColors,
-                            modifier = Modifier.weight(1f),
-                        )
-                        SuggestionChip(
-                            onClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                currentSpeed = 0.75f
-                                currentPitch = 0.75f
-                                player.setPlaybackParameters(0.75f, 0.75f)
-                            },
-                            label = { Text("Deep Slow", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
-                            border = null,
-                            shape = RoundedCornerShape(16.dp),
-                            colors = presetColors,
-                            modifier = Modifier.weight(1f),
-                        )
-                        SuggestionChip(
-                            onClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                currentSpeed = 1.0f
-                                currentPitch = 1.0f
-                                player.resetPlaybackParameters()
-                            },
-                            label = { Text("Normal", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
-                            border = null,
-                            shape = RoundedCornerShape(16.dp),
-                            colors = presetColors,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        SuggestionChip(
-                            onClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                currentSpeed = 1.15f
-                                currentPitch = 1.15f
-                                player.setPlaybackParameters(1.15f, 1.15f)
-                            },
-                            label = { Text("Nightcore", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
-                            border = null,
-                            shape = RoundedCornerShape(16.dp),
-                            colors = presetColors,
-                            modifier = Modifier.weight(1f),
-                        )
-                        SuggestionChip(
-                            onClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                currentSpeed = 1.25f
-                                currentPitch = 1.25f
-                                player.setPlaybackParameters(1.25f, 1.25f)
-                            },
-                            label = { Text("Sped Up", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
-                            border = null,
-                            shape = RoundedCornerShape(16.dp),
-                            colors = presetColors,
-                            modifier = Modifier.weight(1f),
-                        )
-                        SuggestionChip(
-                            onClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                currentSpeed = 0.80f
-                                currentPitch = 0.70f
-                                player.setPlaybackParameters(0.80f, 0.70f)
-                            },
-                            label = { Text("Vaporwave", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
-                            border = null,
-                            shape = RoundedCornerShape(16.dp),
-                            colors = SuggestionChipDefaults.suggestionChipColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                labelColor = MaterialTheme.colorScheme.onSurface,
-                            ),
-                            modifier = Modifier.weight(1f),
                         )
                     }
                 }

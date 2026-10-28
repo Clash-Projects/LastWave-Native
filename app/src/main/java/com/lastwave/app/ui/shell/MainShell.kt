@@ -849,12 +849,8 @@ private fun JoinSupportDialog(
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(28.dp),
-        containerColor = if (LocalLiquidGlass.current) {
-            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.90f)
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh
-        },
+        shape = RoundedCornerShape(24.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         title = {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -863,31 +859,31 @@ private fun JoinSupportDialog(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Surface(
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.primaryContainer,
-                        modifier = Modifier.size(40.dp),
+                        modifier = Modifier.size(36.dp),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Filled.Headphones,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(22.dp),
+                                modifier = Modifier.size(18.dp),
                             )
                         }
                     }
                     Column {
                         Text(
                             text = "Join Support",
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
                             text = "Connect with us",
-                            style = MaterialTheme.typography.labelMedium,
+                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.SemiBold,
                         )
@@ -895,13 +891,13 @@ private fun JoinSupportDialog(
                 }
                 IconButton(
                     onClick = onDismiss,
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(28.dp),
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Close,
                         contentDescription = "Close",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(18.dp),
                     )
                 }
             }
@@ -909,58 +905,107 @@ private fun JoinSupportDialog(
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
                     text = "Get real-time assistance, report bugs, discover new releases, and connect directly with the developer community.",
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(2.dp))
 
-                // Above (Top): ClashProjects Support
+                // Telegram Channel: MaterialYouApp
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(18.dp))
-                        .clickable {
-                            openTelegramSupport(context)
-                        },
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.65f),
-                    shape = RoundedCornerShape(18.dp),
-                    tonalElevation = 2.dp,
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { openMaterialYouChannel(context) },
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.70f),
+                    shape = RoundedCornerShape(14.dp),
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(14.dp),
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Surface(
                             shape = CircleShape,
                             color = Color(0xFF24A1DE).copy(alpha = 0.18f),
-                            modifier = Modifier.size(44.dp),
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Send,
+                                    contentDescription = "Material You Channel",
+                                    tint = Color(0xFF24A1DE),
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Material You Apps",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text = "t.me/MaterialYouApp",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(13.dp),
+                        )
+                    }
+                }
+
+                // Telegram Support: ClashProjects
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { openTelegramSupport(context) },
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.70f),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFF24A1DE).copy(alpha = 0.18f),
+                            modifier = Modifier.size(36.dp),
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.Send,
                                     contentDescription = "Telegram Support",
                                     tint = Color(0xFF24A1DE),
-                                    modifier = Modifier.size(22.dp),
+                                    modifier = Modifier.size(18.dp),
                                 )
                             }
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "ClashProjects Support",
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
                             Text(
-                                text = "Join @clashprojects on Telegram",
+                                text = "@clashprojects on Telegram",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -968,54 +1013,51 @@ private fun JoinSupportDialog(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(13.dp),
                         )
                     }
                 }
 
-                // Downside (Bottom): LastWave Discord
+                // Discord Community
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(18.dp))
-                        .clickable {
-                            openDiscordSupport(context)
-                        },
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.65f),
-                    shape = RoundedCornerShape(18.dp),
-                    tonalElevation = 2.dp,
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { openDiscordSupport(context) },
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.70f),
+                    shape = RoundedCornerShape(14.dp),
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(14.dp),
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Surface(
                             shape = CircleShape,
                             color = Color(0xFF5865F2).copy(alpha = 0.18f),
-                            modifier = Modifier.size(44.dp),
+                            modifier = Modifier.size(36.dp),
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Filled.Group,
                                     contentDescription = "Discord Support",
                                     tint = Color(0xFF5865F2),
-                                    modifier = Modifier.size(22.dp),
+                                    modifier = Modifier.size(18.dp),
                                 )
                             }
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "LastWave Discord",
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
                             Text(
-                                text = "Join community & talk to developers",
+                                text = "Community & discussions",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -1023,30 +1065,45 @@ private fun JoinSupportDialog(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(13.dp),
                         )
                     }
                 }
             }
         },
         confirmButton = {
-            Button(
+            FilledTonalButton(
                 onClick = onDismiss,
-                shape = RoundedCornerShape(18.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
+                shape = RoundedCornerShape(14.dp),
             ) {
                 Text(
-                    text = "Quit",
-                    style = MaterialTheme.typography.labelLarge,
+                    text = "Close",
+                    style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
         },
     )
+}
+
+private fun openMaterialYouChannel(context: android.content.Context) {
+    val tgIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("tg://resolve?domain=MaterialYouApp")).apply {
+        setPackage("org.telegram.messenger")
+        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    val genericTgIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("tg://resolve?domain=MaterialYouApp")).apply {
+        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    val webIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://t.me/MaterialYouApp")).apply {
+        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    val success = runCatching { context.startActivity(tgIntent); true }.getOrDefault(false) ||
+        runCatching { context.startActivity(genericTgIntent); true }.getOrDefault(false) ||
+        runCatching { context.startActivity(webIntent); true }.getOrDefault(false)
+    if (!success) {
+        android.widget.Toast.makeText(context, "No browser or Telegram app available", android.widget.Toast.LENGTH_SHORT).show()
+    }
 }
 
 private fun openTelegramSupport(context: android.content.Context) {

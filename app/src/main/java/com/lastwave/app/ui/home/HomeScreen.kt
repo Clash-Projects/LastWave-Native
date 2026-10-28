@@ -198,23 +198,6 @@ fun HomeScreen(
                     title = "Statistics",
                     modifier = Modifier.adaptiveContentWidth(maxWidth = 860.dp),
                     actions = {
-                        Box {
-                            HeaderActionIcon(
-                                icon = Icons.Filled.Group,
-                                contentDescription = "LastWave Jam",
-                                onClick = { showJamSheet = true },
-                            )
-                            if (jamUiState.isConnected) {
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(4.dp)
-                                        .size(9.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFFC9FB00)),
-                                )
-                            }
-                        }
                         HeaderActionIcon(Icons.Filled.Download, "Downloads", onOpenDownloads)
                         HeaderActionIcon(Icons.Filled.Search, "Search", onOpenSearch)
                         IconButton(onClick = onOpenSettings) {

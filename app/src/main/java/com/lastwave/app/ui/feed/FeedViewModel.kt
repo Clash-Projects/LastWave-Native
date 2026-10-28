@@ -104,6 +104,28 @@ class FeedViewModel @Inject constructor(
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val homeSectionsOrder: StateFlow<List<String>> = settingsPreferences.settings
+        .map { it.homeSectionsOrder }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val pinnedHomeSections: StateFlow<Set<String>> = settingsPreferences.settings
+        .map { it.pinnedHomeSections }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    fun togglePinHomeSection(sectionKey: String) {
+        viewModelScope.launch {
+            settingsPreferences.togglePinHomeSection(sectionKey)
+        }
+    }
+
+    fun hideHomeSection(sectionKey: String) {
+        viewModelScope.launch {
+            settingsPreferences.hideHomeSectionById(sectionKey)
+        }
+    }
+
     /** Podcast surfaces are hidden the moment the user turns them off. */
     val podcastsEnabled: StateFlow<Boolean> = settingsPreferences.settings
         .map { it.podcastsEnabled }

@@ -767,7 +767,6 @@ fun PlaylistDetailScreen(
                             },
                     ) {
                         NativeTrackRow(
-                            index = index + 1,
                             track = track,
                             isPlaying = isPlayingThisSong,
                             onClick = {
@@ -1358,166 +1357,48 @@ fun PlaylistDetailScreen(
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
+@Composable
 private fun NativeTrackRow(
-    index: Int,
     track: GeneratedTrack,
     isPlaying: Boolean,
     onClick: () -> Unit,
     onMenu: () -> Unit,
     dragHandle: (@Composable () -> Unit)? = null,
+    modifier: Modifier = Modifier,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val rowScale by animateFloatAsState(
-        targetValue = if (isPressed) 0.98f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-        label = "rowPress",
-    )
-    val rowBackground by animateColorAsState(
-        targetValue = if (isPlaying) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f) else Color.Transparent,
-        animationSpec = tween(350),
-        label = "rowBg",
-    )
-
-    val containerColor = if (isPlaying) {
-        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
-    } else {
-        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.70f)
-    }
-    val containerBorder = if (isPlaying) {
-        androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f))
-    } else {
-        androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f))
-    }
-
-    val rowModifier = Modifier
-        .fillMaxWidth()
-        .clip(RoundedCornerShape(16.dp))
-        .graphicsLayer {
-            scaleX = rowScale
-            scaleY = rowScale
-        }
-
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = containerColor,
-        border = containerBorder,
-        modifier = rowModifier,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .combinedClickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = onClick,
-                    onLongClick = if (dragHandle != null) null else onMenu,
-                )
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Track index or playing animation
-            Box(
-                modifier = Modifier.width(36.dp),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                Text(
-                    text = "$index",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.outline,
-                    maxLines = 1,
-                    overflow = TextOverflow.Visible,
-                )
-            }
-            Spacer(Modifier.width(6.dp))
-            Box(Modifier.size(48.dp).clip(ArtworkShape)) {
+    com.lastwave.app.ui.common.ExpressiveGroupTrackRow(
+        title = track.name,
+        subtitle = listOfNotNull(track.artist.takeIf(String::isNotBlank), track.album?.takeIf(String::isNotBlank))
+            .joinToString(" · ")
+            .ifBlank { track.artist },
+        position = com.lastwave.app.ui.common.GroupPosition.SINGLE,
+        isPlaying = isPlaying,
+        onClick = onClick,
+        modifier = modifier,
+        leading = {
+            Box(modifier = Modifier.size(52.dp)) {
                 ArtworkImage(
                     name = track.name,
                     artist = track.artist,
                     embeddedUrl = track.artworkUrl,
-                    fallbackIcon = Icons.Filled.MusicNote,
-                    modifier = Modifier.fillMaxSize(),
+                    fallbackIcon = if (isPlaying) Icons.Filled.GraphicEq else Icons.Filled.MusicNote,
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
                 )
                 if (isPlaying) {
                     com.lastwave.app.ui.player.PlayingWaveBars(
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp).size(24.dp, 18.dp),
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(3.dp).size(24.dp, 18.dp),
                     )
                 }
             }
-
-            Spacer(Modifier.width(14.dp))
-
-            // Title & Artist
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = track.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (isPlaying) FontWeight.Bold else FontWeight.SemiBold,
-                    color = if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = track.artist,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+        },
+        trailing = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                dragHandle?.invoke()
+                com.lastwave.app.ui.common.OverflowMenuButton(onClick = onMenu)
             }
-
-            // Now Playing badge if active
-            if (isPlaying) {
-                val transition = rememberInfiniteTransition(label = "nowPlayingAnim")
-                val pulseScale by transition.animateFloat(
-                    initialValue = 1.0f,
-                    targetValue = 1.06f,
-                    animationSpec = infiniteRepeatable(tween(1200, easing = LinearEasing), RepeatMode.Reverse),
-                    label = "pulseScale",
-                )
-                val dotAlpha by transition.animateFloat(
-                    initialValue = 0.45f,
-                    targetValue = 1f,
-                    animationSpec = infiniteRepeatable(tween(800, easing = LinearEasing), RepeatMode.Reverse),
-                    label = "dotAlpha",
-                )
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary,
-                    tonalElevation = 4.dp,
-                    shadowElevation = 2.dp,
-                    modifier = Modifier.graphicsLayer {
-                        scaleX = pulseScale
-                        scaleY = pulseScale
-                    },
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .graphicsLayer { alpha = dotAlpha }
-                                .background(MaterialTheme.colorScheme.onPrimary, CircleShape),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            "Now Playing",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                        )
-                    }
-                }
-                Spacer(Modifier.width(4.dp))
-            }
-
-            // Drag handle (only when reorder is enabled by the caller)
-            dragHandle?.invoke()
-            // Options menu button with stroke / outline container matching Discover and Statistics
-            com.lastwave.app.ui.common.OverflowMenuButton(onClick = onMenu)
-        }
-    }
+        },
+    )
 }
