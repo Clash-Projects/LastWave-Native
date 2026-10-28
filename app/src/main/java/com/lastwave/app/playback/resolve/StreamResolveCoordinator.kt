@@ -37,6 +37,20 @@ class StreamResolveCoordinator(
         return playback.resolve(token, identity, durationMs, extraction::await)
     }
 
+    /**
+     * Resolves [identity] directly without acquiring the exclusive playback claim.
+     * Used by background standby deck preloading and lookahead resolution to prevent
+     * throwing [StaleResolveException] when another track is currently active.
+     */
+    suspend fun resolveTrackStream(identity: TrackIdentity, durationMs: Long?): StreamCache {
+        val cached = cache.get(identity)?.takeIf { it.matches(identity) }
+        if (cached != null) return cached
+        val stream = extraction.await(identity.youtubeVideoId)
+        val entry = stream.toStreamCache(identity)
+        cache.put(entry)
+        return entry
+    }
+
     fun prefetchNext(
         identity: TrackIdentity,
         durationMs: Long?,
