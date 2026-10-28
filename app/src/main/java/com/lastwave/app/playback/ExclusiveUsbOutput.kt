@@ -102,7 +102,8 @@ class ExclusiveUsbOutput @Inject constructor(
             if (intent?.action != VOLUME_CHANGED_ACTION) return
             val streamType = intent.getIntExtra(EXTRA_VOLUME_STREAM_TYPE, AudioManager.STREAM_MUSIC)
             if (streamType != AudioManager.STREAM_MUSIC) return
-            syncListeningGain()
+            val extraVol = intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_VALUE", -1).takeIf { it >= 0 }
+            syncListeningGain(extraVol)
         }
     }
 
@@ -259,8 +260,8 @@ class ExclusiveUsbOutput @Inject constructor(
         }
     }
 
-    fun syncListeningGain() {
-        val stream = readStreamMusicGain() ?: return
+    fun syncListeningGain(explicitVol: Int? = null) {
+        val stream = readStreamMusicGain(explicitVol) ?: return
         // While the attach-time 100% pin is held off with the remembered
         // level, keep ignoring pinned max readings. The next real sub-max
         // change (a volume key press) ends the hold and applies normally.
@@ -791,12 +792,27 @@ class ExclusiveUsbOutput @Inject constructor(
         volumeReceiverRegistered = false
     }
 
-    private fun readStreamMusicGain(): Float? {
+    @Volatile private var cachedMaxVolume = -1
+    @Volatile private var lastKnownStreamGain: Float = 1f
+    @Volatile private var lastStreamGainReadMs = 0L
+
+    private fun readStreamMusicGain(explicitVol: Int? = null): Float? {
         val manager = audioManager ?: return null
-        val max = runCatching { manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }.getOrDefault(0)
+        val max = if (cachedMaxVolume > 0) cachedMaxVolume else {
+            runCatching { manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }.getOrDefault(0).also {
+                if (it > 0) cachedMaxVolume = it
+            }
+        }
         if (max <= 0) return null
-        val vol = runCatching { manager.getStreamVolume(AudioManager.STREAM_MUSIC) }.getOrDefault(max)
+        val now = SystemClock.elapsedRealtime()
+        val vol = explicitVol ?: if (now - lastStreamGainReadMs < 1500L) {
+            (lastKnownStreamGain * max).toInt()
+        } else {
+            lastStreamGainReadMs = now
+            runCatching { manager.getStreamVolume(AudioManager.STREAM_MUSIC) }.getOrDefault(max)
+        }
         val gain = vol.coerceIn(0, max).toFloat() / max
+        lastKnownStreamGain = gain
         rememberStreamGain(gain)
         return gain
     }

@@ -179,6 +179,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                     MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
                         MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS,
                 )
+                setPlaybackToLocal(android.media.AudioManager.STREAM_MUSIC)
                 setCallback(object : MediaSessionCompat.Callback() {
                     override fun onPlay() = musicPlayer.resume()
                     override fun onPause() = musicPlayer.pause()
@@ -643,7 +644,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         // service on the isPlaying edge. If we do promote while active and the
         // system refuses, bail with START_NOT_STICKY as before.
         val state = musicPlayer.state.value
-        if (state.isPlaying || state.isBuffering) {
+        if (state.isPlaying || state.isBuffering || intent?.action == null) {
             if (!promoteForPlayback()) return START_NOT_STICKY
         }
         when (intent?.action) {

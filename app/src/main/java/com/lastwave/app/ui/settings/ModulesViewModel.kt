@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.lastwave.app.data.lossless.LosslessMusicApi
 import com.lastwave.app.data.lossless.NativeSecrets
 import javax.inject.Inject
 
@@ -29,6 +30,7 @@ class ModulesViewModel @Inject constructor(
     private val moduleManager: ModuleManager,
     private val settingsPreferences: SettingsPreferences,
     private val nativeSecrets: NativeSecrets,
+    private val losslessMusicApi: LosslessMusicApi,
 ) : ViewModel() {
 
     private val refreshTick = MutableStateFlow(0)
@@ -73,6 +75,7 @@ class ModulesViewModel @Inject constructor(
     fun toggleAddon(id: String, enabled: Boolean) {
         viewModelScope.launch {
             settingsPreferences.toggleHttpAddon(id, enabled)
+            losslessMusicApi.invalidateCredentialsCache()
         }
     }
 
@@ -81,7 +84,7 @@ class ModulesViewModel @Inject constructor(
     }
 
     fun saveAddon(id: String?, rawUrl: String) {
-        val trimmed = rawUrl.trim()
+        val trimmed = com.lastwave.app.data.addon.AddonClient.normalizeBase(rawUrl)
         if (trimmed.isBlank()) {
             _notice.value = "Addon URL cannot be empty"
             return
@@ -89,14 +92,22 @@ class ModulesViewModel @Inject constructor(
         viewModelScope.launch {
             _busy.value = true
             try {
+                losslessMusicApi.invalidateCredentialsCache()
                 val client = com.lastwave.app.data.addon.AddonClient(trimmed, nativeSecrets = nativeSecrets)
                 val health = client.health()
                 val manifestRes = client.manifest()
                 val manifestName = manifestRes.getOrNull()?.displayName ?: "HTTP Addon"
 
+                val current = httpAddons.value
                 val targetId = if (id.isNullOrBlank()) {
-                    val added = settingsPreferences.addHttpAddon(trimmed, manifestName)
-                    added.id
+                    val existing = if (current.size == 1) current.first() else null
+                    if (existing != null) {
+                        settingsPreferences.updateHttpAddon(existing.id, trimmed, manifestName)
+                        existing.id
+                    } else {
+                        val added = settingsPreferences.addHttpAddon(trimmed, manifestName)
+                        added.id
+                    }
                 } else {
                     settingsPreferences.updateHttpAddon(id, trimmed, manifestName)
                     id
@@ -122,6 +133,7 @@ class ModulesViewModel @Inject constructor(
         viewModelScope.launch {
             settingsPreferences.removeHttpAddon(id)
             _addonHealthMap.value = _addonHealthMap.value - id
+            losslessMusicApi.invalidateCredentialsCache()
             _notice.value = "Addon removed"
         }
     }
@@ -136,6 +148,7 @@ class ModulesViewModel @Inject constructor(
                 settingsPreferences.setAddonName(null)
                 settingsPreferences.setAddonEnabled(false)
                 _addonHealth.value = null
+                losslessMusicApi.invalidateCredentialsCache()
                 _notice.value = "Addon removed"
             }
         }
