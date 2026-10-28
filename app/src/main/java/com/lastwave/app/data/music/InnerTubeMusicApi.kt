@@ -3055,24 +3055,13 @@ class InnerTubeMusicApi @Inject constructor(
         kotlinx.coroutines.coroutineScope {
         val now = System.currentTimeMillis()
 
-        // Direct clients and the NewPipe/InnerTubeX race start together.
-        // The direct clients often return HTTP 200 with no playable URL; waiting
-        // for that miss before starting NewPipe added the whole fast-path RTT
-        // to every cold song.
-        val fallback = async { racePlayableFallback(videoId, authScope, now, startedAt) }
-        val fast = resolveDirectUrlFastPath(videoId, authScope)
-        if (fast != null) {
-            fallback.cancel()
-            cacheResolvedStream(fast, now)
-            lastResolvedStreams[resolutionKey(videoId, authScope)] = fast
-            logStreamEvent("direct-fast-resolved", fast)
-            logStage(videoId, "direct-fast", startedAt)
-            noteAttempt("fallback=cancelled-after-direct")
-            logResolveAttempts(videoId, failed = false)
-            return@coroutineScope fast
-        }
+        // Use whichever validated source finishes first. In particular, a usable
+        // NewPipe URL must not wait for every authenticated client to miss.
         val resolved = try {
-            fallback.await()
+            racePlaybackCandidates(
+                first = { resolveDirectUrlFastPath(videoId, authScope) },
+                second = { racePlayableFallback(videoId, authScope, now, startedAt) },
+            )
         } catch (error: Throwable) {
             if (error.isCooperativeCancellation()) throw error
             noteAttempt("fallback=failed ${resolutionFailureDetail(error)}")
@@ -3084,6 +3073,9 @@ class InnerTubeMusicApi @Inject constructor(
             logResolveAttempts(videoId, failed = true)
             throw IOException("Unable to resolve a playable audio stream for $videoId")
         }
+        cacheResolvedStream(resolved, now)
+        lastResolvedStreams[resolutionKey(videoId, authScope)] = resolved
+
         logResolveAttempts(videoId, failed = false)
         resolved
         }
