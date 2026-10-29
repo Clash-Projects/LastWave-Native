@@ -1,6 +1,6 @@
 package com.lastwave.app.playback.harmonicflow
 
-import com.lastwave.app.data.model.PlayableTrack
+import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.playback.harmonicflow.api.HarmonicFlowSettings
 import com.lastwave.app.playback.harmonicflow.engine.SpliceTrajectorySynthesizer
 import org.junit.Assert.assertEquals

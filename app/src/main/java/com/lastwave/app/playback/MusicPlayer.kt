@@ -1016,7 +1016,6 @@ class MusicPlayer @Inject constructor(
                     }
                 }
             }
-        }
         override fun onPlayerError(error: PlaybackException) {
             if (isCasting) return
             cancelCrossfade()

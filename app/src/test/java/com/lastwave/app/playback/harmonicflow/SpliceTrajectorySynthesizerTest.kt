@@ -1,6 +1,6 @@
 package com.lastwave.app.playback.harmonicflow
 
-import com.lastwave.app.data.model.PlayableTrack
+import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.playback.harmonicflow.analysis.AcousticSignature
 import com.lastwave.app.playback.harmonicflow.analysis.BeatGridEstimate
 import com.lastwave.app.playback.harmonicflow.analysis.PhraseBoundary

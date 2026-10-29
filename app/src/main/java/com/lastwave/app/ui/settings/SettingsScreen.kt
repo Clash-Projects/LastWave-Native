@@ -1,3 +1,4 @@
+import androidx.compose.material3.HorizontalDivider
 package com.lastwave.app.ui.settings
 
 import androidx.activity.compose.BackHandler
@@ -942,7 +943,7 @@ fun SettingsScreen(
                         val hfSettings by viewModel.harmonicFlowSettings.collectAsStateWithLifecycle()
                         add { position ->
                             SettingsToggleCard(
-                                icon = Icons.Filled.ElectricBolt,
+                                icon = Icons.Filled.Bolt,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                 title = "HarmonicFlow Neural AutoDJ",

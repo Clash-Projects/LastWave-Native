@@ -5,7 +5,7 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import com.lastwave.app.data.lyrics.LyricsRepository
 import com.lastwave.app.data.lyrics.LyricsResult
-import com.lastwave.app.data.model.PlayableTrack
+import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.playback.harmonicflow.api.DecibelLufs
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -92,7 +92,7 @@ class AcousticSignatureExtractor @Inject constructor(
             pcm = analysisPcm,
             sampleRate = 22050f,
             durationMs = durationMs,
-            metadataBpm = track.bpm?.toFloat(),
+            metadataBpm = null,
         )
 
         // Generate Vocal Activity Masks

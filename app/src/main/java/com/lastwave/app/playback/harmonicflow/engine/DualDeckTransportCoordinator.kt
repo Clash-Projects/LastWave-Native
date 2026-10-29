@@ -3,7 +3,7 @@ package com.lastwave.app.playback.harmonicflow.engine
 import android.content.Context
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import com.lastwave.app.data.model.PlayableTrack
+import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.playback.harmonicflow.analysis.AcousticSignatureExtractor
 import com.lastwave.app.playback.harmonicflow.api.BlendPhase
 import com.lastwave.app.playback.harmonicflow.api.DeckBlendTelemetry
@@ -89,7 +89,7 @@ class DualDeckTransportCoordinator @Inject constructor(
                         incomingTrackPreview = TrackChromeSummary(
                             title = nextTrack.title,
                             artist = nextTrack.artist,
-                            artworkUrl = nextTrack.artworkUri?.toString(),
+                            artworkUrl = nextTrack.artworkUrl,
                             durationMs = nextTrack.durationMs ?: 0L,
                         )
                     )

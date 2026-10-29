@@ -161,7 +161,7 @@ object SettingsSearchIndex {
                         "harmonicflow", "autodj", "automix", "camelot", "beat match", "dj blend",
                         "transition", "crossfade", "harmonic", "phrase loop"
                     ),
-                    icon = Icons.Filled.ElectricBolt,
+                    icon = Icons.Filled.Bolt,
                     iconContainer = { MaterialTheme.colorScheme.primaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
                     parentTab = SettingsTab.AUDIO,
