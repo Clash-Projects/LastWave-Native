@@ -2931,7 +2931,7 @@ private fun SpotlightHeroCard(
         end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
     )
     Surface(
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(28.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
         tonalElevation = 2.dp,
         modifier = Modifier
@@ -3238,7 +3238,7 @@ private fun HomeContainerSection(
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
             .padding(bottom = 10.dp),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(0.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
     ) {
         Column(
