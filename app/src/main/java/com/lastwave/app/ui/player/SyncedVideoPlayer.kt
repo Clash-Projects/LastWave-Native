@@ -177,8 +177,8 @@ class SyncedVideoViewModel @Inject constructor(
                     )
                 }
                 .onFailure { error ->
-                    val fallbackId = videoId?.takeIf { it.isNotBlank() }
-                        ?: videoRepository.findVideoId(title, artist)
+                    val fallbackId = videoRepository.findVideoId(title, artist, videoId)
+                        ?: videoId?.takeIf { it.isNotBlank() }
                     if (!fallbackId.isNullOrBlank()) {
                         _uiState.value = SyncedVideoUiState.FallbackEmbed(fallbackId)
                     } else {
@@ -402,7 +402,9 @@ fun SyncedCoverVideoPlayer(
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
+        val customUserAgent = requestHeaders["User-Agent"] ?: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
         val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(customUserAgent)
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15000)
             .setReadTimeoutMs(20000)

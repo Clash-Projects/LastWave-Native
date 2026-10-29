@@ -6,7 +6,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.downloader.Downloader
@@ -71,6 +73,11 @@ class YouTubeStreamExtractor @Inject constructor(
         videoId: String,
     ): SyncedVideoStreamBundle = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
+        // Fast direct iOS Innertube client extraction (unthrottled, bot-free direct MP4 streams)
+        val iosBundle = resolveVideoStreamBundleWithIosClient(videoId, now)
+        if (iosBundle != null && iosBundle.availableStreams.isNotEmpty()) {
+            return@withContext iosBundle
+        }
         initialize()
         val info = try {
             StreamInfo.getInfo(ServiceList.YouTube, "https://www.youtube.com/watch?v=$videoId")
@@ -149,6 +156,113 @@ class YouTubeStreamExtractor @Inject constructor(
     suspend fun resolveVideoStream(
         videoId: String,
     ): YouTubeVideoStream = resolveVideoStreamBundle(videoId).defaultStream
+
+    private suspend fun resolveVideoStreamBundleWithIosClient(
+        videoId: String,
+        now: Long,
+    ): SyncedVideoStreamBundle? = withContext(Dispatchers.IO) {
+        runCatching {
+            val jsonBody = """
+                {
+                    "context": {
+                        "client": {
+                            "clientName": "IOS",
+                            "clientVersion": "21.10.3",
+                            "clientScreen": "WATCH",
+                            "deviceMake": "Apple",
+                            "deviceModel": "iPhone16,2",
+                            "osName": "iPhone",
+                            "osVersion": "18.1.0.22B83",
+                            "platform": "MOBILE",
+                            "hl": "en",
+                            "gl": "US"
+                        }
+                    },
+                    "videoId": "$videoId",
+                    "contentCheckOk": true,
+                    "racyCheckOk": true
+                }
+            """.trimIndent()
+
+            val request = okhttp3.Request.Builder()
+                .url("https://www.youtube.com/youtubei/v1/player?prettyPrint=false")
+                .post(jsonBody.toRequestBody("application/json".toMediaType()))
+                .header("User-Agent", "com.google.ios.youtube/21.10.3 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)")
+                .header("X-Goog-Api-Format-Version", "2")
+                .header("X-YouTube-Client-Name", "5")
+                .header("X-YouTube-Client-Version", "21.10.3")
+                .build()
+
+            val root = http.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@runCatching null
+                val bodyStr = response.body?.string() ?: return@runCatching null
+                JSONObject(bodyStr)
+            }
+
+            val status = root.optJSONObject("playabilityStatus")?.optString("status").orEmpty()
+            if (!status.equals("OK", ignoreCase = true)) return@runCatching null
+
+            val streamingData = root.optJSONObject("streamingData") ?: return@runCatching null
+            val adaptive = streamingData.optJSONArray("adaptiveFormats") ?: return@runCatching null
+            val durationSec = root.optJSONObject("videoDetails")?.optString("lengthSeconds")?.toLongOrNull() ?: 0L
+
+            val extractedStreams = mutableListOf<YouTubeVideoStream>()
+            for (i in 0 until adaptive.length()) {
+                val f = adaptive.optJSONObject(i) ?: continue
+                val mime = f.optString("mimeType")
+                if (!mime.contains("video", ignoreCase = true)) continue
+                val streamUrl = f.optString("url").takeIf { it.isNotBlank() } ?: continue
+                val height = f.optInt("height", 0).takeIf { it > 0 }
+                    ?: parseResolutionHeight(f.optString("qualityLabel"), 0)
+                val width = f.optInt("width", 0).takeIf { it > 0 }
+                val fps = f.optInt("fps", 0).takeIf { it > 0 }
+                val bitrate = f.optInt("bitrate", 0)
+
+                extractedStreams += YouTubeVideoStream(
+                    videoId = videoId,
+                    url = streamUrl,
+                    itag = f.optInt("itag", 0).takeIf { it > 0 },
+                    qualityLabel = f.optString("qualityLabel").ifBlank { "${height}p" },
+                    height = height,
+                    width = width,
+                    fps = fps,
+                    bitrate = bitrate,
+                    mimeType = mime.substringBefore(";"),
+                    durationMs = durationSec.takeIf { it > 0 }?.times(1_000L),
+                    expiresAtEpochMs = now + 5 * 60 * 60 * 1000L,
+                    requestHeaders = mapOf(
+                        "User-Agent" to "com.google.ios.youtube/21.10.3 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)",
+                        "Range" to "bytes=0-",
+                    )
+                )
+            }
+            if (extractedStreams.isEmpty()) return@runCatching null
+
+            val streamsByHeight = extractedStreams
+                .filter { (it.height ?: 0) > 0 }
+                .groupBy { it.height!! }
+                .mapValues { (_, streams) ->
+                    streams.maxWithOrNull(
+                        compareBy<YouTubeVideoStream> {
+                            if (it.mimeType?.contains("mp4", ignoreCase = true) == true) 1 else 0
+                        }.thenBy { it.bitrate ?: 0 }
+                    )!!
+                }
+
+            val availableStreams = streamsByHeight.keys.sortedDescending().map { streamsByHeight[it]!! }
+            if (availableStreams.isEmpty()) return@runCatching null
+
+            val defaultStream = availableStreams.firstOrNull { it.height == 720 }
+                ?: availableStreams.firstOrNull { it.height == 1080 }
+                ?: availableStreams.first()
+
+            SyncedVideoStreamBundle(
+                videoId = videoId,
+                defaultStream = defaultStream,
+                availableStreams = availableStreams,
+            )
+        }.getOrNull()
+    }
 
     private fun parseResolutionHeight(resolution: String?, height: Int): Int {
         if (height > 0) return height

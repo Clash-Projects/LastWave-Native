@@ -114,4 +114,13 @@ class TextMatchTest {
                 TextMatch.matchScore(live, "Cancion", "Artista"),
         )
     }
+
+    @Test
+    fun soundtrackAndOstClausesAreStripped() {
+        val titleWithFrom = "Nijame Ne Chebutunna (From \"Ooru Peru Bhairavakona\")"
+        val titleWithFeat = "Nijame Ne Chebutunna (feat. Sundeep Kishan, Varsha Bollamma & Kavya Thapar)"
+        assertEquals("Nijame Ne Chebutunna", TextMatch.baseTitle(titleWithFrom).trim())
+        assertEquals("Nijame Ne Chebutunna", TextMatch.baseTitle(titleWithFeat).trim())
+        assertTrue(TextMatch.isSafeTitleMatch(titleWithFrom, titleWithFeat, "Sid Sriram"))
+    }
 }

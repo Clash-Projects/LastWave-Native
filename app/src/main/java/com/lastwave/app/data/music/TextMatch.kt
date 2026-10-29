@@ -36,8 +36,13 @@ internal object TextMatch {
         "现场", "翻唱", "混音",
         "лайв", "кавер", "ремикс",
     )
-    val MATCH_NOISE_WORDS = setOf("official", "audio", "video", "visualizer", "lyrics", "lyric", "hd", "hq", "4k", "track", "music")
+    val MATCH_NOISE_WORDS = setOf(
+        "official", "audio", "video", "visualizer", "lyrics", "lyric", "hd", "hq", "4k", "track", "music",
+        "ost", "soundtrack", "lyrical", "full"
+    )
     private val FEATURING_CLAUSE = Regex("(?i)[(\\[]\\s*(feat(?:uring)?|ft)\\.?\\s+.*?[)\\]]")
+    private val SOUNDTRACK_OR_OST_CLAUSE =
+        Regex("(?i)[(\\[]\\s*(from\\s+[\"']?|ost\\b|original\\s+(?:motion\\s+picture\\s+)?soundtrack)[^)\\]]*[)\\]]")
     private val VERSION_OR_LABEL_CLAUSE =
         Regex("(?i)[(\\[][^)\\]]*(official|music\\s*video|audio|video|visualizer|lyrics?|hd|hq|4k|live|remix|acoustic|demo|edit|remaster(?:ed)?|mono|stereo|deluxe|bonus|version|mix)[^)\\]]*[)\\]]")
 
@@ -83,7 +88,10 @@ internal object TextMatch {
         .toSet()
 
     fun baseTitle(value: String): String = value
+        .substringBefore(" | ")
+        .substringBefore(" // ")
         .replace(FEATURING_CLAUSE, " ")
+        .replace(SOUNDTRACK_OR_OST_CLAUSE, " ")
         .replace(VERSION_OR_LABEL_CLAUSE, " ")
 
     fun similarity(a: String, b: String): Int {

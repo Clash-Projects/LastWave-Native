@@ -2193,6 +2193,50 @@ class InnerTubeMusicApi @Inject constructor(
     suspend fun searchPodcasts(query: String, limit: Int = 30): List<PodcastEpisode> =
         searchPodcastEpisodes(query, limit)
 
+    suspend fun searchVideos(
+        query: String,
+        limit: Int = 10,
+    ): List<YouTubeMusicTrack> = withContext(Dispatchers.IO) {
+        if (query.isBlank()) return@withContext emptyList()
+        val config = getWebConfig()
+        val root = runCatching {
+            post(
+                url = "$MUSIC_API/search?key=${config.apiKey}&prettyPrint=false",
+                body = buildJsonObject {
+                    put("context", context("WEB_REMIX", config.clientVersion, config.visitorData))
+                    put("query", query.trim())
+                    put("params", VIDEO_SEARCH_FILTER)
+                },
+                clientName = "WEB_REMIX",
+                clientVersion = config.clientVersion,
+                userAgent = WEB_USER_AGENT,
+                callTimeoutMs = SEARCH_REQUEST_TIMEOUT_MS,
+            )
+        }.getOrNull()
+        val items = root?.let { parseSongRenderers(it) }.orEmpty()
+        if (items.isNotEmpty()) {
+            return@withContext items.distinctBy { it.videoId }.filter { it.videoId.isNotBlank() }.take(limit)
+        }
+
+        val fallbackRoot = runCatching {
+            post(
+                url = "$YOUTUBE_API/search?key=AIzaSyAO_FJ2SlqAz8GlBg1fA54p0wDE7Xk80mU&prettyPrint=false",
+                body = buildJsonObject {
+                    put("context", context("WEB", "2.20261011.05.00", null))
+                    put("query", "$query official video")
+                },
+                clientName = "WEB",
+                clientVersion = "2.20261011.05.00",
+                userAgent = WEB_USER_AGENT,
+                origin = YOUTUBE_ORIGIN,
+                referer = "$YOUTUBE_ORIGIN/",
+                callTimeoutMs = SEARCH_REQUEST_TIMEOUT_MS,
+            )
+        }.getOrNull() ?: return@withContext emptyList()
+
+        parseSongRenderers(fallbackRoot).distinctBy { it.videoId }.filter { it.videoId.isNotBlank() }.take(limit)
+    }
+
     /** Which artist shelf a localized heading refers to. */
     private enum class ArtistShelf { ALBUMS, SINGLES, OTHER }
 
@@ -3040,7 +3084,7 @@ class InnerTubeMusicApi @Inject constructor(
                         gvsPoToken = if (client.needsGvsPoToken) poToken?.sessionToken else null,
                         authScope = authScope,
                         probeCandidates = true,
-                        allowCipherFormats = client.name == "TVHTML5_SIMPLY_EMBEDDED_PLAYER" || client.name == "WEB_REMIX",
+                        allowCipherFormats = client.name == "TVHTML5_SIMPLY_EMBEDDED_PLAYER" || client.name == "WEB_REMIX" || client.name == "IOS" || client.name == "TVHTML5",
                         maxAttempts = 1,
                     )
                 }
@@ -3604,30 +3648,42 @@ class InnerTubeMusicApi @Inject constructor(
         val cleanArtist = artist.takeUnless { it.equals("Unknown artist", ignoreCase = true) }.orEmpty()
         val cacheKey = "${normalize(cleanArtist)}|${normalize(title)}"
         matchCache[cacheKey]?.takeIf { it.videoId != excludedVideoId && it.videoId !in excludedVideoIds }?.let { return it }
+        val searchTitle = baseTitle(title).trim().ifBlank { title.trim() }
+        val query = listOf(searchTitle, cleanArtist).filter { it.isNotBlank() }.joinToString(" ")
         val results = searchSongs(
-            query = listOf(title, cleanArtist).filter { it.isNotBlank() }.joinToString(" "),
+            query = query,
             limit = 30,
             prefetchStreams = prefetchStreams,
         )
         val validCandidates = results.filter {
             it.videoId.isNotBlank() && it.videoId != excludedVideoId && it.videoId !in excludedVideoIds
         }
+        val isCandidateMatch: (YouTubeMusicTrack) -> Boolean = { candidate ->
+            (maxOf(
+                similarity(candidate.title, title),
+                similarity(baseTitle(candidate.title), baseTitle(title)),
+            ) >= 60 || isSafeTitleMatch(candidate.title, title, cleanArtist)) &&
+                (cleanArtist.isBlank() ||
+                    similarity(candidate.artist, cleanArtist) >= 35 ||
+                    normalize(candidate.artist).contains(normalize(cleanArtist)) ||
+                    normalize(cleanArtist).contains(normalize(candidate.artist)) ||
+                    normalize(candidate.title).contains(normalize(cleanArtist)))
+        }
         val best = validCandidates.asSequence()
-            .filter { candidate ->
-                // Hybrid gate: 4.2.3's recall numbers (title >= 60, artist >= 35
-                // with its contains clauses) minus its title-blind second chance
-                // and minus 4.2.4's loosening (>= 30 + fuzzy subset matcher),
-                // which substituted wrong tracks. Strict misses throw below.
-                maxOf(
-                    similarity(candidate.title, title),
-                    similarity(baseTitle(candidate.title), baseTitle(title)),
-                ) >= 60 &&
-                    (cleanArtist.isBlank() ||
-                        similarity(candidate.artist, cleanArtist) >= 35 ||
-                        normalize(candidate.artist).contains(normalize(cleanArtist)) ||
-                        normalize(candidate.title).contains(normalize(cleanArtist)))
-            }
+            .filter(isCandidateMatch)
             .maxByOrNull { candidate -> matchScore(candidate, title, cleanArtist) }
+            ?: if (searchTitle != title.trim()) {
+                val fallbackResults = searchSongs(
+                    query = listOf(title.trim(), cleanArtist).filter { it.isNotBlank() }.joinToString(" "),
+                    limit = 30,
+                    prefetchStreams = prefetchStreams,
+                )
+                fallbackResults.filter {
+                    it.videoId.isNotBlank() && it.videoId != excludedVideoId && it.videoId !in excludedVideoIds
+                }.asSequence()
+                    .filter(isCandidateMatch)
+                    .maxByOrNull { candidate -> matchScore(candidate, title, cleanArtist) }
+            } else null
             ?: throw IOException("No reliable YouTube Music match found for $title by $artist")
         return best.also {
             if (matchCache.size > MAX_MATCH_CACHE_ENTRIES) matchCache.clear()
@@ -5032,8 +5088,8 @@ class InnerTubeMusicApi @Inject constructor(
             put("User-Agent", userAgent)
             put("X-YouTube-Client-Name", CLIENT_IDS[name] ?: name)
             put("X-YouTube-Client-Version", version)
-            put("Origin", YOUTUBE_MUSIC_ORIGIN)
-            put("Referer", "$YOUTUBE_MUSIC_ORIGIN/")
+            put("Origin", origin)
+            put("Referer", referer)
         }
     }
 
@@ -5109,7 +5165,7 @@ class InnerTubeMusicApi @Inject constructor(
         /** Overall budget for promoting a staged YouTube stream from MusicPlayer. */
         const val YOUTUBE_PROMOTE_BUDGET_MS = 12_000L
         /** No-cipher clients tried first, in order (mirrors limusic's fallback order). */
-        val DIRECT_FAST_CLIENT_ORDER = listOf("ANDROID_VR", "IOS", "TVHTML5_SIMPLY_EMBEDDED_PLAYER", "WEB_REMIX")
+        val DIRECT_FAST_CLIENT_ORDER = listOf("TVHTML5", "VISIONOS", "ANDROID_TESTSUITE", "ANDROID_VR", "IOS", "WEB_REMIX")
         const val MAX_FORMAT_PROBES_PER_CLIENT = 4
         const val MAX_PLAYER_REQUEST_ATTEMPTS = 2
         const val CONFIG_REQUEST_TIMEOUT_MS = 6_000L
@@ -5158,6 +5214,7 @@ class InnerTubeMusicApi @Inject constructor(
         const val WEB_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
         const val FALLBACK_WEB_KEY = "AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30"
         const val FALLBACK_WEB_VERSION = "1.20260707.12.00"
+        const val VIDEO_SEARCH_FILTER = "EgWKAQIQAWoKEAkQBRAKEAMQBA=="
         const val ARTIST_SEARCH_FILTER = "EgWKAQIgAWoKEAkQBRAKEAMQBA=="
         const val ALBUM_SEARCH_FILTER = "EgWKAQIYAWoKEAkQBRAKEAMQBA=="
         const val PODCASTS_BROWSE_ID = "FEmusic_podcasts"
