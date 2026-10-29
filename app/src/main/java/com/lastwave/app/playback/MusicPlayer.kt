@@ -662,6 +662,7 @@ class MusicPlayer @Inject constructor(
      * Written and read on the main thread alongside the state it describes.
      */
     private var durationOwnerMediaId: String? = null
+    private var isOverlapMixActive = false
 
     private val mediaCache: Cache by lazy {
         val cacheDir = java.io.File(appContext.cacheDir, "media_stream_cache")
@@ -826,6 +827,7 @@ class MusicPlayer @Inject constructor(
         }
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (isCasting) return
+            val live = player
             // Ignore stale outgoing/standby player callbacks: only the
             // active player owns auto-advance. Outgoing ENDED is expected
             // after a handoff and is cleaned by cancelCrossfade().
@@ -896,6 +898,7 @@ class MusicPlayer @Inject constructor(
         }
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             if (isCasting) return
+            val targetPlayer = player
             // In-place quality swap replaces the playing item with the same
             // song at the same position from a better source. It reports as
             // a playlist change but is not the queue moving on: skip history,

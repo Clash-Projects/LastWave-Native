@@ -1,5 +1,6 @@
-import androidx.compose.material3.HorizontalDivider
 package com.lastwave.app.ui.settings
+
+import androidx.compose.material3.HorizontalDivider
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
