@@ -406,6 +406,9 @@ static int drainAllUrbs(UsbAudioContext *ctx) {
     ctx->urbsInFlight = 0;
     ctx->submitIdx = 0;
     ctx->reapIdx = 0;
+    ctx->frameAccumulator = 0.0;
+    ctx->residualBytes = 0;
+    memset(ctx->residualBuffer, 0, sizeof(ctx->residualBuffer));
     if (ctx->running.load() && ctx->endpointFeedback > 0 && !ctx->feedbackInFlight) {
         submitFeedbackUrb(ctx);
     }
@@ -659,6 +662,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeFlush(
     if (!ctx) return;
     ctx->frameAccumulator = 0.0;
     ctx->residualBytes = 0;
+    memset(ctx->residualBuffer, 0, sizeof(ctx->residualBuffer));
     LOGI("Flush: frameAccumulator and residual reset (framesWritten=%lld)",
          (long long)ctx->framesWritten);
 }
@@ -719,14 +723,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbReset(
     LOGI("USBDEVFS_RESET fd=%d", fd);
     int ret = ioctl(fd, USBDEVFS_RESET, 0);
     if (ret < 0) { LOGE("RESET FAILED errno=%d", errno); return ret; }
-    LOGI("RESET OK, claiming interfaces...");
-    struct usbdevfs_ioctl cmd = {}; cmd.ifno = 0; cmd.ioctl_code = USBDEVFS_DISCONNECT;
-    ioctl(fd, USBDEVFS_IOCTL, &cmd);
-    int i0 = 0; ioctl(fd, USBDEVFS_CLAIMINTERFACE, &i0);
-    cmd.ifno = 1; ioctl(fd, USBDEVFS_IOCTL, &cmd);
-    int i1 = 1; ioctl(fd, USBDEVFS_CLAIMINTERFACE, &i1);
-    struct usbdevfs_setinterface si = {}; si.interface = 1; si.altsetting = 0;
-    ioctl(fd, USBDEVFS_SETINTERFACE, &si);
+    LOGI("RESET OK (descriptor-directed claiming handled in UsbAudioDevice.openDevice)");
     return 0;
 }
 
@@ -898,6 +895,9 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
         }
 
         UrbSlot *slot = &ctx->ring[ctx->submitIdx];
+        if (slot->dataLength > urbBytes) {
+            memset(slot->buffer + urbBytes, 0, slot->dataLength - urbBytes);
+        }
         memcpy(slot->buffer, data + offset, urbBytes);
 
         if (submitRingUrb(ctx, pktSizes, numPackets, urbBytes) < 0) {

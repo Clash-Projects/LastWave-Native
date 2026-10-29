@@ -179,7 +179,7 @@ class UacFeatureVolume(
             "verify FU 0x${unitId.toString(16)} ch=$channel original=$original " +
                 "test=$test readback=$updated restored=$restored writable=$changed",
         )
-        return (changed || restored)
+        return changed
     }
 
     private fun verifyWritableChannels(unitId: Int, found: IntArray): IntArray {

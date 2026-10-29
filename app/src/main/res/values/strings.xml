@@ -289,7 +289,7 @@
     <string name="signal_grant_usb">Grant USB access</string>
     <string name="signal_bit_perfect">BIT-PERFECT</string>
     <string name="signal_check_path">CHECK PATH</string>
-    <string name="signal_resampled_dac">DAC RESAMPLED</string>
+    <string name="signal_resampled_dac">DAC RESAMPLED (48kHz HW LIMIT)</string>
     <string name="signal_shared_track">Shared AudioTrack</string>
     <string name="signal_direct_track">Direct USB output</string>
     <string name="signal_verdict_ok">Bit-perfect path verified — PCM untouched to the DAC</string>

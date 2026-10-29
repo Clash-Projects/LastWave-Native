@@ -33,7 +33,7 @@
  * SoCs. Smaller pipelines (< ~64 URBs at 44.1 kHz) trigger glitches as
  * the ring drains faster than the URB submit/reap cycle can refill it.
  */
-#define USB_AUDIO_NUM_URBS 80
+#define USB_AUDIO_NUM_URBS 128
 
 /**
  * Max bytes per URB data buffer.
