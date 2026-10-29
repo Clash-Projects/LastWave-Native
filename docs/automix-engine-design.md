@@ -1,9 +1,8 @@
-# Native C++ AutoDJ Automix Specification for LastWave
+# Native C++ Automix Specification for LastWave
 
 **Date:** 2026-10-25  
 **Status:** Approved  
-**Architectural Reference:** Open-Source Mixxx AutoDJ (`mixxxdj/mixxx`)  
-- `src/library/autodj/autodjprocessor.cpp`
+**Architectural Reference:** Open-Source Mixxx (`mixxxdj/mixxx`)  
 - `src/engine/bufferscalers/enginebufferscalest.h`
 - `src/engine/filters/` (Linkwitz-Riley crossover & frequency splitting)
 
@@ -11,7 +10,7 @@
 
 ## 1. Executive Summary
 
-This document specifies the design for a native C++ Automatic DJ (Automix) engine embedded inside LastWave's FFmpeg + C++ Oboe DSP pipeline. Automix delivers seamless, beat-matched, frequency-split track transitions inspired by Mixxx AutoDJ. It replaces static timer-based crossfading with dynamic musical-bar transitions (8 or 16 bars), kick-band BPM & phase alignment via WSOLA time-stretching, a Linkwitz-Riley 160 Hz bass-swap on the midpoint downbeat, and a 1.2-second echo fade-out tail on the outgoing track.
+This document specifies the design for a native C++ Automix engine embedded inside LastWave's FFmpeg + C++ Oboe DSP pipeline. Automix delivers seamless, beat-matched, frequency-split track transitions inspired by Mixxx. It replaces static timer-based crossfading with dynamic musical-bar transitions (8 or 16 bars), kick-band BPM & phase alignment via WSOLA time-stretching, a Linkwitz-Riley 160 Hz bass-swap on the midpoint downbeat, and a 1.2-second echo fade-out tail on the outgoing track.
 
 Automix and standard crossfade are strictly mutually exclusive: enabling Automix automatically disables standard crossfade in settings and playback logic.
 
@@ -178,7 +177,7 @@ During the transition interval $t \in [0, T]$:
    - Monitors live position and outro energy.
    - Intercepts "Next" command when Automix is active to trigger "Fade Now" (4-bar blend) instead of immediate skip.
 3. **UI Integration** (`SettingsScreen.kt`, `PlayerHost.kt`):
-   - Dedicated "Automix (AutoDJ)" toggle and Bar Selector (8 Bars / 16 Bars) in Settings.
+   - Dedicated "Automix" toggle and Bar Selector (8 Bars / 16 Bars) in Settings.
    - Distinct Automix indicator / badge on Now Playing screen.
 
 ---

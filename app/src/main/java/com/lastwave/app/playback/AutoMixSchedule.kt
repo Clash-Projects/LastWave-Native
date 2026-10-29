@@ -1,7 +1,7 @@
 package com.lastwave.app.playback
 
 /**
- * Scheduling model for the Mixxx-style AutoDJ Automix dual-deck hand-off.
+ * Scheduling model for the Mixxx-style Automix dual-deck hand-off.
  *
  * Automix replaces static-timer crossfades with musical phrase-based transitions
  * (Auto, 8, or 16 bars) dynamically computed from track BPM, kick-band onset sync,

@@ -3341,11 +3341,6 @@ private fun FullPlayer(
                                         onClick = { showSignalPath = true },
                                         modifier = Modifier.offset(y = (-4).dp),
                                     )
-                                    NowPlayingAutoDJBadgeRow(
-                                        state = state,
-                                        onClick = { showAudioControls = true },
-                                        isTranslucent = LocalLiquidGlass.current || showFullBleed,
-                                    )
                                     Spacer(Modifier.height(12.dp))
                                     MainControls(state, player, isTranslucent = LocalLiquidGlass.current || showFullBleed)
                                     Spacer(Modifier.height(30.dp))
@@ -3950,11 +3945,6 @@ private fun FullPlayerLandscape(
                 onClick = onOpenSignalPath,
                 modifier = Modifier.offset(y = (-4).dp),
             )
-            NowPlayingAutoDJBadgeRow(
-                state = state,
-                onClick = onOpenAudioControls,
-                isTranslucent = LocalLiquidGlass.current,
-            )
             Spacer(Modifier.height(14.dp))
 
             MainControls(state, player, isTranslucent = LocalLiquidGlass.current)
@@ -4531,111 +4521,6 @@ private fun PlayerUtilityControls(
 }
 
 @Composable
-private fun NowPlayingAutoDJBadgeRow(
-    state: MusicPlayerState,
-    onClick: () -> Unit,
-    isTranslucent: Boolean = false,
-    modifier: Modifier = Modifier,
-) {
-    // Hidden per user requirement: do not display automixing/AutoDJ status badge in Now Playing tab
-    return
-
-    val isBlending = state.isAutoMixActive || state.autoMixState == AutoMixState.FADING_AUTO || state.autoMixState == AutoMixState.FADING_FAST
-    val isAutoDJMix = state.isAutoDJMixPlaying
-    val isArmed = state.autoMixState == AutoMixState.MONITORING_OUTRO
-
-    // Only show badge when something musical is actively occurring:
-    // 1. AutoDJ megamix is actively playing
-    // 2. Dual deck blend/transition is currently fading
-    // 3. Automix outro is armed near the very end of track
-    if (!isAutoDJMix && !isBlending && !isArmed) return
-
-    val infiniteTransition = rememberInfiniteTransition(label = "automix_glow")
-    val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.30f,
-        targetValue = 0.95f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1100, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glowAlpha"
-    )
-
-    val bars = state.autoMixBars ?: 8
-    val curIdx = state.autoDJSetCurrentIndex ?: 1
-    val totalTracks = state.autoDJSetTotalTracks ?: 6
-    val (badgeText, badgeBg, badgeFg) = when {
-        isBlending && isAutoDJMix -> Triple(
-            "AutoDJ Mix · Track $curIdx of $totalTracks (Blending into ${state.autoMixNextTrack?.title ?: "Next"})",
-            Color(0xFF8B5CF6).copy(alpha = if (isTranslucent) 0.35f else 0.22f),
-            Color(0xFFDDD6FE)
-        )
-        isBlending -> Triple(
-            "Automix · $bars-Bar Bass Swap [BPM Synced]",
-            Color(0xFF8B5CF6).copy(alpha = if (isTranslucent) 0.35f else 0.22f),
-            Color(0xFFDDD6FE)
-        )
-        isAutoDJMix -> Triple(
-            "AutoDJ ~5-Min Mix · Track $curIdx of $totalTracks",
-            Color(0xFF06B6D4).copy(alpha = if (isTranslucent) 0.35f else 0.20f),
-            Color(0xFF67E8F9)
-        )
-        isArmed -> Triple(
-            "Automix · Outro Armed",
-            Color(0xFF10B981).copy(alpha = if (isTranslucent) 0.35f else 0.20f),
-            Color(0xFFA7F3D0)
-        )
-        else -> return
-    }
-
-    val glowBorderModifier = if (isBlending) {
-        Modifier.border(
-            width = 1.2.dp,
-            brush = Brush.horizontalGradient(
-                listOf(
-                    Color(0xFFA78BFA).copy(alpha = glowAlpha),
-                    Color(0xFFEC4899).copy(alpha = glowAlpha),
-                    Color(0xFFA78BFA).copy(alpha = glowAlpha),
-                )
-            ),
-            shape = RoundedCornerShape(50)
-        )
-    } else Modifier
-
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = badgeBg,
-        modifier = modifier
-            .clip(RoundedCornerShape(50))
-            .then(glowBorderModifier)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 2.dp),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.AutoAwesome,
-                contentDescription = null,
-                tint = badgeFg,
-                modifier = Modifier.size(13.dp),
-            )
-            Text(
-                text = badgeText,
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.4.sp,
-                ),
-                color = badgeFg,
-                maxLines = 1,
-            )
-        }
-    }
-}
-
-@Composable
 private fun DeckWaveform(
     deckLabel: String,
     channelColor: Color,
@@ -4912,387 +4797,66 @@ private fun DeckWaveform(
 }
 
 @Composable
-private fun AutoDJStudioConsoleCard(
+private fun AutomixConsoleCard(
     state: MusicPlayerState,
     player: MusicPlayer,
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalHapticFeedback.current
-    val isBlending = state.isAutoMixActive || state.autoMixState == AutoMixState.FADING_AUTO || state.autoMixState == AutoMixState.FADING_FAST
 
-    Column(
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        // 1. Automix Crossfade Card
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
-            modifier = Modifier.fillMaxWidth(),
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.weight(1f),
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.weight(1f),
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.AutoAwesome,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = "Automix",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            text = "Seamless transitions between queue tracks",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
-                Switch(
-                    checked = state.isAutoMixEnabled,
-                    onCheckedChange = {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        player.setAutomixEnabled(it)
-                    },
-                )
-            }
-        }
-
-        // 2. AutoDJ Mix Card
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.QueueMusic,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = "AutoDJ Continuous Mix",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                            Text(
-                                text = if (state.isJamActive) "AutoDJ cannot be paired during an active Jam session"
-                                else if (state.isAutoDJGenerating) "Generating ~5-min mix... Plays when ready"
-                                else if (state.isAutoDJActive) "Continuous ~5-min highlight set in progress"
-                                else "Blend queue songs into a ~5-min highlight DJ set",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (state.isJamActive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-
-                    if (state.isAutoDJGenerating) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f),
-                        ) {
-                            Text(
-                                text = "PREPARING",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 0.5.sp,
-                                ),
-                                color = MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                            )
-                        }
-                    } else if (state.isAutoDJActive) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                        ) {
-                            Text(
-                                text = "ACTIVE",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 0.5.sp,
-                                ),
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                            )
-                        }
-                    }
-                }
-
-                if (state.isAutoDJGenerating) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.50f))
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text(
-                                text = state.autoDJStatus ?: "Preparing upcoming tracks...",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.weight(1f).basicMarquee(iterations = Int.MAX_VALUE),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            val pct = (state.autoDJGenerationProgress * 100).toInt()
-                            Text(
-                                text = "$pct%",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                        LinearProgressIndicator(
-                            progress = { state.autoDJGenerationProgress },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp)),
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text(
-                                text = "Generation in progress • Plays when ready",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.weight(1f),
-                            )
-                            TextButton(
-                                onClick = {
-                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    player.cancelAutoDJGeneration()
-                                }
-                            ) {
-                                Text("Cancel", color = MaterialTheme.colorScheme.error)
-                            }
-                        }
-                    }
-                } else if (state.isAutoDJActive) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.40f))
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            val artworkUrl = state.current?.artworkUrl ?: state.autoDJSeedTrack?.artworkUrl
-                            Box(
-                                modifier = Modifier
-                                    .size(46.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                if (!artworkUrl.isNullOrBlank()) {
-                                    AsyncImage(
-                                        model = artworkUrl,
-                                        contentDescription = null,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Filled.MusicNote,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(22.dp),
-                                    )
-                                }
-                            }
-
-                            Column(modifier = Modifier.weight(1f)) {
-                                val curIdx = state.autoDJSetCurrentIndex ?: 1
-                                val totalTracks = state.autoDJSetTotalTracks ?: 6
-                                val segmentTitle = state.autoDJCurrentSegmentTitle ?: state.current?.title ?: "AutoDJ Set"
-                                Text(
-                                    text = segmentTitle,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
-                                )
-                                Text(
-                                    text = "Track $curIdx of $totalTracks • AutoDJ Mix",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        }
-
-                        if (isBlending) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.35f))
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        text = "Crossfading into next track",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    val blendPct = (state.autoMixProgress * 100).roundToInt()
-                                    Text(
-                                        text = "$blendPct%",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.primary,
-                                    )
-                                }
-                                LinearProgressIndicator(
-                                    progress = { state.autoMixProgress },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(3.dp)
-                                        .clip(RoundedCornerShape(2.dp)),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                )
-                            }
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                player.exitAutoDJMix()
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.error,
-                            ),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.30f)),
-                            shape = RoundedCornerShape(10.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Exit AutoDJ Mix",
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                            )
-                        }
-                    }
-                } else {
-                    val context = LocalContext.current
-                    Button(
-                        onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            if (state.isJamActive) {
-                                android.widget.Toast.makeText(context, "AutoDJ can't be paired in Jam", android.widget.Toast.LENGTH_SHORT).show()
-                            } else {
-                                player.generateAndPlayAutoDJMix()
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = if (state.isJamActive) {
-                            ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            )
-                        } else {
-                            ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                            )
-                        },
-                    ) {
-                        Icon(
-                            imageVector = if (state.isJamActive) Icons.Filled.ErrorOutline else Icons.Filled.PlayArrow,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (state.isJamActive) "AutoDJ can't be paired in Jam" else "Start AutoDJ Mix",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                        )
-                    }
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "Automix",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "Seamless transitions between queue tracks",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
+            Switch(
+                checked = state.isAutoMixEnabled,
+                onCheckedChange = {
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    player.setAutomixEnabled(it)
+                },
+            )
         }
     }
 }
@@ -5518,13 +5082,11 @@ private fun AudioControlsSheet(
                 }
             }
 
-            // 3. Automix & AutoDJ Mixing Cards: Only shown when AutoDJ is enabled in settings or actively running
-            if (state.isAutoDJEnabled || state.isAutoDJActive || state.isAutoDJGenerating || state.isAutoDJMixPlaying) {
-                AutoDJStudioConsoleCard(
-                    state = state,
-                    player = player,
-                )
-            }
+            // 3. Automix Card
+            AutomixConsoleCard(
+                state = state,
+                player = player,
+            )
 
             // 4. Slowed & Pitch Section Card
             Surface(

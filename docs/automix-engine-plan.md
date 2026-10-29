@@ -1,4 +1,4 @@
-# Native C++ AutoDJ Automix Implementation Plan
+# Native C++ Automix Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -464,7 +464,7 @@ git commit -m "feat(automix): wire Automix dual-deck scheduling and Fade Now int
   - Automix toggle row in SettingsScreen under Playback section.
   - Bar Length selector (8 Bars / 16 Bars) visible when Automix is ON.
   - Standard Crossfade row dims with informational message when Automix is ON.
-  - "AutoDJ" active badge in Now Playing screen.
+  - "Automix" active badge in Now Playing screen.
 
 - [ ] **Step 1: Modify `SettingsScreen.kt`**
 

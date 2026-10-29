@@ -46,7 +46,7 @@ data class TransitionPlan(
 )
 
 /**
- * Kotlin owner for the native C++ AutoDJ Automix engine.
+ * Kotlin owner for the native C++ Automix engine.
  * Coordinates Mixxx-style dual-deck state transitions, silence trimming,
  * kick-band BPM & phase matching via WSOLA, 200Hz/180Hz Linkwitz-Riley bass-swap,
  * vocal-pocket ducking, and 1.4s echo reverb tail.

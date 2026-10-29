@@ -158,10 +158,6 @@ public:
     [[nodiscard]] float getDeckBBpm() const noexcept;
     [[nodiscard]] std::int64_t getDeckBDropBeatMs() const noexcept;
 
-    void feedDeckARollingBuffer(const float* stereo, std::size_t frames) noexcept;
-    void captureDeckALoop(float bpmA) noexcept;
-    [[nodiscard]] bool isAtPhraseBoundary(const float* stereo, std::size_t frames) noexcept;
-
 private:
     double sampleRate_{48000.0};
     std::atomic<bool> enabled_{false};
@@ -218,14 +214,6 @@ private:
     std::int64_t deckBFirstBeatMs_{0};
     std::int64_t deckBDropBeatMs_{0};
     bool deckBTrimCalculated_{false};
-
-    // 1-Bar Beat-Loop Exit Buffer for Deck A
-    std::vector<float> deckARollingBuffer_;
-    std::size_t deckARollingWritePos_{0};
-    std::vector<float> deckAOneBarLoopBuffer_;
-    std::size_t deckALoopFrames_{0};
-    std::size_t deckALoopReadPos_{0};
-    bool deckALoopActive_{false};
 
     // Transition tracking
     std::size_t transitionTotalFrames_{0};

@@ -63,12 +63,6 @@ class JamPlaybackSync @Inject constructor(
                     quietUntilMs = 0L
                 } else {
                     Log.d(TAG, "Jam session active (${session.roomCode}), host=${session.isHost}")
-                    // AutoDJ is strictly disallowed during Jam: terminate immediately if running
-                    val local = musicPlayer.state.value
-                    if (local.isAutoDJActive || local.isAutoDJMixPlaying) {
-                        Log.i(TAG, "Terminating active AutoDJ session upon entering Jam room.")
-                        musicPlayer.setAutoDJEnabled(false)
-                    }
                 }
             }
         }
@@ -77,29 +71,6 @@ class JamPlaybackSync @Inject constructor(
         scope.launch {
             jamRepository.remotePlaybackEvents.collect { event ->
                 val session = jamRepository.sessionState.value as? JamSessionState.Active ?: return@collect
-
-                // Never sync or play AutoDJ in Jam: isolate immediately
-                val isRemoteAutoDJ = when (event) {
-                    is RemotePlaybackEvent.ChangeTrack -> event.isAutoDJ || jamRepository.isAutoDJTrack(event.track)
-                    is RemotePlaybackEvent.FullSync -> event.isAutoDJ || jamRepository.isAutoDJTrack(event.playback.currentTrack)
-                    is RemotePlaybackEvent.Play -> event.isAutoDJ
-                    is RemotePlaybackEvent.Pause -> event.isAutoDJ
-                    is RemotePlaybackEvent.Seek -> event.isAutoDJ
-                }
-
-                if (isRemoteAutoDJ) {
-                    Log.w(TAG, "Remote participant is playing AutoDJ. AutoDJ cannot be paired in Jam. Sync suppressed.")
-                    jamRepository.setRemoteAutoDJActive(true)
-                    return@collect
-                } else if (jamRepository.isRemoteAutoDJActive.value && (event is RemotePlaybackEvent.ChangeTrack || event is RemotePlaybackEvent.FullSync)) {
-                    jamRepository.setRemoteAutoDJActive(false)
-                }
-
-                // Never sync during local AutoDJ playback (explicit requirement)
-                val playerState = musicPlayer.state.value
-                if (playerState.isAutoDJMixPlaying || playerState.isAutoDJActive) {
-                    return@collect
-                }
 
                 // Echo loop suppression: ignore events that originated from ourselves
                 if (event.fromUserId != null && event.fromUserId == session.userId) {
@@ -118,15 +89,10 @@ class JamPlaybackSync @Inject constructor(
         // 3. Outbound: Listen for local MusicPlayer changes and broadcast to Jam
         scope.launch {
             musicPlayer.state
-                .map { StateSnapshot(it.isPlaying, it.current, it.isAutoDJMixPlaying, it.isAutoDJActive) }
+                .map { StateSnapshot(it.isPlaying, it.current) }
                 .distinctUntilChanged()
                 .collect { snapshot ->
                     val session = jamRepository.sessionState.value as? JamSessionState.Active ?: return@collect
-
-                    // Never broadcast during AutoDJ playback
-                    if (snapshot.isAutoDJMixPlaying || snapshot.isAutoDJActive) {
-                        return@collect
-                    }
 
                     // Only host or collaborative participants can control playback
                     val canControl = session.isHost || session.roomMode == JamProtocolConstants.MODE_COLLABORATIVE
@@ -250,11 +216,6 @@ class JamPlaybackSync @Inject constructor(
     }
 
     private fun applyTrackChange(remoteTrack: TrackInfoPayload, positionMs: Long, isPlaying: Boolean) {
-        if (jamRepository.isAutoDJTrack(remoteTrack)) {
-            Log.w(TAG, "Suppressed track change for AutoDJ payload: ${remoteTrack.title}")
-            jamRepository.setRemoteAutoDJActive(true)
-            return
-        }
         val localCurrent = musicPlayer.state.value.current
         val sameSong = isSameTrack(localCurrent, remoteTrack)
 
@@ -319,7 +280,5 @@ class JamPlaybackSync @Inject constructor(
     private data class StateSnapshot(
         val isPlaying: Boolean,
         val current: PlayableTrack?,
-        val isAutoDJMixPlaying: Boolean,
-        val isAutoDJActive: Boolean,
     )
 }

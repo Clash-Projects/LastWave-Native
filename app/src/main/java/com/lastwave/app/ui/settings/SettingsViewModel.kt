@@ -665,7 +665,6 @@ class SettingsViewModel @Inject constructor(
     fun setAutomixBars(bars: Int) = launchSettingsAction("update automix bars") {
         settingsPreferences.setAutomixBars(bars)
     }
-    fun setAutoDJEnabled(enabled: Boolean) = launchSettingsAction("update autodj") { settingsPreferences.setAutoDJEnabled(enabled) }
     fun setWavySeekbarEnabled(enabled: Boolean) = launchSettingsAction("update seekbar style") {
         settingsPreferences.setWavySeekbarEnabled(enabled)
     }

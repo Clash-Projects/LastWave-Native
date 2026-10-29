@@ -139,14 +139,6 @@ void AutoMixEngine::configure(double sampleRate) noexcept {
     deckBDropBeatMs_ = 0;
     deckBTrimCalculated_ = false;
 
-    const std::size_t rollFrames = static_cast<std::size_t>(sampleRate_ * 6.0); // 6s rolling buffer
-    deckARollingBuffer_.assign(rollFrames * 2, 0.0f);
-    deckARollingWritePos_ = 0;
-    deckAOneBarLoopBuffer_.assign(rollFrames * 2, 0.0f);
-    deckALoopFrames_ = 0;
-    deckALoopReadPos_ = 0;
-    deckALoopActive_ = false;
-
     deckBScratch_.assign(16384 * 2, 0.0f);
     deckBStretchedScratch_.assign(32768 * 2, 0.0f);
     conversionScratch_.assign(32768 * 2, 0.0f);
@@ -289,7 +281,6 @@ void AutoMixEngine::setTransitionProgress(float progress) noexcept {
     if (transitionProgress_ >= 1.0f) {
         deckBStretcher_.startRecoveryRamp(1.0f, 6.0f); // 6.0s recovery glide back to 1.000f
         deckAEcho_.setEnabled(false);
-        deckALoopActive_ = false;
         state_.store(AutoMixState::PostRestore, std::memory_order_release);
     }
 }
@@ -337,11 +328,6 @@ void AutoMixEngine::reset() noexcept {
     deckBFirstBeatMs_ = 0;
     deckBDropBeatMs_ = 0;
     deckBTrimCalculated_ = false;
-
-    deckALoopActive_ = false;
-    deckALoopFrames_ = 0;
-    deckALoopReadPos_ = 0;
-    deckARollingWritePos_ = 0;
 
     baselineEnergy_ = 0.0f;
     shortTermEnergy_ = 0.0f;
@@ -596,9 +582,6 @@ void AutoMixEngine::process(float* deckAStereo, std::size_t frames) noexcept {
     if (!enabled_.load(std::memory_order_acquire)) return;
     if (paused_.load(std::memory_order_acquire)) return;
 
-    // Strict lock-free real-time audio thread: zero FFT/BPM calculations on audio thread
-    feedDeckARollingBuffer(deckAStereo, frames);
-
     AutoMixState currState = state_.load(std::memory_order_acquire);
 
     if (currState == AutoMixState::MonitoringOutro) {
@@ -655,7 +638,6 @@ void AutoMixEngine::process(float* deckAStereo, std::size_t frames) noexcept {
         if (transitionCurrentFrame_ >= transitionTotalFrames_) {
             deckBStretcher_.startRecoveryRamp(1.0f, 6.0f); // 6.0s smooth glide back
             deckAEcho_.setEnabled(false);
-            deckALoopActive_ = false;
             state_.store(AutoMixState::PostRestore, std::memory_order_release);
         }
     } else if (currState == AutoMixState::PostRestore) {
@@ -731,7 +713,6 @@ bool AutoMixEngine::processDeckBuffer(
                 transitionProgress_ = 1.0f;
                 deckBStretcher_.startRecoveryRamp(1.0f, 6.0f);
                 deckAEcho_.setEnabled(false);
-                deckALoopActive_ = false;
                 state_.store(AutoMixState::PostRestore, std::memory_order_release);
             }
         }
@@ -774,42 +755,6 @@ bool AutoMixEngine::processDeckBuffer(
         }
     }
 
-    return true;
-}
-
-void AutoMixEngine::feedDeckARollingBuffer(const float* stereo, std::size_t frames) noexcept {
-    if (stereo == nullptr || frames == 0) return;
-    const std::size_t capacityFrames = deckARollingBuffer_.size() / 2;
-    for (std::size_t f = 0; f < frames; ++f) {
-        deckARollingBuffer_[deckARollingWritePos_ * 2] = stereo[f * 2];
-        deckARollingBuffer_[deckARollingWritePos_ * 2 + 1] = stereo[f * 2 + 1];
-        deckARollingWritePos_ = (deckARollingWritePos_ + 1) % capacityFrames;
-    }
-}
-
-void AutoMixEngine::captureDeckALoop(float bpmA) noexcept {
-    const float safeBpm = (bpmA >= 50.0f && bpmA <= 220.0f) ? bpmA : 120.0f;
-    const double barSec = (60.0 / static_cast<double>(safeBpm)) * 4.0;
-    const std::size_t loopFrames = static_cast<std::size_t>(barSec * sampleRate_);
-    const std::size_t capacityFrames = deckARollingBuffer_.size() / 2;
-
-    if (loopFrames == 0 || loopFrames > capacityFrames || loopFrames * 2 > deckAOneBarLoopBuffer_.size()) return;
-
-    const std::size_t startPos = (deckARollingWritePos_ + capacityFrames - loopFrames) % capacityFrames;
-    for (std::size_t f = 0; f < loopFrames; ++f) {
-        const std::size_t rPos = (startPos + f) % capacityFrames;
-        deckAOneBarLoopBuffer_[f * 2] = deckARollingBuffer_[rPos * 2];
-        deckAOneBarLoopBuffer_[f * 2 + 1] = deckARollingBuffer_[rPos * 2 + 1];
-    }
-
-    deckALoopFrames_ = loopFrames;
-    deckALoopReadPos_ = 0;
-    deckALoopActive_ = true;
-}
-
-bool AutoMixEngine::isAtPhraseBoundary(const float* stereo, std::size_t frames) noexcept {
-    (void)stereo;
-    (void)frames;
     return true;
 }
 

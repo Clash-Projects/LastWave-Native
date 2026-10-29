@@ -1,6 +1,5 @@
 #include "../TransitionPlanner.h"
 #include "../AutoMixEngine.h"
-#include "../AutoDJProcessor.h"
 
 #include <iostream>
 #include <cassert>
@@ -14,56 +13,12 @@
 int main() {
     using namespace lastwave::audio;
     using namespace lastwave;
-    std::cout << "Testing Native C++ Auto DJ & Club Automix Engine...\n";
+    std::cout << "Testing Native C++ Automix Engine...\n";
 
     const double sampleRate = 48000.0;
 
     // ========================================================================
-    // Part 1: Auto DJ Processor Tests
-    // ========================================================================
-    std::cout << "--- Testing Auto DJ Processor Lifecycle & Refill ---\n";
-    AutoDJProcessor autoDj(2, 2); // max 2 retries, refill at <= 2 remaining
-
-    // 1. Queue exhaustion refill check
-    AutoDJDecision dRefill = autoDj.evaluate(
-        0, 180000, true, 8000,
-        TrackLifecycleStage::QUEUED, 0, /*unplayedCount=*/2
-    );
-    assert(dRefill == AutoDJDecision::REFILL_QUEUE);
-    std::cout << "Refill on <= 2 tracks remaining: OK\n";
-
-    // 2. Early resolution: queued item starts resolving immediately
-    AutoDJDecision dResolve = autoDj.evaluate(
-        1000, 180000, true, 8000,
-        TrackLifecycleStage::QUEUED, 0, /*unplayedCount=*/5
-    );
-    assert(dResolve == AutoDJDecision::RESOLVE_NEXT_STREAM);
-    std::cout << "Start resolving next track immediately: OK\n";
-
-    // 3. Advance arming: 40s before planned exit cue (remaining <= 40000 + 8000 = 48000ms)
-    AutoDJDecision dArm = autoDj.evaluate(
-        135000, 180000, true, 8000, // remaining 45000ms <= 48000ms
-        TrackLifecycleStage::STREAM_RESOLVED, 0, /*unplayedCount=*/4
-    );
-    assert(dArm == AutoDJDecision::DECODE_HEAD_WINDOW);
-    std::cout << "Advance arming 40s before exit cue: OK\n";
-
-    // 4. Retry limits: bounded to 2 retries, then SKIP_UNPLAYABLE
-    AutoDJDecision dRetry1 = autoDj.evaluate(
-        50000, 180000, true, 8000,
-        TrackLifecycleStage::FAILED_RETRYING, 1, 4
-    );
-    assert(dRetry1 == AutoDJDecision::RESOLVE_NEXT_STREAM);
-
-    AutoDJDecision dSkip = autoDj.evaluate(
-        50000, 180000, true, 8000,
-        TrackLifecycleStage::FAILED_RETRYING, 2, 4
-    );
-    assert(dSkip == AutoDJDecision::SKIP_UNPLAYABLE);
-    std::cout << "Max 2 retries followed by SKIP_UNPLAYABLE: OK\n";
-
-    // ========================================================================
-    // Part 2: Transition Planner Tests
+    // Part 1: Transition Planner Tests
     // ========================================================================
     std::cout << "--- Testing Transition Planner Hard 30s Clamp & Skit Skipper ---\n";
 
@@ -135,7 +90,7 @@ int main() {
     assert(planSkit.inCueMs >= 6000 && planSkit.inCueMs <= 10000); // Snapped 1-2 bars before drop!
 
     // ========================================================================
-    // Part 3: Dual-Deck Transition DSP Suite Tests
+    // Part 2: Dual-Deck Transition DSP Suite Tests
     // ========================================================================
     std::cout << "--- Testing Transition DSP & Midpoint Bass-Swap ---\n";
     AutoMixEngine engine;
@@ -220,6 +175,6 @@ int main() {
     assert(engine.getState() == AutoMixState::FadingFast);
     std::cout << "Automix on Skip fast transition trigger: OK\n";
 
-    std::cout << "\n>>> ALL NATIVE C++ AUTO DJ & AUTOMIX TESTS PASSED! <<<\n";
+    std::cout << "\n>>> ALL NATIVE C++ AUTOMIX TESTS PASSED! <<<\n";
     return 0;
 }

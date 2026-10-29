@@ -125,7 +125,6 @@ data class TrackInfoPayload(
     @SerialName("duration_ms") val durationMs: Long? = null,
     @SerialName("source") val source: String? = null,
     @SerialName("suggested_by") val suggestedBy: String? = null,
-    @SerialName("is_autodj") val isAutoDJ: Boolean = false,
 )
 
 @Serializable
@@ -137,7 +136,6 @@ data class PlaybackActionPayload(
     @SerialName("client_time_ms") val clientTimeMs: Long? = null,
     @SerialName("server_time_ms") val serverTimeMs: Long = 0L,
     @SerialName("is_playing") val isPlaying: Boolean = false,
-    @SerialName("is_autodj") val isAutoDJ: Boolean = false,
     @SerialName("queue") val queue: List<TrackInfoPayload>? = null,
     @SerialName("revision") val revision: Long = 0L,
 )
@@ -148,7 +146,6 @@ data class PlaybackStatePayload(
     @SerialName("position_ms") val positionMs: Long = 0L,
     @SerialName("server_time_ms") val serverTimeMs: Long = 0L,
     @SerialName("is_playing") val isPlaying: Boolean = false,
-    @SerialName("is_autodj") val isAutoDJ: Boolean = false,
     @SerialName("queue") val queue: List<TrackInfoPayload> = emptyList(),
     @SerialName("revision") val revision: Long = 0L,
 )

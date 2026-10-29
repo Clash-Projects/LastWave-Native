@@ -154,28 +154,11 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
-                    id = "audio.autodj",
-                    title = "Auto DJ",
-                    subtitle = "Autonomous queue replenishment & predictive background resolution",
-                    keywords = listOf(
-                        "auto dj", "autodj", "prefetch", "predictive", "queue", "automatic queue",
-                        "mixxx", "background resolve", "endless playback"
-                    ),
-                    icon = Icons.Filled.AutoAwesome,
-                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
-                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
-                    parentTab = SettingsTab.AUDIO,
-                    section = "Audio & Playback",
-                    type = EntryType.TOGGLE,
-                )
-            )
-            add(
-                SettingsEntry(
                     id = "audio.automix",
-                    title = "Automix (AutoDJ)",
+                    title = "Automix",
                     subtitle = "Seamless tempo-synced DJ blends between queued tracks",
                     keywords = listOf(
-                        "automix", "autodj", "bpm", "tempo sync", "beat match", "crossfade", "mixxx",
+                        "automix", "bpm", "tempo sync", "beat match", "crossfade", "mixxx",
                         "dj blend", "bass swap", "fade now", "transition"
                     ),
                     icon = Icons.Filled.AutoAwesome,

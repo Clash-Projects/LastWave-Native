@@ -942,23 +942,6 @@ fun SettingsScreen(
                         add { position ->
                             SettingsToggleCard(
                                 icon = Icons.Filled.AutoAwesome,
-                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = "Auto DJ",
-                                subtitle = if (misc.autoDJEnabled) {
-                                    "Autonomous queue replenishment & predictive background prefetch"
-                                } else {
-                                    "Automatic queue management and prefetching disabled"
-                                },
-                                checked = misc.autoDJEnabled,
-                                onCheckedChange = viewModel::setAutoDJEnabled,
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "audio.autodj"),
-                            )
-                        }
-                        add { position ->
-                            SettingsToggleCard(
-                                icon = Icons.Filled.AutoAwesome,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
                                 title = "Automix",
