@@ -32,8 +32,7 @@ import javax.inject.Singleton
 class SegmentedDashBridge @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
-    fun isSegmentedCacheKey(cacheKey: String?): Boolean =
-        cacheKey?.startsWith("segdrm:") == true
+    
 
     /** MPD uri for [descriptor]; rewrites the file only when content changes. */
     fun mpdUri(descriptor: SegmentedStreamDescriptor): Uri =

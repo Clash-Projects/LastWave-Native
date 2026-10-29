@@ -21,15 +21,12 @@ object JamProtocolConstants {
     const val MSG_HOST_CHANGED = "host_changed"
     const val MSG_CHANGE_ROOM_MODE = "change_room_mode"
     const val MSG_ROOM_MODE_CHANGED = "room_mode_changed"
-    const val MSG_PONG = "pong"
     const val MSG_ERROR = "error"
 
     const val ACTION_PLAY = "play"
     const val ACTION_PAUSE = "pause"
     const val ACTION_SEEK = "seek"
-    const val ACTION_SKIP_NEXT = "skip_next"
     const val ACTION_CHANGE_TRACK = "change_track"
-    const val ACTION_QUEUE_ADD = "queue_add"
 
     const val MODE_HOST_ONLY = "host_only"
     const val MODE_COLLABORATIVE = "collaborative"

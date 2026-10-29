@@ -47,12 +47,7 @@ data class StreamCache(
 ) {
     val cacheKey: String get() = "$trackId+$youtubeVideoId"
 
-    fun asEntry(): StreamCacheEntry = StreamCacheEntry(
-        trackId = trackId,
-        youtubeVideoId = youtubeVideoId,
-        streamUrl = streamUrl,
-        expiresAt = expiresAt,
-    )
+    
 
     /** The URL belongs to the YouTube video. Track id is who stored it. */
     fun matches(identity: TrackIdentity): Boolean =

@@ -14,15 +14,7 @@ import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
-@Serializable
-private data class BetterLyricsGetResponse(
-    val ttml: String? = null,
-)
 
-@Serializable
-private data class BetterLyricsTtmlResponse(
-    val lyrics: String? = null,
-)
 
 /**
  * BetterLyrics word-sync provider (https://lyrics-api.boidu.dev).

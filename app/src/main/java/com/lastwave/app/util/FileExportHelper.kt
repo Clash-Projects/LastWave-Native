@@ -154,17 +154,7 @@ class FileExportHelper @Inject constructor(
         context.startActivity(Intent.createChooser(intent, "Share playlist").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
-    /** Plain-text share fallback (used if file sharing isn't available for
-     *  some reason) — mirrors shareText(). */
-    fun shareText(text: String, subject: String) {
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_SUBJECT, subject)
-            putExtra(Intent.EXTRA_TEXT, text)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        context.startActivity(Intent.createChooser(intent, "Share").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    }
+    
 
     /**
      * Unwraps [Context] hierarchy to find an [Activity] context for launching share dialogs.

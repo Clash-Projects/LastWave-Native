@@ -111,8 +111,7 @@ class DiscordIpcTransport private constructor(
          * Kept for callers that only need a package name; prefer
          * [findRpcComponent] which returns an explicit component.
          */
-        fun findDiscordPackage(context: Context): String? =
-            runCatching { findRpcComponent(context)?.packageName }.getOrNull()
+        
 
         /**
          * Finds an explicit component for Discord's RPC service.

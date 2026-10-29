@@ -855,10 +855,7 @@ class NativeProcessingAudioSink(
         }
     }
 
-    fun notifyExclusiveUsbMayStart() {
-        exclusiveWanted = true
-        exclusiveStartFailed = false
-    }
+    
 
     fun setBitPerfectRequested(enabled: Boolean) {
         if (bitPerfectRequested == enabled) return

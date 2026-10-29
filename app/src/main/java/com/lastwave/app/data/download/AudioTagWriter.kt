@@ -1614,18 +1614,7 @@ class AudioTagWriter @Inject constructor(
         out.write(value and 0xFF)
     }
 
-    private fun writeBe32Into(out: FileOutputStream, value: Int) {
-        out.write((value ushr 24) and 0xFF)
-        out.write((value ushr 16) and 0xFF)
-        out.write((value ushr 8) and 0xFF)
-        out.write(value and 0xFF)
-    }
-
-    private fun readU32(bytes: ByteArray, offset: Int): Int =
-        ((bytes[offset].toInt() and 0xFF) shl 24) or
-            ((bytes[offset + 1].toInt() and 0xFF) shl 16) or
-            ((bytes[offset + 2].toInt() and 0xFF) shl 8) or
-            (bytes[offset + 3].toInt() and 0xFF)
+    
 
     private fun detectExistingId3v2TagLength(file: File): Long {
         if (!file.exists() || file.length() < 10) return 0L

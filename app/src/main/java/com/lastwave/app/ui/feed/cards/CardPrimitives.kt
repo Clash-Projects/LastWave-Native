@@ -153,30 +153,4 @@ internal fun CardTextArea(
     }
 }
 
-/** Bold card title, ellipsized. */
-@Composable
-internal fun CardTitle(text: String, maxLines: Int = 1, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodyMedium,
-        fontWeight = FontWeight.Bold,
-        maxLines = maxLines,
-        overflow = TextOverflow.Ellipsis,
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier = modifier,
-    )
-}
 
-/** One-line muted info line (artist, type, plays/views). */
-@Composable
-internal fun CardInfoLine(text: String, modifier: Modifier = Modifier) {
-    if (text.isBlank()) return
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-        modifier = modifier,
-    )
-}

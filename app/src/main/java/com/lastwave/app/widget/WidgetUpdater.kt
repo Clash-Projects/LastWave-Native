@@ -31,10 +31,6 @@ private const val ART_FILE_NAME = "widget_now_playing_art.png"
 object WidgetUpdater {
 
     @Volatile
-    var animationFrame: Int = 0
-        private set
-
-    @Volatile
     var memoryArtBitmap: Bitmap? = null
         internal set
 

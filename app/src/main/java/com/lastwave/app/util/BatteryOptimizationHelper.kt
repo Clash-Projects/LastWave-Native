@@ -28,7 +28,4 @@ object BatteryOptimizationHelper {
             context.startActivity(fallback)
         }
     }
-
-    val isSamsungDevice: Boolean
-        get() = Build.MANUFACTURER.equals("samsung", ignoreCase = true)
 }

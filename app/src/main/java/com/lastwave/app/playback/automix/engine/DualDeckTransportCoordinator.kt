@@ -42,6 +42,7 @@ class DualDeckTransportCoordinator @Inject constructor(
     override val telemetry: StateFlow<DeckBlendTelemetry> = _telemetry.asStateFlow()
 
     private var currentSettings = AutoMixSettings()
+    val isEnabled: Boolean get() = currentSettings.autoMixEnabled
     private var isHardwareBypassEngaged = false
     private var isJamRoomActive = false
 
@@ -158,7 +159,10 @@ class DualDeckTransportCoordinator @Inject constructor(
         if (plan != null && !plan.isBypass && (_telemetry.value.phase == BlendPhase.ARMED || _telemetry.value.phase == BlendPhase.PRE_ANALYZING)) {
             val shouldTrigger = positionMs >= plan.cueOutStartMs || remainingMs <= plan.durationMs
             if (shouldTrigger && secondaryPlayer != null) {
-                startBlendExecution(primaryPlayer, secondaryPlayer, plan)
+                val isSecondaryReady = secondaryPlayer.playbackState == Player.STATE_READY
+                if (isSecondaryReady || remainingMs <= 1500L) {
+                    startBlendExecution(primaryPlayer, secondaryPlayer, plan)
+                }
             }
         }
     }
@@ -171,14 +175,7 @@ class DualDeckTransportCoordinator @Inject constructor(
         activeSpliceJob?.cancel()
         val durationMs = plan.durationMs.coerceAtLeast(1000L)
 
-        // Remove upcoming items from primary deck to prevent ExoPlayer from auto-advancing on deck A
-        if (primaryPlayer.currentMediaItemIndex != C.INDEX_UNSET &&
-            primaryPlayer.mediaItemCount > primaryPlayer.currentMediaItemIndex + 1
-        ) {
-            runCatching {
-                primaryPlayer.removeMediaItems(primaryPlayer.currentMediaItemIndex + 1, primaryPlayer.mediaItemCount)
-            }
-        }
+        primaryPlayer.repeatMode = Player.REPEAT_MODE_OFF
 
         _telemetry.update {
             it.copy(
@@ -296,10 +293,5 @@ class DualDeckTransportCoordinator @Inject constructor(
         }
     }
 
-    fun setJamRoomActive(active: Boolean) {
-        isJamRoomActive = active
-        if (active) {
-            cancelTransition(revertToPrimary = true)
-        }
-    }
+    
 }

@@ -1330,9 +1330,7 @@ private fun MiniPlayer(
                 label = "m3MiniPlayPauseCorner",
             )
             val progressStateValue by progressState.collectAsStateWithLifecycle()
-            val currentProgress = if (progressStateValue.durationMs > 0) {
-                (progressStateValue.positionMs.toFloat() / progressStateValue.durationMs).coerceIn(0f, 1f)
-            } else 0f
+            
 
             Surface(
                 shape = CircleShape,

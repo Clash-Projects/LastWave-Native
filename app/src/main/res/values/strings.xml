@@ -1226,9 +1226,7 @@
     <string name="podcasts_see_all">See all</string>
     <string name="podcast_episodes">Episodes</string>
     <string name="podcast_load_more">Load more</string>
-    <string name="podcast_resume">Resume</string>
     <string name="podcast_play_latest">Play latest</string>
-    <string name="podcast_progress_fraction">%1$d%% played</string>
 
     <!-- AutoEQ -->
     <string name="autoeq_title">AutoEQ</string>

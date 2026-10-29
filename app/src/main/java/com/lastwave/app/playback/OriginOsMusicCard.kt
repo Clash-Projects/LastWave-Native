@@ -17,10 +17,8 @@ import androidx.media3.common.Player
  * the loop mode, and plays list entries by their media ids.
  */
 internal object OriginOsMusicCard {
-    const val PACKAGE = "com.vivo.musicwidgetmix"
 
     /** Declared on the media browser service in the manifest. */
-    const val SERVICE_ACTION = "com.vivo.musicwidgetmix.support.service"
 
     /** Bit mask of what the card may show and control. Without it, the card disables everything. */
     const val KEY_SUPPORT_EVENT = "vivomusicmix.media.metadata.support_event"

@@ -15,16 +15,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class ModulePlaybackResolver @Inject constructor() {
-    /** Repo quality tier (28/27/7/6/5/4) mapped to the module quality id. */
-    fun moduleQuality(repoQuality: Int): String = when (repoQuality) {
-        28 -> "ATMOS"
-        27 -> "UHD"
-        7 -> "HI_RES_96"
-        6 -> "HD"
-        5 -> "SD"
-        4 -> "LOW"
-        else -> "UHD"
-    }
+    
 
     /** Always null: JSON modules resolve natively, script modules unsupported. */
     suspend fun resolve(title: String, artist: String, repoQuality: Int): SegmentedStreamDescriptor? =

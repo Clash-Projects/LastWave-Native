@@ -434,7 +434,7 @@ fun MainShell(
         val hideNavTabs = com.lastwave.app.ui.theme.LocalHideNavTabs.current
         val md3NavBar = LocalMd3NavBar.current
         val clearance = com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance.current
-        val isMiniPlayerActive = clearance > 0.dp
+        
         val systemBottomInset = WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding()
 
         val currentSelectedIndex by androidx.compose.runtime.rememberUpdatedState(selectedTabIndex)

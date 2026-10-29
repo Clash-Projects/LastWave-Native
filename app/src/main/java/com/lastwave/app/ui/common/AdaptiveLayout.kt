@@ -35,10 +35,7 @@ fun rememberWindowSizeClass(): WindowSizeClass {
 fun isTabletOrWideScreen(): Boolean =
     LocalConfiguration.current.screenWidthDp >= 600
 
-/** Returns true if the current display is an expanded display (>= 840dp). */
-@Composable
-fun isExpandedScreen(): Boolean =
-    LocalConfiguration.current.screenWidthDp >= 840
+
 
 @Composable
 fun Modifier.adaptiveContentWidth(maxWidth: Dp = 840.dp): Modifier {

@@ -193,20 +193,7 @@ class ModuleManager @Inject constructor(
         }
     }
 
-    /** JSON-only: decrypts config.json (AAD-bound) and requires baseUrl. */
-    fun readDecryptedConfig(handle: ProviderHandle): org.json.JSONObject? {
-        val bytes = readDecryptedEntry(handle, "config.json") ?: return null
-        val text = bytes.toString(Charsets.UTF_8).trim()
-        if (text.length > 64 * 1024) return null
-        return runCatching {
-            if (!text.startsWith("{")) return@runCatching null
-            val o = org.json.JSONObject(text)
-            val url = o.optString("baseUrl").ifBlank {
-                o.optJSONObject("tidal")?.optString("baseUrl").orEmpty()
-            }
-            if (url.isBlank()) null else o
-        }.getOrNull()
-    }
+    
 
     // -- store backing the JS storeGet/storeSet bridge -------------------------
 
@@ -239,9 +226,7 @@ class ModuleManager @Inject constructor(
         return runCatching { json.decodeFromString<OfflineSidecar>(f.readText()) }.getOrNull()
     }
 
-    fun deleteOfflineSidecar(title: String, artist: String) {
-        runCatching { offlineDirFor(title, artist).deleteRecursively() }
-    }
+    
 
     fun encodeDescriptor(descriptor: SegmentedStreamDescriptor): String =
         json.encodeToString(SegmentedStreamDescriptor.serializer(), descriptor)
@@ -273,18 +258,7 @@ class ModuleManager @Inject constructor(
         ZipFile(lwp).use { zip -> return zip.getEntry(name) != null }
     }
 
-    private fun canDecryptEntry(lwp: File, name: String, key: ByteArray): Boolean {
-        return try {
-            ZipFile(lwp).use { zip ->
-                val entry = zip.getEntry(name) ?: return false
-                if (entry.isDirectory || entry.size > 64 * 1024 + 64) return false
-                val bytes = zip.getInputStream(entry).use { it.readBytes() }
-                crypto.decryptEntry(bytes, key, name).isNotEmpty()
-            }
-        } catch (_: Exception) {
-            false
-        }
-    }
+    
 
     /** JSON-only gate: config.json must LWP2-decrypt to JSON with baseUrl. */
     private fun canDecryptConfig(lwp: File, key: ByteArray): Boolean {

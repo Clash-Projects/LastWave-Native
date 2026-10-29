@@ -49,12 +49,7 @@ data class BackendCredentials(
     val isAddon: Boolean = false,
 )
 
-/** URI or inline MPD extracted from `/trackManifests`. */
-data class AtmosManifestRef(
-    val mpdUri: String? = null,
-    val mpdXml: String? = null,
-    val mpdBase64: String? = null,
-)
+
 
 private data class TidalCandidateItem(
     val id: Long,
@@ -223,12 +218,7 @@ class LosslessMusicApi @Inject constructor(
                 lower.contains("atmos") || lower.contains("joc")
         }
 
-        fun isSpatialManifest(mpdXml: String): Boolean {
-            if (mpdXml.isBlank()) return false
-            val lower = mpdXml.lowercase()
-            return lower.contains("mha1") || lower.contains("mhm1") || lower.contains("mpeg-h") ||
-                lower.contains("360ra") || lower.contains("sony_360") || lower.contains("spatial")
-        }
+
 
         /** First `codecs=` value inside a base64 DASH data URL, or null when unreadable. */
         fun manifestCodecOf(dataUrl: String): String? {
@@ -297,66 +287,13 @@ class LosslessMusicApi @Inject constructor(
          * Pull an MPD URI or inline XML/base64 out of the many JSON shapes the
          * backend has used for `/trackManifests/?atmos=true`.
          */
-        fun extractAtmosManifestRef(json: JSONObject): AtmosManifestRef? {
-            fun fromObject(obj: JSONObject?): AtmosManifestRef? {
-                if (obj == null) return null
-                sequenceOf("uri", "url", "manifestUrl", "mpdUrl").forEach { key ->
-                    val value = obj.optString(key)?.takeIf { it.isNotBlank() } ?: return@forEach
-                    if (value.startsWith("http", ignoreCase = true)) {
-                        return AtmosManifestRef(mpdUri = value)
-                    }
-                }
-                val manifest = obj.optString("manifest")
-                if (manifest.isNotBlank()) {
-                    val trimmed = manifest.trimStart()
-                    return when {
-                        trimmed.startsWith("<") -> AtmosManifestRef(mpdXml = manifest)
-                        trimmed.startsWith("http", ignoreCase = true) -> AtmosManifestRef(mpdUri = manifest)
-                        else -> AtmosManifestRef(mpdBase64 = manifest)
-                    }
-                }
-                return null
-            }
-            fun walk(obj: JSONObject?, depth: Int): AtmosManifestRef? {
-                if (obj == null || depth > 6) return null
-                fromObject(obj)?.let { return it }
-                obj.optJSONObject("attributes")?.let { walk(it, depth + 1) }?.let { return it }
-                obj.optJSONObject("data")?.let { walk(it, depth + 1) }?.let { return it }
-                return null
-            }
-            return walk(json, 0)
-        }
-
-        fun parseSpatialFlags(item: JSONObject): Pair<Boolean, Boolean> {
-            var atmos = false
-            var spatial = false
-            fun consider(raw: String?) {
-                val m = raw?.uppercase().orEmpty()
-                if (m.isBlank()) return
-                if (m.contains("DOLBY") || m.contains("ATMOS")) atmos = true
-                if (m.contains("360") || m.contains("SONY") || (m.contains("SPATIAL") && !m.contains("ATMOS"))) {
-                    spatial = true
-                }
-            }
-            val modes = item.optJSONArray("audioModes")
-            val modeCount = modes?.length() ?: 0
-            for (i in 0 until modeCount) consider(modes?.optString(i))
-            val tags = item.optJSONObject("mediaMetadata")?.optJSONArray("tags")
-                ?: item.optJSONArray("mediaMetadataTags")
-            val tagCount = tags?.length() ?: 0
-            for (i in 0 until tagCount) consider(tags?.optString(i))
-            consider(item.optString("audioQuality"))
-            return atmos to spatial
-        }
-
         private const val TAG = "LosslessMusicApi"
         // Bug #2 ("same song, different language audio"): Tidal returns one
         // entry per language for Indian soundtracks (e.g. Devara Part 1 in
         // Telugu/Hindi/Tamil share title "Ayudha Pooja" and artist
         // "Kaala Bhairava"). 8s tolerated cross-language duration overlap,
         // so tighten to ±5s. Duration only vets when the caller supplies it.
-        private const val MAX_DURATION_DIFFERENCE_SECONDS = 5
-        // Language markers found in YouTube/Tidal titles and album names.
+            // Language markers found in YouTube/Tidal titles and album names.
         // Used to veto same-title different-language matches (bug #2) and to
         // detect ambiguous candidate sets that must fall back to YouTube.
         private val LANGUAGE_TOKENS = setOf(
@@ -462,17 +399,7 @@ class LosslessMusicApi @Inject constructor(
             """(?i)[\[(]\s*(?:dolby\s+atmos|dolby|atmos|spatial\s+audio|spatial|360(?:\s*reality\s*audio)?|sony\s+360|mpeg-?\s*h)\s*[\])]|\s*[-–—]\s*(?:dolby\s+atmos|dolby|atmos|spatial\s+audio|spatial)\s*$""",
         )
 
-        fun extractCoreTitle(title: String): String {
-            return title
-                .replace(SOUNDTRACK_SUFFIX, " ")
-                .replace(VERSION_NOISE_REGEX, " ")
-                .replace(ATMOS_VERSION_MARKER, " ")
-                .replace(BRACKETED_DISPLAY_NOISE, " ")
-                .replace(TRAILING_DISPLAY_NOISE, " ")
-                .replace(FEATURING_CLAUSE, " ")
-                .replace(Regex("""\s+"""), " ")
-                .trim()
-        }
+
 
         fun parseTitle(raw: String, artist: String = "", album: String? = null): TitleParts {
             val versions = sortedSetOf<String>()
@@ -666,9 +593,7 @@ class LosslessMusicApi @Inject constructor(
         emptyList()
     }
 
-    suspend fun getCredentials(): BackendCredentials? = withContext(Dispatchers.IO) {
-        getAllEnabledCredentials().firstOrNull()
-    }
+
 
     suspend fun resolveStream(
         title: String,
