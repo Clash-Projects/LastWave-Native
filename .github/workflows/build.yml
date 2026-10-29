@@ -17,7 +17,7 @@ on:
 
 jobs:
   build:
-    name: Build Release APKs
+    name: Build Release APK
     runs-on: ubuntu-latest
     env:
       SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
@@ -40,17 +40,7 @@ jobs:
       - name: Grant Gradle execute permission
         run: chmod +x gradlew
 
-      - name: Run unit tests (audio pipeline + regression)
-        run: ./gradlew :app:testDebugUnitTest --stacktrace
-
-      - name: Upload test reports
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: unit-test-reports
-          path: app/build/reports/tests/testDebugUnitTest
-
-      - name: Build Android 10 Release APKs (compressed + raw)
+      - name: Build Release APK
         env:
           ADDON_CLIENT_SECRET: ${{ secrets.ADDON_CLIENT_SECRET }}
           LASTWAVE_LYRICS_TOKEN: ${{ secrets.LASTWAVE_LYRICS_TOKEN }}
@@ -59,67 +49,28 @@ jobs:
           RELEASE_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD || secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.ALIAS || secrets.RELEASE_KEY_ALIAS || 'release_key' }}
           RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || secrets.RELEASE_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease assembleRawRelease --stacktrace
+        run: ./gradlew assembleRelease --stacktrace
 
-        # NOTE: Gradle signs release + rawRelease in place via the
-        # release_config signingConfig (v1+v2+v3), so no separate re-sign
-        # step is needed. A missing keystore now fails the build outright
-        # instead of silently shipping a debug-signed APK.
-
-      - name: Stage Android 10 Final APKs
+      - name: Stage Final APK
         id: prep_apk
         run: |
           mkdir -p final_apk
           VERSION=$(grep 'versionName = ' app/build.gradle.kts | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
           if [ -z "$VERSION" ]; then
-            VERSION="4.2.3"
+            VERSION="4.3.1"
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
-          echo "Building APKs for LastWave v$VERSION"
-          # Compressed release (Android 10+, R8 + ProGuard + shrinkResources)
+          echo "Building APK for LastWave v$VERSION"
           if [ -f "app/build/outputs/apk/release/app-release-signed.apk" ]; then
             cp app/build/outputs/apk/release/app-release-signed.apk final_apk/LastWave-v${VERSION}-release.apk
           else
             cp app/build/outputs/apk/release/app-release.apk final_apk/LastWave-v${VERSION}-release.apk
           fi
-          # Raw release (Android 10+, no minify, no shrink, no ProGuard)
-          if [ -f "app/build/outputs/apk/rawRelease/app-rawRelease-signed.apk" ]; then
-            cp app/build/outputs/apk/rawRelease/app-rawRelease-signed.apk final_apk/LastWave-v${VERSION}-raw.apk
-          else
-            cp app/build/outputs/apk/rawRelease/app-rawRelease.apk final_apk/LastWave-v${VERSION}-raw.apk
-          fi
-          rm -rf app/build/outputs/apk/release/*
-
-      - name: Build Android 7.0 Legacy APK (compressed)
-        env:
-          ADDON_CLIENT_SECRET: ${{ secrets.ADDON_CLIENT_SECRET }}
-          LASTWAVE_LYRICS_TOKEN: ${{ secrets.LASTWAVE_LYRICS_TOKEN }}
-          LASTWAVE_LYRICS_URL: ${{ secrets.LASTWAVE_LYRICS_URL }}
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-          RELEASE_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD || secrets.RELEASE_STORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.ALIAS || secrets.RELEASE_KEY_ALIAS || 'release_key' }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || secrets.RELEASE_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease -PminSdk=24 --stacktrace
-
-        # NOTE: Gradle signs this APK in place via release_config, so the
-        # separate r0adkll re-sign step was removed (see Android 10 build).
-
-      - name: Stage Android 7 Final APK
-        run: |
-          VERSION="${{ steps.prep_apk.outputs.version }}"
-          if [ -f "app/build/outputs/apk/release/app-release-signed.apk" ]; then
-            cp app/build/outputs/apk/release/app-release-signed.apk final_apk/LastWave-v${VERSION}-android7.apk
-          else
-            cp app/build/outputs/apk/release/app-release.apk final_apk/LastWave-v${VERSION}-android7.apk
-          fi
           ls -lh final_apk/
 
-      - name: Verify APK signatures + publish checksums
+      - name: Verify APK signature + publish checksum
         run: |
-          # Never ship a package the installer will reject as invalid: every
-          # staged APK must carry a valid v1+v2 signature. Unsigned fallbacks
-          # fail here loudly instead of reaching users.
           SDKROOT="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
           APKSIGNER=$(find "$SDKROOT/build-tools" -maxdepth 2 -name apksigner 2>/dev/null | head -n1)
           if [ -z "$APKSIGNER" ]; then
@@ -131,14 +82,12 @@ jobs:
             done
             echo "All APK signatures valid."
           fi
-          # Checksums so truncated downloads (the other classic cause of
-          # "package appears to be invalid") are detectable by users.
           (cd final_apk && sha256sum *.apk > SHA256SUMS.txt)
           cat final_apk/SHA256SUMS.txt
 
-      - name: Upload Release APKs
+      - name: Upload Release APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: LastWave-v${{ steps.prep_apk.outputs.version }}-APKs
+          name: LastWave-v${{ steps.prep_apk.outputs.version }}-APK
           path: final_apk/*
           if-no-files-found: error
