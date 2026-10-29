@@ -37,9 +37,8 @@ class SyncedVideoRepository @Inject constructor(
         runCatching {
             var targetVideoId = videoId?.trim()
             if (targetVideoId.isNullOrBlank()) {
-                val searchResults = innerTube.searchSongs("$trackTitle $trackArtist", limit = 5)
-                targetVideoId = searchResults.firstOrNull()?.videoId
-                    ?: throw IllegalStateException("Could not find video for $trackTitle \u2014 $trackArtist")
+                targetVideoId = findVideoId(trackTitle, trackArtist)
+                    ?: throw IllegalStateException("Could not find video for $trackTitle — $trackArtist")
             }
 
             val now = System.currentTimeMillis()
@@ -55,11 +54,8 @@ class SyncedVideoRepository @Inject constructor(
                 streamExtractor.resolveVideoStreamBundle(targetVideoId)
             } catch (e: Exception) {
                 // If resolving direct videoId failed (e.g. audio-only topic track),
-                // fallback to searching YouTube Music for a playable video
-                val searchFallback = runCatching {
-                    innerTube.searchSongs("$trackTitle $trackArtist", limit = 5)
-                }.getOrNull()
-                val fallbackId = searchFallback?.firstOrNull { it.videoId != targetVideoId && it.videoId.isNotBlank() }?.videoId
+                // search for the official music video specifically
+                val fallbackId = findVideoId(trackTitle, trackArtist, excludeId = targetVideoId)
                 if (!fallbackId.isNullOrBlank()) {
                     streamExtractor.resolveVideoStreamBundle(fallbackId).also {
                         targetVideoId = fallbackId
@@ -68,7 +64,7 @@ class SyncedVideoRepository @Inject constructor(
                     throw e
                 }
             }
-            val finalVideoId = targetVideoId ?: throw IllegalStateException("Could not find video for $trackTitle \u2014 $trackArtist")
+            val finalVideoId = targetVideoId ?: throw IllegalStateException("Could not find video for $trackTitle — $trackArtist")
             cache[finalVideoId] = CachedVideoBundle(
                 bundle = bundle,
                 expiresAtMs = now + CACHE_EXPIRY_MS,
@@ -77,5 +73,17 @@ class SyncedVideoRepository @Inject constructor(
         }.onFailure { error ->
             Log.w(TAG, "Failed to resolve video stream for $trackTitle: ${error.message}", error)
         }
+    }
+
+    suspend fun findVideoId(
+        trackTitle: String,
+        trackArtist: String,
+        excludeId: String? = null,
+    ): String? = withContext(Dispatchers.IO) {
+        val query = "$trackTitle $trackArtist official video"
+        val searchResults = runCatching {
+            innerTube.searchSongs(query, limit = 6)
+        }.getOrNull()
+        searchResults?.firstOrNull { it.videoId != excludeId && it.videoId.isNotBlank() }?.videoId
     }
 }

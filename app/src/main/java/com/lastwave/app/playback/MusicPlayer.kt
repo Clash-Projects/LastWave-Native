@@ -922,7 +922,7 @@ class MusicPlayer @Inject constructor(
                 (SystemClock.elapsedRealtime() - lastSeekAtElapsedMs <= SEEK_SETTLE_WINDOW_MS)
             val targetPos = when {
                 seekSettling -> lastSeekTargetMs
-                else -> if (rawPos > 1_500L) 0L else rawPos
+                else -> if (rawPos > 1_500L && reason != Player.MEDIA_ITEM_TRANSITION_REASON_SEEK && !autoMixCoordinator.get().telemetry.value.isArmedOrBlending) 0L else rawPos
             }
             lastSeekTargetMs = -1L
             playheadPosMs = targetPos
@@ -993,8 +993,10 @@ class MusicPlayer @Inject constructor(
                     ?: preparedStreams.values.firstOrNull { it.url == mediaItem.localConfiguration?.uri?.toString() }
                     ?: findPreparedStreamFor(currentTrack, currentTrack.videoId, currentTrack.mediaIdKey() in losslessBypassMediaIds)
                 val isLocal = currentTrack.isLocalTrack() || mediaItem.mediaId.startsWith("local:")
-                val needsResolution = mediaItem.localConfiguration?.uri?.scheme == "lastwave" ||
-                    (!isLocal && (prepared == null || prepared.isExpired()))
+                val hasNonPlaceholderUri = mediaItem.localConfiguration?.uri?.scheme?.let { it != "lastwave" } == true
+                val isStreamExpired = prepared?.isExpired() == true
+                val isPlayingOrReady = targetPlayer.isPlaying || targetPlayer.playbackState == Player.STATE_READY
+                val needsResolution = (!hasNonPlaceholderUri || (!isLocal && isStreamExpired)) && !isPlayingOrReady
                 if (needsResolution) {
                     // During lazy-player construction a restored queue is
                     // installed before the lazy value is published. Defer
@@ -1077,6 +1079,20 @@ class MusicPlayer @Inject constructor(
                     error = error,
                 )
             } ?: currentTrack?.let { logResolutionFailure(it, "player-error", errorRetryCount, error) }
+
+            val isTransientIo = error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+                error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED ||
+                httpStatus == 408
+            val isFatalHttp = httpStatus == 401 || httpStatus == 403 || httpStatus == 404 || httpStatus == 410 || httpStatus == 416
+            if (errorRetryCount == 0 && isTransientIo && !isFatalHttp && rejectedStream != null && !rejectedStream.isExpired() && failedIndex in 0 until player.mediaItemCount) {
+                errorRetryCount = 1
+                android.util.Log.i("MusicPlayer", "Transient network glitch for '${currentTrack?.title}', retrying same stream at ${currentPos}ms")
+                player.prepare()
+                player.seekTo(failedIndex, currentPos)
+                player.play()
+                return
+            }
 
             if (failedLosslessStream) {
                 if (failedMediaId != null && (errorRetryCount > 0 || !isRetryablePlaybackFailure(error))) {
@@ -1739,6 +1755,20 @@ class MusicPlayer @Inject constructor(
         }
         val autoMixCoord = autoMixCoordinator.get()
         autoMixCoord.onPerformDeckSwap = { outgoing, incoming ->
+            val timeline = outgoing.currentTimeline
+            if (!timeline.isEmpty && incoming.mediaItemCount > 0) {
+                val shuffleOrder = mutableListOf<Int>()
+                var index = incoming.currentMediaItemIndex
+                while (index != C.INDEX_UNSET && !shuffleOrder.contains(index) && shuffleOrder.size < incoming.mediaItemCount) {
+                    shuffleOrder.add(index)
+                    index = timeline.getNextWindowIndex(index, Player.REPEAT_MODE_OFF, outgoing.shuffleModeEnabled)
+                }
+                if (shuffleOrder.size == incoming.mediaItemCount) {
+                    runCatching {
+                        incoming.setShuffleOrder(DefaultShuffleOrder(shuffleOrder.toIntArray(), Random.nextLong()))
+                    }
+                }
+            }
             incoming.shuffleModeEnabled = outgoing.shuffleModeEnabled
             incoming.repeatMode = outgoing.repeatMode
             incoming.playbackParameters = outgoing.playbackParameters
@@ -1749,11 +1779,6 @@ class MusicPlayer @Inject constructor(
             outgoing.removeListener(listener)
             outgoing.repeatMode = Player.REPEAT_MODE_OFF
             outgoing.shuffleModeEnabled = false
-            if (outgoing.currentMediaItemIndex != C.INDEX_UNSET && outgoing.mediaItemCount > outgoing.currentMediaItemIndex + 1) {
-                runCatching {
-                    outgoing.removeMediaItems(outgoing.currentMediaItemIndex + 1, outgoing.mediaItemCount)
-                }
-            }
             incoming.addListener(listener)
             incoming.setAudioAttributes(incoming.audioAttributes, false)
             incoming.play()
@@ -2762,11 +2787,10 @@ class MusicPlayer @Inject constructor(
             ?.let(preparedStreams::get)
         val isLocalTrack = currentItem?.mediaId?.startsWith("local:") == true ||
             _state.value.current?.isLocalTrack() == true
-        val needsResolution = currentItem?.localConfiguration?.uri?.scheme == "lastwave" ||
-            currentPrepared?.isExpired() == true ||
-            (!isLocalTrack && currentPrepared == null) ||
-            player.playerError != null ||
-            _state.value.error != null
+        val hasNonPlaceholderUri = currentItem?.localConfiguration?.uri?.scheme?.let { it != "lastwave" } == true
+        val isDead = currentPrepared?.isExpired() == true
+        val hasError = player.playerError != null || _state.value.error != null
+        val needsResolution = !hasNonPlaceholderUri || isDead || hasError
         if (needsResolution && player.currentMediaItemIndex in 0 until player.mediaItemCount) {
             _state.update { it.copy(error = null) }
             resolveAndPlayQueueItem(player.currentMediaItemIndex)
@@ -2953,8 +2977,11 @@ class MusicPlayer @Inject constructor(
             castPlayback?.seek(positionMs.coerceAtLeast(0))
             return@onMain
         }
-        cancelCrossfade()
-        autoMixCoordinator.get().handleSeekEvent(positionMs.coerceAtLeast(0))
+        if (autoMixCoordinator.get().isEnabled) {
+            autoMixCoordinator.get().handleSeekEvent(positionMs.coerceAtLeast(0))
+        } else {
+            cancelCrossfade()
+        }
         cancelActiveUpgrade()
         currentTrackCacheJob?.cancel()
         currentTrackCacheJob = null
@@ -3164,11 +3191,13 @@ class MusicPlayer @Inject constructor(
         outgoingPlayer = null
         outgoingToStop?.stop()
         outgoingToStop?.clearMediaItems()
-        val standby = if (player === secondaryPlayer) playerDelegate.value else secondaryPlayer
-        standby?.stop()
-        standby?.clearMediaItems()
-        standbyQueue = emptyList()
-        standbyIndex = C.INDEX_UNSET
+        if (!autoMixCoordinator.get().isEnabled) {
+            val standby = if (player === secondaryPlayer) playerDelegate.value else secondaryPlayer
+            standby?.stop()
+            standby?.clearMediaItems()
+            standbyQueue = emptyList()
+            standbyIndex = C.INDEX_UNSET
+        }
         player.volume = 1f
     }
 
@@ -3209,9 +3238,15 @@ class MusicPlayer @Inject constructor(
         standbyIndex = nextIndex
         standby.volume = 0f
         standby.setAudioAttributes(player.audioAttributes, false)
-        standby.pause()
-        standby.setMediaItems(standbyQueue, nextIndex, 0L)
-        standby.prepare()
+        val isAlreadySet = standby.mediaItemCount == standbyQueue.size &&
+            standby.currentMediaItemIndex == nextIndex &&
+            standby.currentMediaItem?.mediaId == nextItem.mediaId &&
+            standby.playbackState != Player.STATE_IDLE
+        if (!isAlreadySet) {
+            standby.pause()
+            standby.setMediaItems(standbyQueue, nextIndex, 0L)
+            standby.prepare()
+        }
         crossfadeStandbyArmed = true
         crossfadeStandbyPreparing = true
         logCrossfadeDecision(
@@ -3238,7 +3273,7 @@ class MusicPlayer @Inject constructor(
     @MainThread
     private fun updateCrossfade(positionMs: Long): Boolean {
         if (!crossfadeEnabled || bitPerfectEnabled) return false
-        if (autoMixCoordinator.get().telemetry.value.isArmedOrBlending) return false
+        if (autoMixCoordinator.get().isEnabled) return false
         // Podcast episodes are long-form speech: a crossfade would cut the
         // tail of an episode into the next one.
         if (_state.value.current?.mediaType == MediaType.PODCAST_EPISODE) return false
@@ -3247,7 +3282,7 @@ class MusicPlayer @Inject constructor(
             // pause parks the fade instead of counting down underneath it.
             val incomingPos = runCatching { player.currentPosition.coerceAtLeast(0L) }.getOrDefault(0L)
             val progress = (incomingPos.toFloat() / overlapDurationMs.coerceAtLeast(1L)).coerceIn(0f, 1f)
-            if (progress >= 1f || outgoing.playbackState == Player.STATE_ENDED || outgoing.playerError != null) {
+            if (progress >= 1f || outgoing.playerError != null) {
                 cancelCrossfade()
             } else {
                 // Perceptual fade: outgoing ramps down, incoming ramps up.
@@ -3255,7 +3290,7 @@ class MusicPlayer @Inject constructor(
                 // the window, which sounded like two songs mixed together.
                 _state.update { if (!it.isCrossfading) it.copy(isCrossfading = true) else it }
                 val rawIn = CrossfadeCurve.incomingGain(progress)
-                val rawOut = CrossfadeCurve.outgoingGain(progress)
+                val rawOut = if (outgoing.playbackState == Player.STATE_ENDED) 0f else CrossfadeCurve.outgoingGain(progress)
                 val trim = CrossfadeCurve.headroom(rawIn, rawOut)
                 val inGain = (rawIn * trim).coerceIn(0f, 1f)
                 val outGain = (rawOut * trim).coerceIn(0f, 1f)
@@ -3408,7 +3443,11 @@ class MusicPlayer @Inject constructor(
             shuffleOrder.add(index)
             index = timeline.getNextWindowIndex(index, Player.REPEAT_MODE_OFF, outgoing.shuffleModeEnabled)
         }
-        standby.setShuffleOrder(DefaultShuffleOrder(shuffleOrder.toIntArray(), Random.nextLong()))
+        if (shuffleOrder.size == standby.mediaItemCount) {
+            runCatching {
+                standby.setShuffleOrder(DefaultShuffleOrder(shuffleOrder.toIntArray(), Random.nextLong()))
+            }
+        }
         standby.shuffleModeEnabled = outgoing.shuffleModeEnabled
         standby.repeatMode = outgoing.repeatMode
         standby.playbackParameters = outgoing.playbackParameters
@@ -3419,7 +3458,11 @@ class MusicPlayer @Inject constructor(
         outgoing.setAudioAttributes(outgoing.audioAttributes, false)
         outgoing.repeatMode = Player.REPEAT_MODE_OFF
         outgoing.shuffleModeEnabled = false
-        outgoing.removeMediaItems(outgoing.currentMediaItemIndex + 1, outgoing.mediaItemCount)
+        if (outgoing.currentMediaItemIndex != C.INDEX_UNSET && outgoing.mediaItemCount > outgoing.currentMediaItemIndex + 1) {
+            runCatching {
+                outgoing.removeMediaItems(outgoing.currentMediaItemIndex + 1, outgoing.mediaItemCount)
+            }
+        }
         outgoingPlayer = outgoing
         activePlayer = standby
         standby.addListener(listener)
@@ -4375,10 +4418,11 @@ class MusicPlayer @Inject constructor(
             track.playbackIdentity()?.let { streamResolver.cache.invalidate(it) }
         }
         val isLocal = mediaItem.mediaId.startsWith("local:") || track.isLocalTrack()
+        val hasNonPlaceholderUri = mediaItem.localConfiguration?.uri?.scheme?.let { it != "lastwave" } == true
         val isAlreadyResolved = if (isLocal) {
-            mediaItem.localConfiguration?.uri?.scheme != "lastwave"
+            hasNonPlaceholderUri
         } else {
-            prepared != null && !prepared.isExpired() && mediaItem.localConfiguration?.uri?.scheme != "lastwave"
+            hasNonPlaceholderUri && (prepared == null || !prepared.isExpired())
         }
         if (preparedMatches && isAlreadyResolved) {
             // Already resolved: publish quality synchronously so the badge is
@@ -5799,6 +5843,11 @@ class MusicPlayer @Inject constructor(
             playRequest?.isActive != true &&
             unavailableSkipJob?.isActive != true &&
             outgoingPlayer == null &&
+            !autoMixCoordinator.get().telemetry.value.isBlendingActive &&
+            player.playbackState != Player.STATE_BUFFERING &&
+            !snapshot.isBuffering &&
+            lastSeekTargetMs < 0L &&
+            (nowMs - lastSeekAtElapsedMs) >= SEEK_SETTLE_WINDOW_MS &&
             stalledWindow != C.INDEX_UNSET &&
             stalledWindow in 0 until player.mediaItemCount &&
             mediaId != null &&
@@ -5878,16 +5927,16 @@ class MusicPlayer @Inject constructor(
         val item = player.getMediaItemAt(index)
         val prepared = item.localConfiguration?.customCacheKey?.let(preparedStreams::get)
         val isLocal = item.mediaId.startsWith("local:") || _state.value.current?.isLocalTrack() == true
-        val windowResolved = item.localConfiguration?.uri?.scheme != "lastwave" &&
-            (isLocal || (prepared != null && !prepared.isExpired()))
+        val hasNonPlaceholderUri = item.localConfiguration?.uri?.scheme?.let { it != "lastwave" } == true
+        val windowResolved = hasNonPlaceholderUri && (isLocal || (prepared == null || !prepared.isExpired()))
         android.util.Log.w(
             "MusicPlayer",
             "Silent window '${_state.value.current?.title}' (attempt $attempt): " +
                 "state=${player.playbackState} playWhenReady=${player.playWhenReady} " +
                 "pos=${player.currentPosition}ms buf=${player.bufferedPosition}ms " +
-                "resolved=$windowResolved -> ${if (windowResolved && attempt == 1) "renderer reset" else "re-resolve"}",
+                "resolved=$windowResolved -> ${if (windowResolved || attempt <= 2) "renderer reset" else "re-resolve"}",
         )
-        if (windowResolved && attempt == 1) {
+        if (windowResolved || attempt <= 2) {
             resetRenderWatchdog()
             runCatching { player.seekTo(player.currentPosition.coerceAtLeast(0L)) }
             if (player.playbackState == Player.STATE_IDLE) runCatching { player.prepare() }

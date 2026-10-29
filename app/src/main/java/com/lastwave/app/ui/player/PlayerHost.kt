@@ -112,7 +112,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ClearAll
@@ -2225,6 +2224,29 @@ private fun FullPlayer(
             }
         }
     }
+    var isVideoFullscreen by remember(track.videoId, track.title) { mutableStateOf(false) }
+    val videoFullscreenActive = isVideoFullscreen && isVideoActive
+    DisposableEffect(view, videoFullscreenActive) {
+        val activity = generateSequence(view.context) { (it as? android.content.ContextWrapper)?.baseContext }
+            .filterIsInstance<android.app.Activity>().firstOrNull()
+        val controller = activity?.window?.let { WindowCompat.getInsetsController(it, view) }
+        val previousBehavior = controller?.systemBarsBehavior
+        val originalOrientation = activity?.requestedOrientation
+        if (videoFullscreenActive) {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller?.hide(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose {
+            if (videoFullscreenActive) {
+                controller?.show(WindowInsetsCompat.Type.systemBars())
+                previousBehavior?.let { controller?.systemBarsBehavior = it }
+                if (originalOrientation != null) {
+                    activity?.requestedOrientation = originalOrientation
+                }
+            }
+        }
+    }
     var showTrackMenu by remember(track.videoId, track.title) { mutableStateOf(false) }
     var showSignalPath by remember { mutableStateOf(false) }
     var showAudioControls by remember { mutableStateOf(false) }
@@ -2340,6 +2362,21 @@ private fun FullPlayer(
     // Single backdrop, sibling source below — never nest glass inside its own capture.
     val playerBackdrop = rememberLayerBackdrop()
     val fullGlass = LocalLiquidGlass.current && isLiquidGlassBackdropSupported()
+
+    if (videoFullscreenActive) {
+        BackHandler { isVideoFullscreen = false }
+        FullscreenLandscapeVideoStage(
+            track = track,
+            musicPlayer = player,
+            onMinimize = { isVideoFullscreen = false },
+            onCloseVideo = {
+                isVideoFullscreen = false
+                showSyncedVideo = false
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
+        return
+    }
     CompositionLocalProvider(
         LocalLiquidGlassBackdrop provides if (fullGlass) playerBackdrop else null,
         LocalLiquidGlassOverlayBackdrop provides if (fullGlass) playerBackdrop else null,
@@ -2745,27 +2782,6 @@ private fun FullPlayer(
                                         )
                                     }
                                 }
-                                if (currentTab == FullPlayerTab.NOW_PLAYING && musicVideoEnabled) {
-                                    LiquidGlassSurface(
-                                        onClick = { showSyncedVideo = !showSyncedVideo },
-                                        shape = CircleShape,
-                                        color = if (showSyncedVideo) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
-                                        else liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
-                                        contentColor = if (showSyncedVideo) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.94f),
-                                        glassModifier = Modifier.liquidGlassChrome(
-                                            CircleShape,
-                                            LocalLiquidGlass.current,
-                                            LiquidGlassPreset.FloatingControls,
-                                        ),
-                                        modifier = Modifier.size(44.dp),
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.SmartDisplay,
-                                            contentDescription = if (showSyncedVideo) "Show album art" else "Watch video",
-                                            modifier = Modifier.size(22.dp),
-                                        )
-                                    }
-                                }
                                 LiquidGlassSurface(
                                     onClick = { showTrackMenu = true },
                                     shape = CircleShape,
@@ -2904,6 +2920,7 @@ private fun FullPlayer(
                                     onOpenAudioControls = { showAudioControls = true },
                                     isVideoActive = isVideoActive,
                                     onCloseVideo = { showSyncedVideo = false },
+                                    onEnterFullscreen = { isVideoFullscreen = true },
                                 )
                             } else {
                                 // ── Standard layout (lifted and balanced) ──────
@@ -3092,6 +3109,7 @@ private fun FullPlayer(
                                                         track = track,
                                                         musicPlayer = player,
                                                         onCloseVideo = { showSyncedVideo = false },
+                                                        onEnterFullscreen = { isVideoFullscreen = true },
                                                         modifier = Modifier.fillMaxSize(),
                                                     )
                                                 }
@@ -3391,40 +3409,6 @@ private fun FullPlayer(
                                                     )
                                                 }
                                             }
-                                            if (musicVideoEnabled) {
-                                                val videoInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                                                val isVideoPressed by videoInteraction.collectIsPressedAsState()
-                                                val videoScale by animateFloatAsState(
-                                                    targetValue = if (isVideoPressed) 0.82f else 1.0f,
-                                                    animationSpec = ExpressiveMotion.spatialSpring(),
-                                                    label = "videoScale",
-                                                )
-                                                LiquidGlassSurface(
-                                                    glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = videoInteraction),
-                                                    onClick = { showSyncedVideo = !showSyncedVideo },
-                                                    interactionSource = videoInteraction,
-                                                    shape = CircleShape,
-                                                    color = if (showSyncedVideo) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
-                                                    else liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
-                                                    contentColor = if (showSyncedVideo) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.90f),
-                                                    tonalElevation = 0.dp,
-                                                    shadowElevation = 0.dp,
-                                                    modifier = Modifier
-                                                        .size(46.dp)
-                                                        .graphicsLayer {
-                                                            scaleX = videoScale
-                                                            scaleY = videoScale
-                                                        },
-                                                ) {
-                                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                                        Icon(
-                                                            Icons.Filled.SmartDisplay,
-                                                            contentDescription = if (showSyncedVideo) "Show album art" else "Watch video",
-                                                            modifier = Modifier.size(24.dp),
-                                                        )
-                                                    }
-                                                }
-                                            }
                                         }
                                     }
                                     Spacer(Modifier.height(10.dp))
@@ -3577,6 +3561,7 @@ private fun FullPlayerLandscape(
     onOpenAudioControls: () -> Unit = {},
     isVideoActive: Boolean = false,
     onCloseVideo: () -> Unit = {},
+    onEnterFullscreen: () -> Unit = {},
 ) {
     var isArtworkDragging by remember { mutableStateOf(false) }
     var artworkDragX by remember { mutableFloatStateOf(0f) }
@@ -3758,6 +3743,7 @@ private fun FullPlayerLandscape(
                         track = track,
                         musicPlayer = player,
                         onCloseVideo = onCloseVideo,
+                        onEnterFullscreen = onEnterFullscreen,
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {
@@ -4909,7 +4895,15 @@ private fun AppleMusicQualityBadge(
         qualityBadgeLabel(state)
     }
 
+    val isMixActive = state.deckBlendTelemetry.isBlendingActive
+    val isFadeActive = state.isCrossfading && !isMixActive
+
     val displayTitle = when {
+        isMixActive -> {
+            val bpm = state.deckBlendTelemetry.syncedBpm?.let { " · ${it.toInt()} BPM" } ?: ""
+            "AutoMix$bpm"
+        }
+        isFadeActive -> "Crossfade"
         isSpatial -> "Dolby Atmos"
         isHiRes -> "Hi-Res Lossless"
         state.isLossless -> "Lossless"
@@ -4920,6 +4914,7 @@ private fun AppleMusicQualityBadge(
     }
 
     val badgeIcon = when {
+        isMixActive || isFadeActive -> Icons.Filled.GraphicEq
         isSpatial -> Icons.Filled.SurroundSound
         state.isLossless -> Icons.Filled.HighQuality
         else -> Icons.Filled.GraphicEq
@@ -4931,56 +4926,6 @@ private fun AppleMusicQualityBadge(
         signalPath.clockFallbackResampled -> Color(0xFFFFB74D)
         isTranslucent -> Color.White.copy(alpha = 0.95f)
         else -> MaterialTheme.colorScheme.onSurface
-    }
-
-    if (state.deckBlendTelemetry.isBlendingActive) {
-        Box(
-            modifier = modifier.fillMaxWidth(),
-            contentAlignment = Alignment.Center,
-        ) {
-            com.lastwave.app.ui.player.automix.AudioQualityMixBadge(
-                telemetry = state.deckBlendTelemetry,
-                standardQualityBadgeText = displayTitle,
-            )
-        }
-        return
-    }
-
-    if (state.isCrossfading) {
-        val pillShape = RoundedCornerShape(12.dp)
-        val iridescentBorder = Brush.horizontalGradient(
-            listOf(
-                Color(0xFFFF007F),
-                Color(0xFF00FF7F),
-                Color(0xFF00CFFF),
-                Color(0xFFFF007F),
-            )
-        )
-        Box(
-            modifier = modifier.fillMaxWidth(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Row(
-                modifier = Modifier
-                    .clip(pillShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f))
-                    .border(1.dp, iridescentBorder, pillShape)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                com.lastwave.app.ui.player.automix.AnimatedWaveformBars()
-                Text(
-                    text = "CROSSFADING",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    ),
-                )
-            }
-        }
-        return
     }
 
     Box(
@@ -5012,6 +4957,7 @@ private fun AppleMusicQualityBadge(
             )
             Spacer(Modifier.width(5.dp))
             val fullText = when {
+                isMixActive || isFadeActive -> displayTitle
                 baseLabel.isNotBlank() && !baseLabel.equals(displayTitle, ignoreCase = true) && !baseLabel.equals("AUDIO", ignoreCase = true) -> "$displayTitle · $baseLabel"
                 else -> displayTitle
             }

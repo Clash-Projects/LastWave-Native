@@ -54,62 +54,45 @@ fun AudioQualityMixBadge(
     ) { phase ->
         when (phase) {
             BlendPhase.BLENDING, BlendPhase.LOOP_LOCKED -> {
-                // Active Mixing Indicator Pill with subtle iridescent border glow
-                val iridescentBorder = Brush.horizontalGradient(
-                    listOf(
-                        Color(0xFFFF007F),
-                        Color(0xFF00FF7F),
-                        Color(0xFF00CFFF),
-                        Color(0xFFFF007F),
-                    )
-                )
-
                 val bpmText = telemetry.syncedBpm?.let { "${it.toInt()} BPM" } ?: ""
-                val keyText = telemetry.harmonicKeyPair ?: ""
                 val mixingText = buildString {
-                    append("AUTOMIXING")
-                    if (bpmText.isNotEmpty()) append(" • ").append(bpmText)
-                    if (keyText.isNotEmpty()) append(" • ").append(keyText)
+                    append("AutoMix")
+                    if (bpmText.isNotEmpty()) append(" · ").append(bpmText)
                 }
 
-                Row(
+                Box(
                     modifier = Modifier
                         .clip(pillShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f))
-                        .border(1.dp, iridescentBorder, pillShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.50f))
                         .padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    AnimatedWaveformBars()
                     Text(
                         text = mixingText,
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         ),
                     )
                 }
             }
 
             BlendPhase.MIX_COMPLETED -> {
-                // Brief 1,500ms settlement badge
-                val bpmText = telemetry.syncedBpm?.let { " • ${it.toInt()} BPM" } ?: ""
-                Row(
+                val bpmText = telemetry.syncedBpm?.let { " · ${it.toInt()} BPM" } ?: ""
+                Box(
                     modifier = Modifier
                         .clip(pillShape)
-                        .background(Color(0xFF00C853).copy(alpha = 0.20f))
-                        .border(1.dp, Color(0xFF00E676), pillShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.50f))
                         .padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "MIXED ✓$bpmText",
+                        text = "Mixed ✓$bpmText",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF00E676),
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         ),
                     )
                 }

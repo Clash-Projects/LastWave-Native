@@ -49,6 +49,8 @@ class DualDeckTransportCoordinator @Inject constructor(
     private var activeTrackKey: String? = null
     private var activeSpliceJob: Job? = null
     private var currentSplicePlan: SplicePlan? = null
+    private var currentPrimaryPlayer: ExoPlayer? = null
+    private var currentSecondaryPlayer: ExoPlayer? = null
 
     // Track reference callbacks into MusicPlayer
     var onPerformDeckSwap: ((outgoing: ExoPlayer, incoming: ExoPlayer) -> Unit)? = null
@@ -80,6 +82,9 @@ class DualDeckTransportCoordinator @Inject constructor(
             }
             return
         }
+
+        currentPrimaryPlayer = primaryPlayer
+        currentSecondaryPlayer = secondaryPlayer
 
         if (currentTrack == null || durationMs <= 0L) return
 
@@ -183,6 +188,8 @@ class DualDeckTransportCoordinator @Inject constructor(
         plan: SplicePlan,
     ) {
         activeSpliceJob?.cancel()
+        currentPrimaryPlayer = primaryPlayer
+        currentSecondaryPlayer = secondaryPlayer
         val durationMs = plan.durationMs.coerceAtLeast(1000L)
 
         primaryPlayer.repeatMode = Player.REPEAT_MODE_OFF
@@ -213,11 +220,13 @@ class DualDeckTransportCoordinator @Inject constructor(
 
                 _telemetry.update { it.copy(blendProgress = progress) }
 
-                // Equal-power volume curve application
+                // Equal-power volume curve application with headroom trim
                 val gainOut = kotlin.math.cos(progress * Math.PI * 0.5).toFloat().coerceIn(0.0f, 1.0f)
                 val gainIn = kotlin.math.sin(progress * Math.PI * 0.5).toFloat().coerceIn(0.0f, 1.0f)
-                primaryPlayer.volume = gainOut
-                secondaryPlayer.volume = gainIn
+                val sum = gainIn + gainOut
+                val trim = if (sum <= 1f) 1f else 1f / kotlin.math.sqrt(sum)
+                primaryPlayer.volume = (gainOut * trim).coerceIn(0f, 1f)
+                secondaryPlayer.volume = (gainIn * trim).coerceIn(0f, 1f)
 
                 // Dominant energy handoff point (65% through transition window):
                 if (progress >= 0.65f && !swapped) {
@@ -250,6 +259,8 @@ class DualDeckTransportCoordinator @Inject constructor(
             delay(1_500L)
             _telemetry.update { DeckBlendTelemetry.IDLE }
             currentSplicePlan = null
+            currentPrimaryPlayer = null
+            currentSecondaryPlayer = null
         }
     }
 
@@ -258,11 +269,31 @@ class DualDeckTransportCoordinator @Inject constructor(
         activeSpliceJob = null
         currentSplicePlan = null
         _telemetry.update { DeckBlendTelemetry.IDLE }
+        if (revertToPrimary) {
+            runCatching {
+                currentPrimaryPlayer?.volume = 1.0f
+                currentSecondaryPlayer?.volume = 0.0f
+                currentSecondaryPlayer?.pause()
+            }
+        }
+        currentPrimaryPlayer = null
+        currentSecondaryPlayer = null
     }
 
     override fun forceCommitTransition() {
         activeSpliceJob?.cancel()
         activeSpliceJob = null
+        val primary = currentPrimaryPlayer
+        val secondary = currentSecondaryPlayer
+        if (primary != null && secondary != null) {
+            runCatching {
+                onPerformDeckSwap?.invoke(primary, secondary)
+                primary.volume = 0.0f
+                secondary.volume = 1.0f
+                primary.pause()
+                onTransitionComplete?.invoke()
+            }
+        }
         _telemetry.update {
             it.copy(
                 phase = BlendPhase.MIX_COMPLETED,
@@ -273,6 +304,8 @@ class DualDeckTransportCoordinator @Inject constructor(
             delay(1_500L)
             _telemetry.update { DeckBlendTelemetry.IDLE }
             currentSplicePlan = null
+            currentPrimaryPlayer = null
+            currentSecondaryPlayer = null
         }
     }
 
