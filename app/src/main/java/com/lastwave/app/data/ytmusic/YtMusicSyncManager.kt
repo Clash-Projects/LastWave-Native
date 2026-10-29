@@ -3,6 +3,7 @@ package com.lastwave.app.data.ytmusic
 import android.util.Log
 import com.lastwave.app.data.generate.distinctSongs
 import com.lastwave.app.data.generate.youtubeVideoIdOrNull
+import com.lastwave.app.data.generate.isDirectPlayback
 import com.lastwave.app.data.generate.isLocalFile
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YtOwnedPlaylist
@@ -295,7 +296,7 @@ class YtMusicSyncManager @Inject constructor(
                 async {
                     track.youtubeVideoIdOrNull()?.let { return@async it }
                     // Imported files stay local-only (no fuzzy YouTube match).
-                    if (track.isLocalFile()) return@async null
+                    if (track.isDirectPlayback()) return@async null
                     matchLimiter.withPermit {
                         val cacheKey = track.key
                         val negativeUntil = negativeMatchCache[cacheKey] ?: 0L
@@ -315,7 +316,7 @@ class YtMusicSyncManager @Inject constructor(
         var unmatched = 0
         resolvedVideoIds.forEachIndexed { index, videoId ->
             if (videoId != null) desiredVideoIds += videoId
-            else if (!playlist.tracks[index].isLocalFile()) unmatched++
+            else if (!playlist.tracks[index].isDirectPlayback()) unmatched++
         }
         // Push guard: only tracks carrying an explicit YouTube identity
         // (watch URL / bare videoId on the track itself) may be uploaded to
@@ -418,7 +419,7 @@ class YtMusicSyncManager @Inject constructor(
                     val videoId = resolvedVideoIds[index]
                     if (videoId == null) {
                         // An imported file is never a duplicate of its YouTube copy.
-                        if (track.isLocalFile() || track.key !in resolvedKeys) add(track)
+                        if (track.isDirectPlayback() || track.key !in resolvedKeys) add(track)
                     } else if (videoId in finalSet && seenVideoIds.add(videoId)) {
                         // The merge resolved this row's id: stamp it so the
                         // persisted copy plays directly instead of searching.

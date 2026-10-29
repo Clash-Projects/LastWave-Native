@@ -107,6 +107,7 @@ class ClearAllDownloadsTest {
             moduleManager = mockk(relaxed = true),
             flacTranscoder = mockk(relaxed = true),
             losslessMusicApi = mockk(relaxed = true),
+            khInsider = mockk(relaxed = true),
         )
     }
 

@@ -5,6 +5,7 @@ import androidx.compose.runtime.Immutable
 import com.lastwave.app.data.local.db.SavedPlaylistDao
 import com.lastwave.app.data.local.db.SavedPlaylistEntity
 import com.lastwave.app.data.generate.GeneratedTrack
+import com.lastwave.app.data.generate.isDirectPlayback
 import com.lastwave.app.data.generate.isLocalFile
 import com.lastwave.app.data.generate.StoredTrack
 import com.lastwave.app.data.generate.pinnedWithVideoIdsPreserving
@@ -150,7 +151,7 @@ class PlaylistRepository @Inject constructor(
     private val videoIdBackfillOnce = AtomicBoolean(false)
 
     private fun GeneratedTrack.needsVideoIdBackfill(): Boolean =
-        !isLocalFile() && youtubeVideoIdOrNull() == null && name.isNotBlank()
+        !isDirectPlayback() && youtubeVideoIdOrNull() == null && name.isNotBlank()
 
     /** One-shot per process: pins ids for rows saved before list-time pinning
      *  existed, then persists them so the work never repeats. Fire-and-forget
@@ -418,7 +419,7 @@ class PlaylistRepository @Inject constructor(
             if (playlist.mode != "custom" && playlist.mode != LIKED_SONGS_MODE) return@withLock playlist
             if ((playlist.mode == LIKED_SONGS_MODE || !allowDuplicate) && playlist.tracks.any { it.sameSongAs(track) }) return@withLock playlist
             // An imported file is playable by definition (it is on disk). If unpinned, try to resolve YouTube ID, but always keep the track.
-            val trackToAdd = if (!track.isLocalFile() && track.youtubeVideoIdOrNull() == null) {
+            val trackToAdd = if (!track.isDirectPlayback() && track.youtubeVideoIdOrNull() == null) {
                 runCatching {
                     innerTube.findBestMatchOrNull(track.name, track.artist, prefetchStreams = false)?.let { match ->
                         track.copy(
@@ -439,6 +440,31 @@ class PlaylistRepository @Inject constructor(
             syncPublicMirror()
             _changes.tryEmit(Unit)
             updated.toDomain()
+        }
+    }
+
+    /**
+     * Appends several tracks in one write (an album added at once). Songs
+     * already in the playlist are skipped; nothing is YouTube-matched, so this
+     * is meant for direct-playback rows (KHInsider). Returns how many were added.
+     */
+    suspend fun addTracks(id: Long, tracks: List<GeneratedTrack>): Int {
+        if (tracks.isEmpty()) return 0
+        awaitStartupSync()
+        return saveMutex.withLock {
+            val entity = dao.getById(id) ?: return@withLock 0
+            val playlist = entity.toDomain()
+            if (playlist.mode != "custom" && playlist.mode != LIKED_SONGS_MODE) return@withLock 0
+            val fresh = mutableListOf<GeneratedTrack>()
+            for (track in tracks) {
+                if ((playlist.tracks + fresh).none { it.sameSongAs(track) }) fresh += track
+            }
+            if (fresh.isEmpty()) return@withLock 0
+            val updated = entity.copy(tracksJson = json.encodeToString((playlist.tracks + fresh).map { it.toStored() }))
+            dao.upsert(updated)
+            syncPublicMirror()
+            _changes.tryEmit(Unit)
+            fresh.size
         }
     }
 
@@ -604,7 +630,7 @@ class PlaylistRepository @Inject constructor(
                 val domain = runCatching { entity.toDomain() }.getOrNull() ?: continue
                 val pinned = domain.tracks.map { track ->
                     val existingId = track.youtubeVideoIdOrNull()
-                    val eligible = !track.isLocalFile() && track.sameSongAs(song) &&
+                    val eligible = !track.isDirectPlayback() && track.sameSongAs(song) &&
                         (existingId == null || (replaceVideoId != null && existingId == replaceVideoId))
                     if (eligible) {
                         track.copy(url = "https://music.youtube.com/watch?v=$videoId")

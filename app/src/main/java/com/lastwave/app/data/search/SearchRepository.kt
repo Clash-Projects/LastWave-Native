@@ -23,7 +23,8 @@ import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
 
-enum class SearchTab { TRACKS, PODCASTS, ARTISTS, ALBUMS, PLAYLISTS, USERS }
+/** [GAMES] searches video game soundtracks on KHInsider (albums). */
+enum class SearchTab { TRACKS, PODCASTS, ARTISTS, ALBUMS, PLAYLISTS, USERS, GAMES }
 
 @Immutable
 data class SearchResultItem(
@@ -48,6 +49,7 @@ class SearchRepository @Inject constructor(
     private val innerTube: InnerTubeMusicApi,
     private val relatedGraph: RelatedGraphRepository,
     private val http: OkHttpClient,
+    private val khInsider: com.lastwave.app.data.khinsider.KhInsiderClient,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val searchCache = object : LinkedHashMap<String, List<SearchResultItem>>(80, 0.75f, true) {
@@ -148,6 +150,16 @@ class SearchRepository @Inject constructor(
             SearchTab.USERS -> {
                 val key = sessionPreferences.session.first().apiKey
                 if (key.isBlank()) emptyList() else lookupUser(key, trimmed)
+            }
+            SearchTab.GAMES -> khInsider.search(trimmed).map { album ->
+                SearchResultItem(
+                    name = album.name,
+                    artworkUrl = album.thumbnailUrl,
+                    subtitle = listOfNotNull(album.platform, album.type, album.year)
+                        .filter(String::isNotBlank).joinToString(" \u00b7 "),
+                    url = com.lastwave.app.data.khinsider.KhInsiderParser.albumUrl(album.id),
+                    entityId = album.id,
+                )
             }
         }.filter { it.name.isNotBlank() }
 

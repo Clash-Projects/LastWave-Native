@@ -81,6 +81,8 @@ class AudioTagWriter @Inject constructor(
         lyrics: String? = null,
         year: String? = null,
         artworkFallbackUrl: String? = null,
+        /** Track number (TRCK / TRACKNUMBER); written for ID3 and FLAC. */
+        trackNumber: Int? = null,
     ): Boolean {
         if (!audioFile.exists() || audioFile.length() <= 0) return false
 
@@ -95,12 +97,12 @@ class AudioTagWriter @Inject constructor(
                 // A FLAC whose metadata chain doesn't parse cleanly is left
                 // untouched — prepending ID3 there is nonstandard and can
                 // break strict extractors' format sniffing.
-                ContainerKind.FLAC -> embedIntoFlac(audioFile, title, artist, album, artworkBytes, lyrics, year)
+                ContainerKind.FLAC -> embedIntoFlac(audioFile, title, artist, album, artworkBytes, lyrics, year, trackNumber)
                 // Keep MP4/WebM metadata native; ID3 prepends corrupt their container contract.
                 ContainerKind.MP4 -> embedIntoMp4(audioFile, title, artist, album, artworkBytes, lyrics, year)
                 ContainerKind.WEBM -> embedIntoWebm(audioFile, title, artist, album, artworkBytes, lyrics, year)
                 ContainerKind.OGG -> embedIntoOggOpus(audioFile, title, artist, album, artworkBytes, lyrics, year)
-                else -> embedId3Prepend(audioFile, title, artist, album, artworkBytes, lyrics, year)
+                else -> embedId3Prepend(audioFile, title, artist, album, artworkBytes, lyrics, year, trackNumber)
             }
             if (ok) {
                 Log.d(TAG, "Embedded ${kind.name} tags into ${audioFile.name}")
@@ -152,6 +154,7 @@ class AudioTagWriter @Inject constructor(
         artworkBytes: ByteArray?,
         lyrics: String?,
         year: String? = null,
+        trackNumber: Int? = null,
     ): Boolean {
         val id3TagBytes = buildId3v2Tag(
             title = title,
@@ -160,6 +163,7 @@ class AudioTagWriter @Inject constructor(
             artworkBytes = artworkBytes,
             lyrics = lyrics,
             year = year,
+            trackNumber = trackNumber,
         )
 
         // Read original audio payload (skipping existing ID3v2 header if present)
@@ -192,6 +196,7 @@ class AudioTagWriter @Inject constructor(
         artworkBytes: ByteArray?,
         lyrics: String? = null,
         year: String? = null,
+        trackNumber: Int? = null,
     ): ByteArray {
         val framesOut = ByteArrayOutputStream()
 
@@ -207,6 +212,9 @@ class AudioTagWriter @Inject constructor(
         }
         if (!year.isNullOrBlank()) {
             writeTextFrame(framesOut, "TYER", year)
+        }
+        if (trackNumber != null && trackNumber > 0) {
+            writeTextFrame(framesOut, "TRCK", trackNumber.toString())
         }
         if (!lyrics.isNullOrBlank()) {
             writeLyricsFrame(framesOut, lyrics)
@@ -325,6 +333,7 @@ class AudioTagWriter @Inject constructor(
         artworkBytes: ByteArray?,
         lyrics: String?,
         year: String? = null,
+        trackNumber: Int? = null,
     ): Boolean {
         val blocks = mutableListOf<FlacBlockRef>()
         var framesStart = -1L
@@ -376,6 +385,7 @@ class AudioTagWriter @Inject constructor(
             if (!album.isNullOrBlank()) add("ALBUM")
             if (!lyrics.isNullOrBlank()) addAll(setOf("LYRICS", "UNSYNCEDLYRICS"))
             if (!year.isNullOrBlank()) addAll(setOf("DATE", "YEAR"))
+            if (trackNumber != null && trackNumber > 0) add("TRACKNUMBER")
             if (artworkBytes != null) {
                 addAll(setOf("METADATA_BLOCK_PICTURE", "COVERART", "COVERARTMIME"))
             }
@@ -392,6 +402,7 @@ class AudioTagWriter @Inject constructor(
             comments += "DATE=$year"
             comments += "YEAR=$year"
         }
+        if (trackNumber != null && trackNumber > 0) comments += "TRACKNUMBER=$trackNumber"
 
         data class OutBlock(val type: Int, val fromSource: FlacBlockRef?, val generated: ByteArray?)
         val outChain = mutableListOf<OutBlock>()
