@@ -460,7 +460,7 @@ fun FeedScreen(
                     state.feedData.becauseYouListenTo, state.feedData.freshFinds, state.feedData.jumpBackIn,
                     state.feedData.mixes, individualTopArtists, state.feedData.heavyRotation,
                     state.feedData.recentAlbums, state.feedData.charts, state.feedData.newReleases,
-                    state.feedData.friends, state.feedData.pagedShelves
+                    state.feedData.friends, state.pagedShelves
                 ) {
                     buildList {
                         if (showSynthetic && isSectionVisible(HomeSection.QUICK_TILES) && quickTiles.isNotEmpty()) add("quick_tiles")
@@ -494,7 +494,7 @@ fun FeedScreen(
                         if (showSynthetic && isSectionVisible(HomeSection.NEW_RELEASES) && !isTitleHidden("New releases") && state.feedData.newReleases.isNotEmpty()) add("new_releases")
                         if (isSectionVisible(HomeSection.FRIENDS) && state.feedData.friends.isNotEmpty()) add("friends_activity")
                         if (!state.isChipActive) {
-                            state.feedData.pagedShelves.forEachIndexed { i, s ->
+                            state.pagedShelves.forEachIndexed { i, s ->
                                 if (s.items.isNotEmpty() && !isTitleHidden(s.title)) add("paged_shelf_${i}_${s.title}")
                             }
                         }
