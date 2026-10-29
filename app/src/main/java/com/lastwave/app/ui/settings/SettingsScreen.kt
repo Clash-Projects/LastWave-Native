@@ -1956,16 +1956,16 @@ fun SettingsScreen(
                         onCheckedChange = viewModel::setDiscordPresenceEnabled,
                         isHighlighted = (highlightedSettingId == "discord.presence"),
                     )
-                    SectionLabel("Global Live Telemetry & Map")
+                    SectionLabel("Live Leaderboards & Global Map")
                     SettingsToggleCard(
                         icon = Icons.Filled.Public,
                         iconContainer = MaterialTheme.colorScheme.primaryContainer,
                         iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        title = "Global Live Map Telemetry",
+                        title = "Contribute Listening stats in Leaderboards",
                         subtitle = if (misc.liveTelemetryEnabled) {
-                            "On • Listening ticks broadcast anonymously to the live world map"
+                            "On • Listening ticks contribute to global leaderboards & live map"
                         } else {
-                            "Off • Playback telemetry stays completely local"
+                            "Off • Listening stats stay completely local"
                         },
                         checked = misc.liveTelemetryEnabled,
                         onCheckedChange = viewModel::setLiveTelemetryEnabled,
@@ -2195,7 +2195,7 @@ fun SettingsScreen(
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                 title = "Global Live Map",
-                                subtitle = "telemetry.clashprojects.qd.je • Real-time listener telemetry",
+                                subtitle = "telemetry.clashprojects.qd.je • Real-time listener leaderboards & map",
                                 onClick = {
                                     runCatching {
                                         androidx.browser.customtabs.CustomTabsIntent.Builder().build()
