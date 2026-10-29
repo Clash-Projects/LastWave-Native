@@ -224,12 +224,18 @@ class BackupRepository @Inject constructor(
             emptyMap()
         }
 
+        // LastWave Desktop writes no settings until it has synced with a phone:
+        // restoring such a file keeps this phone's settings.
+        val hasPrefs = with(backup.prefs) {
+            strings.isNotEmpty() || booleans.isNotEmpty() || integers.isNotEmpty() ||
+                longs.isNotEmpty() || stringSets.isNotEmpty()
+        }
         val previousPrefsSnapshot = try { buildBackup("rollback") } catch (e: Exception) { null }
         val previousPlaylists = try { playlistDao.getAll() } catch (e: Exception) { emptyList() }
         val previousExclusions = try { recommendationExclusionDao.getAll() } catch (e: Exception) { emptyList() }
 
         return try {
-            dataStore.edit { mutablePrefs ->
+            if (hasPrefs) dataStore.edit { mutablePrefs ->
                 mutablePrefs.clear()
                 backup.prefs.strings.forEach { (k, v) -> mutablePrefs[stringPreferencesKey(k)] = v }
                 backup.prefs.booleans.forEach { (k, v) -> mutablePrefs[booleanPreferencesKey(k)] = v }
@@ -281,7 +287,7 @@ class BackupRepository @Inject constructor(
             RestoreResult.Success(backup.playlists.size, backup.recommendationExclusions.size)
         } catch (e: Exception) {
             try {
-                previousPrefsSnapshot?.let { rollback(it) }
+                if (hasPrefs) previousPrefsSnapshot?.let { rollback(it) }
                 playlistDao.replaceAll(previousPlaylists)
                 recommendationExclusionDao.clear()
                 recommendationExclusionDao.upsertAll(previousExclusions)
@@ -319,6 +325,10 @@ class BackupRepository @Inject constructor(
         val base = runCatching {
             baseFile.takeIf { it.exists() }?.let { json.decodeFromString<BackupFile>(it.readText()) }
         }.getOrNull()
+        // What the merge starts from: if the library changes before it is
+        // replaced (an edit during the upload), the replace is skipped.
+        val previousPlaylists = playlistDao.getAll()
+        val previousExclusions = recommendationExclusionDao.getAll()
         val local = json.decodeFromString<BackupFile>(buildBackup(appVersionName))
         val merged = BackupMerge.merge(base, local, remote)
         val output = json.encodeToString(
@@ -330,12 +340,16 @@ class BackupRepository @Inject constructor(
         )
         writeFile(output)
 
-        val previousPlaylists = playlistDao.getAll()
-        val previousExclusions = recommendationExclusionDao.getAll()
         // Liked Songs keeps this phone's row id (the YouTube Music mirror maps it).
         val likedId = previousPlaylists.firstOrNull { it.mode == LIKED_SONGS_MODE }?.id
+        // shortcut: exclusions are compared outside the playlist transaction;
+        // an exclusion added in that instant is lost. Move both into one DB
+        // transaction if that ever shows up.
+        if (recommendationExclusionDao.getAll().toSet() != previousExclusions.toSet()) {
+            return RestoreResult.Failed(LIBRARY_CHANGED)
+        }
         return try {
-            playlistDao.replaceAll(merged.playlists.map { p ->
+            val replaced = playlistDao.replaceAllIfUnchanged(previousPlaylists, merged.playlists.map { p ->
                 SavedPlaylistEntity(
                     id = if (p.mode == LIKED_SONGS_MODE && likedId != null) likedId else p.id,
                     title = p.title,
@@ -348,6 +362,7 @@ class BackupRepository @Inject constructor(
                     isPinned = p.isPinned,
                 )
             })
+            if (!replaced) return RestoreResult.Failed(LIBRARY_CHANGED)
             recommendationExclusionDao.clear()
             recommendationExclusionDao.upsertAll(
                 merged.exclusions.map {
@@ -395,6 +410,8 @@ class BackupRepository @Inject constructor(
     private companion object {
         /** The shared file as this phone last synced it: the merge's common ancestor. */
         const val SYNC_BASE_FILE = "backup_sync_base.json"
+        /** Not an error: the next sync (30 s after the edit) merges it. */
+        const val LIBRARY_CHANGED = "Your library changed during the sync; it will sync again"
         const val GUEST_MODE_PREFERENCE = "lw_guest_mode"
         val AUTH_PREFERENCE_NAMES = listOf(
             "lw_apikey",
