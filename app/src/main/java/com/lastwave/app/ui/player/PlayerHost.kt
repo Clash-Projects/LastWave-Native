@@ -1067,6 +1067,7 @@ private fun ExpandedPlayer(
         canvas = canvas,
         canvasEnabled = settings.canvasEnabled,
         canvasFullBleedEnabled = settings.canvasFullBleed,
+        canvasGradientBlurEnabled = settings.canvasGradientBlurEnabled,
         musicVideoEnabled = settings.musicVideoEnabled,
         currentTab = currentTab,
         onTabChange = onTabChange,
@@ -2155,6 +2156,7 @@ private fun FullPlayer(
     canvas: com.lastwave.app.data.canvas.CanvasArtwork? = null,
     canvasEnabled: Boolean = true,
     canvasFullBleedEnabled: Boolean = true,
+    canvasGradientBlurEnabled: Boolean = false,
     musicVideoEnabled: Boolean = true,
     currentTab: FullPlayerTab,
     onTabChange: (FullPlayerTab) -> Unit,
@@ -2504,8 +2506,8 @@ private fun FullPlayer(
                         ),
                 )
                 if (showFullBleed && !isTabletLandscape) {
-                    val isTallCanvas = remember(activeCanvas, canvasAspect) {
-                        if (activeCanvas == null) false
+                    val isTallCanvas = remember(activeCanvas, canvasAspect, canvasGradientBlurEnabled) {
+                        if (canvasGradientBlurEnabled || activeCanvas == null) false
                         else if (canvasAspect > 0f) {
                             // True vertical video (9:16 is ~0.56, 3:4 is 0.75; <= 0.72 is tall vertical)
                             canvasAspect <= 0.72f

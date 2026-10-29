@@ -720,6 +720,9 @@ class SettingsViewModel @Inject constructor(
     fun setCanvasFullBleed(enabled: Boolean) = launchSettingsAction("update canvas full-bleed setting") {
         settingsPreferences.setCanvasFullBleed(enabled)
     }
+    fun setCanvasGradientBlurEnabled(enabled: Boolean) = launchSettingsAction("update canvas gradient blur setting") {
+        settingsPreferences.setCanvasGradientBlurEnabled(enabled)
+    }
     fun setCanvasOverCellular(enabled: Boolean) = launchSettingsAction("update canvas cellular setting") {
         settingsPreferences.setCanvasOverCellular(enabled)
     }

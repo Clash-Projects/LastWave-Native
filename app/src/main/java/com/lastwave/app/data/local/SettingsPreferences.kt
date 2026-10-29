@@ -193,6 +193,8 @@ data class MiscSettings(
     val canvasEnabled: Boolean = true,
     /** When true, portrait motion artwork is displayed edge-to-edge behind player controls. */
     val canvasFullBleed: Boolean = true,
+    /** When true, canvas video loops melt into ambient background gradients with a bottom fade. */
+    val canvasGradientBlurEnabled: Boolean = false,
     /** When true, canvas video loops may be fetched over cellular data. */
     val canvasOverCellular: Boolean = true,
     /** When true, anonymous listening telemetry connects to the LastWave Live Global Map. */
@@ -336,6 +338,7 @@ class SettingsPreferences @Inject constructor(
         val HTTP_ADDONS_JSON = stringPreferencesKey("lw_http_addons_json")
         val CANVAS_ENABLED = booleanPreferencesKey("lw_canvas_enabled")
         val CANVAS_FULL_BLEED = booleanPreferencesKey("lw_canvas_full_bleed")
+        val CANVAS_GRADIENT_BLUR_ENABLED = booleanPreferencesKey("lw_canvas_gradient_blur_enabled")
         val CANVAS_OVER_CELLULAR = booleanPreferencesKey("lw_canvas_over_cellular")
         val LIVE_TELEMETRY_ENABLED = booleanPreferencesKey("lw_live_telemetry_enabled")
         val LIKED_SONGS_YOUTUBE_SYNC = booleanPreferencesKey("lw_liked_songs_youtube_sync")
@@ -429,6 +432,7 @@ class SettingsPreferences @Inject constructor(
                 httpAddons = resolvedAddons,
                 canvasEnabled = p.readSafely(Keys.CANVAS_ENABLED) ?: true,
                 canvasFullBleed = p.readSafely(Keys.CANVAS_FULL_BLEED) ?: true,
+                canvasGradientBlurEnabled = p.readSafely(Keys.CANVAS_GRADIENT_BLUR_ENABLED) ?: false,
                 canvasOverCellular = p.readSafely(Keys.CANVAS_OVER_CELLULAR) ?: true,
                 liveTelemetryEnabled = p.readSafely(Keys.LIVE_TELEMETRY_ENABLED) ?: true,
                 likedSongsYouTubeSync = p.readSafely(Keys.LIKED_SONGS_YOUTUBE_SYNC) ?: true,
@@ -872,6 +876,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setCanvasFullBleed(enabled: Boolean) {
         dataStore.edit { it[Keys.CANVAS_FULL_BLEED] = enabled }
+    }
+
+    suspend fun setCanvasGradientBlurEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.CANVAS_GRADIENT_BLUR_ENABLED] = enabled }
     }
 
     suspend fun setCanvasOverCellular(enabled: Boolean) {

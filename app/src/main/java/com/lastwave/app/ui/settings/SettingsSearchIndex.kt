@@ -804,6 +804,23 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "appearance.canvas_gradient_blur",
+                    title = "Gradient Blur on Canvas",
+                    subtitle = "Blend canvas bottom into ambient background gradients",
+                    keywords = listOf(
+                        "canvas gradient blur", "canvas blur", "gradient blur", "hero canvas",
+                        "ambient blur", "canvas edge to edge"
+                    ),
+                    icon = Icons.Filled.AutoAwesome,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Canvas",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "appearance.canvas_cellular",
                     title = "Canvas on Cellular Data",
                     subtitle = "Allow canvas video streaming over mobile and cellular networks",

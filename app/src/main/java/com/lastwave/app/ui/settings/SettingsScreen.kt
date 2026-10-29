@@ -1568,7 +1568,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_canvas_enabled))
-                    val canvasRowCount = if (misc.canvasEnabled) 3 else 2
+                    val canvasRowCount = if (misc.canvasEnabled) 4 else 2
                     SettingsGroup(rowCount = canvasRowCount) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
@@ -1594,9 +1594,20 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "appearance.canvas_full_bleed"),
                             )
                             2 -> SettingsToggleCard(
-                                icon = Icons.Filled.CloudDownload,
+                                icon = Icons.Filled.AutoAwesome,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = stringResource(R.string.settings_canvas_gradient_blur),
+                                subtitle = stringResource(R.string.settings_canvas_gradient_blur_sub),
+                                checked = misc.canvasGradientBlurEnabled,
+                                onCheckedChange = viewModel::setCanvasGradientBlurEnabled,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.canvas_gradient_blur"),
+                            )
+                            3 -> SettingsToggleCard(
+                                icon = Icons.Filled.CloudDownload,
+                                iconContainer = MaterialTheme.colorScheme.surfaceVariant,
+                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 title = stringResource(R.string.settings_canvas_cellular),
                                 subtitle = stringResource(R.string.settings_canvas_cellular_sub),
                                 checked = misc.canvasOverCellular,
