@@ -224,6 +224,10 @@ data class PlaybackChromeState(
     val isBuffering: Boolean = false,
     val queueSize: Int = 0,
     val shuffleEnabled: Boolean = false,
+    val isAutoMixActive: Boolean = false,
+    val autoMixProgress: Float = 0f,
+    val autoMixOutgoingTrack: PlayableTrack? = null,
+    val autoMixNextTrack: PlayableTrack? = null,
 )
 
 /** The small, frequently changing state consumed only by progress UI. */
@@ -527,6 +531,10 @@ class MusicPlayer @Inject constructor(
                 isBuffering = it.isBuffering,
                 queueSize = it.queue.size,
                 shuffleEnabled = it.shuffleEnabled,
+                isAutoMixActive = it.isAutoMixActive,
+                autoMixProgress = it.autoMixProgress,
+                autoMixOutgoingTrack = it.autoMixOutgoingTrack,
+                autoMixNextTrack = it.autoMixNextTrack,
             )
         }
         .distinctUntilChanged()
