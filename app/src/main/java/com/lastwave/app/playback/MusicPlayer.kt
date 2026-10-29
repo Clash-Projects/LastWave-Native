@@ -1739,14 +1739,6 @@ class MusicPlayer @Inject constructor(
         }
         val autoMixCoord = autoMixCoordinator.get()
         autoMixCoord.onPerformDeckSwap = { outgoing, incoming ->
-            val shuffleOrder = mutableListOf<Int>()
-            val timeline = outgoing.currentTimeline
-            var index = timeline.getFirstWindowIndex(outgoing.shuffleModeEnabled)
-            while (index != C.INDEX_UNSET) {
-                shuffleOrder.add(index)
-                index = timeline.getNextWindowIndex(index, Player.REPEAT_MODE_OFF, outgoing.shuffleModeEnabled)
-            }
-            incoming.setShuffleOrder(androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder(shuffleOrder.toIntArray(), kotlin.random.Random.nextLong()))
             incoming.shuffleModeEnabled = outgoing.shuffleModeEnabled
             incoming.repeatMode = outgoing.repeatMode
             incoming.playbackParameters = outgoing.playbackParameters
@@ -1758,10 +1750,13 @@ class MusicPlayer @Inject constructor(
             outgoing.repeatMode = Player.REPEAT_MODE_OFF
             outgoing.shuffleModeEnabled = false
             if (outgoing.currentMediaItemIndex != C.INDEX_UNSET && outgoing.mediaItemCount > outgoing.currentMediaItemIndex + 1) {
-                outgoing.removeMediaItems(outgoing.currentMediaItemIndex + 1, outgoing.mediaItemCount)
+                runCatching {
+                    outgoing.removeMediaItems(outgoing.currentMediaItemIndex + 1, outgoing.mediaItemCount)
+                }
             }
             incoming.addListener(listener)
             incoming.setAudioAttributes(incoming.audioAttributes, false)
+            incoming.play()
             listener.onMediaItemTransition(incoming.currentMediaItem, Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
             refresh(incoming)
         }

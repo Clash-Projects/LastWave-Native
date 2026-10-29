@@ -101,8 +101,8 @@ object SpliceTrajectorySynthesizer {
         var cueInStartMs = 0L
 
         if (incomingSignature != null) {
-            // Start incoming deck right at its first clean downbeat
-            cueInStartMs = incomingSignature.beatGrid.firstDownbeatMs.coerceIn(0L, 12_000L)
+            // Trim at most brief lead-in silence (max 1.5s), never skipping into the song intro
+            cueInStartMs = incomingSignature.beatGrid.firstDownbeatMs.coerceIn(0L, 1_500L)
         }
 
         // 7. Vocal Protection Rule Check

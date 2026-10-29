@@ -4150,18 +4150,6 @@ private fun SeekBar(
     val progress by progressState.collectAsStateWithLifecycle()
     val effectiveDurationMs = if (progress.durationMs > 0L) progress.durationMs else fallbackDurationMs.coerceAtLeast(0L)
 
-    if (telemetry.isBlendingActive) {
-        com.lastwave.app.ui.player.automix.AutoMixWaveSeekbarCanvas(
-            positionMs = progress.positionMs,
-            durationMs = effectiveDurationMs,
-            telemetry = telemetry,
-            isPlaying = isPlaying,
-            onSeek = onSeek,
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-        )
-        return
-    }
-
     if (wavyEnabled) {
         WavySeekBar(
             positionMs = progress.positionMs,
@@ -4945,7 +4933,7 @@ private fun AppleMusicQualityBadge(
         else -> MaterialTheme.colorScheme.onSurface
     }
 
-    if (state.deckBlendTelemetry.isBlendingActive || state.deckBlendTelemetry.phase == com.lastwave.app.playback.automix.api.BlendPhase.MIX_COMPLETED) {
+    if (state.deckBlendTelemetry.isBlendingActive) {
         Box(
             modifier = modifier.fillMaxWidth(),
             contentAlignment = Alignment.Center,

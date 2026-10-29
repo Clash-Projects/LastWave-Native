@@ -46,6 +46,7 @@ class DualDeckTransportCoordinator @Inject constructor(
     private var isHardwareBypassEngaged = false
     private var isJamRoomActive = false
 
+    private var activeTrackKey: String? = null
     private var activeSpliceJob: Job? = null
     private var currentSplicePlan: SplicePlan? = null
 
@@ -81,6 +82,15 @@ class DualDeckTransportCoordinator @Inject constructor(
         }
 
         if (currentTrack == null || durationMs <= 0L) return
+
+        val trackKey = currentTrack.videoId ?: "${currentTrack.artist}|${currentTrack.title}"
+        if (activeTrackKey != trackKey) {
+            activeTrackKey = trackKey
+            currentSplicePlan = null
+            if (_telemetry.value.phase != BlendPhase.BLENDING) {
+                _telemetry.value = DeckBlendTelemetry.IDLE
+            }
+        }
 
         val remainingMs = durationMs - positionMs
 
@@ -160,7 +170,7 @@ class DualDeckTransportCoordinator @Inject constructor(
             val shouldTrigger = positionMs >= plan.cueOutStartMs || remainingMs <= plan.durationMs
             if (shouldTrigger && secondaryPlayer != null) {
                 val isSecondaryReady = secondaryPlayer.playbackState == Player.STATE_READY
-                if (isSecondaryReady || remainingMs <= 1500L) {
+                if (isSecondaryReady) {
                     startBlendExecution(primaryPlayer, secondaryPlayer, plan)
                 }
             }
@@ -212,7 +222,11 @@ class DualDeckTransportCoordinator @Inject constructor(
                 // Dominant energy handoff point (65% through transition window):
                 if (progress >= 0.65f && !swapped) {
                     swapped = true
-                    onPerformDeckSwap?.invoke(primaryPlayer, secondaryPlayer)
+                    runCatching {
+                        onPerformDeckSwap?.invoke(primaryPlayer, secondaryPlayer)
+                    }.onFailure { e ->
+                        android.util.Log.e("DualDeckCoordinator", "Error during deck swap", e)
+                    }
                 }
 
                 if (progress >= 1.0f) break
@@ -221,7 +235,7 @@ class DualDeckTransportCoordinator @Inject constructor(
 
             primaryPlayer.volume = 0.0f
             secondaryPlayer.volume = 1.0f
-            primaryPlayer.pause()
+            runCatching { primaryPlayer.pause() }
 
             _telemetry.update {
                 it.copy(
@@ -230,7 +244,7 @@ class DualDeckTransportCoordinator @Inject constructor(
                 )
             }
 
-            onTransitionComplete?.invoke()
+            runCatching { onTransitionComplete?.invoke() }
 
             // Display MIXED ✓ for 1,500 ms before settling to IDLE
             delay(1_500L)
