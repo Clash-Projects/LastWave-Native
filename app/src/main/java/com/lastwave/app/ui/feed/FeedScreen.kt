@@ -514,7 +514,7 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.HERO)) {
                     item(key = "hero") {
                         Column(
-                            modifier = Modifier.padding(bottom = 12.dp),
+                            modifier = Modifier.padding(bottom = 10.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
                             Column(
@@ -1019,9 +1019,10 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.SPOTLIGHT)) {
                         state.feedData.spotlight?.let { spotlight ->
                             item(key = "spotlight_hero") {
-                                HomeContainerSection(
-                                    isFirst = activeContainerKeys.firstOrNull() == "spotlight_hero",
-                                    isLast = activeContainerKeys.lastOrNull() == "spotlight_hero",
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 10.dp),
                                 ) {
                                     SpotlightHeroCard(
                                         spotlight = spotlight,
@@ -2930,7 +2931,7 @@ private fun SpotlightHeroCard(
         end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
     )
     Surface(
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
         tonalElevation = 2.dp,
         modifier = Modifier
@@ -3227,49 +3228,25 @@ private fun FriendAvatarCard(
 
 @Composable
 private fun HomeContainerSection(
-    isFirst: Boolean,
-    isLast: Boolean,
     modifier: Modifier = Modifier,
+    isFirst: Boolean = false,
+    isLast: Boolean = false,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
-    val topRadius = if (isFirst) 28.dp else 0.dp
-    val bottomRadius = if (isLast) 28.dp else 0.dp
-    val shape = RoundedCornerShape(
-        topStart = topRadius,
-        topEnd = topRadius,
-        bottomStart = bottomRadius,
-        bottomEnd = bottomRadius,
-    )
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp),
-        shape = shape,
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 10.dp),
+        shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(
-                    top = if (isFirst) 14.dp else 0.dp,
-                    bottom = if (isLast) 18.dp else 0.dp,
-                ),
-        ) {
-            if (!isFirst) {
-                androidx.compose.material3.HorizontalDivider(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .padding(top = 8.dp, bottom = 12.dp),
-                    thickness = 1.5.dp,
-                    color = MaterialTheme.colorScheme.background,
-                )
-            }
-            content()
-            if (!isLast) {
-                Spacer(modifier = Modifier.height(10.dp))
-            }
-        }
+                .padding(vertical = 12.dp),
+            content = content,
+        )
     }
 }
 
