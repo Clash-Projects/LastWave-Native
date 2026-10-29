@@ -534,7 +534,8 @@ class MusicPlayer @Inject constructor(
     val progressState: StateFlow<PlaybackProgressState> = state
         .map {
             val dur = if (it.durationMs > 0L) it.durationMs else (it.current?.durationMs ?: findKnownDuration(it.current) ?: 0L)
-            PlaybackProgressState(positionMs = it.positionMs, durationMs = dur)
+            val pos = if (it.isAutoMixActive && dur > 0L) dur else it.positionMs
+            PlaybackProgressState(positionMs = pos, durationMs = dur)
         }
         .distinctUntilChanged()
         .stateIn(applicationScope, SharingStarted.Eagerly, PlaybackProgressState())
@@ -2092,6 +2093,10 @@ class MusicPlayer @Inject constructor(
                         updateSignalPath()
                     }
 
+                    if (isOverlapMixActive) {
+                        return@launch
+                    }
+
                     val previous = _state.value
                     val unchanged = !_state.value.isPlaying &&
                         previous.positionMs == pos &&
@@ -3609,36 +3614,17 @@ class MusicPlayer @Inject constructor(
                     standby.volume = gainB
                 }
 
-                if (t < 0.50f) {
-                    val outgoingPos = runCatching { active.currentPosition.coerceAtLeast(0L) }.getOrDefault(0L)
-                    val outgoingDur = effectiveDuration(active.duration, active, _state.value.durationMs)
-                    _state.update {
-                        it.copy(
-                            isAutoMixActive = true,
-                            autoMixProgress = t,
-                            autoMixBpm = if (bpmA > 0f) bpmA else null,
-                            positionMs = outgoingPos,
-                            durationMs = outgoingDur,
-                            autoMixOutgoingTrack = outgoingTrack,
-                            autoMixNextTrack = nextTrack,
-                        )
-                    }
-                } else {
-                    val incomingPos = runCatching { standby.currentPosition.coerceAtLeast(0L) }.getOrDefault(0L)
-                    val dur = effectiveDuration(standby.duration, standby, _state.value.durationMs)
-                    _state.update {
-                        it.copy(
-                            isAutoMixActive = true,
-                            autoMixProgress = t,
-                            autoMixBpm = if (bpmB > 0f) bpmB else null,
-                            positionMs = incomingPos,
-                            durationMs = dur,
-                            current = nextTrack ?: it.current,
-                            currentIndex = nextIndex,
-                            autoMixOutgoingTrack = outgoingTrack,
-                            autoMixNextTrack = nextTrack,
-                        )
-                    }
+                val outgoingDur = effectiveDuration(active.duration, active, _state.value.durationMs).coerceAtLeast(1L)
+                _state.update {
+                    it.copy(
+                        isAutoMixActive = true,
+                        autoMixProgress = t,
+                        autoMixBpm = if (bpmA > 0f) bpmA else (if (bpmB > 0f) bpmB else null),
+                        positionMs = outgoingDur,
+                        durationMs = outgoingDur,
+                        autoMixOutgoingTrack = outgoingTrack,
+                        autoMixNextTrack = nextTrack,
+                    )
                 }
 
                 if (t >= 1.0f) {
@@ -3681,7 +3667,9 @@ class MusicPlayer @Inject constructor(
             }
             refresh(standby)
 
-            val newTrack = standby.currentMediaItem?.toPlayableTrack()
+            val newTrack = standby.currentMediaItem?.toPlayableTrack() ?: nextTrack
+            val incomingPos = runCatching { standby.currentPosition.coerceAtLeast(0L) }.getOrDefault(0L)
+            val incomingDur = effectiveDuration(standby.duration, standby, 0L)
             _state.update {
                 it.copy(
                     isAutoMixActive = false,
@@ -3689,6 +3677,10 @@ class MusicPlayer @Inject constructor(
                     autoMixProgress = 0f,
                     autoMixOutgoingTrack = null,
                     autoMixNextTrack = null,
+                    current = newTrack ?: it.current,
+                    currentIndex = nextIndex,
+                    positionMs = incomingPos,
+                    durationMs = incomingDur,
                 )
             }
 

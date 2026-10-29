@@ -3374,6 +3374,7 @@ private fun FullPlayer(
                                         primaryColor = ambientColor,
                                         secondaryColor = ambientCompanion,
                                         tertiaryColor = ambientDeep,
+                                        isMixing = state.isAutoMixActive,
                                     )
                                     Spacer(Modifier.height(0.dp))
                                     AppleMusicQualityBadge(
@@ -3976,6 +3977,7 @@ private fun FullPlayerLandscape(
                 primaryColor = ambientColor,
                 secondaryColor = ambientCompanion,
                 tertiaryColor = ambientDeep,
+                isMixing = state.isAutoMixActive,
             )
 
             Spacer(Modifier.height(0.dp))
@@ -4092,16 +4094,17 @@ private fun SeekBar(
     primaryColor: Color = MaterialTheme.colorScheme.primary,
     secondaryColor: Color = MaterialTheme.colorScheme.secondary,
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
+    isMixing: Boolean = false,
 ) {
     val progress by progressState.collectAsStateWithLifecycle()
     val effectiveDurationMs = if (progress.durationMs > 0L) progress.durationMs else fallbackDurationMs.coerceAtLeast(0L)
 
     if (wavyEnabled) {
         WavySeekBar(
-            positionMs = progress.positionMs,
+            positionMs = if (isMixing) effectiveDurationMs else progress.positionMs,
             durationMs = effectiveDurationMs,
-            isPlaying = isPlaying,
-            onSeek = onSeek,
+            isPlaying = isPlaying && !isMixing,
+            onSeek = if (isMixing) { {} } else onSeek,
             isTranslucent = isTranslucent,
             trackKey = trackKey,
             primaryColor = primaryColor,
@@ -4151,15 +4154,21 @@ private fun SeekBar(
     }
 
     val boundedDurationMs = effectiveDurationMs.coerceAtLeast(0L)
-    val currentFraction = if (boundedDurationMs > 0L) {
+    val currentFraction = if (isMixing) {
+        1f
+    } else if (boundedDurationMs > 0L) {
         (progress.positionMs.toDouble() / boundedDurationMs.toDouble()).toFloat().coerceIn(0f, 1f)
     } else {
         0f
     }
-    val fraction = (dragFraction ?: currentFraction).coerceIn(0f, 1f)
-    val shownMs = dragFraction?.let {
-        (it * boundedDurationMs).toLong().coerceIn(0L, boundedDurationMs)
-    } ?: progress.positionMs.coerceIn(0L, boundedDurationMs)
+    val fraction = if (isMixing) 1f else (dragFraction ?: currentFraction).coerceIn(0f, 1f)
+    val shownMs = if (isMixing) {
+        boundedDurationMs
+    } else {
+        dragFraction?.let {
+            (it * boundedDurationMs).toLong().coerceIn(0L, boundedDurationMs)
+        } ?: progress.positionMs.coerceIn(0L, boundedDurationMs)
+    }
 
     val isGlassActive = LocalLiquidGlass.current &&
         isLiquidGlassBackdropSupported() &&
