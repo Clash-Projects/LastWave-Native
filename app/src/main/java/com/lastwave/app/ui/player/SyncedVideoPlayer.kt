@@ -11,7 +11,7 @@ import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.unit.sp
-import com.lastwave.app.ui.theme.ExpressiveMotion
+import com.lastwave.app.ui.common.ExpressiveMotion
 import kotlinx.coroutines.Job
 import android.content.ContextWrapper
 import android.util.Log
@@ -208,9 +208,6 @@ class SyncedVideoViewModel @Inject constructor(
  * - Expandable to edge-to-edge immersive full-screen with double-tap seek and auto-hiding controls.
  * - Liquid Glass themed with fluid entrance and responsive controls.
  */
-@OptIn(UnstableApi::class)
-@Composable
-
 private enum class VideoSeekSide { REWIND, FORWARD }
 
 /**
@@ -632,7 +629,7 @@ fun SyncedCoverVideoPlayer(
         // Center play indicator when paused
         if (!playerState.isPlaying) {
             Surface(
-                onClick = { musicPlayer.play() },
+                onClick = { musicPlayer.togglePlayPause() },
                 shape = CircleShape,
                 color = Color.Black.copy(alpha = 0.65f),
                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),

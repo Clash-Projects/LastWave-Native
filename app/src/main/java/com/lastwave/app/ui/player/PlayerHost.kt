@@ -73,6 +73,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
@@ -111,6 +112,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ClearAll
@@ -2898,6 +2900,8 @@ private fun FullPlayer(
                                     swipeThreshold = swipeThreshold,
                                     onOpenSignalPath = { showSignalPath = true },
                                     onOpenAudioControls = { showAudioControls = true },
+                                    isVideoActive = isVideoActive,
+                                    onCloseVideo = { showSyncedVideo = false },
                                 )
                             } else {
                                 // ── Standard layout (lifted and balanced) ──────
@@ -3569,6 +3573,8 @@ private fun FullPlayerLandscape(
     swipeThreshold: Float,
     onOpenSignalPath: () -> Unit = {},
     onOpenAudioControls: () -> Unit = {},
+    isVideoActive: Boolean = false,
+    onCloseVideo: () -> Unit = {},
 ) {
     var isArtworkDragging by remember { mutableStateOf(false) }
     var artworkDragX by remember { mutableFloatStateOf(0f) }
@@ -3749,7 +3755,7 @@ private fun FullPlayerLandscape(
                     SyncedCoverVideoPlayer(
                         track = track,
                         musicPlayer = player,
-                        onCloseVideo = { showSyncedVideo = false },
+                        onCloseVideo = onCloseVideo,
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {

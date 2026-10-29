@@ -68,7 +68,8 @@ class SyncedVideoRepository @Inject constructor(
                     throw e
                 }
             }
-            cache[targetVideoId] = CachedVideoBundle(
+            val finalVideoId = targetVideoId ?: throw IllegalStateException("Could not find video for $trackTitle \u2014 $trackArtist")
+            cache[finalVideoId] = CachedVideoBundle(
                 bundle = bundle,
                 expiresAtMs = now + CACHE_EXPIRY_MS,
             )
