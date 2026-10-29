@@ -946,9 +946,9 @@ fun SettingsScreen(
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
                                 title = "Automix",
                                 subtitle = if (misc.automixEnabled) {
-                                    "Beat-synced transitions with bass crossover swap \u2022 ${misc.automixBars} bars"
+                                    "Smooth transition between tracks \u2022 ${misc.crossfadeSeconds}s"
                                 } else {
-                                    "Seamless tempo-synced DJ blends between queued tracks"
+                                    "Seamless DJ transitions between queued tracks"
                                 },
                                 checked = misc.automixEnabled,
                                 onCheckedChange = viewModel::setAutomixEnabled,
@@ -958,11 +958,11 @@ fun SettingsScreen(
                         }
                         if (misc.automixEnabled) {
                             add { position ->
-                                AutomixBarsRow(
-                                    bars = misc.automixBars,
-                                    onBarsChange = viewModel::setAutomixBars,
+                                CrossfadeDurationRow(
+                                    seconds = misc.crossfadeSeconds,
+                                    onSecondsChange = viewModel::setCrossfadeSeconds,
                                     position = position,
-                                    isHighlighted = (highlightedSettingId == "audio.automix_bars"),
+                                    isHighlighted = (highlightedSettingId == "audio.automix_bars" || highlightedSettingId == "audio.crossfade_duration"),
                                 )
                             }
                         }
@@ -973,7 +973,7 @@ fun SettingsScreen(
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                                 title = stringResource(R.string.settings_crossfade),
                                 subtitle = if (misc.automixEnabled) {
-                                    "Disabled while Automix is active"
+                                    "Active via Automix (${misc.crossfadeSeconds}s)"
                                 } else if (misc.crossfadeEnabled && misc.isBitPerfectEnabled) {
                                     "Paused while Bit-Perfect is enabled"
                                 } else if (misc.crossfadeEnabled) {
@@ -987,7 +987,7 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "audio.crossfade"),
                             )
                         }
-                        if (misc.crossfadeEnabled) {
+                        if (misc.crossfadeEnabled && !misc.automixEnabled) {
                             add { position ->
                                 CrossfadeDurationRow(
                                     seconds = misc.crossfadeSeconds,

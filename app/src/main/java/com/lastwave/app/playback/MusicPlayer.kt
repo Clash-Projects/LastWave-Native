@@ -205,6 +205,7 @@ data class MusicPlayerState(
     val autoMixProgress: Float = 0f,
     val autoMixBpm: Float? = null,
     val autoMixDeckBFirstBeatMs: Long? = null,
+    val autoMixOutgoingTrack: PlayableTrack? = null,
     val autoMixNextTrack: PlayableTrack? = null,
     val autoMixBars: Int? = null,
     val isJamActive: Boolean = false,
@@ -3285,6 +3286,7 @@ class MusicPlayer @Inject constructor(
                 isAutoMixActive = false,
                 autoMixState = AutoMixState.IDLE,
                 autoMixProgress = 0f,
+                autoMixOutgoingTrack = null,
                 autoMixNextTrack = null,
                 autoMixDeckBFirstBeatMs = null,
             )
@@ -3478,12 +3480,12 @@ class MusicPlayer @Inject constructor(
     ) {
         if (isOverlapMixActive || isTriggeringTransition) return
         if (bitPerfectEnabled || exclusiveUsbOutput.isActive()) return
-        if (!automixEnabled) return
+        if (!automixEnabled && !crossfadeEnabled) return
 
         val nextIndex = if (active.shuffleModeEnabled) active.nextMediaItemIndex else active.currentMediaItemIndex + 1
         if (nextIndex == C.INDEX_UNSET || nextIndex !in 0 until active.mediaItemCount || nextIndex == active.currentMediaItemIndex) return
 
-        val outroOverlapMs = ((automixBars.coerceIn(8, 16) * 1250L)).coerceIn(18_000L, 22_000L)
+        val outroOverlapMs = crossfadeDurationMs.coerceIn(1_000L, 12_000L)
         if (activeDur > 0L && activePos >= activeDur - outroOverlapMs) {
             isTriggeringTransition = true
             handleTransitionTrigger(nextIndex)
@@ -3531,9 +3533,9 @@ class MusicPlayer @Inject constructor(
         autoMixHandedOver = false
 
         val durationMs = if (isManualSkip) {
-            6_000L // Fast 4-bar skip-transition (~5-7s)
+            crossfadeDurationMs.coerceAtMost(4_000L).coerceAtLeast(2_000L)
         } else {
-            ((automixBars.coerceIn(8, 16) * 1250L)).coerceIn(18_000L, 22_000L) // 18-22 sec for full track Automix
+            crossfadeDurationMs.coerceIn(1_000L, 12_000L)
         }
         overlapDurationMs = durationMs
 
@@ -3580,6 +3582,7 @@ class MusicPlayer @Inject constructor(
                 autoMixState = if (isManualSkip) AutoMixState.FADING_FAST else AutoMixState.FADING_AUTO,
                 autoMixProgress = 0f,
                 autoMixBpm = if (bpmA > 0f) bpmA else null,
+                autoMixOutgoingTrack = outgoingTrack,
                 autoMixNextTrack = nextTrack,
                 autoMixBars = if (automixBars > 0) automixBars else 8,
             )
@@ -3616,6 +3619,8 @@ class MusicPlayer @Inject constructor(
                             autoMixBpm = if (bpmA > 0f) bpmA else null,
                             positionMs = outgoingPos,
                             durationMs = outgoingDur,
+                            autoMixOutgoingTrack = outgoingTrack,
+                            autoMixNextTrack = nextTrack,
                         )
                     }
                 } else {
@@ -3630,6 +3635,8 @@ class MusicPlayer @Inject constructor(
                             durationMs = dur,
                             current = nextTrack ?: it.current,
                             currentIndex = nextIndex,
+                            autoMixOutgoingTrack = outgoingTrack,
+                            autoMixNextTrack = nextTrack,
                         )
                     }
                 }
@@ -3680,6 +3687,7 @@ class MusicPlayer @Inject constructor(
                     isAutoMixActive = false,
                     autoMixState = AutoMixState.IDLE,
                     autoMixProgress = 0f,
+                    autoMixOutgoingTrack = null,
                     autoMixNextTrack = null,
                 )
             }
@@ -3905,6 +3913,7 @@ class MusicPlayer @Inject constructor(
                     standbyReady = armedForNext && standby?.playbackState == Player.STATE_READY,
                     standbyDurationMs = if (armedForNext) standby?.duration ?: 0L else 0L,
                     standbyBufferedMs = if (armedForNext) getStandbyBufferedMsInternal(standby) else 0L,
+                    customDurationMs = crossfadeDurationMs,
                 )
             )) {
                 is AutoMixDecision.Idle -> CrossfadeDecision.Idle(
@@ -9193,11 +9202,12 @@ class MusicPlayer @Inject constructor(
             samplingRateKHz = previous.samplingRateKHz.takeIf { hasExplicitPrevious } ?: streamForCurrent?.samplingRateKHz,
             sleepTimerRemainingMs = sleepTimerDeadlineMs?.minus(SystemClock.elapsedRealtime())?.coerceAtLeast(0),
             error = if (isPlayingState) null else previous.error,
-            isAutoMixActive = automixEnabled && (outgoingPlayer != null || (nativeAutoMixEngine.get().isAvailable && nativeAutoMixEngine.get().state != AutoMixState.IDLE)),
+            isAutoMixActive = (automixEnabled || crossfadeEnabled) && (isOverlapMixActive || outgoingPlayer != null || (nativeAutoMixEngine.get().isAvailable && nativeAutoMixEngine.get().state != AutoMixState.IDLE)),
             isAutoMixEnabled = automixEnabled,
             autoMixState = if (nativeAutoMixEngine.get().isAvailable) nativeAutoMixEngine.get().state else AutoMixState.IDLE,
-            autoMixProgress = if (nativeAutoMixEngine.get().isAvailable) nativeAutoMixEngine.get().transitionProgress else 0f,
+            autoMixProgress = if (isOverlapMixActive) _state.value.autoMixProgress else (if (nativeAutoMixEngine.get().isAvailable) nativeAutoMixEngine.get().transitionProgress else 0f),
             autoMixBpm = if (nativeAutoMixEngine.get().isAvailable) nativeAutoMixEngine.get().deckABpm.takeIf { it in 50f..220f } else null,
+            autoMixOutgoingTrack = autoMixOutgoingTrack,
             autoMixNextTrack = autoMixNextTrack,
             autoMixBars = if (automixBars > 0) automixBars else 8,
         )

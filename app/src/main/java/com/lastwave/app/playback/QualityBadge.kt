@@ -15,6 +15,7 @@ import kotlin.math.roundToInt
  * Spatial mixes use a short `ATMOS` or `SPATIAL` badge.
  */
 fun qualityBadgeLabel(state: MusicPlayerState): String {
+    if (state.isAutoMixActive) return "Mixing"
     val spatial = spatialIndicatorLabel(state.audioCodec)
     if (spatial != null) return spatial
 

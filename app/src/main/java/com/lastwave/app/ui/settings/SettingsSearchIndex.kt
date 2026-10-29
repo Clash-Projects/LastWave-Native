@@ -173,7 +173,7 @@ object SettingsSearchIndex {
                 SettingsEntry(
                     id = "audio.automix_bars",
                     title = "Automix Transition Length",
-                    subtitle = "Select 8-bar or 16-bar phrase transition length for Automix blends",
+                    subtitle = "Set transition duration (1-12s) for Automix blends",
                     keywords = listOf(
                         "automix bars", "transition length", "8 bars", "16 bars", "phrase", "automix duration", "dj blend length"
                     ),

@@ -1245,7 +1245,31 @@ private fun MiniPlayer(
                                 tonalElevation = 2.dp,
                                 modifier = Modifier.fillMaxSize(),
                             ) {
-                                PlayerArtwork(track, Modifier.fillMaxSize(), 18.dp)
+                                val miniArtworkTrack = state.autoMixOutgoingTrack ?: track
+                                Box(Modifier.fillMaxSize()) {
+                                    PlayerArtwork(
+                                        track = miniArtworkTrack,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .graphicsLayer {
+                                                alpha = if (state.isAutoMixActive && state.autoMixNextTrack != null) {
+                                                    (1f - state.autoMixProgress).coerceIn(0f, 1f)
+                                                } else 1f
+                                            },
+                                        corner = 18.dp,
+                                    )
+                                    if (state.isAutoMixActive && state.autoMixNextTrack != null) {
+                                        PlayerArtwork(
+                                            track = state.autoMixNextTrack,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .graphicsLayer {
+                                                    alpha = state.autoMixProgress.coerceIn(0f, 1f)
+                                                },
+                                            corner = 18.dp,
+                                        )
+                                    }
+                                }
                             }
                         }
                         val miniTitleColor = if (LocalIsDarkTheme.current) Color.White else Color.Black
@@ -1351,11 +1375,29 @@ private fun MiniPlayer(
                             .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                         contentAlignment = Alignment.Center,
                     ) {
+                        val miniArtworkTrack = state.autoMixOutgoingTrack ?: track
                         PlayerArtwork(
-                            track = track,
-                            modifier = Modifier.fillMaxSize(),
+                            track = miniArtworkTrack,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    alpha = if (state.isAutoMixActive && state.autoMixNextTrack != null) {
+                                        (1f - state.autoMixProgress).coerceIn(0f, 1f)
+                                    } else 1f
+                                },
                             corner = 0.dp,
                         )
+                        if (state.isAutoMixActive && state.autoMixNextTrack != null) {
+                            PlayerArtwork(
+                                track = state.autoMixNextTrack,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer {
+                                        alpha = state.autoMixProgress.coerceIn(0f, 1f)
+                                    },
+                                corner = 0.dp,
+                            )
+                        }
                     }
 
                     // Typography Hierarchy: 15.sp bold title (-0.2.sp letterSpacing) + 13.sp medium artist (0.78 alpha) + 1.dp space
@@ -3047,7 +3089,7 @@ private fun FullPlayer(
                                                         alpha = sleeveAlpha
                                                     },
                                             ) {
-                                                val heroArtworkTrack = track
+                                                val heroArtworkTrack = state.autoMixOutgoingTrack ?: track
                                                 Box(Modifier.fillMaxSize()) {
                                                     PlayerArtwork(
                                                         track = heroArtworkTrack,
@@ -3645,9 +3687,10 @@ private fun FullPlayerLandscape(
                         }
                     },
             ) {
+                val landscapeArtworkTrack = state.autoMixOutgoingTrack ?: track
                 Box(Modifier.fillMaxSize()) {
                     PlayerArtwork(
-                        track = track,
+                        track = landscapeArtworkTrack,
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer {
@@ -4874,11 +4917,13 @@ private fun AppleMusicQualityBadge(
     val haptics = LocalHapticFeedback.current
     val isSpatial = remember(state.audioCodec) { isSpatialAudioCodec(state.audioCodec) }
     val isHiRes = state.isLossless && ((state.samplingRateKHz ?: 44.1) > 48.0 || (state.bitDepth ?: 16) > 16)
+    val isMixing = state.isAutoMixActive
     val baseLabel = remember(state.audioCodec, state.bitrateKbps, state.samplingRateKHz, state.bitDepth, state.isLossless) {
         qualityBadgeLabel(state)
     }
 
     val displayTitle = when {
+        isMixing -> "Mixing"
         isSpatial -> "Dolby Atmos"
         isHiRes -> "Hi-Res Lossless"
         state.isLossless -> "Lossless"
@@ -4889,12 +4934,14 @@ private fun AppleMusicQualityBadge(
     }
 
     val badgeIcon = when {
+        isMixing -> Icons.Filled.AutoAwesome
         isSpatial -> Icons.Filled.SurroundSound
         state.isLossless -> Icons.Filled.HighQuality
         else -> Icons.Filled.GraphicEq
     }
 
     val tintColor = when {
+        isMixing -> MaterialTheme.colorScheme.primary
         signalPath.bitPerfect -> Color(0xFFE6C15A)
         signalPath.directToHal -> Color(0xFF7FD3C3)
         signalPath.clockFallbackResampled -> Color(0xFFFFB74D)
@@ -4930,10 +4977,10 @@ private fun AppleMusicQualityBadge(
                 modifier = Modifier.size(15.dp),
             )
             Spacer(Modifier.width(5.dp))
-            val fullText = if (baseLabel.isNotBlank() && !baseLabel.equals(displayTitle, ignoreCase = true) && !baseLabel.equals("AUDIO", ignoreCase = true)) {
-                "$displayTitle · $baseLabel"
-            } else {
-                displayTitle
+            val fullText = when {
+                isMixing -> "Mixing"
+                baseLabel.isNotBlank() && !baseLabel.equals(displayTitle, ignoreCase = true) && !baseLabel.equals("AUDIO", ignoreCase = true) -> "$displayTitle · $baseLabel"
+                else -> displayTitle
             }
             Text(
                 text = fullText,
