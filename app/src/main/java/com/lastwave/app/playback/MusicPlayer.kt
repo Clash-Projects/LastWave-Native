@@ -3349,9 +3349,6 @@ class MusicPlayer @Inject constructor(
         return 0L
     }
 
-        return 0L
-    }
-
     private suspend fun waitForPlayerReady(playerInstance: Player, timeoutMs: Long = 15_000L): Boolean {
         if (playerInstance.playbackState == Player.STATE_READY) return true
         return withTimeoutOrNull(timeoutMs) {
