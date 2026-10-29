@@ -1754,6 +1754,11 @@ class MusicPlayer @Inject constructor(
             outgoingPlayer = outgoing
             activePlayer = incoming
             outgoing.removeListener(listener)
+            outgoing.repeatMode = Player.REPEAT_MODE_OFF
+            outgoing.shuffleModeEnabled = false
+            if (outgoing.currentMediaItemIndex != C.INDEX_UNSET && outgoing.mediaItemCount > outgoing.currentMediaItemIndex + 1) {
+                outgoing.removeMediaItems(outgoing.currentMediaItemIndex + 1, outgoing.mediaItemCount)
+            }
             incoming.addListener(listener)
             incoming.setAudioAttributes(incoming.audioAttributes, false)
             listener.onMediaItemTransition(incoming.currentMediaItem, Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
@@ -1847,7 +1852,8 @@ class MusicPlayer @Inject constructor(
                                 ?: preparedStreams.values.firstOrNull { it.url == nextItem?.localConfiguration?.uri?.toString() }
                             val nextStreamUrl = stream?.url ?: nextItem?.localConfiguration?.uri?.toString()
 
-                            if (!crossfadeEnabled && upcomingIdx != C.INDEX_UNSET && nextItem != null) {
+                            val transitionActive = crossfadeEnabled || autoMixCoordinator.get().isEnabled
+                            if (transitionActive && upcomingIdx != C.INDEX_UNSET && nextItem != null) {
                                 val remainingMs = dur - pos
                                 if (dur > 0L && (pos > dur * 0.25f || remainingMs < 90_000L)) {
                                     val isNextNonPlaceholder = nextItem.localConfiguration?.uri?.scheme?.let { it != "lastwave" } == true
@@ -1874,7 +1880,7 @@ class MusicPlayer @Inject constructor(
 
                             autoMixCoordinator.get().onTrackProgressTick(
                                 primaryPlayer = player,
-                                secondaryPlayer = secondaryPlayer,
+                                secondaryPlayer = currentStandby(),
                                 currentTrack = _state.value.current,
                                 nextTrack = nextTrk,
                                 positionMs = pos,
@@ -5144,7 +5150,7 @@ class MusicPlayer @Inject constructor(
             var offset = 0L
             while (isActive) {
                 currentCoroutineContext().ensureActive()
-                if (player.playbackState == Player.STATE_BUFFERING || !player.isPlaying) {
+                if (_state.value.isBuffering || !_state.value.isPlaying) {
                     delay(CURRENT_TRACK_CACHE_STANDBY_YIELD_MS)
                     continue
                 }
