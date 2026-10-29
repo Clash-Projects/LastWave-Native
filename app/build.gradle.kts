@@ -63,6 +63,12 @@ android {
         versionCode = 26
         versionName = "4.3.1"
 
+        (project.findProperty("targetAbis") as? String)?.let { prop ->
+            ndk {
+                abiFilters.addAll(prop.split(",").map { it.trim() }.filter { it.isNotEmpty() })
+            }
+        }
+
         val lastWaveLyricsToken = resolveSecret("LASTWAVE_LYRICS_TOKEN")
         val lastWaveLyricsUrl = resolveSecret("LASTWAVE_LYRICS_URL")
         buildConfigField("String", "LASTWAVE_LYRICS_TOKEN", "\"$lastWaveLyricsToken\"")
@@ -85,6 +91,12 @@ android {
                 cFlags += "-Wl,-z,max-page-size=16384"
                 cppFlags += "-Wl,-z,max-page-size=16384"
             }
+        }
+    }
+
+    splits {
+        abi {
+            isEnable = false
         }
     }
 
@@ -191,7 +203,7 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
         jniLibs {
-            useLegacyPackaging = true
+            useLegacyPackaging = false
         }
     }
 
@@ -347,7 +359,7 @@ val generateNativeSecrets by tasks.registering(Exec::class) {
     // Never fail public builds when secrets absent; script emits empty header.
     isIgnoreExitValue = true
 }
-tasks.matching { it.name.startsWith("preBuild") || it.name.startsWith("configureCMake") }.configureEach {
+tasks.named("preBuild").configure {
     dependsOn(generateNativeSecrets)
 }
 
