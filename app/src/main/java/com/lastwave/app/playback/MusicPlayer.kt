@@ -373,6 +373,7 @@ class MusicPlayer @Inject constructor(
     private val playbackPersistenceLock = Any()
     private var ticker: Job? = null
     private var playRequest: Job? = null
+    @Volatile private var pausedResolutionMediaId: String? = null
     /**
      * Keep-alive for a stream that died mid-track: re-resolves in place with
      * backoff while the track stays buffered, instead of parking the player on
@@ -2729,6 +2730,23 @@ class MusicPlayer @Inject constructor(
         ensureForegroundService()
         if (retryInterruptedPlayback()) return@onMain
         val pendingCurrent = _state.value.current
+        val pausedMediaId = pausedResolutionMediaId
+        if (pausedMediaId != null) {
+            val pausedIndex = if (pendingCurrent?.mediaIdKey() == pausedMediaId) {
+                (0 until player.mediaItemCount).firstOrNull { index ->
+                    player.getMediaItemAt(index).mediaId == pausedMediaId
+                }
+            } else {
+                null
+            }
+
+            pausedResolutionMediaId = null
+
+            if (pausedIndex != null) {
+                resolveAndPlayQueueItem(pausedIndex)
+                return@onMain
+            }
+        }
         if (player.mediaItemCount == 0 && pendingCurrent != null) {
             val q = _state.value.queue.ifEmpty { listOf(pendingCurrent) }
             val idx = _state.value.currentIndex.coerceIn(q.indices)
@@ -2772,6 +2790,10 @@ class MusicPlayer @Inject constructor(
         // A deliberate pause supersedes a focus-induced one, so a later
         // AUDIOFOCUS_GAIN must not resurrect playback the user stopped.
         if (!pausingForAudioFocus) focusPauseAwaitingRecovery = false
+        val selectedMediaId = _state.value.current?.mediaIdKey()
+        pausedResolutionMediaId = selectedMediaId?.takeIf { mediaId ->
+            resolvingMediaIds[mediaId] == playRequestGeneration.get()
+        }
         cancelPendingPlaybackResolution()
         onMain {
             exclusiveUsbOutput.setPaused(true)
@@ -8375,8 +8397,13 @@ class MusicPlayer @Inject constructor(
         val selectedMediaId = previous.current?.mediaIdKey()
         val selectionIsResolving = selectedMediaId != null &&
             resolvingMediaIds[selectedMediaId] == playRequestGeneration.get()
-        if ((selectionIsResolving || unavailableSkipJob?.isActive == true) &&
-            (player.currentMediaItemIndex != previous.currentIndex || !isCurrentMediaMatch(player, previous.current))
+        val selectionIsPausedResolution = selectedMediaId != null &&
+            selectedMediaId == pausedResolutionMediaId
+        if ((selectionIsResolving ||
+                selectionIsPausedResolution ||
+                unavailableSkipJob?.isActive == true) &&
+            (player.currentMediaItemIndex != previous.currentIndex ||
+                !isCurrentMediaMatch(player, previous.current))
         ) return
         val queue = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).toPlayableTrack() }
         val current = player.currentMediaItem?.toPlayableTrack()
