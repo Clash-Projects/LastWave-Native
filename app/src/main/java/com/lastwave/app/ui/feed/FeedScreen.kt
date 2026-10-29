@@ -442,6 +442,65 @@ fun FeedScreen(
                         }
                 }
 
+                val quickTiles = remember(state.feedData.quickTiles, state.feedData.isYtConnected) {
+                    if (state.feedData.isYtConnected) {
+                        state.feedData.quickTiles
+                    } else {
+                        state.feedData.quickTiles.filter {
+                            it.collection != "yt_liked" && it.collection != "yt_recent" &&
+                                it.playlistId != "yt_liked" && it.playlistId != "yt_recent"
+                        }
+                    }
+                }
+
+                val activeContainerKeys = remember(
+                    showSynthetic, hiddenSections, quickTiles, podcastsEnabled, state.feedData.podcastShows,
+                    topGenres, state.feedData.tasteTags, state.isChipActive, state.isChipLoading,
+                    state.chipShelves, visibleNativeShelves, state.feedData.quickPicks, discoveryTracks,
+                    state.feedData.becauseYouListenTo, state.feedData.freshFinds, state.feedData.jumpBackIn,
+                    state.feedData.mixes, individualTopArtists, state.feedData.heavyRotation,
+                    state.feedData.recentAlbums, state.feedData.charts, state.feedData.newReleases,
+                    state.feedData.friends, state.feedData.pagedShelves
+                ) {
+                    buildList {
+                        if (showSynthetic && isSectionVisible(HomeSection.QUICK_TILES) && quickTiles.isNotEmpty()) add("quick_tiles")
+                        if (showSynthetic && podcastsEnabled && state.feedData.podcastShows.isNotEmpty()) add("podcast_shelf")
+                        if (showSynthetic) add("taste_strip")
+                        if (state.isChipActive) {
+                            if (state.isChipLoading) {
+                                add("chip_loading_skeleton")
+                            } else if (state.chipShelves.isEmpty()) {
+                                add("chip_empty_state")
+                            } else {
+                                state.chipShelves.forEachIndexed { i, s ->
+                                    if (s.items.isNotEmpty()) add("chip_shelf_${i}_${s.title}")
+                                }
+                            }
+                        } else {
+                            visibleNativeShelves.forEachIndexed { i, s ->
+                                add("native_shelf_${i}_${s.title}")
+                            }
+                        }
+                        if (showSynthetic && isSectionVisible(HomeSection.QUICK_PICKS) && !isTitleHidden("Quick picks") && state.feedData.quickPicks.isNotEmpty()) add("quick_picks")
+                        if (showSynthetic && discoveryTracks.isNotEmpty()) add("discover_new_music")
+                        if (showSynthetic && isSectionVisible(HomeSection.BECAUSE_YOU_LISTEN_TO) && state.feedData.becauseYouListenTo?.items?.isNotEmpty() == true) add("because_you_listen_to")
+                        if (showSynthetic && isSectionVisible(HomeSection.FRESH_FINDS) && state.feedData.freshFinds.isNotEmpty()) add("fresh_finds")
+                        if (showSynthetic && isSectionVisible(HomeSection.JUMP_BACK_IN) && !isTitleHidden("Listen again") && state.feedData.jumpBackIn.isNotEmpty()) add("jump_back_in")
+                        if (showSynthetic && isSectionVisible(HomeSection.MIXES) && !isTitleHidden("Mixed for you") && state.feedData.mixes.isNotEmpty()) add("mixed_for_you")
+                        if (showSynthetic && isSectionVisible(HomeSection.TOP_ARTISTS) && individualTopArtists.isNotEmpty()) add("top_artists")
+                        if (showSynthetic && isSectionVisible(HomeSection.HEAVY_ROTATION) && state.feedData.heavyRotation.isNotEmpty()) add("heavy_rotation")
+                        if (showSynthetic && isSectionVisible(HomeSection.ALBUMS) && state.feedData.recentAlbums.isNotEmpty()) add("albums_in_rotation")
+                        if (showSynthetic && isSectionVisible(HomeSection.CHARTS) && state.feedData.charts.isNotEmpty()) add("trending_charts")
+                        if (showSynthetic && isSectionVisible(HomeSection.NEW_RELEASES) && !isTitleHidden("New releases") && state.feedData.newReleases.isNotEmpty()) add("new_releases")
+                        if (isSectionVisible(HomeSection.FRIENDS) && state.feedData.friends.isNotEmpty()) add("friends_activity")
+                        if (!state.isChipActive) {
+                            state.feedData.pagedShelves.forEachIndexed { i, s ->
+                                if (s.items.isNotEmpty() && !isTitleHidden(s.title)) add("paged_shelf_${i}_${s.title}")
+                            }
+                        }
+                    }
+                }
+
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize().safeHorizontalContentPadding(),
@@ -449,11 +508,14 @@ fun FeedScreen(
                         bottom = FloatingNavDefaults.contentBottomPadding(),
                         top = 12.dp,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(CardTokens.sectionGap),
+                    verticalArrangement = Arrangement.Top,
                 ) {
                     if (showSynthetic && isSectionVisible(HomeSection.HERO)) {
                     item(key = "hero") {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Column(
+                            modifier = Modifier.padding(bottom = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -489,22 +551,29 @@ fun FeedScreen(
                     }
                     }
 
-                    val quickTiles = if (state.feedData.isYtConnected) {
-                        state.feedData.quickTiles
-                    } else {
-                        state.feedData.quickTiles.filter {
-                            it.collection != "yt_liked" && it.collection != "yt_recent" &&
-                                it.playlistId != "yt_liked" && it.playlistId != "yt_recent"
+                    if (showSynthetic && isSectionVisible(HomeSection.SPOTLIGHT)) {
+                        state.feedData.spotlight?.let { spotlight ->
+                            item(key = "spotlight_hero") {
+                                Box(modifier = Modifier.padding(bottom = 12.dp)) {
+                                    SpotlightHeroCard(
+                                        spotlight = spotlight,
+                                        onPlayRadio = {
+                                            viewModel.playArtistRadio(FeedArtist(ArtistHelper.primaryArtist(spotlight.artistName), spotlight.browseId, spotlight.artworkUrl))
+                                        },
+                                        onOpenArtist = {
+                                            artistAlbumNavigator.openArtist(ArtistHelper.primaryArtist(spotlight.artistName), spotlight.browseId ?: "")
+                                        },
+                                    )
+                                }
+                            }
                         }
                     }
                     if (showSynthetic && isSectionVisible(HomeSection.QUICK_TILES) && quickTiles.isNotEmpty()) {
                         item(key = "quick_tiles") {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                shape = RoundedCornerShape(24.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                            HomeContainerSection(
+                                isFirst = activeContainerKeys.firstOrNull() == "quick_tiles",
+                                isLast = activeContainerKeys.lastOrNull() == "quick_tiles",
                             ) {
-                                Column(modifier = Modifier.padding(vertical = 12.dp)) {
                             FeedSectionHeader(
                                 title = stringResource(R.string.feed_quick_access),
                                 onLongClick = { sectionMenuTarget = HomeSection.QUICK_TILES.id to "Quick Access" },
@@ -553,14 +622,16 @@ fun FeedScreen(
                                 },
                             )
                         
-                                }
                             }
                         }
                     }
 
                     if (showSynthetic && podcastsEnabled && state.feedData.podcastShows.isNotEmpty()) {
                         item(key = "podcast_shelf") {
-                            Column(Modifier.padding(vertical = 4.dp)) {
+                            HomeContainerSection(
+                                isFirst = activeContainerKeys.firstOrNull() == "podcast_shelf",
+                                isLast = activeContainerKeys.lastOrNull() == "podcast_shelf",
+                            ) {
                                 FeedSectionHeader(
                                     title = state.feedData.podcastShelfTitle
                                         ?.takeIf { it.isNotBlank() }
@@ -605,11 +676,16 @@ fun FeedScreen(
                             }
                         }
                         item(key = "taste_strip") {
-                            TasteStrip(
-                                tags = displayTags,
-                                launching = state.launchingRadio,
-                                onTagClick = { tag -> viewModel.playDiscoveryQuery(tag.displayName(), tag) },
-                            )
+                            HomeContainerSection(
+                                isFirst = activeContainerKeys.firstOrNull() == "taste_strip",
+                                isLast = activeContainerKeys.lastOrNull() == "taste_strip",
+                            ) {
+                                TasteStrip(
+                                    tags = displayTags,
+                                    launching = state.launchingRadio,
+                                    onTagClick = { tag -> viewModel.playDiscoveryQuery(tag.displayName(), tag) },
+                                )
+                            }
                         }
                     }
                     // ...) are pinned at the top under the app bar — see the
@@ -622,26 +698,40 @@ fun FeedScreen(
                             // Card-shaped shimmer placeholders that mirror the
                             // native shelf layout the chip page will render.
                             item(key = "chip_loading_skeleton") {
-                                Column(verticalArrangement = Arrangement.spacedBy(CardTokens.sectionGap)) {
-                                    com.lastwave.app.ui.feed.cards.ShelfSquareSkeletonRow(
-                                        cardWidth = com.lastwave.app.ui.feed.cards.rememberSquareCardWidth(),
-                                    )
-                                    com.lastwave.app.ui.feed.cards.ShelfWideSkeletonRow(
-                                        cardWidth = com.lastwave.app.ui.feed.cards.rememberWideCardWidth(),
-                                    )
+                                HomeContainerSection(
+                                    isFirst = activeContainerKeys.firstOrNull() == "chip_loading_skeleton",
+                                    isLast = activeContainerKeys.lastOrNull() == "chip_loading_skeleton",
+                                ) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(CardTokens.sectionGap)) {
+                                        com.lastwave.app.ui.feed.cards.ShelfSquareSkeletonRow(
+                                            cardWidth = com.lastwave.app.ui.feed.cards.rememberSquareCardWidth(),
+                                        )
+                                        com.lastwave.app.ui.feed.cards.ShelfWideSkeletonRow(
+                                            cardWidth = com.lastwave.app.ui.feed.cards.rememberWideCardWidth(),
+                                        )
+                                    }
                                 }
                             }
                         } else if (state.chipShelves.isEmpty()) {
                             item(key = "chip_empty_state") {
-                                PodcastGuestEmptyState(
-                                    onLoginClick = onOpenYouTubeLogin,
-                                )
+                                HomeContainerSection(
+                                    isFirst = activeContainerKeys.firstOrNull() == "chip_empty_state",
+                                    isLast = activeContainerKeys.lastOrNull() == "chip_empty_state",
+                                ) {
+                                    PodcastGuestEmptyState(
+                                        onLoginClick = onOpenYouTubeLogin,
+                                    )
+                                }
                             }
                         } else {
                             for ((shelfIndex, shelf) in state.chipShelves.withIndex()) {
                                 if (shelf.items.isEmpty()) continue
                                 item(key = "chip_shelf_${shelfIndex}_${shelf.title}") {
-                                    HomeShelfCard(
+                                    HomeContainerSection(
+                                        isFirst = activeContainerKeys.firstOrNull() == "chip_shelf_${shelfIndex}_${shelf.title}",
+                                        isLast = activeContainerKeys.lastOrNull() == "chip_shelf_${shelfIndex}_${shelf.title}",
+                                    ) {
+                                        HomeShelfCard(
                                         shelf = shelf,
                                         onPlayTrack = { track, title -> viewModel.playTrack(track, title) },
                                         onPlayTracksQueue = { tracks, idx, title -> viewModel.playTracksQueue(tracks, idx, title) },
@@ -654,7 +744,8 @@ fun FeedScreen(
                                         onOpenPodcastShow = onOpenPodcastShow,
                                         onPlayPodcastEpisode = { ep, q, title -> viewModel.playPodcastEpisode(ep, q, title) },
                                         onHeaderLongClick = { title -> sectionMenuTarget = "yt:$title" to title },
-                                    )
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -662,7 +753,11 @@ fun FeedScreen(
                         // Native YouTube Music shelves (filtered & ordered via Settings → Home sections → YouTube Music Selection)
                         for ((shelfIndex, shelf) in visibleNativeShelves.withIndex()) {
                             item(key = "native_shelf_${shelfIndex}_${shelf.title}") {
-                                HomeShelfCard(
+                                HomeContainerSection(
+                                    isFirst = activeContainerKeys.firstOrNull() == "native_shelf_${shelfIndex}_${shelf.title}",
+                                    isLast = activeContainerKeys.lastOrNull() == "native_shelf_${shelfIndex}_${shelf.title}",
+                                ) {
+                                    HomeShelfCard(
                                     shelf = shelf,
                                     onPlayTrack = { track, title -> viewModel.playTrack(track, title) },
                                     onPlayTracksQueue = { tracks, idx, title -> viewModel.playTracksQueue(tracks, idx, title) },
@@ -675,19 +770,18 @@ fun FeedScreen(
                                     onOpenPodcastShow = onOpenPodcastShow,
                                     onPlayPodcastEpisode = { ep, q, title -> viewModel.playPodcastEpisode(ep, q, title) },
                                     onHeaderLongClick = { title -> sectionMenuTarget = "yt:$title" to title },
-                                )
+                                    )
+                                }
                             }
                         }
                     }
 
                     if (showSynthetic && isSectionVisible(HomeSection.QUICK_PICKS) && !isTitleHidden("Quick picks") && state.feedData.quickPicks.isNotEmpty()) {
                         item(key = "quick_picks") {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                shape = RoundedCornerShape(24.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                            HomeContainerSection(
+                                isFirst = activeContainerKeys.firstOrNull() == "quick_picks",
+                                isLast = activeContainerKeys.lastOrNull() == "quick_picks",
                             ) {
-                                Column(modifier = Modifier.padding(vertical = 12.dp)) {
                             val title = if (state.feedData.hasYtRecommendations) stringResource(R.string.feed_picked_you) else stringResource(R.string.feed_quick_picks)
                             val subtitle = if (state.feedData.hasYtRecommendations) {
                                 stringResource(R.string.feed_from_listening)
@@ -731,19 +825,16 @@ fun FeedScreen(
                                 },
                             )
                         
-                                }
                             }
                         }
                     }
 
                     if (showSynthetic && discoveryTracks.isNotEmpty()) {
                         item(key = "discover_new_music") {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                shape = RoundedCornerShape(24.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                            HomeContainerSection(
+                                isFirst = activeContainerKeys.firstOrNull() == "discover_new_music",
+                                isLast = activeContainerKeys.lastOrNull() == "discover_new_music",
                             ) {
-                                Column(modifier = Modifier.padding(vertical = 12.dp)) {
                                     FeedSectionHeader(
                                         title = stringResource(R.string.feed_discover),
                                         subtitle = stringResource(R.string.feed_discover_sub),
@@ -773,7 +864,6 @@ fun FeedScreen(
                                             }
                                         },
                                     )
-                                }
                             }
                         }
                     }
@@ -781,12 +871,10 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.BECAUSE_YOU_LISTEN_TO)) {
                     state.feedData.becauseYouListenTo?.takeIf { it.items.isNotEmpty() }?.let { section ->
                         item(key = "because_you_listen_to") {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                shape = RoundedCornerShape(24.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                            HomeContainerSection(
+                                isFirst = activeContainerKeys.firstOrNull() == "because_you_listen_to",
+                                isLast = activeContainerKeys.lastOrNull() == "because_you_listen_to",
                             ) {
-                                Column(modifier = Modifier.padding(vertical = 12.dp)) {
                             FeedSectionHeader(
                                 title = section.title,
                                 subtitle = section.subtitle,
@@ -822,7 +910,6 @@ fun FeedScreen(
                                 },
                             )
                         
-                                }
                             }
                         }
                     }
@@ -830,12 +917,10 @@ fun FeedScreen(
 
                     if (showSynthetic && isSectionVisible(HomeSection.FRESH_FINDS) && state.feedData.freshFinds.isNotEmpty()) {
                         item(key = "fresh_finds") {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                shape = RoundedCornerShape(24.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                            HomeContainerSection(
+                                isFirst = activeContainerKeys.firstOrNull() == "fresh_finds",
+                                isLast = activeContainerKeys.lastOrNull() == "fresh_finds",
                             ) {
-                                Column(modifier = Modifier.padding(vertical = 12.dp)) {
                                     FeedSectionHeader(
                                         title = stringResource(R.string.feed_fresh),
                                         subtitle = stringResource(R.string.feed_fresh_sub),
@@ -871,19 +956,16 @@ fun FeedScreen(
                                             }
                                         },
                                     )
-                                }
                             }
                         }
                     }
 
                     if (showSynthetic && isSectionVisible(HomeSection.JUMP_BACK_IN) && !isTitleHidden("Listen again") && state.feedData.jumpBackIn.isNotEmpty()) {
                         item(key = "jump_back_in") {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                shape = RoundedCornerShape(24.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                            HomeContainerSection(
+                                isFirst = activeContainerKeys.firstOrNull() == "jump_back_in",
+                                isLast = activeContainerKeys.lastOrNull() == "jump_back_in",
                             ) {
-                                Column(modifier = Modifier.padding(vertical = 12.dp)) {
                             FeedSectionHeader(
                                 title = stringResource(R.string.feed_jump),
                                 subtitle = stringResource(R.string.feed_jump_sub),
@@ -912,19 +994,16 @@ fun FeedScreen(
                                 },
                             )
                         
-                                }
                             }
                         }
                     }
 
                     if (showSynthetic && isSectionVisible(HomeSection.MIXES) && !isTitleHidden("Mixed for you") && state.feedData.mixes.isNotEmpty()) {
                         item(key = "mixed_for_you") {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                shape = RoundedCornerShape(24.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                            HomeContainerSection(
+                                isFirst = activeContainerKeys.firstOrNull() == "mixed_for_you",
+                                isLast = activeContainerKeys.lastOrNull() == "mixed_for_you",
                             ) {
-                                Column(modifier = Modifier.padding(vertical = 12.dp)) {
                             FeedSectionHeader(
                                 title = stringResource(R.string.feed_mixes),
                                 subtitle = stringResource(R.string.feed_mixes_sub),
@@ -949,35 +1028,18 @@ fun FeedScreen(
                                 },
                             )
                         
-                                }
                             }
                         }
                     }
 
-                    if (showSynthetic && isSectionVisible(HomeSection.SPOTLIGHT)) {
-                    state.feedData.spotlight?.let { spotlight ->
-                        item(key = "spotlight_hero") {
-                            SpotlightHeroCard(
-                                spotlight = spotlight,
-                                onPlayRadio = {
-                                    viewModel.playArtistRadio(FeedArtist(ArtistHelper.primaryArtist(spotlight.artistName), spotlight.browseId, spotlight.artworkUrl))
-                                },
-                                onOpenArtist = {
-                                    artistAlbumNavigator.openArtist(ArtistHelper.primaryArtist(spotlight.artistName), spotlight.browseId ?: "")
-                                },
-                            )
-                        }
-                    }
-                    }
+
 
                     if (showSynthetic && isSectionVisible(HomeSection.TOP_ARTISTS) && individualTopArtists.isNotEmpty()) {
                         item(key = "top_artists") {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                shape = RoundedCornerShape(24.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                            HomeContainerSection(
+                                isFirst = activeContainerKeys.firstOrNull() == "top_artists",
+                                isLast = activeContainerKeys.lastOrNull() == "top_artists",
                             ) {
-                                Column(modifier = Modifier.padding(vertical = 12.dp)) {
                             FeedSectionHeader(
                                 title = stringResource(R.string.feed_artists),
                                 subtitle = stringResource(R.string.feed_artists_sub),
@@ -1002,19 +1064,16 @@ fun FeedScreen(
                                     }
                                 }
                             
-                                }
                             }
                         }
                         }
 
                     if (showSynthetic && isSectionVisible(HomeSection.HEAVY_ROTATION) && state.feedData.heavyRotation.isNotEmpty()) {
                         item(key = "heavy_rotation") {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                shape = RoundedCornerShape(24.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                            HomeContainerSection(
+                                isFirst = activeContainerKeys.firstOrNull() == "heavy_rotation",
+                                isLast = activeContainerKeys.lastOrNull() == "heavy_rotation",
                             ) {
-                                Column(modifier = Modifier.padding(vertical = 12.dp)) {
                             FeedSectionHeader(
                                 title = stringResource(R.string.feed_favorites),
                                 subtitle = stringResource(R.string.feed_favorites_sub),
@@ -1047,19 +1106,16 @@ fun FeedScreen(
                                 },
                             )
                         
-                                }
                             }
                         }
                     }
 
                     if (showSynthetic && isSectionVisible(HomeSection.ALBUMS) && state.feedData.recentAlbums.isNotEmpty()) {
                         item(key = "albums_in_rotation") {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                shape = RoundedCornerShape(24.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                            HomeContainerSection(
+                                isFirst = activeContainerKeys.firstOrNull() == "albums_in_rotation",
+                                isLast = activeContainerKeys.lastOrNull() == "albums_in_rotation",
                             ) {
-                                Column(modifier = Modifier.padding(vertical = 12.dp)) {
                             FeedSectionHeader(
                                 title = stringResource(R.string.feed_albums),
                                 subtitle = stringResource(R.string.feed_albums_sub),
@@ -1085,19 +1141,16 @@ fun FeedScreen(
                                 },
                             )
                         
-                                }
                             }
                         }
                     }
 
                     if (showSynthetic && isSectionVisible(HomeSection.CHARTS) && state.feedData.charts.isNotEmpty()) {
                         item(key = "trending_charts") {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                shape = RoundedCornerShape(24.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                            HomeContainerSection(
+                                isFirst = activeContainerKeys.firstOrNull() == "trending_charts",
+                                isLast = activeContainerKeys.lastOrNull() == "trending_charts",
                             ) {
-                                Column(modifier = Modifier.padding(vertical = 12.dp)) {
                             FeedSectionHeader(
                                 title = stringResource(R.string.feed_trending),
                                 subtitle = stringResource(R.string.feed_trending_sub),
@@ -1132,19 +1185,16 @@ fun FeedScreen(
                                 }
                             }
                         
-                                }
                             }
                         }
                     }
 
                     if (showSynthetic && isSectionVisible(HomeSection.NEW_RELEASES) && !isTitleHidden("New releases") && state.feedData.newReleases.isNotEmpty()) {
                         item(key = "new_releases") {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                shape = RoundedCornerShape(24.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                            HomeContainerSection(
+                                isFirst = activeContainerKeys.firstOrNull() == "new_releases",
+                                isLast = activeContainerKeys.lastOrNull() == "new_releases",
                             ) {
-                                Column(modifier = Modifier.padding(vertical = 12.dp)) {
                             FeedSectionHeader(
                                 title = stringResource(R.string.feed_releases),
                                 subtitle = stringResource(R.string.feed_releases_sub),
@@ -1174,19 +1224,16 @@ fun FeedScreen(
                                 },
                             )
                         
-                                }
                             }
                         }
                     }
 
                     if (isSectionVisible(HomeSection.FRIENDS) && state.feedData.friends.isNotEmpty()) {
                         item(key = "friends_activity") {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                                shape = RoundedCornerShape(24.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                            HomeContainerSection(
+                                isFirst = activeContainerKeys.firstOrNull() == "friends_activity",
+                                isLast = activeContainerKeys.lastOrNull() == "friends_activity",
                             ) {
-                                Column(modifier = Modifier.padding(vertical = 12.dp)) {
                                     FeedSectionHeader(
                                         title = stringResource(R.string.feed_friends),
                                         subtitle = stringResource(R.string.feed_friends_sub),
@@ -1209,7 +1256,6 @@ fun FeedScreen(
                                             )
                                         }
                                     }
-                                }
                             }
                         }
                     }
@@ -1218,7 +1264,11 @@ fun FeedScreen(
                         for ((shelfIndex, shelf) in state.pagedShelves.withIndex()) {
                             if (shelf.items.isEmpty() || isTitleHidden(shelf.title)) continue
                             item(key = "paged_shelf_${shelfIndex}_${shelf.title}") {
-                                HomeShelfCard(
+                                HomeContainerSection(
+                                    isFirst = activeContainerKeys.firstOrNull() == "paged_shelf_${shelfIndex}_${shelf.title}",
+                                    isLast = activeContainerKeys.lastOrNull() == "paged_shelf_${shelfIndex}_${shelf.title}",
+                                ) {
+                                    HomeShelfCard(
                                     shelf = shelf,
                                     onPlayTrack = { track, title -> viewModel.playTrack(track, title) },
                                     onPlayTracksQueue = { tracks, idx, title -> viewModel.playTracksQueue(tracks, idx, title) },
@@ -1230,7 +1280,8 @@ fun FeedScreen(
                                     onTrackMenu = { menuTrack = it },
                                     onOpenPodcastShow = onOpenPodcastShow,
                                     onPlayPodcastEpisode = { ep, q, title -> viewModel.playPodcastEpisode(ep, q, title) },
-                                )
+                                    )
+                                }
                             }
                         }
                     }
@@ -3167,6 +3218,40 @@ private fun FriendAvatarCard(
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 2.dp),
+        )
+    }
+}
+
+@Composable
+private fun HomeContainerSection(
+    isFirst: Boolean,
+    isLast: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+) {
+    val topRadius = if (isFirst) 28.dp else 0.dp
+    val bottomRadius = if (isLast) 28.dp else 0.dp
+    val shape = RoundedCornerShape(
+        topStart = topRadius,
+        topEnd = topRadius,
+        bottomStart = bottomRadius,
+        bottomEnd = bottomRadius,
+    )
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp),
+        shape = shape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    top = if (isFirst) 14.dp else 8.dp,
+                    bottom = if (isLast) 18.dp else 8.dp,
+                ),
+            content = content,
         )
     }
 }
