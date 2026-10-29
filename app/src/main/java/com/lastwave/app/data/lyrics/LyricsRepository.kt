@@ -1193,52 +1193,7 @@ class LyricsRepository @Inject constructor(
          * blanks and ♪ markers never merge. Bounded: no chaining past a
          * span/text cap, overlaps/duets never merge (gap < 0).
          */
-        fun mergeContinuationLines(lines: List<LyricLine>): List<LyricLine> {
-            if (lines.size < 2) return lines
-            val out = mutableListOf<LyricLine>()
-            var cur: LyricLine? = null
-            fun flush() {
-                cur?.let(out::add)
-                cur = null
-            }
-            for (line in lines) {
-                val c = cur
-                if (c == null) {
-                    cur = line
-                    continue
-                }
-                val cEnd = c.timeMs + c.durationMs
-                val nEnd = line.timeMs + line.durationMs
-                val gap = line.timeMs - cEnd
-                val bothWordSync = c.hasSyllables && line.hasSyllables
-                val gapCap = if (bothWordSync) CONTINUATION_GAP_WORD_MS else CONTINUATION_GAP_LINE_MS
-                val canMerge = !c.isBackgroundLine() && !line.isBackgroundLine() &&
-                    c.text.isNotBlank() && line.text.isNotBlank() &&
-                    c.text.trim() != "♪" && line.text.trim() != "♪" &&
-                    gap in 0..gapCap &&
-                    c.text.trimEnd().lastOrNull() !in TERMINAL_PUNCT &&
-                    (nEnd - c.timeMs) <= CONTINUATION_MAX_SPAN_MS &&
-                    (c.text.length + 1 + line.text.length) <= CONTINUATION_MAX_CHARS
-                if (!canMerge) {
-                    flush()
-                    cur = line
-                    continue
-                }
-                cur = c.copy(
-                    durationMs = (maxOf(cEnd, nEnd) - c.timeMs).coerceAtLeast(0L),
-                    text = (c.text.trimEnd() + " " + line.text.trimStart()).trim(),
-                    syllables = (c.syllables + line.syllables).sortedBy { it.timeMs },
-                    transliteration = listOfNotNull(
-                        c.transliteration?.takeIf { it.isNotBlank() },
-                        line.transliteration?.takeIf { it.isNotBlank() },
-                    ).joinToString(" ").takeIf { it.isNotBlank() },
-                    transliterationSyllables = (c.transliterationSyllables + line.transliterationSyllables)
-                        .sortedBy { it.timeMs },
-                )
-            }
-            flush()
-            return out
-        }
+        
         /** Head start for the preferred provider before the automatic race
          *  takes over: bounds hangs, typical hits resolve well inside it. */
         private const val PREFERRED_HEAD_START_MS = 4_000L

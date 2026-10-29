@@ -93,39 +93,4 @@ fun ShelfWideSkeletonRow(cardWidth: Dp = rememberWideCardWidth(), count: Int = 3
     }
 }
 
-/** Community-playlist skeleton matching [ShelfCommunityPlaylistCard]. */
-@Composable
-fun ShelfCommunitySkeletonRow(cardWidth: Dp, count: Int = 2) {
-    val pulse = rememberShimmerPulse()
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        userScrollEnabled = false,
-    ) {
-        items(count) {
-            Column(Modifier.width(cardWidth)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(Modifier.size(96.dp).shimmer(pulse, 14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Box(Modifier.fillMaxWidth(0.8f).height(14.dp).shimmer(pulse, 7.dp))
-                        Spacer(Modifier.height(6.dp))
-                        Box(Modifier.fillMaxWidth(0.55f).height(11.dp).shimmer(pulse, 5.dp))
-                    }
-                    Box(Modifier.size(34.dp).shimmer(pulse, 17.dp))
-                }
-                Spacer(Modifier.height(12.dp))
-                repeat(3) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Box(Modifier.size(40.dp).shimmer(pulse, 10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Box(Modifier.fillMaxWidth(0.7f).height(11.dp).shimmer(pulse, 5.dp))
-                            Spacer(Modifier.height(4.dp))
-                            Box(Modifier.fillMaxWidth(0.45f).height(9.dp).shimmer(pulse, 4.dp))
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-            }
-        }
-    }
-}
+

@@ -21,7 +21,6 @@ import kotlin.math.sqrt
  */
 object DspMath {
 
-    const val FULL_SCALE_LINEAR = 1.0f
     const val CLIP_THRESHOLD_LINEAR = 1.0f
     const val MIN_DBFS = -120.0f
 
@@ -156,14 +155,7 @@ object DspMath {
             return output.toFloat()
         }
 
-        /** Processes a mono buffer into a new array; input is untouched. */
-        fun processMono(input: FloatArray): FloatArray {
-            val output = FloatArray(input.size)
-            for (index in input.indices) {
-                output[index] = tick(input[index], 0)
-            }
-            return output
-        }
+        
 
         /** Steady-state magnitude response at [frequencyHz]. */
         fun magnitude(sampleRateHz: Double, frequencyHz: Double): Double {

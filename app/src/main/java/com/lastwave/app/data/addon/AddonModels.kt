@@ -43,47 +43,7 @@ data class AddonSearchResponse(
     @SerialName("tracks") val tracks: List<AddonTrack> = emptyList(),
 )
 
-@Serializable
-data class AddonMetadata(
-    @SerialName("bitDepth") val bitDepth: JsonElement? = null,
-    @SerialName("bit_depth") val bitDepthSnake: JsonElement? = null,
-    @SerialName("bit_type") val bitTypeSnake: JsonElement? = null,
-    @SerialName("bitType") val bitType: JsonElement? = null,
-    @SerialName("bit_depth_rate") val bitDepthRateSnake: JsonElement? = null,
-    @SerialName("bitDepthRate") val bitDepthRate: JsonElement? = null,
-    @SerialName("bitsPerSample") val bitsPerSample: JsonElement? = null,
-    @SerialName("bits_per_sample") val bitsPerSampleSnake: JsonElement? = null,
-    @SerialName("depth") val depth: JsonElement? = null,
-    @SerialName("bits") val bits: JsonElement? = null,
-    @SerialName("clockRate") val clockRate: JsonElement? = null,
-    @SerialName("clock_rate") val clockRateSnake: JsonElement? = null,
-    @SerialName("sampleRate") val sampleRate: JsonElement? = null,
-    @SerialName("sample_rate") val sampleRateSnake: JsonElement? = null,
-    @SerialName("samplingRate") val samplingRate: JsonElement? = null,
-    @SerialName("sampling_rate") val samplingRateSnake: JsonElement? = null,
-) {
-    fun extractBitDepth(): Int? =
-        extractBitDepthFromElement(bitDepth)
-            ?: extractBitDepthFromElement(bitDepthSnake)
-            ?: extractBitDepthFromElement(bitTypeSnake)
-            ?: extractBitDepthFromElement(bitType)
-            ?: extractBitDepthFromElement(bitDepthRateSnake)
-            ?: extractBitDepthFromElement(bitDepthRate)
-            ?: extractBitDepthFromElement(bitsPerSample)
-            ?: extractBitDepthFromElement(bitsPerSampleSnake)
-            ?: extractBitDepthFromElement(depth)
-            ?: extractBitDepthFromElement(bits)
 
-    fun extractSampleRate(): Double? =
-        extractSampleRateFromElement(clockRate)
-            ?: extractSampleRateFromElement(clockRateSnake)
-            ?: extractSampleRateFromElement(sampleRate)
-            ?: extractSampleRateFromElement(sampleRateSnake)
-            ?: extractSampleRateFromElement(samplingRate)
-            ?: extractSampleRateFromElement(samplingRateSnake)
-            ?: extractSampleRateFromElement(bitDepthRateSnake)
-            ?: extractSampleRateFromElement(bitDepthRate)
-}
 
 private val ATMOS_HINT = Regex("""atmos|dolby|eac3[_-]?joc|ec-?3""", RegexOption.IGNORE_CASE)
 
@@ -420,9 +380,7 @@ fun extractSampleRateFromElement(element: JsonElement?): Double? {
     return null
 }
 
-internal fun parseDepthElement(element: JsonElement?): Int? = extractBitDepthFromElement(element)
 
-internal fun parseRateElement(element: JsonElement?): Double? = extractSampleRateFromElement(element)
 
 internal fun parseDepthFromQualityString(q: String?): Int? {
     if (q.isNullOrBlank()) return null

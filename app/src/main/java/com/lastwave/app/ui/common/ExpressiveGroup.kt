@@ -301,40 +301,7 @@ fun ExpressiveGroupTrackRow(
     }
 }
 
-/** A row inside an [ExpressiveGroup] with a trailing Switch instead of a
- *  chevron — the whole row toggles it, matching Settings' existing rows. */
-@Composable
-fun ExpressiveGroupToggleRow(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    position: GroupPosition,
-    modifier: Modifier = Modifier,
-    iconContainer: Color = MaterialTheme.colorScheme.primaryContainer,
-    iconTint: Color = MaterialTheme.colorScheme.onPrimaryContainer,
-) {
-    ExpressiveGroupRow(
-        icon = icon,
-        title = title,
-        subtitle = subtitle,
-        position = position,
-        onClick = { onCheckedChange(!checked) },
-        iconContainer = iconContainer,
-        iconTint = iconTint,
-        modifier = modifier,
-        trailing = {
-            Switch(
-                checked = checked,
-                onCheckedChange = onCheckedChange,
-                thumbContent = if (checked) {
-                    { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(SwitchDefaults.IconSize)) }
-                } else null,
-            )
-        },
-    )
-}
+
 
 /** A row inside an [ExpressiveGroup] representing one of several mutually
  *  exclusive choices (Generator's playlist-source templates, and anywhere

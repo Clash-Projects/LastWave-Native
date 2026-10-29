@@ -52,8 +52,7 @@ class GenreExplorerNavBridge @Inject constructor(genreExplorer: GenreExplorer) :
     val pendingGenre = genreExplorer.pendingGenre
 }
 
-@HiltViewModel
-class MixLauncherNavBridge @Inject constructor(val mixLauncher: com.lastwave.app.ui.generate.MixLauncher) : ViewModel()
+
 
 @HiltViewModel
 class ArtistAlbumNavBridge @Inject constructor(val navigator: ArtistAlbumNavigator) : ViewModel()

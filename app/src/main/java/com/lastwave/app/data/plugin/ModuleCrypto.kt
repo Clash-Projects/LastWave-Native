@@ -53,19 +53,7 @@ class ModuleCrypto @Inject constructor() {
         MessageDigest.getInstance("SHA-256").digest(key)
             .joinToString("") { "%02x".format(it) }.take(16)
 
-    /** LWP2 encrypt with AAD binding (entryName). Null AAD = LWP1 legacy. */
-    fun encrypt(plaintext: ByteArray, key: ByteArray, aadName: String? = null): ByteArray {
-        require(key.size == 32) { "Module key must be 32 bytes" }
-        require(plaintext.isNotEmpty() && plaintext.size <= MAX_PLAINTEXT) { "Bad plaintext size" }
-        val nonce = ByteArray(NONCE_LEN).apply { SecureRandom().nextBytes(this) }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
-            init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(TAG_BITS, nonce))
-            if (!aadName.isNullOrEmpty()) updateAAD(aadName.toByteArray(Charsets.UTF_8))
-        }
-        val ct = cipher.doFinal(plaintext)
-        val magic = if (aadName.isNullOrEmpty()) MAGIC_LWP1 else MAGIC_LWP2
-        return magic + nonce + ct
-    }
+    
 
     /** Auto-detects LWP1/LWP2. For LWP2, [aadName] must equal encrypt-time entry name. */
     fun decrypt(envelope: ByteArray, key: ByteArray, aadName: String? = null): ByteArray {
@@ -99,8 +87,7 @@ class ModuleCrypto @Inject constructor() {
         }
     }
 
-    fun decryptBase64(envelopeB64: String, key: ByteArray): ByteArray =
-        decrypt(Base64.decode(envelopeB64, Base64.DEFAULT), key)
+    
 
     private fun constantTimeEquals(a: String, b: String): Boolean {
         if (a.length != b.length) return false

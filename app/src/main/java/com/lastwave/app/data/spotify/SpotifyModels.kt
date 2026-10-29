@@ -227,45 +227,4 @@ data class SpotifyColorLyricsResponse(
     )
 }
 
-@Serializable
-data class SpotifyLikedTracksResponse(
-    val items: List<Item> = emptyList(),
-    val total: Int = 0,
-    val next: String? = null,
-) {
-    @Serializable
-    data class Item(
-        val added_at: String? = null,
-        val track: Track? = null,
-    ) {
-        @Serializable
-        data class Track(
-            val id: String? = null,
-            val name: String? = null,
-            val artists: List<Artist> = emptyList(),
-            val album: Album? = null,
-            val duration_ms: Long? = null,
-            val uri: String? = null,
-        ) {
-            @Serializable
-            data class Artist(
-                val id: String? = null,
-                val name: String? = null,
-            )
 
-            @Serializable
-            data class Album(
-                val id: String? = null,
-                val name: String? = null,
-                val images: List<Image> = emptyList(),
-            ) {
-                @Serializable
-                data class Image(
-                    val url: String? = null,
-                    val height: Int? = null,
-                    val width: Int? = null,
-                )
-            }
-        }
-    }
-}

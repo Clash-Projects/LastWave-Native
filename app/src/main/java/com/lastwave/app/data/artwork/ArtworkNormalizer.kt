@@ -43,8 +43,7 @@ object ArtworkNormalizer {
     fun isYtMusicThumbnail(url: String?): Boolean =
         !url.isNullOrBlank() && (url.contains("googleusercontent.com") || url.contains("ggpht.com")) && !url.contains("ytimg.com")
 
-    fun isYoutubeVideoThumbnail(url: String?): Boolean =
-        !url.isNullOrBlank() && (url.contains("ytimg.com") || url.contains("youtube.com/vi"))
+    
 
     private val YT_SIZE_REGEX = Regex("""=w\d+-h\d+[^?#]*|=s\d+[^?#]*""")
 

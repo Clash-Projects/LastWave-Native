@@ -28,11 +28,7 @@ class LastFmRateGuard @Inject constructor() {
         }
     }
 
-    fun paceOutBlocking() {
-        // Non-blocking: allow OkHttp worker threads to proceed immediately
-    }
-
-    fun awaitClearanceBlocking(maxWaitMs: Long): Boolean = true
+    
 
     suspend fun suspendAwaitClearance(maxWaitMs: Long): Boolean {
         val remaining = cooldownRemainingMs

@@ -29,7 +29,6 @@ object ShareCardRenderer {
 
     const val BASE_WIDTH: Int = 1080
     const val MIN_HEIGHT: Int = 1080 // 1:1 square aspect ratio minimum (no big empty areas)
-    const val MAX_HEIGHT: Int = 1920 // 9:16 vertical story aspect ratio maximum
 
     const val LYRIC_LINE_SPACING_MULTIPLIER: Float = 1.18f
     const val LYRIC_BLOCK_GAP_FACTOR: Float = 0.45f

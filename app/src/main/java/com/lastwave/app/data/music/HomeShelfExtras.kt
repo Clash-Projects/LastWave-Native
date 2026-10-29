@@ -23,11 +23,7 @@ internal data class HomeItemExtras(
     val previewSongs: List<YouTubeMusicTrack> = emptyList(),
 )
 
-/** Aspect-ratio value YTM puts on `musicTwoRowItemRenderer.aspectRatio`. */
-internal const val ASPECT_RECTANGLE_16_9 =
-    "MUSIC_TWO_ROW_ITEM_THUMBNAIL_ASPECT_RATIO_RECTANGLE_16_9"
-internal const val ASPECT_RECTANGLE_16_9_V2 =
-    "MUSIC_TWO_ROW_ITEM_THUMBNAIL_ASPECT_RATIO_RECTANGLE_SIXTEEN_BY_NINE"
+
 
 /** Returns true when [aspectRatio] denotes a wide 16:9 (video-style) card. */
 internal fun isWideAspect(aspectRatio: String?): Boolean =

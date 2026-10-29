@@ -3553,25 +3553,7 @@ class InnerTubeMusicApi @Inject constructor(
         )
     }
 
-    private fun playerClients(config: WebConfig): List<PlayerClient> = PLAYER_CLIENTS.map { client ->
-        if (client.name == "WEB_REMIX") {
-            client.copy(version = config.clientVersion, apiKey = config.apiKey)
-        } else {
-            client
-        }
-    }
-
-    private fun Throwable.confirmedUnavailableReasonOrNull(): String? {
-        val causes = generateSequence(this) { it.cause }.take(10).toList()
-        causes.filterIsInstance<ConfirmedUnplayableMediaException>()
-            .firstOrNull()
-            ?.message
-            ?.takeIf(String::isNotBlank)
-            ?.let { return it }
-        return causes.firstNotNullOfOrNull { cause ->
-            cause.message?.takeIf { it.isConfirmedUnavailableReason() }
-        }
-    }
+    
 
     private fun String.isConfirmedUnavailableReason(): Boolean {
         val reason = lowercase()
@@ -5075,8 +5057,7 @@ class InnerTubeMusicApi @Inject constructor(
         const val MAX_CONTINUATION_PAGES = 600
         const val WRITE_ACTIONS_PER_REQUEST = 50
 
-        const val HEDGED_CLIENT_STAGGER_DELAY_MS = 300L
-        /** Per-client bound for the direct-URL fast path (single POST, no
+            /** Per-client bound for the direct-URL fast path (single POST, no
          *  extras). Relaxed for slow devices: a fast first success still
          *  wins the race, only the worst case waits longer. */
         const val DIRECT_FAST_CLIENT_TIMEOUT_MS = 4_000L
@@ -5099,8 +5080,7 @@ class InnerTubeMusicApi @Inject constructor(
         /** Whole-call cap for one player-API POST (connect + read + body). */
         const val PLAYER_REQUEST_CALL_TIMEOUT_MS = 8_000L
         /** Max wait on the direct-client/NewPipe race before the last-resort stage. */
-        const val CLIENT_RACE_TIMEOUT_MS = 8_000L
-        /** Hard cap for one full stream resolution; callers retry with fresh state. */
+            /** Hard cap for one full stream resolution; callers retry with fresh state. */
         const val STREAM_RESOLVE_TOTAL_TIMEOUT_MS = 40_000L
         /** Bound for the InnerTubeX cipher stage so a hung resolve fails fast. */
         const val INNERTUBEX_STAGE_TIMEOUT_MS = 7_000L
@@ -5127,8 +5107,7 @@ class InnerTubeMusicApi @Inject constructor(
         const val URL_EXPIRY_MARGIN_MS = 2 * 60 * 1000L
         const val REQUEST_RETRY_BASE_DELAY_MS = 250L
         const val REQUEST_RETRY_JITTER_MS = 180L
-        const val NEWPIPE_RETRY_BASE_DELAY_MS = 300L
-        const val NEWPIPE_RETRY_JITTER_MS = 220L
+        
         const val UNKNOWN_STREAM_EXPIRY_TTL_MS = 5 * 60 * 1000L
 
         val CONFIRMED_UNAVAILABLE_REASONS = listOf(

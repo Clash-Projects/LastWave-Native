@@ -67,22 +67,7 @@ object DownbeatGridEstimator {
         )
     }
 
-    /**
-     * Checks if two BPMs are harmonically equivalent through half-time or double-time.
-     */
-    fun isHarmonicallyEquivalent(bpmA: Float, bpmB: Float, tolerancePercent: Float = 4.0f): Boolean {
-        if (bpmA <= 0f || bpmB <= 0f) return false
-        val tol = tolerancePercent / 100.0f
-
-        // 1:1 match
-        if (abs(bpmA - bpmB) / bpmB <= tol) return true
-        // 1:2 (half-time: e.g. 70 bpm vs 140 bpm)
-        if (abs(bpmA * 2.0f - bpmB) / bpmB <= tol) return true
-        // 2:1 (double-time: e.g. 140 bpm vs 70 bpm)
-        if (abs(bpmA - bpmB * 2.0f) / (bpmB * 2.0f) <= tol) return true
-
-        return false
-    }
+    
 
     private fun detectSpectralBpm(pcm: FloatArray, sampleRate: Float): Float? {
         if (pcm.isEmpty()) return null

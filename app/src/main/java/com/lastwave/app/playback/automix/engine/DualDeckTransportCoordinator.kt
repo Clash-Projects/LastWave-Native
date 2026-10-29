@@ -296,10 +296,5 @@ class DualDeckTransportCoordinator @Inject constructor(
         }
     }
 
-    fun setJamRoomActive(active: Boolean) {
-        isJamRoomActive = active
-        if (active) {
-            cancelTransition(revertToPrimary = true)
-        }
-    }
+    
 }

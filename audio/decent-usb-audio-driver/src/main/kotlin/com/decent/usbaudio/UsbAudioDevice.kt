@@ -660,8 +660,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
         return pick
     }
 
-    /** Rates every playback alt states (UAC1); empty when the descriptors do not say. */
-    fun statedRatesFor(alt: Int): String = parsedAltRates[alt]?.toString() ?: ""
+    
 
     fun findAltSettingForBitDepth(targetBitDepth: Int): Pair<Int, Int> {
         if (parsedAltSettings.isEmpty()) {

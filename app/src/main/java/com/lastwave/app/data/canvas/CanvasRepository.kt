@@ -174,34 +174,7 @@ class CanvasRepository @Inject constructor(
         }
     }
 
-    /**
-     * Resolves canvas for an entire album release.
-     */
-    suspend fun canvasForAlbum(
-        album: String,
-        artist: String,
-        cellularAllowed: Boolean = true,
-    ): CanvasArtwork? {
-        val name = album.cleaned()
-        val credit = artist.cleaned()
-        if (name.isBlank() || credit.isBlank()) return null
-
-        val key = "album|$name|$credit"
-        val cachedAnswer = synchronized(cache) { cache[key] }
-        if (cachedAnswer != null) return cachedAnswer.artwork
-
-        if (!cellularAllowed && networkMonitor.isOnCellular()) {
-            return null
-        }
-
-        return resolve(key, withAlbum = true) {
-            firstHit(
-                { AppleMusicCanvas.searchAlbum(okHttpClient, name, credit) },
-                { TidalCanvas.searchAlbum(okHttpClient, name, credit) },
-                { CommunityCanvas.search(okHttpClient, name, credit, name) },
-            ) { it.matches(name, credit, name) }
-        }
-    }
+    
 
     /**
      * Resolves Apple Music motion artwork video for an artist profile.

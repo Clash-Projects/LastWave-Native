@@ -28,7 +28,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 object ExpressiveMotion {
     const val Quick = 160
     const val Standard = 300
-    const val Emphasized = 440
 
     // Spatial springs: overshoot and bounce for layout and scale transitions
     fun <T> spatialFast() = spring<T>(
@@ -109,22 +108,4 @@ fun Modifier.expressivePressScale(
     }
 }
 
-/**
- * Clickable surface with expressive spring-based bounce feedback.
- */
-@Composable
-fun Modifier.expressiveBounceClickable(
-    enabled: Boolean = true,
-    targetScale: Float = 0.96f,
-    onClick: () -> Unit,
-): Modifier {
-    val interactionSource = remember { MutableInteractionSource() }
-    return this
-        .expressivePressScale(interactionSource, targetScale)
-        .clickable(
-            interactionSource = interactionSource,
-            indication = ripple(),
-            enabled = enabled,
-            onClick = onClick,
-        )
-}
+

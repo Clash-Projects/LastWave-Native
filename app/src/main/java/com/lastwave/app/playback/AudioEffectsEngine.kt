@@ -367,9 +367,7 @@ class AudioEffectsEngine @Inject constructor(
         const val EFFECT_PRIORITY = 0
         const val MILLIHERTZ_PER_HZ = 1_000
         const val MILLIBELS_PER_DB = 100f
-        const val MIN_BOOST_PERCENT = 100
-        const val MAX_BOOST_PERCENT = 200
-        const val MAX_BOOST_MILLIBELS = 602
+        
         const val MAX_PRE_LIMITER_BOOST_DB = 1.0f
         // Platform-safe per-band ceiling once the uniform loudness offset is
         // added on top of the EQ curve.

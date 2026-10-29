@@ -93,7 +93,6 @@ val LocalLiquidGlassBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 val LocalLiquidGlassOverlayBackdrop = staticCompositionLocalOf<LayerBackdrop?> { null }
 
 /** Content-brightness hint, kept for compat (native recipe does not need it). */
-val LocalLiquidGlassContentBrightness = compositionLocalOf { 0f }
 
 /** Typealiases for clean, unified Backdrop types (mirrors PlatformBackdrop). */
 typealias LayerBackdrop = LayerBackdrop
@@ -113,13 +112,7 @@ fun rememberLayerBackdrop(
 /** Marks a composable as the source layer that sibling glass surfaces refract. */
 fun Modifier.layerBackdropCompat(backdrop: LayerBackdrop): Modifier = this.nativeBackdrop(backdrop)
 
-/** Remember a backdrop that draws a flat color + content. */
-@Composable
-fun rememberBackdrop(color: Color): LayerBackdrop? =
-    rememberLayerBackdrop {
-        drawRect(color)
-        drawContent()
-    }
+
 
 /**
  * Continuous-curvature squircle (G2 superellipse) implementing [CornerBasedShape].
@@ -397,8 +390,7 @@ fun liquidGlassContainerColor(
     if (color.isSpecified && color.alpha < 0.95f) color else Color.Transparent
 } else color
 
-@Composable
-fun isLiquidGlassEnabled(): Boolean = LocalLiquidGlass.current
+
 
 /**
  * Press/hold state holder for a single liquid-glass surface.
@@ -660,30 +652,7 @@ fun LiquidGlassContainer(
     )
 }
 
-/** Floating action pill hosting icon buttons in a liquid glass shell. */
-@Composable
-fun LiquidGlassActionPill(
-    backdrop: Backdrop?,
-    modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(24.dp),
-    content: @Composable RowScope.() -> Unit,
-) {
-    if (backdrop == null || !isLiquidGlassBackdropSupported()) {
-        Row(
-            modifier = modifier
-                .clip(shape)
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f)),
-            verticalAlignment = Alignment.CenterVertically,
-            content = content,
-        )
-        return
-    }
-    Row(
-        modifier = modifier.liquidGlass(backdrop, shape, true, Highlight.Default),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content,
-    )
-}
+
 
 /** LiquidGlassIconButton: ImageVector version, small circles use narrow highlight. */
 @Composable
@@ -801,24 +770,7 @@ fun Modifier.liquidGlassChrome(
     )
 }
 
-/**
- * Crash-free stub: old BackdropBlur did a full-screen 36dp sibling blur inside
- * its own capture (self-capture loop). Now draws only a veil, no backdrop.
- */
-@Composable
-fun BackdropBlur(
-    radius: Dp,
-    modifier: Modifier = Modifier,
-    veil: Color = Color.Unspecified,
-    veilAlpha: Float = 0.74f,
-    content: @Composable BoxScope.() -> Unit,
-) {
-    val resolvedVeil = if (veil == Color.Unspecified) MaterialTheme.colorScheme.surface else veil
-    Box(modifier) {
-        Box(Modifier.matchParentSize(), content = content)
-        Box(Modifier.matchParentSize().background(resolvedVeil.copy(alpha = veilAlpha)))
-    }
-}
+
 
 /**
  * Observe-only drag/press recogniser (Kyant catalog DragGestureInspector).

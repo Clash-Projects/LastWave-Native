@@ -27,7 +27,6 @@ internal object CrossfadeCurve {
      * this the natural advance is both honest and better; at or above it a
      * real ramp still happens.
      */
-    const val MIN_OVERLAP_MS = 250L
 
     /** Outgoing fader at [progress] (0 = full, 1 = silent). */
     fun outgoingGain(progress: Float): Float =
