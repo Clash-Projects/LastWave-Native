@@ -1014,7 +1014,6 @@
     <string name="alb_tracks">Треки</string>
     <string name="alb_empty">Треков для этого альбома сейчас нет. Повторите попытку позже.</string>
     <string name="alb_load_fail">Не удалось загрузить сведения об альбоме.</string>
-    <string name="alb_save_fail">Не удалось сохранить альбом. Попробуйте еще раз.</string>
     <string name="nr_title">Новые релизы</string>
     <string name="nr_sub">Найдите свежие капли</string>
     <string name="nr_load_fail">Не удалось загрузить новые выпуски.</string>

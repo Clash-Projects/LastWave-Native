@@ -1014,7 +1014,6 @@
     <string name="alb_tracks">Faixas</string>
     <string name="alb_empty">Nenhuma faixa listada para este álbum no momento. Tente novamente mais tarde.</string>
     <string name="alb_load_fail">Falha ao carregar detalhes do álbum</string>
-    <string name="alb_save_fail">Não foi possível salvar o álbum. Tente novamente.</string>
     <string name="nr_title">Novos lançamentos</string>
     <string name="nr_sub">Encontre gotas frescas</string>
     <string name="nr_load_fail">Não foi possível carregar novos lançamentos</string>

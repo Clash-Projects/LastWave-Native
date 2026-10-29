@@ -1014,7 +1014,6 @@
     <string name="alb_tracks">Pistas</string>
     <string name="alb_empty">No hay pistas listadas para este álbum en este momento; inténtalo de nuevo más tarde.</string>
     <string name="alb_load_fail">No se pudieron cargar los detalles del álbum</string>
-    <string name="alb_save_fail">No se pudo guardar el álbum. Intentar otra vez.</string>
     <string name="nr_title">Nuevos lanzamientos</string>
     <string name="nr_sub">Encuentra gotas frescas</string>
     <string name="nr_load_fail">No se pudieron cargar nuevos lanzamientos</string>
