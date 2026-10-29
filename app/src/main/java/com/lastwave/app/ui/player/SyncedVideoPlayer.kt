@@ -779,7 +779,7 @@ fun SyncedCoverVideoPlayer(
         // Center play indicator when paused
         if (!playerState.isPlaying) {
             Surface(
-                onClick = { musicPlayer.play() },
+                onClick = { musicPlayer.togglePlayPause() },
                 shape = CircleShape,
                 color = Color.Black.copy(alpha = 0.65f),
                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
