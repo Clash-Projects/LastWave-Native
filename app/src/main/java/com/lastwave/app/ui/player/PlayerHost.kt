@@ -1065,6 +1065,7 @@ private fun ExpandedPlayer(
         canvas = canvas,
         canvasEnabled = settings.canvasEnabled,
         canvasFullBleedEnabled = settings.canvasFullBleed,
+        musicVideoEnabled = settings.musicVideoEnabled,
         currentTab = currentTab,
         onTabChange = onTabChange,
         onRetryLyrics = onRetryLyrics,
@@ -2152,6 +2153,7 @@ private fun FullPlayer(
     canvas: com.lastwave.app.data.canvas.CanvasArtwork? = null,
     canvasEnabled: Boolean = true,
     canvasFullBleedEnabled: Boolean = true,
+    musicVideoEnabled: Boolean = true,
     currentTab: FullPlayerTab,
     onTabChange: (FullPlayerTab) -> Unit,
     onRetryLyrics: () -> Unit,
@@ -2171,8 +2173,10 @@ private fun FullPlayer(
     val isTablet = isTabletOrWideScreen()
     val isTabletLandscape = isLandscape && (isTablet || configuration.screenWidthDp >= 600)
     val isCanvasActive = canvasEnabled && canvas != null
-    val showFullBleed = canvasFullBleedEnabled
-    val showSleeveCanvas = isCanvasActive && (!showFullBleed || isTabletLandscape)
+    var showSyncedVideo by remember(track.videoId, track.title) { mutableStateOf(false) }
+    val isVideoActive = showSyncedVideo && musicVideoEnabled
+    val showFullBleed = canvasFullBleedEnabled && !isVideoActive
+    val showSleeveCanvas = isCanvasActive && (!showFullBleed || isTabletLandscape) && !isVideoActive
     // activeCanvas is the single gate every render branch below keys off, so it also
     // carries the Animated Album Canvas toggle. The ViewModel nulls canvasState
     // asynchronously, so without this a disabled toggle still paints one frame of
@@ -2218,7 +2222,6 @@ private fun FullPlayer(
         }
     }
     var showTrackMenu by remember(track.videoId, track.title) { mutableStateOf(false) }
-    var showSyncedVideo by remember(track.videoId, track.title) { mutableStateOf(false) }
     var showSignalPath by remember { mutableStateOf(false) }
     var showAudioControls by remember { mutableStateOf(false) }
     var showAutoEq by remember { mutableStateOf(false) }
@@ -2738,6 +2741,27 @@ private fun FullPlayer(
                                         )
                                     }
                                 }
+                                if (currentTab == FullPlayerTab.NOW_PLAYING && musicVideoEnabled) {
+                                    LiquidGlassSurface(
+                                        onClick = { showSyncedVideo = !showSyncedVideo },
+                                        shape = CircleShape,
+                                        color = if (showSyncedVideo) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                                        else liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
+                                        contentColor = if (showSyncedVideo) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.94f),
+                                        glassModifier = Modifier.liquidGlassChrome(
+                                            CircleShape,
+                                            LocalLiquidGlass.current,
+                                            LiquidGlassPreset.FloatingControls,
+                                        ),
+                                        modifier = Modifier.size(44.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.SmartDisplay,
+                                            contentDescription = if (showSyncedVideo) "Show album art" else "Watch video",
+                                            modifier = Modifier.size(22.dp),
+                                        )
+                                    }
+                                }
                                 LiquidGlassSurface(
                                     onClick = { showTrackMenu = true },
                                     shape = CircleShape,
@@ -3006,6 +3030,66 @@ private fun FullPlayer(
                                             .coerceAtMost(370.dp)
 
                                         if (sleeveAlpha > 0.001f) {
+                                            if (isVideoActive) {
+                                                val videoWidth = minOf(maxWidth, 420.dp)
+                                                val videoGlowAlpha by animateFloatAsState(
+                                                    targetValue = if (state.isPlaying) 0.55f else 0.25f,
+                                                    animationSpec = tween(600),
+                                                    label = "videoGlowAlpha",
+                                                )
+                                                // Ambient glow matching playing track colors behind the 16:9 video
+                                                Box(
+                                                    modifier = Modifier
+                                                        .width(videoWidth + 24.dp)
+                                                        .aspectRatio(16f / 9f)
+                                                        .graphicsLayer {
+                                                            translationX = shownArtworkX * 0.7f
+                                                            alpha = videoGlowAlpha * sleeveAlpha
+                                                        }
+                                                        .background(
+                                                            Brush.radialGradient(
+                                                                0.0f to ambientColor.copy(alpha = 0.50f),
+                                                                0.60f to ambientCompanion.copy(alpha = 0.22f),
+                                                                1.0f to Color.Transparent,
+                                                            ),
+                                                            shape = RoundedCornerShape(32.dp),
+                                                        ),
+                                                )
+
+                                                val videoPlayingScale by animateFloatAsState(
+                                                    targetValue = if (state.isPlaying) 1.0f else 0.94f,
+                                                    animationSpec = spring(
+                                                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                        stiffness = Spring.StiffnessMediumLow,
+                                                    ),
+                                                    label = "videoPlayingScale",
+                                                )
+
+                                                Surface(
+                                                    shape = RoundedCornerShape(22.dp),
+                                                    color = Color.Black,
+                                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                                                    tonalElevation = 6.dp * sleeveAlpha,
+                                                    shadowElevation = if (state.isPlaying) 26.dp * sleeveAlpha else 12.dp * sleeveAlpha,
+                                                    modifier = Modifier
+                                                        .width(videoWidth)
+                                                        .aspectRatio(16f / 9f)
+                                                        .graphicsLayer {
+                                                            scaleX = videoPlayingScale
+                                                            scaleY = videoPlayingScale
+                                                            translationX = shownArtworkX
+                                                            rotationZ = shownArtworkX / 80f
+                                                            alpha = sleeveAlpha
+                                                        },
+                                                ) {
+                                                    SyncedCoverVideoPlayer(
+                                                        track = track,
+                                                        musicPlayer = player,
+                                                        onCloseVideo = { showSyncedVideo = false },
+                                                        modifier = Modifier.fillMaxSize(),
+                                                    )
+                                                }
+                                            } else {
                                             val glowAlpha by animateFloatAsState(
                                                 targetValue = if (state.isPlaying) 0.65f else 0.35f,
                                                 animationSpec = tween(600),
@@ -3061,6 +3145,7 @@ private fun FullPlayer(
                                                     pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
                                                     onAspectRatioChanged = { canvasAspect = it },
                                                 )
+                                            }
                                             }
                                         }
 
@@ -3300,6 +3385,40 @@ private fun FullPlayer(
                                                     )
                                                 }
                                             }
+                                            if (musicVideoEnabled) {
+                                                val videoInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                                                val isVideoPressed by videoInteraction.collectIsPressedAsState()
+                                                val videoScale by animateFloatAsState(
+                                                    targetValue = if (isVideoPressed) 0.82f else 1.0f,
+                                                    animationSpec = ExpressiveMotion.spatialSpring(),
+                                                    label = "videoScale",
+                                                )
+                                                LiquidGlassSurface(
+                                                    glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = videoInteraction),
+                                                    onClick = { showSyncedVideo = !showSyncedVideo },
+                                                    interactionSource = videoInteraction,
+                                                    shape = CircleShape,
+                                                    color = if (showSyncedVideo) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                                                    else liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
+                                                    contentColor = if (showSyncedVideo) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.90f),
+                                                    tonalElevation = 0.dp,
+                                                    shadowElevation = 0.dp,
+                                                    modifier = Modifier
+                                                        .size(46.dp)
+                                                        .graphicsLayer {
+                                                            scaleX = videoScale
+                                                            scaleY = videoScale
+                                                        },
+                                                ) {
+                                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                                        Icon(
+                                                            Icons.Filled.SmartDisplay,
+                                                            contentDescription = if (showSyncedVideo) "Show album art" else "Watch video",
+                                                            modifier = Modifier.size(24.dp),
+                                                        )
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                     Spacer(Modifier.height(10.dp))
@@ -3392,13 +3511,7 @@ private fun FullPlayer(
             onWatchVideo = { showSyncedVideo = true },
         )
     }
-    if (showSyncedVideo) {
-        SyncedVideoPlayerDialog(
-            track = track,
-            musicPlayer = player,
-            onDismiss = { showSyncedVideo = false },
-        )
-    }
+
     if (showLyricsOffsetDialog && onSetLyricsOffsetMs != null) {
         LyricsOffsetDialog(
             currentMs = lyricsOffsetMs,
@@ -3632,15 +3745,24 @@ private fun FullPlayerLandscape(
                         }
                     },
             ) {
-                PlayerArtwork(
-                    track = track,
-                    modifier = Modifier.fillMaxSize(),
-                    corner = 24.dp,
-                    canvas = if (showSleeveCanvas) canvas else null,
-                    isPlaying = state.isPlaying,
-                    pausedForTransition = shownDismissY > 1f,
-                    onAspectRatioChanged = { canvasAspect = it },
-                )
+                if (isVideoActive) {
+                    SyncedCoverVideoPlayer(
+                        track = track,
+                        musicPlayer = player,
+                        onCloseVideo = { showSyncedVideo = false },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    PlayerArtwork(
+                        track = track,
+                        modifier = Modifier.fillMaxSize(),
+                        corner = 24.dp,
+                        canvas = if (showSleeveCanvas) canvas else null,
+                        isPlaying = state.isPlaying,
+                        pausedForTransition = shownDismissY > 1f,
+                        onAspectRatioChanged = { canvasAspect = it },
+                    )
+                }
             }
 
             androidx.compose.animation.AnimatedVisibility(
@@ -4015,13 +4137,13 @@ private fun SeekBar(
     primaryColor: Color = MaterialTheme.colorScheme.primary,
     secondaryColor: Color = MaterialTheme.colorScheme.secondary,
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
-    telemetry: com.lastwave.app.playback.harmonicflow.api.DeckBlendTelemetry = com.lastwave.app.playback.harmonicflow.api.DeckBlendTelemetry(),
+    telemetry: com.lastwave.app.playback.automix.api.DeckBlendTelemetry = com.lastwave.app.playback.automix.api.DeckBlendTelemetry(),
 ) {
     val progress by progressState.collectAsStateWithLifecycle()
     val effectiveDurationMs = if (progress.durationMs > 0L) progress.durationMs else fallbackDurationMs.coerceAtLeast(0L)
 
     if (telemetry.isBlendingActive) {
-        com.lastwave.app.ui.player.harmonicflow.HarmonicWaveSeekbarCanvas(
+        com.lastwave.app.ui.player.automix.AutoMixWaveSeekbarCanvas(
             positionMs = progress.positionMs,
             durationMs = effectiveDurationMs,
             telemetry = telemetry,
@@ -4815,15 +4937,52 @@ private fun AppleMusicQualityBadge(
         else -> MaterialTheme.colorScheme.onSurface
     }
 
-    if (state.deckBlendTelemetry.isBlendingActive || state.deckBlendTelemetry.phase == com.lastwave.app.playback.harmonicflow.api.BlendPhase.MIX_COMPLETED) {
+    if (state.deckBlendTelemetry.isBlendingActive || state.deckBlendTelemetry.phase == com.lastwave.app.playback.automix.api.BlendPhase.MIX_COMPLETED) {
         Box(
             modifier = modifier.fillMaxWidth(),
             contentAlignment = Alignment.Center,
         ) {
-            com.lastwave.app.ui.player.harmonicflow.AudioQualityMixBadge(
+            com.lastwave.app.ui.player.automix.AudioQualityMixBadge(
                 telemetry = state.deckBlendTelemetry,
                 standardQualityBadgeText = displayTitle,
             )
+        }
+        return
+    }
+
+    if (state.isCrossfading) {
+        val pillShape = RoundedCornerShape(12.dp)
+        val iridescentBorder = Brush.horizontalGradient(
+            listOf(
+                Color(0xFFFF007F),
+                Color(0xFF00FF7F),
+                Color(0xFF00CFFF),
+                Color(0xFFFF007F),
+            )
+        )
+        Box(
+            modifier = modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(
+                modifier = Modifier
+                    .clip(pillShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f))
+                    .border(1.dp, iridescentBorder, pillShape)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                com.lastwave.app.ui.player.automix.AnimatedWaveformBars()
+                Text(
+                    text = "CROSSFADING",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
+                )
+            }
         }
         return
     }

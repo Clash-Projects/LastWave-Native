@@ -117,8 +117,8 @@ data class MiscSettings(
     val systemEffectsMode: Boolean = false,
     /** When true, shows floating button now playing instead of the bottom mini player card (Settings -> Experimental). */
     val buttonNowPlayingEnabled: Boolean = false,
-    /** When true, shows synced music video option in the Now Playing menu (Settings -> Experimental). Off by default. */
-    val musicVideoEnabled: Boolean = false,
+    /** When true, shows synced music video option in the Now Playing menu (Settings -> Experimental). On by default. */
+    val musicVideoEnabled: Boolean = true,
     val wordByWordLyrics: Boolean = true,
     /** Preferred lyrics source (Settings -> Experimental -> Lyrics Provider).
      *  AUTO races all providers (fastest valid word-sync wins); an explicit
@@ -388,7 +388,7 @@ class SettingsPreferences @Inject constructor(
                 downloadQuality = p.readSafely(Keys.DOWNLOAD_QUALITY)?.takeIf { it in DOWNLOAD_QUALITIES } ?: 27,
                 systemEffectsMode = p.readSafely(Keys.SYSTEM_EFFECTS_MODE) ?: false,
                 buttonNowPlayingEnabled = p.readSafely(Keys.BUTTON_NOW_PLAYING_ENABLED) ?: false,
-                musicVideoEnabled = p.readSafely(Keys.MUSIC_VIDEO_ENABLED) ?: false,
+                musicVideoEnabled = p.readSafely(Keys.MUSIC_VIDEO_ENABLED) ?: true,
                 isStudioMasterClarityEnabled = p.readSafely(Keys.MUSIC_ENHANCER) ?: true,
                 clarityPreset = p.readSafely(Keys.CLARITY_PRESET)?.takeIf { it in 0..3 } ?: 0,
                 clarityAtmosBypass = p.readSafely(Keys.CLARITY_ATMOS_BYPASS) ?: false,

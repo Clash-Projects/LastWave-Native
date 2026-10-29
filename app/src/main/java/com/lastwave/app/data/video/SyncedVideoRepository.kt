@@ -51,7 +51,23 @@ class SyncedVideoRepository @Inject constructor(
                 }
             }
 
-            val bundle = streamExtractor.resolveVideoStreamBundle(targetVideoId)
+            val bundle = try {
+                streamExtractor.resolveVideoStreamBundle(targetVideoId)
+            } catch (e: Exception) {
+                // If resolving direct videoId failed (e.g. audio-only topic track),
+                // fallback to searching YouTube Music for a playable video
+                val searchFallback = runCatching {
+                    innerTube.searchSongs("$trackTitle $trackArtist", limit = 5)
+                }.getOrNull()
+                val fallbackId = searchFallback?.firstOrNull { it.videoId != targetVideoId && it.videoId.isNotBlank() }?.videoId
+                if (!fallbackId.isNullOrBlank()) {
+                    streamExtractor.resolveVideoStreamBundle(fallbackId).also {
+                        targetVideoId = fallbackId
+                    }
+                } else {
+                    throw e
+                }
+            }
             cache[targetVideoId] = CachedVideoBundle(
                 bundle = bundle,
                 expiresAtMs = now + CACHE_EXPIRY_MS,

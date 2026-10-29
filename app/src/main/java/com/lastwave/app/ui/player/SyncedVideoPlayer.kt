@@ -1,6 +1,18 @@
 package com.lastwave.app.ui.player
 
 import android.app.Activity
+import android.content.pm.ActivityInfo
+import android.os.SystemClock
+import androidx.compose.animation.scaleIn
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.unit.sp
+import com.lastwave.app.ui.theme.ExpressiveMotion
+import kotlinx.coroutines.Job
 import android.content.ContextWrapper
 import android.util.Log
 import android.view.TextureView
@@ -198,6 +210,595 @@ class SyncedVideoViewModel @Inject constructor(
  */
 @OptIn(UnstableApi::class)
 @Composable
+
+private enum class VideoSeekSide { REWIND, FORWARD }
+
+/**
+ * In-place 16:9 synchronized video player designed to replace album cover art.
+ * - Audio remains driving master clock from [MusicPlayer]; video runs muted with volume = 0f.
+ * - Exact PLL sync loop locks video to audio with zero buffer thrashing.
+ * - Smoothly expands into edge-to-edge sensor landscape cinema mode when fullscreen is requested.
+ */
+@OptIn(UnstableApi::class)
+@Composable
+fun SyncedCoverVideoPlayer(
+    track: PlayableTrack,
+    musicPlayer: MusicPlayer,
+    onCloseVideo: () -> Unit,
+    modifier: Modifier = Modifier,
+    viewModel: SyncedVideoViewModel = hiltViewModel(),
+) {
+    val context = LocalContext.current
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val playerState by musicPlayer.state.collectAsStateWithLifecycle()
+    val progressState by musicPlayer.progressState.collectAsStateWithLifecycle()
+
+    var isFullscreen by remember { mutableStateOf(false) }
+    var controlsVisible by remember { mutableStateOf(true) }
+    var isRendered by remember { mutableStateOf(false) }
+    var showQualityDialog by remember { mutableStateOf(false) }
+    var doubleTapSide by remember { mutableStateOf<VideoSeekSide?>(null) }
+    var seekResetJob by remember { mutableStateOf<Job?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    var lastHardSeekTime by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(track) {
+        viewModel.loadVideo(track.title, track.artist, track.videoId)
+    }
+
+    // Auto-hide controls after inactivity
+    LaunchedEffect(controlsVisible) {
+        if (controlsVisible) {
+            delay(3500L)
+            controlsVisible = false
+        }
+    }
+
+    val videoPlayer = remember(context) {
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* minBufferMs = */ 2_000,
+                /* maxBufferMs = */ 8_000,
+                /* bufferForPlaybackMs = */ 1_000,
+                /* bufferForPlaybackAfterRebufferMs = */ 2_000,
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setDefaultRequestProperties(
+                mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Origin" to "https://www.youtube.com",
+                    "Referer" to "https://www.youtube.com",
+                )
+            )
+        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+            .setLoadControl(loadControl)
+            .build()
+            .apply {
+                volume = 0f
+                videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
+                trackSelectionParameters = trackSelectionParameters.buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                    .build()
+            }
+    }
+
+    DisposableEffect(videoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onRenderedFirstFrame() {
+                isRendered = true
+            }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                Log.w("SyncedVideo", "Video player error: ${error.message}", error)
+            }
+        }
+        videoPlayer.addListener(listener)
+        onDispose {
+            videoPlayer.removeListener(listener)
+            videoPlayer.release()
+        }
+    }
+
+    // Load stream into video player when ready or when switching quality
+    LaunchedEffect(uiState) {
+        val state = uiState
+        if (state is SyncedVideoUiState.Ready) {
+            val stream = state.activeStream
+            val currentMediaUri = videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
+            if (currentMediaUri == stream.url) return@LaunchedEffect
+
+            isRendered = false
+            val currentPos = videoPlayer.currentPosition.takeIf { it > 0 } ?: musicPlayer.currentPositionMs()
+            val mediaItem = MediaItem.Builder()
+                .setUri(stream.url)
+                .apply {
+                    stream.mimeType?.let { setMimeType(it) }
+                }
+                .build()
+            videoPlayer.setMediaItem(mediaItem)
+            videoPlayer.prepare()
+            videoPlayer.seekTo(currentPos)
+            videoPlayer.playWhenReady = playerState.isPlaying
+        }
+    }
+
+    // Exact millisecond synchronization loop (PLL) with hard-seek cooldown
+    LaunchedEffect(videoPlayer, playerState.isPlaying, uiState) {
+        if (uiState !is SyncedVideoUiState.Ready) return@LaunchedEffect
+        while (isActive) {
+            val audioPos = musicPlayer.currentPositionMs()
+            val videoPos = videoPlayer.currentPosition
+            val driftMs = videoPos - audioPos
+            val audioSpeed = playerState.speed
+            val now = SystemClock.elapsedRealtime()
+
+            // Play / Pause sync
+            if (videoPlayer.playWhenReady != playerState.isPlaying) {
+                videoPlayer.playWhenReady = playerState.isPlaying
+            }
+
+            // Sync only when ready (avoid resetting while buffering)
+            if (videoPlayer.playbackState == Player.STATE_READY) {
+                if (abs(driftMs) > 300L) {
+                    if (now - lastHardSeekTime > 650L) {
+                        videoPlayer.seekTo(audioPos)
+                        lastHardSeekTime = now
+                    }
+                    if (videoPlayer.playbackParameters.speed != audioSpeed) {
+                        videoPlayer.playbackParameters = PlaybackParameters(audioSpeed)
+                    }
+                } else if (abs(driftMs) > 40L) {
+                    // Smooth speed scaling for micro-drift
+                    val speedCorrection = if (driftMs > 0) 0.96f else 1.04f
+                    videoPlayer.playbackParameters = PlaybackParameters(audioSpeed * speedCorrection)
+                } else {
+                    if (videoPlayer.playbackParameters.speed != audioSpeed) {
+                        videoPlayer.playbackParameters = PlaybackParameters(audioSpeed)
+                    }
+                }
+            }
+
+            delay(50L)
+        }
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pulseAlpha",
+    )
+
+    val videoAlpha by animateFloatAsState(
+        targetValue = if (isRendered) 1f else 0f,
+        animationSpec = tween(durationMillis = 300),
+        label = "videoFade",
+    )
+
+    Box(
+        modifier = modifier
+            .aspectRatio(16f / 9f)
+            .clip(RoundedCornerShape(22.dp))
+            .background(Color.Black)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { controlsVisible = !controlsVisible },
+                    onDoubleTap = { offset ->
+                        val isRightSide = offset.x > size.width / 2
+                        val delta = if (isRightSide) 10_000L else -10_000L
+                        val newPos = (musicPlayer.currentPositionMs() + delta)
+                            .coerceIn(0L, progressState.durationMs.coerceAtLeast(1L))
+                        musicPlayer.seekTo(newPos)
+                        videoPlayer.seekTo(newPos)
+                        lastHardSeekTime = SystemClock.elapsedRealtime()
+                        doubleTapSide = if (isRightSide) VideoSeekSide.FORWARD else VideoSeekSide.REWIND
+                        seekResetJob?.cancel()
+                        seekResetJob = coroutineScope.launch {
+                            delay(650L)
+                            doubleTapSide = null
+                        }
+                    },
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        when (uiState) {
+            is SyncedVideoUiState.Loading -> {
+                CircularProgressIndicator(
+                    color = MaterialTheme.colorScheme.primary,
+                    strokeWidth = 2.5.dp,
+                    modifier = Modifier.size(36.dp),
+                )
+            }
+            is SyncedVideoUiState.Error -> {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(16.dp),
+                ) {
+                    Text(
+                        text = (uiState as SyncedVideoUiState.Error).message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.7f),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    FilledTonalButton(
+                        onClick = { viewModel.retry(track.title, track.artist, track.videoId) },
+                        contentPadding = ButtonDefaults.TextButtonContentPadding,
+                    ) {
+                        Text("Retry", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+            is SyncedVideoUiState.Ready -> {
+                AndroidView(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .alpha(videoAlpha),
+                    factory = { viewContext ->
+                        TextureView(viewContext).apply {
+                            layoutParams = FrameLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                            )
+                            videoPlayer.setVideoTextureView(this)
+                        }
+                    },
+                )
+            }
+        }
+
+        // Animated double-tap seek side bubbles
+        AnimatedVisibility(
+            visible = doubleTapSide == VideoSeekSide.REWIND,
+            enter = fadeIn(tween(100)) + scaleIn(ExpressiveMotion.spatialSpring(), initialScale = 0.88f),
+            exit = fadeOut(tween(200)),
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .fillMaxWidth(0.38f)
+                .fillMaxHeight(0.85f),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp, topEnd = 60.dp, bottomEnd = 60.dp))
+                    .background(Color.Black.copy(alpha = 0.60f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Filled.FastRewind, null, tint = Color.White, modifier = Modifier.size(26.dp))
+                    Spacer(Modifier.height(4.dp))
+                    Text("-10s", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = doubleTapSide == VideoSeekSide.FORWARD,
+            enter = fadeIn(tween(100)) + scaleIn(ExpressiveMotion.spatialSpring(), initialScale = 0.88f),
+            exit = fadeOut(tween(200)),
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxWidth(0.38f)
+                .fillMaxHeight(0.85f),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(topEnd = 20.dp, bottomEnd = 20.dp, topStart = 60.dp, bottomStart = 60.dp))
+                    .background(Color.Black.copy(alpha = 0.60f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Filled.FastForward, null, tint = Color.White, modifier = Modifier.size(26.dp))
+                    Spacer(Modifier.height(4.dp))
+                    Text("+10s", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+        }
+
+        // Top controls bar with sleek glass styling
+        AnimatedVisibility(
+            visible = controlsVisible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth(),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Black.copy(alpha = 0.75f), Color.Transparent)
+                        )
+                    )
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Sync badge
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color.Black.copy(alpha = 0.55f),
+                    border = BorderStroke(0.7.dp, Color.White.copy(alpha = 0.18f)),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF00E676).copy(alpha = pulseAlpha))
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            text = stringResource(R.string.video_sync_tag),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                letterSpacing = 0.8.sp,
+                            ),
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                        )
+                    }
+                }
+
+                Spacer(Modifier.weight(1f))
+
+                // Quality Badge
+                Surface(
+                    onClick = { showQualityDialog = true },
+                    shape = RoundedCornerShape(50),
+                    color = Color.Black.copy(alpha = 0.55f),
+                    border = BorderStroke(0.7.dp, Color.White.copy(alpha = 0.18f)),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Icon(
+                            Icons.Filled.HighQuality,
+                            contentDescription = stringResource(R.string.video_quality),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(15.dp),
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = if (uiState is SyncedVideoUiState.Ready) {
+                                (uiState as SyncedVideoUiState.Ready).currentQualityLabel
+                            } else "Auto",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                        )
+                    }
+                }
+
+                Spacer(Modifier.width(6.dp))
+
+                // Fullscreen Button
+                Surface(
+                    onClick = { isFullscreen = true },
+                    shape = CircleShape,
+                    color = Color.Black.copy(alpha = 0.55f),
+                    border = BorderStroke(0.7.dp, Color.White.copy(alpha = 0.18f)),
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Filled.Fullscreen,
+                            contentDescription = stringResource(R.string.video_enter_fullscreen),
+                            tint = Color.White,
+                            modifier = Modifier.size(17.dp),
+                        )
+                    }
+                }
+
+                Spacer(Modifier.width(6.dp))
+
+                // Close / Revert to Cover Art
+                Surface(
+                    onClick = onCloseVideo,
+                    shape = CircleShape,
+                    color = Color.Black.copy(alpha = 0.55f),
+                    border = BorderStroke(0.7.dp, Color.White.copy(alpha = 0.18f)),
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = "Close video, show album art",
+                            tint = Color.White,
+                            modifier = Modifier.size(17.dp),
+                        )
+                    }
+                }
+            }
+        }
+
+        // Center play indicator when paused
+        if (!playerState.isPlaying) {
+            Surface(
+                onClick = { musicPlayer.play() },
+                shape = CircleShape,
+                color = Color.Black.copy(alpha = 0.65f),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(52.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Filled.PlayArrow,
+                        contentDescription = "Play music",
+                        tint = Color.White,
+                        modifier = Modifier.size(30.dp),
+                    )
+                }
+            }
+        }
+    }
+
+    // Fullscreen Dialog (Sensor Landscape Edge-to-Edge)
+    if (isFullscreen) {
+        val fullscreenView = LocalView.current
+        DisposableEffect(fullscreenView) {
+            val activity = generateSequence(fullscreenView.context) { (it as? ContextWrapper)?.baseContext }
+                .filterIsInstance<Activity>().firstOrNull()
+            val originalOrientation = activity?.requestedOrientation
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+
+            val controller = activity?.window?.let { WindowCompat.getInsetsController(it, fullscreenView) }
+            val previousBehavior = controller?.systemBarsBehavior
+            controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller?.hide(WindowInsetsCompat.Type.systemBars())
+
+            onDispose {
+                controller?.show(WindowInsetsCompat.Type.systemBars())
+                previousBehavior?.let { controller?.systemBarsBehavior = it }
+                if (originalOrientation != null) {
+                    activity.requestedOrientation = originalOrientation
+                }
+            }
+        }
+
+        BackHandler { isFullscreen = false }
+
+        Dialog(
+            onDismissRequest = { isFullscreen = false },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false,
+            ),
+        ) {
+            EdgeToEdgeDialogWindow()
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = { controlsVisible = !controlsVisible },
+                            onDoubleTap = { offset ->
+                                val isRightSide = offset.x > size.width / 2
+                                val delta = if (isRightSide) 10_000L else -10_000L
+                                val newPos = (musicPlayer.currentPositionMs() + delta)
+                                    .coerceIn(0L, progressState.durationMs.coerceAtLeast(1L))
+                                musicPlayer.seekTo(newPos)
+                                videoPlayer.seekTo(newPos)
+                                lastHardSeekTime = SystemClock.elapsedRealtime()
+                            },
+                        )
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { viewContext ->
+                        TextureView(viewContext).apply {
+                            layoutParams = FrameLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                            )
+                            videoPlayer.setVideoTextureView(this)
+                        }
+                    },
+                )
+
+                // Fullscreen header
+                AnimatedVisibility(
+                    visible = controlsVisible,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.85f), Color.Transparent)))
+                            .padding(horizontal = 20.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(onClick = { isFullscreen = false }) {
+                            Icon(Icons.Filled.FullscreenExit, null, tint = Color.White)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(track.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(track.artist, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.75f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        Surface(
+                            onClick = { showQualityDialog = true },
+                            shape = RoundedCornerShape(50),
+                            color = Color.White.copy(alpha = 0.18f),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) {
+                                Icon(Icons.Filled.HighQuality, null, tint = Color.White, modifier = Modifier.size(15.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = if (uiState is SyncedVideoUiState.Ready) (uiState as SyncedVideoUiState.Ready).currentQualityLabel else "Auto",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Fullscreen bottom timeline
+                AnimatedVisibility(
+                    visible = controlsVisible,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))))
+                            .padding(horizontal = 20.dp, vertical = 16.dp),
+                    ) {
+                        VideoTimelineRow(
+                            currentPosition = progressState.positionMs,
+                            durationMs = progressState.durationMs,
+                            isUserScrubbing = false,
+                            scrubProgress = 0f,
+                            onScrubChange = {},
+                            onScrubFinished = {},
+                            onToggleFullscreen = { isFullscreen = false },
+                            isFullscreen = true,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showQualityDialog && uiState is SyncedVideoUiState.Ready) {
+        val ready = uiState as SyncedVideoUiState.Ready
+        VideoQualityDialog(
+            bundle = ready.bundle,
+            selectedHeight = ready.selectedHeight,
+            onSelectQuality = { height -> viewModel.selectQuality(height) },
+            onDismiss = { showQualityDialog = false },
+        )
+    }
+}
+
 fun SyncedVideoPlayerDialog(
     track: PlayableTrack,
     musicPlayer: MusicPlayer,

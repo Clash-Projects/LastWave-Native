@@ -108,7 +108,7 @@ class SettingsViewModel @Inject constructor(
     val innerTube: com.lastwave.app.data.music.InnerTubeMusicApi,
     val appUpdateManager: com.lastwave.app.data.update.AppUpdateManager,
     private val spotifyPreferences: com.lastwave.app.data.spotify.SpotifyPreferences,
-    private val harmonicFlowPreferences: com.lastwave.app.playback.harmonicflow.api.HarmonicFlowPreferences,
+    private val autoMixPreferences: com.lastwave.app.playback.automix.api.AutoMixPreferences,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
 ) : ViewModel() {
 
@@ -658,40 +658,41 @@ class SettingsViewModel @Inject constructor(
     fun setLyricsFontScale(scale: Float) = launchSettingsAction("update lyrics font scale") {
         settingsPreferences.setLyricsFontScale(scale)
     }
-    val harmonicFlowSettings: StateFlow<com.lastwave.app.playback.harmonicflow.api.HarmonicFlowSettings> =
-        harmonicFlowPreferences.settings.stateIn(
+    val autoMixSettings: StateFlow<com.lastwave.app.playback.automix.api.AutoMixSettings> =
+        autoMixPreferences.settings.stateIn(
             viewModelScope,
             SharingStarted.Eagerly,
-            com.lastwave.app.playback.harmonicflow.api.HarmonicFlowSettings(),
+            com.lastwave.app.playback.automix.api.AutoMixSettings(),
         )
 
-    fun setHarmonicFlowEnabled(enabled: Boolean) = launchSettingsAction("update harmonicflow enabled") {
-        harmonicFlowPreferences.setHarmonicFlowEnabled(enabled)
+    fun setAutoMixEnabled(enabled: Boolean) = launchSettingsAction("update automix enabled") {
+        autoMixPreferences.setAutoMixEnabled(enabled)
+        if (enabled) settingsPreferences.setCrossfadeEnabled(false)
     }
 
-    fun setHarmonicFlowDurationMode(mode: com.lastwave.app.playback.harmonicflow.api.TransitionDurationMode) =
-        launchSettingsAction("update harmonicflow mode") {
-            harmonicFlowPreferences.setDurationMode(mode)
+    fun setAutoMixDurationMode(mode: com.lastwave.app.playback.automix.api.TransitionDurationMode) =
+        launchSettingsAction("update automix mode") {
+            autoMixPreferences.setDurationMode(mode)
         }
 
-    fun setHarmonicFlowTargetSeconds(seconds: Int) = launchSettingsAction("update harmonicflow target seconds") {
-        harmonicFlowPreferences.setTargetDurationSeconds(seconds.coerceIn(12, 30))
+    fun setAutoMixTargetSeconds(seconds: Int) = launchSettingsAction("update automix target seconds") {
+        autoMixPreferences.setTargetDurationSeconds(seconds.coerceIn(12, 30))
     }
 
-    fun setHarmonicFlowSpectralSweeps(enabled: Boolean) = launchSettingsAction("update harmonicflow spectral sweeps") {
-        harmonicFlowPreferences.setSpectralFilterSweepsEnabled(enabled)
+    fun setAutoMixSpectralSweeps(enabled: Boolean) = launchSettingsAction("update automix spectral sweeps") {
+        autoMixPreferences.setSpectralFilterSweepsEnabled(enabled)
     }
 
-    fun setHarmonicFlowKeepAlbums(enabled: Boolean) = launchSettingsAction("update harmonicflow keep albums") {
-        harmonicFlowPreferences.setKeepAlbumsContinuous(enabled)
-    }
 
-    fun setHarmonicFlowThermalProfile(profile: com.lastwave.app.playback.harmonicflow.api.ThermalProfile) =
-        launchSettingsAction("update harmonicflow thermal profile") {
-            harmonicFlowPreferences.setThermalProfile(profile)
+    fun setAutoMixThermalProfile(profile: com.lastwave.app.playback.automix.api.ThermalProfile) =
+        launchSettingsAction("update automix thermal profile") {
+            autoMixPreferences.setThermalProfile(profile)
         }
 
-    fun setCrossfadeEnabled(enabled: Boolean) = launchSettingsAction("update crossfade") { settingsPreferences.setCrossfadeEnabled(enabled) }
+    fun setCrossfadeEnabled(enabled: Boolean) = launchSettingsAction("update crossfade") {
+        settingsPreferences.setCrossfadeEnabled(enabled)
+        if (enabled) autoMixPreferences.setAutoMixEnabled(false)
+    }
     fun setCrossfadeSeconds(seconds: Int) = launchSettingsAction("update crossfade duration") {
         settingsPreferences.setCrossfadeSeconds(seconds.coerceIn(1, 12))
     }

@@ -154,12 +154,12 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
-                    id = "audio.harmonicflow",
-                    title = "HarmonicFlow Neural AutoDJ",
-                    subtitle = "Beat-matched, harmonic key-locked seamless dual-deck mixing",
+                    id = "audio.automix",
+                    title = "AutoMix",
+                    subtitle = "Beat-matched, key-locked seamless dual-deck mixing",
                     keywords = listOf(
-                        "harmonicflow", "autodj", "automix", "camelot", "beat match", "dj blend",
-                        "transition", "crossfade", "harmonic", "phrase loop"
+                        "autodj", "automix", "camelot", "beat match", "dj blend",
+                        "transition", "crossfade", "phrase loop"
                     ),
                     icon = Icons.Filled.Bolt,
                     iconContainer = { MaterialTheme.colorScheme.primaryContainer },

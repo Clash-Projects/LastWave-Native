@@ -30,6 +30,11 @@ class ChunkedRangeDataSource(
     }
 
     override fun open(dataSpec: DataSpec): Long {
+        if (isCurrentChunkOpen) {
+            runCatching { upstream.close() }
+            isCurrentChunkOpen = false
+            currentChunkRemaining = 0L
+        }
         currentDataSpec = dataSpec
         currentPosition = dataSpec.position
         requestedLength = dataSpec.length
@@ -52,6 +57,7 @@ class ChunkedRangeDataSource(
         if (isCurrentChunkOpen) {
             runCatching { upstream.close() }
             isCurrentChunkOpen = false
+            currentChunkRemaining = 0L
         }
         val spec = currentDataSpec ?: return
         val chunkLength = if (requestedLength != C.LENGTH_UNSET.toLong()) {
@@ -74,6 +80,11 @@ class ChunkedRangeDataSource(
     private fun openUpstream(dataSpec: DataSpec): Long {
         // DefaultDataSource assigns its active source before open() completes.
         // Even a failed open therefore needs close() before the next request.
+        if (isCurrentChunkOpen) {
+            runCatching { upstream.close() }
+            isCurrentChunkOpen = false
+            currentChunkRemaining = 0L
+        }
         isCurrentChunkOpen = true
         return try {
             upstream.open(dataSpec)
@@ -101,7 +112,11 @@ class ChunkedRangeDataSource(
         }
 
         if (currentChunkRemaining <= 0) {
-            openNextChunk()
+            try {
+                openNextChunk()
+            } catch (_: Exception) {
+                return C.RESULT_END_OF_INPUT
+            }
             if (!isCurrentChunkOpen || currentChunkRemaining <= 0) {
                 return C.RESULT_END_OF_INPUT
             }
@@ -110,12 +125,19 @@ class ChunkedRangeDataSource(
         val bytesToRead = minOf(length.toLong(), currentChunkRemaining).toInt()
         val bytesRead = upstream.read(buffer, offset, bytesToRead)
         if (bytesRead == C.RESULT_END_OF_INPUT) {
-            if (requestedLength == C.LENGTH_UNSET.toLong()) {
+            if (requestedLength != C.LENGTH_UNSET.toLong() && bytesReadTotal >= requestedLength) {
                 return C.RESULT_END_OF_INPUT
             }
-            openNextChunk()
-            if (!isCurrentChunkOpen) return C.RESULT_END_OF_INPUT
-            return upstream.read(buffer, offset, bytesToRead)
+            try {
+                openNextChunk()
+            } catch (_: Exception) {
+                return C.RESULT_END_OF_INPUT
+            }
+            if (!isCurrentChunkOpen || currentChunkRemaining <= 0) {
+                return C.RESULT_END_OF_INPUT
+            }
+            val nextBytesToRead = minOf(length.toLong(), currentChunkRemaining).toInt()
+            return upstream.read(buffer, offset, nextBytesToRead)
         }
 
         currentPosition += bytesRead
@@ -130,6 +152,7 @@ class ChunkedRangeDataSource(
         if (isCurrentChunkOpen) {
             runCatching { upstream.close() }
             isCurrentChunkOpen = false
+            currentChunkRemaining = 0L
         }
         currentDataSpec = null
     }

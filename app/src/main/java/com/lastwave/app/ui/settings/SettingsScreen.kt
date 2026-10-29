@@ -941,35 +941,34 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "audio.bit_perfect"),
                             )
                         }
-                        val hfSettings by viewModel.harmonicFlowSettings.collectAsStateWithLifecycle()
+                        val hfSettings by viewModel.autoMixSettings.collectAsStateWithLifecycle()
                         add { position ->
                             SettingsToggleCard(
                                 icon = Icons.Filled.Bolt,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = "HarmonicFlow Neural AutoDJ",
-                                subtitle = if (hfSettings.harmonicFlowEnabled) {
-                                    if (hfSettings.durationMode == com.lastwave.app.playback.harmonicflow.api.TransitionDurationMode.AUTO) {
+                                title = "AutoMix",
+                                subtitle = if (hfSettings.autoMixEnabled) {
+                                    if (hfSettings.durationMode == com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO) {
                                         "Active • Neural phrase-locked (12s–30s)"
                                     } else {
                                         "Active • Custom DJ blend (${hfSettings.targetDurationSeconds}s)"
                                     }
                                 } else {
-                                    "Beat-matched, harmonic key-locked seamless dual-deck mixing"
+                                    "Beat-matched, key-locked seamless dual-deck mixing"
                                 },
-                                checked = hfSettings.harmonicFlowEnabled,
-                                onCheckedChange = viewModel::setHarmonicFlowEnabled,
+                                checked = hfSettings.autoMixEnabled,
+                                onCheckedChange = viewModel::setAutoMixEnabled,
                                 position = position,
                             )
                         }
-                        if (hfSettings.harmonicFlowEnabled) {
+                        if (hfSettings.autoMixEnabled) {
                             add { position ->
-                                HarmonicFlowControlsCard(
+                                AutoMixControlsCard(
                                     settings = hfSettings,
-                                    onDurationModeChange = viewModel::setHarmonicFlowDurationMode,
-                                    onSecondsChange = viewModel::setHarmonicFlowTargetSeconds,
-                                    onSpectralSweepsChange = viewModel::setHarmonicFlowSpectralSweeps,
-                                    onKeepAlbumsChange = viewModel::setHarmonicFlowKeepAlbums,
+                                    onDurationModeChange = viewModel::setAutoMixDurationMode,
+                                    onSecondsChange = viewModel::setAutoMixTargetSeconds,
+                                    onSpectralSweepsChange = viewModel::setAutoMixSpectralSweeps,
                                     position = position,
                                 )
                             }
@@ -3668,12 +3667,11 @@ private fun CrossfadeDurationRow(
 }
 
 @Composable
-private fun HarmonicFlowControlsCard(
-    settings: com.lastwave.app.playback.harmonicflow.api.HarmonicFlowSettings,
-    onDurationModeChange: (com.lastwave.app.playback.harmonicflow.api.TransitionDurationMode) -> Unit,
+private fun AutoMixControlsCard(
+    settings: com.lastwave.app.playback.automix.api.AutoMixSettings,
+    onDurationModeChange: (com.lastwave.app.playback.automix.api.TransitionDurationMode) -> Unit,
     onSecondsChange: (Int) -> Unit,
     onSpectralSweepsChange: (Boolean) -> Unit,
-    onKeepAlbumsChange: (Boolean) -> Unit,
     position: GroupPosition = GroupPosition.SINGLE,
 ) {
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
@@ -3700,19 +3698,19 @@ private fun HarmonicFlowControlsCard(
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
-                        selected = settings.durationMode == com.lastwave.app.playback.harmonicflow.api.TransitionDurationMode.AUTO,
-                        onClick = { onDurationModeChange(com.lastwave.app.playback.harmonicflow.api.TransitionDurationMode.AUTO) },
+                        selected = settings.durationMode == com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO,
+                        onClick = { onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO) },
                         label = { Text("Auto") },
                     )
                     FilterChip(
-                        selected = settings.durationMode == com.lastwave.app.playback.harmonicflow.api.TransitionDurationMode.MANUAL,
-                        onClick = { onDurationModeChange(com.lastwave.app.playback.harmonicflow.api.TransitionDurationMode.MANUAL) },
+                        selected = settings.durationMode == com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL,
+                        onClick = { onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL) },
                         label = { Text("12s–30s") },
                     )
                 }
             }
 
-            if (settings.durationMode == com.lastwave.app.playback.harmonicflow.api.TransitionDurationMode.MANUAL) {
+            if (settings.durationMode == com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL) {
                 Spacer(Modifier.height(10.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -3770,23 +3768,6 @@ private fun HarmonicFlowControlsCard(
                 Switch(
                     checked = settings.spectralFilterSweepsEnabled,
                     onCheckedChange = onSpectralSweepsChange,
-                )
-            }
-
-            Spacer(Modifier.height(10.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("Keep Albums Continuous", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                    Text("Skip blends on sequential tracks of the same album", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Switch(
-                    checked = settings.keepAlbumsContinuous,
-                    onCheckedChange = onKeepAlbumsChange,
                 )
             }
         }

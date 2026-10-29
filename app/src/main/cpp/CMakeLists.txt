@@ -52,10 +52,10 @@ add_library(
     ParametricEqBridge.cpp
     NativeBridge.cpp
     SecretsBridge.cpp
-    harmonicflow/HarmonicFlowJniBridge.cpp
-    harmonicflow/LinkwitzRileyCrossover.cpp
-    harmonicflow/TransientPreservingStretcher.cpp
-    harmonicflow/LufsContourNormalizer.cpp
+    automix/AutoMixJniBridge.cpp
+    automix/LinkwitzRileyCrossover.cpp
+    automix/TransientPreservingStretcher.cpp
+    automix/LufsContourNormalizer.cpp
 )
 
 target_include_directories(
