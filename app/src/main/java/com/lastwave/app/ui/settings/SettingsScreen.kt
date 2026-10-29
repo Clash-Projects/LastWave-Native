@@ -2669,7 +2669,13 @@ fun SettingsScreen(
     }
 
     if (showAutoEq) {
-        com.lastwave.app.ui.settings.autoeq.AutoEqDialog(onDismiss = { showAutoEq = false })
+        com.lastwave.app.ui.settings.autoeq.AutoEqDialog(
+            onDismiss = { showAutoEq = false },
+            onOpenGraphicEq = {
+                showAutoEq = false
+                showEqSheet = true
+            },
+        )
     }
 
     if (showJamSheet) {
@@ -2688,6 +2694,10 @@ fun SettingsScreen(
             onPickPreset = viewModel::applyEqPreset,
             onBandPreview = viewModel::previewEqBandGain,
             onBandChange = viewModel::setEqBandGain,
+            onOpenAutoEq = {
+                showEqSheet = false
+                showAutoEq = true
+            },
         )
     }
 
@@ -5074,6 +5084,7 @@ private fun EqualizerSheet(
     onPickPreset: (String) -> Unit,
     onBandPreview: (Int, Float) -> Unit,
     onBandChange: (Int, Float) -> Unit,
+    onOpenAutoEq: () -> Unit = {},
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
@@ -5162,6 +5173,77 @@ private fun EqualizerSheet(
                     Icon(Icons.Filled.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
                     Text(stringResource(R.string.set_eq_reset), style = MaterialTheme.typography.labelMedium)
+                }
+            }
+
+            // Mode Switcher: 15-Band Graphic vs AutoEQ / Parametric EQ
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.GraphicEq,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "15-Band Graphic",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.Transparent,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable(onClick = {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                onOpenAutoEq()
+                            }),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.Headphones,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "AutoEQ / PEQ",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
 

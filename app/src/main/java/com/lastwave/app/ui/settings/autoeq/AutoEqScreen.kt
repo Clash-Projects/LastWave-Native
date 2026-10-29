@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -89,15 +90,21 @@ import kotlin.math.ln
 import kotlin.math.log10
 import kotlin.math.roundToInt
 
-/** Full-screen AutoEQ editor, opened from Settings → Audio. */
+/** Full-screen AutoEQ editor, opened from Settings → Audio or Player controls. */
 @Composable
-fun AutoEqDialog(onDismiss: () -> Unit) {
+fun AutoEqDialog(
+    onDismiss: () -> Unit,
+    onOpenGraphicEq: (() -> Unit)? = null,
+) {
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-            AutoEqScreen(onBack = onDismiss)
+            AutoEqScreen(
+                onBack = onDismiss,
+                onOpenGraphicEq = onOpenGraphicEq,
+            )
         }
     }
 }
@@ -117,7 +124,11 @@ fun autoEqSummary(viewModel: AutoEqViewModel = hiltViewModel()): String {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AutoEqScreen(onBack: () -> Unit, viewModel: AutoEqViewModel = hiltViewModel()) {
+fun AutoEqScreen(
+    onBack: () -> Unit,
+    onOpenGraphicEq: (() -> Unit)? = null,
+    viewModel: AutoEqViewModel = hiltViewModel(),
+) {
     val context = LocalContext.current
     val enabled by viewModel.enabled.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -158,6 +169,79 @@ fun AutoEqScreen(onBack: () -> Unit, viewModel: AutoEqViewModel = hiltViewModel(
                 Switch(checked = enabled, onCheckedChange = viewModel::setEnabled)
             }
             if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+        }
+
+        if (onOpenGraphicEq != null) {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                Icon(
+                                    Icons.Filled.Headphones,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "AutoEQ / PEQ",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color.Transparent,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable(onClick = onOpenGraphicEq),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                Icon(
+                                    Icons.Filled.GraphicEq,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "15-Band Graphic",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         item { ProfileCard(state, onSearch = { searchOpen = true }, viewModel = viewModel) }
