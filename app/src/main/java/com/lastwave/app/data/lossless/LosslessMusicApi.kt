@@ -124,7 +124,13 @@ class LosslessMusicApi @Inject constructor(
      * timeout before falling back to YouTube anyway.
      */
     val isCoolingDown: Boolean
-        get() = System.currentTimeMillis() < failureCooldownUntilMs
+        get() {
+            val cooling = System.currentTimeMillis() < failureCooldownUntilMs
+            if (!cooling && consecutiveFailures > 0) {
+                consecutiveFailures = 0
+            }
+            return cooling
+        }
 
     companion object {
         // Quality presets
@@ -140,7 +146,7 @@ class LosslessMusicApi @Inject constructor(
          * Consecutive backend misses before the chain is treated as down and
          * every resolve falls through to YouTube directly.
          */
-        private const val FAILURE_COOLDOWN_THRESHOLD = 1
+        private const val FAILURE_COOLDOWN_THRESHOLD = 3
 
         /** How long a backed-off backend stays out of the resolve path. */
         private const val FAILURE_COOLDOWN_MS = 30_000L
@@ -635,8 +641,10 @@ class LosslessMusicApi @Inject constructor(
      */
     private fun noteBackendFailure() {
         consecutiveFailures++
+        Log.w(TAG, "noteBackendFailure: consecutiveFailures=$consecutiveFailures threshold=$FAILURE_COOLDOWN_THRESHOLD")
         if (consecutiveFailures >= FAILURE_COOLDOWN_THRESHOLD) {
             failureCooldownUntilMs = System.currentTimeMillis() + FAILURE_COOLDOWN_MS
+            Log.w(TAG, "noteBackendFailure: backend cooldown triggered for ${FAILURE_COOLDOWN_MS}ms")
         }
     }
 
@@ -670,12 +678,13 @@ class LosslessMusicApi @Inject constructor(
         preferredQuality: Int = QUALITY_MAX_HI_RES,
         excludedUrls: Set<String> = emptySet(),
         isDownload: Boolean = false,
+        timeoutMs: Long? = null,
     ): LosslessAudioStream? = withContext(Dispatchers.IO) {
         if (preferredQuality == QUALITY_YOUTUBE || title.isBlank() || artist.isBlank() || isCoolingDown) {
             return@withContext null
         }
 
-        val budgetMs = if (isDownload) 20_000L else 5_000L
+        val budgetMs = timeoutMs ?: if (isDownload) 20_000L else 8_000L
         withTimeoutOrNull(budgetMs) {
             resolveStreamInternal(
                 title = title,
@@ -705,7 +714,7 @@ class LosslessMusicApi @Inject constructor(
 
         if (allCreds.size == 1) {
             Log.i(TAG, "resolveStream starting for '$title' by '$artist' via addon (preferredQuality=$preferredQuality, isDownload=$isDownload)")
-            val resolved = runCatching {
+            val resolved = try {
                 resolveFromAddon(
                     title = title,
                     artist = artist,
@@ -716,7 +725,12 @@ class LosslessMusicApi @Inject constructor(
                     excludedUrls = excludedUrls,
                     isDownload = isDownload,
                 )
-            }.getOrNull()
+            } catch (c: CancellationException) {
+                throw c
+            } catch (e: Throwable) {
+                Log.w(TAG, "resolveFromAddon failed for '$title': ${e.message}")
+                null
+            }
             if (resolved != null) return resolved
 
             // Atmos fallback: if Dolby Atmos was selected but not found on the track,
@@ -735,7 +749,6 @@ class LosslessMusicApi @Inject constructor(
                 )
             }
 
-            noteBackendFailure()
             return null
         }
 
@@ -743,7 +756,7 @@ class LosslessMusicApi @Inject constructor(
         val candidates = coroutineScope {
             allCreds.map { creds ->
                 async {
-                    runCatching {
+                    try {
                         resolveFromAddon(
                             title = title,
                             artist = artist,
@@ -754,7 +767,12 @@ class LosslessMusicApi @Inject constructor(
                             excludedUrls = excludedUrls,
                             isDownload = isDownload,
                         )
-                    }.getOrNull()
+                    } catch (c: CancellationException) {
+                        throw c
+                    } catch (e: Throwable) {
+                        Log.w(TAG, "resolveFromAddon failed for ${creds.baseUrl}: ${e.message}")
+                        null
+                    }
                 }
             }.awaitAll().filterNotNull()
         }
@@ -775,7 +793,6 @@ class LosslessMusicApi @Inject constructor(
                 )
             }
 
-            noteBackendFailure()
             return null
         }
 
