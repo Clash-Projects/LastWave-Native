@@ -487,6 +487,7 @@ fun FeedScreen(
                         if (showSynthetic && isSectionVisible(HomeSection.FRESH_FINDS) && state.feedData.freshFinds.isNotEmpty()) add("fresh_finds")
                         if (showSynthetic && isSectionVisible(HomeSection.JUMP_BACK_IN) && !isTitleHidden("Listen again") && state.feedData.jumpBackIn.isNotEmpty()) add("jump_back_in")
                         if (showSynthetic && isSectionVisible(HomeSection.MIXES) && !isTitleHidden("Mixed for you") && state.feedData.mixes.isNotEmpty()) add("mixed_for_you")
+                        if (showSynthetic && isSectionVisible(HomeSection.SPOTLIGHT) && state.feedData.spotlight != null) add("spotlight_hero")
                         if (showSynthetic && isSectionVisible(HomeSection.TOP_ARTISTS) && individualTopArtists.isNotEmpty()) add("top_artists")
                         if (showSynthetic && isSectionVisible(HomeSection.HEAVY_ROTATION) && state.feedData.heavyRotation.isNotEmpty()) add("heavy_rotation")
                         if (showSynthetic && isSectionVisible(HomeSection.ALBUMS) && state.feedData.recentAlbums.isNotEmpty()) add("albums_in_rotation")
@@ -551,23 +552,6 @@ fun FeedScreen(
                     }
                     }
 
-                    if (showSynthetic && isSectionVisible(HomeSection.SPOTLIGHT)) {
-                        state.feedData.spotlight?.let { spotlight ->
-                            item(key = "spotlight_hero") {
-                                Box(modifier = Modifier.padding(bottom = 12.dp)) {
-                                    SpotlightHeroCard(
-                                        spotlight = spotlight,
-                                        onPlayRadio = {
-                                            viewModel.playArtistRadio(FeedArtist(ArtistHelper.primaryArtist(spotlight.artistName), spotlight.browseId, spotlight.artworkUrl))
-                                        },
-                                        onOpenArtist = {
-                                            artistAlbumNavigator.openArtist(ArtistHelper.primaryArtist(spotlight.artistName), spotlight.browseId ?: "")
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    }
                     if (showSynthetic && isSectionVisible(HomeSection.QUICK_TILES) && quickTiles.isNotEmpty()) {
                         item(key = "quick_tiles") {
                             HomeContainerSection(
@@ -1032,7 +1016,26 @@ fun FeedScreen(
                         }
                     }
 
-
+                    if (showSynthetic && isSectionVisible(HomeSection.SPOTLIGHT)) {
+                        state.feedData.spotlight?.let { spotlight ->
+                            item(key = "spotlight_hero") {
+                                HomeContainerSection(
+                                    isFirst = activeContainerKeys.firstOrNull() == "spotlight_hero",
+                                    isLast = activeContainerKeys.lastOrNull() == "spotlight_hero",
+                                ) {
+                                    SpotlightHeroCard(
+                                        spotlight = spotlight,
+                                        onPlayRadio = {
+                                            viewModel.playArtistRadio(FeedArtist(ArtistHelper.primaryArtist(spotlight.artistName), spotlight.browseId, spotlight.artworkUrl))
+                                        },
+                                        onOpenArtist = {
+                                            artistAlbumNavigator.openArtist(ArtistHelper.primaryArtist(spotlight.artistName), spotlight.browseId ?: "")
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
 
                     if (showSynthetic && isSectionVisible(HomeSection.TOP_ARTISTS) && individualTopArtists.isNotEmpty()) {
                         item(key = "top_artists") {
@@ -3248,11 +3251,25 @@ private fun HomeContainerSection(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
-                    top = if (isFirst) 14.dp else 8.dp,
-                    bottom = if (isLast) 18.dp else 8.dp,
+                    top = if (isFirst) 14.dp else 0.dp,
+                    bottom = if (isLast) 18.dp else 0.dp,
                 ),
-            content = content,
-        )
+        ) {
+            if (!isFirst) {
+                androidx.compose.material3.HorizontalDivider(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(top = 8.dp, bottom = 12.dp),
+                    thickness = 1.5.dp,
+                    color = MaterialTheme.colorScheme.background,
+                )
+            }
+            content()
+            if (!isLast) {
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+        }
     }
 }
 
