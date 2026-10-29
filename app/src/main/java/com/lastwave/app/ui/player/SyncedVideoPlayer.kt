@@ -799,6 +799,7 @@ fun SyncedCoverVideoPlayer(
     }
 }
 
+@Composable
 fun SyncedVideoPlayerDialog(
     track: PlayableTrack,
     musicPlayer: MusicPlayer,
