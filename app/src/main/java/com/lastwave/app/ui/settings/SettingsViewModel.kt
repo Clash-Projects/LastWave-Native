@@ -108,6 +108,7 @@ class SettingsViewModel @Inject constructor(
     val innerTube: com.lastwave.app.data.music.InnerTubeMusicApi,
     val appUpdateManager: com.lastwave.app.data.update.AppUpdateManager,
     private val spotifyPreferences: com.lastwave.app.data.spotify.SpotifyPreferences,
+    private val harmonicFlowPreferences: com.lastwave.app.playback.harmonicflow.api.HarmonicFlowPreferences,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
 ) : ViewModel() {
 
@@ -657,13 +658,42 @@ class SettingsViewModel @Inject constructor(
     fun setLyricsFontScale(scale: Float) = launchSettingsAction("update lyrics font scale") {
         settingsPreferences.setLyricsFontScale(scale)
     }
+    val harmonicFlowSettings: StateFlow<com.lastwave.app.playback.harmonicflow.api.HarmonicFlowSettings> =
+        harmonicFlowPreferences.settings.stateIn(
+            viewModelScope,
+            SharingStarted.Eagerly,
+            com.lastwave.app.playback.harmonicflow.api.HarmonicFlowSettings(),
+        )
+
+    fun setHarmonicFlowEnabled(enabled: Boolean) = launchSettingsAction("update harmonicflow enabled") {
+        harmonicFlowPreferences.setHarmonicFlowEnabled(enabled)
+    }
+
+    fun setHarmonicFlowDurationMode(mode: com.lastwave.app.playback.harmonicflow.api.TransitionDurationMode) =
+        launchSettingsAction("update harmonicflow mode") {
+            harmonicFlowPreferences.setDurationMode(mode)
+        }
+
+    fun setHarmonicFlowTargetSeconds(seconds: Int) = launchSettingsAction("update harmonicflow target seconds") {
+        harmonicFlowPreferences.setTargetDurationSeconds(seconds.coerceIn(12, 30))
+    }
+
+    fun setHarmonicFlowSpectralSweeps(enabled: Boolean) = launchSettingsAction("update harmonicflow spectral sweeps") {
+        harmonicFlowPreferences.setSpectralFilterSweepsEnabled(enabled)
+    }
+
+    fun setHarmonicFlowKeepAlbums(enabled: Boolean) = launchSettingsAction("update harmonicflow keep albums") {
+        harmonicFlowPreferences.setKeepAlbumsContinuous(enabled)
+    }
+
+    fun setHarmonicFlowThermalProfile(profile: com.lastwave.app.playback.harmonicflow.api.ThermalProfile) =
+        launchSettingsAction("update harmonicflow thermal profile") {
+            harmonicFlowPreferences.setThermalProfile(profile)
+        }
+
     fun setCrossfadeEnabled(enabled: Boolean) = launchSettingsAction("update crossfade") { settingsPreferences.setCrossfadeEnabled(enabled) }
     fun setCrossfadeSeconds(seconds: Int) = launchSettingsAction("update crossfade duration") {
         settingsPreferences.setCrossfadeSeconds(seconds.coerceIn(1, 12))
-    }
-    fun setAutomixEnabled(enabled: Boolean) = launchSettingsAction("update automix") { settingsPreferences.setAutomixEnabled(enabled) }
-    fun setAutomixBars(bars: Int) = launchSettingsAction("update automix bars") {
-        settingsPreferences.setAutomixBars(bars)
     }
     fun setWavySeekbarEnabled(enabled: Boolean) = launchSettingsAction("update seekbar style") {
         settingsPreferences.setWavySeekbarEnabled(enabled)

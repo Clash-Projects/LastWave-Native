@@ -939,30 +939,36 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "audio.bit_perfect"),
                             )
                         }
+                        val hfSettings by viewModel.harmonicFlowSettings.collectAsStateWithLifecycle()
                         add { position ->
                             SettingsToggleCard(
-                                icon = Icons.Filled.AutoAwesome,
-                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                title = "Automix",
-                                subtitle = if (misc.automixEnabled) {
-                                    "Smooth transition between tracks \u2022 ${misc.crossfadeSeconds}s"
+                                icon = Icons.Filled.ElectricBolt,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = "HarmonicFlow Neural AutoDJ",
+                                subtitle = if (hfSettings.harmonicFlowEnabled) {
+                                    if (hfSettings.durationMode == com.lastwave.app.playback.harmonicflow.api.TransitionDurationMode.AUTO) {
+                                        "Active • Neural phrase-locked (12s–30s)"
+                                    } else {
+                                        "Active • Custom DJ blend (${hfSettings.targetDurationSeconds}s)"
+                                    }
                                 } else {
-                                    "Seamless DJ transitions between queued tracks"
+                                    "Beat-matched, harmonic key-locked seamless dual-deck mixing"
                                 },
-                                checked = misc.automixEnabled,
-                                onCheckedChange = viewModel::setAutomixEnabled,
+                                checked = hfSettings.harmonicFlowEnabled,
+                                onCheckedChange = viewModel::setHarmonicFlowEnabled,
                                 position = position,
-                                isHighlighted = (highlightedSettingId == "audio.automix"),
                             )
                         }
-                        if (misc.automixEnabled) {
+                        if (hfSettings.harmonicFlowEnabled) {
                             add { position ->
-                                CrossfadeDurationRow(
-                                    seconds = misc.crossfadeSeconds,
-                                    onSecondsChange = viewModel::setCrossfadeSeconds,
+                                HarmonicFlowControlsCard(
+                                    settings = hfSettings,
+                                    onDurationModeChange = viewModel::setHarmonicFlowDurationMode,
+                                    onSecondsChange = viewModel::setHarmonicFlowTargetSeconds,
+                                    onSpectralSweepsChange = viewModel::setHarmonicFlowSpectralSweeps,
+                                    onKeepAlbumsChange = viewModel::setHarmonicFlowKeepAlbums,
                                     position = position,
-                                    isHighlighted = (highlightedSettingId == "audio.automix_bars" || highlightedSettingId == "audio.crossfade_duration"),
                                 )
                             }
                         }
@@ -972,9 +978,7 @@ fun SettingsScreen(
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                                 title = stringResource(R.string.settings_crossfade),
-                                subtitle = if (misc.automixEnabled) {
-                                    "Active via Automix (${misc.crossfadeSeconds}s)"
-                                } else if (misc.crossfadeEnabled && misc.isBitPerfectEnabled) {
+                                subtitle = if (misc.crossfadeEnabled && misc.isBitPerfectEnabled) {
                                     "Paused while Bit-Perfect is enabled"
                                 } else if (misc.crossfadeEnabled) {
                                     "Smooth transition between tracks \u2022 ${misc.crossfadeSeconds} sec"
@@ -987,7 +991,7 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "audio.crossfade"),
                             )
                         }
-                        if (misc.crossfadeEnabled && !misc.automixEnabled) {
+                        if (misc.crossfadeEnabled) {
                             add { position ->
                                 CrossfadeDurationRow(
                                     seconds = misc.crossfadeSeconds,
@@ -3569,71 +3573,6 @@ private fun SettingsToggleCard(
 
 
 @Composable
-private fun AutomixBarsRow(
-    bars: Int,
-    onBarsChange: (Int) -> Unit,
-    position: GroupPosition = GroupPosition.SINGLE,
-    isHighlighted: Boolean = false,
-) {
-    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
-    val shape = groupShape(position)
-
-    Card(
-        shape = shape,
-        colors = CardDefaults.cardColors(
-            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
-    ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconBadge(
-                    Icons.Filled.AutoAwesome,
-                    MaterialTheme.colorScheme.tertiaryContainer,
-                    MaterialTheme.colorScheme.onTertiaryContainer,
-                )
-                Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Automix Transition Length", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                    Text(
-                        if (bars >= 16) "16 bars \u2022 Extended club blend" else "8 bars \u2022 Standard DJ transition",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                FilterChip(
-                    selected = bars <= 8,
-                    onClick = {
-                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                        onBarsChange(8)
-                    },
-                    label = { Text("8 Bars (Standard)", style = MaterialTheme.typography.labelMedium) },
-                    modifier = Modifier.weight(1f),
-                )
-                FilterChip(
-                    selected = bars >= 16,
-                    onClick = {
-                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                        onBarsChange(16)
-                    },
-                    label = { Text("16 Bars (Extended)", style = MaterialTheme.typography.labelMedium) },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun CrossfadeDurationRow(
     seconds: Int,
     onSecondsChange: (Int) -> Unit,
@@ -3721,6 +3660,132 @@ private fun CrossfadeDurationRow(
                 Text(stringResource(R.string.set_xfade_1), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                 Text(stringResource(R.string.set_xfade_6), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                 Text(stringResource(R.string.set_xfade_12), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HarmonicFlowControlsCard(
+    settings: com.lastwave.app.playback.harmonicflow.api.HarmonicFlowSettings,
+    onDurationModeChange: (com.lastwave.app.playback.harmonicflow.api.TransitionDurationMode) -> Unit,
+    onSecondsChange: (Int) -> Unit,
+    onSpectralSweepsChange: (Boolean) -> Unit,
+    onKeepAlbumsChange: (Boolean) -> Unit,
+    position: GroupPosition = GroupPosition.SINGLE,
+) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val shape = groupShape(position)
+
+    Card(
+        shape = shape,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Transition Duration Mode",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = settings.durationMode == com.lastwave.app.playback.harmonicflow.api.TransitionDurationMode.AUTO,
+                        onClick = { onDurationModeChange(com.lastwave.app.playback.harmonicflow.api.TransitionDurationMode.AUTO) },
+                        label = { Text("Auto") },
+                    )
+                    FilterChip(
+                        selected = settings.durationMode == com.lastwave.app.playback.harmonicflow.api.TransitionDurationMode.MANUAL,
+                        onClick = { onDurationModeChange(com.lastwave.app.playback.harmonicflow.api.TransitionDurationMode.MANUAL) },
+                        label = { Text("12s–30s") },
+                    )
+                }
+            }
+
+            if (settings.durationMode == com.lastwave.app.playback.harmonicflow.api.TransitionDurationMode.MANUAL) {
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Target Blend Duration",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "${settings.targetDurationSeconds}s (Long DJ Blend)",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Slider(
+                    value = settings.targetDurationSeconds.toFloat(),
+                    onValueChange = { value ->
+                        val rounded = value.roundToInt().coerceIn(12, 30)
+                        if (rounded != settings.targetDurationSeconds) {
+                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                            onSecondsChange(rounded)
+                        }
+                    },
+                    valueRange = 12f..30f,
+                    steps = 17,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text("12s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                    Text("20s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                    Text("30s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            Spacer(Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("DJ Spectral Filter Sweeps", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                    Text("3-band Linkwitz-Riley sub-bass swap and resonant filter sweeps", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(
+                    checked = settings.spectralFilterSweepsEnabled,
+                    onCheckedChange = onSpectralSweepsChange,
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Keep Albums Continuous", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                    Text("Skip blends on sequential tracks of the same album", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(
+                    checked = settings.keepAlbumsContinuous,
+                    onCheckedChange = onKeepAlbumsChange,
+                )
             }
         }
     }

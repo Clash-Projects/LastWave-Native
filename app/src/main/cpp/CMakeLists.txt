@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(lastwave_audio LANGUAGES C CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -50,13 +50,12 @@ add_library(
     DspProcessor.cpp
     ParametricEq.cpp
     ParametricEqBridge.cpp
-    AutoMixEngine.cpp
-    AutoMixBridge.cpp
-    TransitionPlanner.cpp
-    WsolaTimeStretcher.cpp
-    BpmPhaseDetector.cpp
     NativeBridge.cpp
     SecretsBridge.cpp
+    harmonicflow/HarmonicFlowJniBridge.cpp
+    harmonicflow/LinkwitzRileyCrossover.cpp
+    harmonicflow/TransientPreservingStretcher.cpp
+    harmonicflow/LufsContourNormalizer.cpp
 )
 
 target_include_directories(

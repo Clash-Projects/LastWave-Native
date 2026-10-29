@@ -132,14 +132,6 @@ data class MiscSettings(
     val crossfadeEnabled: Boolean = false,
     /** Crossfade length in seconds; kept within the native settings slider range. */
     val crossfadeSeconds: Int = 5,
-    /** Native C++ Automix with WSOLA tempo sync, bass-swap, and echo fadeout. */
-    val automixEnabled: Boolean = false,
-    /** Automix phrase transition duration in bars (0 = Auto, 8, or 16 bars). */
-    val automixBars: Int = 8,
-    /** Fast 4-bar blend when skipping track while Automix is on. */
-    val automixOnSkip: Boolean = true,
-    /** When playing consecutive tracks from same album sequentially, bypass Automix DSP for gapless. */
-    val sequentialAlbumBypass: Boolean = true,
     /** When true (default), uses the multi-layer dynamic wavy seekbar.
      *  When false, uses the classic standard progress slider in the player tab. */
     val wavySeekbarEnabled: Boolean = true,
@@ -314,10 +306,6 @@ class SettingsPreferences @Inject constructor(
         val LYRICS_FONT_SCALE = floatPreferencesKey("lw_lyrics_font_scale")
         val CROSSFADE_ENABLED = booleanPreferencesKey("lw_crossfade_enabled")
         val CROSSFADE_SECONDS = intPreferencesKey("lw_crossfade_seconds")
-        val AUTOMIX_ENABLED = booleanPreferencesKey("lw_automix_enabled")
-        val AUTOMIX_BARS = intPreferencesKey("lw_automix_bars")
-        val AUTOMIX_ON_SKIP = booleanPreferencesKey("lw_automix_on_skip")
-        val SEQUENTIAL_ALBUM_BYPASS = booleanPreferencesKey("lw_sequential_album_bypass")
         val WAVY_SEEKBAR_ENABLED = booleanPreferencesKey("lw_wavy_seekbar_enabled")
         val ROTATING_BACKGROUND_ENABLED = booleanPreferencesKey("lw_rotating_background_enabled")
         val LYRICS_ROTATING_BACKGROUND_ENABLED = booleanPreferencesKey("lw_lyrics_rotating_background_enabled")
@@ -411,10 +399,6 @@ class SettingsPreferences @Inject constructor(
                 lyricsFontScale = (p.readSafely(Keys.LYRICS_FONT_SCALE) ?: 1.0f).coerceIn(0.7f, 1.5f),
                 crossfadeEnabled = p.readSafely(Keys.CROSSFADE_ENABLED) ?: false,
                 crossfadeSeconds = (p.readSafely(Keys.CROSSFADE_SECONDS) ?: 5).coerceIn(1, 12),
-                automixEnabled = p.readSafely(Keys.AUTOMIX_ENABLED) ?: false,
-                automixBars = (p.readSafely(Keys.AUTOMIX_BARS) ?: 8).let { if (it >= 16) 16 else if (it == 0) 0 else 8 },
-                automixOnSkip = p.readSafely(Keys.AUTOMIX_ON_SKIP) ?: true,
-                sequentialAlbumBypass = p.readSafely(Keys.SEQUENTIAL_ALBUM_BYPASS) ?: true,
                 wavySeekbarEnabled = p.readSafely(Keys.WAVY_SEEKBAR_ENABLED) ?: true,
                 rotatingBackgroundEnabled = p.readSafely(Keys.ROTATING_BACKGROUND_ENABLED) ?: true,
                 lyricsRotatingBackgroundEnabled = p.readSafely(Keys.LYRICS_ROTATING_BACKGROUND_ENABLED) ?: true,
@@ -706,24 +690,6 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setCrossfadeSeconds(seconds: Int) {
         dataStore.edit { it[Keys.CROSSFADE_SECONDS] = seconds.coerceIn(1, 12) }
-    }
-
-    suspend fun setAutomixEnabled(enabled: Boolean) {
-        dataStore.edit {
-            it[Keys.AUTOMIX_ENABLED] = enabled
-        }
-    }
-
-    suspend fun setAutomixBars(bars: Int) {
-        dataStore.edit { it[Keys.AUTOMIX_BARS] = if (bars >= 16) 16 else if (bars <= 0) 0 else 8 }
-    }
-
-    suspend fun setAutomixOnSkip(enabled: Boolean) {
-        dataStore.edit { it[Keys.AUTOMIX_ON_SKIP] = enabled }
-    }
-
-    suspend fun setSequentialAlbumBypass(enabled: Boolean) {
-        dataStore.edit { it[Keys.SEQUENTIAL_ALBUM_BYPASS] = enabled }
     }
 
     suspend fun setWavySeekbarEnabled(enabled: Boolean) {

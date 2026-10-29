@@ -154,35 +154,19 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
-                    id = "audio.automix",
-                    title = "Automix",
-                    subtitle = "Seamless tempo-synced DJ blends between queued tracks",
+                    id = "audio.harmonicflow",
+                    title = "HarmonicFlow Neural AutoDJ",
+                    subtitle = "Beat-matched, harmonic key-locked seamless dual-deck mixing",
                     keywords = listOf(
-                        "automix", "bpm", "tempo sync", "beat match", "crossfade", "mixxx",
-                        "dj blend", "bass swap", "fade now", "transition"
+                        "harmonicflow", "autodj", "automix", "camelot", "beat match", "dj blend",
+                        "transition", "crossfade", "harmonic", "phrase loop"
                     ),
-                    icon = Icons.Filled.AutoAwesome,
-                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
-                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    icon = Icons.Filled.ElectricBolt,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
                     parentTab = SettingsTab.AUDIO,
                     section = "Audio & Playback",
                     type = EntryType.TOGGLE,
-                )
-            )
-            add(
-                SettingsEntry(
-                    id = "audio.automix_bars",
-                    title = "Automix Transition Length",
-                    subtitle = "Set transition duration (1-12s) for Automix blends",
-                    keywords = listOf(
-                        "automix bars", "transition length", "8 bars", "16 bars", "phrase", "automix duration", "dj blend length"
-                    ),
-                    icon = Icons.Filled.AutoAwesome,
-                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
-                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
-                    parentTab = SettingsTab.AUDIO,
-                    section = "Audio & Playback",
-                    type = EntryType.ACTION,
                 )
             )
             add(

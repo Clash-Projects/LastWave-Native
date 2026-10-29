@@ -258,7 +258,6 @@ import com.lastwave.app.data.playlist.SavedPlaylist
 import com.lastwave.app.data.playlist.LIKED_SONGS_MODE
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.MusicPlayerState
-import com.lastwave.app.playback.AutoMixState
 import com.lastwave.app.playback.PlaybackChromeState
 import com.lastwave.app.playback.formatSampleRateKHz
 import com.lastwave.app.playback.isSpatialAudioCodec
@@ -590,7 +589,7 @@ class PlayerViewModel @Inject constructor(
         }
         lyricsJob?.cancel()
         lyricsJob = viewModelScope.launch {
-            // Lyrics hit other hosts (LRCLIB, Apple, SimpMusic). Starting
+            // Lyrics hit other external providers. Starting
             // them in the same moment as youtubei/player steals connections
             // from the stream extract. Wait until this track is actually
             // playing, then fetch.
@@ -664,7 +663,7 @@ class PlayerViewModel @Inject constructor(
         when (result) {
             is LyricsResult.Success -> {
                 // Single funnel for everything the views draw, mirroring the
-                // reference clients (Metrolist/SimpMusic): one provider
+                // reference lyrics clients: one provider
                 // timestamp stays one drawn row. The timeline is de-overlapped
                 // once so word fill, line focus and auto-scroll all read the
                 // same edge-to-edge clock, then provider fragments are merged
@@ -1246,31 +1245,11 @@ private fun MiniPlayer(
                                 tonalElevation = 2.dp,
                                 modifier = Modifier.fillMaxSize(),
                             ) {
-                                val miniArtworkTrack = state.autoMixOutgoingTrack ?: track
-                                Box(Modifier.fillMaxSize()) {
-                                    PlayerArtwork(
-                                        track = miniArtworkTrack,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .graphicsLayer {
-                                                alpha = if (state.isAutoMixActive && state.autoMixNextTrack != null) {
-                                                    (1f - state.autoMixProgress).coerceIn(0f, 1f)
-                                                } else 1f
-                                            },
-                                        corner = 18.dp,
-                                    )
-                                    if (state.isAutoMixActive && state.autoMixNextTrack != null) {
-                                        PlayerArtwork(
-                                            track = state.autoMixNextTrack,
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .graphicsLayer {
-                                                    alpha = state.autoMixProgress.coerceIn(0f, 1f)
-                                                },
-                                            corner = 18.dp,
-                                        )
-                                    }
-                                }
+                                PlayerArtwork(
+                                    track = track,
+                                    modifier = Modifier.fillMaxSize(),
+                                    corner = 18.dp,
+                                )
                             }
                         }
                         val miniTitleColor = if (LocalIsDarkTheme.current) Color.White else Color.Black
@@ -1376,29 +1355,11 @@ private fun MiniPlayer(
                             .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                         contentAlignment = Alignment.Center,
                     ) {
-                        val miniArtworkTrack = state.autoMixOutgoingTrack ?: track
                         PlayerArtwork(
-                            track = miniArtworkTrack,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .graphicsLayer {
-                                    alpha = if (state.isAutoMixActive && state.autoMixNextTrack != null) {
-                                        (1f - state.autoMixProgress).coerceIn(0f, 1f)
-                                    } else 1f
-                                },
+                            track = track,
+                            modifier = Modifier.fillMaxSize(),
                             corner = 0.dp,
                         )
-                        if (state.isAutoMixActive && state.autoMixNextTrack != null) {
-                            PlayerArtwork(
-                                track = state.autoMixNextTrack,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .graphicsLayer {
-                                        alpha = state.autoMixProgress.coerceIn(0f, 1f)
-                                    },
-                                corner = 0.dp,
-                            )
-                        }
                     }
 
                     // Typography Hierarchy: 15.sp bold title (-0.2.sp letterSpacing) + 13.sp medium artist (0.78 alpha) + 1.dp space
@@ -3091,38 +3052,15 @@ private fun FullPlayer(
                                                         alpha = sleeveAlpha
                                                     },
                                             ) {
-                                                val heroArtworkTrack = state.autoMixOutgoingTrack ?: track
-                                                Box(Modifier.fillMaxSize()) {
-                                                    PlayerArtwork(
-                                                        track = heroArtworkTrack,
-                                                        modifier = Modifier
-                                                            .fillMaxSize()
-                                                            .graphicsLayer {
-                                                                alpha = if (state.isAutoMixActive && state.autoMixNextTrack != null) {
-                                                                    (1f - state.autoMixProgress).coerceIn(0f, 1f)
-                                                                } else 1f
-                                                            },
-                                                        corner = 22.dp,
-                                                        canvas = if (showSleeveCanvas) canvas else null,
-                                                        isPlaying = state.isPlaying,
-                                                        pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
-                                                        onAspectRatioChanged = { canvasAspect = it },
-                                                    )
-                                                    if (state.isAutoMixActive && state.autoMixNextTrack != null) {
-                                                        PlayerArtwork(
-                                                            track = state.autoMixNextTrack,
-                                                            modifier = Modifier
-                                                                .fillMaxSize()
-                                                                .graphicsLayer {
-                                                                    alpha = state.autoMixProgress.coerceIn(0f, 1f)
-                                                                },
-                                                            corner = 22.dp,
-                                                            canvas = null,
-                                                            isPlaying = state.isPlaying,
-                                                            pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
-                                                        )
-                                                    }
-                                                }
+                                                PlayerArtwork(
+                                                    track = track,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    corner = 22.dp,
+                                                    canvas = if (showSleeveCanvas) canvas else null,
+                                                    isPlaying = state.isPlaying,
+                                                    pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
+                                                    onAspectRatioChanged = { canvasAspect = it },
+                                                )
                                             }
                                         }
 
@@ -3376,7 +3314,7 @@ private fun FullPlayer(
                                         primaryColor = ambientColor,
                                         secondaryColor = ambientCompanion,
                                         tertiaryColor = ambientDeep,
-                                        isMixing = state.isAutoMixActive,
+                                        telemetry = state.deckBlendTelemetry,
                                     )
                                     Spacer(Modifier.height(0.dp))
                                     AppleMusicQualityBadge(
@@ -3694,38 +3632,15 @@ private fun FullPlayerLandscape(
                         }
                     },
             ) {
-                val landscapeArtworkTrack = state.autoMixOutgoingTrack ?: track
-                Box(Modifier.fillMaxSize()) {
-                    PlayerArtwork(
-                        track = landscapeArtworkTrack,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                alpha = if (state.isAutoMixActive && state.autoMixNextTrack != null) {
-                                    (1f - state.autoMixProgress).coerceIn(0f, 1f)
-                                } else 1f
-                            },
-                        corner = 24.dp,
-                        canvas = if (showSleeveCanvas) canvas else null,
-                        isPlaying = state.isPlaying,
-                        pausedForTransition = shownDismissY > 1f,
-                        onAspectRatioChanged = { canvasAspect = it },
-                    )
-                    if (state.isAutoMixActive && state.autoMixNextTrack != null) {
-                        PlayerArtwork(
-                            track = state.autoMixNextTrack,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .graphicsLayer {
-                                    alpha = state.autoMixProgress.coerceIn(0f, 1f)
-                                },
-                            corner = 24.dp,
-                            canvas = null,
-                            isPlaying = state.isPlaying,
-                            pausedForTransition = shownDismissY > 1f,
-                        )
-                    }
-                }
+                PlayerArtwork(
+                    track = track,
+                    modifier = Modifier.fillMaxSize(),
+                    corner = 24.dp,
+                    canvas = if (showSleeveCanvas) canvas else null,
+                    isPlaying = state.isPlaying,
+                    pausedForTransition = shownDismissY > 1f,
+                    onAspectRatioChanged = { canvasAspect = it },
+                )
             }
 
             androidx.compose.animation.AnimatedVisibility(
@@ -3983,7 +3898,7 @@ private fun FullPlayerLandscape(
                 primaryColor = ambientColor,
                 secondaryColor = ambientCompanion,
                 tertiaryColor = ambientDeep,
-                isMixing = state.isAutoMixActive,
+                telemetry = state.deckBlendTelemetry,
             )
 
             Spacer(Modifier.height(0.dp))
@@ -4100,17 +4015,29 @@ private fun SeekBar(
     primaryColor: Color = MaterialTheme.colorScheme.primary,
     secondaryColor: Color = MaterialTheme.colorScheme.secondary,
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
-    isMixing: Boolean = false,
+    telemetry: com.lastwave.app.playback.harmonicflow.api.DeckBlendTelemetry = com.lastwave.app.playback.harmonicflow.api.DeckBlendTelemetry(),
 ) {
     val progress by progressState.collectAsStateWithLifecycle()
     val effectiveDurationMs = if (progress.durationMs > 0L) progress.durationMs else fallbackDurationMs.coerceAtLeast(0L)
 
+    if (telemetry.isBlendingActive) {
+        com.lastwave.app.ui.player.harmonicflow.HarmonicWaveSeekbarCanvas(
+            positionMs = progress.positionMs,
+            durationMs = effectiveDurationMs,
+            telemetry = telemetry,
+            isPlaying = isPlaying,
+            onSeek = onSeek,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+        )
+        return
+    }
+
     if (wavyEnabled) {
         WavySeekBar(
-            positionMs = if (isMixing) effectiveDurationMs else progress.positionMs,
+            positionMs = progress.positionMs,
             durationMs = effectiveDurationMs,
-            isPlaying = isPlaying && !isMixing,
-            onSeek = if (isMixing) { {} } else onSeek,
+            isPlaying = isPlaying,
+            onSeek = onSeek,
             isTranslucent = isTranslucent,
             trackKey = trackKey,
             primaryColor = primaryColor,
@@ -4160,21 +4087,15 @@ private fun SeekBar(
     }
 
     val boundedDurationMs = effectiveDurationMs.coerceAtLeast(0L)
-    val currentFraction = if (isMixing) {
-        1f
-    } else if (boundedDurationMs > 0L) {
+    val currentFraction = if (boundedDurationMs > 0L) {
         (progress.positionMs.toDouble() / boundedDurationMs.toDouble()).toFloat().coerceIn(0f, 1f)
     } else {
         0f
     }
-    val fraction = if (isMixing) 1f else (dragFraction ?: currentFraction).coerceIn(0f, 1f)
-    val shownMs = if (isMixing) {
-        boundedDurationMs
-    } else {
-        dragFraction?.let {
-            (it * boundedDurationMs).toLong().coerceIn(0L, boundedDurationMs)
-        } ?: progress.positionMs.coerceIn(0L, boundedDurationMs)
-    }
+    val fraction = (dragFraction ?: currentFraction).coerceIn(0f, 1f)
+    val shownMs = dragFraction?.let {
+        (it * boundedDurationMs).toLong().coerceIn(0L, boundedDurationMs)
+    } ?: progress.positionMs.coerceIn(0L, boundedDurationMs)
 
     val isGlassActive = LocalLiquidGlass.current &&
         isLiquidGlassBackdropSupported() &&
@@ -4550,10 +4471,10 @@ private fun PlayerUtilityControls(
             iconSize = if (isTranslucent) 19.dp else 20.dp,
             modifier = Modifier.weight(1f).height(if (isTranslucent) 44.dp else 48.dp),
         )
-        val isCustomAudio = state.speed != 1f || state.pitch != 1f || state.isAutoMixActive || state.autoMixState == AutoMixState.MONITORING_OUTRO
+        val isCustomAudio = state.speed != 1f || state.pitch != 1f
         PlayerModeButton(
             active = isCustomAudio,
-            description = if (isCustomAudio) "Audio Controls (Mix Active)" else "Audio Controls",
+            description = "Audio Controls",
             icon = Icons.Filled.VolumeUp,
             onClick = onOpenAudioControls,
             background = edgeButtonBackground,
@@ -4854,72 +4775,6 @@ private fun DeckWaveform(
     }
 }
 
-@Composable
-private fun AutomixConsoleCard(
-    state: MusicPlayerState,
-    player: MusicPlayer,
-    modifier: Modifier = Modifier,
-) {
-    val haptics = LocalHapticFeedback.current
-
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.weight(1f),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.AutoAwesome,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = "Automix",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = "Seamless transitions between queue tracks",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            Switch(
-                checked = state.isAutoMixEnabled,
-                onCheckedChange = {
-                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    player.setAutomixEnabled(it)
-                },
-            )
-        }
-    }
-}
-
-
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun AppleMusicQualityBadge(
@@ -4932,13 +4787,11 @@ private fun AppleMusicQualityBadge(
     val haptics = LocalHapticFeedback.current
     val isSpatial = remember(state.audioCodec) { isSpatialAudioCodec(state.audioCodec) }
     val isHiRes = state.isLossless && ((state.samplingRateKHz ?: 44.1) > 48.0 || (state.bitDepth ?: 16) > 16)
-    val isMixing = state.isAutoMixActive
     val baseLabel = remember(state.audioCodec, state.bitrateKbps, state.samplingRateKHz, state.bitDepth, state.isLossless) {
         qualityBadgeLabel(state)
     }
 
     val displayTitle = when {
-        isMixing -> "Mixing"
         isSpatial -> "Dolby Atmos"
         isHiRes -> "Hi-Res Lossless"
         state.isLossless -> "Lossless"
@@ -4949,19 +4802,30 @@ private fun AppleMusicQualityBadge(
     }
 
     val badgeIcon = when {
-        isMixing -> Icons.Filled.AutoAwesome
         isSpatial -> Icons.Filled.SurroundSound
         state.isLossless -> Icons.Filled.HighQuality
         else -> Icons.Filled.GraphicEq
     }
 
     val tintColor = when {
-        isMixing -> MaterialTheme.colorScheme.primary
         signalPath.bitPerfect -> Color(0xFFE6C15A)
         signalPath.directToHal -> Color(0xFF7FD3C3)
         signalPath.clockFallbackResampled -> Color(0xFFFFB74D)
         isTranslucent -> Color.White.copy(alpha = 0.95f)
         else -> MaterialTheme.colorScheme.onSurface
+    }
+
+    if (state.deckBlendTelemetry.isBlendingActive || state.deckBlendTelemetry.phase == com.lastwave.app.playback.harmonicflow.api.BlendPhase.MIX_COMPLETED) {
+        Box(
+            modifier = modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center,
+        ) {
+            com.lastwave.app.ui.player.harmonicflow.AudioQualityMixBadge(
+                telemetry = state.deckBlendTelemetry,
+                standardQualityBadgeText = displayTitle,
+            )
+        }
+        return
     }
 
     Box(
@@ -4993,7 +4857,6 @@ private fun AppleMusicQualityBadge(
             )
             Spacer(Modifier.width(5.dp))
             val fullText = when {
-                isMixing -> "Mixing"
                 baseLabel.isNotBlank() && !baseLabel.equals(displayTitle, ignoreCase = true) && !baseLabel.equals("AUDIO", ignoreCase = true) -> "$displayTitle · $baseLabel"
                 else -> displayTitle
             }
@@ -5145,13 +5008,7 @@ private fun AudioControlsSheet(
                 }
             }
 
-            // 3. Automix Card
-            AutomixConsoleCard(
-                state = state,
-                player = player,
-            )
-
-            // 4. Slowed & Pitch Section Card
+            // 3. Slowed & Pitch Section Card
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
