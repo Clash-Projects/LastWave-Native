@@ -2137,6 +2137,12 @@ private fun LyricsDynamicAmbientBackdrop(
 
 private val ambientPaletteCache = androidx.collection.LruCache<String, Triple<Color, Color, Color>>(64)
 
+private val AppleMusicFallbackGradient = listOf(
+    Color(0xFF202020),
+    Color(0xFF141414),
+    Color(0xFF050505),
+)
+
 @Composable
 private fun FullPlayer(
     state: MusicPlayerState,
@@ -2145,7 +2151,7 @@ private fun FullPlayer(
     lyricsState: LyricsUiState,
     wavySeekbarEnabled: Boolean = true,
     rotatingBackgroundEnabled: Boolean = true,
-    lyricsRotatingBackgroundEnabled: Boolean = true,
+    lyricsRotatingBackgroundEnabled: Boolean = false,
     lyricsOffsetMs: Long = 0L,
     onSetLyricsOffsetMs: ((Long) -> Unit)? = null,
     lyricsFontScale: Float = 1.0f,
@@ -2522,18 +2528,20 @@ private fun FullPlayer(
                 )
                 // Dynamic ambient lyrics gradient overlay: subtly shifts line-by-line strictly
                 // using the album cover art palette, preserving zero text visibility issues.
-                LyricsDynamicAmbientBackdrop(
-                    isLyricsTab = isLyricsTab,
-                    lyricsState = lyricsState,
-                    progressState = progressState,
-                    lyricsOffsetMs = lyricsOffsetMs,
-                    ambientColor = ambientColor,
-                    ambientCompanion = ambientCompanion,
-                    ambientDeep = ambientDeep,
-                    bgWidth = bgWidth,
-                    bgHeight = bgHeight,
-                    bgMaxDimension = bgMaxDimension,
-                )
+                if (showLyricsFluid) {
+                    LyricsDynamicAmbientBackdrop(
+                        isLyricsTab = isLyricsTab,
+                        lyricsState = lyricsState,
+                        progressState = progressState,
+                        lyricsOffsetMs = lyricsOffsetMs,
+                        ambientColor = ambientColor,
+                        ambientCompanion = ambientCompanion,
+                        ambientDeep = ambientDeep,
+                        bgWidth = bgWidth,
+                        bgHeight = bgHeight,
+                        bgMaxDimension = bgMaxDimension,
+                    )
+                }
                 // Contrast scrim gradient (ensures text & controls are clear while preserving vibrant colors)
                 Box(
                     Modifier
@@ -2645,13 +2653,38 @@ private fun FullPlayer(
                     }
                 }
 
-                // Lyrics tab backdrop: instead of stacking ever more dim over
-                // the fluid, the artwork itself takes over â€” a full-bleed
-                // blurred cover under a soft scrim, so the backdrop keeps the
-                // album's colours and composition (a touch darker than the
-                // reference progression for a calmer read).
+                // Lyrics tab backdrop (ArchiveTune / Apple Music style):
+                // Deep dark base (#050505), blurred artwork (46.dp, 62% alpha),
+                // 3-stop vertical gradient of the extracted album art colors (0.88, 0.76, 0.96 alpha),
+                // subtle 18% black dim, and a 28% bottom scrim.
                 if (lyricsVeil > 0.01f) {
+                    val colors = remember(ambientColor, ambientCompanion, ambientDeep) {
+                        listOf(ambientColor, ambientCompanion, ambientDeep)
+                    }
+                    val appleMusicBackgroundBrush = remember(colors) {
+                        Brush.verticalGradient(
+                            listOf(
+                                colors.getOrElse(0) { AppleMusicFallbackGradient[0] }.copy(alpha = 0.88f),
+                                colors.getOrElse(1) { AppleMusicFallbackGradient[1] }.copy(alpha = 0.76f),
+                                colors.getOrElse(2) { AppleMusicFallbackGradient[2] }.copy(alpha = 0.96f),
+                            ),
+                        )
+                    }
+                    val appleMusicBottomScrim = remember {
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.28f),
+                            ),
+                        )
+                    }
+
                     Box(Modifier.fillMaxSize().graphicsLayer { alpha = lyricsVeil }) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(AppleMusicFallbackGradient.last())
+                        )
                         PlayerArtwork(
                             track = track,
                             modifier = Modifier
@@ -2659,10 +2692,11 @@ private fun FullPlayer(
                                 .graphicsLayer {
                                     scaleX = 1.35f
                                     scaleY = 1.35f
+                                    alpha = 0.62f
                                 }
                                 .then(
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                        Modifier.blur(36.dp)
+                                        Modifier.blur(46.dp)
                                     } else {
                                         Modifier
                                     }
@@ -2678,14 +2712,17 @@ private fun FullPlayer(
                         Box(
                             Modifier
                                 .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        0.00f to Color.Black.copy(alpha = 0.37f),
-                                        0.35f to Color.Black.copy(alpha = 0.47f),
-                                        0.70f to Color.Black.copy(alpha = 0.64f),
-                                        1.00f to Color.Black.copy(alpha = 0.67f),
-                                    )
-                                )
+                                .background(appleMusicBackgroundBrush)
+                        )
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.18f))
+                        )
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(appleMusicBottomScrim)
                         )
                     }
                 }

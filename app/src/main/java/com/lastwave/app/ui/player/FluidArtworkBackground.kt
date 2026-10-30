@@ -299,7 +299,7 @@ fun FluidArtworkBackground(
     modifier: Modifier = Modifier,
     extraBlur: Boolean = false,
     rotatingBackgroundEnabled: Boolean = true,
-    lyricsRotatingBackgroundEnabled: Boolean = true,
+    lyricsRotatingBackgroundEnabled: Boolean = false,
     artworkViewModel: ArtworkViewModel = hiltViewModel(),
     fallback: @Composable () -> Unit,
 ) {

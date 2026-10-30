@@ -136,9 +136,9 @@ data class MiscSettings(
      *  When false, uses the classic standard progress slider in the player tab. */
     val wavySeekbarEnabled: Boolean = true,
     val rotatingBackgroundEnabled: Boolean = true,
-    /** When true (default), animates fluid rotating artwork in the lyrics background.
-     *  When false, uses static blurred artwork background in the lyrics view. */
-    val lyricsRotatingBackgroundEnabled: Boolean = true,
+    /** When true, animates fluid rotating artwork in the lyrics background.
+     *  When false (default), uses static blurred artwork background in the lyrics view. */
+    val lyricsRotatingBackgroundEnabled: Boolean = false,
     /** When true, keeps the screen from turning off when the user has the lyrics view open. */
     val keepLyricsScreenAwake: Boolean = false,
     /** Seconds of inactivity before the floating lyrics buttons (font size,
@@ -404,7 +404,7 @@ class SettingsPreferences @Inject constructor(
                 crossfadeSeconds = (p.readSafely(Keys.CROSSFADE_SECONDS) ?: 5).coerceIn(1, 12),
                 wavySeekbarEnabled = p.readSafely(Keys.WAVY_SEEKBAR_ENABLED) ?: true,
                 rotatingBackgroundEnabled = p.readSafely(Keys.ROTATING_BACKGROUND_ENABLED) ?: true,
-                lyricsRotatingBackgroundEnabled = p.readSafely(Keys.LYRICS_ROTATING_BACKGROUND_ENABLED) ?: true,
+                lyricsRotatingBackgroundEnabled = p.readSafely(Keys.LYRICS_ROTATING_BACKGROUND_ENABLED) ?: false,
                 keepLyricsScreenAwake = p.readSafely(Keys.KEEP_LYRICS_SCREEN_AWAKE) ?: false,
                 lyricsButtonsAutoHideSeconds =
                     sanitizeLyricsButtonsAutoHideSeconds(p.readSafely(Keys.LYRICS_BUTTONS_AUTO_HIDE_SECONDS)),
