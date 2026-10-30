@@ -44,10 +44,16 @@ class SyncedVideoRepository @Inject constructor(
         trackTitle: String,
         trackArtist: String,
         videoId: String?,
+        expectedDurationMs: Long? = null,
     ): Result<SyncedVideoStreamBundle> = withContext(Dispatchers.IO) {
         runCatching {
             // Find the Official Music Video (OMV) ID
-            val targetVideoId = findOfficialVideoId(trackTitle, trackArtist, audioTrackVideoId = videoId)
+            val targetVideoId = findOfficialVideoId(
+                trackTitle = trackTitle,
+                trackArtist = trackArtist,
+                audioTrackVideoId = videoId,
+                expectedDurationMs = expectedDurationMs,
+            )
                 ?: videoId?.takeIf { it.isNotBlank() }
                 ?: throw IllegalStateException("Could not find music video for $trackTitle — $trackArtist")
 
@@ -94,6 +100,7 @@ class SyncedVideoRepository @Inject constructor(
         trackTitle: String,
         trackArtist: String,
         audioTrackVideoId: String? = null,
+        expectedDurationMs: Long? = null,
     ): String? = withContext(Dispatchers.IO) {
         // Tier 1: Native Innertube next endpoint counterpart lookup
         if (!audioTrackVideoId.isNullOrBlank()) {
@@ -120,7 +127,7 @@ class SyncedVideoRepository @Inject constructor(
                 innerTube.searchVideos(query, limit = 8)
             }.getOrNull().orEmpty()
 
-            val candidates = videoResults.filter { it.videoId != audioTrackVideoId && it.videoId.isNotBlank() }
+            val candidates = videoResults.filter { it.videoId.isNotBlank() }
             if (candidates.isEmpty()) continue
 
             // Score candidates to guarantee the best official music video
@@ -132,20 +139,58 @@ class SyncedVideoRepository @Inject constructor(
                 val queryTitle = cleanTitle.lowercase()
 
                 if (t.contains(queryTitle)) score += 40
-                if (t.contains("official video") || t.contains("official music video")) score += 50
-                if (t.contains("mv") || t.contains("m/v")) score += 30
-                if (queryArtist.isNotBlank() && (a.contains(queryArtist) || queryArtist.contains(a))) score += 20
+                if (t.contains("official music video") || t.contains("official video")) score += 50
+                else if (t.contains("music video") || t.contains("official visualizer")) score += 30
+                if (t.contains("mv") || t.contains("m/v")) score += 25
+
+                if (queryArtist.isNotBlank()) {
+                    if (a.contains(queryArtist) || queryArtist.contains(a)) score += 30
+                    if (t.contains(queryArtist)) score += 15
+                }
+                if (a.contains("vevo") || t.contains("vevo")) score += 35
+                if (a.contains("official") || a.contains("records") || a.contains("entertainment")) score += 15
+
+                // Penalties for unwanted videos
                 if (t.contains("lyric") || t.contains("lyrics")) score -= 30
-                if (t.contains("audio") || t.contains("topic")) score -= 50
-                if (t.contains("live") && !queryTitle.contains("live")) score -= 40
-                if (t.contains("cover") || t.contains("karaoke") || t.contains("reaction")) score -= 60
-                if (t.contains("visualizer") || t.contains("visualiser")) score -= 20
+                if (t.contains("audio") || t.contains("topic")) score -= 40
+                if (t.contains("live") && !queryTitle.contains("live")) score -= 50
+                if (t.contains("cover") || t.contains("karaoke") || t.contains("reaction")) score -= 80
+                if (t.contains("remix") && !queryTitle.contains("remix")) score -= 70
+                if (t.contains("mashup") || t.contains("parody") || t.contains("tribute")) score -= 90
+                if (t.contains("slowed") || t.contains("reverb") || t.contains("sped up") || t.contains("speed up") || t.contains("8d")) score -= 80
+                if (t.contains("teaser") || t.contains("trailer") || t.contains("preview") || t.contains("bts") || t.contains("behind the scenes")) score -= 100
+                if (t.contains("short") || t.contains("shorts") || t.contains("#shorts")) score -= 100
+
+                // Duration comparison to reject trailers, extended short films, or wrong length uploads
+                if (expectedDurationMs != null && expectedDurationMs > 30_000L) {
+                    val expectedSec = (expectedDurationMs / 1000L).toInt()
+                    val candidateSec = track.durationSeconds
+                    if (candidateSec != null && candidateSec > 0) {
+                        val delta = kotlin.math.abs(candidateSec - expectedSec)
+                        when {
+                            delta <= 15 -> score += 35
+                            delta <= 45 -> score += 15
+                            delta > 120 -> score -= 80
+                            delta > 60 -> score -= 40
+                        }
+                        if (candidateSec < 60 && expectedSec > 90) {
+                            score -= 120
+                        }
+                    }
+                }
+
+                if (track.videoId == audioTrackVideoId) {
+                    score += 10
+                }
+
                 track to score
             }.sortedByDescending { it.second }
 
-            val best = scored.firstOrNull { it.second > -40 }?.first ?: candidates.first()
-            Log.i(TAG, "Found Tier 2 official video for '$trackTitle': ${best.videoId} (${best.title})")
-            return@withContext best.videoId
+            val best = scored.firstOrNull { it.second >= 30 }?.first
+            if (best != null) {
+                Log.i(TAG, "Found Tier 2 official video for '$trackTitle': ${best.videoId} (${best.title}) score=${scored.first().second}")
+                return@withContext best.videoId
+            }
         }
         null
     }
@@ -154,7 +199,8 @@ class SyncedVideoRepository @Inject constructor(
         trackTitle: String,
         trackArtist: String,
         excludeId: String? = null,
-    ): String? = findOfficialVideoId(trackTitle, trackArtist, audioTrackVideoId = excludeId)
+        expectedDurationMs: Long? = null,
+    ): String? = findOfficialVideoId(trackTitle, trackArtist, audioTrackVideoId = excludeId, expectedDurationMs = expectedDurationMs)
 
     suspend fun fetchIntroOffsetMs(videoId: String): Long = withContext(Dispatchers.IO) {
         if (videoId.isBlank()) return@withContext 0L
@@ -187,6 +233,12 @@ class SyncedVideoRepository @Inject constructor(
             .replace(Regex("""\s*\(with.*?\)""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s*\[feat\..*?\]""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s*-\s*remaster(?:ed)?(?:\s*\d{4})?""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s*\(official\s*(?:music\s*)?video\)""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s*\[official\s*(?:music\s*)?video\]""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s*\(official\s*audio\)""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s*\[official\s*audio\]""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s*\(visualizer\)""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s*\[visualizer\]""", RegexOption.IGNORE_CASE), "")
             .trim()
     }
 }

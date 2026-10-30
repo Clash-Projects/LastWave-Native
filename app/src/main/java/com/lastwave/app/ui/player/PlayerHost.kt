@@ -2185,7 +2185,7 @@ private fun FullPlayer(
     val isTablet = isTabletOrWideScreen()
     val isTabletLandscape = isLandscape && (isTablet || configuration.screenWidthDp >= 600)
     val isCanvasActive = canvasEnabled && canvas != null
-    var showSyncedVideo by remember(track.videoId, track.title) { mutableStateOf(false) }
+    var showSyncedVideo by remember(track.videoId, track.title) { mutableStateOf(true) }
     val isVideoActive = showSyncedVideo && musicVideoEnabled
     val showFullBleed = canvasFullBleedEnabled && !isVideoActive
     val showSleeveCanvas = isCanvasActive && (!showFullBleed || isTabletLandscape) && !isVideoActive
@@ -2981,7 +2981,7 @@ private fun FullPlayer(
                                     isVideoActive = isVideoActive,
                                     onCloseVideo = { showSyncedVideo = false },
                                     onEnterFullscreen = { isVideoFullscreen = true },
-                                    onToggleVideo = if (musicVideoEnabled) { { showSyncedVideo = !showSyncedVideo } } else null,
+                                    onToggleVideo = { showSyncedVideo = !showSyncedVideo },
                                 )
                             } else {
                                 // â”€â”€ Standard layout (lifted and balanced) â”€â”€â”€â”€â”€â”€
@@ -3495,7 +3495,7 @@ private fun FullPlayer(
                                         isTranslucent = LocalLiquidGlass.current || showFullBleed,
                                         onOpenAudioControls = { showAudioControls = true },
                                         isVideoActive = isVideoActive,
-                                        onToggleVideo = if (musicVideoEnabled) { { showSyncedVideo = !showSyncedVideo } } else null,
+                                        onToggleVideo = { showSyncedVideo = !showSyncedVideo },
                                         modifier = Modifier.padding(top = 4.dp),
                                     )
                                 }
@@ -4756,8 +4756,7 @@ private fun DividedUtilityPill(
                     .background(foreground.copy(alpha = 0.22f)),
             )
 
-            // Right: Video Toggle / Audio EQ
-            val hasVideoAction = onToggleVideo != null
+            // Right: Video Toggle
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -4765,19 +4764,13 @@ private fun DividedUtilityPill(
                     .clickable(
                         interactionSource = videoInteraction,
                         indication = null,
-                        onClick = {
-                            if (hasVideoAction) {
-                                onToggleVideo?.invoke()
-                            } else {
-                                onOpenAudioControls()
-                            }
-                        },
+                        onClick = { onToggleVideo?.invoke() },
                     ),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = if (hasVideoAction) Icons.Filled.SmartDisplay else Icons.Filled.Tune,
-                    contentDescription = if (hasVideoAction) (if (isVideoActive) "Switch to album art" else "Watch music video") else "Audio Settings",
+                    imageVector = Icons.Filled.SmartDisplay,
+                    contentDescription = if (isVideoActive) "Switch to album art" else "Watch music video",
                     tint = if (isVideoActive) MaterialTheme.colorScheme.primary else foreground,
                     modifier = Modifier
                         .size(if (isTranslucent) 18.dp else 19.dp)
