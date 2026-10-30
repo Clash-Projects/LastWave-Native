@@ -215,17 +215,15 @@ class YouTubeStreamExtractor @Inject constructor(
                 val height = f.optInt("height", 0).takeIf { it > 0 }
                     ?: parseResolutionHeight(f.optString("qualityLabel"), 0)
                 val width = f.optInt("width", 0).takeIf { it > 0 }
-                val fps = f.optInt("fps", 0).takeIf { it > 0 }
                 val bitrate = f.optInt("bitrate", 0)
 
                 extractedStreams += YouTubeVideoStream(
                     videoId = videoId,
                     url = streamUrl,
                     itag = f.optInt("itag", 0).takeIf { it > 0 },
-                    qualityLabel = f.optString("qualityLabel").ifBlank { "${height}p" },
+                    resolution = f.optString("qualityLabel").ifBlank { "${height}p" },
                     height = height,
                     width = width,
-                    fps = fps,
                     bitrate = bitrate,
                     mimeType = mime.substringBefore(";"),
                     durationMs = durationSec.takeIf { it > 0 }?.times(1_000L),

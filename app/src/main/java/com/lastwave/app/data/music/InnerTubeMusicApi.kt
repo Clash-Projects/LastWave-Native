@@ -3662,7 +3662,7 @@ class InnerTubeMusicApi @Inject constructor(
             (maxOf(
                 similarity(candidate.title, title),
                 similarity(baseTitle(candidate.title), baseTitle(title)),
-            ) >= 60 || isSafeTitleMatch(candidate.title, title, cleanArtist)) &&
+            ) >= 60 || TextMatch.isSafeTitleMatch(candidate.title, title, cleanArtist)) &&
                 (cleanArtist.isBlank() ||
                     similarity(candidate.artist, cleanArtist) >= 35 ||
                     normalize(candidate.artist).contains(normalize(cleanArtist)) ||
@@ -3672,7 +3672,7 @@ class InnerTubeMusicApi @Inject constructor(
         val best = validCandidates.asSequence()
             .filter(isCandidateMatch)
             .maxByOrNull { candidate -> matchScore(candidate, title, cleanArtist) }
-            ?: if (searchTitle != title.trim()) {
+            ?: (if (searchTitle != title.trim()) {
                 val fallbackResults = searchSongs(
                     query = listOf(title.trim(), cleanArtist).filter { it.isNotBlank() }.joinToString(" "),
                     limit = 30,
@@ -3683,7 +3683,7 @@ class InnerTubeMusicApi @Inject constructor(
                 }.asSequence()
                     .filter(isCandidateMatch)
                     .maxByOrNull { candidate -> matchScore(candidate, title, cleanArtist) }
-            } else null
+            } else null)
             ?: throw IOException("No reliable YouTube Music match found for $title by $artist")
         return best.also {
             if (matchCache.size > MAX_MATCH_CACHE_ENTRIES) matchCache.clear()
