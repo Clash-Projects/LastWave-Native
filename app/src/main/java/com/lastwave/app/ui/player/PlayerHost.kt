@@ -2185,7 +2185,7 @@ private fun FullPlayer(
     val isTablet = isTabletOrWideScreen()
     val isTabletLandscape = isLandscape && (isTablet || configuration.screenWidthDp >= 600)
     val isCanvasActive = canvasEnabled && canvas != null
-    var showSyncedVideo by remember(track.videoId, track.title) { mutableStateOf(true) }
+    var showSyncedVideo by remember(track.videoId, track.title) { mutableStateOf(false) }
     val isVideoActive = showSyncedVideo && musicVideoEnabled
     val showFullBleed = canvasFullBleedEnabled && !isVideoActive
     val showSleeveCanvas = isCanvasActive && (!showFullBleed || isTabletLandscape) && !isVideoActive
