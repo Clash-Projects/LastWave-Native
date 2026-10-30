@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayCircle
@@ -253,6 +254,74 @@ class ExploreGenreMenuViewModel @Inject constructor(private val genreExplorer: c
     }
 }
 
+internal fun extractYouTubeVideoId(urlOrId: String?): String? {
+    if (urlOrId.isNullOrBlank()) return null
+    val trimmed = urlOrId.trim()
+    if (trimmed.length == 11 && trimmed.matches(Regex("^[a-zA-Z0-9_-]{11}$"))) {
+        return trimmed
+    }
+    return try {
+        val uri = android.net.Uri.parse(trimmed)
+        val host = uri.host?.lowercase().orEmpty()
+        if (host.contains("youtu.be")) {
+            uri.pathSegments.firstOrNull()?.takeIf { it.length == 11 }
+        } else if (host.contains("youtube.com")) {
+            uri.getQueryParameter("v")?.takeIf { it.isNotBlank() }
+                ?: uri.pathSegments.let { segments ->
+                    val idx = segments.indexOf("shorts").takeIf { it != -1 }
+                        ?: segments.indexOf("embed").takeIf { it != -1 }
+                        ?: segments.indexOf("v").takeIf { it != -1 }
+                    if (idx != -1 && idx + 1 < segments.size) segments[idx + 1].takeIf { it.length == 11 } else null
+                }
+        } else null
+    } catch (_: Exception) {
+        null
+    }
+}
+
+@HiltViewModel
+class TrackLinkViewModel @Inject constructor(
+    private val innerTube: com.lastwave.app.data.music.InnerTubeMusicApi,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
+) : ViewModel() {
+    fun copyYouTubeLink(
+        title: String,
+        artist: String,
+        existingVideoId: String?,
+        url: String?,
+    ) {
+        val directId = existingVideoId?.takeIf { it.isNotBlank() } ?: extractYouTubeVideoId(url)
+        if (directId != null) {
+            copyToClipboard("https://www.youtube.com/watch?v=$directId")
+            return
+        }
+        viewModelScope.launch {
+            val link = runCatching {
+                val match = innerTube.findBestMatchOrNull(title, artist, prefetchStreams = false)
+                if (match != null && match.videoId.isNotBlank()) {
+                    "https://www.youtube.com/watch?v=${match.videoId}"
+                } else {
+                    val query = "$title $artist".trim()
+                    val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+                    "https://www.youtube.com/results?search_query=$encoded"
+                }
+            }.getOrElse {
+                val query = "$title $artist".trim()
+                val encoded = runCatching { java.net.URLEncoder.encode(query, "UTF-8") }.getOrDefault("")
+                "https://www.youtube.com/results?search_query=$encoded"
+            }
+            copyToClipboard(link)
+        }
+    }
+
+    private fun copyToClipboard(link: String) {
+        val clipboard = appContext.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+        val clip = android.content.ClipData.newPlainText("YouTube Link", link)
+        clipboard?.setPrimaryClip(clip)
+        android.widget.Toast.makeText(appContext, appContext.getString(R.string.link_copied), android.widget.Toast.LENGTH_SHORT).show()
+    }
+}
+
 /** music.youtube.com rather than youtube.com: if YouTube Music is installed
  *  it's registered as that domain's Android App Link target, so a plain
  *  ACTION_VIEW opens the app directly — no explicit package targeting (and
@@ -331,6 +400,7 @@ fun TrackContextMenuSheet(
     downloadViewModel: DownloadMenuViewModel = hiltViewModel(),
     exclusionViewModel: RecommendationExclusionMenuViewModel = hiltViewModel(),
     artistAlbumViewModel: ArtistAlbumMenuViewModel = hiltViewModel(),
+    trackLinkViewModel: TrackLinkViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -665,7 +735,23 @@ fun TrackContextMenuSheet(
                             PlayerCastMenuRow(musicPlayer)
                         }
                     }
-                    add { pos -> MenuActionRow(Icons.Filled.Language, stringResource(R.string.menu_open_lastfm), position = pos) { openUrl(context, buildLastFmUrl(target)); onDismiss() } }
+                    add { pos ->
+                        MenuActionRow(
+                            icon = Icons.Filled.Link,
+                            label = stringResource(R.string.menu_copy_link),
+                            position = pos,
+                        ) {
+                            val directId = playable.videoId?.takeIf { it.isNotBlank() } ?: extractYouTubeVideoId(t.url)
+                            if (directId != null) {
+                                val link = "https://www.youtube.com/watch?v=$directId"
+                                clipboard.setText(AnnotatedString(link))
+                                android.widget.Toast.makeText(context, context.getString(R.string.link_copied), android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                trackLinkViewModel.copyYouTubeLink(t.name, t.artist, playable.videoId, t.url)
+                            }
+                            onDismiss()
+                        }
+                    }
                     if (onRefreshArtwork != null) {
                         add { pos -> MenuActionRow(Icons.Filled.Refresh, stringResource(R.string.menu_refresh_artwork), position = pos) { onRefreshArtwork(); onDismiss() } }
                     }
