@@ -384,20 +384,20 @@
     <!-- Local songs -->
     <string name="local_add_to_playlist">Add to a playlist</string>
     <string name="local_panel_title">Songs from this device</string>
-    <string name="local_panel_hint">Pick a folder: every MP3, FLAC, WAV, OGG/Opus, M4A/ALAC or AAC file inside it (sub-folders included) is copied into the app with its tags, cover and .lrc lyrics.</string>
+    <string name="local_panel_hint">Pick a folder: every MP3, FLAC, WAV, OGG/Opus, M4A/ALAC or AAC file inside it (sub-folders included) is indexed and played directly from this device without using extra storage.</string>
     <string name="local_no_folder">No folder chosen yet.</string>
-    <string name="local_forget_folder">Forget this folder (copied songs stay)</string>
+    <string name="local_forget_folder">Forget this folder</string>
     <string name="local_choose_folder">Choose a folder</string>
     <string name="local_rescan">Rescan</string>
     <string name="local_scanning">Searching… %1$d files found</string>
-    <string name="local_copying">Copying %1$d/%2$d — %3$s</string>
-    <string name="local_report_space">Not enough free space to copy these songs.</string>
+    <string name="local_copying">Indexing %1$d/%2$d — %3$s</string>
+    <string name="local_report_space">Not enough free space.</string>
     <string name="local_report_summary">%1$d added • %2$d updated • %3$d unchanged</string>
     <plurals name="local_report_unsupported">
         <item quantity="one">%1$d file skipped (unsupported format: %2$s)</item>
         <item quantity="other">%1$d files skipped (unsupported format: %2$s)</item>
     </plurals>
-    <string name="local_report_failed">%1$d file(s) couldn\'t be copied</string>
+    <string name="local_report_failed">%1$d file(s) couldn\'t be indexed</string>
     <string name="local_report_unreachable">%1$d folder(s) no longer reachable — choose them again</string>
     <string name="local_storage_used">Space used by local songs: %1$s</string>
     <!-- Fork: internal direct output (mixer bypass without a USB DAC) -->

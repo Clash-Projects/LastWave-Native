@@ -61,7 +61,7 @@ class LocalSongsViewModel @Inject constructor(
     val trackFolders: StateFlow<Map<String, String>> = library.trackFolders
 
     init {
-        if (folders.value.isNotEmpty() && trackFolders.value.isEmpty()) {
+        if (folders.value.isNotEmpty() && (trackFolders.value.isEmpty() || trackFolders.value.keys.any { it.contains("/local_music/") })) {
             library.rescanAll()
         }
     }

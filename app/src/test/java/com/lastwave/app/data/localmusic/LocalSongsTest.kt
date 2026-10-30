@@ -35,22 +35,37 @@ class LocalSongsTest {
     fun importedPathAcceptsPlainAndFileUriForms() {
         assertThat(LocalAudioFormats.importedPathOrNull(path)).isEqualTo(path)
         assertThat(LocalAudioFormats.importedPathOrNull("file://$path")).isEqualTo(path)
-        // Downloads, YouTube urls and content URIs are not imports.
-        assertThat(LocalAudioFormats.importedPathOrNull("/storage/emulated/0/Music/LastWave/a.flac")).isNull()
+        // Direct storage paths and content URIs are recognized as local files:
+        assertThat(LocalAudioFormats.importedPathOrNull("/storage/emulated/0/Music/LastWave/a.flac"))
+            .isEqualTo("/storage/emulated/0/Music/LastWave/a.flac")
+        assertThat(LocalAudioFormats.importedPathOrNull("content://com.android.externalstorage.documents/document/a.flac"))
+            .isEqualTo("content://com.android.externalstorage.documents/document/a.flac")
+        // Remote streaming URLs are not local files:
         assertThat(LocalAudioFormats.importedPathOrNull("https://music.youtube.com/watch?v=abcdefghijk")).isNull()
-        assertThat(LocalAudioFormats.importedPathOrNull("content://x/local_music/a.flac")).isNull()
         assertThat(LocalAudioFormats.importedPathOrNull(null)).isNull()
     }
 
     @Test
     fun localTrackMapsToDirectFilePlayback() {
-        val track = GeneratedTrack(name = "Song", artist = "Band", album = "LP", artworkUrl = "file:///x/art/1.img", url = path)
+        val devicePath = "/storage/emulated/0/Music/Song.flac"
+        val track = GeneratedTrack(name = "Song", artist = "Band", album = "LP", artworkUrl = "file:///x/art/1.img", url = devicePath)
         assertThat(track.isLocalFile()).isTrue()
         val playable = track.toPlayableTrack()
-        assertThat(playable.playbackUrl).isEqualTo(path)
+        assertThat(playable.playbackUrl).isEqualTo(devicePath)
         assertThat(playable.playbackMimeType).isEqualTo("audio/flac")
         assertThat(playable.videoId).isNull()
         assertThat(playable.artworkUrl).isEqualTo("file:///x/art/1.img")
+    }
+
+    @Test
+    fun localContentUriMapsToPlayback() {
+        val contentUri = "content://com.android.externalstorage.documents/tree/primary%3AMusic/document/primary%3AMusic%2FSong.mp3"
+        val track = GeneratedTrack(name = "Song", artist = "Band", album = "LP", artworkUrl = null, url = contentUri)
+        assertThat(track.isLocalFile()).isTrue()
+        val playable = track.toPlayableTrack()
+        assertThat(playable.playbackUrl).isEqualTo(contentUri)
+        assertThat(playable.playbackMimeType).isEqualTo("audio/mpeg")
+        assertThat(playable.videoId).isNull()
     }
 
     @Test

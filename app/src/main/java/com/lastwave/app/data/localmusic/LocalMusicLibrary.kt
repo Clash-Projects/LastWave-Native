@@ -30,17 +30,16 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Feature "Local songs": imports audio files from folders the user picks
- * (Storage Access Framework tree), copies them into app-private storage and
- * lists them in the built-in "Local songs" playlist.
+ * Feature "Local songs": indexes audio files from folders the user picks
+ * (Storage Access Framework tree) and lists them in the built-in "Local songs" playlist.
  *
- * - Copies, not references: the playlist keeps working if the source folder
- *   is moved, the SD card is removed or the permission is revoked.
- * - Re-scan is incremental: a file is identified by (folder, document id),
- *   so it is copied once; an unchanged size skips the copy and the tag read.
- * - Tags (title / artist / album), embedded cover, a folder cover
- *   (cover/folder/front.jpg|png) and a sidecar `.lrc` with the same base name
- *   are imported alongside.
+ * - Direct playback: plays straight from device storage without copying audio files,
+ *   preventing duplicate storage consumption on the phone.
+ * - Incremental and deduplicated: each track is identified by its persistent
+ *   storage path / URI. Re-scanning only adds genuinely new files and never
+ *   duplicates existing songs.
+ * - Embedded covers and folder covers (cover/folder/front.jpg|png) are cached
+ *   as small thumbnails for fast UI display.
  */
 @Singleton
 class LocalMusicLibrary @Inject constructor(
@@ -93,7 +92,7 @@ class LocalMusicLibrary @Inject constructor(
     val trackFolders: StateFlow<Map<String, String>> = _trackFolders.asStateFlow()
 
     init {
-        if (_folders.value.isNotEmpty() && _trackFolders.value.isEmpty()) {
+        if (_folders.value.isNotEmpty() && (_trackFolders.value.isEmpty() || _trackFolders.value.keys.any { it.contains("/$DIR/") })) {
             rescanAll()
         }
     }
@@ -167,42 +166,67 @@ class LocalMusicLibrary @Inject constructor(
             if (rootDocId == null || !walk(tree, rootDocId, 0, entries, unsupported)) unreachable++
         }
 
-        val existing = playlistRepository.ensureLocalSongs().tracks.associateBy { it.url }
-        val needed = entries.sumOf { entry ->
-            val dest = destinationFor(entry)
-            if (dest.exists() && dest.length() == entry.size) 0L else entry.size
-        }
-        if (needed > 0 && needed + SPACE_MARGIN_BYTES > root.usableSpace) {
-            return ImportReport(unsupported = unsupported, unreachableFolders = unreachable, outOfSpace = true)
+        val existingPlaylist = playlistRepository.ensureLocalSongs()
+        val existingTracks = existingPlaylist.tracks
+        val existingByUrl = existingTracks.associateBy { it.url }.toMutableMap()
+
+        // Index legacy internal paths for seamless migration of previously copied songs
+        val legacyUrlToTrack = existingTracks.filter { it.url.contains("/$DIR/") }.associateBy { it.url }
+        val existingByNameArtist = existingTracks.groupBy {
+            "${it.name.trim().lowercase()}|${it.artist.trim().lowercase()}"
         }
 
         val updates = mutableMapOf<String, GeneratedTrack>()
         val additions = mutableListOf<GeneratedTrack>()
         val folderMapping = _trackFolders.value.toMutableMap()
+        val processedUrls = mutableSetOf<String>()
         var unchanged = 0
         var failed = 0
-        var bytes = 0L
+
         entries.forEachIndexed { index, entry ->
             currentCoroutineContext().ensureActive()
             _state.value = ImportState.Copying(index, entries.size, entry.displayName)
             try {
-                val dest = destinationFor(entry)
-                val sameFile = dest.exists() && dest.length() == entry.size
-                if (!sameFile) {
-                    copyDocument(entry.treeUri, entry.documentId, dest)
-                    bytes += dest.length()
+                val audioUrl = resolveAudioPathOrUri(entry)
+                folderMapping[audioUrl] = entry.treeUri.toString()
+
+                if (!processedUrls.add(audioUrl)) {
+                    return@forEachIndexed
                 }
-                entry.lrcDocumentId?.let { lrcId ->
-                    runCatching { copyDocument(entry.treeUri, lrcId, File(LocalAudioFormats.lrcPathFor(dest.path))) }
-                }
-                val path = dest.absolutePath
-                folderMapping[path] = entry.treeUri.toString()
-                val known = existing[path]
-                if (sameFile && known != null) {
-                    unchanged++
+
+                // Check for legacy copied path
+                val oldId = LocalMusicNaming.stableId("${entry.treeUri}|${entry.documentId}")
+                val ext = LocalAudioFormats.extensionOf(entry.displayName)
+                val oldCopiedPath = File(root, "$oldId.$ext").absolutePath
+                val matchedLegacyTrack = legacyUrlToTrack[oldCopiedPath]
+
+                // Direct match by current URL
+                val matchedDirect = existingByUrl[audioUrl]
+
+                // Fallback match by (name, artist) if track was previously imported under legacy path
+                val fallbackMatches = if (matchedDirect == null && matchedLegacyTrack == null) {
+                    val fallbackNames = LocalMusicNaming.fromFileName(entry.displayName)
+                    existingByNameArtist["${fallbackNames.title.trim().lowercase()}|${(fallbackNames.artist ?: UNKNOWN_ARTIST).trim().lowercase()}"]
+                        ?.filter { it.url.contains("/$DIR/") }
+                } else null
+                val matchedByFallback = fallbackMatches?.firstOrNull()
+
+                val matchedTrack = matchedDirect ?: matchedLegacyTrack ?: matchedByFallback
+
+                if (matchedTrack != null) {
+                    if (matchedTrack.url != audioUrl) {
+                        // Migrate existing track from legacy copied path to direct storage URL
+                        val updated = matchedTrack.copy(url = audioUrl)
+                        updates[matchedTrack.url] = updated
+                        existingByUrl[audioUrl] = updated
+                    } else {
+                        unchanged++
+                    }
                 } else {
-                    val track = readTrack(dest, entry)
-                    if (known != null) updates[path] = track else additions += track
+                    // Newly discovered song: read metadata directly from device storage (NO AUDIO COPYING)
+                    val track = readTrack(audioUrl, entry)
+                    additions += track
+                    existingByUrl[audioUrl] = track
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -211,18 +235,24 @@ class LocalMusicLibrary @Inject constructor(
                 failed++
             }
         }
+
         saveTrackFolders(folderMapping)
         _state.value = ImportState.Copying(entries.size, entries.size, "")
+
         if (updates.isNotEmpty() || additions.isNotEmpty()) {
             playlistRepository.mergeLocalSongs(updates, additions)
         }
+
+        // Clean up legacy copied audio files to free storage
+        cleanLegacyCopiedAudioFiles()
+
         return ImportReport(
             added = additions.size,
             updated = updates.size,
             unchanged = unchanged,
             unsupported = unsupported,
             failed = failed,
-            bytesCopied = bytes,
+            bytesCopied = 0L,
             unreachableFolders = unreachable,
         )
     }
@@ -293,10 +323,39 @@ class LocalMusicLibrary @Inject constructor(
         return true
     }
 
-    private fun destinationFor(entry: AudioEntry): File {
-        val id = LocalMusicNaming.stableId("${entry.treeUri}|${entry.documentId}")
-        val ext = LocalAudioFormats.extensionOf(entry.displayName)
-        return File(root, "$id.$ext")
+    /**
+     * Resolves an entry to a direct filesystem path on the device when accessible,
+     * or to a persistent SAF document URI otherwise. Audio files are played directly
+     * from device storage without copying.
+     */
+    fun resolveAudioPathOrUri(entry: AudioEntry): String {
+        val docId = entry.documentId
+        val decodedDocId = runCatching { Uri.decode(docId) }.getOrNull() ?: docId
+        val candidateFile = when {
+            docId.startsWith("primary:") || decodedDocId.startsWith("primary:") -> {
+                val rel = if (docId.startsWith("primary:")) docId.removePrefix("primary:") else decodedDocId.removePrefix("primary:")
+                File("/storage/emulated/0", rel)
+            }
+            docId.startsWith("raw:") || decodedDocId.startsWith("raw:") -> {
+                val raw = if (docId.startsWith("raw:")) docId.removePrefix("raw:") else decodedDocId.removePrefix("raw:")
+                File(raw)
+            }
+            docId.contains(':') -> {
+                val volume = docId.substringBefore(':')
+                val rel = docId.substringAfter(':')
+                File("/storage/$volume", rel)
+            }
+            decodedDocId.contains(':') -> {
+                val volume = decodedDocId.substringBefore(':')
+                val rel = decodedDocId.substringAfter(':')
+                File("/storage/$volume", rel)
+            }
+            else -> null
+        }
+        if (candidateFile != null && candidateFile.exists() && candidateFile.canRead()) {
+            return candidateFile.absolutePath
+        }
+        return DocumentsContract.buildDocumentUriUsingTree(entry.treeUri, entry.documentId).toString()
     }
 
     private fun copyDocument(tree: Uri, documentId: String, dest: File) {
@@ -310,14 +369,19 @@ class LocalMusicLibrary @Inject constructor(
         check(tmp.renameTo(dest)) { "Can't finalize ${dest.name}" }
     }
 
-    private fun readTrack(file: File, entry: AudioEntry): GeneratedTrack {
+    private fun readTrack(audioUrl: String, entry: AudioEntry): GeneratedTrack {
         var title: String? = null
         var artist: String? = null
         var album: String? = null
         var artwork: String? = null
         val retriever = MediaMetadataRetriever()
         try {
-            retriever.setDataSource(file.absolutePath)
+            if (audioUrl.startsWith("/")) {
+                retriever.setDataSource(audioUrl)
+            } else {
+                val docUri = DocumentsContract.buildDocumentUriUsingTree(entry.treeUri, entry.documentId)
+                retriever.setDataSource(context, docUri)
+            }
             title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)?.trim()?.takeIf { it.isNotEmpty() }
             artist = (retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
                 ?: retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST))
@@ -345,14 +409,26 @@ class LocalMusicLibrary @Inject constructor(
             artist = artist ?: fallback.artist ?: UNKNOWN_ARTIST,
             album = album,
             artworkUrl = artwork,
-            url = file.absolutePath,
+            url = audioUrl,
         )
     }
 
+    /** Deletes any legacy audio files copied into app storage by older versions. */
+    fun cleanLegacyCopiedAudioFiles() {
+        runCatching {
+            root.listFiles()?.forEach { file ->
+                if (file.isFile) {
+                    val ext = LocalAudioFormats.extensionOf(file.name)
+                    if (LocalAudioFormats.isSupported(file.name) || ext in LocalAudioFormats.UNSUPPORTED_AUDIO || file.name.endsWith(".part")) {
+                        file.delete()
+                    }
+                }
+            }
+        }
+    }
+
     /**
-     * Deletes copied files no playlist references any more (after a song was
-     * removed from "Local songs" and every other playlist, or the playlist was
-     * deleted). Waits for a running import so freshly copied files are safe.
+     * Cleans up unreferenced artwork and legacy copied files.
      */
     fun cleanupOrphansAsync() {
         scope.launch {
@@ -364,30 +440,19 @@ class LocalMusicLibrary @Inject constructor(
 
     private suspend fun cleanupOrphans() {
         val playlists = playlistRepository.getAll()
-        // Liked Songs always exists: an empty read means storage failed, and
-        // treating it as "nothing referenced" would wipe every copied song.
         if (playlists.isEmpty()) return
         val tracks = playlists.flatMap { it.tracks }
-        val audio = tracks.filter { it.isLocalFile() }.mapTo(mutableSetOf()) { File(it.url).name }
+        val audioUrls = tracks.filter { it.isLocalFile() }.mapTo(mutableSetOf()) { it.url }
         val art = tracks.mapNotNull { it.artworkUrl }
             .filter { it.startsWith("file://") }
             .mapTo(mutableSetOf()) { Uri.parse(it).lastPathSegment.orEmpty() }
-        root.listFiles()?.forEach { file ->
-            if (!file.isFile) return@forEach
-            val name = file.name
-            val keep = when {
-                name.endsWith(".part") -> false
-                name.endsWith(".lrc") -> audio.any { it.substringBeforeLast('.') == name.substringBeforeLast('.') }
-                else -> name in audio
-            }
-            if (!keep) file.delete()
-        }
+
+        cleanLegacyCopiedAudioFiles()
         artDir.listFiles()?.forEach { file -> if (file.name !in art) file.delete() }
-        val existingPaths = audio.map { File(root, it).absolutePath }.toSet()
-        saveTrackFolders(_trackFolders.value.filterKeys { it in existingPaths })
+        saveTrackFolders(_trackFolders.value.filterKeys { it in audioUrls })
     }
 
-    /** Bytes used by copied songs, covers and lyrics. */
+    /** Bytes used by cached covers and lyrics. Audio files are played directly from device storage. */
     fun storageBytes(): Long = root.walkTopDown().filter { it.isFile }.sumOf { it.length() }
 
     fun getFolderForTrack(trackUrl: String): Uri? =
