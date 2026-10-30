@@ -5491,7 +5491,7 @@ class MusicPlayer @Inject constructor(
                             (current?.title.equals(seed.title, ignoreCase = true) && current?.artist.equals(seed.artist, ignoreCase = true))
                         if (!stillCurrentSeed) return@withContext
 
-                        val currentIndex = player.currentMediaItemIndex
+                        val currentIndex = player.currentMediaItemIndex.coerceAtLeast(0)
                         if (player.mediaItemCount > currentIndex + 1) {
                             player.removeMediaItems(currentIndex + 1, player.mediaItemCount)
                         }

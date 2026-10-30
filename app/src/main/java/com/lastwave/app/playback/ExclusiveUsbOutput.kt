@@ -109,16 +109,17 @@ class ExclusiveUsbOutput @Inject constructor(
     }
 
     fun setWanted(enabled: Boolean) {
-        synchronized(configLock) {
-            if (wanted == enabled) {
-                if (enabled) {
-                    synchronized(stateLock) {
-                        ensureVolumeObserverLocked()
-                        syncListeningGainLocked()
-                    }
+        if (wanted == enabled) {
+            if (enabled) {
+                synchronized(stateLock) {
+                    ensureVolumeObserverLocked()
+                    syncListeningGainLocked()
                 }
-                return
             }
+            return
+        }
+        synchronized(configLock) {
+            if (wanted == enabled) return
             wanted = enabled
             if (!enabled) {
                 teardownLocked(closeDevice = true)

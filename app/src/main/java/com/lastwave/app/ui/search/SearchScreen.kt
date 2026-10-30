@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -383,7 +384,7 @@ fun SearchScreen(
                         }
 
                         if (matchingRecent.isNotEmpty()) {
-                            items(matchingRecent, key = { "recent_match_$it" }) { recentText ->
+                            itemsIndexed(matchingRecent.distinct(), key = { idx, recentText -> "recent_match_${recentText}_$idx" }) { _, recentText ->
                                 SuggestionRow(
                                     fullText = recentText,
                                     query = state.query,
@@ -397,7 +398,10 @@ fun SearchScreen(
                             }
                         }
 
-                        items(state.suggestions.filter { !matchingRecent.contains(it) }, key = { "sugg_$it" }) { suggestion ->
+                        val nonRecentSuggestions = remember(state.suggestions, matchingRecent) {
+                            state.suggestions.filter { !matchingRecent.contains(it) }.distinct()
+                        }
+                        itemsIndexed(nonRecentSuggestions, key = { idx, suggestion -> "sugg_${suggestion}_$idx" }) { _, suggestion ->
                             SuggestionRow(
                                 fullText = suggestion,
                                 query = state.query,
@@ -441,7 +445,7 @@ fun SearchScreen(
                                     }
                                 }
                             }
-                            items(state.recentSearches, key = { "hist_$it" }) { recentQuery ->
+                            itemsIndexed(state.recentSearches.distinct(), key = { idx, recentQuery -> "hist_${recentQuery}_$idx" }) { _, recentQuery ->
                                 RecentSearchRow(
                                     text = recentQuery,
                                     onClick = {
@@ -573,11 +577,12 @@ fun SearchScreen(
                                         }
                                     }
 
-                                    items(
-                                        if (state.tab == SearchTab.USERS) state.results else otherResults,
-                                        key = { it.entityId ?: it.url.ifBlank { it.name + it.artist.orEmpty() } },
+                                    val displayResults = if (state.tab == SearchTab.USERS) state.results else otherResults
+                                    itemsIndexed(
+                                        displayResults,
+                                        key = { index, item -> "${item.entityId ?: item.url.ifBlank { "${item.name}_${item.artist.orEmpty()}" }}_$index" },
                                         contentType = { "search_result" },
-                                    ) { item ->
+                                    ) { _, item ->
                                         val isItemPlaying = (state.tab == SearchTab.TRACKS || state.tab == SearchTab.PODCASTS) && playbackState.isPlaying &&
                                             playbackState.current?.title.equals(item.name, ignoreCase = true) &&
                                             (item.artist.isNullOrBlank() || playbackState.current?.artist.equals(item.artist, ignoreCase = true))

@@ -208,6 +208,10 @@ class UsbAudioDevice private constructor(private val context: Context) {
             }?.id ?: -1
         Log.i(TAG, "Playback AudioStreaming interface: $playbackInterfaceId")
 
+        if (currentDevice?.vendorId != device.vendorId || currentDevice?.productId != device.productId) {
+            cachedSupportedRates = emptyList()
+        }
+
         // Find the AudioStreaming interface and its endpoints
         var streamingInterface: UsbInterface? = null
         var endpointOut = -1
@@ -708,17 +712,13 @@ class UsbAudioDevice private constructor(private val context: Context) {
 
     fun closeDevice() {
         cachedDeviceInfo = null
-        cachedSupportedRates = emptyList()
         clockSourceRateMap.clear()
         parsedClockSourceIds = emptyList()
         parsedClockSelectorId = -1
         parsedClockSelectorPins = emptyList()
         activeClockSourceId = -1
-        claimedInterface?.let { iface ->
-            connection?.releaseInterface(iface)
-            claimedInterface = null
-        }
-        connection?.close()
+        claimedInterface = null
+        runCatching { connection?.close() }
         connection = null
         currentDevice = null
         playbackInterfaceId = -1
