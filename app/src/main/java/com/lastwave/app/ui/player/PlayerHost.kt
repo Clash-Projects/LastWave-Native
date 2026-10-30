@@ -4173,66 +4173,154 @@ internal fun PlayerProgressSlider(
     primaryColor: Color = MaterialTheme.colorScheme.primary,
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
 ) {
-    val primary = remember(primaryColor) { primaryColor.ensureLuminousForDarkBackground(0.38f) }
-    val tertiary = remember(tertiaryColor) { tertiaryColor.ensureLuminousForDarkBackground(0.28f) }
+    val primary = remember(primaryColor) {
+        primaryColor.ensureLuminousForDarkBackground(0.38f)
+    }
+    val tertiary = remember(tertiaryColor) {
+        tertiaryColor.ensureLuminousForDarkBackground(0.28f)
+    }
     val inactive = Color.White.copy(alpha = if (enabled) 0.24f else 0.14f)
     val range = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.0001f)
     val fraction = ((value - valueRange.start) / range).coerceIn(0f, 1f)
+    val thumbColor = if (enabled) primary else Color.White.copy(alpha = 0.34f)
 
-    // Playback progress is time, not directional content: pin to LTR so the
-    // Material Slider's touch mapping always matches the LTR custom drawing,
-    // even in RTL locales (Arabic, â€¦) where Slider would otherwise mirror.
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-    Slider(
-        value = value,
-        onValueChange = onValueChange,
-        onValueChangeFinished = onValueChangeFinished,
-        valueRange = valueRange,
-        enabled = enabled,
-        interactionSource = interactionSource,
-        modifier = modifier.drawBehind {
-            val inset = 10.dp.toPx()
-            val startX = inset
-            val endX = (size.width - inset).coerceAtLeast(startX)
-            val activeEndX = startX + ((endX - startX) * fraction)
-            val centerY = size.height / 2f
-            drawLine(
-                color = inactive,
-                start = androidx.compose.ui.geometry.Offset(startX, centerY),
-                end = androidx.compose.ui.geometry.Offset(endX, centerY),
-                strokeWidth = 3.5.dp.toPx(),
-                cap = StrokeCap.Round,
-            )
-            if (activeEndX > startX) {
-                drawLine(
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(
-                            primary.copy(alpha = if (enabled) 1f else 0.42f),
-                            tertiary.copy(alpha = if (enabled) 0.95f else 0.36f),
+        Box(
+            modifier = modifier.height(44.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val width = size.width
+                val centerY = size.height / 2f
+
+                val trackHeightPx = 14.dp.toPx()
+                val cornerRadius = CornerRadius(
+                    trackHeightPx / 2f,
+                    trackHeightPx / 2f,
+                )
+                val thumbWidthPx = 5.dp.toPx()
+                val thumbHeightPx = 38.dp.toPx()
+                val thumbClearancePx = 9.dp.toPx()
+
+                val rawThumbCenterX = fraction * width
+                val thumbCenterX = if (width > thumbWidthPx) {
+                    rawThumbCenterX.coerceIn(
+                        thumbWidthPx / 2f,
+                        width - thumbWidthPx / 2f,
+                    )
+                } else {
+                    width / 2f
+                }
+
+                val activeEndX = (thumbCenterX - thumbClearancePx)
+                    .coerceIn(0f, width)
+                val inactiveStartX = (thumbCenterX + thumbClearancePx)
+                    .coerceIn(0f, width)
+
+                // Thick active track.
+                if (activeEndX > 0f) {
+                    drawRoundRect(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(
+                                primary.copy(alpha = if (enabled) 1f else 0.42f),
+                                tertiary.copy(alpha = if (enabled) 0.95f else 0.36f),
+                            ),
+                            startX = 0f,
+                            endX = activeEndX,
                         ),
-                        startX = startX,
-                        endX = activeEndX,
+                        topLeft = Offset(
+                            0f,
+                            centerY - trackHeightPx / 2f,
+                        ),
+                        size = Size(activeEndX, trackHeightPx),
+                        cornerRadius = cornerRadius,
+                    )
+                }
+
+                // Thick inactive track.
+                if (inactiveStartX < width) {
+                    drawRoundRect(
+                        color = inactive,
+                        topLeft = Offset(
+                            inactiveStartX,
+                            centerY - trackHeightPx / 2f,
+                        ),
+                        size = Size(
+                            width - inactiveStartX,
+                            trackHeightPx,
+                        ),
+                        cornerRadius = cornerRadius,
+                    )
+                }
+
+                // Endpoint marker.
+                val endpointX = width - trackHeightPx / 2f
+                if (inactiveStartX < endpointX) {
+                    drawCircle(
+                        color = thumbColor.copy(alpha = 0.90f),
+                        radius = 2.dp.toPx(),
+                        center = Offset(endpointX, centerY),
+                    )
+                }
+
+                // Vertical thumb with a subtle shadow.
+                val thumbX = thumbCenterX - thumbWidthPx / 2f
+                val thumbCornerRadius = CornerRadius(
+                    thumbWidthPx / 2f,
+                    thumbWidthPx / 2f,
+                )
+                val shadowExtra = 2.dp.toPx()
+
+                drawRoundRect(
+                    color = Color.Black.copy(alpha = 0.35f),
+                    topLeft = Offset(
+                        thumbX - shadowExtra / 2f,
+                        centerY - thumbHeightPx / 2f - shadowExtra / 2f,
                     ),
-                    start = androidx.compose.ui.geometry.Offset(startX, centerY),
-                    end = androidx.compose.ui.geometry.Offset(activeEndX, centerY),
-                    strokeWidth = 4.5.dp.toPx(),
-                    cap = StrokeCap.Round,
+                    size = Size(
+                        thumbWidthPx + shadowExtra,
+                        thumbHeightPx + shadowExtra,
+                    ),
+                    cornerRadius = CornerRadius(
+                        (thumbWidthPx + shadowExtra) / 2f,
+                        (thumbWidthPx + shadowExtra) / 2f,
+                    ),
+                )
+
+                drawRoundRect(
+                    color = thumbColor,
+                    topLeft = Offset(
+                        thumbX,
+                        centerY - thumbHeightPx / 2f,
+                    ),
+                    size = Size(thumbWidthPx, thumbHeightPx),
+                    cornerRadius = thumbCornerRadius,
                 )
             }
-        },
-        colors = SliderDefaults.colors(
-            thumbColor = primary,
-            activeTrackColor = Color.Transparent,
-            inactiveTrackColor = Color.Transparent,
-            activeTickColor = Color.Transparent,
-            inactiveTickColor = Color.Transparent,
-            disabledThumbColor = Color.White.copy(alpha = 0.34f),
-            disabledActiveTrackColor = Color.Transparent,
-            disabledInactiveTrackColor = Color.Transparent,
-            disabledActiveTickColor = Color.Transparent,
-            disabledInactiveTickColor = Color.Transparent,
-        ),
-    )
+
+            // Transparent Material Slider preserves seeking and accessibility.
+            Slider(
+                value = value,
+                onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
+                valueRange = valueRange,
+                enabled = enabled,
+                interactionSource = interactionSource,
+                modifier = Modifier.fillMaxSize(),
+                colors = SliderDefaults.colors(
+                    thumbColor = Color.Transparent,
+                    activeTrackColor = Color.Transparent,
+                    inactiveTrackColor = Color.Transparent,
+                    activeTickColor = Color.Transparent,
+                    inactiveTickColor = Color.Transparent,
+                    disabledThumbColor = Color.Transparent,
+                    disabledActiveTrackColor = Color.Transparent,
+                    disabledInactiveTrackColor = Color.Transparent,
+                    disabledActiveTickColor = Color.Transparent,
+                    disabledInactiveTickColor = Color.Transparent,
+                ),
+            )
+        }
     }
 }
 
