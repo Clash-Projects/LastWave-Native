@@ -63,7 +63,7 @@ class CommunityPlaylistTintTest {
             .flatMap { seed -> listOf(false, true).map { Md3SchemeBuilder.buildDarkScheme(seed, it) } }
         for (scheme in schemes) {
             val glass = scheme.surfaceContainerHigh.copy(alpha = 0.76f)
-            val tintedGlass = brightestTint.copy(alpha = 0.22f).compositeOver(glass)
+            val tintedGlass = brightestTint.copy(alpha = 0.38f).compositeOver(glass)
             // The existing highlight is strongest at the gradient's start.
             val background = scheme.onSurface.copy(alpha = 0.035f)
                 .compositeOver(tintedGlass).compositeOver(scheme.background)
