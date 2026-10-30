@@ -2992,7 +2992,10 @@ private fun FullPlayer(
                             } else {
                                 // â”€â”€ Standard layout (lifted and balanced) â”€â”€â”€â”€â”€â”€
                                 Column(
-                                    Modifier.fillMaxSize().padding(horizontal = 20.dp).padding(bottom = 12.dp),
+                                    Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = if (isVideoActive) 0.dp else 20.dp)
+                                        .padding(bottom = 12.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
                                     val hasArtwork = !track.artworkUrl.isNullOrBlank() || !resolvedAmbientUrl.isNullOrBlank() || activeCanvas != null
@@ -3013,7 +3016,8 @@ private fun FullPlayer(
                                                     heroBottomPx = bottom
                                                 }
                                             }
-                                            .pointerInput(track.videoId, track.title) {
+                                            .pointerInput(track.videoId, track.title, isVideoActive) {
+                                                if (isVideoActive) return@pointerInput
                                                 awaitEachGesture {
                                                     val down = awaitFirstDown(requireUnconsumed = false)
                                                     var isDrag = false
@@ -3113,7 +3117,7 @@ private fun FullPlayer(
                                                     }
                                                 }
                                             },
-                                        contentAlignment = BiasAlignment(0f, -0.55f),
+                                        contentAlignment = if (isVideoActive) Alignment.Center else BiasAlignment(0f, -0.55f),
                                     ) {
                                         val artworkSize = (minOf(maxWidth, maxHeight) - 6.dp)
                                             .coerceAtLeast(0.dp)
@@ -3121,7 +3125,6 @@ private fun FullPlayer(
 
                                         if (sleeveAlpha > 0.001f) {
                                             if (isVideoActive) {
-                                                val videoWidth = minOf(maxWidth, 420.dp)
                                                 val videoGlowAlpha by animateFloatAsState(
                                                     targetValue = if (state.isPlaying) 0.55f else 0.25f,
                                                     animationSpec = tween(600),
@@ -3130,11 +3133,11 @@ private fun FullPlayer(
                                                 // Ambient glow matching playing track colors behind the 16:9 video
                                                 Box(
                                                     modifier = Modifier
-                                                        .width(videoWidth + 24.dp)
+                                                        .fillMaxWidth()
                                                         .aspectRatio(16f / 9f)
                                                         .graphicsLayer {
-                                                            translationX = shownArtworkX * 0.7f
-                                                            alpha = videoGlowAlpha * sleeveAlpha
+                                                             translationX = shownArtworkX * 0.7f
+                                                             alpha = videoGlowAlpha * sleeveAlpha
                                                         }
                                                         .background(
                                                             Brush.radialGradient(
@@ -3142,31 +3145,19 @@ private fun FullPlayer(
                                                                 0.60f to ambientCompanion.copy(alpha = 0.22f),
                                                                 1.0f to Color.Transparent,
                                                             ),
-                                                            shape = RoundedCornerShape(32.dp),
                                                         ),
                                                 )
 
-                                                val videoPlayingScale by animateFloatAsState(
-                                                    targetValue = if (state.isPlaying) 1.0f else 0.94f,
-                                                    animationSpec = spring(
-                                                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                                                        stiffness = Spring.StiffnessMediumLow,
-                                                    ),
-                                                    label = "videoPlayingScale",
-                                                )
-
                                                 Surface(
-                                                    shape = RoundedCornerShape(22.dp),
+                                                    shape = RoundedCornerShape(0.dp),
                                                     color = Color.Black,
-                                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
-                                                    tonalElevation = 6.dp * sleeveAlpha,
-                                                    shadowElevation = if (state.isPlaying) 26.dp * sleeveAlpha else 12.dp * sleeveAlpha,
+                                                    border = null,
+                                                    tonalElevation = 0.dp,
+                                                    shadowElevation = 0.dp,
                                                     modifier = Modifier
-                                                        .width(videoWidth)
+                                                        .fillMaxWidth()
                                                         .aspectRatio(16f / 9f)
                                                         .graphicsLayer {
-                                                            scaleX = videoPlayingScale
-                                                            scaleY = videoPlayingScale
                                                             translationX = shownArtworkX
                                                             rotationZ = shownArtworkX / 80f
                                                             alpha = sleeveAlpha
@@ -3334,6 +3325,7 @@ private fun FullPlayer(
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
+                                            .padding(horizontal = if (isVideoActive) 20.dp else 0.dp)
                                             .graphicsLayer { translationY = -14.dp.toPx() },
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                     ) {
@@ -3708,7 +3700,8 @@ private fun FullPlayerLandscape(
                         translationX = shownArtworkX
                         rotationZ = shownArtworkX / 80f
                     }
-                    .pointerInput(track.videoId, track.title) {
+                    .pointerInput(track.videoId, track.title, isVideoActive) {
+                        if (isVideoActive) return@pointerInput
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             var isDrag = false

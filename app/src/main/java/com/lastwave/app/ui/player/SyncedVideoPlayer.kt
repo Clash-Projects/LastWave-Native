@@ -494,7 +494,6 @@ fun SyncedCoverVideoPlayer(
     Box(
         modifier = modifier
             .aspectRatio(16f / 9f)
-            .clip(RoundedCornerShape(22.dp))
             .background(Color.Black)
             .pointerInput(Unit) {
                 detectTapGestures(
@@ -722,18 +721,45 @@ fun SyncedCoverVideoPlayer(
                 Surface(
                     onClick = onCloseVideo,
                     shape = CircleShape,
-                    color = Color.Black.copy(alpha = 0.55f),
-                    border = BorderStroke(0.7.dp, Color.White.copy(alpha = 0.18f)),
-                    modifier = Modifier.size(32.dp),
+                    color = Color.Black.copy(alpha = 0.65f),
+                    border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.28f)),
+                    modifier = Modifier.size(34.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             Icons.Filled.Close,
                             contentDescription = "Close video, show album art",
                             tint = Color.White,
-                            modifier = Modifier.size(17.dp),
+                            modifier = Modifier.size(18.dp),
                         )
                     }
+                }
+            }
+        }
+
+        // Persistent close button in top-right when top controls bar is hidden
+        AnimatedVisibility(
+            visible = !controlsVisible,
+            enter = fadeIn(tween(150)),
+            exit = fadeOut(tween(150)),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(8.dp),
+        ) {
+            Surface(
+                onClick = onCloseVideo,
+                shape = CircleShape,
+                color = Color.Black.copy(alpha = 0.60f),
+                border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.25f)),
+                modifier = Modifier.size(34.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = "Close video, show album art",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
             }
         }
