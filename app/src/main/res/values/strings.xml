@@ -167,6 +167,8 @@
     <string name="settings_diagnostics_sub">Share logs for troubleshooting</string>
     <string name="settings_check_updates">Check for Updates</string>
     <string name="settings_source_code">Source Code</string>
+    <string name="settings_desktop_app">Download Desktop App</string>
+    <string name="about_made_by">Made by LastWave Team</string>
 
     <!-- Common dialog buttons -->
     <string name="common_cancel">Cancel</string>
