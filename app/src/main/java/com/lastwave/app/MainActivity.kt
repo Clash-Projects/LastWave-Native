@@ -187,9 +187,14 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 ) {
                     val navController = rememberNavController()
                     val backStackEntry by navController.currentBackStackEntryAsState()
-                    val hasBottomNavigation = backStackEntry?.destination?.route == Screen.MainShell.route && !themeState.hideNavTabs
+                    val currentRoute = backStackEntry?.destination?.route
+                    val hasBottomNavigation = currentRoute == Screen.MainShell.route && !themeState.hideNavTabs
+                    val isJamScreen = currentRoute == Screen.Jam.route || currentRoute?.startsWith("jam") == true
 
-                    PlayerHost(hasBottomNavigation = hasBottomNavigation) {
+                    PlayerHost(
+                        hasBottomNavigation = hasBottomNavigation,
+                        hideMiniPlayer = isJamScreen,
+                    ) {
                         LastWaveNavHost(navController)
                     }
                 }

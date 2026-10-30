@@ -233,6 +233,20 @@ class LastWaveJamViewModel @Inject constructor(
         }
     }
 
+    fun skipPrevious() {
+        val isAllowed = !uiState.value.isConnected || uiState.value.isHost || uiState.value.roomMode == JamProtocolConstants.MODE_COLLABORATIVE
+        if (isAllowed) {
+            musicPlayer.previous()
+        }
+    }
+
+    fun seekTo(positionMs: Long) {
+        val isAllowed = !uiState.value.isConnected || uiState.value.isHost || uiState.value.roomMode == JamProtocolConstants.MODE_COLLABORATIVE
+        if (isAllowed) {
+            musicPlayer.seekTo(positionMs)
+        }
+    }
+
     fun startJamSession(roomMode: String? = null) {
         val name = _pendingDisplayName.value.ifBlank { "Host" }
         val mode = roomMode ?: _pendingRoomMode.value

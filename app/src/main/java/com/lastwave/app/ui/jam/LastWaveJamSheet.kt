@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -86,9 +88,6 @@ import com.lastwave.app.data.jam.JamRepository
 import com.lastwave.app.data.jam.ParticipantPayload
 import com.lastwave.app.ui.common.ArtworkImage
 
-private val LimeAccent = Color(0xFFC9FB00)
-private val DarkTeal = Color(0xFF012226)
-
 private fun formatMs(ms: Long): String {
     if (ms <= 0L) return "00:00"
     val totalSec = ms / 1000
@@ -108,6 +107,10 @@ fun LastWaveJamSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
+
+    val isDark = com.lastwave.app.ui.theme.LocalIsDarkTheme.current
+    val LimeAccent = if (isDark) Color(0xFFC9FB00) else Color(0xFF2E6B12)
+    val DarkTeal = if (isDark) Color(0xFF012226) else Color.White
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     var chatInputText by remember { mutableStateOf("") }
@@ -131,6 +134,8 @@ fun LastWaveJamSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
+                .imePadding()
                 .padding(horizontal = 20.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {

@@ -77,11 +77,8 @@ class JamPlaybackSync @Inject constructor(
                     return@collect
                 }
 
-                // If we are within a local action quiet window, suppress echo
-                if (SystemClock.elapsedRealtime() < quietUntilMs) {
-                    return@collect
-                }
-
+                // Inbound events from other peers should never be dropped by quietUntilMs,
+                // otherwise play/seek events immediately following a track change get discarded.
                 handleRemoteEvent(event, session)
             }
         }
@@ -130,6 +127,10 @@ class JamPlaybackSync @Inject constructor(
                             )
                             jamRepository.broadcastChangeTrack(payload, positionMs = pos, isPlaying = isPlaying)
                         } else if (playStateChanged) {
+                            // Do not broadcast pause if the player is simply buffering or resolving a stream
+                            if (!isPlaying && musicPlayer.state.value.isBuffering) {
+                                return@collect
+                            }
                             lastBroadcastIsPlaying = isPlaying
                             lastBroadcastPositionMs = pos
                             quietUntilMs = SystemClock.elapsedRealtime() + 800L
@@ -141,6 +142,9 @@ class JamPlaybackSync @Inject constructor(
                             }
                         }
                     } else if (isPlaying != lastBroadcastIsPlaying) {
+                        if (!isPlaying && musicPlayer.state.value.isBuffering) {
+                            return@collect
+                        }
                         lastBroadcastIsPlaying = isPlaying
                         val currentPos = musicPlayer.progressState.value.positionMs
                         lastBroadcastPositionMs = currentPos

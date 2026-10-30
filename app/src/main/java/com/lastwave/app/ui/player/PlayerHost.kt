@@ -256,6 +256,8 @@ import androidx.media3.common.Player
 import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.lyrics.LyricsRepository
 import com.lastwave.app.data.lyrics.LyricsResult
+import com.lastwave.app.data.lyrics.LyricsSyncType
+import kotlinx.coroutines.flow.update
 import com.lastwave.app.data.playlist.PlaylistRepository
 import com.lastwave.app.data.playlist.SavedPlaylist
 import com.lastwave.app.data.playlist.LIKED_SONGS_MODE
@@ -409,6 +411,10 @@ class PlayerViewModel @Inject constructor(
     private val _lyricsState = MutableStateFlow<LyricsUiState>(LyricsUiState.Idle)
     val lyricsState = _lyricsState.asStateFlow()
 
+    private val _lyricsProviderStatuses = MutableStateFlow<Map<com.lastwave.app.data.local.LyricsProvider, LyricsSyncType>>(emptyMap())
+    val lyricsProviderStatuses = _lyricsProviderStatuses.asStateFlow()
+    private var probeLyricsJob: Job? = null
+
     private var currentTrackLyricsKey: String? = null
     private var lyricsJob: Job? = null
     private var spotLyricsOverride: Pair<com.lastwave.app.data.local.LyricsProvider?, Set<com.lastwave.app.data.local.LyricsProvider>> = Pair(null, emptySet())
@@ -450,6 +456,8 @@ class PlayerViewModel @Inject constructor(
                 if (key != currentTrackLyricsKey) {
                     currentTrackLyricsKey = key
                     spotLyricsOverride = Pair(null, emptySet())
+                    probeLyricsJob?.cancel()
+                    _lyricsProviderStatuses.value = emptyMap()
                     if (track != null) {
                         loadLyrics(track, forceRefresh = false)
                     } else {
@@ -576,12 +584,40 @@ class PlayerViewModel @Inject constructor(
         loadLyrics(track, forceRefresh = true, overrideProvider = null, excludedProviders = newExcluded)
     }
 
+    fun probeLyricsProviders() {
+        val track = player.state.value.current ?: return
+        probeLyricsJob?.cancel()
+        val durationSeconds = if (player.state.value.durationMs > 0) {
+            (player.state.value.durationMs / 1000).toInt()
+        } else {
+            track.durationMs?.takeIf { it > 0 }?.let { (it / 1000).toInt() }
+        }
+        probeLyricsJob = viewModelScope.launch {
+            lyricsRepository.probeAllProviders(
+                title = track.title,
+                artist = track.artist,
+                album = track.album,
+                durationSeconds = durationSeconds,
+                videoId = track.videoId,
+                onStatusUpdated = { provider, status ->
+                    _lyricsProviderStatuses.update { current ->
+                        current + (provider to status)
+                    }
+                },
+            )
+        }
+    }
+
     fun loadLyrics(
         track: PlayableTrack,
         forceRefresh: Boolean = false,
         overrideProvider: com.lastwave.app.data.local.LyricsProvider? = spotLyricsOverride.first,
         excludedProviders: Set<com.lastwave.app.data.local.LyricsProvider> = spotLyricsOverride.second,
     ) {
+        val knownStatuses = lyricsRepository.getKnownProviderStatuses(track.title, track.artist, track.videoId)
+        if (knownStatuses.isNotEmpty()) {
+            _lyricsProviderStatuses.update { current -> current + knownStatuses }
+        }
         if (track.mediaType == com.lastwave.app.playback.MediaType.PODCAST_EPISODE) {
             // Podcast episodes have no lyrics: skip every provider instead of
             // burning a lookup on a title that can never match.
@@ -665,6 +701,16 @@ class PlayerViewModel @Inject constructor(
         }
         when (result) {
             is LyricsResult.Success -> {
+                val prov = com.lastwave.app.data.lyrics.providerForSource(result.source)
+                if (prov != null) {
+                    val status = when {
+                        result.isWordSynced -> LyricsSyncType.WORD_SYNC
+                        result.isSynced && result.lines.isNotEmpty() -> LyricsSyncType.LINE_SYNC
+                        !result.plainLyrics.isNullOrBlank() || result.lines.isNotEmpty() -> LyricsSyncType.NO_SYNC
+                        else -> LyricsSyncType.NO_LYRICS
+                    }
+                    _lyricsProviderStatuses.update { it + (prov to status) }
+                }
                 // Single funnel for everything the views draw, mirroring the
                 // reference lyrics clients: one provider
                 // timestamp stays one drawn row. The timeline is de-overlapped
@@ -824,6 +870,7 @@ val LocalBottomNavSlot = androidx.compose.runtime.staticCompositionLocalOf<andro
 fun PlayerHost(
     viewModel: PlayerViewModel = hiltViewModel(),
     hasBottomNavigation: Boolean = false,
+    hideMiniPlayer: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val state by viewModel.chromeState.collectAsStateWithLifecycle()
@@ -884,7 +931,7 @@ fun PlayerHost(
             }
         }
     }
-    val miniPlayerVisible = state.current != null && !expanded && !settings.buttonNowPlayingEnabled
+    val miniPlayerVisible = state.current != null && !expanded && !settings.buttonNowPlayingEnabled && !hideMiniPlayer
 
     // Sibling pattern: ONE backdrop capturing feed content,
     // consumed by the sibling MiniPlayer. Unconditional remember keeps composition stable.
@@ -904,7 +951,7 @@ fun PlayerHost(
     CompositionLocalProvider(
         LocalMusicPlayer provides viewModel.player,
         LocalAddToPlaylist provides requestAddToPlaylist,
-        LocalMiniPlayerScrollClearance provides if (state.current != null && !settings.buttonNowPlayingEnabled) 98.dp else 0.dp,
+        LocalMiniPlayerScrollClearance provides if (state.current != null && !settings.buttonNowPlayingEnabled && !hideMiniPlayer) 98.dp else 0.dp,
         LocalBottomNavSlot provides bottomNavSlot,
         LocalLiquidGlassBackdrop provides (if (miniGlass) miniBackdrop else null),
     ) {
@@ -1042,6 +1089,7 @@ private fun ExpandedPlayer(
 ) {
     val state by viewModel.fullPlayerState.collectAsStateWithLifecycle()
     val lyricsState by viewModel.lyricsState.collectAsStateWithLifecycle()
+    val lyricsProviderStatuses by viewModel.lyricsProviderStatuses.collectAsStateWithLifecycle()
     val canvas by viewModel.canvasState.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val likedTrackKeys by viewModel.likedTrackKeys.collectAsStateWithLifecycle()
@@ -1056,6 +1104,8 @@ private fun ExpandedPlayer(
         progressState = viewModel.progressState,
         player = viewModel.player,
         lyricsState = lyricsState,
+        lyricsProviderStatuses = lyricsProviderStatuses,
+        onProbeLyricsProviders = viewModel::probeLyricsProviders,
         wavySeekbarEnabled = settings.wavySeekbarEnabled,
         rotatingBackgroundEnabled = settings.rotatingBackgroundEnabled,
         lyricsRotatingBackgroundEnabled = settings.lyricsRotatingBackgroundEnabled,
@@ -2175,6 +2225,8 @@ private fun FullPlayer(
     onToggleLiked: () -> Unit = {},
     onDoubleTapLike: () -> Unit = {},
     onDragStatusChange: (Boolean) -> Unit = {},
+    lyricsProviderStatuses: Map<com.lastwave.app.data.local.LyricsProvider, LyricsSyncType> = emptyMap(),
+    onProbeLyricsProviders: (() -> Unit)? = null,
     onSelectLyricsProvider: ((com.lastwave.app.data.local.LyricsProvider) -> Unit)? = null,
     onTryAnotherLyricsSource: (() -> Unit)? = null,
 ) {
@@ -2913,6 +2965,8 @@ private fun FullPlayer(
                                     state = state,
                                     player = player,
                                     lyricsState = lyricsState,
+                                    lyricsProviderStatuses = lyricsProviderStatuses,
+                                    onProbeLyricsProviders = onProbeLyricsProviders,
                                     progressState = progressState,
                                     wavySeekbarEnabled = wavySeekbarEnabled,
                                     lyricsOffsetMs = lyricsOffsetMs,
