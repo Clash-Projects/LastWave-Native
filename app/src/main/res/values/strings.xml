@@ -736,6 +736,9 @@
     <!-- Search -->
     <string name="search_cd">Search</string>
     <string name="search_clear_cd">Clear</string>
+    <string name="search_voice_cd">Search by voice</string>
+    <string name="search_voice_prompt">Speak a song, artist, or album to search</string>
+    <string name="search_voice_unavailable">Voice search is not available on this device.</string>
     <string name="search_hint_users">Search Last.fm users…</string>
     <string name="search_hint_yt">Search YouTube Music…</string>
     <string name="search_tab_tracks">Tracks</string>
