@@ -16,8 +16,8 @@ import kotlinx.coroutines.Job
 import android.content.ContextWrapper
 import android.util.Log
 import android.view.TextureView
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.runtime.mutableDoubleStateOf
 import android.view.ViewGroup
@@ -148,7 +148,6 @@ sealed interface SyncedVideoUiState {
         val currentQualityLabel: String
             get() = if (isAuto) "Auto" else activeStream.displayQuality
     }
-    data class FallbackEmbed(val videoId: String) : SyncedVideoUiState
     data class Error(val message: String) : SyncedVideoUiState
 }
 
@@ -177,15 +176,9 @@ class SyncedVideoViewModel @Inject constructor(
                     )
                 }
                 .onFailure { error ->
-                    val fallbackId = videoRepository.findVideoId(title, artist, videoId)
-                        ?: videoId?.takeIf { it.isNotBlank() }
-                    if (!fallbackId.isNullOrBlank()) {
-                        _uiState.value = SyncedVideoUiState.FallbackEmbed(fallbackId)
-                    } else {
-                        _uiState.value = SyncedVideoUiState.Error(
-                            error.message ?: "Unable to resolve video stream"
-                        )
-                    }
+                    _uiState.value = SyncedVideoUiState.Error(
+                        error.message ?: "Unable to resolve video stream"
+                    )
                 }
         }
     }
@@ -209,10 +202,6 @@ class SyncedVideoViewModel @Inject constructor(
         currentKey = null
         loadVideo(title, artist, videoId)
     }
-
-    fun switchToFallbackEmbed(videoId: String) {
-        _uiState.value = SyncedVideoUiState.FallbackEmbed(videoId)
-    }
 }
 
 /**
@@ -232,112 +221,82 @@ private enum class VideoSeekSide { REWIND, FORWARD }
  * - Smoothly expands into edge-to-edge sensor landscape cinema mode when fullscreen is requested.
  */
 /**
- * Bulletproof embedded official YouTube player via WebView with YouTube IFrame API.
- * - Always runs muted (`mute()`) so that LastWave's lossless master audio drives the sound.
- * - Automatically tracks play/pause and seeks when position jumps > 1.5s.
- * - Guaranteed fallback matching lokal-music/lokal-mobile: never blocked by 403 or cipher breaks.
+ * Sleek Liquid Glass segmented pill switcher: [ Song | Video ]
+ * Modeled after YouTube Music & SimpMusic.
  */
 @Composable
-fun YouTubeEmbeddedPlayer(
-    videoId: String,
-    musicPlayer: MusicPlayer,
+fun SongVideoPillSwitcher(
+    isVideoActive: Boolean,
+    onModeChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val playerState by musicPlayer.state.collectAsStateWithLifecycle()
-    var webViewRef by remember { mutableStateOf<WebView?>(null) }
-    var lastSyncedPositionSec by remember { mutableDoubleStateOf(-1.0) }
-
-    LaunchedEffect(playerState.isPlaying) {
-        val js = if (playerState.isPlaying) {
-            "if (window.ytPlayer && ytPlayer.playVideo) { ytPlayer.playVideo(); }"
-        } else {
-            "if (window.ytPlayer && ytPlayer.pauseVideo) { ytPlayer.pauseVideo(); }"
-        }
-        webViewRef?.evaluateJavascript(js, null)
-    }
-
-    LaunchedEffect(playerState.positionMs) {
-        val currentSec = playerState.positionMs / 1000.0
-        if (abs(currentSec - lastSyncedPositionSec) > 2.0) {
-            lastSyncedPositionSec = currentSec
-            val js = "if (window.ytPlayer && ytPlayer.seekTo && Math.abs((ytPlayer.getCurrentTime ? ytPlayer.getCurrentTime() : 0) - $currentSec) > 1.5) { ytPlayer.seekTo($currentSec, true); }"
-            webViewRef?.evaluateJavascript(js, null)
-        }
-    }
-
-    AndroidView(
-        factory = { ctx ->
-            WebView(ctx).apply {
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                )
-                settings.apply {
-                    javaScriptEnabled = true
-                    mediaPlaybackRequiresUserGesture = false
-                    domStorageEnabled = true
-                    loadsImagesAutomatically = true
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = Color.White.copy(alpha = 0.10f),
+        border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.18f)),
+        modifier = modifier.height(34.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // "Song" Pill Option
+            Surface(
+                onClick = { onModeChange(false) },
+                shape = RoundedCornerShape(50),
+                color = if (!isVideoActive) Color.White.copy(alpha = 0.28f) else Color.Transparent,
+                border = if (!isVideoActive) BorderStroke(0.6.dp, Color.White.copy(alpha = 0.35f)) else null,
+                modifier = Modifier.height(28.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Filled.MusicNote,
+                        contentDescription = null,
+                        tint = if (!isVideoActive) Color.White else Color.White.copy(alpha = 0.65f),
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "Song",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (!isVideoActive) FontWeight.Bold else FontWeight.Medium,
+                        color = if (!isVideoActive) Color.White else Color.White.copy(alpha = 0.65f),
+                    )
                 }
-                setBackgroundColor(android.graphics.Color.BLACK)
-                webViewClient = WebViewClient()
-                val html = """
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                        <style>
-                            * { margin: 0; padding: 0; box-sizing: border-box; background-color: #000; overflow: hidden; }
-                            html, body, #player { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
-                        </style>
-                        <script src="https://www.youtube.com/iframe_api"></script>
-                    </head>
-                    <body>
-                        <div id="player"></div>
-                        <script>
-                            var ytPlayer;
-                            function onYouTubeIframeAPIReady() {
-                                ytPlayer = new YT.Player('player', {
-                                    width: '100%',
-                                    height: '100%',
-                                    videoId: '$videoId',
-                                    playerVars: {
-                                        'autoplay': 1,
-                                        'playsinline': 1,
-                                        'controls': 0,
-                                        'disablekb': 1,
-                                        'fs': 0,
-                                        'rel': 0,
-                                        'modestbranding': 1,
-                                        'iv_load_policy': 3,
-                                        'enablejsapi': 1,
-                                        'origin': 'https://www.youtube.com'
-                                    },
-                                    events: {
-                                        'onReady': function(event) {
-                                            event.target.mute();
-                                            ${if (playerState.isPlaying) "event.target.playVideo();" else "event.target.pauseVideo();"}
-                                        }
-                                    }
-                                });
-                            }
-                        </script>
-                    </body>
-                    </html>
-                """.trimIndent()
-                loadDataWithBaseURL("https://www.youtube.com", html, "text/html", "UTF-8", null)
-                webViewRef = this
             }
-        },
-        update = { webView ->
-            webViewRef = webView
-        },
-        modifier = modifier.fillMaxSize(),
-    )
 
-    DisposableEffect(Unit) {
-        onDispose {
-            webViewRef?.destroy()
-            webViewRef = null
+            Spacer(Modifier.width(2.dp))
+
+            // "Video" Pill Option
+            Surface(
+                onClick = { onModeChange(true) },
+                shape = RoundedCornerShape(50),
+                color = if (isVideoActive) Color.White.copy(alpha = 0.28f) else Color.Transparent,
+                border = if (isVideoActive) BorderStroke(0.6.dp, Color.White.copy(alpha = 0.35f)) else null,
+                modifier = Modifier.height(28.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Filled.SmartDisplay,
+                        contentDescription = null,
+                        tint = if (isVideoActive) Color.White else Color.White.copy(alpha = 0.65f),
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "Video",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (isVideoActive) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isVideoActive) Color.White else Color.White.copy(alpha = 0.65f),
+                    )
+                }
+            }
         }
     }
 }
@@ -432,11 +391,16 @@ fun SyncedCoverVideoPlayer(
             }
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                Log.w("SyncedVideo", "Video player error: ${error.message}; switching to YouTube embed fallback", error)
-                val vid = (uiState as? SyncedVideoUiState.Ready)?.bundle?.videoId ?: track.videoId
-                if (!vid.isNullOrBlank()) {
-                    viewModel.switchToFallbackEmbed(vid)
+                Log.w("SyncedVideo", "Video player error: ${error.message}; trying alternate resolution", error)
+                val ready = uiState as? SyncedVideoUiState.Ready
+                if (ready != null) {
+                    val alt = ready.bundle.availableStreams.firstOrNull { it.url != ready.activeStream.url }
+                    if (alt != null) {
+                        viewModel.selectQuality(alt.height)
+                        return
+                    }
                 }
+                viewModel.retry(track.title, track.artist, track.videoId)
             }
         }
         videoPlayer.addListener(listener)
@@ -469,13 +433,15 @@ fun SyncedCoverVideoPlayer(
         }
     }
 
-    // Exact millisecond synchronization loop (PLL) with hard-seek cooldown
-    LaunchedEffect(videoPlayer, playerState.isPlaying, uiState) {
+    // Exact millisecond synchronization loop (PLL) with frame-accurate intro skit offset
+    val introOffsetMs = (uiState as? SyncedVideoUiState.Ready)?.bundle?.introOffsetMs ?: 0L
+    LaunchedEffect(videoPlayer, playerState.isPlaying, uiState, introOffsetMs) {
         if (uiState !is SyncedVideoUiState.Ready) return@LaunchedEffect
         while (isActive) {
             val audioPos = musicPlayer.currentPositionMs()
+            val targetVideoPos = (audioPos + introOffsetMs).coerceAtLeast(0L)
             val videoPos = videoPlayer.currentPosition
-            val driftMs = videoPos - audioPos
+            val driftMs = videoPos - targetVideoPos
             val audioSpeed = playerState.speed
             val now = SystemClock.elapsedRealtime()
 
@@ -488,7 +454,7 @@ fun SyncedCoverVideoPlayer(
             if (videoPlayer.playbackState == Player.STATE_READY) {
                 if (abs(driftMs) > 300L) {
                     if (now - lastHardSeekTime > 650L) {
-                        videoPlayer.seekTo(audioPos)
+                        videoPlayer.seekTo(targetVideoPos)
                         lastHardSeekTime = now
                     }
                     if (videoPlayer.playbackParameters.speed != audioSpeed) {
@@ -560,13 +526,7 @@ fun SyncedCoverVideoPlayer(
                     modifier = Modifier.size(36.dp),
                 )
             }
-            is SyncedVideoUiState.FallbackEmbed -> {
-                YouTubeEmbeddedPlayer(
-                    videoId = (uiState as SyncedVideoUiState.FallbackEmbed).videoId,
-                    musicPlayer = musicPlayer,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+
             is SyncedVideoUiState.Error -> {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -893,11 +853,16 @@ fun FullscreenLandscapeVideoStage(
     DisposableEffect(videoPlayer) {
         val listener = object : Player.Listener {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                Log.w("SyncedVideo", "Fullscreen video player error: ${error.message}; switching to YouTube embed", error)
-                val vid = (uiState as? SyncedVideoUiState.Ready)?.bundle?.videoId ?: track.videoId
-                if (!vid.isNullOrBlank()) {
-                    viewModel.switchToFallbackEmbed(vid)
+                Log.w("SyncedVideo", "Fullscreen video player error: ${error.message}; trying alternate resolution", error)
+                val ready = uiState as? SyncedVideoUiState.Ready
+                if (ready != null) {
+                    val alt = ready.bundle.availableStreams.firstOrNull { it.url != ready.activeStream.url }
+                    if (alt != null) {
+                        viewModel.selectQuality(alt.height)
+                        return
+                    }
                 }
+                viewModel.retry(track.title, track.artist, track.videoId)
             }
         }
         videoPlayer.addListener(listener)
@@ -929,13 +894,15 @@ fun FullscreenLandscapeVideoStage(
         }
     }
 
-    // PLL sync loop
-    LaunchedEffect(videoPlayer, playerState.isPlaying, uiState) {
+    // PLL sync loop with frame-accurate intro skit offset
+    val introOffsetMs = (uiState as? SyncedVideoUiState.Ready)?.bundle?.introOffsetMs ?: 0L
+    LaunchedEffect(videoPlayer, playerState.isPlaying, uiState, introOffsetMs) {
         if (uiState !is SyncedVideoUiState.Ready) return@LaunchedEffect
         while (isActive) {
             val audioPos = musicPlayer.currentPositionMs()
+            val targetVideoPos = (audioPos + introOffsetMs).coerceAtLeast(0L)
             val videoPos = videoPlayer.currentPosition
-            val driftMs = videoPos - audioPos
+            val driftMs = videoPos - targetVideoPos
             val audioSpeed = playerState.speed
             val now = SystemClock.elapsedRealtime()
 
@@ -946,7 +913,7 @@ fun FullscreenLandscapeVideoStage(
             if (videoPlayer.playbackState == Player.STATE_READY) {
                 if (abs(driftMs) > 300L) {
                     if (now - lastHardSeekTime > 650L) {
-                        videoPlayer.seekTo(audioPos)
+                        videoPlayer.seekTo(targetVideoPos)
                         lastHardSeekTime = now
                     }
                     if (videoPlayer.playbackParameters.speed != audioSpeed) {
@@ -1018,13 +985,7 @@ fun FullscreenLandscapeVideoStage(
                     modifier = Modifier.size(48.dp),
                 )
             }
-            is SyncedVideoUiState.FallbackEmbed -> {
-                YouTubeEmbeddedPlayer(
-                    videoId = (uiState as SyncedVideoUiState.FallbackEmbed).videoId,
-                    musicPlayer = musicPlayer,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+
             is SyncedVideoUiState.Error -> {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,

@@ -146,10 +146,17 @@ class YouTubeStreamExtractor @Inject constructor(
             limit = MAX_PROBED_AUDIO_STREAMS,
         ) ?: availableStreams.first()
 
+        val pairedAudioUrl = info.audioStreams.maxByOrNull { it.bitrate }?.content
         SyncedVideoStreamBundle(
             videoId = videoId,
             defaultStream = playableDefault,
             availableStreams = availableStreams,
+            pairedAudioStreamUrl = pairedAudioUrl,
+            pairedAudioHeaders = mapOf(
+                "User-Agent" to YOUTUBE_WEB_USER_AGENT,
+                "Origin" to YOUTUBE_ORIGIN,
+                "Referer" to "$YOUTUBE_ORIGIN/watch?v=$videoId",
+            ),
         )
     }
 
@@ -206,10 +213,21 @@ class YouTubeStreamExtractor @Inject constructor(
             val adaptive = streamingData.optJSONArray("adaptiveFormats") ?: return@runCatching null
             val durationSec = root.optJSONObject("videoDetails")?.optString("lengthSeconds")?.toLongOrNull() ?: 0L
 
+            var pairedAudioUrl: String? = null
+            var bestAudioBitrate = 0
             val extractedStreams = mutableListOf<YouTubeVideoStream>()
             for (i in 0 until adaptive.length()) {
                 val f = adaptive.optJSONObject(i) ?: continue
                 val mime = f.optString("mimeType")
+                if (mime.contains("audio", ignoreCase = true)) {
+                    val aUrl = f.optString("url").takeIf { it.isNotBlank() } ?: continue
+                    val aBitrate = f.optInt("bitrate", 0)
+                    if (aBitrate > bestAudioBitrate || (mime.contains("opus", ignoreCase = true) && pairedAudioUrl == null)) {
+                        bestAudioBitrate = aBitrate
+                        pairedAudioUrl = aUrl
+                    }
+                    continue
+                }
                 if (!mime.contains("video", ignoreCase = true)) continue
                 val streamUrl = f.optString("url").takeIf { it.isNotBlank() } ?: continue
                 val height = f.optInt("height", 0).takeIf { it > 0 }
@@ -250,14 +268,19 @@ class YouTubeStreamExtractor @Inject constructor(
             val availableStreams = streamsByHeight.keys.sortedDescending().map { streamsByHeight[it]!! }
             if (availableStreams.isEmpty()) return@runCatching null
 
-            val defaultStream = availableStreams.firstOrNull { it.height == 720 }
-                ?: availableStreams.firstOrNull { it.height == 1080 }
+            val defaultStream = availableStreams.firstOrNull { it.height == 1080 }
+                ?: availableStreams.firstOrNull { it.height == 720 }
                 ?: availableStreams.first()
 
             SyncedVideoStreamBundle(
                 videoId = videoId,
                 defaultStream = defaultStream,
                 availableStreams = availableStreams,
+                pairedAudioStreamUrl = pairedAudioUrl,
+                pairedAudioHeaders = mapOf(
+                    "User-Agent" to "com.google.ios.youtube/21.10.3 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)",
+                    "Range" to "bytes=0-",
+                ),
             )
         }.getOrNull()
     }

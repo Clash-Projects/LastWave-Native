@@ -2788,32 +2788,40 @@ private fun FullPlayer(
                                     modifier = Modifier.size(26.dp),
                                 )
                             }
-                            Column(
-                                Modifier.align(Alignment.Center).padding(horizontal = 96.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                Text(
-                                    when (currentTab) {
-                                        FullPlayerTab.NOW_PLAYING -> "NOW PLAYING"
-                                        FullPlayerTab.LYRICS -> "LYRICS"
-                                        FullPlayerTab.QUEUE -> "PLAYING QUEUE"
-                                    },
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = Color.White.copy(alpha = 0.95f),
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 0.9.sp,
+                            if (currentTab == FullPlayerTab.NOW_PLAYING && musicVideoEnabled) {
+                                SongVideoPillSwitcher(
+                                    isVideoActive = isVideoActive,
+                                    onModeChange = { showSyncedVideo = it },
+                                    modifier = Modifier.align(Alignment.Center),
                                 )
-                                Text(
-                                    if (currentTab == FullPlayerTab.LYRICS) {
-                                        "${track.title} â€¢ ${track.artist}"
-                                    } else {
-                                        state.sourceLabel.takeIf { it.isNotBlank() } ?: "LastWave"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.70f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
+                            } else {
+                                Column(
+                                    Modifier.align(Alignment.Center).padding(horizontal = 96.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text(
+                                        when (currentTab) {
+                                            FullPlayerTab.NOW_PLAYING -> "NOW PLAYING"
+                                            FullPlayerTab.LYRICS -> "LYRICS"
+                                            FullPlayerTab.QUEUE -> "PLAYING QUEUE"
+                                        },
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = Color.White.copy(alpha = 0.95f),
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.9.sp,
+                                    )
+                                    Text(
+                                        if (currentTab == FullPlayerTab.LYRICS) {
+                                            "${track.title} • ${track.artist}"
+                                        } else {
+                                            state.sourceLabel.takeIf { it.isNotBlank() } ?: "LastWave"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White.copy(alpha = 0.70f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                             }
                             Row(
                                 modifier = Modifier.align(Alignment.CenterEnd),

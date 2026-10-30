@@ -2239,6 +2239,79 @@ class InnerTubeMusicApi @Inject constructor(
         parseSongRenderers(fallbackRoot).distinctBy { it.videoId }.filter { it.videoId.isNotBlank() }.take(limit)
     }
 
+    /**
+     * Resolves the official music video (OMV) counterpart linked to an audio track (ATV)
+     * by querying YouTube Music's /next endpoint (Metrolist / official YTM counterpart lookup).
+     */
+    suspend fun findCounterpartVideoId(videoId: String, playlistId: String? = null): String? = withContext(Dispatchers.IO) {
+        if (videoId.isBlank()) return@withContext null
+        val config = getWebConfig()
+        val isAuth = ytAuth.connection.value.isConnected
+        val root = runCatching {
+            post(
+                url = "$MUSIC_API/next?key=${config.apiKey}&prettyPrint=false",
+                body = buildJsonObject {
+                    put("context", context("WEB_REMIX", config.clientVersion, config.visitorData, authenticated = isAuth))
+                    put("videoId", videoId)
+                    if (!playlistId.isNullOrBlank()) {
+                        put("playlistId", playlistId)
+                    }
+                },
+                clientName = "WEB_REMIX",
+                clientVersion = config.clientVersion,
+                userAgent = WEB_USER_AGENT,
+                callTimeoutMs = SEARCH_REQUEST_TIMEOUT_MS,
+            )
+        }.getOrNull() ?: return@withContext null
+
+        val currentType = root.asObject()?.obj("currentVideoEndpoint")
+            ?.obj("watchEndpoint")
+            ?.obj("watchEndpointMusicSupportedConfigs")
+            ?.obj("watchEndpointMusicConfig")
+            ?.string("musicVideoType")
+        if (currentType == "MUSIC_VIDEO_TYPE_OMV") {
+            val curId = root.asObject()?.obj("currentVideoEndpoint")?.obj("watchEndpoint")?.string("videoId")
+            if (!curId.isNullOrBlank()) return@withContext curId
+        }
+
+        val wrappers = mutableListOf<JsonObject>()
+        collectObjects(root, "playlistPanelVideoWrapperRenderer", wrappers)
+        for (wrapper in wrappers) {
+            val primary = wrapper.obj("primaryRenderer")?.obj("playlistPanelVideoRenderer")
+            val primaryId = primary?.string("videoId")
+                ?: primary?.obj("navigationEndpoint")?.obj("watchEndpoint")?.string("videoId")
+
+            val primaryType = primary?.obj("navigationEndpoint")
+                ?.obj("watchEndpoint")
+                ?.obj("watchEndpointMusicSupportedConfigs")
+                ?.obj("watchEndpointMusicConfig")
+                ?.string("musicVideoType")
+            if (primaryType == "MUSIC_VIDEO_TYPE_OMV" && !primaryId.isNullOrBlank()) {
+                return@withContext primaryId
+            }
+
+            val counterparts = wrapper.array("counterpart")
+            if (counterparts != null) {
+                for (i in 0 until counterparts.size) {
+                    val cpRenderer = counterparts[i].asObject()
+                        ?.obj("counterpartRenderer")
+                        ?.obj("playlistPanelVideoRenderer") ?: continue
+                    val cpId = cpRenderer.string("videoId")
+                        ?: cpRenderer.obj("navigationEndpoint")?.obj("watchEndpoint")?.string("videoId")
+                    val cpType = cpRenderer.obj("navigationEndpoint")
+                        ?.obj("watchEndpoint")
+                        ?.obj("watchEndpointMusicSupportedConfigs")
+                        ?.obj("watchEndpointMusicConfig")
+                        ?.string("musicVideoType")
+                    if (!cpId.isNullOrBlank() && (cpType == "MUSIC_VIDEO_TYPE_OMV" || cpType == "MUSIC_VIDEO_TYPE_UGC" || cpType == null)) {
+                        return@withContext cpId
+                    }
+                }
+            }
+        }
+        null
+    }
+
     /** Which artist shelf a localized heading refers to. */
     private enum class ArtistShelf { ALBUMS, SINGLES, OTHER }
 

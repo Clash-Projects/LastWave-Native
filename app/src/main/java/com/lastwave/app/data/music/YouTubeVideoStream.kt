@@ -40,4 +40,8 @@ data class SyncedVideoStreamBundle(
     val videoId: String,
     val defaultStream: YouTubeVideoStream,
     val availableStreams: List<YouTubeVideoStream>,
+    val pairedAudioStreamUrl: String? = null,
+    val pairedAudioHeaders: Map<String, String> = emptyMap(),
+    val introOffsetMs: Long = 0L,
+    val isDirectOmv: Boolean = false,
 )
