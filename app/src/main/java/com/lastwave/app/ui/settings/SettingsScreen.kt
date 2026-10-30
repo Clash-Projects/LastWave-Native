@@ -950,9 +950,9 @@ fun SettingsScreen(
                                 title = "AutoMix",
                                 subtitle = if (hfSettings.autoMixEnabled) {
                                     if (hfSettings.durationMode == com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO) {
-                                        "Active • Neural phrase-locked (12s–30s)"
+                                        "Active \u2022 Phrase-matched transition (Auto)"
                                     } else {
-                                        "Active • Custom DJ blend (${hfSettings.targetDurationSeconds}s)"
+                                        "Active \u2022 Custom DJ blend (${hfSettings.targetDurationSeconds}s)"
                                     }
                                 } else {
                                     "Beat-matched, key-locked seamless dual-deck mixing"
@@ -3688,6 +3688,28 @@ private fun AutoMixControlsCard(
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val shape = groupShape(position)
 
+    val isInitialAuto = settings.durationMode == com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO
+    var sliderValue by remember { mutableStateOf(if (isInitialAuto) 11f else settings.targetDurationSeconds.coerceIn(12, 30).toFloat()) }
+    var isDragging by remember { mutableStateOf(false) }
+
+    LaunchedEffect(settings.durationMode, settings.targetDurationSeconds) {
+        if (!isDragging) {
+            sliderValue = if (settings.durationMode == com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO) {
+                11f
+            } else {
+                settings.targetDurationSeconds.coerceIn(12, 30).toFloat()
+            }
+        }
+    }
+
+    val isAuto = sliderValue.roundToInt() <= 11
+    val displayValue = if (isAuto) "Auto" else "${sliderValue.roundToInt()}s"
+    val durationDesc = if (isAuto) {
+        "Auto \u2022 Phrase-matched transition"
+    } else {
+        "${sliderValue.roundToInt()}s \u2022 Custom DJ blend"
+    }
+
     Card(
         shape = shape,
         colors = CardDefaults.cardColors(
@@ -3699,73 +3721,88 @@ private fun AutoMixControlsCard(
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    "Transition Duration Mode",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = settings.durationMode == com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO,
-                        onClick = { onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO) },
-                        label = { Text("Auto") },
-                    )
-                    FilterChip(
-                        selected = settings.durationMode == com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL,
-                        onClick = { onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL) },
-                        label = { Text("12s–30s") },
-                    )
-                }
-            }
-
-            if (settings.durationMode == com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL) {
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+                Column(Modifier.weight(1f)) {
                     Text(
-                        "Target Blend Duration",
+                        "Transition Duration",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        durationDesc,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Text(
-                        "${settings.targetDurationSeconds}s (Long DJ Blend)",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
                 }
-                Slider(
-                    value = settings.targetDurationSeconds.toFloat(),
-                    onValueChange = { value ->
-                        val rounded = value.roundToInt().coerceIn(12, 30)
-                        if (rounded != settings.targetDurationSeconds) {
-                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
-                            onSecondsChange(rounded)
-                        }
-                    },
-                    valueRange = 12f..30f,
-                    steps = 17,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
                 ) {
-                    Text("12s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                    Text("20s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                    Text("30s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                    Text(
+                        text = displayValue,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    )
                 }
             }
 
             Spacer(Modifier.height(10.dp))
+
+            Slider(
+                value = sliderValue,
+                onValueChange = { value ->
+                    isDragging = true
+                    val rounded = value.roundToInt()
+                    if (rounded != sliderValue.roundToInt()) {
+                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                    }
+                    sliderValue = value
+
+                    if (rounded <= 11) {
+                        if (settings.durationMode != com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO) {
+                            onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO)
+                        }
+                    } else {
+                        if (settings.durationMode != com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL) {
+                            onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL)
+                        }
+                        if (rounded != settings.targetDurationSeconds) {
+                            onSecondsChange(rounded)
+                        }
+                    }
+                },
+                onValueChangeFinished = {
+                    isDragging = false
+                    val rounded = sliderValue.roundToInt()
+                    if (rounded <= 11) {
+                        sliderValue = 11f
+                        onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO)
+                    } else {
+                        sliderValue = rounded.toFloat()
+                        onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL)
+                        onSecondsChange(rounded)
+                    }
+                },
+                valueRange = 11f..30f,
+                steps = 18,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("Auto", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                Text("20s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                Text("30s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+            }
+
+            Spacer(Modifier.height(12.dp))
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(12.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -3784,7 +3821,6 @@ private fun AutoMixControlsCard(
         }
     }
 }
-
 @Composable
 private fun SettingsActionCard(
     icon: ImageVector,
