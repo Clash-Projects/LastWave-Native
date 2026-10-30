@@ -4697,6 +4697,7 @@ private fun DividedUtilityPill(
     )
 
     LiquidGlassSurface(
+        onClick = {},
         glassModifier = Modifier.liquidGlassChrome(
             CircleShape,
             LocalLiquidGlass.current,

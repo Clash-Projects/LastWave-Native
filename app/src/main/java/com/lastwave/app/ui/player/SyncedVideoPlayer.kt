@@ -1498,6 +1498,18 @@ fun SyncedVideoPlayerDialog(
         }
     }
 
+    val httpFactory = remember {
+        DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setDefaultRequestProperties(
+                mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Origin" to "https://www.youtube.com",
+                    "Referer" to "https://www.youtube.com",
+                )
+            )
+    }
+
     // ExoPlayer dedicated strictly for video rendering
     val videoPlayer = remember(context) {
         val loadControl = DefaultLoadControl.Builder()
@@ -1510,19 +1522,13 @@ fun SyncedVideoPlayerDialog(
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
-        val httpFactory = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setDefaultRequestProperties(
-                mapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Origin" to "https://www.youtube.com",
-                    "Referer" to "https://www.youtube.com",
-                )
-            )
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+        val defaultDataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+        val chunkedFactory = DataSource.Factory {
+            ChunkedRangeDataSource(defaultDataSourceFactory.createDataSource(), chunkSize = 256 * 1024L)
+        }
 
         ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(chunkedFactory))
             .setLoadControl(loadControl)
             .build()
             .apply {
