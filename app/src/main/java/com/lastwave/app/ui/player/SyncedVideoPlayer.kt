@@ -822,6 +822,7 @@ fun FullscreenLandscapeVideoStage(
     val progressState by musicPlayer.progressState.collectAsStateWithLifecycle()
 
     var controlsVisible by remember { mutableStateOf(true) }
+    var isRendered by remember { mutableStateOf(false) }
     var isUserScrubbing by remember { mutableStateOf(false) }
     var scrubProgress by remember { mutableFloatStateOf(0f) }
     var showQualityDialog by remember { mutableStateOf(false) }
