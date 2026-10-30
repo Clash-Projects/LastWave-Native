@@ -78,4 +78,15 @@ interface SavedPlaylistDao {
         clear()
         upsertAll(entities)
     }
+
+    /** [replaceAll] only while the table still holds [expected]; false = it changed. */
+    @Transaction
+    suspend fun replaceAllIfUnchanged(
+        expected: List<SavedPlaylistEntity>,
+        entities: List<SavedPlaylistEntity>,
+    ): Boolean {
+        if (getAll().toSet() != expected.toSet()) return false
+        replaceAll(entities)
+        return true
+    }
 }

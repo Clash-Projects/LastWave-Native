@@ -840,6 +840,29 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** Two-way sync with a backup file shared with LastWave Desktop. */
+    fun syncWithFile(uri: android.net.Uri, appVersionName: String) {
+        launchSettingsAction("sync the backup file") {
+            val content = fileExportHelper.readTextFromUri(uri)
+            if (content.isNullOrBlank()) {
+                _uiState.update { it.copy(toastMessage = appContext.getString(com.lastwave.app.R.string.toast_empty_file)) }
+                return@launchSettingsAction
+            }
+            val result = backupRepository.sync(content, appVersionName) { merged ->
+                fileExportHelper.writeTextToUri(uri, merged)
+            }
+            val message = when (result) {
+                is RestoreResult.Success -> appContext.getString(
+                    com.lastwave.app.R.string.toast_file_sync_ok, result.playlistCount, result.exclusionCount,
+                )
+                RestoreResult.UnsupportedSchema -> appContext.getString(com.lastwave.app.R.string.toast_newer_backup)
+                RestoreResult.InvalidFile -> appContext.getString(com.lastwave.app.R.string.toast_not_backup)
+                is RestoreResult.Failed -> appContext.getString(com.lastwave.app.R.string.toast_file_sync_fail, result.message)
+            }
+            _uiState.update { it.copy(toastMessage = message) }
+        }
+    }
+
     fun handleCsvPicked(uri: android.net.Uri) {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
