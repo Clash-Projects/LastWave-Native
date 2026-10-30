@@ -54,6 +54,9 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     @Inject
     lateinit var trackDownloadManager: dagger.Lazy<com.lastwave.app.data.download.TrackDownloadManager>
 
+    @Inject
+    lateinit var musicPlayer: dagger.Lazy<com.lastwave.app.playback.MusicPlayer>
+
     private val audioPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
         if (isGranted) {
             lifecycleScope.launch(Dispatchers.IO) {
@@ -347,6 +350,27 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         }.onFailure {
             android.util.Log.w(STARTUP_TAG, "Audio permission request skipped", it)
         }
+    }
+
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+            val player = runCatching { musicPlayer.get() }.getOrNull()
+            if (player != null && player.state.value.isCasting) {
+                when (event.keyCode) {
+                    android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
+                        val current = player.state.value.appVolume
+                        player.setAppVolume((current + 0.05f).coerceIn(0f, 1f))
+                        return true
+                    }
+                    android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                        val current = player.state.value.appVolume
+                        player.setAppVolume((current - 0.05f).coerceIn(0f, 1f))
+                        return true
+                    }
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     private companion object {

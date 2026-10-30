@@ -206,6 +206,7 @@ data class MusicPlayerState(
     val deckBlendTelemetry: com.lastwave.app.playback.automix.api.DeckBlendTelemetry = com.lastwave.app.playback.automix.api.DeckBlendTelemetry.IDLE,
     val isCrossfading: Boolean = false,
     val appVolume: Float = 1f,
+    val isCasting: Boolean = false,
 )
 
 
@@ -299,7 +300,7 @@ class MusicPlayer @Inject constructor(
             )
     }
     private var castPlayback: com.lastwave.app.playback.cast.CastPlayback? = null
-    private val isCasting: Boolean get() = castPlayback?.active == true
+    private val isCasting: Boolean get() = castPlayback?.active == true || _state.value.isCasting
 
     fun initializeCast(): Boolean = runCatching {
         if (castPlayback == null) {
@@ -326,6 +327,7 @@ class MusicPlayer @Inject constructor(
             player.clearMediaItems()
         }
         if (snapshot.current != null) ensureForegroundService()
+        _state.update { it.copy(isCasting = true) }
         return snapshot
     }
 
@@ -340,7 +342,7 @@ class MusicPlayer @Inject constructor(
         } ?: resolveTrackAudioStreamWithRetry(track, track.videoId, allowLossless = true)
 
     internal fun castBuffering(playing: Boolean) {
-        _state.update { it.copy(isPlaying = playing, isBuffering = true, error = null) }
+        _state.update { it.copy(isCasting = true, isPlaying = playing, isBuffering = true, error = null) }
     }
 
     internal fun castError(message: String) {
@@ -348,10 +350,30 @@ class MusicPlayer @Inject constructor(
     }
 
     internal fun updateCastState(playing: Boolean, buffering: Boolean, position: Long, duration: Long, speed: Float) {
-        _state.update { it.copy(isPlaying = playing, isBuffering = buffering,
-            positionMs = position.coerceAtLeast(0), durationMs = duration.coerceAtLeast(0),
-            speed = speed.takeIf { rate -> rate in 0.5f..2f } ?: it.speed) }
+        val validPos = position.coerceAtLeast(0)
+        val validDur = duration.coerceAtLeast(0)
+        playheadPosMs = validPos
+        playheadWallMs = SystemClock.elapsedRealtime()
+        _state.update { it.copy(
+            isCasting = true,
+            isPlaying = playing,
+            isBuffering = buffering,
+            positionMs = validPos,
+            durationMs = if (validDur > 0) validDur else it.durationMs,
+            speed = speed.takeIf { rate -> rate in 0.5f..2f } ?: it.speed
+        ) }
         persistPlaybackSession()
+    }
+
+    internal fun onCastVolumeChanged(volume: Float) = onMain {
+        val clamped = volume.coerceIn(0f, 1f)
+        if (appVolume != clamped) {
+            appVolume = clamped
+            _state.update { it.copy(appVolume = clamped) }
+            applicationScope.launch {
+                settingsPreferences.setAppVolume(clamped)
+            }
+        }
     }
 
     internal fun castTrackEnded() {
@@ -363,7 +385,7 @@ class MusicPlayer @Inject constructor(
     }
 
     internal fun finishCasting() {
-        _state.update { it.copy(isPlaying = false, isBuffering = false) }
+        _state.update { it.copy(isCasting = false, isPlaying = false, isBuffering = false) }
         persistPlaybackSession()
     }
     private val playbackPreferences = appContext.getSharedPreferences(
@@ -1837,13 +1859,15 @@ class MusicPlayer @Inject constructor(
                     // freezing the wall clock here pinned the main-player bar
                     // at 0:00 while the notification looked normal. Paused /
                     // ended states still freeze via isPlaying=false.
-                    val livePlaying = player.isPlaying
-                    val playingNow = _state.value.isPlaying &&
-                        !exclusiveUsbOutput.isPaused() &&
-                        usbAlive
-                    val playhead = advancePlayhead(playingNow)
-                    if (playhead != _state.value.positionMs) {
-                        _state.update { it.copy(positionMs = playhead) }
+                    if (!isCasting) {
+                        val livePlaying = player.isPlaying
+                        val playingNow = _state.value.isPlaying &&
+                            !exclusiveUsbOutput.isPaused() &&
+                            usbAlive
+                        val playhead = advancePlayhead(playingNow)
+                        if (playhead != _state.value.positionMs) {
+                            _state.update { it.copy(positionMs = playhead) }
+                        }
                     }
                     if (!isCasting && exclusiveUsbOutput.isActive()) {
                         // Never touch ExoPlayer here. Its playback thread holds
@@ -2977,6 +3001,9 @@ class MusicPlayer @Inject constructor(
         }
         runCatching { nativeAudioEngine.get().setOutputVolume(if (bitPerfectEnabled) 1f else clamped) }
         runCatching { autoMixCoordinator.get().setBaseVolume(clamped) }
+        if (isCasting) {
+            castPlayback?.setVolume(clamped)
+        }
         applicationScope.launch {
             settingsPreferences.setAppVolume(clamped)
         }
@@ -3153,7 +3180,7 @@ class MusicPlayer @Inject constructor(
      * In exclusive USB bit-perfect mode, follows the DAC stream clock without blocking ExoPlayer.
      */
     private fun advancePlayhead(playing: Boolean): Long {
-        if (isOverlapMixActive) {
+        if (isCasting || isOverlapMixActive) {
             return _state.value.positionMs
         }
         val now = SystemClock.elapsedRealtime()

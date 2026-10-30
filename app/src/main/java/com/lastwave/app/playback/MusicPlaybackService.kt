@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.drawable.toBitmap
 import androidx.media.MediaBrowserServiceCompat
+import androidx.media.VolumeProviderCompat
 import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
@@ -83,6 +84,8 @@ private fun sameServiceState(previous: MusicPlayerState, current: MusicPlayerSta
         previous.speed == current.speed &&
         previous.shuffleEnabled == current.shuffleEnabled &&
         previous.repeatMode == current.repeatMode &&
+        previous.isCasting == current.isCasting &&
+        previous.appVolume == current.appVolume &&
         (previous.isPlaying || current.isPlaying || previous.positionMs == current.positionMs)
 
 /**
@@ -700,6 +703,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         val releasedToken = platformSessionToken
         runCatching { mediaSession?.isActive = false }
         runCatching { mediaSession?.release() }
+        castVolumeProvider = null
         // Let KWGT-style listeners clear their cached track on service death.
         runCatching { sendBroadcast(Intent("com.android.music.playbackcomplete")) }
         platformSessionToken = null
@@ -977,6 +981,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         // (session == null) so the fallback path keeps working.
         broadcastLegacyState(state)
         val session = mediaSession ?: return
+        updateMediaSessionVolumeRouting(state.isCasting, state.appVolume)
         publishSessionQueue(session, state)
         val isLiked = track != null && trackLikeController.isLiked(track)
         val signature = buildString {
@@ -987,6 +992,8 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             append(playbackState).append('|')
             append(state.shuffleEnabled).append('|')
             append(state.repeatMode).append('|')
+            append(state.isCasting).append('|')
+            append(state.appVolume).append('|')
             append(artworkUrl).append('|')
             append(artworkBitmap != null).append('|')
             append(isLiked)
@@ -1064,6 +1071,50 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             // Binder IPC into a broken OEM media stack must not kill the
             // state collector that also drives notifications and widget.
             android.util.Log.w("MusicPlaybackService", "Media session publish failed", error)
+        }
+    }
+
+    private var castVolumeProvider: VolumeProviderCompat? = null
+
+    private fun updateMediaSessionVolumeRouting(isCasting: Boolean, appVolume: Float) {
+        val session = mediaSession ?: return
+        if (isCasting) {
+            val maxVolume = 100
+            val current = (appVolume * maxVolume).toInt().coerceIn(0, maxVolume)
+            val existing = castVolumeProvider
+            if (existing != null) {
+                existing.currentVolume = current
+            } else {
+                val newProvider = object : VolumeProviderCompat(
+                    VOLUME_CONTROL_ABSOLUTE,
+                    maxVolume,
+                    current,
+                ) {
+                    override fun onSetVolumeTo(volume: Int) {
+                        val target = volume.toFloat() / maxVolume
+                        musicPlayer.setAppVolume(target)
+                    }
+
+                    override fun onAdjustVolume(direction: Int) {
+                        val step = when (direction) {
+                            android.media.AudioManager.ADJUST_RAISE -> 0.05f
+                            android.media.AudioManager.ADJUST_LOWER -> -0.05f
+                            else -> 0f
+                        }
+                        if (step != 0f) {
+                            val currentVol = musicPlayer.state.value.appVolume
+                            musicPlayer.setAppVolume((currentVol + step).coerceIn(0f, 1f))
+                        }
+                    }
+                }
+                castVolumeProvider = newProvider
+                session.setPlaybackToRemote(newProvider)
+            }
+        } else {
+            if (castVolumeProvider != null) {
+                castVolumeProvider = null
+                session.setPlaybackToLocal(android.media.AudioManager.STREAM_MUSIC)
+            }
         }
     }
 
