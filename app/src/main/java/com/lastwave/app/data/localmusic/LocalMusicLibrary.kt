@@ -328,7 +328,7 @@ class LocalMusicLibrary @Inject constructor(
      * or to a persistent SAF document URI otherwise. Audio files are played directly
      * from device storage without copying.
      */
-    fun resolveAudioPathOrUri(entry: AudioEntry): String {
+    private fun resolveAudioPathOrUri(entry: AudioEntry): String {
         val docId = entry.documentId
         val decodedDocId = runCatching { Uri.decode(docId) }.getOrNull() ?: docId
         val candidateFile = when {

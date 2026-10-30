@@ -2347,7 +2347,10 @@ fun SettingsScreen(
                         Spacer(Modifier.height(8.dp))
                     }
 
-                    AboutCard(versionName = appVersionName(context))
+                    AboutCard(
+                        versionName = appVersionName(context),
+                        appIcon = theme?.appIcon ?: AppIcon.DEFAULT,
+                    )
 
                     SettingsActionCard(
                         icon = Icons.Filled.CloudDownload,
@@ -3352,7 +3355,6 @@ private fun IconBadge(painter: Painter, container: Color, tint: Color, modifier:
 }
 
 @Composable
-@Composable
 private fun AppIconSelectorCard(
     currentIcon: AppIcon,
     onSelectAppIcon: (AppIcon) -> Unit,
@@ -3445,6 +3447,7 @@ private fun AppIconSelectorCard(
     }
 }
 
+@Composable
 private fun ThemeModeSelectorCard(
     currentThemeMode: ThemeMode,
     onSelectThemeMode: (ThemeMode) -> Unit,
@@ -4989,7 +4992,10 @@ private fun MoreFromUsCard(
 }
 
 @Composable
-private fun AboutCard(versionName: String) {
+private fun AboutCard(
+    versionName: String,
+    appIcon: AppIcon = AppIcon.DEFAULT,
+) {
     val context = LocalContext.current
     Card(
         shape = CardOuterShape,
@@ -5013,11 +5019,11 @@ private fun AboutCard(versionName: String) {
                     // background color + the bars vector, both plain
                     // resources) reproduces it exactly without touching the
                     // adaptive icon resource at all.
-                    .background(colorResource(theme?.appIcon?.backgroundRes ?: R.color.ic_launcher_background)),
+                    .background(colorResource(appIcon.backgroundRes)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    painter = painterResource(theme?.appIcon?.logoRes ?: R.drawable.ic_launcher_logo),
+                    painter = painterResource(appIcon.logoRes),
                     contentDescription = "LastWave",
                     tint = Color.Unspecified,
                     modifier = Modifier.size(72.dp),
