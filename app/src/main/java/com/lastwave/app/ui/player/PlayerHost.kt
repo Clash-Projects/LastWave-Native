@@ -288,6 +288,9 @@ import com.lastwave.app.ui.common.PlaylistCover
 import com.lastwave.app.ui.common.TrackContextMenuSheet
 import com.lastwave.app.ui.common.TrackMenuCapabilities
 import com.lastwave.app.ui.common.TrackMenuTarget
+import com.lastwave.app.ui.common.GroupGap
+import com.lastwave.app.ui.common.groupPositionFor
+import com.lastwave.app.ui.common.groupShape
 import com.lastwave.app.ui.theme.LocalLiquidGlass
 import com.lastwave.app.ui.theme.LocalIsDarkTheme
 import com.lastwave.app.ui.theme.LiquidGlassSurface
@@ -5809,7 +5812,7 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(GroupGap),
         ) {
             itemsIndexed(
                 state.queue,
@@ -5820,6 +5823,8 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
                 val isCurrent = index == state.currentIndex
                 val isDragging = index == draggingIndex
                 val stableKey = queueKeys.getOrNull(index) ?: index.toString()
+                val position = groupPositionFor(index, state.queue.size)
+                val itemShape = groupShape(position)
                 val dismissState = androidx.compose.material3.rememberSwipeToDismissBoxState(
                     confirmValueChange = { dismissValue ->
                         if (dismissValue != androidx.compose.material3.SwipeToDismissBoxValue.Settled) {
@@ -5850,7 +5855,7 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
                         if (dismissState.dismissDirection != androidx.compose.material3.SwipeToDismissBoxValue.Settled) {
                             val alignment = if (dismissState.dismissDirection == androidx.compose.material3.SwipeToDismissBoxValue.StartToEnd) Alignment.CenterStart else Alignment.CenterEnd
                             Box(
-                                Modifier.fillMaxSize().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.errorContainer).padding(horizontal = 24.dp),
+                                Modifier.fillMaxSize().clip(itemShape).background(MaterialTheme.colorScheme.errorContainer).padding(horizontal = 24.dp),
                                 contentAlignment = alignment
                             ) {
                                 Icon(Icons.Filled.DeleteOutline, contentDescription = stringResource(com.lastwave.app.R.string.player_delete_cd), tint = MaterialTheme.colorScheme.onErrorContainer)
@@ -5859,9 +5864,9 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
                     },
                     content = {
                 LiquidGlassSurface(
-                    glassModifier = Modifier.liquidGlassChrome(RoundedCornerShape(20.dp), LocalLiquidGlass.current),
+                    glassModifier = Modifier.liquidGlassChrome(itemShape, LocalLiquidGlass.current),
                     onClick = { player.seekToQueueItem(currentQueueKeys.indexOf(stableKey).takeIf { it >= 0 } ?: currentIndex) },
-                    shape = RoundedCornerShape(20.dp),
+                    shape = itemShape,
                     color = if (isCurrent) {
                         if (LocalLiquidGlass.current) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
                         else MaterialTheme.colorScheme.primaryContainer

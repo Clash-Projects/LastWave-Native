@@ -39,8 +39,7 @@ internal fun CommunityDiscoverShelf(
         ShelfHeaderV2(
             title = shelf.title, eyebrow = shelf.strapline, subtitle = shelf.subtitle,
             showMore = moreId != null, onMoreClick = moreId?.let { { onOpenPlaylist(it) } },
-            onPlayAll = if (daily) { { onPlayTracksQueue(tracks, 0, shelf.title) } } else null,
-            outlinedPlayAll = daily,
+            onShuffle = if (tracks.isNotEmpty()) { { onPlayTracksQueue(tracks.shuffled(), 0, shelf.title) } } else null,
         )
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val width = largeShelfCardWidth(maxWidth)

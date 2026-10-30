@@ -146,6 +146,7 @@ import com.lastwave.app.data.music.HomeShelfItem
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.ExpressiveShuffleButton
 import com.lastwave.app.ui.common.HeaderActionIcon
 import com.lastwave.app.ui.common.TrackContextMenuSheet
 import com.lastwave.app.ui.common.TrackMiniTrayData
@@ -502,6 +503,30 @@ fun FeedScreen(
                     }
                 }
 
+                val hasHeroAbove = showSynthetic && isSectionVisible(HomeSection.HERO)
+                val spotlightIndex = activeContainerKeys.indexOf("spotlight_hero")
+                val getContainerShape: (String) -> RoundedCornerShape = { key ->
+                    val index = activeContainerKeys.indexOf(key)
+                    if (index == -1) {
+                        RoundedCornerShape(0.dp)
+                    } else {
+                        val isFirst = index == 0
+                        val isLast = index == activeContainerKeys.size - 1
+                        val isBeforeSpotlight = spotlightIndex != -1 && index == spotlightIndex - 1
+                        val isAfterSpotlight = spotlightIndex != -1 && index == spotlightIndex + 1
+
+                        val topRadius = if ((isFirst && !hasHeroAbove) || isAfterSpotlight) 28.dp else 0.dp
+                        val bottomRadius = if (isLast || isBeforeSpotlight) 28.dp else 0.dp
+
+                        RoundedCornerShape(
+                            topStart = topRadius,
+                            topEnd = topRadius,
+                            bottomStart = bottomRadius,
+                            bottomEnd = bottomRadius,
+                        )
+                    }
+                }
+
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize().safeHorizontalContentPadding(),
@@ -514,7 +539,7 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.HERO)) {
                     item(key = "hero") {
                         Column(
-                            modifier = Modifier.padding(bottom = 10.dp),
+                            modifier = Modifier.padding(bottom = 3.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
                             Column(
@@ -555,8 +580,7 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.QUICK_TILES) && quickTiles.isNotEmpty()) {
                         item(key = "quick_tiles") {
                             HomeContainerSection(
-                                isFirst = activeContainerKeys.firstOrNull() == "quick_tiles",
-                                isLast = activeContainerKeys.lastOrNull() == "quick_tiles",
+                                shape = getContainerShape("quick_tiles"),
                             ) {
                             FeedSectionHeader(
                                 title = stringResource(R.string.feed_quick_access),
@@ -613,8 +637,7 @@ fun FeedScreen(
                     if (showSynthetic && podcastsEnabled && state.feedData.podcastShows.isNotEmpty()) {
                         item(key = "podcast_shelf") {
                             HomeContainerSection(
-                                isFirst = activeContainerKeys.firstOrNull() == "podcast_shelf",
-                                isLast = activeContainerKeys.lastOrNull() == "podcast_shelf",
+                                shape = getContainerShape("podcast_shelf"),
                             ) {
                                 FeedSectionHeader(
                                     title = state.feedData.podcastShelfTitle
@@ -662,8 +685,7 @@ fun FeedScreen(
                         }
                         item(key = "taste_strip") {
                             HomeContainerSection(
-                                isFirst = activeContainerKeys.firstOrNull() == "taste_strip",
-                                isLast = activeContainerKeys.lastOrNull() == "taste_strip",
+                                shape = getContainerShape("taste_strip"),
                             ) {
                                 TasteStrip(
                                     tags = displayTags,
@@ -684,8 +706,7 @@ fun FeedScreen(
                             // native shelf layout the chip page will render.
                             item(key = "chip_loading_skeleton") {
                                 HomeContainerSection(
-                                    isFirst = activeContainerKeys.firstOrNull() == "chip_loading_skeleton",
-                                    isLast = activeContainerKeys.lastOrNull() == "chip_loading_skeleton",
+                                    shape = getContainerShape("chip_loading_skeleton"),
                                 ) {
                                     Column(verticalArrangement = Arrangement.spacedBy(CardTokens.sectionGap)) {
                                         com.lastwave.app.ui.feed.cards.ShelfSquareSkeletonRow(
@@ -700,8 +721,7 @@ fun FeedScreen(
                         } else if (state.chipShelves.isEmpty()) {
                             item(key = "chip_empty_state") {
                                 HomeContainerSection(
-                                    isFirst = activeContainerKeys.firstOrNull() == "chip_empty_state",
-                                    isLast = activeContainerKeys.lastOrNull() == "chip_empty_state",
+                                    shape = getContainerShape("chip_empty_state"),
                                 ) {
                                     PodcastGuestEmptyState(
                                         onLoginClick = onOpenYouTubeLogin,
@@ -713,8 +733,7 @@ fun FeedScreen(
                                 if (shelf.items.isEmpty()) continue
                                 item(key = "chip_shelf_${shelfIndex}_${shelf.title}") {
                                     HomeContainerSection(
-                                        isFirst = activeContainerKeys.firstOrNull() == "chip_shelf_${shelfIndex}_${shelf.title}",
-                                        isLast = activeContainerKeys.lastOrNull() == "chip_shelf_${shelfIndex}_${shelf.title}",
+                                        shape = getContainerShape("chip_shelf_${shelfIndex}_${shelf.title}"),
                                     ) {
                                         HomeShelfCard(
                                         shelf = shelf,
@@ -739,8 +758,7 @@ fun FeedScreen(
                         for ((shelfIndex, shelf) in visibleNativeShelves.withIndex()) {
                             item(key = "native_shelf_${shelfIndex}_${shelf.title}") {
                                 HomeContainerSection(
-                                    isFirst = activeContainerKeys.firstOrNull() == "native_shelf_${shelfIndex}_${shelf.title}",
-                                    isLast = activeContainerKeys.lastOrNull() == "native_shelf_${shelfIndex}_${shelf.title}",
+                                    shape = getContainerShape("native_shelf_${shelfIndex}_${shelf.title}"),
                                 ) {
                                     HomeShelfCard(
                                     shelf = shelf,
@@ -764,8 +782,7 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.QUICK_PICKS) && !isTitleHidden("Quick picks") && state.feedData.quickPicks.isNotEmpty()) {
                         item(key = "quick_picks") {
                             HomeContainerSection(
-                                isFirst = activeContainerKeys.firstOrNull() == "quick_picks",
-                                isLast = activeContainerKeys.lastOrNull() == "quick_picks",
+                                shape = getContainerShape("quick_picks"),
                             ) {
                             val title = if (state.feedData.hasYtRecommendations) stringResource(R.string.feed_picked_you) else stringResource(R.string.feed_quick_picks)
                             val subtitle = if (state.feedData.hasYtRecommendations) {
@@ -778,9 +795,6 @@ fun FeedScreen(
                             FeedSectionHeader(
                                 title = title,
                                 subtitle = subtitle,
-                                actionText = stringResource(R.string.feed_play_all),
-                                actionIcon = Icons.Filled.PlayArrow,
-                                onActionClick = { viewModel.playTracksQueue(state.feedData.quickPicks, 0, "Quick Picks") },
                                 onShuffleClick = { viewModel.shuffleTracksQueue(state.feedData.quickPicks, "Quick Picks") },
                                 onLongClick = { sectionMenuTarget = HomeSection.QUICK_PICKS.id to title },
                             )
@@ -817,8 +831,7 @@ fun FeedScreen(
                     if (showSynthetic && discoveryTracks.isNotEmpty()) {
                         item(key = "discover_new_music") {
                             HomeContainerSection(
-                                isFirst = activeContainerKeys.firstOrNull() == "discover_new_music",
-                                isLast = activeContainerKeys.lastOrNull() == "discover_new_music",
+                                shape = getContainerShape("discover_new_music"),
                             ) {
                                     FeedSectionHeader(
                                         title = stringResource(R.string.feed_discover),
@@ -857,15 +870,11 @@ fun FeedScreen(
                     state.feedData.becauseYouListenTo?.takeIf { it.items.isNotEmpty() }?.let { section ->
                         item(key = "because_you_listen_to") {
                             HomeContainerSection(
-                                isFirst = activeContainerKeys.firstOrNull() == "because_you_listen_to",
-                                isLast = activeContainerKeys.lastOrNull() == "because_you_listen_to",
+                                shape = getContainerShape("because_you_listen_to"),
                             ) {
                             FeedSectionHeader(
                                 title = section.title,
                                 subtitle = section.subtitle,
-                                actionText = stringResource(R.string.feed_play_all),
-                                actionIcon = Icons.Filled.PlayArrow,
-                                onActionClick = { viewModel.playTracksQueue(section.items, 0, section.title) },
                                 onShuffleClick = { viewModel.shuffleTracksQueue(section.items, section.title) },
                                 onLongClick = { sectionMenuTarget = HomeSection.BECAUSE_YOU_LISTEN_TO.id to section.title },
                             )
@@ -903,15 +912,11 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.FRESH_FINDS) && state.feedData.freshFinds.isNotEmpty()) {
                         item(key = "fresh_finds") {
                             HomeContainerSection(
-                                isFirst = activeContainerKeys.firstOrNull() == "fresh_finds",
-                                isLast = activeContainerKeys.lastOrNull() == "fresh_finds",
+                                shape = getContainerShape("fresh_finds"),
                             ) {
                                     FeedSectionHeader(
                                         title = stringResource(R.string.feed_fresh),
                                         subtitle = stringResource(R.string.feed_fresh_sub),
-                                        actionText = stringResource(R.string.feed_play_all),
-                                        actionIcon = Icons.Filled.PlayArrow,
-                                        onActionClick = { viewModel.playTracksQueue(state.feedData.freshFinds, 0, "Fresh Finds") },
                                         onShuffleClick = { viewModel.shuffleTracksQueue(state.feedData.freshFinds, "Fresh Finds") },
                                         onLongClick = { sectionMenuTarget = HomeSection.FRESH_FINDS.id to "Fresh Finds" },
                                     )
@@ -948,15 +953,12 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.JUMP_BACK_IN) && !isTitleHidden("Listen again") && state.feedData.jumpBackIn.isNotEmpty()) {
                         item(key = "jump_back_in") {
                             HomeContainerSection(
-                                isFirst = activeContainerKeys.firstOrNull() == "jump_back_in",
-                                isLast = activeContainerKeys.lastOrNull() == "jump_back_in",
+                                shape = getContainerShape("jump_back_in"),
                             ) {
                             FeedSectionHeader(
                                 title = stringResource(R.string.feed_jump),
                                 subtitle = stringResource(R.string.feed_jump_sub),
-                                actionText = stringResource(R.string.feed_play_all),
-                                actionIcon = Icons.Filled.PlayArrow,
-                                onActionClick = { viewModel.playRecentQueue(state.feedData.jumpBackIn, 0) },
+                                onShuffleClick = { viewModel.playRecentQueue(state.feedData.jumpBackIn.shuffled(), 0) },
                                 onLongClick = { sectionMenuTarget = HomeSection.JUMP_BACK_IN.id to "Jump Back In" },
                             )
                             FeedMediaRow(
@@ -986,15 +988,12 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.MIXES) && !isTitleHidden("Mixed for you") && state.feedData.mixes.isNotEmpty()) {
                         item(key = "mixed_for_you") {
                             HomeContainerSection(
-                                isFirst = activeContainerKeys.firstOrNull() == "mixed_for_you",
-                                isLast = activeContainerKeys.lastOrNull() == "mixed_for_you",
+                                shape = getContainerShape("mixed_for_you"),
                             ) {
                             FeedSectionHeader(
                                 title = stringResource(R.string.feed_mixes),
                                 subtitle = stringResource(R.string.feed_mixes_sub),
-                                actionText = stringResource(R.string.feed_shuffle),
-                                actionIcon = Icons.Filled.Shuffle,
-                                onActionClick = {
+                                onShuffleClick = {
                                     state.feedData.mixes.randomOrNull()?.let(viewModel::playMix)
                                 },
                                 onLongClick = { sectionMenuTarget = HomeSection.MIXES.id to "Mixed For You" },
@@ -1027,7 +1026,7 @@ fun FeedScreen(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(bottom = 10.dp),
+                                        .padding(bottom = 3.dp),
                                 ) {
                                     SpotlightHeroCard(
                                         spotlight = spotlight,
@@ -1046,8 +1045,7 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.TOP_ARTISTS) && individualTopArtists.isNotEmpty()) {
                         item(key = "top_artists") {
                             HomeContainerSection(
-                                isFirst = activeContainerKeys.firstOrNull() == "top_artists",
-                                isLast = activeContainerKeys.lastOrNull() == "top_artists",
+                                shape = getContainerShape("top_artists"),
                             ) {
                             FeedSectionHeader(
                                 title = stringResource(R.string.feed_artists),
@@ -1080,15 +1078,12 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.HEAVY_ROTATION) && state.feedData.heavyRotation.isNotEmpty()) {
                         item(key = "heavy_rotation") {
                             HomeContainerSection(
-                                isFirst = activeContainerKeys.firstOrNull() == "heavy_rotation",
-                                isLast = activeContainerKeys.lastOrNull() == "heavy_rotation",
+                                shape = getContainerShape("heavy_rotation"),
                             ) {
                             FeedSectionHeader(
                                 title = stringResource(R.string.feed_favorites),
                                 subtitle = stringResource(R.string.feed_favorites_sub),
-                                actionText = stringResource(R.string.feed_play_all),
-                                actionIcon = Icons.Filled.PlayArrow,
-                                onActionClick = { viewModel.playGeneratedQueue(state.feedData.heavyRotation, 0, "Heavy Rotation") },
+                                onShuffleClick = { viewModel.playGeneratedQueue(state.feedData.heavyRotation.shuffled(), 0, "Heavy Rotation") },
                                 onLongClick = { sectionMenuTarget = HomeSection.HEAVY_ROTATION.id to "Heavy Rotation" },
                             )
                             FeedMediaRow(
@@ -1122,8 +1117,7 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.ALBUMS) && state.feedData.recentAlbums.isNotEmpty()) {
                         item(key = "albums_in_rotation") {
                             HomeContainerSection(
-                                isFirst = activeContainerKeys.firstOrNull() == "albums_in_rotation",
-                                isLast = activeContainerKeys.lastOrNull() == "albums_in_rotation",
+                                shape = getContainerShape("albums_in_rotation"),
                             ) {
                             FeedSectionHeader(
                                 title = stringResource(R.string.feed_albums),
@@ -1161,15 +1155,11 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.CHARTS) && state.feedData.charts.isNotEmpty()) {
                         item(key = "trending_charts") {
                             HomeContainerSection(
-                                isFirst = activeContainerKeys.firstOrNull() == "trending_charts",
-                                isLast = activeContainerKeys.lastOrNull() == "trending_charts",
+                                shape = getContainerShape("trending_charts"),
                             ) {
                             FeedSectionHeader(
                                 title = stringResource(R.string.feed_trending),
                                 subtitle = stringResource(R.string.feed_trending_sub),
-                                actionText = stringResource(R.string.feed_play_all),
-                                actionIcon = Icons.Filled.PlayArrow,
-                                onActionClick = { viewModel.playTracksQueue(state.feedData.charts, 0, "Top Charts") },
                                 onShuffleClick = { viewModel.shuffleTracksQueue(state.feedData.charts, "Top Charts") },
                                 onLongClick = { sectionMenuTarget = HomeSection.CHARTS.id to "Trending Charts" },
                             )
@@ -1205,8 +1195,7 @@ fun FeedScreen(
                     if (showSynthetic && isSectionVisible(HomeSection.NEW_RELEASES) && !isTitleHidden("New releases") && state.feedData.newReleases.isNotEmpty()) {
                         item(key = "new_releases") {
                             HomeContainerSection(
-                                isFirst = activeContainerKeys.firstOrNull() == "new_releases",
-                                isLast = activeContainerKeys.lastOrNull() == "new_releases",
+                                shape = getContainerShape("new_releases"),
                             ) {
                             FeedSectionHeader(
                                 title = stringResource(R.string.feed_releases),
@@ -1248,8 +1237,7 @@ fun FeedScreen(
                     if (isSectionVisible(HomeSection.FRIENDS) && state.feedData.friends.isNotEmpty()) {
                         item(key = "friends_activity") {
                             HomeContainerSection(
-                                isFirst = activeContainerKeys.firstOrNull() == "friends_activity",
-                                isLast = activeContainerKeys.lastOrNull() == "friends_activity",
+                                shape = getContainerShape("friends_activity"),
                             ) {
                                     FeedSectionHeader(
                                         title = stringResource(R.string.feed_friends),
@@ -1286,8 +1274,7 @@ fun FeedScreen(
                             if (shelf.items.isEmpty() || isTitleHidden(shelf.title)) continue
                             item(key = "paged_shelf_${shelfIndex}_${shelf.title}") {
                                 HomeContainerSection(
-                                    isFirst = activeContainerKeys.firstOrNull() == "paged_shelf_${shelfIndex}_${shelf.title}",
-                                    isLast = activeContainerKeys.lastOrNull() == "paged_shelf_${shelfIndex}_${shelf.title}",
+                                    shape = getContainerShape("paged_shelf_${shelfIndex}_${shelf.title}"),
                                 ) {
                                     HomeShelfCard(
                                     shelf = shelf,
@@ -1466,10 +1453,15 @@ private fun InfiniteRadioHero(
 ) {
     val haptics = LocalHapticFeedback.current
     val heroArt = quickPicks.firstOrNull { !it.artworkUrl.isNullOrBlank() }?.artworkUrl
-    val heroShape = RoundedCornerShape(28.dp)
+    val heroShape = RoundedCornerShape(
+        topStart = 28.dp,
+        topEnd = 28.dp,
+        bottomStart = 0.dp,
+        bottomEnd = 0.dp,
+    )
     Surface(
         shape = heroShape,
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
         tonalElevation = 2.dp,
         modifier = Modifier
             .fillMaxWidth()
@@ -1785,42 +1777,32 @@ private fun HomeShelfCard(
         }
         return
     }
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
-    ) {
-        Column(modifier = Modifier.padding(vertical = 12.dp)) {
-            val tracksInShelf = remember(shelf.items) {
-                shelf.items.mapNotNull { (it as? HomeShelfItem.Track)?.track }
-            }
-            val episodesInShelf = remember(shelf.items) {
-                shelf.items.filterIsInstance<HomeShelfItem.PodcastEpisode>()
-            }
-            // "More" only when the shelf's destination is a playlist/album id
-            // the app already knows how to open; mood/genre/chart browse ids
-            // aren't supported surfaces, so the chevron stays hidden for them.
-            val morePlaylistId = remember(shelf.moreBrowseId) {
-                shelf.moreBrowseId
-                    ?.removePrefix("VL")
-                    ?.takeIf { it.startsWith("PL") || it.startsWith("MPRE") || it.startsWith("RD") || it.startsWith("OLAK") }
-            }
-            com.lastwave.app.ui.feed.cards.ShelfHeaderV2(
-                title = shelf.title,
-                eyebrow = shelf.strapline,
-                subtitle = shelf.subtitle,
-                showMore = morePlaylistId != null,
-                onMoreClick = morePlaylistId?.let { { onOpenFeedPlaylist(it) } },
-                onPlayAll = if (tracksInShelf.isNotEmpty()) {
-                    { onPlayTracksQueue(tracksInShelf, 0, shelf.title) }
-                } else null,
-                onShuffle = if (tracksInShelf.isNotEmpty()) {
-                    { onShuffleTracksQueue(tracksInShelf, shelf.title) }
-                } else null,
-                onLongClick = onHeaderLongClick?.let { { it(shelf.title) } },
-            )
+    Column(modifier = modifier.fillMaxWidth()) {
+        val tracksInShelf = remember(shelf.items) {
+            shelf.items.mapNotNull { (it as? HomeShelfItem.Track)?.track }
+        }
+        val episodesInShelf = remember(shelf.items) {
+            shelf.items.filterIsInstance<HomeShelfItem.PodcastEpisode>()
+        }
+        // "More" only when the shelf's destination is a playlist/album id
+        // the app already knows how to open; mood/genre/chart browse ids
+        // aren't supported surfaces, so the chevron stays hidden for them.
+        val morePlaylistId = remember(shelf.moreBrowseId) {
+            shelf.moreBrowseId
+                ?.removePrefix("VL")
+                ?.takeIf { it.startsWith("PL") || it.startsWith("MPRE") || it.startsWith("RD") || it.startsWith("OLAK") }
+        }
+        com.lastwave.app.ui.feed.cards.ShelfHeaderV2(
+            title = shelf.title,
+            eyebrow = shelf.strapline,
+            subtitle = shelf.subtitle,
+            showMore = morePlaylistId != null,
+            onMoreClick = morePlaylistId?.let { { onOpenFeedPlaylist(it) } },
+            onShuffle = if (tracksInShelf.isNotEmpty()) {
+                { onShuffleTracksQueue(tracksInShelf, shelf.title) }
+            } else null,
+            onLongClick = onHeaderLongClick?.let { { it(shelf.title) } },
+        )
             FeedMediaRow(
                 content = {
                     itemsIndexed(
@@ -1852,7 +1834,6 @@ private fun HomeShelfCard(
                 },
             )
         }
-    }
 }
 
 /**
@@ -1964,39 +1945,30 @@ private fun PodcastGuestEmptyState(
     onLoginClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 32.dp),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f),
-        tonalElevation = 2.dp,
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+        Icon(
+            imageVector = Icons.Filled.Mic,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(40.dp),
+        )
+        Text(
+            text = "Discover personalized podcasts and shows",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+        Button(
+            onClick = onLoginClick,
+            shape = RoundedCornerShape(20.dp),
         ) {
-            Icon(
-                imageVector = Icons.Filled.Mic,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(40.dp),
-            )
-            Text(
-                text = "Discover personalized podcasts and shows",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            )
-            Button(
-                onClick = onLoginClick,
-                shape = RoundedCornerShape(20.dp),
-            ) {
-                Text("Log in to YouTube Music")
-            }
+            Text("Log in to YouTube Music")
         }
     }
 }
@@ -2583,9 +2555,9 @@ private fun QuickPicksRows(
                     val overallIndex = columnIndex * 3 + rowIndex
                     val isCurrent = track.videoId.isNotBlank() && track.videoId == currentPlayingVideoId
                     Surface(
-                        shape = RoundedCornerShape(18.dp),
-                        color = if (isCurrent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-                        else MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.65f),
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isCurrent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                        else Color.Transparent,
                         border = null,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -2845,14 +2817,10 @@ private fun ChartTrackCard(
     val isTop3 = rank <= 3
     val haptics = LocalHapticFeedback.current
     Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = if (isTop3) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-        else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (isTop3) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
-            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
-        ),
+        shape = RoundedCornerShape(14.dp),
+        color = if (isTop3) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+        else Color.Transparent,
+        border = null,
         modifier = Modifier
             .width(288.dp)
             .height(76.dp)
@@ -3251,16 +3219,15 @@ private fun FriendAvatarCard(
 @Composable
 private fun HomeContainerSection(
     modifier: Modifier = Modifier,
-    isFirst: Boolean = false,
-    isLast: Boolean = false,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(0.dp),
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .padding(bottom = 10.dp),
-        shape = RoundedCornerShape(0.dp),
+            .padding(bottom = 3.dp),
+        shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
     ) {
         Column(
@@ -3330,28 +3297,12 @@ private fun FeedSectionHeader(
             }
         }
         if (onShuffleClick != null) {
-            Surface(
-                onClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    onShuffleClick()
-                },
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f),
-            ) {
-                Box(
-                    modifier = Modifier.padding(8.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        Icons.Filled.Shuffle,
-                        contentDescription = stringResource(R.string.feed_shuffle_title_cd, title),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
-            }
+            ExpressiveShuffleButton(
+                onClick = onShuffleClick,
+                contentDescription = stringResource(R.string.feed_shuffle_title_cd, title),
+            )
         }
-        if (actionText != null && onActionClick != null) {
+        if (actionText != null && onActionClick != null && actionText != stringResource(R.string.feed_play_all)) {
             Surface(
                 onClick = {
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)

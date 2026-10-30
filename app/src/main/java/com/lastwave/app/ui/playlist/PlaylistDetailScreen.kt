@@ -133,6 +133,11 @@ import com.lastwave.app.data.playlist.isYouTubeOnly
 import com.lastwave.app.playback.toPlayableTrack
 import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ExpressiveLoadingIndicator
+import com.lastwave.app.ui.common.GroupGap
+import com.lastwave.app.ui.common.GroupPosition
+import com.lastwave.app.ui.common.groupPositionFor
+import com.lastwave.app.ui.common.ExpressiveGroupTrackRow
+import com.lastwave.app.ui.common.OverflowMenuButton
 import com.lastwave.app.ui.common.PlaylistCover
 import com.lastwave.app.ui.common.TrackContextMenuSheet
 import com.lastwave.app.ui.common.TrackMenuCapabilities
@@ -418,7 +423,7 @@ fun PlaylistDetailScreen(
                 top = 0.dp,
                 bottom = FloatingNavDefaults.contentBottomPadding(),
             ),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(GroupGap),
             modifier = Modifier
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 860.dp)
@@ -777,6 +782,7 @@ fun PlaylistDetailScreen(
                         playbackState.current?.artist.equals(track.artist, ignoreCase = true)
                     val isDragging = reorderEnabled && index == draggingIndex
                     val stableKey = displayKeys.getOrNull(index) ?: "pos_${track.url.ifBlank { "${track.name}_${track.artist}" }}_$index"
+                    val rowPosition = groupPositionFor(index, displayTracks.size)
 
                     Box(
                         modifier = Modifier
@@ -793,6 +799,7 @@ fun PlaylistDetailScreen(
                     ) {
                         NativeTrackRow(
                             track = track,
+                            position = rowPosition,
                             isPlaying = isPlayingThisSong,
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -1384,18 +1391,19 @@ fun PlaylistDetailScreen(
 @Composable
 private fun NativeTrackRow(
     track: GeneratedTrack,
+    position: GroupPosition,
     isPlaying: Boolean,
     onClick: () -> Unit,
     onMenu: () -> Unit,
     dragHandle: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    com.lastwave.app.ui.common.ExpressiveGroupTrackRow(
+    ExpressiveGroupTrackRow(
         title = track.name,
         subtitle = listOfNotNull(track.artist.takeIf(String::isNotBlank), track.album?.takeIf(String::isNotBlank))
             .joinToString(" · ")
             .ifBlank { track.artist },
-        position = com.lastwave.app.ui.common.GroupPosition.SINGLE,
+        position = position,
         isPlaying = isPlaying,
         onClick = onClick,
         modifier = modifier,
@@ -1421,7 +1429,7 @@ private fun NativeTrackRow(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 dragHandle?.invoke()
-                com.lastwave.app.ui.common.OverflowMenuButton(onClick = onMenu)
+                OverflowMenuButton(onClick = onMenu)
             }
         },
     )
