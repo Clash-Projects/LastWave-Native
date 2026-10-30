@@ -65,6 +65,16 @@
     <string name="theme_mode_system">System</string>
     <string name="theme_mode_light">Light</string>
     <string name="theme_mode_dark">Dark</string>
+    <string name="settings_section_app_icon">App Icon</string>
+    <string name="settings_app_icon_sub">Choose your home screen &amp; in-app logo</string>
+    <string name="app_icon_default">Default</string>
+    <string name="app_icon_default_sub">Original Electric Lime &amp; Obsidian Teal</string>
+    <string name="app_icon_desktop">Desktop</string>
+    <string name="app_icon_desktop_sub">LastWave Desktop Player edition</string>
+    <string name="app_icon_white">Pure White</string>
+    <string name="app_icon_white_sub">White logo with black strip lines</string>
+    <string name="app_icon_black">Obsidian Black</string>
+    <string name="app_icon_black_sub">Black logo with white strip lines</string>
     <string name="settings_lastwave_theme">LastWave Signature Theme</string>
     <string name="settings_lastwave_theme_sub">Bespoke logo palette • Electric Lime &amp; Obsidian Teal</string>
     <string name="settings_amoled">AMOLED Mode</string>

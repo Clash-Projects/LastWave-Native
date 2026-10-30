@@ -446,6 +446,22 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "appearance.app_icon",
+                    title = "App Icon",
+                    subtitle = "Choose your home screen & in-app logo",
+                    keywords = listOf(
+                        "app icon", "logo", "desktop logo", "white logo", "black logo", "launcher", "icon", "theme"
+                    ),
+                    icon = Icons.Filled.Apps,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Appearance",
+                    type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "appearance.lastwave_theme",
                     title = "LastWave Signature Theme",
                     subtitle = "Bespoke logo palette with Electric Lime and Obsidian Teal",

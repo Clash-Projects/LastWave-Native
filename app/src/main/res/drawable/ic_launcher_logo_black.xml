@@ -3,17 +3,17 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Black theme logo (white bars) for in-app UI. -->
+    <!-- Desktop-style logo bars (white) with true logo proportions for in-app UI. -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M12.92,36.47 A5.99,5.99 0 0 1 24.89,36.47 L24.89,78.39 A5.99,5.99 0 0 1 12.92,78.39 Z" />
+        android:pathData="M17.19,41.40 A6.91,6.91 0 0 1 31.01,41.40 L31.01,67.66 A6.91,6.91 0 0 1 17.19,67.66 Z" />
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M36.86,16.58 A6.14,6.14 0 0 1 49.15,16.58 L49.15,92.58 A6.14,6.14 0 0 1 36.86,92.58 Z" />
+        android:pathData="M37.12,19.93 A6.96,6.96 0 0 1 51.05,19.93 L51.05,87.33 A6.96,6.96 0 0 1 37.12,87.33 Z" />
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M60.54,23.12 A6.25,6.25 0 0 1 73.04,23.12 L73.04,84.82 A6.25,6.25 0 0 1 60.54,84.82 Z" />
+        android:pathData="M57.16,28.05 A6.96,6.96 0 0 1 71.09,28.05 L71.09,80.26 A6.96,6.96 0 0 1 57.16,80.26 Z" />
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M80.74,33.72 A6.72,6.72 0 0 1 94.18,33.72 L94.18,74.17 A6.72,6.72 0 0 1 80.74,74.17 Z" />
+        android:pathData="M77.10,41.45 A6.96,6.96 0 0 1 91.02,41.45 L91.02,67.61 A6.96,6.96 0 0 1 77.10,67.61 Z" />
 </vector>

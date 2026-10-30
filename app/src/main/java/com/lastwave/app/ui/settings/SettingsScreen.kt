@@ -231,6 +231,7 @@ import com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance
 import com.lastwave.app.R
 import com.lastwave.app.data.local.AccentMode
 import com.lastwave.app.data.local.ThemeMode
+import com.lastwave.app.data.local.AppIcon
 import com.lastwave.app.data.local.EQ_BAND_FREQS_HZ
 import com.lastwave.app.data.local.EQ_MAX_GAIN_DB
 import com.lastwave.app.data.local.EqualizerPresets
@@ -1228,7 +1229,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_appearance))
-                    SettingsGroup(rowCount = 10) { index, position ->
+                    SettingsGroup(rowCount = 11) { index, position ->
                         when (index) {
                             0 -> ThemeModeSelectorCard(
                                 currentThemeMode = theme?.themeMode ?: ThemeMode.SYSTEM,
@@ -1236,7 +1237,13 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.theme_mode"),
                             )
-                            1 -> SettingsToggleCard(
+                            1 -> AppIconSelectorCard(
+                                currentIcon = theme?.appIcon ?: AppIcon.DEFAULT,
+                                onSelectAppIcon = viewModel::setAppIcon,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.app_icon"),
+                            )
+                            2 -> SettingsToggleCard(
                                 icon = Icons.Filled.AutoAwesome,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1247,7 +1254,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.lastwave_theme"),
                             )
-                            2 -> SettingsToggleCard(
+                            3 -> SettingsToggleCard(
                                 icon = Icons.Filled.Contrast,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1259,7 +1266,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.amoled"),
                             )
-                            3 -> SettingsToggleCard(
+                            4 -> SettingsToggleCard(
                                 icon = Icons.Filled.Palette,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1275,7 +1282,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.dynamic_color"),
                             )
-                            4 -> SettingsToggleCard(
+                            5 -> SettingsToggleCard(
                                 icon = Icons.Filled.BubbleChart,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1286,7 +1293,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.liquid_glass"),
                             )
-                            5 -> SettingsToggleCard(
+                            6 -> SettingsToggleCard(
                                 icon = Icons.Filled.Apps,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1297,7 +1304,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.md3_nav_bar"),
                             )
-                            6 -> SettingsToggleCard(
+                            7 -> SettingsToggleCard(
                                 icon = Icons.Filled.VisibilityOff,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1308,7 +1315,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.hide_nav_tabs"),
                             )
-                            7 -> SettingsToggleCard(
+                            8 -> SettingsToggleCard(
                                 icon = Icons.Filled.Album,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1319,7 +1326,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.dynamic_now_playing"),
                             )
-                            8 -> SettingsToggleCard(
+                            9 -> SettingsToggleCard(
                                 icon = Icons.Filled.TextFields,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1330,7 +1337,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.app_font"),
                             )
-                            9 -> SettingsToggleCard(
+                            10 -> SettingsToggleCard(
                                 icon = Icons.Filled.TextFields,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -3345,6 +3352,99 @@ private fun IconBadge(painter: Painter, container: Color, tint: Color, modifier:
 }
 
 @Composable
+@Composable
+private fun AppIconSelectorCard(
+    currentIcon: AppIcon,
+    onSelectAppIcon: (AppIcon) -> Unit,
+    position: GroupPosition = GroupPosition.SINGLE,
+    isHighlighted: Boolean = false,
+) {
+    val shape = groupShape(position)
+
+    Card(
+        shape = shape,
+        colors = CardDefaults.cardColors(
+            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconBadge(
+                    Icons.Filled.Apps,
+                    MaterialTheme.colorScheme.primaryContainer,
+                    MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.settings_section_app_icon),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        stringResource(currentIcon.subtitleRes),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AppIcon.entries.forEach { icon ->
+                    val isSelected = (icon == currentIcon)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { onSelectAppIcon(icon) }
+                            .padding(vertical = 6.dp, horizontal = 4.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(CircleShape)
+                                .background(colorResource(icon.backgroundRes))
+                                .then(
+                                    if (isSelected) {
+                                        Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                                    } else {
+                                        Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), CircleShape)
+                                    }
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                painter = painterResource(icon.logoRes),
+                                contentDescription = stringResource(icon.titleRes),
+                                tint = Color.Unspecified,
+                                modifier = Modifier.size(52.dp),
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = stringResource(icon.titleRes),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 private fun ThemeModeSelectorCard(
     currentThemeMode: ThemeMode,
     onSelectThemeMode: (ThemeMode) -> Unit,
@@ -4913,11 +5013,11 @@ private fun AboutCard(versionName: String) {
                     // background color + the bars vector, both plain
                     // resources) reproduces it exactly without touching the
                     // adaptive icon resource at all.
-                    .background(colorResource(R.color.ic_launcher_background)),
+                    .background(colorResource(theme?.appIcon?.backgroundRes ?: R.color.ic_launcher_background)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_launcher_logo),
+                    painter = painterResource(theme?.appIcon?.logoRes ?: R.drawable.ic_launcher_logo),
                     contentDescription = "LastWave",
                     tint = Color.Unspecified,
                     modifier = Modifier.size(72.dp),

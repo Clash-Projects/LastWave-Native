@@ -51,3 +51,4 @@ enum class AppIcon(
             entries.firstOrNull { it.id == id } ?: DEFAULT
     }
 }
+
