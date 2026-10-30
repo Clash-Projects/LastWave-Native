@@ -902,7 +902,15 @@ class MusicPlayer @Inject constructor(
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, playWhenReadyChangeReason: Int) {
             // Hold focus exactly while playback is intended: requesting it
             // anywhere else just fights the other apps that own focus.
-            if (playWhenReady) requestMediaAudioFocus() else abandonMediaAudioFocus()
+            //
+            // A pause caused by a *focus change* must not abandon the request:
+            // the platform only delivers AUDIOFOCUS_GAIN back to the app that
+            // still owns the lost request, so abandoning here killed
+            // PauseTransiently's recovery path — the song paused for a call or
+            // a notification ding and never resumed. restoreAfterAudioFocus()
+            // drops the request itself on the user's own pause.
+            if (playWhenReady) requestMediaAudioFocus()
+            else if (!pausingForAudioFocus) abandonMediaAudioFocus()
         }
         override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
             _state.update { it.copy(speed = playbackParameters.speed, pitch = playbackParameters.pitch) }
@@ -2829,10 +2837,19 @@ class MusicPlayer @Inject constructor(
         player.play()
     }
 
-    fun pause() {
+    fun pause() = pauseInternal(focusInitiated = false)
+
+    /**
+     * @param focusInitiated true when this pause answers an audio-focus loss.
+     *   Such a pause must leave the focus request in place: the platform only
+     *   delivers AUDIOFOCUS_GAIN back to the app that still owns the lost
+     *   request, so abandoning it here would strand [pauseForAudioFocus]'s
+     *   recovery and a brief interruption would never resume.
+     */
+    private fun pauseInternal(focusInitiated: Boolean) {
         // A deliberate pause supersedes a focus-induced one, so a later
         // AUDIOFOCUS_GAIN must not resurrect playback the user stopped.
-        if (!pausingForAudioFocus) focusPauseAwaitingRecovery = false
+        if (!focusInitiated) focusPauseAwaitingRecovery = false
         val selectedMediaId = _state.value.current?.mediaIdKey()
         pausedResolutionMediaId = selectedMediaId?.takeIf { mediaId ->
             resolvingMediaIds[mediaId] == playRequestGeneration.get()
@@ -2841,8 +2858,16 @@ class MusicPlayer @Inject constructor(
         onMain {
             exclusiveUsbOutput.setPaused(true)
             if (isCasting) castPlayback?.pause()
-            outgoingPlayer?.pause()
-            if (playerDelegate.isInitialized()) player.pause()
+            // Set for the duration of the player pause so the
+            // onPlayWhenReadyChanged listener sees it no matter which thread
+            // this ran on, and clear it before the state bookkeeping below.
+            pausingForAudioFocus = focusInitiated
+            try {
+                outgoingPlayer?.pause()
+                if (playerDelegate.isInitialized()) player.pause()
+            } finally {
+                pausingForAudioFocus = false
+            }
             _state.update { it.copy(isPlaying = false, isBuffering = false) }
             checkpointPodcastProgress()
             persistPlaybackSession()
@@ -2906,10 +2931,10 @@ class MusicPlayer @Inject constructor(
         if (isCasting) return
         val playing = _state.value.isPlaying ||
             (playerDelegate.isInitialized() && player.playWhenReady)
-        pausingForAudioFocus = true
+        // A permanent loss must also clear any intent left by an earlier
+        // transient one, so this assignment is unconditional.
         focusPauseAwaitingRecovery = autoRestore && playing
-        if (playing) pause()
-        pausingForAudioFocus = false
+        if (playing) pauseInternal(focusInitiated = true)
     }
 
     private fun restoreAfterAudioFocus() {
@@ -4851,6 +4876,10 @@ class MusicPlayer @Inject constructor(
         sleepTimerStep = 0
         // Save the podcast resume position before the queue is torn down.
         checkpointPodcastProgress()
+        // stop() keeps playWhenReady unchanged, so no listener callback would
+        // ever abandon the focus we still hold — do it explicitly, or every
+        // other media app keeps ducking to a stopped player.
+        abandonMediaAudioFocus()
         player.stop()
         player.clearMediaItems()
         // Shuffle is engine state that survives stop()/clearMediaItems(): without
