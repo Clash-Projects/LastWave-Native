@@ -4172,9 +4172,9 @@ internal fun PlayerProgressSlider(
     primaryColor: Color = MaterialTheme.colorScheme.primary,
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
 ) {
-    val primary = primaryColor
-    val tertiary = tertiaryColor
-    val inactive = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.20f else 0.12f)
+    val primary = remember(primaryColor) { primaryColor.ensureLuminousForDarkBackground(0.38f) }
+    val tertiary = remember(tertiaryColor) { tertiaryColor.ensureLuminousForDarkBackground(0.28f) }
+    val inactive = Color.White.copy(alpha = if (enabled) 0.24f else 0.14f)
     val range = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.0001f)
     val fraction = ((value - valueRange.start) / range).coerceIn(0f, 1f)
 
@@ -4199,7 +4199,7 @@ internal fun PlayerProgressSlider(
                 color = inactive,
                 start = androidx.compose.ui.geometry.Offset(startX, centerY),
                 end = androidx.compose.ui.geometry.Offset(endX, centerY),
-                strokeWidth = 3.dp.toPx(),
+                strokeWidth = 3.5.dp.toPx(),
                 cap = StrokeCap.Round,
             )
             if (activeEndX > startX) {
@@ -4207,14 +4207,14 @@ internal fun PlayerProgressSlider(
                     brush = Brush.horizontalGradient(
                         colors = listOf(
                             primary.copy(alpha = if (enabled) 1f else 0.42f),
-                            tertiary.copy(alpha = if (enabled) 0.92f else 0.36f),
+                            tertiary.copy(alpha = if (enabled) 0.95f else 0.36f),
                         ),
                         startX = startX,
                         endX = activeEndX,
                     ),
                     start = androidx.compose.ui.geometry.Offset(startX, centerY),
                     end = androidx.compose.ui.geometry.Offset(activeEndX, centerY),
-                    strokeWidth = 4.dp.toPx(),
+                    strokeWidth = 4.5.dp.toPx(),
                     cap = StrokeCap.Round,
                 )
             }
@@ -4225,7 +4225,7 @@ internal fun PlayerProgressSlider(
             inactiveTrackColor = Color.Transparent,
             activeTickColor = Color.Transparent,
             inactiveTickColor = Color.Transparent,
-            disabledThumbColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.34f),
+            disabledThumbColor = Color.White.copy(alpha = 0.34f),
             disabledActiveTrackColor = Color.Transparent,
             disabledInactiveTrackColor = Color.Transparent,
             disabledActiveTickColor = Color.Transparent,
@@ -4323,17 +4323,17 @@ private fun SeekBar(
     val effectivePrimary = when {
         isGlassActive -> Color.White.copy(alpha = 0.95f)
         isTranslucent -> Color.White
-        else -> primaryColor
+        else -> primaryColor.ensureLuminousForDarkBackground(0.38f)
     }
     val inactiveColor = when {
-        isGlassActive -> Color.White.copy(alpha = 0.16f)
-        isTranslucent -> Color.White.copy(alpha = 0.20f)
-        else -> effectivePrimary.copy(alpha = 0.28f)
+        isGlassActive -> Color.White.copy(alpha = 0.20f)
+        isTranslucent -> Color.White.copy(alpha = 0.24f)
+        else -> Color.White.copy(alpha = 0.24f)
     }
     val textColor = when {
         isGlassActive -> Color.White.copy(alpha = 0.90f)
         isTranslucent -> Color.White.copy(alpha = 0.85f)
-        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.92f)
+        else -> Color.White.copy(alpha = 0.82f)
     }
 
     // Same RTL pin as above: custom Canvas draws LTR, invisible Slider must match it.
@@ -4387,7 +4387,7 @@ private fun SeekBar(
                 val endpointX = width - trackHeightPx / 2f
                 if (inactiveStartX < endpointX) {
                     drawCircle(
-                        color = effectivePrimary.copy(alpha = 0.86f),
+                        color = effectivePrimary.copy(alpha = 0.90f),
                         radius = 2.dp.toPx(),
                         center = Offset(endpointX, centerY),
                     )
@@ -4396,6 +4396,14 @@ private fun SeekBar(
                 // Tall vertical pill thumb with clear space on both sides.
                 val thumbX = thumbCenterX - thumbWidthPx / 2f
                 val thumbCornerRadius = CornerRadius(thumbWidthPx / 2f, thumbWidthPx / 2f)
+
+                // Subtle dark drop-shadow behind thumb to guarantee 100% boundary separation on any artwork
+                drawRoundRect(
+                    color = Color.Black.copy(alpha = 0.35f),
+                    topLeft = Offset(thumbX - 1.dp.toPx(), centerY - thumbHeightPx / 2f - 1.dp.toPx()),
+                    size = Size(thumbWidthPx + 2.dp.toPx(), thumbHeightPx + 2.dp.toPx()),
+                    cornerRadius = CornerRadius((thumbWidthPx + 2.dp.toPx()) / 2f, (thumbWidthPx + 2.dp.toPx()) / 2f),
+                )
 
                 drawRoundRect(
                     color = effectivePrimary,

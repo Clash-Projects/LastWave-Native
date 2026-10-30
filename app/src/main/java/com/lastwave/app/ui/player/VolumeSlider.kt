@@ -144,17 +144,17 @@ fun VolumeSlider(
     val activeTrackColor = when {
         isGlassActive -> Color.White.copy(alpha = 0.95f)
         isTranslucent -> Color.White
-        else -> primaryColor
+        else -> primaryColor.ensureLuminousForDarkBackground(0.38f)
     }
     val inactiveTrackColor = when {
-        isGlassActive -> Color.White.copy(alpha = 0.16f)
-        isTranslucent -> Color.White.copy(alpha = 0.20f)
+        isGlassActive -> Color.White.copy(alpha = 0.20f)
+        isTranslucent -> Color.White.copy(alpha = 0.24f)
         else -> MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.60f)
     }
     val thumbColor = when {
         isGlassActive -> Color.White
         isTranslucent -> Color.White
-        else -> primaryColor
+        else -> primaryColor.ensureLuminousForDarkBackground(0.38f)
     }
     val iconColor = when {
         isGlassActive -> Color.White.copy(alpha = 0.90f)
