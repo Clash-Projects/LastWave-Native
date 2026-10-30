@@ -796,14 +796,15 @@ private fun ModernSyncedLyricsList(
             runCatching {
                 val layoutInfo = listState.layoutInfo
                 val viewportHeight = layoutInfo.viewportSize.height
-                val targetItem = layoutInfo.visibleItemsInfo.find { it.index == activeIndex }
-                if (targetItem != null && viewportHeight > 0) {
-                    val targetY = (viewportHeight * 0.36f).toInt()
-                    val delta = targetItem.offset - targetY
-                    listState.animateScrollBy(delta.toFloat(), lyricScrollDurationMs(delta.toFloat()))
-                } else {
-                    val targetIndex = (activeIndex - 1).coerceAtLeast(0)
-                    listState.animateScrollToItem(index = targetIndex, scrollOffset = 0)
+                if (viewportHeight > 0) {
+                    val targetY = (viewportHeight * 0.22f).toInt()
+                    val targetItem = layoutInfo.visibleItemsInfo.find { it.index == activeIndex }
+                    if (targetItem != null) {
+                        val delta = targetItem.offset - targetY
+                        listState.animateScrollBy(delta.toFloat(), lyricScrollDurationMs(delta.toFloat()))
+                    } else {
+                        listState.animateScrollToItem(index = activeIndex, scrollOffset = -targetY)
+                    }
                 }
             }
         }
@@ -835,7 +836,7 @@ private fun ModernSyncedLyricsList(
         state = listState,
         modifier = modifier.lyricsFadingEdge(topFadeDp = 36.dp, bottomFadeDp = 110.dp),
         contentPadding = PaddingValues(top = 40.dp, bottom = 140.dp, start = 20.dp, end = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(0.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         itemsIndexed(
             lines,
@@ -915,7 +916,7 @@ private fun ModernSyncedLyricsList(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = if (isNewStanza) 28.dp else 0.dp)
+                        .padding(top = if (isNewStanza) 22.dp else 0.dp)
                         .graphicsLayer {
                             val totalScale = scaleState.value * (1f + 0.020f * onsetWave)
                             transformOrigin = TransformOrigin(if (isLineRtl) 1f else 0f, 0.5f)
@@ -934,7 +935,7 @@ private fun ModernSyncedLyricsList(
                         ) {
                             onSeek(line.timeMs)
                         }
-                        .padding(horizontal = 4.dp, vertical = if (isActive) 5.dp else 2.5.dp),
+                        .padding(horizontal = 4.dp, vertical = if (isActive) 4.dp else 2.dp),
                 ) {
                     val fontStyle = if (isBgRow) accompanimentStyle else normalStyle
                     Column(modifier = Modifier.fillMaxWidth()) {
