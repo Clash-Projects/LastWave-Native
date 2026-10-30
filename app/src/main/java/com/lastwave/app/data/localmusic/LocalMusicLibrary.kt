@@ -89,6 +89,15 @@ class LocalMusicLibrary @Inject constructor(
     private val _folders = MutableStateFlow(loadFolders())
     val folders: StateFlow<List<Uri>> = _folders.asStateFlow()
 
+    private val _trackFolders = MutableStateFlow<Map<String, String>>(loadTrackFolders())
+    val trackFolders: StateFlow<Map<String, String>> = _trackFolders.asStateFlow()
+
+    init {
+        if (_folders.value.isNotEmpty() && _trackFolders.value.isEmpty()) {
+            rescanAll()
+        }
+    }
+
     val isRunning: Boolean get() = job?.isActive == true
 
     /** Persists read access to [treeUri], remembers it and imports it. */
@@ -111,7 +120,9 @@ class LocalMusicLibrary @Inject constructor(
         runCatching {
             context.contentResolver.releasePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
+        val uriStr = treeUri.toString()
         saveFolders(_folders.value.filterNot { it == treeUri })
+        saveTrackFolders(_trackFolders.value.filterValues { it != uriStr })
     }
 
     fun acknowledgeReport() {
@@ -167,6 +178,7 @@ class LocalMusicLibrary @Inject constructor(
 
         val updates = mutableMapOf<String, GeneratedTrack>()
         val additions = mutableListOf<GeneratedTrack>()
+        val folderMapping = _trackFolders.value.toMutableMap()
         var unchanged = 0
         var failed = 0
         var bytes = 0L
@@ -184,6 +196,7 @@ class LocalMusicLibrary @Inject constructor(
                     runCatching { copyDocument(entry.treeUri, lrcId, File(LocalAudioFormats.lrcPathFor(dest.path))) }
                 }
                 val path = dest.absolutePath
+                folderMapping[path] = entry.treeUri.toString()
                 val known = existing[path]
                 if (sameFile && known != null) {
                     unchanged++
@@ -198,6 +211,7 @@ class LocalMusicLibrary @Inject constructor(
                 failed++
             }
         }
+        saveTrackFolders(folderMapping)
         _state.value = ImportState.Copying(entries.size, entries.size, "")
         if (updates.isNotEmpty() || additions.isNotEmpty()) {
             playlistRepository.mergeLocalSongs(updates, additions)
@@ -369,10 +383,15 @@ class LocalMusicLibrary @Inject constructor(
             if (!keep) file.delete()
         }
         artDir.listFiles()?.forEach { file -> if (file.name !in art) file.delete() }
+        val existingPaths = audio.map { File(root, it).absolutePath }.toSet()
+        saveTrackFolders(_trackFolders.value.filterKeys { it in existingPaths })
     }
 
     /** Bytes used by copied songs, covers and lyrics. */
     fun storageBytes(): Long = root.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+
+    fun getFolderForTrack(trackUrl: String): Uri? =
+        _trackFolders.value[trackUrl]?.let(Uri::parse)
 
     private fun loadFolders(): List<Uri> =
         prefs.getString(KEY_FOLDERS, null)
@@ -386,12 +405,29 @@ class LocalMusicLibrary @Inject constructor(
         _folders.value = folders
     }
 
+    private fun loadTrackFolders(): Map<String, String> =
+        prefs.getString(KEY_TRACK_FOLDERS, null)
+            ?.lineSequence()
+            ?.mapNotNull { line ->
+                val idx = line.indexOf('\t')
+                if (idx > 0) line.substring(0, idx) to line.substring(idx + 1) else null
+            }
+            ?.toMap()
+            .orEmpty()
+
+    private fun saveTrackFolders(map: Map<String, String>) {
+        val serialized = map.entries.joinToString("\n") { "${it.key}\t${it.value}" }
+        prefs.edit().putString(KEY_TRACK_FOLDERS, serialized).apply()
+        _trackFolders.value = map
+    }
+
     companion object {
         private const val TAG = "LocalMusicLibrary"
         const val DIR = LocalAudioFormats.IMPORT_DIR
         private const val ART_DIR = "art"
         private const val PREFS = "local_music"
         private const val KEY_FOLDERS = "folders"
+        private const val KEY_TRACK_FOLDERS = "track_folders"
         private const val MAX_DEPTH = 24
         private const val COPY_BUFFER = 256 * 1024
         private const val SPACE_MARGIN_BYTES = 200L * 1024 * 1024
