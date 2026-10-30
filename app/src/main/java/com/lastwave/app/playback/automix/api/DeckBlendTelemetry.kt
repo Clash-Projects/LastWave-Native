@@ -37,7 +37,6 @@ data class TrackChromeSummary(
  * and Collapsed Mini-Player chrome.
  */
 @Immutable
-@androidx.compose.runtime.Immutable
 data class DeckBlendTelemetry(
     val phase: BlendPhase = BlendPhase.IDLE,
     val blendProgress: Float = 0.0f, // 0.0f..1.0f clamped strictly to Material 3 range

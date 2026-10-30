@@ -73,6 +73,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
     companion object {
         private const val TAG = "UsbAudioDevice"
         private const val ACTION_USB_PERMISSION_SUFFIX = ".USB_AUDIO_PERMISSION"
+        private const val CONTROL_TIMEOUT_MS = 100
 
         @Volatile
         private var instance: UsbAudioDevice? = null
@@ -612,11 +613,16 @@ class UsbAudioDevice private constructor(private val context: Context) {
                     val bcdLo = raw[i + 3].toInt() and 0xFF
                     val bcdHi = raw[i + 4].toInt() and 0xFF
                     val bcd = (bcdHi shl 8) or bcdLo
-                    val version = when (bcd) {
-                        0x0100 -> 100  // UAC 1.0
-                        0x0200 -> 200  // UAC 2.0
-                        0x0300 -> 300  // UAC 3.0 (rare)
-                        else   -> 0
+                    val version = when (bcdHi) {
+                        1 -> 100  // UAC 1.x (e.g. 0x0100, 0x0110)
+                        2 -> 200  // UAC 2.x
+                        3 -> 300  // UAC 3.x
+                        else -> when (bcd) {
+                            0x0100 -> 100
+                            0x0200 -> 200
+                            0x0300 -> 300
+                            else   -> 0
+                        }
                     }
                     Log.i(TAG, "parseUacVersion: bcdADC=0x${bcd.toString(16).padStart(4,'0')} -> UAC $version")
                     return version
@@ -734,9 +740,13 @@ class UsbAudioDevice private constructor(private val context: Context) {
         //    Never on UAC1: those IDs would address unrelated units.
         val detectedId = cachedDeviceInfo?.clockSourceId ?: -1
         val candidateIds = if (currentUacVersion == 100) emptyList() else buildList {
-            addAll(parsedClockSourceIds)
-            if (detectedId > 0) add(detectedId)
-            addAll(listOf(0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x28, 0x29, 0x06, 0x07, 0x08, 0x10, 0x20))
+            if (parsedClockSourceIds.isNotEmpty()) {
+                addAll(parsedClockSourceIds)
+            } else if (detectedId > 0) {
+                add(detectedId)
+            } else {
+                addAll(listOf(0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x28, 0x29, 0x06, 0x07, 0x08, 0x10, 0x20))
+            }
         }.distinct()
         val rangeBuf = ByteArray(258)
         val stopOnFirstHit = parsedClockSourceIds.size <= 1
@@ -749,7 +759,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
                 wIndex,
                 rangeBuf,
                 rangeBuf.size,
-                500,
+                CONTROL_TIMEOUT_MS,
             )
             if (ret >= 14) {
                 val csRates = linkedSetOf<Int>()
@@ -868,7 +878,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
             wIndex,
             pinData,
             pinData.size,
-            500,
+            CONTROL_TIMEOUT_MS,
         )
         Log.i(TAG, "selectClockSelectorPin: selector=0x${parsedClockSelectorId.toString(16)} -> pin=$pinNumber (csId=0x${targetClockSourceId.toString(16)}, ret=$ret)")
     }
@@ -901,10 +911,13 @@ class UsbAudioDevice private constructor(private val context: Context) {
             .map { it.key }
         val detectedId = cachedDeviceInfo?.clockSourceId ?: -1
         val clockSourceIds = buildList {
-            addAll(matchingClockSources)
-            addAll(parsedClockSourceIds)
-            if (detectedId > 0) add(detectedId)
-            if (isEmpty()) {
+            if (matchingClockSources.isNotEmpty()) {
+                addAll(matchingClockSources)
+            } else if (parsedClockSourceIds.isNotEmpty()) {
+                addAll(parsedClockSourceIds)
+            } else if (detectedId > 0) {
+                add(detectedId)
+            } else {
                 addAll(
                     listOf(
                         0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
@@ -925,7 +938,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
                     wIndex,
                     data,
                     data.size,
-                    1000     // timeout ms
+                    CONTROL_TIMEOUT_MS     // timeout ms
             )
             if (ret >= 0) {
                 activeClockSourceId = csId
@@ -949,7 +962,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
                 epOut,
                 uac1Data,
                 uac1Data.size,
-                1000,
+                CONTROL_TIMEOUT_MS,
             )
             if (ret >= 0) {
                 Log.i(TAG, "setSampleRate($sampleRateHz Hz): SUCCESS via UAC1 endpoint 0x${epOut.toString(16)}")
@@ -977,9 +990,13 @@ class UsbAudioDevice private constructor(private val context: Context) {
         val detectedId = cachedDeviceInfo?.clockSourceId ?: -1
         val clockSourceIds = buildList {
             if (activeClockSourceId > 0) add(activeClockSourceId)
-            addAll(parsedClockSourceIds)
-            if (detectedId > 0) add(detectedId)
-            if (isEmpty()) addAll(listOf(0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x28, 0x29))
+            if (parsedClockSourceIds.isNotEmpty()) {
+                addAll(parsedClockSourceIds)
+            } else if (detectedId > 0) {
+                add(detectedId)
+            } else {
+                addAll(listOf(0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x28, 0x29))
+            }
         }.distinct()
         for (csId in clockSourceIds) {
             val wIndex = (csId shl 8) or 0
@@ -990,7 +1007,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
                     wIndex,
                     data,
                     data.size,
-                    1000
+                    CONTROL_TIMEOUT_MS
             )
             if (ret >= 4) {
                 val rate = (data[0].toInt() and 0xFF) or
@@ -1013,7 +1030,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
                 epOut,
                 uac1Data,
                 uac1Data.size,
-                1000,
+                CONTROL_TIMEOUT_MS,
             )
             if (ret >= 3) {
                 val rate = readLeInt24(uac1Data, 0)
@@ -1046,14 +1063,14 @@ class UsbAudioDevice private constructor(private val context: Context) {
         )
         // bmRequestType 0x22 = Host-to-Device | Class | Endpoint, SET_CUR (0x01),
         // wValue = SAMPLING_FREQ_CONTROL (0x01) << 8, wIndex = endpoint address.
-        return conn.controlTransfer(0x22, 0x01, 0x0100, epOut, data, data.size, 1000) >= 0
+        return conn.controlTransfer(0x22, 0x01, 0x0100, epOut, data, data.size, CONTROL_TIMEOUT_MS) >= 0
     }
 
     private fun readUac1EndpointRate(conn: UsbDeviceConnection): Int {
         val epOut = cachedDeviceInfo?.endpointOutAddress ?: return -1
         if (epOut <= 0) return -1
         val data = ByteArray(3)
-        val ret = conn.controlTransfer(0xA2, 0x81, 0x0100, epOut, data, data.size, 1000)
+        val ret = conn.controlTransfer(0xA2, 0x81, 0x0100, epOut, data, data.size, CONTROL_TIMEOUT_MS)
         if (ret < 3) return -1
         val rate = readLeInt24(data, 0)
         return if (rate in 8000..1536000) rate else -1
@@ -1087,7 +1104,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
                     wIndex,
                     data,
                     data.size,
-                    1000
+                    CONTROL_TIMEOUT_MS
             )
             if (ret >= 1) {
                 val valid = data[0].toInt() and 0x01

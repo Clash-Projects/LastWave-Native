@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lastwave.app.data.feed.FeedRepository
+import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.distinctPlaylistSongs
 import com.lastwave.app.data.music.YouTubeMusicTrack
@@ -81,7 +82,18 @@ class FeedPlaylistDetailViewModel @Inject constructor(
                     isLoadingMore = true,
                 )
             }
-            if (liked) showTracks(feedRepository.getCachedFeed()?.ytLikedSongs.orEmpty())
+            if (liked) {
+                val cached = feedRepository.getCachedFeed()?.ytLikedSongs.orEmpty()
+                if (cached.isNotEmpty()) {
+                    showTracks(cached)
+                } else {
+                    val localLiked = playlistRepository.getLikedSongs()?.tracks.orEmpty()
+                    if (localLiked.isNotEmpty()) {
+                        val ytTracks = localLiked.map { it.toYouTubeMusicTrack() }
+                        showTracks(ytTracks)
+                    }
+                }
+            }
             if (recent) showTracks(feedRepository.getCachedFeed()?.ytRecentSongs.orEmpty())
             try {
                 val result = if (recent) {
@@ -92,7 +104,21 @@ class FeedPlaylistDetailViewModel @Inject constructor(
                             artworkUrl = distinct.firstOrNull()?.artworkUrl, trackCount = distinct.size, tracks = distinct)
                     }
                 } else {
-                    innerTube.fetchPlaylist(if (liked) "LM" else playlistId, progressive = true, onPageLoaded = ::showTracks)
+                    val fetched = innerTube.fetchPlaylist(if (liked) "LM" else playlistId, progressive = true, onPageLoaded = ::showTracks)
+                    if (fetched == null && liked) {
+                        val localLiked = playlistRepository.getLikedSongs()?.tracks.orEmpty()
+                        if (localLiked.isNotEmpty()) {
+                            val ytTracks = localLiked.map { it.toYouTubeMusicTrack() }.distinctPlaylistSongs()
+                            YouTubePlaylistResult(
+                                id = playlistId,
+                                title = title,
+                                author = author,
+                                artworkUrl = ytTracks.firstOrNull()?.artworkUrl,
+                                trackCount = ytTracks.size,
+                                tracks = ytTracks,
+                            )
+                        } else null
+                    } else fetched
                 }
                 coroutineContext.ensureActive()
                 val current = _uiState.value as? FeedPlaylistDetailUiState.Success
@@ -176,6 +202,14 @@ class FeedPlaylistDetailViewModel @Inject constructor(
             sourceLabel = playlist.title.ifBlank { "Feed mix" },
         )
     }
+
+    private fun GeneratedTrack.toYouTubeMusicTrack(): YouTubeMusicTrack = YouTubeMusicTrack(
+        videoId = if (url.startsWith("http")) "" else url,
+        title = name,
+        artist = artist,
+        album = album,
+        artworkUrl = artworkUrl,
+    )
 
     private fun YouTubeMusicTrack.toPlayableTrack() = PlayableTrack(
         title = title,

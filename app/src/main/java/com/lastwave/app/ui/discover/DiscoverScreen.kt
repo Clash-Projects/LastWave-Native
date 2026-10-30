@@ -211,7 +211,7 @@ fun DiscoverScreen(onBack: () -> Unit = {}, viewModel: DiscoverViewModel = hiltV
                     ) {
                         itemsIndexed(
                             state.tracks,
-                            key = { _, t -> t.key },
+                            key = { index, t -> "${t.key}_$index" },
                             contentType = { _, _ -> "discover_track" },
                         ) { index, track ->
                             val position = if (index == 0) GroupPosition.TOP else GroupPosition.MIDDLE

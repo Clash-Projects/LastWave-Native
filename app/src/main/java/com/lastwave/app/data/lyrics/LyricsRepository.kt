@@ -408,7 +408,7 @@ class LyricsRepository @Inject constructor(
                             }
                             requests.remove(request)
                             if (result?.isWordSynced == true) {
-                                // Fastest word-sync wins â€” but only if its
+                                // Fastest word-sync wins — but only if its
                                 // timeline plausibly fits this recording. A
                                 // wrong-cut hit keeps racing as a line fallback
                                 // instead of locking in broken sync.
@@ -442,7 +442,7 @@ class LyricsRepository @Inject constructor(
                 return@withContext it
             }
             // Full completion returns the fallback through wordResult; a
-            // timed-out race leaves it in the outer var â€” either way the
+            // timed-out race leaves it in the outer var — either way the
             // validated partial still counts instead of dropping to Empty.
             (wordResult ?: lineFallback)?.let { settled ->
                 cache[cacheKey] = settled
@@ -1064,7 +1064,7 @@ class LyricsRepository @Inject constructor(
         /**
          * Edge-to-edge timing normalization: overlapping rows are the reason
          * two lines light up at once around a boundary or a highlight jumps.
-         * Only shrinks overlaps â€” exact data passes through untouched:
+         * Only shrinks overlaps — exact data passes through untouched:
          * exact-duplicate stamps collapse, a line ending past the next
          * line's start is pulled back to it, and every syllable is capped
          * at the next syllable's start and its own line end. Idempotent.
@@ -1128,7 +1128,7 @@ class LyricsRepository @Inject constructor(
          * undetectable client-side. The lyric timeline must roughly fit the
          * track: reject timelines running 45s+ past the end, or covering
          * under half of a track while missing 90s+ (wrong shorter song).
-         * Lenient by design â€” outros/skits legitimately end early.
+         * Lenient by design — outros/skits legitimately end early.
          */
         fun plausibleDuration(lines: List<LyricLine>, durationSeconds: Int?): Boolean {
             if (durationSeconds == null || durationSeconds <= 0) return true
@@ -1149,7 +1149,7 @@ class LyricsRepository @Inject constructor(
         private val WORD_STAMP_REGEX = Regex("""<(\d{1,3}):(\d{2})[.:](\d{2,3})>""")
         private val OFFSET_REGEX = Regex("""\[offset:\s*([+-]?\d+)\s*\]""", RegexOption.IGNORE_CASE)
         /**
-         * Backing vocals in LRC have no role markup â€” convention is a fully
+         * Backing vocals in LRC have no role markup — convention is a fully
          * parenthesized row ("(ooh, yeah)"). Dots/brackets are timestamps,
          * never vocals, so only parens count.
          */
@@ -1174,12 +1174,12 @@ class LyricsRepository @Inject constructor(
                 t.substring(1, t.length - 1).trim()
             } else text
 
-        /** A row whose every syllable is backing â€” renders dim, never as lead. */
+        /** A row whose every syllable is backing — renders dim, never as lead. */
         fun LyricLine.isBackgroundLine(): Boolean =
             syllables.isNotEmpty() && syllables.all { it.isBackground }
 
         /** Terminal punctuation: a row ending here never continues below it. */
-        private val TERMINAL_PUNCT = setOf('.', '?', '!', 'â€¦', 'ã€‚', 'ï¼Ÿ', 'ï¼', 'à¥¤', 'à¥¥', 'Ø›', 'ØŸ', 'ã€‚')
+        private val TERMINAL_PUNCT = setOf('.', '?', '!', '…', '。', '？', '！', '।', '॥', '؛', '؟', '。')
         private const val CONTINUATION_GAP_WORD_MS = 1000L
         private const val CONTINUATION_GAP_LINE_MS = 400L
         private const val CONTINUATION_MAX_SPAN_MS = 8000L
@@ -1193,7 +1193,7 @@ class LyricsRepository @Inject constructor(
          * constant-gapped rows. Word-sync pairs keep per-word timing, so
          * the karaoke fill stays truthful; line-sync pairs only merge on a
          * tiny gap where the early highlight is negligible. Backing rows,
-         * blanks and â™ª markers never merge. Bounded: no chaining past a
+         * blanks and ♪ markers never merge. Bounded: no chaining past a
          * span/text cap, overlaps/duets never merge (gap < 0).
          */
         fun mergeContinuationLines(lines: List<LyricLine>): List<LyricLine> {
@@ -1217,7 +1217,7 @@ class LyricsRepository @Inject constructor(
                 val gapCap = if (bothWordSync) CONTINUATION_GAP_WORD_MS else CONTINUATION_GAP_LINE_MS
                 val canMerge = !c.isBackgroundLine() && !line.isBackgroundLine() &&
                     c.text.isNotBlank() && line.text.isNotBlank() &&
-                    c.text.trim() != "â™ª" && line.text.trim() != "â™ª" &&
+                    c.text.trim() != "♪" && line.text.trim() != "♪" &&
                     gap in 0..gapCap &&
                     c.text.trimEnd().lastOrNull() !in TERMINAL_PUNCT &&
                     (nEnd - c.timeMs) <= CONTINUATION_MAX_SPAN_MS &&
@@ -1267,7 +1267,7 @@ class LyricsRepository @Inject constructor(
         fun forSearchTitle(raw: String): String {
             var name = raw
             SEARCH_CREDITS.forEach { pattern -> name = pattern.replace(name, " ") }
-            return name.replace(SEARCH_WHITESPACE, " ").trim().trimEnd(',', '-', 'â€“', 'â€”').trim()
+            return name.replace(SEARCH_WHITESPACE, " ").trim().trimEnd(',', '-', '–', '—').trim()
                 .ifBlank { raw.trim() }
         }
 
@@ -1332,13 +1332,10 @@ class LyricsRepository @Inject constructor(
             return words
         }
 
-        private val parsedLrcCache = androidx.collection.LruCache<String, List<LyricLine>>(64)
+        private val parsedLrcCache = android.util.LruCache<String, List<LyricLine>>(64)
 
         fun parseLrc(lrcContent: String): List<LyricLine> {
-            if (lrcContent.isBlank()) return emptyList()
-            val cached = parsedLrcCache.get(lrcContent)
-            if (cached != null) return cached
-
+            parsedLrcCache.get(lrcContent)?.let { return it }
             data class Raw(val timeMs: Long, val body: String)
             val raws = mutableListOf<Raw>()
             var offsetMs = 0L
@@ -1416,9 +1413,9 @@ class LyricsRepository @Inject constructor(
                 }
             }
 
-            val sortedResult = result.sortedBy { it.timeMs }
-            parsedLrcCache.put(lrcContent, sortedResult)
-            return sortedResult
+            val sorted = result.sortedBy { it.timeMs }
+            parsedLrcCache.put(lrcContent, sorted)
+            return sorted
         }
 
         fun parseEnhancedLrc(lrcContent: String): List<LyricLine> {

@@ -221,7 +221,32 @@ fun PlaylistDetailScreen(
     }
     val playlist = currentFound ?: cachedPlaylist
 
-    if (playlist == null || (state.isDetailLoading && playlist.tracks.isEmpty())) {
+    if (playlist == null) {
+        if (state.isDetailLoading) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                ExpressiveLoadingIndicator(message = stringResource(com.lastwave.app.R.string.pd_loading))
+            }
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Text(
+                        stringResource(com.lastwave.app.R.string.pd_empty),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    androidx.compose.material3.Button(onClick = onBack) {
+                        Text(stringResource(com.lastwave.app.R.string.pd_back_cd))
+                    }
+                }
+            }
+        }
+        return
+    }
+
+    if (state.isDetailLoading && playlist.tracks.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             ExpressiveLoadingIndicator(message = stringResource(com.lastwave.app.R.string.pd_loading))
         }
