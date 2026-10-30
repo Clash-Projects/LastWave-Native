@@ -161,7 +161,7 @@ private enum class LyricsDisplayMode { Original, Romanized, Translated }
 /** Line falloff by distance from the active row: alpha and soften radius.
  *  Past the end of the array the last value holds, so distance never needs a
  *  branch. The active line's own scale (1.0) lives with the row code. */
-private val LINE_FALLOFF_ALPHA = floatArrayOf(1f, 0.55f, 0.42f, 0.32f, 0.24f)
+private val LINE_FALLOFF_ALPHA = floatArrayOf(1f, 0.50f, 0.40f, 0.30f, 0.22f)
 private val LINE_FALLOFF_BLUR_DP = floatArrayOf(0f, 0.8f, 1.4f, 2.0f, 2.6f)
 
 /** Glide curve for the follow scroll and row scale: quick departure, long
@@ -277,31 +277,34 @@ fun ModernLyricsPanel(
         translationLoading = false
         romanizationLoading = false
         translationReady = null
-        romanizationReady = null
         displayMode = LyricsDisplayMode.Original
         visibleSubLines = null
         subReveal.snapTo(0f)
+        val embedded = translatableLines?.takeIf { list ->
+            list.any { !it.transliteration.isNullOrBlank() }
+        }?.map { it.transliteration }
+        romanizationReady = embedded
     }
 
     // A script switch closes the old sub-lines first, then grows the new ones
     // in, so a Romanized -> Translated flip reads as one motion instead of a
     // text swap.
-    LaunchedEffect(displayMode) {
+    LaunchedEffect(displayMode, romanizationReady, translationReady) {
         if (displayMode == LyricsDisplayMode.Original) {
             if (subReveal.value > 0f || visibleSubLines != null) {
                 subReveal.animateTo(0f, tween(LYRIC_SUBLINE_CLOSE_MS, easing = FastOutSlowInEasing))
                 visibleSubLines = null
             }
         } else {
-            if (subReveal.value > 0f) {
-                subReveal.animateTo(0f, tween(LYRIC_SUBLINE_CLOSE_MS, easing = FastOutSlowInEasing))
-            }
-            visibleSubLines = when (displayMode) {
-                LyricsDisplayMode.Romanized -> romanizationReady
+            val targetSubLines = when (displayMode) {
+                LyricsDisplayMode.Romanized -> romanizationReady ?: translatableLines?.map { it.transliteration }
                 LyricsDisplayMode.Translated -> translationReady
                 LyricsDisplayMode.Original -> null
             }
-            subReveal.animateTo(1f, tween(LYRIC_SUBLINE_OPEN_MS, easing = FastOutSlowInEasing))
+            if (targetSubLines != null) {
+                visibleSubLines = targetSubLines
+                subReveal.animateTo(1f, tween(LYRIC_SUBLINE_OPEN_MS, easing = FastOutSlowInEasing))
+            }
         }
     }
 
@@ -478,12 +481,12 @@ fun ModernLyricsPanel(
                             // Shared style instances drawn by every row below.
                             val currentTextStyle = LocalTextStyle.current
                             val karaokeNormalStyle = remember(currentTextStyle, isAppleMusic, isWordSynced, effectiveFontScale) {
-                                val baseSize = (if (isAppleMusic) 28f else if (isWordSynced) 32f else 30f) * effectiveFontScale
+                                val baseSize = (if (isAppleMusic) 30f else if (isWordSynced) 34f else 32f) * effectiveFontScale
                                 currentTextStyle.copy(
                                     fontSize = baseSize.sp,
-                                    lineHeight = (baseSize * 1.30f).sp,
+                                    lineHeight = (baseSize * 1.20f).sp,
                                     fontWeight = FontWeight.Bold,
-                                    letterSpacing = (-0.4).sp,
+                                    letterSpacing = (-0.5).sp,
                                     textMotion = TextMotion.Animated,
                                 )
                             }
@@ -491,7 +494,7 @@ fun ModernLyricsPanel(
                                 val baseSize = (if (isAppleMusic) 22f else if (isWordSynced) 24f else 22f) * effectiveFontScale
                                 currentTextStyle.copy(
                                     fontSize = baseSize.sp,
-                                    lineHeight = (baseSize * 1.28f).sp,
+                                    lineHeight = (baseSize * 1.22f).sp,
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = (-0.3).sp,
                                     textMotion = TextMotion.Animated,
@@ -501,10 +504,10 @@ fun ModernLyricsPanel(
                             // smaller and lighter than the lyric they follow.
                             val subLineStyle = remember(currentTextStyle, effectiveFontScale) {
                                 currentTextStyle.copy(
-                                    fontSize = (18f * effectiveFontScale).sp,
-                                    lineHeight = (25f * effectiveFontScale).sp,
+                                    fontSize = (16f * effectiveFontScale).sp,
+                                    lineHeight = (22f * effectiveFontScale).sp,
                                     fontWeight = FontWeight.Medium,
-                                    letterSpacing = 0.2.sp,
+                                    letterSpacing = (-0.1).sp,
                                     textMotion = TextMotion.Animated,
                                 )
                             }
@@ -556,6 +559,7 @@ fun ModernLyricsPanel(
                                         subLineStyle = subLineStyle,
                                         subLines = visibleSubLines,
                                         subReveal = { subReveal.value },
+                                        displayMode = displayMode,
                                         progressFlow = progressFlow,
                                         progressInitial = progressInitial,
                                         state = state,
@@ -766,6 +770,7 @@ private fun ModernSyncedLyricsList(
     /** Shared 0..1 reveal for every sub-line; read per frame, not recomposed. */
     subReveal: () -> Float = { 0f },
     subLineStyle: TextStyle? = null,
+    displayMode: LyricsDisplayMode = LyricsDisplayMode.Original,
 ) {
     val listState = rememberLazyListState()
     var userScrolledTime by remember { mutableLongStateOf(0L) }
@@ -829,7 +834,7 @@ private fun ModernSyncedLyricsList(
     LazyColumn(
         state = listState,
         modifier = modifier.lyricsFadingEdge(topFadeDp = 36.dp, bottomFadeDp = 110.dp),
-        contentPadding = PaddingValues(top = 40.dp, bottom = 130.dp, start = 16.dp, end = 16.dp),
+        contentPadding = PaddingValues(top = 40.dp, bottom = 140.dp, start = 20.dp, end = 20.dp),
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         itemsIndexed(
@@ -929,7 +934,7 @@ private fun ModernSyncedLyricsList(
                         ) {
                             onSeek(line.timeMs)
                         }
-                        .padding(horizontal = 12.dp, vertical = if (isActive) 6.dp else 3.dp),
+                        .padding(horizontal = 4.dp, vertical = if (isActive) 5.dp else 2.5.dp),
                 ) {
                     val fontStyle = if (isBgRow) accompanimentStyle else normalStyle
                     Column(modifier = Modifier.fillMaxWidth()) {
@@ -938,20 +943,18 @@ private fun ModernSyncedLyricsList(
                             currentPositionMs = currentPositionMs,
                             isActive = isActive,
                             activeColor = Color.White,
-                            inactiveColor = Color.White.copy(alpha = 0.55f),
+                            inactiveColor = Color.White.copy(alpha = 0.45f),
                             fontStyle = fontStyle,
                             isRtl = isLineRtl,
                             modifier = Modifier.padding(start = if (isBgRow) 14.dp else 0.dp),
                         )
                         // Translation / romanization copy under the lyric.
-                        // The engine returns null for lines that have no
-                        // distinct sub-line, so no per-row text comparison
-                        // is needed here.
-                        val subLine = subLines?.getOrNull(index)
-                        if (subLine != null && subLineStyle != null) {
+                        val subLine = subLines?.getOrNull(index) ?: (if (displayMode == LyricsDisplayMode.Romanized) line.transliteration else null)
+                        if (!subLine.isNullOrBlank() && subLineStyle != null) {
                             LyricSubLine(
                                 text = subLine,
                                 style = subLineStyle,
+                                isActive = isActive,
                                 reveal = subReveal,
                             )
                         }
@@ -966,7 +969,7 @@ private fun ModernSyncedLyricsList(
  * Translated or romanized copy of a line, drawn underneath it. Height grows
  * from zero with the panel's shared reveal so the list reflows softly as
  * sub-lines arrive, while the text itself rides a slightly shorter tuck and
- * an alpha ramp (alpha = revealÂ², so the tail of the motion is a fade rather
+ * an alpha ramp (alpha = reveal², so the tail of the motion is a fade rather
  * than a bare height snap). Reads [reveal] per frame in layout and draw
  * phases; the panel animates one value for the whole list.
  */
@@ -974,6 +977,7 @@ private fun ModernSyncedLyricsList(
 private fun LyricSubLine(
     text: String,
     style: TextStyle,
+    isActive: Boolean,
     reveal: () -> Float,
 ) {
     Box(
@@ -985,18 +989,19 @@ private fun LyricSubLine(
                 layout(placeable.width, height) { placeable.place(0, 0) }
             },
     ) {
+        val targetAlpha = if (isActive) 0.82f else 0.45f
         Text(
             text = text,
             style = style,
-            color = Color.White.copy(alpha = 0.78f),
+            color = Color.White.copy(alpha = targetAlpha),
             textAlign = TextAlign.Start,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 2.dp)
+                .padding(top = 4.dp)
                 .graphicsLayer {
                     val open = reveal()
                     alpha = open * open
-                    translationY = -size.height * (1f - open) * 0.6f
+                    translationY = -size.height * (1f - open) * 0.5f
                 },
         )
     }
@@ -1048,27 +1053,11 @@ private fun ModernWordByWordLine(
                         LyricGlowText(text = line.text.ifBlank { "â™ª" }, style = fontStyle)
                     }
                     Text(
-                        text = line.text.ifBlank { "â™ª" },
+                        text = line.text.ifBlank { "♪" },
                         style = activeStyle,
                         color = animatedColor,
                         textAlign = TextAlign.Start,
                         modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                if (!line.transliteration.isNullOrBlank() && isActive) {
-                    Text(
-                        text = line.transliteration,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontSize = 18.sp,
-                            lineHeight = 26.sp,
-                            fontWeight = FontWeight.Medium,
-                            letterSpacing = 0.2.sp,
-                        ),
-                        color = activeColor.copy(alpha = 0.72f),
-                        textAlign = TextAlign.Start,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 3.dp),
                     )
                 }
             }
@@ -1249,21 +1238,6 @@ private fun ModernWordByWordLine(
                         },
                 )
             }
-
-            if (!line.transliteration.isNullOrBlank()) {
-                Text(
-                    text = line.transliteration,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Medium,
-                        letterSpacing = 0.2.sp,
-                    ),
-                    color = activeColor.copy(alpha = 0.76f),
-                    textAlign = TextAlign.Start,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                )
-            }
         }
     }
 }
@@ -1422,6 +1396,7 @@ private fun SyncedLyricsProgressHost(
     subLines: List<String?>? = null,
     subReveal: () -> Float = { 0f },
     subLineStyle: TextStyle? = null,
+    displayMode: LyricsDisplayMode = LyricsDisplayMode.Original,
     modifier: Modifier = Modifier,
 ) {
     val progress by progressFlow.collectAsStateWithLifecycle(initialValue = progressInitial)
@@ -1479,6 +1454,7 @@ private fun SyncedLyricsProgressHost(
         subLines = subLines,
         subReveal = subReveal,
         subLineStyle = subLineStyle,
+        displayMode = displayMode,
         modifier = modifier,
     )
 }

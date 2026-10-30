@@ -1,7 +1,6 @@
 package com.lastwave.app.ui.jam
 
 import android.content.Intent
-import android.text.format.DateFormat
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -11,10 +10,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
@@ -44,24 +39,20 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -79,10 +70,6 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -120,7 +107,6 @@ import com.lastwave.app.ui.common.HeaderActionIcon
 import com.lastwave.app.ui.common.PredictiveBackScreen
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.theme.LocalIsDarkTheme
-import com.lastwave.app.ui.theme.LocalLiquidGlass
 import com.lastwave.app.ui.theme.liquidGlassChrome
 
 private fun formatMs(ms: Long): String {
@@ -141,15 +127,16 @@ fun JamScreen(
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
 
-    // Adaptive Theme Colors: High contrast in light mode, vibrant neon lime in dark mode
+    // High contrast adaptive theme colors: deep rich green in light mode, neon lime in dark mode
     val isDark = LocalIsDarkTheme.current
     val jamAccent = if (isDark) Color(0xFFC9FB00) else Color(0xFF2E6B12)
     val onJamAccent = if (isDark) Color(0xFF012226) else Color.White
-    val jamAccentContainer = if (isDark) Color(0xFFC9FB00).copy(alpha = 0.18f) else Color(0xFF2E6B12).copy(alpha = 0.12f)
+    val jamAccentContainer = if (isDark) Color(0xFFC9FB00).copy(alpha = 0.16f) else Color(0xFF2E6B12).copy(alpha = 0.12f)
     val onJamAccentContainer = if (isDark) Color(0xFFC9FB00) else Color(0xFF2E6B12)
     val liveGreen = if (isDark) Color(0xFF22C55E) else Color(0xFF16A34A)
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
+    var setupModeIndex by remember { mutableIntStateOf(0) } // 0 = Join, 1 = Create
     var chatInputText by remember { mutableStateOf("") }
     var showAdvancedServer by remember { mutableStateOf(false) }
     var customServerUrlInput by remember(uiState.serverUrl) { mutableStateOf(uiState.serverUrl) }
@@ -175,14 +162,13 @@ fun JamScreen(
                     .fillMaxSize()
                     .adaptiveContentWidth(maxWidth = 860.dp),
             ) {
-                // Top Expressive Header with Liquid Glass styling
+                // Top Header with live status badge
                 ExpressiveHeader(
                     title = "Jam",
-                    subtitle = if (uiState.isConnected) "Room ${uiState.roomCode} · Live Sync" else "Listen together in real time",
+                    subtitle = if (uiState.isConnected) "Room ${uiState.roomCode}" else "Listen together in real time",
                     onBack = onBack,
                     actions = {
                         if (uiState.isConnected) {
-                            // Pulsing live sync badge
                             val infiniteTransition = rememberInfiniteTransition(label = "pulse")
                             val pulseAlpha by infiniteTransition.animateFloat(
                                 initialValue = 0.4f,
@@ -195,8 +181,8 @@ fun JamScreen(
                             )
                             Row(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(liveGreen.copy(alpha = 0.15f))
+                                    .clip(CircleShape)
+                                    .background(liveGreen.copy(alpha = 0.14f))
                                     .padding(horizontal = 10.dp, vertical = 5.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -225,62 +211,60 @@ fun JamScreen(
                     },
                 )
 
-                // Main Content
+                // ==========================================
+                // DISCONNECTED / SETUP VIEW (Simple & Minimal)
+                // ==========================================
                 if (!uiState.isConnected) {
-                    // DISCONNECTED / SETUP VIEW
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState())
                             .imePadding()
-                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        // Hero Intro Card
-                        Card(
+                        // Segmented Action Bar: Join Room vs Create Room
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .liquidGlassChrome(shape = RoundedCornerShape(20.dp)),
-                            shape = RoundedCornerShape(20.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                            ),
+                                .clip(CircleShape)
+                                .background(
+                                    if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                                )
+                                .padding(4.dp),
                         ) {
-                            Row(
-                                modifier = Modifier.padding(20.dp),
-                                verticalAlignment = Alignment.CenterVertically,
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(CircleShape)
+                                    .background(if (setupModeIndex == 0) jamAccent else Color.Transparent)
+                                    .clickable { setupModeIndex = 0 }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center,
                             ) {
-                                Surface(
-                                    modifier = Modifier.size(52.dp),
-                                    shape = CircleShape,
-                                    color = jamAccentContainer,
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Sync,
-                                            contentDescription = null,
-                                            tint = jamAccent,
-                                            modifier = Modifier.size(28.dp),
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.width(16.dp))
-                                Column {
-                                    Text(
-                                        text = "Synchronized Listening",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 18.sp,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "Stream tracks with friends anywhere with sub-second synchronization and live queue controls.",
-                                        fontSize = 13.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        lineHeight = 18.sp,
-                                    )
-                                }
+                                Text(
+                                    text = "Join Room",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = if (setupModeIndex == 0) onJamAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(CircleShape)
+                                    .background(if (setupModeIndex == 1) jamAccent else Color.Transparent)
+                                    .clickable { setupModeIndex = 1 }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = "Create Room",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = if (setupModeIndex == 1) onJamAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         }
 
@@ -298,196 +282,143 @@ fun JamScreen(
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = jamAccent,
                                 focusedLabelColor = jamAccent,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
                             ),
                         )
 
-                        // Mode Selector / Action Cards
-                        Text(
-                            text = "Get Started",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-
-                        // Create Room Section
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(20.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                            ),
-                        ) {
-                            Column(modifier = Modifier.padding(18.dp)) {
-                                Text(
-                                    text = "Start a New Session",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "Host a room and invite others to join your timeline.",
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Spacer(modifier = Modifier.height(14.dp))
-
-                                // Room Mode Selection
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(MaterialTheme.colorScheme.background.copy(alpha = 0.6f))
-                                        .padding(4.dp),
-                                ) {
-                                    val isCollab = uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(if (isCollab) jamAccent else Color.Transparent)
-                                            .clickable { viewModel.setPendingRoomMode(JamProtocolConstants.MODE_COLLABORATIVE) }
-                                            .padding(vertical = 10.dp),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Text(
-                                            text = "Collaborative",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
-                                            color = if (isCollab) onJamAccent else MaterialTheme.colorScheme.onSurface,
-                                        )
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(if (!isCollab) jamAccent else Color.Transparent)
-                                            .clickable { viewModel.setPendingRoomMode(JamProtocolConstants.MODE_HOST_ONLY) }
-                                            .padding(vertical = 10.dp),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Text(
-                                            text = "Host Only",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
-                                            color = if (!isCollab) onJamAccent else MaterialTheme.colorScheme.onSurface,
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                Button(
-                                    onClick = { viewModel.startJamSession() },
-                                    enabled = !uiState.isConnecting,
+                        // Mode Specific Form
+                        if (setupModeIndex == 0) {
+                            // JOIN ROOM FORM
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                OutlinedTextField(
+                                    value = uiState.pendingInputCode,
+                                    onValueChange = { viewModel.setPendingCode(it.take(8)) },
+                                    label = { Text("Room Code") },
+                                    placeholder = { Text("e.g. WAVE01") },
+                                    singleLine = true,
                                     shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = jamAccent,
-                                        contentColor = onJamAccent,
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(
+                                        capitalization = KeyboardCapitalization.Characters,
+                                        imeAction = ImeAction.Done,
                                     ),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(48.dp),
+                                    keyboardActions = KeyboardActions(
+                                        onDone = { viewModel.joinJamSession() }
+                                    ),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = jamAccent,
+                                        focusedLabelColor = jamAccent,
+                                    ),
+                                )
+
+                                OutlinedButton(
+                                    onClick = {
+                                        val clip = clipboard.getText()?.text?.trim()
+                                        if (!clip.isNullOrBlank()) {
+                                            val cleanCode = clip.substringAfter("code=").take(8).uppercase()
+                                            viewModel.setPendingCode(cleanCode)
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.height(54.dp),
                                 ) {
-                                    if (uiState.isConnecting) {
-                                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = onJamAccent, strokeWidth = 2.5.dp)
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Text("Connecting...", fontWeight = FontWeight.Bold)
-                                    } else {
-                                        Icon(Icons.Filled.Group, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Create Jam Room", fontWeight = FontWeight.Bold)
-                                    }
+                                    Text("Paste")
                                 }
                             }
-                        }
 
-                        // Join with Room Code Section
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(20.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                            ),
-                        ) {
-                            Column(modifier = Modifier.padding(18.dp)) {
-                                Text(
-                                    text = "Join with Room Code",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "Enter a 6-character room code shared by your friend.",
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Spacer(modifier = Modifier.height(14.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            Button(
+                                onClick = { viewModel.joinJamSession() },
+                                enabled = !uiState.isConnecting && uiState.pendingInputCode.isNotBlank(),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = jamAccent,
+                                    contentColor = onJamAccent,
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp),
+                            ) {
+                                if (uiState.isConnecting) {
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = onJamAccent, strokeWidth = 2.5.dp)
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text("Connecting...", fontWeight = FontWeight.Bold)
+                                } else {
+                                    Text("Join Jam Room", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                }
+                            }
+                        } else {
+                            // CREATE ROOM FORM
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                                    .padding(4.dp),
+                            ) {
+                                val isCollab = uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isCollab) jamAccent else Color.Transparent)
+                                        .clickable { viewModel.setPendingRoomMode(JamProtocolConstants.MODE_COLLABORATIVE) }
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center,
                                 ) {
-                                    OutlinedTextField(
-                                        value = uiState.pendingInputCode,
-                                        onValueChange = { viewModel.setPendingCode(it.take(8)) },
-                                        placeholder = { Text("e.g. WAVE01") },
-                                        singleLine = true,
-                                        shape = RoundedCornerShape(14.dp),
-                                        modifier = Modifier.weight(1f),
-                                        keyboardOptions = KeyboardOptions(
-                                            capitalization = KeyboardCapitalization.Characters,
-                                            imeAction = ImeAction.Done,
-                                        ),
-                                        keyboardActions = KeyboardActions(
-                                            onDone = { viewModel.joinJamSession() }
-                                        ),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = jamAccent,
-                                            focusedLabelColor = jamAccent,
-                                        ),
+                                    Text(
+                                        text = "Collaborative",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = if (isCollab) onJamAccent else MaterialTheme.colorScheme.onSurface,
                                     )
-
-                                    OutlinedButton(
-                                        onClick = {
-                                            val clip = clipboard.getText()?.text?.trim()
-                                            if (!clip.isNullOrBlank()) {
-                                                val cleanCode = clip.substringAfter("code=").take(8).uppercase()
-                                                viewModel.setPendingCode(cleanCode)
-                                            }
-                                        },
-                                        shape = RoundedCornerShape(14.dp),
-                                        modifier = Modifier.height(54.dp),
-                                    ) {
-                                        Text("Paste")
-                                    }
                                 }
-
-                                Spacer(modifier = Modifier.height(14.dp))
-
-                                Button(
-                                    onClick = { viewModel.joinJamSession() },
-                                    enabled = !uiState.isConnecting && uiState.pendingInputCode.isNotBlank(),
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary,
-                                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                                    ),
+                                Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(48.dp),
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (!isCollab) jamAccent else Color.Transparent)
+                                        .clickable { viewModel.setPendingRoomMode(JamProtocolConstants.MODE_HOST_ONLY) }
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center,
                                 ) {
-                                    Text("Join Jam Room", fontWeight = FontWeight.Bold)
+                                    Text(
+                                        text = "Host Only",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = if (!isCollab) onJamAccent else MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
+                            }
+
+                            Button(
+                                onClick = { viewModel.startJamSession() },
+                                enabled = !uiState.isConnecting,
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = jamAccent,
+                                    contentColor = onJamAccent,
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp),
+                            ) {
+                                if (uiState.isConnecting) {
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = onJamAccent, strokeWidth = 2.5.dp)
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text("Creating...", fontWeight = FontWeight.Bold)
+                                } else {
+                                    Icon(Icons.Filled.Group, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Create Jam Room", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                                 }
                             }
                         }
 
-                        // Error message if any
+                        // Error message banner
                         uiState.errorMessage?.let { error ->
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
@@ -503,29 +434,17 @@ fun JamScreen(
                             }
                         }
 
-                        // Advanced Server URL Settings
+                        // Advanced Server URL Settings (Collapsed by default)
                         AnimatedVisibility(visible = showAdvancedServer) {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                                 ),
                             ) {
-                                Column(modifier = Modifier.padding(16.dp)) {
-                                    Text(
-                                        text = "Sync Server Address",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                    )
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(
-                                        text = "Custom WebSocket server endpoint for private Jam deployments.",
-                                        fontSize = 12.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    Spacer(modifier = Modifier.height(10.dp))
+                                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(text = "Sync Server Address", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                     OutlinedTextField(
                                         value = customServerUrlInput,
                                         onValueChange = { customServerUrlInput = it },
@@ -533,7 +452,6 @@ fun JamScreen(
                                         shape = RoundedCornerShape(12.dp),
                                         modifier = Modifier.fillMaxWidth(),
                                     )
-                                    Spacer(modifier = Modifier.height(10.dp))
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Button(
                                             onClick = {
@@ -554,361 +472,269 @@ fun JamScreen(
                                                 customServerUrlInput = JamRepository.DEFAULT_JAM_SERVER_WS
                                             },
                                         ) {
-                                            Text("Reset to Default")
+                                            Text("Reset")
                                         }
                                     }
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(24.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
                 } else {
-                    // ACTIVE JAM ROOM VIEW
-                    // Clean, modular 4-tab interface:
-                    // Tab 0: Controls (Normal jam playback & queue)
-                    // Tab 1: Chat (In-room live chat with keyboard-adaptive input)
-                    // Tab 2: Share (Room code & invite link sharing)
-                    // Tab 3: Panel (Listeners list & room permissions)
+                    // ==========================================
+                    // ACTIVE JAM ROOM VIEW (Simple & Minimal)
+                    // ==========================================
                     Column(modifier = Modifier.fillMaxSize()) {
-                        TabRow(
-                            selectedTabIndex = selectedTabIndex,
-                            containerColor = Color.Transparent,
-                            contentColor = MaterialTheme.colorScheme.onSurface,
-                            indicator = { tabPositions ->
-                                TabRowDefaults.SecondaryIndicator(
-                                    modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
-                                    color = jamAccent,
-                                )
-                            },
+                        // Sleek Segmented Pill Tab Selector
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 2.dp),
+                                .padding(horizontal = 20.dp, vertical = 6.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                                )
+                                .padding(3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            Tab(
-                                selected = selectedTabIndex == 0,
-                                onClick = { selectedTabIndex = 0 },
-                                text = { Text("Controls", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
-                                icon = { Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                                selectedContentColor = jamAccent,
-                                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Tab(
-                                selected = selectedTabIndex == 1,
-                                onClick = { selectedTabIndex = 1 },
-                                text = {
+                            listOf(
+                                "Controls" to null,
+                                "Chat" to if (chatMessages.isNotEmpty()) chatMessages.size else null,
+                                "Share" to null,
+                                "Panel" to uiState.participants.size,
+                            ).forEachIndexed { index, (label, count) ->
+                                val selected = selectedTabIndex == index
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(CircleShape)
+                                        .background(if (selected) jamAccent else Color.Transparent)
+                                        .clickable { selectedTabIndex = index }
+                                        .padding(vertical = 7.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    val displayLabel = if (count != null && count > 0) "$label $count" else label
                                     Text(
-                                        text = if (chatMessages.isNotEmpty()) "Chat (${chatMessages.size})" else "Chat",
-                                        fontWeight = FontWeight.Bold,
+                                        text = displayLabel,
                                         fontSize = 12.sp,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (selected) onJamAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
                                     )
-                                },
-                                icon = { Icon(Icons.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                                selectedContentColor = jamAccent,
-                                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Tab(
-                                selected = selectedTabIndex == 2,
-                                onClick = { selectedTabIndex = 2 },
-                                text = { Text("Share", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
-                                icon = { Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                                selectedContentColor = jamAccent,
-                                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Tab(
-                                selected = selectedTabIndex == 3,
-                                onClick = { selectedTabIndex = 3 },
-                                text = {
-                                    Text(
-                                        text = "Panel (${uiState.participants.size})",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp,
-                                    )
-                                },
-                                icon = { Icon(Icons.Filled.Group, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                                selectedContentColor = jamAccent,
-                                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                                }
+                            }
                         }
 
                         // ==========================================
-                        // TAB 0: NORMAL JAM PLAYBACK CONTROLS
+                        // TAB 0: CONTROLS (Pure, Focused Player)
                         // ==========================================
                         if (selectedTabIndex == 0) {
+                            val canControl = uiState.isHost || uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE
+
                             Column(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .verticalScroll(rememberScrollState())
-                                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                                    .padding(horizontal = 24.dp, vertical = 16.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
                             ) {
-                                val canControl = uiState.isHost || uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE
+                                Spacer(modifier = Modifier.height(8.dp))
 
-                                // Large Album Art & Track Info Card
-                                Card(
+                                // Floating Artwork
+                                Box(
+                                    modifier = Modifier
+                                        .size(190.dp)
+                                        .clip(RoundedCornerShape(22.dp)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    ArtworkImage(
+                                        name = uiState.currentTrackTitle,
+                                        artist = uiState.currentTrackArtist,
+                                        embeddedUrl = uiState.currentArtworkUrl,
+                                        fallbackIcon = Icons.Filled.MusicNote,
+                                        modifier = Modifier.size(190.dp),
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(20.dp))
+
+                                // Song Title & Artist
+                                Text(
+                                    text = uiState.currentTrackTitle.ifBlank { "No track playing" },
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 19.sp,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    textAlign = TextAlign.Center,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .liquidGlassChrome(shape = RoundedCornerShape(24.dp)),
-                                    shape = RoundedCornerShape(24.dp),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
+                                        .basicMarquee(),
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = uiState.currentTrackArtist.ifBlank { "Jam timeline" },
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    textAlign = TextAlign.Center,
+                                )
+
+                                Spacer(modifier = Modifier.height(20.dp))
+
+                                // Minimal Timeline Seek Slider
+                                var isDraggingSlider by remember { mutableStateOf(false) }
+                                var sliderPosition by remember { mutableFloatStateOf(0f) }
+
+                                LaunchedEffect(uiState.currentPositionMs) {
+                                    if (!isDraggingSlider) {
+                                        sliderPosition = uiState.currentPositionMs.toFloat()
+                                    }
+                                }
+
+                                val maxDuration = uiState.durationMs.coerceAtLeast(1L).toFloat()
+                                Slider(
+                                    value = sliderPosition.coerceIn(0f, maxDuration),
+                                    onValueChange = {
+                                        isDraggingSlider = true
+                                        sliderPosition = it
+                                    },
+                                    onValueChangeFinished = {
+                                        isDraggingSlider = false
+                                        viewModel.seekTo(sliderPosition.toLong())
+                                    },
+                                    valueRange = 0f..maxDuration,
+                                    enabled = canControl && uiState.durationMs > 0L,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = jamAccent,
+                                        activeTrackColor = jamAccent,
+                                        inactiveTrackColor = jamAccent.copy(alpha = 0.2f),
                                     ),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
                                 ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(20.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    Text(
+                                        text = formatMs(sliderPosition.toLong()),
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontFamily = FontFamily.Monospace,
+                                    )
+                                    Text(
+                                        text = formatMs(uiState.durationMs),
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontFamily = FontFamily.Monospace,
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(20.dp))
+
+                                // Transport Row
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    IconButton(
+                                        onClick = { viewModel.skipPrevious() },
+                                        enabled = canControl,
+                                        modifier = Modifier.size(50.dp),
                                     ) {
-                                        // Artwork
+                                        Icon(
+                                            imageVector = Icons.Filled.SkipPrevious,
+                                            contentDescription = "Previous",
+                                            tint = if (canControl) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                                            modifier = Modifier.size(32.dp),
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(24.dp))
+
+                                    Surface(
+                                        modifier = Modifier
+                                            .size(64.dp)
+                                            .clip(CircleShape)
+                                            .clickable(enabled = canControl) { viewModel.togglePlayback() },
+                                        color = if (canControl) jamAccent else jamAccent.copy(alpha = 0.4f),
+                                        shape = CircleShape,
+                                        shadowElevation = 2.dp,
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = if (uiState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                                contentDescription = if (uiState.isPlaying) "Pause" else "Play",
+                                                tint = onJamAccent,
+                                                modifier = Modifier.size(34.dp),
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(24.dp))
+
+                                    IconButton(
+                                        onClick = { viewModel.skipNext() },
+                                        enabled = canControl,
+                                        modifier = Modifier.size(50.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.SkipNext,
+                                            contentDescription = "Next",
+                                            tint = if (canControl) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                                            modifier = Modifier.size(32.dp),
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(24.dp))
+
+                                // Mode Chip (Tap to toggle if host)
+                                Surface(
+                                    shape = CircleShape,
+                                    color = jamAccentContainer,
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .clickable(enabled = uiState.isHost) {
+                                            val newMode = if (uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE)
+                                                JamProtocolConstants.MODE_HOST_ONLY else JamProtocolConstants.MODE_COLLABORATIVE
+                                            viewModel.changeActiveRoomMode(newMode)
+                                        },
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    ) {
                                         Box(
                                             modifier = Modifier
-                                                .size(170.dp)
-                                                .clip(RoundedCornerShape(20.dp)),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            ArtworkImage(
-                                                name = uiState.currentTrackTitle,
-                                                artist = uiState.currentTrackArtist,
-                                                embeddedUrl = uiState.currentArtworkUrl,
-                                                fallbackIcon = Icons.Filled.MusicNote,
-                                                modifier = Modifier.size(170.dp),
-                                            )
-                                        }
-
-                                        Spacer(modifier = Modifier.height(18.dp))
-
-                                        // Title & Artist
+                                                .size(7.dp)
+                                                .clip(CircleShape)
+                                                .background(liveGreen)
+                                        )
                                         Text(
-                                            text = uiState.currentTrackTitle.ifBlank { "No song currently playing" },
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 18.sp,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            textAlign = TextAlign.Center,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .basicMarquee(),
+                                            text = if (uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE)
+                                                "Collaborative · Anyone can control"
+                                            else
+                                                "Host Only · Only host controls",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = onJamAccentContainer,
                                         )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = uiState.currentTrackArtist.ifBlank { "Timeline is idle" },
-                                            fontSize = 14.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            textAlign = TextAlign.Center,
-                                        )
-
-                                        Spacer(modifier = Modifier.height(18.dp))
-
-                                        // Interactive Timeline Seek Slider
-                                        var isDraggingSlider by remember { mutableStateOf(false) }
-                                        var sliderPosition by remember { mutableFloatStateOf(0f) }
-
-                                        LaunchedEffect(uiState.currentPositionMs) {
-                                            if (!isDraggingSlider) {
-                                                sliderPosition = uiState.currentPositionMs.toFloat()
-                                            }
-                                        }
-
-                                        val maxDuration = uiState.durationMs.coerceAtLeast(1L).toFloat()
-                                        Slider(
-                                            value = sliderPosition.coerceIn(0f, maxDuration),
-                                            onValueChange = {
-                                                isDraggingSlider = true
-                                                sliderPosition = it
-                                            },
-                                            onValueChangeFinished = {
-                                                isDraggingSlider = false
-                                                viewModel.seekTo(sliderPosition.toLong())
-                                            },
-                                            valueRange = 0f..maxDuration,
-                                            enabled = canControl && uiState.durationMs > 0L,
-                                            colors = SliderDefaults.colors(
-                                                thumbColor = jamAccent,
-                                                activeTrackColor = jamAccent,
-                                                inactiveTrackColor = jamAccent.copy(alpha = 0.22f),
-                                            ),
-                                            modifier = Modifier.fillMaxWidth(),
-                                        )
-
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 4.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                        ) {
-                                            Text(
-                                                text = formatMs(sliderPosition.toLong()),
-                                                fontSize = 12.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                fontFamily = FontFamily.Monospace,
-                                            )
-                                            Text(
-                                                text = formatMs(uiState.durationMs),
-                                                fontSize = 12.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                fontFamily = FontFamily.Monospace,
-                                            )
-                                        }
-
-                                        Spacer(modifier = Modifier.height(16.dp))
-
-                                        // Big Transport Controls Row
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.Center,
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            // Previous Track Button
-                                            IconButton(
-                                                onClick = { viewModel.skipPrevious() },
-                                                enabled = canControl,
-                                                modifier = Modifier.size(52.dp),
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.SkipPrevious,
-                                                    contentDescription = "Previous Track",
-                                                    tint = if (canControl) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
-                                                    modifier = Modifier.size(32.dp),
-                                                )
-                                            }
-
-                                            Spacer(modifier = Modifier.width(20.dp))
-
-                                            // Play / Pause Primary Button
-                                            Surface(
-                                                modifier = Modifier
-                                                    .size(66.dp)
-                                                    .clip(CircleShape)
-                                                    .clickable(enabled = canControl) { viewModel.togglePlayback() },
-                                                color = if (canControl) jamAccent else jamAccent.copy(alpha = 0.4f),
-                                                shape = CircleShape,
-                                                shadowElevation = 4.dp,
-                                            ) {
-                                                Box(contentAlignment = Alignment.Center) {
-                                                    Icon(
-                                                        imageVector = if (uiState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                                        contentDescription = if (uiState.isPlaying) "Pause" else "Play",
-                                                        tint = onJamAccent,
-                                                        modifier = Modifier.size(34.dp),
-                                                    )
-                                                }
-                                            }
-
-                                            Spacer(modifier = Modifier.width(20.dp))
-
-                                            // Next Track Button
-                                            IconButton(
-                                                onClick = { viewModel.skipNext() },
-                                                enabled = canControl,
-                                                modifier = Modifier.size(52.dp),
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.SkipNext,
-                                                    contentDescription = "Next Track",
-                                                    tint = if (canControl) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
-                                                    modifier = Modifier.size(32.dp),
-                                                )
-                                            }
-                                        }
-
-                                        if (!canControl) {
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            Text(
-                                                text = "Host-only session · Playback is controlled by room host",
-                                                fontSize = 11.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                textAlign = TextAlign.Center,
-                                            )
-                                        }
                                     }
                                 }
-
-                                // Status & Permissions Info Card
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(18.dp),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                                    ),
-                                ) {
-                                    Column(modifier = Modifier.padding(16.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            Column {
-                                                Text(
-                                                    text = "Room Control Mode",
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 14.sp,
-                                                    color = MaterialTheme.colorScheme.onSurface,
-                                                )
-                                                Text(
-                                                    text = if (uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE)
-                                                        "Collaborative · Anyone can control playback"
-                                                    else
-                                                        "Host Only · Only host controls playback",
-                                                    fontSize = 12.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                )
-                                            }
-
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = jamAccentContainer,
-                                            ) {
-                                                Text(
-                                                    text = if (uiState.isHost) "HOST" else "GUEST",
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = onJamAccentContainer,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                                )
-                                            }
-                                        }
-
-                                        if (uiState.isHost) {
-                                            Spacer(modifier = Modifier.height(14.dp))
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically,
-                                            ) {
-                                                Text(
-                                                    text = "Allow guests to change songs",
-                                                    fontSize = 13.sp,
-                                                    color = MaterialTheme.colorScheme.onSurface,
-                                                )
-                                                Switch(
-                                                    checked = uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE,
-                                                    onCheckedChange = { isChecked ->
-                                                        val newMode = if (isChecked) JamProtocolConstants.MODE_COLLABORATIVE else JamProtocolConstants.MODE_HOST_ONLY
-                                                        viewModel.changeActiveRoomMode(newMode)
-                                                    },
-                                                    colors = SwitchDefaults.colors(
-                                                        checkedThumbColor = jamAccent,
-                                                        checkedTrackColor = jamAccentContainer,
-                                                    ),
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
                             }
                         }
 
                         // ==========================================
-                        // TAB 1: IN-ROOM LIVE CHAT
+                        // TAB 1: CHAT (Clean Message Stream)
                         // ==========================================
                         if (selectedTabIndex == 1) {
                             Column(
@@ -916,7 +742,6 @@ fun JamScreen(
                                     .fillMaxSize()
                                     .imePadding(),
                             ) {
-                                // Live chat message history filling available height
                                 LazyColumn(
                                     state = chatListState,
                                     modifier = Modifier
@@ -934,21 +759,11 @@ fun JamScreen(
                                                     .padding(top = 48.dp),
                                                 contentAlignment = Alignment.Center,
                                             ) {
-                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                    Icon(
-                                                        imageVector = Icons.Filled.Send,
-                                                        contentDescription = null,
-                                                        tint = jamAccent.copy(alpha = 0.5f),
-                                                        modifier = Modifier.size(36.dp),
-                                                    )
-                                                    Spacer(modifier = Modifier.height(8.dp))
-                                                    Text(
-                                                        text = "No messages yet. Say hello to everyone in the room!",
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        fontSize = 13.sp,
-                                                        textAlign = TextAlign.Center,
-                                                    )
-                                                }
+                                                Text(
+                                                    text = "No messages yet. Say hello!",
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    fontSize = 13.sp,
+                                                )
                                             }
                                         }
                                     } else {
@@ -960,7 +775,7 @@ fun JamScreen(
                                             ) {
                                                 Row(
                                                     verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                                                 ) {
                                                     Text(
                                                         text = if (isMe) "You" else msg.userName,
@@ -969,18 +784,12 @@ fun JamScreen(
                                                         color = if (msg.isHost) jamAccent else MaterialTheme.colorScheme.onSurfaceVariant,
                                                     )
                                                     if (msg.isHost) {
-                                                        Surface(
-                                                            shape = RoundedCornerShape(4.dp),
-                                                            color = jamAccentContainer,
-                                                        ) {
-                                                            Text(
-                                                                text = "HOST",
-                                                                fontSize = 9.sp,
-                                                                fontWeight = FontWeight.Bold,
-                                                                color = onJamAccentContainer,
-                                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-                                                            )
-                                                        }
+                                                        Text(
+                                                            text = "HOST",
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = jamAccent,
+                                                        )
                                                     }
                                                 }
                                                 Spacer(modifier = Modifier.height(2.dp))
@@ -992,13 +801,12 @@ fun JamScreen(
                                                         bottomEnd = if (isMe) 2.dp else 14.dp,
                                                     ),
                                                     color = if (isMe) jamAccent else MaterialTheme.colorScheme.surfaceVariant,
-                                                    shadowElevation = 1.dp,
                                                 ) {
                                                     Text(
                                                         text = msg.text,
                                                         fontSize = 14.sp,
                                                         color = if (isMe) onJamAccent else MaterialTheme.colorScheme.onSurface,
-                                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                                                     )
                                                 }
                                             }
@@ -1006,23 +814,23 @@ fun JamScreen(
                                     }
                                 }
 
-                                // Typing area properly padded and shifting above keyboard
+                                // Minimalist floating pill chat input
                                 Surface(
                                     modifier = Modifier.fillMaxWidth(),
                                     color = MaterialTheme.colorScheme.surface,
-                                    shadowElevation = 6.dp,
+                                    shadowElevation = 4.dp,
                                 ) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            .padding(horizontal = 14.dp, vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     ) {
                                         OutlinedTextField(
                                             value = chatInputText,
                                             onValueChange = { chatInputText = it },
-                                            placeholder = { Text("Type a message...", fontSize = 13.sp) },
+                                            placeholder = { Text("Say something...", fontSize = 13.sp) },
                                             singleLine = true,
                                             shape = RoundedCornerShape(24.dp),
                                             modifier = Modifier.weight(1f),
@@ -1037,13 +845,13 @@ fun JamScreen(
                                             ),
                                             colors = OutlinedTextFieldDefaults.colors(
                                                 focusedBorderColor = jamAccent,
-                                                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+                                                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
                                             ),
                                         )
 
                                         Surface(
                                             modifier = Modifier
-                                                .size(46.dp)
+                                                .size(44.dp)
                                                 .clip(CircleShape)
                                                 .clickable {
                                                     if (chatInputText.isNotBlank()) {
@@ -1057,9 +865,9 @@ fun JamScreen(
                                             Box(contentAlignment = Alignment.Center) {
                                                 Icon(
                                                     imageVector = Icons.Filled.Send,
-                                                    contentDescription = "Send Message",
+                                                    contentDescription = "Send",
                                                     tint = onJamAccent,
-                                                    modifier = Modifier.size(20.dp),
+                                                    modifier = Modifier.size(18.dp),
                                                 )
                                             }
                                         }
@@ -1069,159 +877,84 @@ fun JamScreen(
                         }
 
                         // ==========================================
-                        // TAB 2: ROOM CODE & SHARE
+                        // TAB 2: SHARE (Minimalist Hero Code)
                         // ==========================================
                         if (selectedTabIndex == 2) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .verticalScroll(rememberScrollState())
-                                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
+                                    .padding(horizontal = 24.dp, vertical = 24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(20.dp),
                             ) {
-                                // Prominent Room Code Card
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .liquidGlassChrome(shape = RoundedCornerShape(24.dp)),
-                                    shape = RoundedCornerShape(24.dp),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
-                                    ),
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Text(
+                                    text = "ROOM CODE",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    letterSpacing = 2.sp,
+                                )
+
+                                Text(
+                                    text = uiState.roomCode,
+                                    fontSize = 42.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = jamAccent,
+                                    letterSpacing = 4.sp,
+                                    modifier = Modifier.clickable {
+                                        clipboard.setText(AnnotatedString(uiState.roomCode))
+                                        Toast.makeText(context, "Room code copied", Toast.LENGTH_SHORT).show()
+                                    },
+                                )
+
+                                Text(
+                                    text = "Friends can join with this code or invite link to listen synchronously.",
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(24.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    OutlinedButton(
+                                        onClick = {
+                                            clipboard.setText(AnnotatedString(uiState.roomCode))
+                                            Toast.makeText(context, "Room code copied", Toast.LENGTH_SHORT).show()
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
                                     ) {
-                                        Text(
-                                            text = "ROOM CODE",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = jamAccent,
-                                            letterSpacing = 2.sp,
-                                        )
-
-                                        Spacer(modifier = Modifier.height(6.dp))
-
-                                        Text(
-                                            text = uiState.roomCode,
-                                            fontSize = 38.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontFamily = FontFamily.Monospace,
-                                            color = jamAccent,
-                                            letterSpacing = 4.sp,
-                                        )
-
-                                        Spacer(modifier = Modifier.height(18.dp))
-
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            OutlinedButton(
-                                                onClick = {
-                                                    clipboard.setText(AnnotatedString(uiState.roomCode))
-                                                    Toast.makeText(context, "Room code copied to clipboard", Toast.LENGTH_SHORT).show()
-                                                },
-                                                shape = RoundedCornerShape(12.dp),
-                                                colors = ButtonDefaults.outlinedButtonColors(
-                                                    contentColor = MaterialTheme.colorScheme.onSurface,
-                                                ),
-                                            ) {
-                                                Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text("Copy Code", fontWeight = FontWeight.Bold)
-                                            }
-
-                                            Button(
-                                                onClick = { viewModel.shareInvite(uiState.roomCode) },
-                                                shape = RoundedCornerShape(12.dp),
-                                                colors = ButtonDefaults.buttonColors(
-                                                    containerColor = jamAccent,
-                                                    contentColor = onJamAccent,
-                                                ),
-                                            ) {
-                                                Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(16.dp))
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text("Share Invite", fontWeight = FontWeight.Bold)
-                                            }
-                                        }
+                                        Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Copy Code")
                                     }
-                                }
 
-                                // How to Join Instructions Card
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(20.dp),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                                    ),
-                                ) {
-                                    Column(modifier = Modifier.padding(18.dp)) {
-                                        Text(
-                                            text = "How to invite friends",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                        )
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Text(
-                                            text = "1. Tap 'Share Invite' to send a direct link to any app.\n" +
-                                                "2. Or share the 6-character room code above.\n" +
-                                                "3. Friends can enter the code in LastWave to listen together with zero latency.",
-                                            fontSize = 13.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            lineHeight = 20.sp,
-                                        )
-                                    }
-                                }
-
-                                // Server Connection Info
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(18.dp),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    ),
-                                ) {
-                                    Column(modifier = Modifier.padding(16.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            Text(
-                                                text = "Sync Relay",
-                                                fontWeight = FontWeight.SemiBold,
-                                                fontSize = 13.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                            Text(
-                                                text = "Connected",
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp,
-                                                color = liveGreen,
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = uiState.serverUrl,
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                                            fontFamily = FontFamily.Monospace,
-                                        )
+                                    Button(
+                                        onClick = { viewModel.shareInvite(uiState.roomCode) },
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = jamAccent,
+                                            contentColor = onJamAccent,
+                                        ),
+                                    ) {
+                                        Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Share Invite")
                                     }
                                 }
                             }
                         }
 
                         // ==========================================
-                        // TAB 3: LISTENERS & SESSION PANEL
+                        // TAB 3: PANEL (Clean Listeners Roster)
                         // ==========================================
                         if (selectedTabIndex == 3) {
                             Column(
@@ -1237,27 +970,21 @@ fun JamScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text(
-                                        text = "Room Listeners (${uiState.participants.size})",
+                                        text = "Listeners (${uiState.participants.size})",
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 16.sp,
+                                        fontSize = 15.sp,
                                         color = MaterialTheme.colorScheme.onSurface,
                                     )
 
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = jamAccentContainer,
-                                    ) {
+                                    if (uiState.isHost) {
                                         Text(
-                                            text = if (uiState.isHost) "You are Host" else "Listener Mode",
-                                            fontSize = 11.sp,
+                                            text = "You are Host",
+                                            fontSize = 12.sp,
+                                            color = jamAccent,
                                             fontWeight = FontWeight.Bold,
-                                            color = onJamAccentContainer,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                         )
                                     }
                                 }
-
-                                Spacer(modifier = Modifier.height(6.dp))
 
                                 LazyColumn(
                                     modifier = Modifier
@@ -1267,102 +994,73 @@ fun JamScreen(
                                     contentPadding = PaddingValues(bottom = 12.dp),
                                 ) {
                                     items(uiState.participants, key = { it.userId }) { p ->
-                                        Card(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            shape = RoundedCornerShape(16.dp),
-                                            colors = CardDefaults.cardColors(
-                                                containerColor = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                                            ),
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .background(
+                                                    if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                                                )
+                                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
                                         ) {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
+                                            Surface(
+                                                modifier = Modifier.size(36.dp),
+                                                shape = CircleShape,
+                                                color = if (p.isHost) jamAccentContainer else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                                             ) {
-                                                Surface(
-                                                    modifier = Modifier.size(42.dp),
-                                                    shape = CircleShape,
-                                                    color = if (p.isHost) jamAccentContainer else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                                                ) {
-                                                    Box(contentAlignment = Alignment.Center) {
-                                                        Text(
-                                                            text = p.name.take(1).uppercase(),
-                                                            fontWeight = FontWeight.Bold,
-                                                            fontSize = 16.sp,
-                                                            color = if (p.isHost) onJamAccentContainer else MaterialTheme.colorScheme.primary,
-                                                        )
-                                                    }
-                                                }
-
-                                                Spacer(modifier = Modifier.width(14.dp))
-
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                        Text(
-                                                            text = p.name,
-                                                            fontWeight = FontWeight.SemiBold,
-                                                            fontSize = 15.sp,
-                                                            color = MaterialTheme.colorScheme.onSurface,
-                                                        )
-                                                        if (p.name == uiState.pendingDisplayName) {
-                                                            Text(
-                                                                text = "(You)",
-                                                                fontSize = 12.sp,
-                                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                            )
-                                                        }
-                                                    }
+                                                Box(contentAlignment = Alignment.Center) {
                                                     Text(
-                                                        text = if (p.isHost) "Room Host · Controls playback" else "Listener · Synced",
-                                                        fontSize = 12.sp,
-                                                        color = if (p.isHost) jamAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        text = p.name.take(1).uppercase(),
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 14.sp,
+                                                        color = if (p.isHost) onJamAccentContainer else MaterialTheme.colorScheme.primary,
                                                     )
                                                 }
+                                            }
 
-                                                if (p.isHost) {
-                                                    Surface(
-                                                        shape = RoundedCornerShape(6.dp),
-                                                        color = jamAccentContainer,
-                                                    ) {
-                                                        Text(
-                                                            text = "HOST",
-                                                            color = onJamAccentContainer,
-                                                            fontSize = 10.sp,
-                                                            fontWeight = FontWeight.ExtraBold,
-                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                                                        )
-                                                    }
-                                                }
+                                            Spacer(modifier = Modifier.width(12.dp))
+
+                                            Text(
+                                                text = p.name + if (p.name == uiState.pendingDisplayName) " (You)" else "",
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = 14.sp,
+                                                modifier = Modifier.weight(1f),
+                                            )
+
+                                            if (p.isHost) {
+                                                Text(
+                                                    text = "HOST",
+                                                    color = jamAccent,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(jamAccentContainer)
+                                                        .padding(horizontal = 6.dp, vertical = 3.dp),
+                                                )
                                             }
                                         }
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(10.dp))
+                                Spacer(modifier = Modifier.height(8.dp))
 
-                                // Leave / End Jam Button
-                                Button(
+                                OutlinedButton(
                                     onClick = { viewModel.leaveSession() },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(48.dp),
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.error,
                                     ),
                                 ) {
-                                    Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = if (uiState.isHost) "Leave / End Jam Session" else "Leave Jam Session",
-                                        fontWeight = FontWeight.Bold,
-                                    )
+                                    Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(if (uiState.isHost) "End Jam Session" else "Leave Jam Session", fontWeight = FontWeight.Bold)
                                 }
 
-                                Spacer(modifier = Modifier.height(6.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
                             }
                         }
                     }
