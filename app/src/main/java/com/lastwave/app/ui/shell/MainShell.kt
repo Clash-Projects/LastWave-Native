@@ -267,11 +267,14 @@ fun MainShell(
     val updateInfo by mainShellViewModel.updateInfo.collectAsStateWithLifecycle()
     val showUpdateBanner = updateInfo.isUpdateAvailable && !updateInfo.isDismissed
     val ytConnection by mainShellViewModel.ytConnection.collectAsStateWithLifecycle()
-    val settings by mainShellViewModel.settings.collectAsStateWithLifecycle(initialValue = com.lastwave.app.data.local.MiscSettings())
+    val settings by mainShellViewModel.settings.collectAsStateWithLifecycle(initialValue = null)
     var promptDismissedThisSession by rememberSaveable { mutableStateOf(false) }
     var joinSupportDismissedThisSession by rememberSaveable { mutableStateOf(false) }
 
-    val shouldShowJoinSupport = !settings.hasDismissedJoinSupportPrompt && !joinSupportDismissedThisSession
+    val currentSettings = settings
+    val shouldShowJoinSupport = currentSettings != null &&
+        !currentSettings.hasDismissedJoinSupportPrompt &&
+        !joinSupportDismissedThisSession
 
     if (shouldShowJoinSupport) {
         JoinSupportDialog(
@@ -282,9 +285,10 @@ fun MainShell(
         )
     }
 
-    val shouldShowLoginPrompt = !shouldShowJoinSupport &&
+    val shouldShowLoginPrompt = currentSettings != null &&
+        !shouldShowJoinSupport &&
         !ytConnection.isConnected &&
-        !settings.suppressYouTubeLoginPrompt &&
+        !currentSettings.suppressYouTubeLoginPrompt &&
         !promptDismissedThisSession
 
     if (shouldShowLoginPrompt) {
@@ -921,7 +925,10 @@ private fun JoinSupportDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
-                        .clickable { openMaterialYouChannel(context) },
+                        .clickable {
+                            openMaterialYouChannel(context)
+                            onDismiss()
+                        },
                     color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.70f),
                     shape = RoundedCornerShape(14.dp),
                 ) {
@@ -973,7 +980,10 @@ private fun JoinSupportDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
-                        .clickable { openTelegramSupport(context) },
+                        .clickable {
+                            openTelegramSupport(context)
+                            onDismiss()
+                        },
                     color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.70f),
                     shape = RoundedCornerShape(14.dp),
                 ) {
@@ -1025,7 +1035,10 @@ private fun JoinSupportDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
-                        .clickable { openDiscordSupport(context) },
+                        .clickable {
+                            openDiscordSupport(context)
+                            onDismiss()
+                        },
                     color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.70f),
                     shape = RoundedCornerShape(14.dp),
                 ) {
