@@ -581,7 +581,7 @@ fun SearchScreen(
                                     itemsIndexed(
                                         displayResults,
                                         key = { index, item -> "${item.entityId ?: item.url.ifBlank { "${item.name}_${item.artist.orEmpty()}" }}_$index" },
-                                        contentType = { "search_result" },
+                                        contentType = { _, _ -> "search_result" },
                                     ) { _, item ->
                                         val isItemPlaying = (state.tab == SearchTab.TRACKS || state.tab == SearchTab.PODCASTS) && playbackState.isPlaying &&
                                             playbackState.current?.title.equals(item.name, ignoreCase = true) &&
