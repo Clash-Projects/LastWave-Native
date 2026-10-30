@@ -1111,7 +1111,6 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
 
     private fun publishNotification(state: MusicPlayerState, force: Boolean = false) {
         val track = state.current
-        val activelyPlaying = state.isPlaying || state.isBuffering
         if (track == null) {
             notificationSignature = ""
             if (isPlaybackForeground) {
@@ -1122,20 +1121,17 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
             return
         }
-        // Paused/stopped with a track still loaded: release the foreground
-        // service privilege but keep the notification posted (DETACH), so a
-        // media-playback FGS isn't retained through an idle pause. The paused
-        // notification is still refreshed below via notify(), keeping transport
-        // controls; resume re-promotes the service on the isPlaying edge below.
-        if (!activelyPlaying && isPlaybackForeground) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_DETACH)
-            else @Suppress("DEPRECATION") stopForeground(true)
-            isPlaybackForeground = false
-        }
-        // Only startForeground() when there is something to play. While paused
-        // we stay detached (the notification remains from the DETACH above) and
-        // merely refresh it — we do not hold the FGS during idle.
-        if (!isPlaybackForeground && activelyPlaying) {
+        // A loaded track keeps the media-playback foreground service alive even
+        // while paused. Demoting to an ordinary background service on pause is
+        // what made the whole session vanish on aggressive OEMs (HyperOS/MIUI,
+        // ColorOS, One UI) the moment another app came to the front: the frozen
+        // process takes the media notification and the MediaSession with it, so
+        // there is nothing left to resume from. The FGS costs nothing while
+        // paused — updateWakeLocks() has already released the wake/wifi locks —
+        // and the system keeps the notification that carries the transport
+        // controls. Only stopAndClear() (track == null, handled above) leaves
+        // the foreground state.
+        if (!isPlaybackForeground) {
             if (!promoteForPlayback()) return
         }
         val signature = "${track.title}|${track.artist}|${track.album}|${state.isPlaying}|${state.isBuffering}|${state.shuffleEnabled}|${state.repeatMode}|$artworkUrl|${artworkBitmap != null}"
