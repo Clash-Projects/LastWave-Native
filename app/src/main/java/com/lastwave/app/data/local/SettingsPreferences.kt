@@ -306,6 +306,7 @@ class SettingsPreferences @Inject constructor(
         val LYRICS_PROVIDER = stringPreferencesKey("lw_lyrics_provider")
         val LYRICS_OFFSET_MS = longPreferencesKey("lw_lyrics_offset_ms")
         val LYRICS_FONT_SCALE = floatPreferencesKey("lw_lyrics_font_scale")
+        val APP_VOLUME = floatPreferencesKey("lw_app_volume")
         val CROSSFADE_ENABLED = booleanPreferencesKey("lw_crossfade_enabled")
         val CROSSFADE_SECONDS = intPreferencesKey("lw_crossfade_seconds")
         val WAVY_SEEKBAR_ENABLED = booleanPreferencesKey("lw_wavy_seekbar_enabled")
@@ -680,6 +681,12 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setLyricsOffsetMs(offsetMs: Long) {
         dataStore.edit { it[Keys.LYRICS_OFFSET_MS] = offsetMs.coerceIn(-10000L, 10000L) }
+    }
+
+    val appVolume: Flow<Float> = dataStore.data.map { it[Keys.APP_VOLUME] ?: 1.0f }
+
+    suspend fun setAppVolume(volume: Float) {
+        dataStore.edit { it[Keys.APP_VOLUME] = volume.coerceIn(0f, 1f) }
     }
 
     suspend fun setLyricsFontScale(scale: Float) {

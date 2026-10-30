@@ -205,6 +205,7 @@ data class MusicPlayerState(
     val isJamActive: Boolean = false,
     val deckBlendTelemetry: com.lastwave.app.playback.automix.api.DeckBlendTelemetry = com.lastwave.app.playback.automix.api.DeckBlendTelemetry.IDLE,
     val isCrossfading: Boolean = false,
+    val appVolume: Float = 1f,
 )
 
 
@@ -518,6 +519,8 @@ class MusicPlayer @Inject constructor(
         .stateIn(applicationScope, SharingStarted.Eagerly, PlaybackProgressState())
 
     private var errorRetryCount = 0
+    var appVolume: Float = 1f
+        private set
     private var retryMediaId: String? = null
     private val losslessBypassMediaIds = ConcurrentHashMap.newKeySet<String>()
     // Written by the settings collector, read on the main thread.
@@ -1733,6 +1736,9 @@ class MusicPlayer @Inject constructor(
                     restoredPlayer.repeatMode = _state.value.repeatMode
                     restoredPlayer.shuffleModeEnabled = _state.value.shuffleEnabled
                 }
+                restoredPlayer.volume = if (bitPerfectEnabled) 1f else appVolume
+                runCatching { nativeAudioEngine.get().setOutputVolume(if (bitPerfectEnabled) 1f else appVolume) }
+                runCatching { autoMixCoordinator.get().setBaseVolume(appVolume) }
             }
     }
 
@@ -2097,6 +2103,20 @@ class MusicPlayer @Inject constructor(
                     cadenceMs = 500L
                 }
                 delay(cadenceMs)
+            }
+        }
+
+        applicationScope.launch {
+            settingsPreferences.appVolume.collect { vol ->
+                onMain {
+                    appVolume = vol
+                    _state.update { it.copy(appVolume = vol) }
+                    if (playerDelegate.isInitialized() && unduckedVolume == null) {
+                        runCatching { player.volume = if (bitPerfectEnabled) 1f else vol }
+                    }
+                    runCatching { nativeAudioEngine.get().setOutputVolume(if (bitPerfectEnabled) 1f else vol) }
+                    runCatching { autoMixCoordinator.get().setBaseVolume(vol) }
+                }
             }
         }
 
@@ -2895,7 +2915,7 @@ class MusicPlayer @Inject constructor(
     private fun restoreAfterAudioFocus() {
         unduckedVolume?.let { level ->
             unduckedVolume = null
-            if (playerDelegate.isInitialized()) runCatching { player.volume = level }
+            if (playerDelegate.isInitialized()) runCatching { player.volume = if (bitPerfectEnabled) 1f else level }
         }
         if (!focusPauseAwaitingRecovery) return
         focusPauseAwaitingRecovery = false
@@ -2911,14 +2931,29 @@ class MusicPlayer @Inject constructor(
         if (isCasting || !playerDelegate.isInitialized()) return
         if (ducked) {
             if (unduckedVolume != null) return
-            val current = runCatching { player.volume }.getOrDefault(1f)
-            if (current <= AudioFocusPolicy.DUCK_VOLUME) return
+            val current = runCatching { player.volume }.getOrDefault(appVolume)
+            val duckTarget = if (bitPerfectEnabled) 1f else (AudioFocusPolicy.DUCK_VOLUME * appVolume).coerceIn(0f, 1f)
+            if (current <= duckTarget) return
             unduckedVolume = current
-            runCatching { player.volume = AudioFocusPolicy.DUCK_VOLUME }
+            runCatching { player.volume = duckTarget }
         } else {
-            val level = unduckedVolume ?: return
+            val level = unduckedVolume ?: appVolume
             unduckedVolume = null
-            runCatching { player.volume = level }
+            runCatching { player.volume = if (bitPerfectEnabled) 1f else level }
+        }
+    }
+
+    fun setAppVolume(volume: Float) = onMain {
+        val clamped = volume.coerceIn(0f, 1f)
+        appVolume = clamped
+        _state.update { it.copy(appVolume = clamped) }
+        if (playerDelegate.isInitialized() && unduckedVolume == null) {
+            runCatching { player.volume = if (bitPerfectEnabled) 1f else clamped }
+        }
+        runCatching { nativeAudioEngine.get().setOutputVolume(if (bitPerfectEnabled) 1f else clamped) }
+        runCatching { autoMixCoordinator.get().setBaseVolume(clamped) }
+        applicationScope.launch {
+            settingsPreferences.setAppVolume(clamped)
         }
     }
 
@@ -3202,7 +3237,7 @@ class MusicPlayer @Inject constructor(
             standbyQueue = emptyList()
             standbyIndex = C.INDEX_UNSET
         }
-        player.volume = 1f
+        player.volume = if (bitPerfectEnabled) 1f else appVolume
     }
 
     /**

@@ -1,13 +1,5 @@
 package com.lastwave.app.ui.player
 
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.media.AudioManager
-import android.os.Build
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -33,11 +24,8 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -48,10 +36,11 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.ui.theme.LiquidGlassPreset
 import com.lastwave.app.ui.theme.LocalLiquidGlass
 import com.lastwave.app.ui.theme.LocalLiquidGlassBackdrop
@@ -61,80 +50,29 @@ import com.lastwave.app.ui.theme.liquidGlassContainerColor
 import kotlin.math.roundToInt
 
 /**
- * In-app volume slider for the player.
+ * Independent in-app playback volume slider for the player.
  *
  * Characteristics:
- * - Centered, bounded width ("little wide not too wide").
+ * - Operates strictly on app-internal playback volume (0% - 100%), completely
+ *   independent from the device's hardware master volume [android.media.AudioManager.STREAM_MUSIC].
  * - Supports 3 visual paradigms:
  *   1. Liquid Glass: Refracting glass chrome, frosted container and luminous accents.
  *   2. Frost Glass: Translucent white capsule tracks matching the player scrim overlay.
  *   3. Compose M3: High-contrast MaterialTheme color tokens for standard non-glass mode.
- * - Hardware rocker & in-app bi-directional sync with [AudioManager.STREAM_MUSIC].
- * - Interactive left (mute/unmute) and right (max) volume shortcut buttons.
+ * - Interactive left (mute/unmute) and right (max 100%) shortcut buttons.
  */
 @Composable
 fun VolumeSlider(
+    volume: Float,
+    onVolumeChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
     isTranslucent: Boolean = false,
     primaryColor: Color = MaterialTheme.colorScheme.primary,
 ) {
-    val context = LocalContext.current
-    val audioManager = remember(context) {
-        context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-    }
-
-    val minVol = remember(audioManager) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            runCatching { audioManager?.getStreamMinVolume(AudioManager.STREAM_MUSIC) }.getOrNull() ?: 0
-        } else {
-            0
-        }
-    }
-    val maxVol = remember(audioManager) {
-        maxOf(1, runCatching { audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }.getOrNull() ?: 15)
-    }
-
-    var currentVolume by remember(audioManager) {
-        mutableIntStateOf(
-            runCatching { audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) }.getOrNull() ?: (maxVol / 2)
-        )
-    }
-    var savedMuteVolume by remember { mutableIntStateOf(maxOf(1, maxVol / 3)) }
+    var savedMuteVolume by remember { mutableFloatStateOf(if (volume > 0.05f) volume else 0.75f) }
     var isInteracting by remember { mutableStateOf(false) }
     var dragFraction by remember { mutableStateOf<Float?>(null) }
-
-    // Listen to hardware volume button clicks and external volume changes
-    DisposableEffect(context, audioManager) {
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(c: Context?, intent: Intent?) {
-                if (intent?.action == "android.media.VOLUME_CHANGED_ACTION") {
-                    val streamType = intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1)
-                    if (streamType == AudioManager.STREAM_MUSIC || streamType == -1) {
-                        val extraVol = intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_VALUE", -1)
-                        val updated = if (extraVol >= 0) {
-                            extraVol
-                        } else {
-                            runCatching {
-                                audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC)
-                            }.getOrNull()
-                        }
-                        if (updated != null && !isInteracting) {
-                            currentVolume = updated
-                        }
-                    }
-                }
-            }
-        }
-        val filter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
-        context.registerReceiver(receiver, filter)
-        onDispose {
-            runCatching { context.unregisterReceiver(receiver) }
-        }
-    }
-
-    val volumeRange = (maxVol - minVol).coerceAtLeast(1)
-    val liveFraction = ((currentVolume - minVol).toFloat() / volumeRange.toFloat()).coerceIn(0f, 1f)
-    val displayFraction = (dragFraction ?: liveFraction).coerceIn(0f, 1f)
+    val displayFraction = (dragFraction ?: volume).coerceIn(0f, 1f)
 
     // Visual style arbitration: Liquid Glass vs Frost Glass vs Compose M3
     val isGlassActive = LocalLiquidGlass.current &&
@@ -202,25 +140,19 @@ fun VolumeSlider(
                     .size(34.dp)
                     .clip(CircleShape)
                     .clickable {
-                        if (currentVolume > minVol) {
-                            savedMuteVolume = currentVolume
-                            currentVolume = minVol
-                            runCatching {
-                                audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, minVol, 0)
-                            }
+                        if (volume > 0.001f) {
+                            savedMuteVolume = volume
+                            onVolumeChange(0f)
                         } else {
-                            val target = savedMuteVolume.coerceIn(minVol + 1, maxVol)
-                            currentVolume = target
-                            runCatching {
-                                audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
-                            }
+                            val target = savedMuteVolume.coerceIn(0.15f, 1f)
+                            onVolumeChange(target)
                         }
                     },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = if (displayFraction <= 0.02f) Icons.Filled.VolumeMute else Icons.Filled.VolumeDown,
-                    contentDescription = if (displayFraction <= 0.02f) "Unmute" else "Mute",
+                    imageVector = if (displayFraction <= 0.001f) Icons.Filled.VolumeMute else Icons.Filled.VolumeDown,
+                    contentDescription = if (displayFraction <= 0.001f) "Unmute" else "Mute",
                     tint = iconColor,
                     modifier = Modifier.size(20.dp),
                 )
@@ -296,14 +228,9 @@ fun VolumeSlider(
                     value = displayFraction,
                     onValueChange = { fraction ->
                         isInteracting = true
-                        dragFraction = fraction
-                        val target = (minVol + fraction * volumeRange).roundToInt().coerceIn(minVol, maxVol)
-                        if (target != currentVolume) {
-                            currentVolume = target
-                            runCatching {
-                                audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
-                            }
-                        }
+                        val clamped = fraction.coerceIn(0f, 1f)
+                        dragFraction = clamped
+                        onVolumeChange(clamped)
                     },
                     onValueChangeFinished = {
                         isInteracting = false
@@ -333,10 +260,7 @@ fun VolumeSlider(
                     .size(34.dp)
                     .clip(CircleShape)
                     .clickable {
-                        currentVolume = maxVol
-                        runCatching {
-                            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, maxVol, 0)
-                        }
+                        onVolumeChange(1f)
                     },
                 contentAlignment = Alignment.Center,
             ) {
@@ -349,4 +273,21 @@ fun VolumeSlider(
             }
         }
     }
+}
+
+@Composable
+fun VolumeSlider(
+    player: MusicPlayer,
+    modifier: Modifier = Modifier,
+    isTranslucent: Boolean = false,
+    primaryColor: Color = MaterialTheme.colorScheme.primary,
+) {
+    val state by player.state.collectAsStateWithLifecycle()
+    VolumeSlider(
+        volume = state.appVolume,
+        onVolumeChange = player::setAppVolume,
+        modifier = modifier,
+        isTranslucent = isTranslucent,
+        primaryColor = primaryColor,
+    )
 }

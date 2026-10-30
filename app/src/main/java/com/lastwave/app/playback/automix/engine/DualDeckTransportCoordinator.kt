@@ -37,6 +37,15 @@ class DualDeckTransportCoordinator @Inject constructor(
 ) : AutoMixController {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    var baseVolume: Float = 1.0f
+        private set
+
+    fun setBaseVolume(vol: Float) {
+        baseVolume = vol.coerceIn(0f, 1f)
+        if (activeSpliceJob == null || activeSpliceJob?.isActive != true) {
+            currentPrimaryPlayer?.volume = baseVolume
+        }
+    }
 
     private val _telemetry = MutableStateFlow(DeckBlendTelemetry.IDLE)
     override val telemetry: StateFlow<DeckBlendTelemetry> = _telemetry.asStateFlow()
@@ -230,8 +239,8 @@ class DualDeckTransportCoordinator @Inject constructor(
                 val gainIn = kotlin.math.sin(progress * Math.PI * 0.5).toFloat().coerceIn(0.0f, 1.0f)
                 val sum = gainIn + gainOut
                 val trim = if (sum <= 1f) 1f else 1f / kotlin.math.sqrt(sum)
-                primaryPlayer.volume = (gainOut * trim).coerceIn(0f, 1f)
-                secondaryPlayer.volume = (gainIn * trim).coerceIn(0f, 1f)
+                primaryPlayer.volume = (gainOut * trim * baseVolume).coerceIn(0f, 1f)
+                secondaryPlayer.volume = (gainIn * trim * baseVolume).coerceIn(0f, 1f)
 
                 // Dominant energy handoff point (65% through transition window):
                 if (progress >= 0.65f && !swapped) {
@@ -248,7 +257,7 @@ class DualDeckTransportCoordinator @Inject constructor(
             }
 
             primaryPlayer.volume = 0.0f
-            secondaryPlayer.volume = 1.0f
+            secondaryPlayer.volume = baseVolume
             runCatching { primaryPlayer.pause() }
 
             _telemetry.update {
@@ -276,7 +285,7 @@ class DualDeckTransportCoordinator @Inject constructor(
         _telemetry.update { DeckBlendTelemetry.IDLE }
         if (revertToPrimary) {
             runCatching {
-                currentPrimaryPlayer?.volume = 1.0f
+                currentPrimaryPlayer?.volume = baseVolume
                 currentSecondaryPlayer?.volume = 0.0f
                 currentSecondaryPlayer?.pause()
             }
@@ -294,7 +303,7 @@ class DualDeckTransportCoordinator @Inject constructor(
             runCatching {
                 onPerformDeckSwap?.invoke(primary, secondary)
                 primary.volume = 0.0f
-                secondary.volume = 1.0f
+                secondary.volume = baseVolume
                 primary.pause()
                 onTransitionComplete?.invoke()
             }
