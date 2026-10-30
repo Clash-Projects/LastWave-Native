@@ -337,7 +337,6 @@ kotlin {
 }
 
 composeCompiler {
-    enableStrongSkippingMode = true
     stabilityConfigurationFiles.add(rootProject.layout.projectDirectory.file("compose_compiler_config.conf"))
 }
 
