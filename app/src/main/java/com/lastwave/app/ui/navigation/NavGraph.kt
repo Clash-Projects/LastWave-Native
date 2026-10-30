@@ -19,6 +19,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.remember
+import androidx.lifecycle.Lifecycle
+import androidx.navigation.NavController
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -110,6 +113,47 @@ class LaunchGateViewModel @Inject constructor(
             started = kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000),
             initialValue = GateTarget.Loading,
         )
+}
+
+private var lastPopTimeMs = 0L
+
+/**
+ * Safely pops the back stack to prevent blank black screens from consecutive back presses.
+ * - Prevents popping the root screen (MainShell, Splash, Login).
+ * - Prevents popping when there is no previous destination.
+ * - Prevents stale clicks from exiting screens (fromEntry != currentBackStackEntry).
+ * - Debounces rapid multi-taps (< 300ms) during transition animations.
+ */
+private fun NavController.safePopBackStack(fromEntry: NavBackStackEntry? = null): Boolean {
+    val now = android.os.SystemClock.elapsedRealtime()
+    if (now - lastPopTimeMs < 300L) {
+        return false
+    }
+    val current = currentDestination?.route
+    if (current == null ||
+        current == Screen.MainShell.route ||
+        current == Screen.Splash.route ||
+        current == Screen.Login.route
+    ) {
+        return false
+    }
+    if (fromEntry != null) {
+        if (currentBackStackEntry != fromEntry) {
+            return false
+        }
+        if (!fromEntry.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            return false
+        }
+    }
+    if (previousBackStackEntry == null) {
+        return false
+    }
+    val currentEntry = currentBackStackEntry
+    if (currentEntry != null && !currentEntry.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+        return false
+    }
+    lastPopTimeMs = now
+    return popBackStack()
 }
 
 @Composable
@@ -290,16 +334,16 @@ fun LastWaveNavHost(
             )
         }
 
-        composable(Screen.Create.route) {
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+        composable(Screen.Create.route) { backStackEntry ->
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 com.lastwave.app.ui.generate.GenerateScreen(
                     onNavigateToPlaylist = { playlistId ->
-                        navController.popBackStack()
+                        navController.safePopBackStack(backStackEntry)
                         if (playlistId != null) {
                             navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
                         }
                     },
-                    onBack = { navController.popBackStack() },
+                    onBack = { navController.safePopBackStack(backStackEntry) },
                 )
             }
         }
@@ -325,10 +369,10 @@ fun LastWaveNavHost(
                 navController.getBackStackEntry(Screen.MainShell.route)
             }
             val homeViewModel: com.lastwave.app.ui.home.HomeViewModel = hiltViewModel(parentEntry)
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 com.lastwave.app.ui.home.FriendsScreen(
                     viewModel = homeViewModel,
-                    onBack = { navController.popBackStack() },
+                    onBack = { navController.safePopBackStack(backStackEntry) },
                     onOpenFriendProfile = { username, displayName, avatarUrl ->
                         navController.navigate(Screen.FriendProfile.createRoute(username, displayName, avatarUrl))
                     },
@@ -353,12 +397,12 @@ fun LastWaveNavHost(
             val username = backStackEntry.arguments?.getString("username").orEmpty()
             val displayName = backStackEntry.arguments?.getString("displayName")?.takeIf(String::isNotBlank)
             val avatarUrl = backStackEntry.arguments?.getString("avatarUrl")?.takeIf(String::isNotBlank)
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 com.lastwave.app.ui.home.FriendProfileScreen(
                     username = username,
                     initialDisplayName = displayName,
                     initialAvatarUrl = avatarUrl,
-                    onBack = { navController.popBackStack() },
+                    onBack = { navController.safePopBackStack(backStackEntry) },
                     onOpenArtist = { artistName ->
                         navController.navigate(Screen.ArtistDetail.createRoute(artistName))
                     },
@@ -377,12 +421,12 @@ fun LastWaveNavHost(
         // onBack (its toolbar back button) still pops directly; the wrap
         // only adds the gesture-driven path, it doesn't replace the
         // button's.
-        composable(Screen.Genres.route) {
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+        composable(Screen.Genres.route) { backStackEntry ->
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 GenresScreen(
-                    onBack = { navController.popBackStack() },
+                    onBack = { navController.safePopBackStack(backStackEntry) },
                     onNavigateToPlaylist = {
-                        navController.popBackStack()
+                        navController.safePopBackStack(backStackEntry)
                         // Playlist tab already re-reads on resume (PlaylistViewModel's
                         // LifecycleResumeEffect), so popping back to MainShell is
                         // sufficient — no separate "switch tab" signal is needed here
@@ -393,10 +437,10 @@ fun LastWaveNavHost(
             }
         }
 
-        composable(Screen.Settings.route) {
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+        composable(Screen.Settings.route) { backStackEntry ->
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 SettingsScreen(
-                    onBack = { navController.popBackStack() },
+                    onBack = { navController.safePopBackStack(backStackEntry) },
                     onLoggedOut = {
                         navController.navigate(Screen.Login.route) {
                             popUpTo(Screen.MainShell.route) { inclusive = true }
@@ -416,20 +460,20 @@ fun LastWaveNavHost(
             }
         }
 
-      composable(Screen.SpotifyLogin.route) {
-      PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+      composable(Screen.SpotifyLogin.route) { backStackEntry ->
+      PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
       com.lastwave.app.ui.settings.SpotifyLoginScreen(
-      onBack = { navController.popBackStack() },
-      onConnected = { navController.popBackStack() },
+      onBack = { navController.safePopBackStack(backStackEntry) },
+      onConnected = { navController.safePopBackStack(backStackEntry) },
       )
       }
       }
 
-      composable(Screen.SpotifyTokenImport.route) {
-      PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+      composable(Screen.SpotifyTokenImport.route) { backStackEntry ->
+      PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
       com.lastwave.app.ui.settings.SpotifyLoginScreen(
-      onBack = { navController.popBackStack() },
-      onConnected = { navController.popBackStack() },
+      onBack = { navController.safePopBackStack(backStackEntry) },
+      onConnected = { navController.safePopBackStack(backStackEntry) },
       openManualEntryInitially = true,
       )
       }
@@ -454,36 +498,36 @@ fun LastWaveNavHost(
             }
             com.lastwave.app.ui.jam.JamScreen(
                 viewModel = jamViewModel,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.safePopBackStack(backStackEntry) },
             )
         }
 
-        composable(Screen.YouTubeImport.route) {
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+        composable(Screen.YouTubeImport.route) { backStackEntry ->
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 com.lastwave.app.ui.settings.YouTubePlaylistImportScreen(
-                    onBack = { navController.popBackStack() },
+                    onBack = { navController.safePopBackStack(backStackEntry) },
                     onImportSuccess = {
-                        navController.popBackStack()
+                        navController.safePopBackStack(backStackEntry)
                     },
                 )
             }
         }
 
-        composable(Screen.YouTubeLogin.route) {
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+        composable(Screen.YouTubeLogin.route) { backStackEntry ->
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 com.lastwave.app.ui.settings.YouTubeLoginScreen(
-                    onBack = { navController.popBackStack() },
-                    onConnected = { navController.popBackStack() },
+                    onBack = { navController.safePopBackStack(backStackEntry) },
+                    onConnected = { navController.safePopBackStack(backStackEntry) },
                 )
             }
         }
 
-        composable(Screen.ExternalPlaylistImport.route) {
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+        composable(Screen.ExternalPlaylistImport.route) { backStackEntry ->
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 com.lastwave.app.ui.settings.ExternalPlaylistImportScreen(
-                    onBack = { navController.popBackStack() },
+                    onBack = { navController.safePopBackStack(backStackEntry) },
                     onImportSuccess = {
-                        navController.popBackStack()
+                        navController.safePopBackStack(backStackEntry)
                     },
                     onOpenSpotifyLogin = {
                         navController.navigate(Screen.SpotifyLogin.route)
@@ -492,35 +536,35 @@ fun LastWaveNavHost(
             }
         }
 
-        composable(Screen.Downloads.route) {
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
-                com.lastwave.app.ui.settings.DownloadsScreen(onBack = { navController.popBackStack() })
+        composable(Screen.Downloads.route) { backStackEntry ->
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
+                com.lastwave.app.ui.settings.DownloadsScreen(onBack = { navController.safePopBackStack(backStackEntry) })
             }
         }
 
-        composable(Screen.ProviderModules.route) {
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
-                com.lastwave.app.ui.settings.ModulesScreen(onBack = { navController.popBackStack() })
+        composable(Screen.ProviderModules.route) { backStackEntry ->
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
+                com.lastwave.app.ui.settings.ModulesScreen(onBack = { navController.safePopBackStack(backStackEntry) })
             }
         }
 
-        composable(Screen.HomeSections.route) {
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
-                com.lastwave.app.ui.settings.HomeSectionsScreen(onBack = { navController.popBackStack() })
+        composable(Screen.HomeSections.route) { backStackEntry ->
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
+                com.lastwave.app.ui.settings.HomeSectionsScreen(onBack = { navController.safePopBackStack(backStackEntry) })
             }
         }
 
-        composable(Screen.ExcludedSongs.route) {
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
-                com.lastwave.app.ui.settings.ExcludedSongsScreen(onBack = { navController.popBackStack() })
+        composable(Screen.ExcludedSongs.route) { backStackEntry ->
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
+                com.lastwave.app.ui.settings.ExcludedSongsScreen(onBack = { navController.safePopBackStack(backStackEntry) })
             }
         }
 
 
-        composable(Screen.Search.route) {
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+        composable(Screen.Search.route) { backStackEntry ->
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 SearchScreen(
-                    onBack = { navController.popBackStack() },
+                    onBack = { navController.safePopBackStack(backStackEntry) },
                     onOpenArtist = { name, browseId ->
                         navController.navigate(Screen.ArtistDetail.createRoute(name, browseId))
                     },
@@ -534,24 +578,24 @@ fun LastWaveNavHost(
             }
         }
 
-        composable(Screen.Discover.route) {
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
-                DiscoverScreen(onBack = { navController.popBackStack() })
+        composable(Screen.Discover.route) { backStackEntry ->
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
+                DiscoverScreen(onBack = { navController.safePopBackStack(backStackEntry) })
             }
         }
 
-        composable(Screen.NewReleases.route) {
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+        composable(Screen.NewReleases.route) { backStackEntry ->
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 com.lastwave.app.ui.newreleases.NewReleasesScreen(
-                    onBack = { navController.popBackStack() },
+                    onBack = { navController.safePopBackStack(backStackEntry) },
                 )
             }
         }
 
-        composable(Screen.Podcasts.route) {
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+        composable(Screen.Podcasts.route) { backStackEntry ->
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 com.lastwave.app.ui.podcast.PodcastsScreen(
-                    onBack = { navController.popBackStack() },
+                    onBack = { navController.safePopBackStack(backStackEntry) },
                     onOpenShow = { showId ->
                         navController.navigate(Screen.PodcastShow.createRoute(showId))
                     },
@@ -568,10 +612,10 @@ fun LastWaveNavHost(
             ),
         ) { backStackEntry ->
             val showId = backStackEntry.arguments?.getString("showId").orEmpty()
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 com.lastwave.app.ui.podcast.PodcastShowScreen(
                     showId = showId,
-                    onBack = { navController.popBackStack() },
+                    onBack = { navController.safePopBackStack(backStackEntry) },
                 )
             }
         }
@@ -585,10 +629,10 @@ fun LastWaveNavHost(
             ),
         ) { backStackEntry ->
             val playlistId = backStackEntry.arguments?.getString("playlistId").orEmpty()
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 com.lastwave.app.ui.feed.FeedPlaylistDetailScreen(
                     playlistId = playlistId,
-                    onBack = { navController.popBackStack() },
+                    onBack = { navController.safePopBackStack(backStackEntry) },
                 )
             }
         }
@@ -602,10 +646,10 @@ fun LastWaveNavHost(
             ),
         ) { backStackEntry ->
             val playlistId = backStackEntry.arguments?.getLong("playlistId") ?: return@composable
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 com.lastwave.app.ui.playlist.PlaylistDetailScreen(
                     playlistId = playlistId,
-                    onBack = { navController.popBackStack() },
+                    onBack = { navController.safePopBackStack(backStackEntry) },
                     onOpenPlaylist = { newId ->
                         navController.navigate(Screen.PlaylistDetail.createRoute(newId))
                     },
@@ -625,11 +669,11 @@ fun LastWaveNavHost(
         ) { backStackEntry ->
             val artistName = backStackEntry.arguments?.getString("artistName").orEmpty()
             val browseId = backStackEntry.arguments?.getString("browseId")?.takeIf(String::isNotBlank)
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 com.lastwave.app.ui.artist.ArtistDetailScreen(
                     artistName = artistName,
                     browseId = browseId,
-                    onBack = { navController.popBackStack() },
+                    onBack = { navController.safePopBackStack(backStackEntry) },
                     onOpenAlbum = { title, artist, id ->
                         navController.navigate(Screen.AlbumDetail.createRoute(title, artist, id))
                     },
@@ -657,12 +701,12 @@ fun LastWaveNavHost(
             val albumTitle = backStackEntry.arguments?.getString("albumTitle").orEmpty()
             val artistName = backStackEntry.arguments?.getString("artistName").orEmpty()
             val browseId = backStackEntry.arguments?.getString("browseId")?.takeIf(String::isNotBlank)
-            PredictiveBackScreen(onBack = { navController.popBackStack() }) {
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 com.lastwave.app.ui.album.AlbumDetailScreen(
                     albumTitle = albumTitle,
                     artistName = artistName,
                     browseId = browseId,
-                    onBack = { navController.popBackStack() },
+                    onBack = { navController.safePopBackStack(backStackEntry) },
                     onOpenArtist = { name, id ->
                         navController.navigate(Screen.ArtistDetail.createRoute(name, id))
                     },
