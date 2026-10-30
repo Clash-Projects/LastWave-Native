@@ -3074,11 +3074,16 @@ class InnerTubeMusicApi @Inject constructor(
     /**
      * Download-only NewPipe extraction preferring the Opus (WebM) rendition, which
      * the download pipeline remuxes losslessly into a fully tagged .opus file.
-     * No fallback to [resolveAudioStream]: the download path already tried it.
+     * Falls back to [resolveAudioStream] if NewPipe fails (e.g. age-restricted content).
      */
     suspend fun resolveDownloadStream(videoId: String): YouTubeAudioStream = withContext(Dispatchers.IO) {
         require(videoId.isNotBlank()) { "Missing YouTube Music video id" }
-        streamExtractor.resolveAudioStream(videoId, preferOpus = true)
+        try {
+            streamExtractor.resolveAudioStream(videoId, preferOpus = true)
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            resolveAudioStream(videoId)
+        }
     }
 
     /**
@@ -3116,8 +3121,16 @@ class InnerTubeMusicApi @Inject constructor(
         // anything slower proceeds without a token instead of stalling audio.
         val poToken = fastPoToken(videoId, visitorData)
         val nowMs = System.currentTimeMillis()
+        val config = webConfig
         val ordered = DIRECT_FAST_CLIENT_ORDER
-            .mapNotNull { name -> PLAYER_CLIENTS.firstOrNull { it.name == name } }
+            .mapNotNull { name ->
+                val client = PLAYER_CLIENTS.firstOrNull { it.name == name } ?: return@mapNotNull null
+                if (client.name == "WEB_REMIX" && config != null) {
+                    client.copy(version = config.clientVersion, apiKey = config.apiKey)
+                } else {
+                    client
+                }
+            }
             .filter { nowMs >= (failedClientsUntil[clientFailureKey(videoId, it.key, authScope)] ?: 0L) }
             .sortedBy { playbackClientPriority(it.name, ytAuth.connection.value.isConnected, lastSuccessfulClientName) }
         if (ordered.isEmpty()) {
@@ -3359,6 +3372,15 @@ class InnerTubeMusicApi @Inject constructor(
                     put("androidSdkVersion", client.androidSdkVersion)
                 }
             })
+            if (client.name == "WEB_REMIX" && ytAuth.connection.value.isConnected) {
+                put("user", buildJsonObject {
+                    put("lockedSafetyMode", false)
+                    val delegate = ytAuth.connection.value.onBehalfOfUser
+                    if (!delegate.isNullOrBlank()) {
+                        put("onBehalfOfUser", delegate)
+                    }
+                })
+            }
         }
         cipherContext?.requireMatches(videoId, ytAuth.connection.value)
         val body = playbackPlayerBody(videoId, playerContext, signatureTimestamp, playerPoToken)
@@ -3387,11 +3409,17 @@ class InnerTubeMusicApi @Inject constructor(
         val status = root.obj("playabilityStatus")
         val state = status?.string("status")
         if (state != "OK") {
-            val reason = status?.string("reason").orEmpty()
-            if (state == "UNPLAYABLE" && reason.isConfirmedUnavailableReason()) {
-                throw ConfirmedUnplayableMediaException(reason.ifBlank { state.orEmpty() })
+            val streaming = root.obj("streamingData")
+            val hasFormats = streaming?.let {
+                !it.array("formats").isNullOrEmpty() || !it.array("adaptiveFormats").isNullOrEmpty()
+            } ?: false
+            if (!hasFormats) {
+                val reason = status?.string("reason").orEmpty()
+                if (state == "UNPLAYABLE" && reason.isConfirmedUnavailableReason()) {
+                    throw ConfirmedUnplayableMediaException(reason.ifBlank { state.orEmpty() })
+                }
+                throw IOException(reason.ifBlank { "Player status ${state ?: "missing"}" })
             }
-            throw IOException(reason.ifBlank { "Player status ${state ?: "missing"}" })
         }
 
         val streaming = root.obj("streamingData")
@@ -4197,12 +4225,13 @@ class InnerTubeMusicApi @Inject constructor(
             // renders the selected channel's library/history/likes instead of
             // the default (first) channel's. Only attach when authenticated!
             if (authenticated) {
-                ytAuth.connection.value.onBehalfOfUser?.takeIf { it.isNotBlank() }?.let { delegate ->
-                    put("user", buildJsonObject {
-                        put("lockedSafetyMode", false)
+                put("user", buildJsonObject {
+                    put("lockedSafetyMode", false)
+                    val delegate = ytAuth.connection.value.onBehalfOfUser
+                    if (!delegate.isNullOrBlank()) {
                         put("onBehalfOfUser", delegate)
-                    })
-                }
+                    }
+                })
             }
         }
     }
