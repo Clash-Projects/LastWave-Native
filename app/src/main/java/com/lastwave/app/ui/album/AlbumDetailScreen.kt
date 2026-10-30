@@ -576,7 +576,11 @@ fun AlbumDetailScreen(
                                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp),
                             ) {
-                                items(data.otherAlbums, key = { it.browseId.ifBlank { it.title } }) { otherAlbum ->
+                                items(
+                                    data.otherAlbums,
+                                    key = { it.browseId.ifBlank { it.title } },
+                                    contentType = { "other_album" },
+                                ) { otherAlbum ->
                                     AlbumCard(
                                         item = otherAlbum,
                                         onClick = {

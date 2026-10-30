@@ -165,7 +165,7 @@ private val LINE_FALLOFF_ALPHA = floatArrayOf(1f, 0.80f, 0.70f, 0.58f, 0.46f)
 private val LINE_FALLOFF_BLUR_DP = floatArrayOf(0f, 1f, 1f, 1.7f, 2.4f)
 
 /** Glide curve for the follow scroll and row scale: quick departure, long
- *  soft landing — closer to a platform sheet than to a linear scroll. */
+ *  soft landing â€” closer to a platform sheet than to a linear scroll. */
 private val LYRIC_EASE = CubicBezierEasing(0.41f, 0f, 0.12f, 0.99f)
 
 /** Follow-scroll duration: small corrections stay crisp, whole-verse jumps
@@ -193,7 +193,7 @@ fun ModernLyricsPanel(
     onLyricsFontScaleChange: (Float) -> Unit = {},
     modifier: Modifier = Modifier,
     /** Manual sync correction (ms, + = lyrics earlier). Applies to lyric
-     *  focus/highlight only — the seekbar below keeps true position. */
+     *  focus/highlight only â€” the seekbar below keeps true position. */
     lyricsOffsetMs: Long = 0L,
     controlsAutoHideSeconds: Int = 5,
     /** Controls auto-hide visibility state (hoisted or internally managed). */
@@ -433,7 +433,7 @@ fun ModernLyricsPanel(
                                     color = Color.White,
                                 )
                                 Text(
-                                    "Finding lyrics…",
+                                    "Finding lyricsâ€¦",
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = Color.White.copy(alpha = 0.70f),
                                 )
@@ -456,13 +456,13 @@ fun ModernLyricsPanel(
                             )
                         } else if (targetState.isSynced && targetState.lines.isNotEmpty()) {
                             // Reference parity: one provider timestamp stays one
-                            // drawn row — long rows wrap visually via Text
+                            // drawn row â€” long rows wrap visually via Text
                             // soft-wrap on their own timestamp, never sliced
                             // into fabricated timed chunks.
                             val isWordSynced = targetState.isWordSynced ||
                                 remember(targetState.lines) { targetState.lines.any { it.hasSyllables } }
                             val isOverallRtl = remember(targetState.lines) {
-                                val meaningful = targetState.lines.filter { it.text.isNotBlank() && it.text != "♪" }
+                                val meaningful = targetState.lines.filter { it.text.isNotBlank() && it.text != "â™ª" }
                                 if (meaningful.isEmpty()) false
                                 else meaningful.count { it.isRtl } > meaningful.size / 2
                             }
@@ -515,7 +515,7 @@ fun ModernLyricsPanel(
                                 val provider = targetState.source
                                     ?.substringBefore(" (")
                                     ?.takeIf { it.isNotBlank() } ?: providerFallback
-                                "${if (isWordSynced) wordSyncLabel else lineSyncLabel} • $provider"
+                                "${if (isWordSynced) wordSyncLabel else lineSyncLabel} â€¢ $provider"
                             }
                             CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
                                 Column(
@@ -582,7 +582,7 @@ fun ModernLyricsPanel(
                     }
                 }
             }
-            // Any tap while the buttons are hidden brings them back — and
+            // Any tap while the buttons are hidden brings them back â€” and
             // only that: it must not also seek to the lyric line underneath.
             if (!controlsVisible) {
                 Box(
@@ -732,7 +732,7 @@ private fun Modifier.lyricsFadingEdge(
  *   window (already de-overlapped upstream by `normalizeLyricTiming`). A
  *   zero-duration syllable holds until the next syllable starts, matching
  *   the reference `findActiveLineIndices` end-time fallback.
- * - Position is the raw playhead plus the manual offset on every tick — no
+ * - Position is the raw playhead plus the manual offset on every tick â€” no
  *   time quantization. Reference clients sample per frame (8ms /
  *   withFrameNanos); the 60ms progress ticker feeding this list is already
  *   the coarsest step word fills can tolerate (the old 120ms bucketing
@@ -802,7 +802,11 @@ private fun ModernSyncedLyricsList(
         contentPadding = PaddingValues(top = 40.dp, bottom = 130.dp, start = 16.dp, end = 16.dp),
         verticalArrangement = Arrangement.spacedBy(26.dp),
     ) {
-        itemsIndexed(lines, key = { index, line -> "$index:${line.timeMs}" }) { index, line ->
+        itemsIndexed(
+            lines,
+            key = { index, line -> "$index:${line.timeMs}" },
+            contentType = { _, line -> if (line.hasSyllables) "syllables" else "line" },
+        ) { index, line ->
             val isActive = index == activeIndex
             val isPast = activeIndex >= 0 && index < activeIndex
             val distance = kotlin.math.abs(index - activeIndex)
@@ -816,13 +820,13 @@ private fun ModernSyncedLyricsList(
             // line-to-line move reads as the spotlight travelling instead of
             // every row breathing in and out.
             val scaleTarget = if (isActive) 1f else 0.98f
-            val scale by animateFloatAsState(
+            val scaleState = animateFloatAsState(
                 targetValue = scaleTarget,
                 animationSpec = tween(400, easing = LYRIC_EASE),
                 label = "modernLyricScale_$index",
             )
             val alphaTarget = LINE_FALLOFF_ALPHA[distance.coerceAtMost(LINE_FALLOFF_ALPHA.lastIndex)]
-            val alpha by animateFloatAsState(
+            val alphaState = animateFloatAsState(
                 targetValue = alphaTarget,
                 animationSpec = tween(320, easing = FastOutSlowInEasing),
                 label = "modernLyricAlpha_$index",
@@ -831,7 +835,7 @@ private fun ModernSyncedLyricsList(
             // back to crisp while the user is browsing.
             val blurTarget = if (isActive || isDragged || activeIndex < 0) 0f
             else LINE_FALLOFF_BLUR_DP[distance.coerceAtMost(LINE_FALLOFF_BLUR_DP.lastIndex)]
-            val blurRadius by animateFloatAsState(
+            val blurRadiusState = animateFloatAsState(
                 targetValue = blurTarget,
                 animationSpec = tween(380, easing = FastOutSlowInEasing),
                 label = "modernLyricBlur_$index",
@@ -862,10 +866,9 @@ private fun ModernSyncedLyricsList(
             val onsetWave = if (isActive && isPlaying && onsetProgress.value in 0.001f..0.999f) {
                 kotlin.math.sin(Math.PI.toFloat() * onsetProgress.value)
             } else 0f
-            val totalScale = scale * (1f + 0.020f * onsetWave)
 
             val translationYTarget = if (isActive) -3.5f else if (isPast) -1.5f else 3.5f
-            val translationY by animateFloatAsState(
+            val translationYState = animateFloatAsState(
                 targetValue = translationYTarget,
                 animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
                 label = "modernLyricTransY_$index",
@@ -877,15 +880,16 @@ private fun ModernSyncedLyricsList(
                     modifier = Modifier
                         .fillMaxWidth()
                         .graphicsLayer {
+                            val totalScale = scaleState.value * (1f + 0.020f * onsetWave)
                             transformOrigin = TransformOrigin(if (isLineRtl) 1f else 0f, 0.5f)
                             scaleX = totalScale
                             scaleY = totalScale
-                            this.translationY = (translationY + trail.value) * density
+                            this.translationY = (translationYState.value + trail.value) * density
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                                val r = blurRadius * density
+                                val r = blurRadiusState.value * density
                                 renderEffect = if (r > 0.3f) BlurEffect(r, r) else null
                             }
-                            this.alpha = alpha * if (isBgRow) (if (isActive) 0.85f else 0.55f) else 1f
+                            this.alpha = alphaState.value * if (isBgRow) (if (isActive) 0.85f else 0.55f) else 1f
                         }
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
@@ -930,7 +934,7 @@ private fun ModernSyncedLyricsList(
  * Translated or romanized copy of a line, drawn underneath it. Height grows
  * from zero with the panel's shared reveal so the list reflows softly as
  * sub-lines arrive, while the text itself rides a slightly shorter tuck and
- * an alpha ramp (alpha = reveal², so the tail of the motion is a fade rather
+ * an alpha ramp (alpha = revealÂ², so the tail of the motion is a fade rather
  * than a bare height snap). Reads [reveal] per frame in layout and draw
  * phases; the panel animates one value for the whole list.
  */
@@ -1009,10 +1013,10 @@ private fun ModernWordByWordLine(
             ) {
                 Box(Modifier.fillMaxWidth()) {
                     if (isActive) {
-                        LyricGlowText(text = line.text.ifBlank { "♪" }, style = fontStyle)
+                        LyricGlowText(text = line.text.ifBlank { "â™ª" }, style = fontStyle)
                     }
                     Text(
-                        text = line.text.ifBlank { "♪" },
+                        text = line.text.ifBlank { "â™ª" },
                         style = activeStyle,
                         color = animatedColor,
                         textAlign = TextAlign.Start,
@@ -1063,6 +1067,8 @@ private fun ModernWordByWordLine(
                 xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
             }
         }
+        val gradientBounds = remember { FloatArray(2) { -1f } }
+        var gradientIsRtl by remember { mutableStateOf<Boolean?>(null) }
 
         Column(
             modifier = modifier.fillMaxWidth(),
@@ -1170,12 +1176,17 @@ private fun ModernWordByWordLine(
                                     canvas.drawRect(0f, top, xStart, bottom, clearPaint)
                                 }
                                 if (xEnd > xStart) {
-                                    maskPaint.shader = android.graphics.LinearGradient(
-                                        xStart, 0f, xEnd, 0f,
-                                        android.graphics.Color.TRANSPARENT,
-                                        android.graphics.Color.WHITE,
-                                        android.graphics.Shader.TileMode.CLAMP,
-                                    )
+                                    if (gradientBounds[0] != xStart || gradientBounds[1] != xEnd || gradientIsRtl != true) {
+                                        gradientBounds[0] = xStart
+                                        gradientBounds[1] = xEnd
+                                        gradientIsRtl = true
+                                        maskPaint.shader = android.graphics.LinearGradient(
+                                            xStart, 0f, xEnd, 0f,
+                                            android.graphics.Color.TRANSPARENT,
+                                            android.graphics.Color.WHITE,
+                                            android.graphics.Shader.TileMode.CLAMP,
+                                        )
+                                    }
                                     canvas.drawRect(xStart, top, xEnd, bottom, maskPaint)
                                 }
                             } else {
@@ -1185,12 +1196,17 @@ private fun ModernWordByWordLine(
                                     canvas.drawRect(xEnd, top, size.width, bottom, clearPaint)
                                 }
                                 if (xEnd > xStart) {
-                                    maskPaint.shader = android.graphics.LinearGradient(
-                                        xStart, 0f, xEnd, 0f,
-                                        android.graphics.Color.WHITE,
-                                        android.graphics.Color.TRANSPARENT,
-                                        android.graphics.Shader.TileMode.CLAMP,
-                                    )
+                                    if (gradientBounds[0] != xStart || gradientBounds[1] != xEnd || gradientIsRtl != false) {
+                                        gradientBounds[0] = xStart
+                                        gradientBounds[1] = xEnd
+                                        gradientIsRtl = false
+                                        maskPaint.shader = android.graphics.LinearGradient(
+                                            xStart, 0f, xEnd, 0f,
+                                            android.graphics.Color.WHITE,
+                                            android.graphics.Color.TRANSPARENT,
+                                            android.graphics.Shader.TileMode.CLAMP,
+                                        )
+                                    }
                                     canvas.drawRect(xStart, top, xEnd, bottom, maskPaint)
                                 }
                             }
@@ -1228,7 +1244,7 @@ private const val LYRIC_GLOW_ALPHA = 0.5f
  * The active line's glow: a blurred copy of the very Text drawn on top of it.
  *
  * A TextStyle.shadow is positioned by the platform's per-glyph shadow pass,
- * which drifts off complex-script shaping — on Gurmukhi the halo lands offset
+ * which drifts off complex-script shaping â€” on Gurmukhi the halo lands offset
  * from the glyphs and reads as a second, wrong image behind the line. A
  * layout-identical duplicate (same text, style, direction and width) has the
  * same bounds by construction, for every script.
@@ -1357,7 +1373,7 @@ private fun ModernEmptyLyricsView(
  * Leaf host: collects progress ONLY for the lyrics list, so badge +
  * AnimatedContent above never recompose on ticks. Reference-client parity
  * (Metrolist/SimpMusic): the raw playhead position drives focus every tick
- * with no time quantization — word fills step at syllable granularity
+ * with no time quantization â€” word fills step at syllable granularity
  * (>=50ms), so throttling would visibly stall the karaoke highlight.
  */
 @Composable
@@ -1806,6 +1822,11 @@ private fun ModernLyricsControls(
             )
         }
 
+        val currentSecond = shown.toLong() / 1000L
+        val remainingSecond = (totalDurationMs - shown.toLong()).coerceAtLeast(0) / 1000L
+        val formattedElapsed = remember(currentSecond) { formatTime(currentSecond * 1000L) }
+        val formattedRemaining = remember(remainingSecond) { "\u2212${formatTime(remainingSecond * 1000L)}" }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1814,7 +1835,7 @@ private fun ModernLyricsControls(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                formatTime(shown.toLong()),
+                formattedElapsed,
                 style = MaterialTheme.typography.labelSmall,
                 color = Color.White.copy(alpha = 0.85f),
             )
@@ -1882,7 +1903,7 @@ private fun ModernLyricsControls(
             }
 
             Text(
-                "−${formatTime((totalDurationMs - shown.toLong()).coerceAtLeast(0))}",
+                formattedRemaining,
                 style = MaterialTheme.typography.labelSmall,
                 color = Color.White.copy(alpha = 0.85f),
             )
@@ -1985,7 +2006,7 @@ private suspend fun LazyListState.animateScrollBy(pixels: Float, durationMs: Flo
 }
 
 /** Follow-scroll duration by gap: short nudges stay crisp, whole-verse jumps
- *  glide, bounded to the calm 350–500ms band. */
+ *  glide, bounded to the calm 350â€“500ms band. */
 private fun lyricScrollDurationMs(deltaPx: Float): Float =
     (LYRIC_SCROLL_MIN_MS + kotlin.math.abs(deltaPx) * 0.35f)
         .coerceAtMost(LYRIC_SCROLL_MAX_MS)

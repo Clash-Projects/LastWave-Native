@@ -201,9 +201,9 @@ fun FeedScreen(
     val context = LocalContext.current
     val playbackState by musicPlayer.chromeState.collectAsStateWithLifecycle()
     var menuTrack by remember { mutableStateOf<YouTubeMusicTrack?>(null) }
-    // Long-press (deep press) mini tray — 3-dot buttons keep the full sheet.
+    // Long-press (deep press) mini tray â€” 3-dot buttons keep the full sheet.
     var miniTrayTrack by remember { mutableStateOf<TrackMiniTrayData?>(null) }
-    // Sections hidden via Settings → Home sections.
+    // Sections hidden via Settings â†’ Home sections.
     val hiddenSections by viewModel.hiddenHomeSections.collectAsStateWithLifecycle()
     val ytHidden by viewModel.ytMusicHiddenSections.collectAsStateWithLifecycle()
     val ytOrder by viewModel.ytMusicSectionsOrder.collectAsStateWithLifecycle()
@@ -348,7 +348,7 @@ fun FeedScreen(
                 },
             )
 
-            // Pinned YTM chip row under the app bar — stays visible while the
+            // Pinned YTM chip row under the app bar â€” stays visible while the
             // feed scrolls beneath it. Rendered only when chips exist; its
             // loading/filtering/selection behaviour is unchanged.
             if (state.homeChips.isNotEmpty()) {
@@ -634,6 +634,7 @@ fun FeedScreen(
                                         items(
                                             state.feedData.podcastShows,
                                             key = { "popular_show_${it.showId}" },
+                                            contentType = { "podcast_show" },
                                         ) { show ->
                                             Box(Modifier.animateItem()) {
                                                 com.lastwave.app.ui.feed.cards.ShelfSquareCard(
@@ -672,7 +673,7 @@ fun FeedScreen(
                             }
                         }
                     }
-                    // ...) are pinned at the top under the app bar — see the
+                    // ...) are pinned at the top under the app bar â€” see the
                     // PinnedChipsBar rendered above the LazyColumn. Loading,
                     // filtering and selection logic are unchanged; only the
                     // row's position moved from between feed sections to the top.
@@ -734,7 +735,7 @@ fun FeedScreen(
                             }
                         }
                     } else {
-                        // Native YouTube Music shelves (filtered & ordered via Settings → Home sections → YouTube Music Selection)
+                        // Native YouTube Music shelves (filtered & ordered via Settings â†’ Home sections â†’ YouTube Music Selection)
                         for ((shelfIndex, shelf) in visibleNativeShelves.withIndex()) {
                             item(key = "native_shelf_${shelfIndex}_${shelf.title}") {
                                 HomeContainerSection(
@@ -1000,7 +1001,11 @@ fun FeedScreen(
                             )
                             FeedMediaRow(
                                 content = {
-                                    items(state.feedData.mixes, key = { it.seed.videoId }) { mix ->
+                                    items(
+                                        state.feedData.mixes,
+                                        key = { it.seed.videoId },
+                                        contentType = { "feed_mix" },
+                                    ) { mix ->
                                         FeedPlaylistCard(
                                             title = mix.title,
                                             subtitle = stringResource(R.string.feed_endless_radio),
@@ -1127,7 +1132,11 @@ fun FeedScreen(
                             )
                             FeedMediaRow(
                                 content = {
-                                    items(state.feedData.recentAlbums) { album ->
+                                    items(
+                                        state.feedData.recentAlbums,
+                                        key = { "album_${it.browseId ?: it.title}_${it.artist}" },
+                                        contentType = { "recent_album" },
+                                    ) { album ->
                                         FeedMediaCard(
                                             title = album.title,
                                             subtitle = ArtistHelper.primaryArtist(album.artist),
@@ -1209,7 +1218,11 @@ fun FeedScreen(
                             )
                             FeedMediaRow(
                                 content = {
-                                    items(state.feedData.newReleases) { summary ->
+                                    items(
+                                        state.feedData.newReleases,
+                                        key = { "release_${it.id}" },
+                                        contentType = { "new_release" },
+                                    ) { summary ->
                                         FeedMediaCard(
                                             title = summary.title,
                                             subtitle = summary.author?.let(ArtistHelper::primaryArtist) ?: "Album",
@@ -1251,7 +1264,11 @@ fun FeedScreen(
                                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                                         modifier = Modifier.padding(top = 12.dp),
                                     ) {
-                                        items(state.feedData.friends) { friend ->
+                                        items(
+                                            state.feedData.friends,
+                                            key = { "friend_${it.name}" },
+                                            contentType = { "friend_avatar" },
+                                        ) { friend ->
                                             FriendAvatarCard(
                                                 friend = friend,
                                                 onClick = {
@@ -1580,7 +1597,7 @@ private fun TasteStrip(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.padding(top = 10.dp),
         ) {
-            items(tags, key = { it }) { tag ->
+            items(tags, key = { it }, contentType = { "filter_tag" }) { tag ->
                 val isLoading = launching?.equals(tag.displayName(), ignoreCase = true) == true
                 Surface(
                     onClick = { onTagClick(tag) },
@@ -1644,7 +1661,7 @@ fun HomeChipsRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier.fillMaxWidth(),
     ) {
-        items(chips, key = { it.title }) { chip ->
+        items(chips, key = { it.title }, contentType = { "filter_chip" }) { chip ->
             val isSelected = chip == selectedChip
             Surface(
                 onClick = {
@@ -1816,6 +1833,7 @@ private fun HomeShelfCard(
                                 is HomeShelfItem.PodcastShow -> "s_${item.browseId}"
                             }
                         },
+                        contentType = { _, item -> item::class.java.simpleName },
                     ) { _, shelfItem ->
                         Box(Modifier.animateItem()) {
                             NativeShelfItemCard(
@@ -1918,7 +1936,7 @@ private fun PodcastEpisodeItemCard(
     val infoLine = listOfNotNull(
         ep.subtitle?.takeIf { it.isNotBlank() },
         ep.showName?.takeIf { it.isNotBlank() },
-    ).joinToString(" • ")
+    ).joinToString(" â€¢ ")
 
     com.lastwave.app.ui.feed.cards.ShelfPodcastEpisodeCard(
         title = ep.title,
@@ -1999,7 +2017,7 @@ private fun playlistInfoLine(p: com.lastwave.app.data.music.YouTubePlaylistSumma
     listOfNotNull(
         p.author,
         p.trackCountText,
-    ).joinToString(" • ").ifBlank { p.author.orEmpty() }
+    ).joinToString(" â€¢ ").ifBlank { p.author.orEmpty() }
 
 private fun openPlaylistOrAlbum(
     playlist: com.lastwave.app.data.music.YouTubePlaylistSummary,
@@ -2063,7 +2081,7 @@ private fun SquareItemCard(
             val ep = shelfItem
             com.lastwave.app.ui.feed.cards.ShelfSquareCard(
                 title = ep.title,
-                infoLine = listOfNotNull(ep.subtitle, ep.showName).joinToString(" • "),
+                infoLine = listOfNotNull(ep.subtitle, ep.showName).joinToString(" â€¢ "),
                 artworkUrl = ep.artworkUrl,
                 fallbackIcon = Icons.Filled.Mic,
                 onClick = { onPlayTrack(ep.toYouTubeMusicTrack(), shelfTitle) },
@@ -2121,7 +2139,7 @@ private fun WideItemCard(
             val ep = shelfItem
             com.lastwave.app.ui.feed.cards.ShelfWideCard(
                 title = ep.title,
-                infoLine = listOfNotNull(ep.subtitle, ep.showName).joinToString(" • "),
+                infoLine = listOfNotNull(ep.subtitle, ep.showName).joinToString(" â€¢ "),
                 artworkUrl = ep.artworkUrl,
                 onClick = { onPlayTrack(ep.toYouTubeMusicTrack(), shelfTitle) },
                 cardWidth = com.lastwave.app.ui.feed.cards.rememberWideCardWidth(),
@@ -2180,7 +2198,7 @@ private fun FeaturedItemCard(
             val ep = shelfItem
             com.lastwave.app.ui.feed.cards.ShelfFeaturedCard(
                 title = ep.title,
-                artist = listOfNotNull(ep.subtitle, ep.showName).joinToString(" • "),
+                artist = listOfNotNull(ep.subtitle, ep.showName).joinToString(" â€¢ "),
                 artworkUrl = ep.artworkUrl,
                 caption = shelfItem.caption,
                 onClick = { onPlayTrack(ep.toYouTubeMusicTrack(), shelfTitle) },
@@ -2347,7 +2365,11 @@ private fun QuickTilesGrid(
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        items(tiles) { tile ->
+        items(
+            items = tiles,
+            key = { "tile_${it.title}_${it.collection}" },
+            contentType = { "quick_tile" },
+        ) { tile ->
             QuickTileCard(
                 tile = tile,
                 onClick = { onTileClick(tile) },
@@ -2752,7 +2774,7 @@ private fun RecentTrackCard(
     val context = LocalContext.current
     val ago = remember(track.date?.uts, track.url) { relativeTime(context, track.date?.uts) }
     val primaryArtistName = remember(track.artist.displayName) { ArtistHelper.primaryArtist(track.artist.displayName) }
-    val subtitle = if (ago != null) "$primaryArtistName · $ago" else primaryArtistName
+    val subtitle = if (ago != null) "$primaryArtistName Â· $ago" else primaryArtistName
     val haptics = LocalHapticFeedback.current
     val cardWidth = rememberSquareCardWidth()
     val coverHeight = rememberCoverHeight()

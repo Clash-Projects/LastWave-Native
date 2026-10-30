@@ -209,10 +209,32 @@ fun WavySeekBar(
     val layer3Dark = remember(effectivePrimary) { effectivePrimary.shiftTonal(lightnessDelta = -0.14f, saturationScale = 1.35f) }
     val thumbColor = remember(effectivePrimary) { effectivePrimary.shiftTonal(lightnessDelta = -0.06f, saturationScale = 1.15f) }
 
+    val layer1Colors = remember(layer1Light, layer1Dark, isTranslucent) {
+        listOf(
+            layer1Light.copy(alpha = if (isTranslucent) 0.42f else 0.38f),
+            layer1Dark.copy(alpha = if (isTranslucent) 0.32f else 0.28f),
+        )
+    }
+    val layer2Colors = remember(layer2Dark, layer2Light, isTranslucent) {
+        listOf(
+            layer2Dark.copy(alpha = if (isTranslucent) 0.72f else 0.66f),
+            layer2Light.copy(alpha = if (isTranslucent) 0.62f else 0.56f),
+        )
+    }
+    val layer3Colors = remember(layer3Light, layer3Dark, isTranslucent) {
+        listOf(
+            layer3Light.copy(alpha = if (isTranslucent) 0.98f else 0.95f),
+            layer3Dark.copy(alpha = if (isTranslucent) 0.92f else 0.88f),
+        )
+    }
+    val baselineColors = remember(layer3Light, layer3Dark) {
+        listOf(layer3Light, layer3Dark)
+    }
+
     // Fluid wave animations
     val infiniteTransition = rememberInfiniteTransition(label = "MaterialGlassWaveAnimation")
 
-    val phase1 by infiniteTransition.animateFloat(
+    val phase1 = infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2 * PI).toFloat(),
         animationSpec = infiniteRepeatable(
@@ -222,7 +244,7 @@ fun WavySeekBar(
         label = "Phase1",
     )
 
-    val phase2 by infiniteTransition.animateFloat(
+    val phase2 = infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2 * PI).toFloat(),
         animationSpec = infiniteRepeatable(
@@ -232,7 +254,7 @@ fun WavySeekBar(
         label = "Phase2",
     )
 
-    val phase3 by infiniteTransition.animateFloat(
+    val phase3 = infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2 * PI).toFloat(),
         animationSpec = infiniteRepeatable(
@@ -243,9 +265,6 @@ fun WavySeekBar(
     )
 
     val wavesActive = isPlaying && !dragging
-    val currPhase1 = if (wavesActive) phase1 + 2.2f else 2.2f
-    val currPhase2 = if (wavesActive) phase2 + 1.2f else 1.2f
-    val currPhase3 = if (wavesActive) phase3 else 0f
 
     // 3-Tier Amplitudes with smooth dampening on seek
     val density = LocalDensity.current
@@ -254,17 +273,17 @@ fun WavySeekBar(
     val baseAmp3Px = with(density) { 7.5.dp.toPx() }  // Foreground luminous glass layer
     val draggingAmpPx = with(density) { 1.2.dp.toPx() }
 
-    val amp1 by animateFloatAsState(
+    val amp1 = animateFloatAsState(
         targetValue = if (dragging) draggingAmpPx else baseAmp1Px,
         animationSpec = tween(durationMillis = 180),
         label = "Amp1",
     )
-    val amp2 by animateFloatAsState(
+    val amp2 = animateFloatAsState(
         targetValue = if (dragging) draggingAmpPx else baseAmp2Px,
         animationSpec = tween(durationMillis = 180),
         label = "Amp2",
     )
-    val amp3 by animateFloatAsState(
+    val amp3 = animateFloatAsState(
         targetValue = if (dragging) draggingAmpPx else baseAmp3Px,
         animationSpec = tween(durationMillis = 180),
         label = "Amp3",
@@ -292,7 +311,7 @@ fun WavySeekBar(
     Column(modifier = modifier.fillMaxWidth()) {
         // Playback progress is time, not directional content: pin the whole
         // block (custom LTR Canvas drawing + invisible Material Slider touch
-        // layer + time labels) to LTR. In RTL locales (Arabic, …) the Slider
+        // layer + time labels) to LTR. In RTL locales (Arabic, â€¦) the Slider
         // would otherwise mirror its gesture mapping while the drawing stays
         // LTR, inverting drag direction.
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
@@ -382,9 +401,13 @@ fun WavySeekBar(
                             filled.close()
                         }
 
-                        populateWave(pathFilled1, pathContour1, waveLength1Px, amp1, currPhase1)
-                        populateWave(pathFilled2, pathContour2, waveLength2Px, amp2, currPhase2)
-                        populateWave(pathFilled3, pathContour3, waveLength3Px, amp3, currPhase3)
+                        val currPhase1 = if (wavesActive) phase1.value + 2.2f else 2.2f
+                        val currPhase2 = if (wavesActive) phase2.value + 1.2f else 1.2f
+                        val currPhase3 = if (wavesActive) phase3.value else 0f
+
+                        populateWave(pathFilled1, pathContour1, waveLength1Px, amp1.value, currPhase1)
+                        populateWave(pathFilled2, pathContour2, waveLength2Px, amp2.value, currPhase2)
+                        populateWave(pathFilled3, pathContour3, waveLength3Px, amp3.value, currPhase3)
 
                         val activeWidth = thumbX.coerceAtLeast(1f)
 
@@ -392,10 +415,7 @@ fun WavySeekBar(
                         drawPath(
                             path = pathContour1,
                             brush = Brush.horizontalGradient(
-                                colors = listOf(
-                                    layer1Light.copy(alpha = if (isTranslucent) 0.42f else 0.38f),
-                                    layer1Dark.copy(alpha = if (isTranslucent) 0.32f else 0.28f),
-                                ),
+                                colors = layer1Colors,
                                 startX = 0f,
                                 endX = activeWidth,
                             ),
@@ -406,10 +426,7 @@ fun WavySeekBar(
                         drawPath(
                             path = pathContour2,
                             brush = Brush.horizontalGradient(
-                                colors = listOf(
-                                    layer2Dark.copy(alpha = if (isTranslucent) 0.72f else 0.66f),
-                                    layer2Light.copy(alpha = if (isTranslucent) 0.62f else 0.56f),
-                                ),
+                                colors = layer2Colors,
                                 startX = 0f,
                                 endX = activeWidth,
                             ),
@@ -420,10 +437,7 @@ fun WavySeekBar(
                         drawPath(
                             path = pathContour3,
                             brush = Brush.horizontalGradient(
-                                colors = listOf(
-                                    layer3Light.copy(alpha = if (isTranslucent) 0.98f else 0.95f),
-                                    layer3Dark.copy(alpha = if (isTranslucent) 0.92f else 0.88f),
-                                ),
+                                colors = layer3Colors,
                                 startX = 0f,
                                 endX = activeWidth,
                             ),
@@ -433,7 +447,7 @@ fun WavySeekBar(
                         // 3. Crisp Baseline Bar with Light -> Dark dynamic gradient
                         drawLine(
                             brush = Brush.horizontalGradient(
-                                colors = listOf(layer3Light, layer3Dark),
+                                colors = baselineColors,
                                 startX = 0f,
                                 endX = activeWidth,
                             ),
@@ -507,6 +521,12 @@ fun WavySeekBar(
             Spacer(Modifier.height(2.dp))
 
             // Time labels
+            val currentSecond = shownMs / 1000L
+            val remainingSecond = if (boundedDurationMs > 0L) (boundedDurationMs - shownMs).coerceAtLeast(0) / 1000L else -1L
+            val formattedElapsed = remember(currentSecond) { formatTime(currentSecond * 1000L) }
+            val formattedRemaining = remember(remainingSecond, boundedDurationMs) {
+                if (boundedDurationMs > 0L) "\u2212${formatTime(remainingSecond * 1000L)}" else "--:--"
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -514,12 +534,12 @@ fun WavySeekBar(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    text = formatTime(shownMs),
+                    text = formattedElapsed,
                     style = if (isTranslucent) MaterialTheme.typography.labelSmall.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium) else MaterialTheme.typography.labelMedium,
                     color = textColor,
                 )
                 Text(
-                    text = if (boundedDurationMs > 0L) "−${formatTime((boundedDurationMs - shownMs).coerceAtLeast(0))}" else "--:--",
+                    text = formattedRemaining,
                     style = if (isTranslucent) MaterialTheme.typography.labelSmall.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium) else MaterialTheme.typography.labelMedium,
                     color = textColor,
                 )

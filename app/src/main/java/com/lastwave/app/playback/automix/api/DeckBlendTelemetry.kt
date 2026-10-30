@@ -37,12 +37,13 @@ data class TrackChromeSummary(
  * and Collapsed Mini-Player chrome.
  */
 @Immutable
+@androidx.compose.runtime.Immutable
 data class DeckBlendTelemetry(
     val phase: BlendPhase = BlendPhase.IDLE,
     val blendProgress: Float = 0.0f, // 0.0f..1.0f clamped strictly to Material 3 range
     val activeTransitionStyle: TransitionStyle = TransitionStyle.PERCEPTUAL_FADE,
     val syncedBpm: Float? = null,
-    val harmonicKeyPair: String? = null, // e.g. "8A → 9A"
+    val harmonicKeyPair: String? = null, // e.g. "8A â†’ 9A"
     val spliceStartPositionMs: Long = 0L,
     val spliceDurationMs: Long = 5_000L, // 1,000ms up to 30,000ms
     val incomingTrackPreview: TrackChromeSummary? = null,

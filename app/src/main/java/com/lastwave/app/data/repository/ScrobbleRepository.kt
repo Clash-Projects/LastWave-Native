@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
@@ -148,68 +150,70 @@ class ScrobbleRepository @Inject constructor(
         }
     }
 
-    private suspend fun signedCall(method: String, extra: Map<String, String>): Result = callMutex.withLock {
-        val session = sessionPreferences.session.first()
-        if (session.apiKey.isBlank() || session.apiSecret.isBlank()) {
-            return Result.Failed("API credentials missing")
-        }
-        if (session.sessionKey.isBlank()) {
-            return Result.NoSessionKey
-        }
-
-        // A rate-limit cooldown is active: WAIT it out (bounded) instead of
-        // failing instantly — writes are background work and waiting keeps the
-        // scrobble alive. The guard's cooldown is adaptive and shared with the
-        // network interceptor, so this window is short and self-healing.
-        if (!rateGuard.suspendAwaitClearance(WRITE_COOLDOWN_WAIT_MS)) {
-            return Result.Failed(
-                "Rate limit cooldown active — queued for retry",
-                retryable = true,
-            )
-        }
-
-        // Keep signed writes spaced out on top of the global pacer; Last.fm is
-        // stricter about authenticated write endpoints than reads.
-        val sinceLastWrite = SystemClock.elapsedRealtime() - lastWriteAtElapsed
-        if (sinceLastWrite in 1 until WRITE_SPACING_MS) {
-            delay(WRITE_SPACING_MS - sinceLastWrite)
-        }
-
-        return try {
-            val signParams = extra + mapOf(
-                "method" to method,
-                "sk" to session.sessionKey,
-                "api_key" to session.apiKey,
-            )
-            val sig = LastFmSigner.sign(signParams, session.apiSecret)
-            val body = signParams + mapOf("api_sig" to sig, "format" to "json")
-            val response = api.post(body)
-            lastWriteAtElapsed = SystemClock.elapsedRealtime()
-
-            if (response.code() == 429) {
-                rateGuard.onRequestLimited()
-                return Result.Failed("Last.fm rate limited (429)", retryable = true)
+    private suspend fun signedCall(method: String, extra: Map<String, String>): Result = withContext(Dispatchers.IO) {
+        callMutex.withLock {
+            val session = sessionPreferences.session.first()
+            if (session.apiKey.isBlank() || session.apiSecret.isBlank()) {
+                return@withLock Result.Failed("API credentials missing")
+            }
+            if (session.sessionKey.isBlank()) {
+                return@withLock Result.NoSessionKey
             }
 
-            val text = response.body()?.string() ?: return Result.Failed("Empty response from Last.fm")
-            val parsed = json.parseToJsonElement(text).jsonObject
-            val errorCode = (parsed["error"] as? kotlinx.serialization.json.JsonPrimitive)?.intOrNull
-            if (errorCode != null) {
-                if (errorCode == 29) {
+            // A rate-limit cooldown is active: WAIT it out (bounded) instead of
+            // failing instantly — writes are background work and waiting keeps the
+            // scrobble alive. The guard's cooldown is adaptive and shared with the
+            // network interceptor, so this window is short and self-healing.
+            if (!rateGuard.suspendAwaitClearance(WRITE_COOLDOWN_WAIT_MS)) {
+                return@withLock Result.Failed(
+                    "Rate limit cooldown active — queued for retry",
+                    retryable = true,
+                )
+            }
+
+            // Keep signed writes spaced out on top of the global pacer; Last.fm is
+            // stricter about authenticated write endpoints than reads.
+            val sinceLastWrite = SystemClock.elapsedRealtime() - lastWriteAtElapsed
+            if (sinceLastWrite in 1 until WRITE_SPACING_MS) {
+                delay(WRITE_SPACING_MS - sinceLastWrite)
+            }
+
+            try {
+                val signParams = extra + mapOf(
+                    "method" to method,
+                    "sk" to session.sessionKey,
+                    "api_key" to session.apiKey,
+                )
+                val sig = LastFmSigner.sign(signParams, session.apiSecret)
+                val body = signParams + mapOf("api_sig" to sig, "format" to "json")
+                val response = api.post(body)
+                lastWriteAtElapsed = SystemClock.elapsedRealtime()
+
+                if (response.code() == 429) {
                     rateGuard.onRequestLimited()
-                    return Result.Failed("Last.fm rate limited (error 29)", retryable = true)
+                    return@withLock Result.Failed("Last.fm rate limited (429)", retryable = true)
                 }
-                Result.Failed("Last.fm error $errorCode")
-            } else {
-                rateGuard.onRequestSucceeded()
-                Result.Success
+
+                val text = response.body()?.string() ?: return@withLock Result.Failed("Empty response from Last.fm")
+                val parsed = json.parseToJsonElement(text).jsonObject
+                val errorCode = (parsed["error"] as? kotlinx.serialization.json.JsonPrimitive)?.intOrNull
+                if (errorCode != null) {
+                    if (errorCode == 29) {
+                        rateGuard.onRequestLimited()
+                        return@withLock Result.Failed("Last.fm rate limited (error 29)", retryable = true)
+                    }
+                    Result.Failed("Last.fm error $errorCode")
+                } else {
+                    rateGuard.onRequestSucceeded()
+                    Result.Success
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (e: IOException) {
+                Result.Failed(e.message ?: "Could not reach Last.fm", retryable = true)
+            } catch (e: Exception) {
+                Result.Failed(e.message ?: "Could not reach Last.fm")
             }
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (e: IOException) {
-            Result.Failed(e.message ?: "Could not reach Last.fm", retryable = true)
-        } catch (e: Exception) {
-            Result.Failed(e.message ?: "Could not reach Last.fm")
         }
     }
 

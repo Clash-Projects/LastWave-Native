@@ -378,6 +378,8 @@ fun FluidArtworkBackground(
     }
 
     var seconds by remember { mutableFloatStateOf(0f) }
+    var cachedSigma by remember { mutableFloatStateOf(0f) }
+    var cachedRenderEffect by remember { mutableStateOf<androidx.compose.ui.graphics.RenderEffect?>(null) }
     val shouldPauseLoop = extraBlur && !lyricsRotatingBackgroundEnabled
     LaunchedEffect(!shouldPauseLoop) {
         if (shouldPauseLoop) return@LaunchedEffect
@@ -408,12 +410,15 @@ fun FluidArtworkBackground(
                         alpha = appear.value
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                             val sigma = fluidBlurSigma(size.width, size.height, extraBlur)
-                            // A haunted GPU driver must cost us the blur, never the process.
-                            renderEffect = runCatching {
-                                RenderEffect
-                                    .createBlurEffect(sigma, sigma, Shader.TileMode.CLAMP)
-                                    .asComposeRenderEffect()
-                            }.getOrNull()
+                            if (sigma != cachedSigma || cachedRenderEffect == null) {
+                                cachedSigma = sigma
+                                cachedRenderEffect = runCatching {
+                                    RenderEffect
+                                        .createBlurEffect(sigma, sigma, Shader.TileMode.CLAMP)
+                                        .asComposeRenderEffect()
+                                }.getOrNull()
+                            }
+                            renderEffect = cachedRenderEffect
                         }
                     }
                     .drawBehind {

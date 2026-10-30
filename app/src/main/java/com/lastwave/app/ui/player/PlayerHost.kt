@@ -670,7 +670,7 @@ class PlayerViewModel @Inject constructor(
                 // once so word fill, line focus and auto-scroll all read the
                 // same edge-to-edge clock, then provider fragments are merged
                 // into whitespace-true words so spacing and punctuation render
-                // as authored. Rows are never merged or re-timed here — that
+                // as authored. Rows are never merged or re-timed here â€” that
                 // grouping is what broke line-by-line sync (two sung lines
                 // shown as one, focus arriving late). Word-sync rows render
                 // word-by-word; rows without syllables fall back to
@@ -773,7 +773,7 @@ class PlayerViewModel @Inject constructor(
     fun toggleLiked(track: PlayableTrack) {
         viewModelScope.launch {
             // The like write reads Liked Songs, replaces its tracks, then
-            // mirrors to Last.fm — any step can fail while a sync pass holds
+            // mirrors to Last.fm â€” any step can fail while a sync pass holds
             // the database. An uncaught exception in this launch takes the
             // process down, so report it like the other playlist mutations.
             val change = try {
@@ -1330,10 +1330,6 @@ private fun MiniPlayer(
                 animationSpec = ExpressiveMotion.spatialDefault(),
                 label = "m3MiniPlayPauseCorner",
             )
-            val progressStateValue by progressState.collectAsStateWithLifecycle()
-            val currentProgress = if (progressStateValue.durationMs > 0) {
-                (progressStateValue.positionMs.toFloat() / progressStateValue.durationMs).coerceIn(0f, 1f)
-            } else 0f
 
             Surface(
                 shape = CircleShape,
@@ -1446,8 +1442,13 @@ private fun MiniPlayer(
 
 @Composable
 private fun MiniPlayerProgress(progressState: StateFlow<PlaybackProgressState>) {
-    val state by progressState.collectAsStateWithLifecycle()
-    val progress = if (state.durationMs > 0) state.positionMs.toFloat() / state.durationMs else 0f
+    val progressFractionState = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(progressState) {
+        progressState.collect { s ->
+            val p = if (s.durationMs > 0) s.positionMs.toFloat() / s.durationMs else 0f
+            progressFractionState.floatValue = p
+        }
+    }
     Box(
         Modifier
             .fillMaxWidth()
@@ -1462,7 +1463,7 @@ private fun MiniPlayerProgress(progressState: StateFlow<PlaybackProgressState>) 
             Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    scaleX = progress.coerceIn(0f, 1f)
+                    scaleX = progressFractionState.floatValue.coerceIn(0f, 1f)
                     transformOrigin = TransformOrigin(0f, 0.5f)
                 }
                 .background(MaterialTheme.colorScheme.primary),
@@ -1508,7 +1509,7 @@ fun PlayingWaveBars(
 
     val content: @Composable () -> Unit = {
         // Fixed small badge content so it can never expand to fill the cover.
-        // Outer Box is 26x22 (16+5+5, 12+5+5) — always tiny, bottom-end aligned by caller.
+        // Outer Box is 26x22 (16+5+5, 12+5+5) â€” always tiny, bottom-end aligned by caller.
         androidx.compose.foundation.layout.Box(
             modifier = Modifier
                 .padding(horizontal = 5.dp, vertical = 5.dp)
@@ -1946,8 +1947,8 @@ private fun AddToPlaylistDialog(
                                     )
                                     Text(
                                         when {
-                                            isCheckingDuplicates && selected -> "$countLabel · Checking contents…"
-                                            alreadyAdded -> "$countLabel · Already added"
+                                            isCheckingDuplicates && selected -> "$countLabel Â· Checking contentsâ€¦"
+                                            alreadyAdded -> "$countLabel Â· Already added"
                                             else -> countLabel
                                         },
                                         style = MaterialTheme.typography.bodyMedium,
@@ -2033,17 +2034,23 @@ private fun LyricsDynamicAmbientBackdrop(
 
     if (lyricsBackdropAlpha <= 0.001f) return
 
-    val progress by progressState.collectAsStateWithLifecycle()
     val lines = (lyricsState as? LyricsUiState.Success)?.lines.orEmpty()
-    val activeLine by remember(lines) {
-        derivedStateOf {
+    val activeLineState = remember(lines, lyricsOffsetMs) {
+        mutableIntStateOf(
+            if (lines.isNotEmpty()) activeLineIndex(lines, progressState.value.positionMs + lyricsOffsetMs).coerceAtLeast(0) else 0
+        )
+    }
+    LaunchedEffect(progressState, lines, lyricsOffsetMs) {
+        progressState.collect { p ->
             if (lines.isNotEmpty()) {
-                activeLineIndex(lines, progress.positionMs + lyricsOffsetMs).coerceAtLeast(0)
-            } else {
-                0
+                val idx = activeLineIndex(lines, p.positionMs + lyricsOffsetMs).coerceAtLeast(0)
+                if (idx != activeLineState.intValue) {
+                    activeLineState.intValue = idx
+                }
             }
         }
     }
+    val activeLine = activeLineState.intValue
 
     // Micro-modulation strictly bounded within the cover art's palette tone:
     // angle advances gently per line index:
@@ -2091,50 +2098,44 @@ private fun LyricsDynamicAmbientBackdrop(
         // Dark scrim underlay to protect contrast and eliminate visibility issues
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.36f)))
 
-        // Primary cover art ambient orb (subtle line-by-line micro-shift)
+        // Primary, Secondary, and Deep anchor orbs drawn in drawBehind with identical visuals
         Box(
             Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.radialGradient(
-                        0f to animatedColor1.copy(alpha = 0.50f),
-                        0.48f to animatedColor1.copy(alpha = 0.18f),
-                        1f to Color.Transparent,
-                        center = Offset(bgWidth * animCenterX1, bgHeight * animCenterY1),
-                        radius = bgMaxDimension * 0.85f,
+                .drawBehind {
+                    drawRect(
+                        brush = Brush.radialGradient(
+                            0f to animatedColor1.copy(alpha = 0.50f),
+                            0.48f to animatedColor1.copy(alpha = 0.18f),
+                            1f to Color.Transparent,
+                            center = Offset(bgWidth * animCenterX1, bgHeight * animCenterY1),
+                            radius = bgMaxDimension * 0.85f,
+                        )
                     )
-                )
-        )
-        // Secondary cover art companion orb
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.radialGradient(
-                        0f to animatedColor2.copy(alpha = 0.44f),
-                        0.50f to animatedColor2.copy(alpha = 0.15f),
-                        1f to Color.Transparent,
-                        center = Offset(bgWidth * animCenterX2, bgHeight * animCenterY2),
-                        radius = bgMaxDimension * 0.78f,
+                    drawRect(
+                        brush = Brush.radialGradient(
+                            0f to animatedColor2.copy(alpha = 0.44f),
+                            0.50f to animatedColor2.copy(alpha = 0.15f),
+                            1f to Color.Transparent,
+                            center = Offset(bgWidth * animCenterX2, bgHeight * animCenterY2),
+                            radius = bgMaxDimension * 0.78f,
+                        )
                     )
-                )
-        )
-        // Deep anchor orb
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.radialGradient(
-                        0f to animatedColor3.copy(alpha = 0.36f),
-                        0.55f to animatedColor3.copy(alpha = 0.12f),
-                        1f to Color.Transparent,
-                        center = Offset(bgWidth * 0.18f, bgHeight * 0.84f),
-                        radius = bgMaxDimension * 0.70f,
+                    drawRect(
+                        brush = Brush.radialGradient(
+                            0f to animatedColor3.copy(alpha = 0.36f),
+                            0.55f to animatedColor3.copy(alpha = 0.12f),
+                            1f to Color.Transparent,
+                            center = Offset(bgWidth * 0.18f, bgHeight * 0.84f),
+                            radius = bgMaxDimension * 0.70f,
+                        )
                     )
-                )
+                }
         )
     }
 }
+
+private val ambientPaletteCache = androidx.collection.LruCache<String, Triple<Color, Color, Color>>(64)
 
 @Composable
 private fun FullPlayer(
@@ -2198,7 +2199,7 @@ private fun FullPlayer(
         }
     }
     var canvasAspect by remember(activeCanvas?.url) { mutableFloatStateOf(0f) }
-    // How much of the hero the canvas currently covers — its own fade-in alpha
+    // How much of the hero the canvas currently covers â€” its own fade-in alpha
     // times the presentation alpha. The static hero fades out in step with it,
     // so the cover never shows through the video (its bottom fade, its 320 ms
     // reveal, the repaint window on a track change) and the two never fight for
@@ -2297,7 +2298,14 @@ private fun FullPlayer(
         val url = resolvedAmbientUrl?.takeIf { it.isNotBlank() }
             ?: ArtworkNormalizer.upscaleYoutubeArtwork(track.artworkUrl)?.takeIf { it.isNotBlank() }
             ?: return@LaunchedEffect
-        withContext(Dispatchers.IO) {
+        val cached = ambientPaletteCache.get(url)
+        if (cached != null) {
+            ambientPrimary = cached.first
+            ambientSecondary = cached.second
+            ambientTertiary = cached.third
+            return@LaunchedEffect
+        }
+        withContext(Dispatchers.Default) {
             runCatching {
                 val request = ImageRequest.Builder(context)
                     .data(url)
@@ -2310,9 +2318,22 @@ private fun FullPlayer(
                 val p = palette.vibrantSwatch ?: palette.dominantSwatch ?: palette.mutedSwatch
                 val s = palette.lightVibrantSwatch ?: palette.darkVibrantSwatch ?: palette.mutedSwatch ?: palette.dominantSwatch
                 val t = palette.darkVibrantSwatch ?: palette.darkMutedSwatch ?: palette.dominantSwatch
-                if (p != null) ambientPrimary = Color(p.rgb)
-                if (s != null) ambientSecondary = Color(s.rgb)
-                if (t != null) ambientTertiary = Color(t.rgb)
+                val cP = p?.let { Color(it.rgb) }
+                val cS = s?.let { Color(it.rgb) }
+                val cT = t?.let { Color(it.rgb) }
+                if (cP != null) ambientPrimary = cP
+                if (cS != null) ambientSecondary = cS
+                if (cT != null) ambientTertiary = cT
+                if (cP != null || cS != null || cT != null) {
+                    ambientPaletteCache.put(
+                        url,
+                        Triple(
+                            cP ?: Color.Transparent,
+                            cS ?: Color.Transparent,
+                            cT ?: Color.Transparent,
+                        ),
+                    )
+                }
             }
         }
     }
@@ -2360,7 +2381,7 @@ private fun FullPlayer(
     }
 
     // Unconditional remember keeps composition stable; usage gated by glass flag.
-    // Single backdrop, sibling source below — never nest glass inside its own capture.
+    // Single backdrop, sibling source below â€” never nest glass inside its own capture.
     val playerBackdrop = rememberLayerBackdrop()
     val fullGlass = LocalLiquidGlass.current && isLiquidGlassBackdropSupported()
 
@@ -2625,7 +2646,7 @@ private fun FullPlayer(
                 }
 
                 // Lyrics tab backdrop: instead of stacking ever more dim over
-                // the fluid, the artwork itself takes over — a full-bleed
+                // the fluid, the artwork itself takes over â€” a full-bleed
                 // blurred cover under a soft scrim, so the backdrop keeps the
                 // album's colours and composition (a touch darker than the
                 // reference progression for a calmer read).
@@ -2675,7 +2696,7 @@ private fun FullPlayer(
                     .windowInsetsPadding(WindowInsets.safeDrawing),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                // ── Header: slimmer, calmer, premium ─────────────────────
+                // â”€â”€ Header: slimmer, calmer, premium â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                 val showHeader = !lyricsFullscreen && (currentTab != FullPlayerTab.LYRICS || lyricsControlsVisible || showLyricsOffsetDialog || showTrackMenu)
                 AnimatedVisibility(
                     visible = showHeader,
@@ -2702,7 +2723,7 @@ private fun FullPlayer(
                                 .playerVerticalSwipe(enabled = currentTab != FullPlayerTab.NOW_PLAYING),
                         ) {
                             // FullPlayer sits on a dark blurred-artwork scrim in both light and
-                            // dark mode, so foreground must use the white overlay palette —
+                            // dark mode, so foreground must use the white overlay palette â€”
                             // never MaterialTheme onSurface (near-black in light mode).
                             LiquidGlassSurface(
                                 onClick = {
@@ -2747,7 +2768,7 @@ private fun FullPlayer(
                                 )
                                 Text(
                                     if (currentTab == FullPlayerTab.LYRICS) {
-                                        "${track.title} • ${track.artist}"
+                                        "${track.title} â€¢ ${track.artist}"
                                     } else {
                                         state.sourceLabel.takeIf { it.isNotBlank() } ?: "LastWave"
                                     },
@@ -2924,7 +2945,7 @@ private fun FullPlayer(
                                     onEnterFullscreen = { isVideoFullscreen = true },
                                 )
                             } else {
-                                // ── Standard layout (lifted and balanced) ──────
+                                // â”€â”€ Standard layout (lifted and balanced) â”€â”€â”€â”€â”€â”€
                                 Column(
                                     Modifier.fillMaxSize().padding(horizontal = 20.dp).padding(bottom = 12.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -4065,7 +4086,7 @@ internal fun PlayerProgressSlider(
 
     // Playback progress is time, not directional content: pin to LTR so the
     // Material Slider's touch mapping always matches the LTR custom drawing,
-    // even in RTL locales (Arabic, …) where Slider would otherwise mirror.
+    // even in RTL locales (Arabic, â€¦) where Slider would otherwise mirror.
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
     Slider(
         value = value,
@@ -4330,6 +4351,10 @@ private fun SeekBar(
         Spacer(Modifier.height(2.dp))
 
         // Time labels
+        val currentSecond = shownMs / 1000L
+        val remainingSecond = (boundedDurationMs - shownMs).coerceAtLeast(0) / 1000L
+        val formattedElapsed = remember(currentSecond) { formatTime(currentSecond * 1000L) }
+        val formattedRemaining = remember(remainingSecond) { "\u2212${formatTime(remainingSecond * 1000L)}" }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -4337,12 +4362,12 @@ private fun SeekBar(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text = formatTime(shownMs),
+                text = formattedElapsed,
                 style = if (isTranslucent) MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium) else MaterialTheme.typography.labelMedium,
                 color = textColor,
             )
             Text(
-                text = "−${formatTime((boundedDurationMs - shownMs).coerceAtLeast(0))}",
+                text = formattedRemaining,
                 style = if (isTranslucent) MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium) else MaterialTheme.typography.labelMedium,
                 color = textColor,
             )
@@ -4415,7 +4440,7 @@ private fun MainControls(state: MusicPlayerState, player: MusicPlayer, isTranslu
         // capability + backdrop all hold. The old contentColor checked only
         // the *setting*, so setting-ON with an inactive effect (incapable
         // device, missing backdrop) rendered a white icon on the solid-white
-        // fallback below — the "whole white" play button. Gating content on
+        // fallback below â€” the "whole white" play button. Gating content on
         // the same active flag closes that mismatch for every path.
         val isPillGlassActive = LocalLiquidGlass.current &&
             isLiquidGlassBackdropSupported() &&
@@ -4656,7 +4681,7 @@ private fun DeckWaveform(
                         )
                     }
                     Text(
-                        text = if (trackTitle.isNotBlank()) "$trackTitle • $trackArtist" else "Standby Deck Empty",
+                        text = if (trackTitle.isNotBlank()) "$trackTitle â€¢ $trackArtist" else "Standby Deck Empty",
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface,
@@ -4901,7 +4926,7 @@ private fun AppleMusicQualityBadge(
 
     val displayTitle = when {
         isMixActive -> {
-            val bpm = state.deckBlendTelemetry.syncedBpm?.let { " · ${it.toInt()} BPM" } ?: ""
+            val bpm = state.deckBlendTelemetry.syncedBpm?.let { " Â· ${it.toInt()} BPM" } ?: ""
             "AutoMix$bpm"
         }
         isFadeActive -> "Crossfade"
@@ -4959,7 +4984,7 @@ private fun AppleMusicQualityBadge(
             Spacer(Modifier.width(5.dp))
             val fullText = when {
                 isMixActive || isFadeActive -> displayTitle
-                baseLabel.isNotBlank() && !baseLabel.equals(displayTitle, ignoreCase = true) && !baseLabel.equals("AUDIO", ignoreCase = true) -> "$displayTitle · $baseLabel"
+                baseLabel.isNotBlank() && !baseLabel.equals(displayTitle, ignoreCase = true) && !baseLabel.equals("AUDIO", ignoreCase = true) -> "$displayTitle Â· $baseLabel"
                 else -> displayTitle
             }
             Text(
@@ -5385,7 +5410,7 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
     val currentQueue by rememberUpdatedState(state.queue)
     val currentQueueKeys by rememberUpdatedState(queueKeys)
     // Abort a stale drag if the queue itself changes underneath us
-    // (track ended, clear-upcoming, fresh playQueue, …).
+    // (track ended, clear-upcoming, fresh playQueue, â€¦).
     LaunchedEffect(state.queue.size) {
         if (draggingIndex >= state.queue.size) {
             draggingIndex = -1
@@ -5407,7 +5432,7 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
     }
     // True upcoming play order (shuffle/repeat aware). Under shuffle the list
     // below stays in playlist order, so without this strip you can never tell
-    // what plays next — and Play-next adds look "lost".
+    // what plays next â€” and Play-next adds look "lost".
     val shuffleUpcoming = remember(state.queue, state.currentIndex, state.shuffleEnabled, state.repeatMode) {
         if (state.shuffleEnabled) runCatching { player.peekUpcomingIndices(3) }.getOrDefault(emptyList())
         else emptyList()
@@ -5427,9 +5452,9 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
                 )
                 Text(
                     if (state.isEndlessQueue) {
-                        "Unlimited songs · ${state.currentIndex.coerceAtLeast(0) + 1} playing"
+                        "Unlimited songs Â· ${state.currentIndex.coerceAtLeast(0) + 1} playing"
                     } else {
-                        "${state.queue.size} songs · ${state.currentIndex.coerceAtLeast(0) + 1} playing"
+                        "${state.queue.size} songs Â· ${state.currentIndex.coerceAtLeast(0) + 1} playing"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.White.copy(alpha = 0.70f),
@@ -5568,7 +5593,11 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            itemsIndexed(state.queue, key = { index, _ -> queueKeys.getOrNull(index) ?: index.toString() }) { index, item ->
+            itemsIndexed(
+                state.queue,
+                key = { index, _ -> queueKeys.getOrNull(index) ?: index.toString() },
+                contentType = { _, _ -> "queue_item" },
+            ) { index, item ->
                 val currentIndex by rememberUpdatedState(index)
                 val isCurrent = index == state.currentIndex
                 val isDragging = index == draggingIndex

@@ -4,6 +4,8 @@ HSPLcom/lastwave/app/ui/shell/**->**(**)**
 HSPLcom/lastwave/app/ui/home/**->**(**)**
 HSPLcom/lastwave/app/ui/settings/**->**(**)**
 HSPLcom/lastwave/app/ui/player/**->**(**)**
+HSPLcom/lastwave/app/ui/feed/**->**(**)**
+HSPLcom/lastwave/app/ui/theme/**->**(**)**
 HSPLcom/lastwave/app/ui/common/ArtworkImageKt;->**(**)**
 HSPLcom/lastwave/app/ui/common/ExpressiveMotion;->**(**)**
 HSPLcom/lastwave/app/playback/MusicPlayer;->**(**)**

@@ -3,6 +3,7 @@ package com.lastwave.app.ui.player
 import com.lastwave.app.data.lyrics.LyricLine
 import com.lastwave.app.data.lyrics.isRtlText
 
+@androidx.compose.runtime.Immutable
 sealed interface LyricsUiState {
     data object Idle : LyricsUiState
     data object Loading : LyricsUiState
