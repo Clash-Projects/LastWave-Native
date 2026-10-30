@@ -2620,17 +2620,13 @@ class MusicPlayer @Inject constructor(
                             return@withContext
                         }
                         unavailableMediaIds += failedKey
-                        val nextIndex = if (startShuffled) {
+                        val isShuffle = startShuffled || (playerDelegate.isInitialized() && player.shuffleModeEnabled)
+                        val nextIndex = if (isShuffle) {
                             tracks.indices
                                 .filter { tracks[it].mediaIdKey() !in unavailableMediaIds }
                                 .randomOrNull()
                         } else {
-                            val ordered = (selectedIndex + 1 until tracks.size) +
-                                if (player.repeatMode == Player.REPEAT_MODE_ALL) {
-                                    0 until selectedIndex
-                                } else {
-                                    emptyList()
-                                }
+                            val ordered = (selectedIndex + 1 until tracks.size) + (0 until selectedIndex)
                             ordered.firstOrNull { tracks[it].mediaIdKey() !in unavailableMediaIds }
                         }
                         if (nextIndex != null) {
@@ -2641,7 +2637,7 @@ class MusicPlayer @Inject constructor(
                                 startPositionMs = 0L,
                                 sourceLabel = sourceLabel,
                                 endlessDiscover = endlessDiscover,
-                                startShuffled = startShuffled,
+                                startShuffled = isShuffle,
                             )
                         } else {
                             val isOffline = isNetworkException(error)
@@ -4407,17 +4403,10 @@ class MusicPlayer @Inject constructor(
         val queue = state.queue
         if (queue.isEmpty()) return C.INDEX_UNSET
         val start = (state.currentIndex + 1).coerceAtLeast(0)
-        // Shuffle fallback (engine has no next, e.g. repeat-off at the true
-        // permutation end): with repeat-all/one keep going on a random track,
-        // otherwise stop â€” an unconditional random jump here made shuffle
-        // play forever and made manual-next at the end jump unpredictably.
-        // Manual navigation only (auto-advance replays in place on ONE), so a
-        // repeat-one next at the end wraps instead of silently doing nothing.
-        val wrapRepeat = state.repeatMode == Player.REPEAT_MODE_ALL
         val ordered = if (state.shuffleEnabled) {
-            if (wrapRepeat) queue.indices.shuffled() else emptyList()
+            queue.indices.filter { it != state.currentIndex && queue[it].mediaIdKey() !in unavailableMediaIds }.shuffled()
         } else {
-            (start until queue.size) + if (wrapRepeat) (0 until start) else emptyList()
+            (start until queue.size) + (0 until start)
         }
         return ordered.firstOrNull { it != state.currentIndex && queue[it].mediaIdKey() !in unavailableMediaIds }
             ?: C.INDEX_UNSET
@@ -5568,6 +5557,19 @@ class MusicPlayer @Inject constructor(
                         } else {
                             emptyList()
                         }
+                    } else if (seed.artist.isNotBlank()) {
+                        val artistTracks = retryRadioRequest { innerTube.searchSongs(seed.artist, limit = 25) }
+                        if (expectedGeneration != playRequestGeneration.get() || !radioQueueActive) return@withLock
+                        PureRadioQueue.filterStrictYtmRadioBatch(
+                            incomingTracks = (artistTracks ?: emptyList()).map { it.toPlayableTrack() },
+                            existingVideoIds = existingVideoIds,
+                            existingKeys = existingKeys,
+                            existingSongKeys = existingSongKeys,
+                            recentVideoIds = recentHistoryKeys,
+                            recentKeys = recentHistoryKeys,
+                            seedVideoId = "",
+                            seedSongKey = PureRadioQueue.normalizedSongKey(seed.title, seed.artist),
+                        )
                     } else {
                         emptyList()
                     }
@@ -6203,6 +6205,7 @@ class MusicPlayer @Inject constructor(
             }
             return
         }
+        player.pause()
         unavailableSkipJob?.cancel()
         unavailableSkipJob = applicationScope.launch(Dispatchers.Main.immediate) {
             yield()
@@ -6214,7 +6217,7 @@ class MusicPlayer @Inject constructor(
                 snapshot.queue.getOrNull(failedIndex)?.mediaIdKey() == failedMediaId
             }
             if (expectedGeneration != playRequestGeneration.get() ||
-                !failedItemStillQueued || _state.value.currentIndex != failedIndex || player.isPlaying
+                !failedItemStillQueued || _state.value.currentIndex != failedIndex
             ) {
                 unavailableSkipJob = null
                 return@launch
@@ -6249,6 +6252,16 @@ class MusicPlayer @Inject constructor(
                 visited++
             }
             if (visited >= player.mediaItemCount) nextIndex = C.INDEX_UNSET
+            if (nextIndex == C.INDEX_UNSET && player.mediaItemCount > 1) {
+                val candidateIndices = if (player.shuffleModeEnabled) {
+                    (0 until player.mediaItemCount).shuffled()
+                } else {
+                    ((failedIndex + 1 until player.mediaItemCount) + (0 until failedIndex)).toList()
+                }
+                nextIndex = candidateIndices.firstOrNull { index ->
+                    index != failedIndex && player.getMediaItemAt(index).mediaId !in unavailableMediaIds
+                } ?: C.INDEX_UNSET
+            }
             unavailableSkipJob = null
             if (nextIndex == C.INDEX_UNSET) {
                 player.pause()
@@ -8444,12 +8457,25 @@ class MusicPlayer @Inject constructor(
     private fun isDeadVideoIdFailure(error: Throwable): Boolean =
         error.causeChain().any { cause ->
             cause is ConfirmedUnplayableMediaException ||
-                (cause is java.io.IOException &&
-                    cause.message?.contains("Unable to resolve a playable audio stream") == true)
+                (cause is java.io.IOException && cause.message?.let { msg ->
+                    msg.contains("Unable to resolve a playable audio stream", ignoreCase = true) ||
+                    msg.contains("No reliable YouTube Music match found", ignoreCase = true) ||
+                    msg.contains("No playable match found", ignoreCase = true)
+                } == true)
         }
 
     private fun isExplicitlyUnplayableFailure(error: Throwable): Boolean =
-        error.causeChain().filterIsInstance<java.io.IOException>().firstOrNull() is ConfirmedUnplayableMediaException
+        error.causeChain().any { cause ->
+            cause is ConfirmedUnplayableMediaException ||
+                (cause is java.io.IOException && cause.message?.let { msg ->
+                    msg.contains("No reliable YouTube Music match found", ignoreCase = true) ||
+                    msg.contains("No playable match found", ignoreCase = true) ||
+                    msg.contains("Unable to resolve a playable audio stream", ignoreCase = true) ||
+                    msg.contains("No video ID or search query available", ignoreCase = true) ||
+                    msg.contains("Rejected mismatched stream", ignoreCase = true) ||
+                    msg.contains("No audio stream available", ignoreCase = true)
+                } == true)
+        }
 
     private fun isUnsupportedMediaFailure(error: Throwable): Boolean =
         error.causeChain().filterIsInstance<PlaybackException>().any {
