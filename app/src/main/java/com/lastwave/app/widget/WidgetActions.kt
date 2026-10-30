@@ -89,26 +89,25 @@ object WidgetActions {
 
     /**
      * Toggle play/pause and optimistically flip the widget glyph so the
-     * button responds instantly; re-checks the live session 300ms later
-     * (some players publish state late) and corrects the glyph.
+     * button responds instantly; when playback state changes, the service
+     * publishes the confirmed state.
      */
     suspend fun performToggle(context: Context) {
         val controller = resolveController(context) ?: return
-        val wasPlaying = controller.playbackState?.state == PlaybackState.STATE_PLAYING
+        val snapshot = WidgetSnapshot.read(context)
+        val state = runCatching { controller.playbackState?.state }.getOrNull()
+        val isCurrentlyPlaying = when (state) {
+            PlaybackState.STATE_PLAYING, PlaybackState.STATE_BUFFERING -> true
+            PlaybackState.STATE_PAUSED, PlaybackState.STATE_STOPPED, PlaybackState.STATE_NONE -> false
+            else -> snapshot.isPlaying
+        }
+        val targetPlaying = !isCurrentlyPlaying
         val succeeded = runCatching {
-            if (wasPlaying) controller.transportControls.pause()
+            if (isCurrentlyPlaying) controller.transportControls.pause()
             else controller.transportControls.play()
         }.isSuccess
         if (!succeeded) return
-        WidgetUpdater.setPlaying(context, !wasPlaying)
-        delay(300)
-        val confirmed = runCatching { controller.playbackState?.state }.getOrNull()
-        val confirmedPlaying = when (confirmed) {
-            PlaybackState.STATE_PLAYING, PlaybackState.STATE_BUFFERING -> true
-            PlaybackState.STATE_PAUSED, PlaybackState.STATE_STOPPED, PlaybackState.STATE_NONE -> false
-            else -> null
-        } ?: !wasPlaying
-        WidgetUpdater.setPlaying(context, confirmedPlaying)
+        WidgetUpdater.setPlaying(context, targetPlaying)
     }
 
     suspend fun performSkip(context: Context, next: Boolean) {

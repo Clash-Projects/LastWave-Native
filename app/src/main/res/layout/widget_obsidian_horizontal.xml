@@ -6,10 +6,10 @@
     android:background="@drawable/widget_obsidian_background"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingStart="14dp"
-    android:paddingEnd="14dp"
-    android:paddingTop="6dp"
-    android:paddingBottom="6dp">
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp"
+    android:paddingTop="4dp"
+    android:paddingBottom="4dp">
 
     <!-- Empty state -->
     <LinearLayout
@@ -70,8 +70,8 @@
 
         <ImageView
             android:id="@+id/widget_art"
-            android:layout_width="72dp"
-            android:layout_height="72dp"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
             android:contentDescription="@null"
             android:scaleType="centerCrop"
             android:src="@drawable/widget_art_placeholder" />
@@ -79,7 +79,7 @@
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="16dp"
+            android:layout_marginStart="12dp"
             android:layout_weight="1"
             android:gravity="center_vertical"
             android:orientation="vertical">
@@ -93,25 +93,25 @@
                 android:maxLines="1"
                 android:text="Unknown track"
                 android:textColor="@color/widget_on_surface"
-                android:textSize="18sp"
+                android:textSize="15sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/widget_subtitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
+                android:layout_marginTop="1dp"
                 android:ellipsize="end"
                 android:fontFamily="@font/google_sans_flex"
                 android:maxLines="1"
                 android:text="Unknown artist"
                 android:textColor="@color/widget_on_surface_variant"
-                android:textSize="14sp" />
+                android:textSize="12.5sp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
+                android:layout_marginTop="4dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
@@ -119,16 +119,16 @@
                 <LinearLayout
                     android:id="@+id/widget_play_pause"
                     android:layout_width="wrap_content"
-                    android:layout_height="36dp"
+                    android:layout_height="28dp"
                     android:background="@drawable/widget_obsidian_play"
                     android:gravity="center"
                     android:orientation="horizontal"
-                    android:paddingHorizontal="12dp">
+                    android:paddingHorizontal="10dp">
 
                     <ImageView
                         android:id="@+id/widget_play_pause_icon"
-                        android:layout_width="16dp"
-                        android:layout_height="16dp"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
                         android:src="@drawable/ic_widget_play"
                         android:tint="@color/widget_icon_tint" />
 
@@ -136,22 +136,22 @@
                         android:id="@+id/widget_play_pause_text"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="6dp"
+                        android:layout_marginStart="5dp"
                         android:fontFamily="@font/google_sans_flex"
                         android:text="Play"
                         android:textColor="@color/widget_on_primary"
-                        android:textSize="14sp" />
+                        android:textSize="12sp" />
                 </LinearLayout>
 
                 <!-- Next Button -->
                 <ImageButton
                     android:id="@+id/widget_next"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
-                    android:layout_marginStart="12dp"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:layout_marginStart="8dp"
                     android:background="@drawable/widget_obsidian_button"
                     android:contentDescription="@string/desc_next"
-                    android:padding="8dp"
+                    android:padding="6dp"
                     android:src="@drawable/ic_widget_skip_next"
                     android:tint="@color/widget_icon_tint" />
             </LinearLayout>

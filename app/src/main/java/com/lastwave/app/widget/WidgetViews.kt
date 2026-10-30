@@ -271,6 +271,10 @@ internal object WidgetViews {
             WidgetActions.togglePending(context, NowPlayingWidgetReceiver::class.java),
         )
         views.setOnClickPendingIntent(
+            R.id.widget_state,
+            WidgetActions.togglePending(context, NowPlayingWidgetReceiver::class.java),
+        )
+        views.setOnClickPendingIntent(
             R.id.widget_prev,
             WidgetActions.prevPending(context, NowPlayingWidgetReceiver::class.java),
         )

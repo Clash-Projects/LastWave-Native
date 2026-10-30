@@ -236,6 +236,14 @@ internal object ObsidianWidgetViews {
             WidgetActions.togglePending(context, ObsidianGlassWidgetReceiver::class.java),
         )
         views.setOnClickPendingIntent(
+            R.id.widget_play_pause_icon,
+            WidgetActions.togglePending(context, ObsidianGlassWidgetReceiver::class.java),
+        )
+        views.setOnClickPendingIntent(
+            R.id.widget_play_pause_text,
+            WidgetActions.togglePending(context, ObsidianGlassWidgetReceiver::class.java),
+        )
+        views.setOnClickPendingIntent(
             R.id.widget_prev,
             WidgetActions.prevPending(context, ObsidianGlassWidgetReceiver::class.java),
         )

@@ -67,8 +67,6 @@ object WidgetUpdater {
         isPlaying: Boolean,
     ) = publishMutex.withLock {
         memoryArtBitmap = art
-        // Push update immediately with in-memory art for zero-latency response
-        pushAll(context)
         val currentSnapshot = WidgetSnapshot.read(context)
         val artPath = art?.let { bitmap -> writeArt(context, bitmap) }
             ?: if (currentSnapshot.title == title && currentSnapshot.artist == artist) currentSnapshot.artPath else null
@@ -88,6 +86,7 @@ object WidgetUpdater {
                 progress = fraction,
             ),
         )
+        pushAll(context)
         if (isPlaying) startWaveAnimation(context) else stopWaveAnimation()
     }
 
