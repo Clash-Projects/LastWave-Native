@@ -346,6 +346,9 @@ fun SearchScreen(
                         if (q.isEmpty()) emptyList()
                         else state.recentSearches.filter { it.lowercase().contains(q) }.take(3)
                     }
+                    val nonRecentSuggestions = remember(state.suggestions, matchingRecent) {
+                        state.suggestions.filter { !matchingRecent.contains(it) }.distinct()
+                    }
 
                     LazyColumn(
                         contentPadding = PaddingValues(
@@ -398,9 +401,6 @@ fun SearchScreen(
                             }
                         }
 
-                        val nonRecentSuggestions = remember(state.suggestions, matchingRecent) {
-                            state.suggestions.filter { !matchingRecent.contains(it) }.distinct()
-                        }
                         itemsIndexed(nonRecentSuggestions, key = { idx, suggestion -> "sugg_${suggestion}_$idx" }) { _, suggestion ->
                             SuggestionRow(
                                 fullText = suggestion,

@@ -271,7 +271,7 @@ internal fun extractYouTubeVideoId(urlOrId: String?): String? {
                     val idx = segments.indexOf("shorts").takeIf { it != -1 }
                         ?: segments.indexOf("embed").takeIf { it != -1 }
                         ?: segments.indexOf("v").takeIf { it != -1 }
-                    if (idx != -1 && idx + 1 < segments.size) segments[idx + 1].takeIf { it.length == 11 } else null
+                    if (idx != null && idx >= 0 && idx + 1 < segments.size) segments[idx + 1].takeIf { it.length == 11 } else null
                 }
         } else null
     } catch (_: Exception) {
