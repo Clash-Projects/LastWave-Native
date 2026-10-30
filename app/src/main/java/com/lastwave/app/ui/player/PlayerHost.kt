@@ -5148,7 +5148,7 @@ private fun AppleMusicQualityBadge(
     val haptics = LocalHapticFeedback.current
     val isSpatial = remember(state.audioCodec) { isSpatialAudioCodec(state.audioCodec) }
     val isHiRes = state.isLossless && ((state.samplingRateKHz ?: 44.1) > 48.0 || (state.bitDepth ?: 16) > 16)
-    val baseLabel = remember(state.audioCodec, state.bitrateKbps, state.samplingRateKHz, state.bitDepth, state.isLossless, state.deckBlendTelemetry.phase) {
+    val baseLabel = remember(state.audioCodec, state.bitrateKbps, state.samplingRateKHz, state.bitDepth, state.isLossless, state.isCrossfading, state.deckBlendTelemetry.phase, state.deckBlendTelemetry.isBlendingActive) {
         qualityBadgeLabel(state)
     }
 

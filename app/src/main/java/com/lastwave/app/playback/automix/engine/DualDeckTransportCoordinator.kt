@@ -106,7 +106,13 @@ class DualDeckTransportCoordinator @Inject constructor(
         if (activeTrackKey != trackKey) {
             activeTrackKey = trackKey
             currentSplicePlan = null
-            if (_telemetry.value.phase != BlendPhase.BLENDING && _telemetry.value.phase != BlendPhase.LOOP_LOCKED) {
+            // Only reset telemetry if no blend is active or completing —
+            // the deck swap changes the current track mid-blend, which must
+            // not flicker the badge back to the quality label.
+            val currentPhase = _telemetry.value.phase
+            if (currentPhase != BlendPhase.BLENDING &&
+                currentPhase != BlendPhase.LOOP_LOCKED &&
+                currentPhase != BlendPhase.MIX_COMPLETED) {
                 _telemetry.value = DeckBlendTelemetry.IDLE
             }
         }
