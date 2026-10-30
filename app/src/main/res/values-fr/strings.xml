@@ -139,7 +139,7 @@
     <string name="home_section_fresh_title">Trouvailles fraîches</string>
     <string name="home_section_fresh_sub">Nouveaux morceaux hors de votre rotation</string>
     <string name="home_section_jump_title">Reprendre l\'écoute</string>
-    <string name="home_section_jump_sub">Récents · réécouter</string>
+    <string name="home_section_jump_sub">Récents • réécouter</string>
     <string name="home_section_mixes_title">Mixes à explorer</string>
     <string name="home_section_mixes_sub">Mixes radio d\'artistes sans fin</string>
     <string name="home_section_spotlight_title">À l\'affiche</string>
@@ -269,7 +269,7 @@
     <string name="local_scanning">Recherche… %1$d fichiers trouvés</string>
     <string name="local_copying">Copie %1$d/%2$d — %3$s</string>
     <string name="local_report_space">Pas assez d\'espace libre pour copier ces morceaux.</string>
-    <string name="local_report_summary">%1$d ajoutés · %2$d mis à jour · %3$d inchangés</string>
+    <string name="local_report_summary">%1$d ajoutés • %2$d mis à jour • %3$d inchangés</string>
     <plurals name="local_report_unsupported">
         <item quantity="one">%1$d fichier ignoré (format non pris en charge : %2$s)</item>
         <item quantity="many">%1$d fichiers ignorés (format non pris en charge : %2$s)</item>
@@ -510,7 +510,7 @@
     <string name="pl_selected_count">%1$d sélectionné</string>
     <string name="pl_select_more_hint">Appuyez longuement pour en sélectionner plus</string>
     <string name="pl_count_only">%1$d Listes de lecture</string>
-    <string name="pl_count_tracks">%1$d Listes de lecture · %2$d Pistes</string>
+    <string name="pl_count_tracks">%1$d Listes de lecture • %2$d Pistes</string>
     <string name="pl_delete_selected_cd">Supprimer la sélection</string>
     <string name="pl_clear_selection_cd">Effacer la sélection</string>
     <string name="pl_create_cd">Créer une liste de lecture personnalisée</string>
@@ -520,7 +520,7 @@
     <string name="pl_pinned_cd">Épinglé</string>
     <string name="pl_yt_tracks">%1$d pistes</string>
     <string name="pl_yt_connected">Compte connecté</string>
-    <string name="pl_subtitle_local">%1$d pistes · %2$s</string>
+    <string name="pl_subtitle_local">%1$d pistes • %2$s</string>
     <string name="pl_play_cd">Lire la liste de lecture</string>
     <string name="pl_options_cd">Options de liste de lecture</string>
     <string name="pl_pin">Épingle</string>
@@ -600,13 +600,13 @@
     <string name="feed_albums">Des albums pour vous</string>
     <string name="feed_albums_sub">De vrais albums à votre goût – Last.fm tops + sélections YT Music</string>
     <string name="feed_trending">Tendance maintenant</string>
-    <string name="feed_trending_sub">Les plus populaires en ce moment · appuyez sur un classement pour jouer</string>
+    <string name="feed_trending_sub">Les plus populaires en ce moment • appuyez sur un classement pour jouer</string>
     <string name="feed_releases">Nouvelles versions</string>
     <string name="feed_releases_sub">De nouvelles gouttes et de nouveaux albums</string>
     <string name="feed_friends">Vos amis</string>
     <string name="feed_friends_sub">Les personnes de votre cercle d\'écoute</string>
     <string name="feed_footer_default">Fait pour vous selon vos goûts</string>
-    <string name="feed_footer_updated">Mise à jour %1$s · Conçu pour vous selon vos goûts</string>
+    <string name="feed_footer_updated">Mise à jour %1$s • Conçu pour vous selon vos goûts</string>
     <string name="feed_ago_min">il y a %1$d m</string>
     <string name="feed_ago_hour">Il y a %1$dh</string>
     <string name="feed_ago_day">Il y a %1$dj</string>
@@ -694,7 +694,7 @@
     <string name="fpd_opening">Liste de lecture d’ouverture…</string>
     <string name="fpd_retry">Réessayez</string>
     <string name="fpd_loading_more">Chargement des pistes restantes…</string>
-    <string name="fpd_incomplete">Liste de lecture incomplète · Réessayer</string>
+    <string name="fpd_incomplete">Liste de lecture incomplète • Réessayer</string>
     <string name="fpd_track_options_cd">Options de suivi</string>
     <string name="add_dup_single_title">Chanson déjà dans la playlist</string>
     <string name="add_dup_single_text">%1$s par %2$s est déjà présent dans %3$s. Vous pouvez laisser la liste de lecture inchangée ou en ajouter une autre copie.</string>

@@ -57,7 +57,7 @@ fun AudioQualityMixBadge(
                 val bpmText = telemetry.syncedBpm?.let { "${it.toInt()} BPM" } ?: ""
                 val mixingText = buildString {
                     append("AutoMix")
-                    if (bpmText.isNotEmpty()) append(" · ").append(bpmText)
+                    if (bpmText.isNotEmpty()) append(" \u2022 ").append(bpmText)
                 }
 
                 Box(
@@ -79,7 +79,7 @@ fun AudioQualityMixBadge(
             }
 
             BlendPhase.MIX_COMPLETED -> {
-                val bpmText = telemetry.syncedBpm?.let { " · ${it.toInt()} BPM" } ?: ""
+                val bpmText = telemetry.syncedBpm?.let { " \u2022 ${it.toInt()} BPM" } ?: ""
                 Box(
                     modifier = Modifier
                         .clip(pillShape)

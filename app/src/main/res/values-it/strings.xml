@@ -186,7 +186,7 @@
     <string name="home_section_fresh_title">Scoperte recenti</string>
     <string name="home_section_fresh_sub">Brani nuovi, fuori dalla tua rotazione</string>
     <string name="home_section_jump_title">Riprendi</string>
-    <string name="home_section_jump_sub">Ascoltati di recente · riascolta</string>
+    <string name="home_section_jump_sub">Ascoltati di recente • riascolta</string>
     <string name="home_section_mixes_title">Mix da esplorare</string>
     <string name="home_section_mixes_sub">Radio infinite sugli artisti</string>
     <string name="home_section_spotlight_title">In evidenza</string>
@@ -359,7 +359,7 @@
     <string name="local_scanning">Ricerca… %1$d file trovati</string>
     <string name="local_copying">Copia %1$d/%2$d — %3$s</string>
     <string name="local_report_space">Spazio libero insufficiente per copiare questi brani.</string>
-    <string name="local_report_summary">%1$d aggiunti · %2$d aggiornati · %3$d invariati</string>
+    <string name="local_report_summary">%1$d aggiunti • %2$d aggiornati • %3$d invariati</string>
     <plurals name="local_report_unsupported">
         <item quantity="one">%1$d file ignorato (formato non supportato: %2$s)</item>
         <item quantity="other">%1$d file ignorati (formato non supportato: %2$s)</item>
@@ -536,7 +536,7 @@
     <string name="pl_selected_count">%1$d selezionati</string>
     <string name="pl_select_more_hint">Tieni premuto per selezionarne altri</string>
     <string name="pl_count_only">%1$d playlist</string>
-    <string name="pl_count_tracks">%1$d playlist · %2$d brani</string>
+    <string name="pl_count_tracks">%1$d playlist • %2$d brani</string>
     <string name="pl_delete_selected_cd">Elimina selezionati</string>
     <string name="pl_clear_selection_cd">Annulla selezione</string>
     <string name="pl_create_cd">Crea playlist personalizzata</string>
@@ -546,7 +546,7 @@
     <string name="pl_pinned_cd">Fissata</string>
     <string name="pl_yt_tracks">%1$d brani</string>
     <string name="pl_yt_connected">Account collegato</string>
-    <string name="pl_subtitle_local">%1$d brani · %2$s</string>
+    <string name="pl_subtitle_local">%1$d brani • %2$s</string>
     <string name="pl_play_cd">Riproduci playlist</string>
     <string name="pl_options_cd">Opzioni playlist</string>
     <string name="pl_pin">Fissa</string>
@@ -630,13 +630,13 @@
     <string name="feed_albums">Album per te</string>
     <string name="feed_albums_sub">Album veri dai tuoi gusti — classifiche Last.fm + scelte di YT Music</string>
     <string name="feed_trending">Di tendenza</string>
-    <string name="feed_trending_sub">I più ascoltati ora · tocca una posizione per riprodurre</string>
+    <string name="feed_trending_sub">I più ascoltati ora • tocca una posizione per riprodurre</string>
     <string name="feed_releases">Nuove uscite</string>
     <string name="feed_releases_sub">Novità e album appena usciti</string>
     <string name="feed_friends">I tuoi amici</string>
     <string name="feed_friends_sub">Persone nella tua cerchia di ascolto</string>
     <string name="feed_footer_default">Fatto per te, dai tuoi gusti</string>
-    <string name="feed_footer_updated">Aggiornato %1$s · fatto per te, dai tuoi gusti</string>
+    <string name="feed_footer_updated">Aggiornato %1$s • fatto per te, dai tuoi gusti</string>
     <string name="feed_ago_min">%1$d min fa</string>
     <string name="feed_ago_hour">%1$d h fa</string>
     <string name="feed_ago_day">%1$d g fa</string>
@@ -732,7 +732,7 @@
     <string name="fpd_opening">Apertura playlist…</string>
     <string name="fpd_retry">Riprova</string>
     <string name="fpd_loading_more">Caricamento dei brani rimanenti…</string>
-    <string name="fpd_incomplete">Playlist incompleta · Riprova</string>
+    <string name="fpd_incomplete">Playlist incompleta • Riprova</string>
     <string name="fpd_track_options_cd">Opzioni brano</string>
 
     <!-- Add-to-playlist duplicate dialogs -->

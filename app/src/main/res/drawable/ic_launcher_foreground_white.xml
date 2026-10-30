@@ -1,0 +1,19 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- White theme launcher icon foreground (black bars). -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M29.70,43.17 A3.58,3.58 0 0 1 36.86,43.17 L36.86,68.24 A3.58,3.58 0 0 1 29.70,68.24 Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M44.02,31.27 A3.68,3.68 0 0 1 51.37,31.27 L51.37,76.73 A3.68,3.68 0 0 1 44.02,76.73 Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M58.18,35.18 A3.74,3.74 0 0 1 65.66,35.18 L65.66,72.09 A3.74,3.74 0 0 1 58.18,72.09 Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M72.48,41.53 A3.74,3.74 0 0 1 79.96,41.53 L79.96,65.72 A3.74,3.74 0 0 1 72.48,65.72 Z" />
+</vector>

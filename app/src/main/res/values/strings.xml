@@ -209,7 +209,7 @@
     <string name="home_section_fresh_title">Fresh finds</string>
     <string name="home_section_fresh_sub">New tracks beyond your rotation</string>
     <string name="home_section_jump_title">Jump back in</string>
-    <string name="home_section_jump_sub">Recently played · listen again</string>
+    <string name="home_section_jump_sub">Recently played • listen again</string>
     <string name="home_section_mixes_title">Mixes to explore</string>
     <string name="home_section_mixes_sub">Endless artist radio mixes</string>
     <string name="home_section_spotlight_title">Spotlight</string>
@@ -382,7 +382,7 @@
     <string name="local_scanning">Searching… %1$d files found</string>
     <string name="local_copying">Copying %1$d/%2$d — %3$s</string>
     <string name="local_report_space">Not enough free space to copy these songs.</string>
-    <string name="local_report_summary">%1$d added · %2$d updated · %3$d unchanged</string>
+    <string name="local_report_summary">%1$d added • %2$d updated • %3$d unchanged</string>
     <plurals name="local_report_unsupported">
         <item quantity="one">%1$d file skipped (unsupported format: %2$s)</item>
         <item quantity="other">%1$d files skipped (unsupported format: %2$s)</item>
@@ -566,7 +566,7 @@
     <string name="pl_selected_count">%1$d selected</string>
     <string name="pl_select_more_hint">Long press to select more</string>
     <string name="pl_count_only">%1$d Playlists</string>
-    <string name="pl_count_tracks">%1$d Playlists · %2$d Tracks</string>
+    <string name="pl_count_tracks">%1$d Playlists • %2$d Tracks</string>
     <string name="pl_delete_selected_cd">Delete selected</string>
     <string name="pl_clear_selection_cd">Clear selection</string>
     <string name="pl_create_cd">Create custom playlist</string>
@@ -576,7 +576,7 @@
     <string name="pl_pinned_cd">Pinned</string>
     <string name="pl_yt_tracks">%1$d tracks</string>
     <string name="pl_yt_connected">Connected account</string>
-    <string name="pl_subtitle_local">%1$d tracks · %2$s</string>
+    <string name="pl_subtitle_local">%1$d tracks • %2$s</string>
     <string name="pl_play_cd">Play playlist</string>
     <string name="pl_options_cd">Playlist options</string>
     <string name="pl_pin">Pin</string>
@@ -660,13 +660,13 @@
     <string name="feed_albums">Albums for you</string>
     <string name="feed_albums_sub">Real albums from your taste — Last.fm tops + YT Music picks</string>
     <string name="feed_trending">Trending now</string>
-    <string name="feed_trending_sub">Most popular right now · tap a rank to play</string>
+    <string name="feed_trending_sub">Most popular right now • tap a rank to play</string>
     <string name="feed_releases">New releases</string>
     <string name="feed_releases_sub">Fresh drops and new albums</string>
     <string name="feed_friends">Your friends</string>
     <string name="feed_friends_sub">People in your listening circle</string>
     <string name="feed_footer_default">Made for you from your taste</string>
-    <string name="feed_footer_updated">Updated %1$s · Made for you from your taste</string>
+    <string name="feed_footer_updated">Updated %1$s • Made for you from your taste</string>
     <string name="feed_ago_min">%1$dm ago</string>
     <string name="feed_ago_hour">%1$dh ago</string>
     <string name="feed_ago_day">%1$dd ago</string>
@@ -766,7 +766,7 @@
     <string name="fpd_opening">Opening playlist…</string>
     <string name="fpd_retry">Try again</string>
     <string name="fpd_loading_more">Loading remaining tracks…</string>
-    <string name="fpd_incomplete">Playlist incomplete · Retry</string>
+    <string name="fpd_incomplete">Playlist incomplete • Retry</string>
     <string name="fpd_track_options_cd">Track options</string>
 
     <!-- Add-to-playlist duplicate dialogs -->

@@ -141,7 +141,7 @@
     <string name="home_section_fresh_title">ताज़ा खोजें</string>
     <string name="home_section_fresh_sub">रूटीन से हटकर नए गाने</string>
     <string name="home_section_jump_title">फिर से शुरू करें</string>
-    <string name="home_section_jump_sub">हाल में बजाए · दोबारा सुनें</string>
+    <string name="home_section_jump_sub">हाल में बजाए • दोबारा सुनें</string>
     <string name="home_section_mixes_title">खोजने लायक मिक्स</string>
     <string name="home_section_mixes_sub">अंतहीन कलाकार रेडियो मिक्स</string>
     <string name="home_section_spotlight_title">स्पॉटलाइट</string>
@@ -346,7 +346,7 @@
     <string name="local_scanning">खोज रहे हैं... %1$d फ़ाइलें मिलीं</string>
     <string name="local_copying">कॉपी किया जा रहा है %1$d/%2$d — %3$s</string>
     <string name="local_report_space">इन गानों की नकल करने के लिए पर्याप्त खाली जगह नहीं है।</string>
-    <string name="local_report_summary">%1$d जोड़ा गया · %2$d अद्यतन किया गया · %3$d अपरिवर्तित</string>
+    <string name="local_report_summary">%1$d जोड़ा गया • %2$d अद्यतन किया गया • %3$d अपरिवर्तित</string>
     <string name="local_report_failed">%1$d फ़ाइल(फ़ाइलों) की प्रतिलिपि नहीं बनाई जा सकी</string>
     <string name="local_report_unreachable">%1$d फ़ोल्डर अब पहुंच योग्य नहीं हैं - उन्हें फिर से चुनें</string>
     <string name="local_storage_used">स्थानीय गीतों द्वारा प्रयुक्त स्थान: %1$s</string>
@@ -507,7 +507,7 @@
     <string name="pl_selected_count">%1$d चयनित</string>
     <string name="pl_select_more_hint">अधिक चुनने के लिए देर तक दबाएँ</string>
     <string name="pl_count_only">%1$d प्लेलिस्ट</string>
-    <string name="pl_count_tracks">%1$d प्लेलिस्ट · %2$d ट्रैक</string>
+    <string name="pl_count_tracks">%1$d प्लेलिस्ट • %2$d ट्रैक</string>
     <string name="pl_delete_selected_cd">चयनित हटाएँ</string>
     <string name="pl_clear_selection_cd">स्पष्ट चयन</string>
     <string name="pl_create_cd">कस्टम प्लेलिस्ट बनाएं</string>
@@ -517,7 +517,7 @@
     <string name="pl_pinned_cd">पिन किया गया</string>
     <string name="pl_yt_tracks">%1$d ट्रैक</string>
     <string name="pl_yt_connected">जुड़ा हुआ खाता</string>
-    <string name="pl_subtitle_local">%1$d ट्रैक · %2$s</string>
+    <string name="pl_subtitle_local">%1$d ट्रैक • %2$s</string>
     <string name="pl_play_cd">प्लेलिस्ट चलाएँ</string>
     <string name="pl_options_cd">प्लेलिस्ट विकल्प</string>
     <string name="pl_pin">पिन</string>
@@ -597,13 +597,13 @@
     <string name="feed_albums">आपके लिए एल्बम</string>
     <string name="feed_albums_sub">आपकी रुचि के अनुसार वास्तविक एल्बम - Last.fm शीर्ष + YT संगीत चयन</string>
     <string name="feed_trending">अभी ट्रेंड कर रहा है</string>
-    <string name="feed_trending_sub">अभी सबसे लोकप्रिय · खेलने के लिए रैंक पर टैप करें</string>
+    <string name="feed_trending_sub">अभी सबसे लोकप्रिय • खेलने के लिए रैंक पर टैप करें</string>
     <string name="feed_releases">नई रिलीज़</string>
     <string name="feed_releases_sub">ताज़ा बूँदें और नए एल्बम</string>
     <string name="feed_friends">आपके दोस्त</string>
     <string name="feed_friends_sub">आपके सुनने वाले समूह के लोग</string>
     <string name="feed_footer_default">आपके स्वाद से आपके लिए बनाया गया</string>
-    <string name="feed_footer_updated">अपडेट किया गया %1$s · आपकी पसंद के अनुसार आपके लिए बनाया गया</string>
+    <string name="feed_footer_updated">अपडेट किया गया %1$s • आपकी पसंद के अनुसार आपके लिए बनाया गया</string>
     <string name="feed_ago_min">%1$dm पहले</string>
     <string name="feed_ago_hour">%1$dh पहले</string>
     <string name="feed_ago_day">%1$dd पहले</string>
@@ -691,7 +691,7 @@
     <string name="fpd_opening">प्लेलिस्ट खुल रही है...</string>
     <string name="fpd_retry">पुनः प्रयास करें</string>
     <string name="fpd_loading_more">शेष ट्रैक लोड हो रहे हैं...</string>
-    <string name="fpd_incomplete">प्लेलिस्ट अधूरी · पुनः प्रयास करें</string>
+    <string name="fpd_incomplete">प्लेलिस्ट अधूरी • पुनः प्रयास करें</string>
     <string name="fpd_track_options_cd">ट्रैक विकल्प</string>
     <string name="add_dup_single_title">गाना पहले से ही प्लेलिस्ट में है</string>
     <string name="add_dup_single_text">%1$s द्वारा %2$s पहले से ही %3$s में मौजूद है। आप प्लेलिस्ट को अपरिवर्तित छोड़ सकते हैं या दूसरी प्रति जोड़ सकते हैं।</string>

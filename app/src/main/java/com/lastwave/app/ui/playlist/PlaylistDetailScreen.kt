@@ -1699,7 +1699,7 @@ private fun NativeTrackRow(
     ExpressiveGroupTrackRow(
         title = track.name,
         subtitle = listOfNotNull(track.artist.takeIf(String::isNotBlank), track.album?.takeIf(String::isNotBlank))
-            .joinToString(" · ")
+            .joinToString(" \u2022 ")
             .ifBlank { track.artist },
         position = position,
         isPlaying = isPlaying,

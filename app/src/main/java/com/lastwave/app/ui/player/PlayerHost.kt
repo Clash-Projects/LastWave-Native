@@ -5202,7 +5202,7 @@ private fun AppleMusicQualityBadge(
             Spacer(Modifier.width(5.dp))
             val fullText = when {
                 isMixActive || isFadeActive -> displayTitle
-                baseLabel.isNotBlank() && !baseLabel.equals(displayTitle, ignoreCase = true) && !baseLabel.equals("AUDIO", ignoreCase = true) -> "$displayTitle \u00b7 $baseLabel"
+                baseLabel.isNotBlank() && !baseLabel.equals(displayTitle, ignoreCase = true) && !baseLabel.equals("AUDIO", ignoreCase = true) -> "$displayTitle \u2022 $baseLabel"
                 else -> displayTitle
             }
             Text(

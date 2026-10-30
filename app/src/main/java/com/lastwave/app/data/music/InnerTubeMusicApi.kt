@@ -4925,7 +4925,7 @@ class InnerTubeMusicApi @Inject constructor(
         } else null
         val subtitle = details.mapNotNull { it.string("text")?.trim() }
             .filter { it.isNotBlank() && it !in setOf("•", "·", "Artist", "Album", "EP", "Single") }
-            .joinToString(" · ")
+            .joinToString(" \u2022 ")
             .trim()
             .takeIf(String::isNotBlank)
         val thumbnails = renderer.obj("thumbnail")?.obj("musicThumbnailRenderer")

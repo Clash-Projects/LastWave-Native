@@ -583,7 +583,7 @@ fun LastWaveJamSheet(
                             }
                         } else {
                             Text(
-                                text = "● Live Sync · ${if (uiState.roomMode == JamProtocolConstants.MODE_HOST_ONLY) "Host Only" else "Collaborative"}",
+                                text = "● Live Sync \u2022 ${if (uiState.roomMode == JamProtocolConstants.MODE_HOST_ONLY) "Host Only" else "Collaborative"}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -634,7 +634,7 @@ fun LastWaveJamSheet(
                                 )
                                 Text(
                                     text = uiState.currentTrackArtist.ifBlank { "Jam Sync" } +
-                                        if (uiState.durationMs > 0L) " · ${formatMs(uiState.currentPositionMs)} / ${formatMs(uiState.durationMs)}" else "",
+                                        if (uiState.durationMs > 0L) " \u2022 ${formatMs(uiState.currentPositionMs)} / ${formatMs(uiState.durationMs)}" else "",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,

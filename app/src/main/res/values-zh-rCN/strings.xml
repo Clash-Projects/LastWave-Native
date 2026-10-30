@@ -142,7 +142,7 @@
     <string name="home_section_fresh_title">新鲜发现</string>
     <string name="home_section_fresh_sub">轮播之外的全新曲目</string>
     <string name="home_section_jump_title">继续收听</string>
-    <string name="home_section_jump_sub">最近播放 · 再次收听</string>
+    <string name="home_section_jump_sub">最近播放 • 再次收听</string>
     <string name="home_section_mixes_title">探索混音</string>
     <string name="home_section_mixes_sub">无限艺人电台混音</string>
     <string name="home_section_spotlight_title">焦点</string>
@@ -345,7 +345,7 @@
     <string name="local_scanning">正在搜索...找到 %1$d 文件</string>
     <string name="local_copying">复制 %1$d/%2$d — %3$s</string>
     <string name="local_report_space">没有足够的可用空间来复制这些歌曲。</string>
-    <string name="local_report_summary">%1$d 添加 · %2$d 更新 · %3$d 不变</string>
+    <string name="local_report_summary">%1$d 添加 • %2$d 更新 • %3$d 不变</string>
     <string name="local_report_failed">无法复制 %1$d 文件</string>
     <string name="local_report_unreachable">%1$d 文件夹不再可访问 - 再次选择它们</string>
     <string name="local_storage_used">本地歌曲使用的空间：%1$s</string>
@@ -506,7 +506,7 @@
     <string name="pl_selected_count">已选择 %1$d</string>
     <string name="pl_select_more_hint">长按选择更多</string>
     <string name="pl_count_only">%1$d 播放列表</string>
-    <string name="pl_count_tracks">%1$d 播放列表 · %2$d 曲目</string>
+    <string name="pl_count_tracks">%1$d 播放列表 • %2$d 曲目</string>
     <string name="pl_delete_selected_cd">删除所选内容</string>
     <string name="pl_clear_selection_cd">清除选择</string>
     <string name="pl_create_cd">创建自定义播放列表</string>
@@ -516,7 +516,7 @@
     <string name="pl_pinned_cd">已固定</string>
     <string name="pl_yt_tracks">%1$d 曲目</string>
     <string name="pl_yt_connected">关联账户</string>
-    <string name="pl_subtitle_local">%1$d 曲目 · %2$s</string>
+    <string name="pl_subtitle_local">%1$d 曲目 • %2$s</string>
     <string name="pl_play_cd">播放播放列表</string>
     <string name="pl_options_cd">播放列表选项</string>
     <string name="pl_pin">销</string>
@@ -596,13 +596,13 @@
     <string name="feed_albums">为你准备的专辑</string>
     <string name="feed_albums_sub">符合您口味的真实专辑 — Last.fm 热门 + YT 音乐精选</string>
     <string name="feed_trending">现在流行</string>
-    <string name="feed_trending_sub">目前最热门 · 点击排名即可玩</string>
+    <string name="feed_trending_sub">目前最热门 • 点击排名即可玩</string>
     <string name="feed_releases">新发布</string>
     <string name="feed_releases_sub">新鲜的水滴和新专辑</string>
     <string name="feed_friends">你的朋友</string>
     <string name="feed_friends_sub">你的聆听圈子里的人</string>
     <string name="feed_footer_default">根据您的口味为您量身打造</string>
-    <string name="feed_footer_updated">已更新 %1$s · 根据您的口味为您量身打造</string>
+    <string name="feed_footer_updated">已更新 %1$s • 根据您的口味为您量身打造</string>
     <string name="feed_ago_min">%1$d分钟前</string>
     <string name="feed_ago_hour">%1$d 小时前</string>
     <string name="feed_ago_day">%1$d 天前</string>
@@ -690,7 +690,7 @@
     <string name="fpd_opening">正在打开播放列表...</string>
     <string name="fpd_retry">再试一次</string>
     <string name="fpd_loading_more">正在加载剩余曲目...</string>
-    <string name="fpd_incomplete">播放列表不完整·重试</string>
+    <string name="fpd_incomplete">播放列表不完整 • 重试</string>
     <string name="fpd_track_options_cd">曲目选项</string>
     <string name="add_dup_single_title">歌曲已在播放列表中</string>
     <string name="add_dup_single_text">%2$s 的 %1$s 已存在于 %3$s 中。您可以保留播放列表不变或添加另一个副本。</string>

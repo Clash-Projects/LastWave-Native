@@ -721,9 +721,9 @@ fun JamScreen(
                                         )
                                         Text(
                                             text = if (uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE)
-                                                "Collaborative · Anyone can control"
+                                                "Collaborative \u2022 Anyone can control"
                                             else
-                                                "Host Only · Only host controls",
+                                                "Host Only \u2022 Only host controls",
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Medium,
                                             color = onJamAccentContainer,

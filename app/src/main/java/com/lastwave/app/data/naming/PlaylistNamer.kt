@@ -95,7 +95,7 @@ object PlaylistNamer {
     fun subtitleFor(mode: String, tagInput: String? = null, seedTrackName: String? = null, seedArtistInput: String? = null): String =
         when (mode) {
             "tag" -> if (!tagInput.isNullOrBlank()) {
-                "Genre Mix \u00b7 ${tagInput.split(" ").joinToString(" ") { w -> w.replaceFirstChar(Char::uppercase) }}"
+                "Genre Mix \u2022 ${tagInput.split(" ").joinToString(" ") { w -> w.replaceFirstChar(Char::uppercase) }}"
             } else {
                 "Genre Mix"
             }
@@ -104,8 +104,8 @@ object PlaylistNamer {
             "mix" -> "My Mix"
             "recommendations" -> "Recommendations"
             "never-heard" -> "Never-Heard Mix"
-            "similar-tracks", "start-mix" -> if (!seedTrackName.isNullOrBlank()) "Track Mix \u00b7 $seedTrackName" else "Track Mix"
-            "similar-artists" -> if (!seedArtistInput.isNullOrBlank()) "Artist Mix \u00b7 $seedArtistInput" else "Artist Mix"
+            "similar-tracks", "start-mix" -> if (!seedTrackName.isNullOrBlank()) "Track Mix \u2022 $seedTrackName" else "Track Mix"
+            "similar-artists" -> if (!seedArtistInput.isNullOrBlank()) "Artist Mix \u2022 $seedArtistInput" else "Artist Mix"
             "discover" -> "Discover Feed"
             else -> "Mix"
         }

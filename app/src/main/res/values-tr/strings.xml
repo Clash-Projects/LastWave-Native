@@ -190,7 +190,7 @@
     <string name="home_section_fresh_title">Yeni keşifler</string>
     <string name="home_section_fresh_sub">Rutininizin dışında yeni parçalar</string>
     <string name="home_section_jump_title">Kaldığınız yerden</string>
-    <string name="home_section_jump_sub">Son çalınanlar · tekrar dinleyin</string>
+    <string name="home_section_jump_sub">Son çalınanlar • tekrar dinleyin</string>
     <string name="home_section_mixes_title">Keşfedilecek mix\'ler</string>
     <string name="home_section_mixes_sub">Sonsuz sanatçı radyo mix\'leri</string>
     <string name="home_section_spotlight_title">Spotlight</string>
@@ -349,7 +349,7 @@
     <string name="local_scanning">Aranıyor… %1$d dosya bulundu</string>
     <string name="local_copying">Kopyalanıyor %1$d/%2$d — %3$s</string>
     <string name="local_report_space">Bu şarkıları kopyalamak için yeterli boş alan yok.</string>
-    <string name="local_report_summary">%1$d eklendi · %2$d güncellendi · %3$d değişmedi</string>
+    <string name="local_report_summary">%1$d eklendi • %2$d güncellendi • %3$d değişmedi</string>
     <plurals name="local_report_unsupported">
         <item quantity="one">%1$d dosya atlandı (desteklenmeyen biçim: %2$s)</item>
         <item quantity="other">%1$d dosya atlandı (desteklenmeyen biçim: %2$s)</item>
@@ -515,7 +515,7 @@
     <string name="pl_selected_count">%1$d seçildi</string>
     <string name="pl_select_more_hint">Daha fazla seçmek için uzun basın</string>
     <string name="pl_count_only">%1$d Liste</string>
-    <string name="pl_count_tracks">%1$d Liste · %2$d Parça</string>
+    <string name="pl_count_tracks">%1$d Liste • %2$d Parça</string>
     <string name="pl_delete_selected_cd">Seçilenleri sil</string>
     <string name="pl_clear_selection_cd">Seçimi temizle</string>
     <string name="pl_create_cd">Özel liste oluştur</string>
@@ -525,7 +525,7 @@
     <string name="pl_pinned_cd">Sabitlendi</string>
     <string name="pl_yt_tracks">%1$d parça</string>
     <string name="pl_yt_connected">Bağlı hesap</string>
-    <string name="pl_subtitle_local">%1$d parça · %2$s</string>
+    <string name="pl_subtitle_local">%1$d parça • %2$s</string>
     <string name="pl_play_cd">Listeyi çal</string>
     <string name="pl_options_cd">Liste seçenekleri</string>
     <string name="pl_pin">Sabitle</string>
@@ -628,13 +628,13 @@
     <string name="feed_albums">Size özel albümler</string>
     <string name="feed_albums_sub">Zevkinize uygun gerçek albümler — Last.fm zirveleri + YT Music seçimleri</string>
     <string name="feed_trending">Trendler</string>
-    <string name="feed_trending_sub">Şu an en popülerler · çalmak için sıraya dokunun</string>
+    <string name="feed_trending_sub">Şu an en popülerler • çalmak için sıraya dokunun</string>
     <string name="feed_releases">Yeni çıkanlar</string>
     <string name="feed_releases_sub">Taze single ve albümler</string>
     <string name="feed_friends">Arkadaşlarınız</string>
     <string name="feed_friends_sub">Dinleme çevrenizdekiler</string>
     <string name="feed_footer_default">Zevkinize göre sizin için hazırlandı</string>
-    <string name="feed_footer_updated">%1$s güncellendi · Zevkinize göre sizin için hazırlandı</string>
+    <string name="feed_footer_updated">%1$s güncellendi • Zevkinize göre sizin için hazırlandı</string>
     <string name="feed_ago_min">%1$d dk önce</string>
     <string name="feed_ago_hour">%1$d sa önce</string>
     <string name="feed_ago_day">%1$d gün önce</string>
@@ -730,7 +730,7 @@
     <string name="fpd_opening">Liste açılıyor…</string>
     <string name="fpd_retry">Tekrar dene</string>
     <string name="fpd_loading_more">Kalan parçalar yükleniyor…</string>
-    <string name="fpd_incomplete">Liste eksik · Tekrar dene</string>
+    <string name="fpd_incomplete">Liste eksik • Tekrar dene</string>
     <string name="fpd_track_options_cd">Parça seçenekleri</string>
 
     <!-- İndirilenler ekranı -->

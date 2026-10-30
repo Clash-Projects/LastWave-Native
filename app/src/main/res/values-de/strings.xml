@@ -139,7 +139,7 @@
     <string name="home_section_fresh_title">Frische Funde</string>
     <string name="home_section_fresh_sub">Neue Tracks jenseits deiner Rotation</string>
     <string name="home_section_jump_title">Weiterhören</string>
-    <string name="home_section_jump_sub">Zuletzt gespielt · erneut hören</string>
+    <string name="home_section_jump_sub">Zuletzt gespielt • erneut hören</string>
     <string name="home_section_mixes_title">Mixe zum Entdecken</string>
     <string name="home_section_mixes_sub">Endlose Künstler-Radiomixe</string>
     <string name="home_section_spotlight_title">Spotlight</string>
@@ -342,7 +342,7 @@
     <string name="local_scanning">Suche... %1$d Dateien gefunden</string>
     <string name="local_copying">Kopieren von %1$d/%2$d — %3$s</string>
     <string name="local_report_space">Nicht genügend freier Speicherplatz, um diese Songs zu kopieren.</string>
-    <string name="local_report_summary">%1$d hinzugefügt · %2$d aktualisiert · %3$d unverändert</string>
+    <string name="local_report_summary">%1$d hinzugefügt • %2$d aktualisiert • %3$d unverändert</string>
     <string name="local_report_failed">%1$d Datei(en) konnten nicht kopiert werden</string>
     <string name="local_report_unreachable">%1$d Ordner sind nicht mehr erreichbar – wählen Sie sie erneut aus</string>
     <string name="local_storage_used">Von lokalen Liedern genutzter Speicherplatz: %1$s</string>
@@ -503,7 +503,7 @@
     <string name="pl_selected_count">%1$d ausgewählt</string>
     <string name="pl_select_more_hint">Lange drücken, um mehr auszuwählen</string>
     <string name="pl_count_only">%1$d Wiedergabelisten</string>
-    <string name="pl_count_tracks">%1$d Wiedergabelisten · %2$d Titel</string>
+    <string name="pl_count_tracks">%1$d Wiedergabelisten • %2$d Titel</string>
     <string name="pl_delete_selected_cd">Ausgewählte löschen</string>
     <string name="pl_clear_selection_cd">Klare Auswahl</string>
     <string name="pl_create_cd">Erstellen Sie eine benutzerdefinierte Wiedergabeliste</string>
@@ -513,7 +513,7 @@
     <string name="pl_pinned_cd">Angepinnt</string>
     <string name="pl_yt_tracks">%1$d Spuren</string>
     <string name="pl_yt_connected">Verbundenes Konto</string>
-    <string name="pl_subtitle_local">%1$d Titel · %2$s</string>
+    <string name="pl_subtitle_local">%1$d Titel • %2$s</string>
     <string name="pl_play_cd">Playlist abspielen</string>
     <string name="pl_options_cd">Playlist-Optionen</string>
     <string name="pl_pin">Pin</string>
@@ -593,13 +593,13 @@
     <string name="feed_albums">Alben für Sie</string>
     <string name="feed_albums_sub">Echte Alben nach deinem Geschmack – Last.fm-Tops + YT Music-Tipps</string>
     <string name="feed_trending">Jetzt im Trend</string>
-    <string name="feed_trending_sub">Derzeit am beliebtesten · Tippen Sie auf einen Rang, um zu spielen</string>
+    <string name="feed_trending_sub">Derzeit am beliebtesten • Tippen Sie auf einen Rang, um zu spielen</string>
     <string name="feed_releases">Neuerscheinungen</string>
     <string name="feed_releases_sub">Frische Drops und neue Alben</string>
     <string name="feed_friends">Deine Freunde</string>
     <string name="feed_friends_sub">Personen in Ihrem Zuhörerkreis</string>
     <string name="feed_footer_default">Für Sie nach Ihrem Geschmack zusammengestellt</string>
-    <string name="feed_footer_updated">Aktualisiert %1$s · Nach Ihrem Geschmack für Sie zusammengestellt</string>
+    <string name="feed_footer_updated">Aktualisiert %1$s • Nach Ihrem Geschmack für Sie zusammengestellt</string>
     <string name="feed_ago_min">Vor %1$dm</string>
     <string name="feed_ago_hour">Vor %1$dh</string>
     <string name="feed_ago_day">Vor %1$dd</string>
@@ -687,7 +687,7 @@
     <string name="fpd_opening">Playlist wird geöffnet…</string>
     <string name="fpd_retry">Versuchen Sie es erneut</string>
     <string name="fpd_loading_more">Verbleibende Titel werden geladen…</string>
-    <string name="fpd_incomplete">Playlist unvollständig · Wiederholen</string>
+    <string name="fpd_incomplete">Playlist unvollständig • Wiederholen</string>
     <string name="fpd_track_options_cd">Track-Optionen</string>
     <string name="add_dup_single_title">Song bereits in der Playlist</string>
     <string name="add_dup_single_text">%1$s von %2$s ist bereits in %3$s vorhanden. Sie können die Playlist unverändert lassen oder eine weitere Kopie hinzufügen.</string>

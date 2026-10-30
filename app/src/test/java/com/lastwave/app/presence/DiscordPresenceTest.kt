@@ -79,14 +79,14 @@ class DiscordPresenceTest {
         assertEquals(2, activity["type"]?.jsonPrimitive?.int) // 2 = Listening
         assertEquals("LastWave", str(activity, "name"))
         assertEquals("Sunglasses at Night", str(activity, "details"))
-        assertEquals("Moondrop\n · Hi-Res Lossless · 24-bit · 96 kHz", str(activity, "state"))
+        assertEquals("Moondrop\n • Hi-Res Lossless • 24-bit • 96 kHz", str(activity, "state"))
     }
 
     @Test
     fun qualityLineDescribesOnlyWhatWasMeasured() {
         // CD-quality lossless: 16-bit at 44.1kHz is Lossless, not Hi-Res.
         assertEquals(
-            "Lossless · 16-bit · 44.1 kHz",
+            "Lossless • 16-bit • 44.1 kHz",
             DiscordPresence.qualityLine(state(bitDepth = 16, samplingRateKHz = 44.1)),
         )
         // A lossy stream claims nothing about depth it never reported.
@@ -99,7 +99,7 @@ class DiscordPresenceTest {
         // Spatial is reported only when the codec says so — and the lossless
         // tier still stands on its own.
         assertEquals(
-            "Lossless · 48 kHz · ATMOS",
+            "Lossless • 48 kHz • ATMOS",
             DiscordPresence.qualityLine(state(audioCodec = "EC-3 ATMOS", bitDepth = null, samplingRateKHz = 48.0)),
         )
     }
@@ -294,7 +294,7 @@ class DiscordPresenceTest {
     @Test
     fun unknownArtistFallsBackToAlbumThenAppName() {
         assertEquals(
-            "Afterglow\n · Lossless · 16-bit · 44.1 kHz",
+            "Afterglow\n • Lossless • 16-bit • 44.1 kHz",
             DiscordPresence.buildActivity(
                 state(track = track(artist = "  ", album = "Afterglow"), bitDepth = 16, samplingRateKHz = 44.1),
                 NOW_MS,

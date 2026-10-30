@@ -139,7 +139,7 @@
     <string name="home_section_fresh_title">اكتشافات جديدة</string>
     <string name="home_section_fresh_sub">مقاطع جديدة خارج روتينك</string>
     <string name="home_section_jump_title">تابع الاستماع</string>
-    <string name="home_section_jump_sub">الأخيرة · استمع مجددًا</string>
+    <string name="home_section_jump_sub">الأخيرة • استمع مجددًا</string>
     <string name="home_section_mixes_title">مزيجات للاستكشاف</string>
     <string name="home_section_mixes_sub">مزيجات راديو الفنانين اللامتناهية</string>
     <string name="home_section_spotlight_title">تسليط الضوء</string>
@@ -342,7 +342,7 @@
     <string name="local_scanning">جارٍ البحث... تم العثور على ملفات %1$d</string>
     <string name="local_copying">نسخ %1$d/%2$d — %3$s</string>
     <string name="local_report_space">لا توجد مساحة خالية كافية لنسخ هذه الأغاني.</string>
-    <string name="local_report_summary">تمت إضافة %1$d · تم تحديث %2$d · %3$d بدون تغيير</string>
+    <string name="local_report_summary">تمت إضافة %1$d • تم تحديث %2$d • %3$d بدون تغيير</string>
     <string name="local_report_failed">لا يمكن نسخ الملف (الملفات) %1$d</string>
     <string name="local_report_unreachable">لم يعد من الممكن الوصول إلى المجلد (المجلدات) %1$d — اخترها مرة أخرى</string>
     <string name="local_storage_used">المساحة المستخدمة للأغاني المحلية: %1$s</string>
@@ -503,7 +503,7 @@
     <string name="pl_selected_count">%1$d تم التحديد</string>
     <string name="pl_select_more_hint">اضغط لفترة طويلة لتحديد المزيد</string>
     <string name="pl_count_only">%1$d قوائم التشغيل</string>
-    <string name="pl_count_tracks">%1$d قوائم التشغيل · %2$d المقاطع الصوتية</string>
+    <string name="pl_count_tracks">%1$d قوائم التشغيل • %2$d المقاطع الصوتية</string>
     <string name="pl_delete_selected_cd">حذف المحدد</string>
     <string name="pl_clear_selection_cd">مسح التحديد</string>
     <string name="pl_create_cd">إنشاء قائمة تشغيل مخصصة</string>
@@ -513,7 +513,7 @@
     <string name="pl_pinned_cd">مثبت</string>
     <string name="pl_yt_tracks">%1$d المسارات</string>
     <string name="pl_yt_connected">حساب متصل</string>
-    <string name="pl_subtitle_local">%1$d المسارات · %2$s</string>
+    <string name="pl_subtitle_local">%1$d المسارات • %2$s</string>
     <string name="pl_play_cd">تشغيل قائمة التشغيل</string>
     <string name="pl_options_cd">خيارات قائمة التشغيل</string>
     <string name="pl_pin">دبوس</string>
@@ -593,13 +593,13 @@
     <string name="feed_albums">ألبومات لك</string>
     <string name="feed_albums_sub">ألبومات حقيقية حسب ذوقك — Last.fm تصدرت قائمة الأغاني + اختيارات موسيقى YouTube</string>
     <string name="feed_trending">تتجه الآن</string>
-    <string name="feed_trending_sub">الأكثر شعبية الآن · اضغط على رتبة للعب</string>
+    <string name="feed_trending_sub">الأكثر شعبية الآن • اضغط على رتبة للعب</string>
     <string name="feed_releases">الإصدارات الجديدة</string>
     <string name="feed_releases_sub">قطرات جديدة وألبومات جديدة</string>
     <string name="feed_friends">أصدقائك</string>
     <string name="feed_friends_sub">الأشخاص في دائرة الاستماع الخاصة بك</string>
     <string name="feed_footer_default">صنعت لك من ذوقك</string>
-    <string name="feed_footer_updated">تم التحديث %1$s · صنعت لك على ذوقك</string>
+    <string name="feed_footer_updated">تم التحديث %1$s • صنعت لك على ذوقك</string>
     <string name="feed_ago_min">%1$dم مضت</string>
     <string name="feed_ago_hour">%1$dh منذ</string>
     <string name="feed_ago_day">%1$dd منذ</string>
@@ -687,7 +687,7 @@
     <string name="fpd_opening">جارٍ فتح قائمة التشغيل...</string>
     <string name="fpd_retry">حاول مرة أخرى</string>
     <string name="fpd_loading_more">جارٍ تحميل المسارات المتبقية...</string>
-    <string name="fpd_incomplete">قائمة التشغيل غير مكتملة · أعد المحاولة</string>
+    <string name="fpd_incomplete">قائمة التشغيل غير مكتملة • أعد المحاولة</string>
     <string name="fpd_track_options_cd">خيارات المسار</string>
     <string name="add_dup_single_title">الأغنية موجودة بالفعل في قائمة التشغيل</string>
     <string name="add_dup_single_text">%1$s بواسطة %2$s موجود بالفعل في %3$s. يمكنك ترك قائمة التشغيل دون تغيير أو إضافة نسخة أخرى.</string>

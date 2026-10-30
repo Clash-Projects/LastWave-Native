@@ -139,7 +139,7 @@
     <string name="home_section_fresh_title">Свежие находки</string>
     <string name="home_section_fresh_sub">Новые треки вне вашей ротации</string>
     <string name="home_section_jump_title">Продолжить слушать</string>
-    <string name="home_section_jump_sub">Недавнее · послушать снова</string>
+    <string name="home_section_jump_sub">Недавнее • послушать снова</string>
     <string name="home_section_mixes_title">Миксы для изучения</string>
     <string name="home_section_mixes_sub">Бесконечные миксы радио исполнителей</string>
     <string name="home_section_spotlight_title">Витрина</string>
@@ -342,7 +342,7 @@
     <string name="local_scanning">Поиск… Найдено файлов %1$d</string>
     <string name="local_copying">Копирование %1$d/%2$d — %3$s</string>
     <string name="local_report_space">Недостаточно свободного места для копирования этих песен.</string>
-    <string name="local_report_summary">%1$d добавлен · %2$d обновлен · %3$d без изменений</string>
+    <string name="local_report_summary">%1$d добавлен • %2$d обновлен • %3$d без изменений</string>
     <string name="local_report_failed">%1$d файл(ы) не удалось скопировать</string>
     <string name="local_report_unreachable">Папки %1$d больше недоступны — выберите их снова.</string>
     <string name="local_storage_used">Пространство, используемое местными песнями: %1$s</string>
@@ -503,7 +503,7 @@
     <string name="pl_selected_count">%1$d выбрано</string>
     <string name="pl_select_more_hint">Длительное нажатие, чтобы выбрать больше</string>
     <string name="pl_count_only">%1$d Плейлисты</string>
-    <string name="pl_count_tracks">%1$d Плейлисты · %2$d Треки</string>
+    <string name="pl_count_tracks">%1$d Плейлисты • %2$d Треки</string>
     <string name="pl_delete_selected_cd">Удалить выбранное</string>
     <string name="pl_clear_selection_cd">Очистить выбор</string>
     <string name="pl_create_cd">Создать собственный плейлист</string>
@@ -513,7 +513,7 @@
     <string name="pl_pinned_cd">Закреплено</string>
     <string name="pl_yt_tracks">%1$d треков</string>
     <string name="pl_yt_connected">Подключенный аккаунт</string>
-    <string name="pl_subtitle_local">%1$d треков · %2$s</string>
+    <string name="pl_subtitle_local">%1$d треков • %2$s</string>
     <string name="pl_play_cd">Воспроизвести плейлист</string>
     <string name="pl_options_cd">Параметры плейлиста</string>
     <string name="pl_pin">Пин-код</string>
@@ -593,13 +593,13 @@
     <string name="feed_albums">Альбомы для вас</string>
     <string name="feed_albums_sub">Настоящие альбомы на ваш вкус — топы Last.fm + подборка YT Music</string>
     <string name="feed_trending">В тренде сейчас</string>
-    <string name="feed_trending_sub">Сейчас самое популярное · коснитесь ранга, чтобы играть</string>
+    <string name="feed_trending_sub">Сейчас самое популярное • коснитесь ранга, чтобы играть</string>
     <string name="feed_releases">Новые релизы</string>
     <string name="feed_releases_sub">Свежие выпуски и новые альбомы</string>
     <string name="feed_friends">Ваши друзья</string>
     <string name="feed_friends_sub">Люди из вашего круга прослушивания</string>
     <string name="feed_footer_default">Сделано для вас по вашему вкусу</string>
-    <string name="feed_footer_updated">Обновлено %1$s · Сделано для вас по вашему вкусу</string>
+    <string name="feed_footer_updated">Обновлено %1$s • Сделано для вас по вашему вкусу</string>
     <string name="feed_ago_min">%1$dмин назад</string>
     <string name="feed_ago_hour">%1$dч назад</string>
     <string name="feed_ago_day">%1$dдней назад</string>
@@ -687,7 +687,7 @@
     <string name="fpd_opening">Открытие плейлиста…</string>
     <string name="fpd_retry">Попробуйте еще раз</string>
     <string name="fpd_loading_more">Загрузка оставшихся треков…</string>
-    <string name="fpd_incomplete">Плейлист неполный · Повторить</string>
+    <string name="fpd_incomplete">Плейлист неполный • Повторить</string>
     <string name="fpd_track_options_cd">Варианты отслеживания</string>
     <string name="add_dup_single_title">Песня уже в плейлисте</string>
     <string name="add_dup_single_text">%1$s от %2$s уже присутствует в %3$s. Вы можете оставить плейлист без изменений или добавить еще одну копию.</string>

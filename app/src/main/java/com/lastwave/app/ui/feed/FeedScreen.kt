@@ -2746,7 +2746,7 @@ private fun RecentTrackCard(
     val context = LocalContext.current
     val ago = remember(track.date?.uts, track.url) { relativeTime(context, track.date?.uts) }
     val primaryArtistName = remember(track.artist.displayName) { ArtistHelper.primaryArtist(track.artist.displayName) }
-    val subtitle = if (ago != null) "$primaryArtistName \u00b7 $ago" else primaryArtistName
+    val subtitle = if (ago != null) "$primaryArtistName \u2022 $ago" else primaryArtistName
     val haptics = LocalHapticFeedback.current
     val cardWidth = rememberSquareCardWidth()
     val coverHeight = rememberCoverHeight()

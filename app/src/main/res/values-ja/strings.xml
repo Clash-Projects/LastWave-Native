@@ -139,7 +139,7 @@
     <string name="home_section_fresh_title">最新ディスカバリー</string>
     <string name="home_section_fresh_sub">ローテーション外の新しい曲</string>
     <string name="home_section_jump_title">続きから聴く</string>
-    <string name="home_section_jump_sub">最近再生 · もう一度聴く</string>
+    <string name="home_section_jump_sub">最近再生 • もう一度聴く</string>
     <string name="home_section_mixes_title">探索ミックス</string>
     <string name="home_section_mixes_sub">無限のアーティストラジオミックス</string>
     <string name="home_section_spotlight_title">スポットライト</string>
@@ -342,7 +342,7 @@
     <string name="local_scanning">検索中… %1$d ファイルが見つかりました</string>
     <string name="local_copying">%1$d/%2$d — %3$s をコピーしています</string>
     <string name="local_report_space">これらの曲をコピーするのに十分な空き容量がありません。</string>
-    <string name="local_report_summary">%1$d 追加 · %2$d 更新 · %3$d 変更なし</string>
+    <string name="local_report_summary">%1$d 追加 • %2$d 更新 • %3$d 変更なし</string>
     <string name="local_report_failed">%1$d ファイルをコピーできませんでした</string>
     <string name="local_report_unreachable">%1$d フォルダーにアクセスできなくなりました - もう一度選択してください</string>
     <string name="local_storage_used">ローカルソングで使用されるスペース: %1$s</string>
@@ -503,7 +503,7 @@
     <string name="pl_selected_count">%1$d が選択されました</string>
     <string name="pl_select_more_hint">長押ししてさらに選択します</string>
     <string name="pl_count_only">%1$d プレイリスト</string>
-    <string name="pl_count_tracks">%1$d プレイリスト · %2$d トラック</string>
+    <string name="pl_count_tracks">%1$d プレイリスト • %2$d トラック</string>
     <string name="pl_delete_selected_cd">選択したものを削除</string>
     <string name="pl_clear_selection_cd">選択をクリア</string>
     <string name="pl_create_cd">カスタムプレイリストを作成する</string>
@@ -513,7 +513,7 @@
     <string name="pl_pinned_cd">固定された</string>
     <string name="pl_yt_tracks">%1$d トラック</string>
     <string name="pl_yt_connected">接続されたアカウント</string>
-    <string name="pl_subtitle_local">%1$d トラック · %2$s</string>
+    <string name="pl_subtitle_local">%1$d トラック • %2$s</string>
     <string name="pl_play_cd">プレイリストを再生する</string>
     <string name="pl_options_cd">プレイリストのオプション</string>
     <string name="pl_pin">ピン</string>
@@ -593,13 +593,13 @@
     <string name="feed_albums">あなたのためのアルバム</string>
     <string name="feed_albums_sub">あなたの好みに合わせた本物のアルバム — Last.fm のトップ + YT ミュージック ピック</string>
     <string name="feed_trending">今のトレンド</string>
-    <string name="feed_trending_sub">現在最も人気があります · ランクをタップして再生します</string>
+    <string name="feed_trending_sub">現在最も人気があります • ランクをタップして再生します</string>
     <string name="feed_releases">新しいリリース</string>
     <string name="feed_releases_sub">フレッシュドロップと新しいアルバム</string>
     <string name="feed_friends">あなたの友達</string>
     <string name="feed_friends_sub">リスニングサークルの人々</string>
     <string name="feed_footer_default">あなたの好みに合わせて作られました</string>
-    <string name="feed_footer_updated">%1$s を更新しました · あなたの好みに合わせて作成しました</string>
+    <string name="feed_footer_updated">%1$s を更新しました • あなたの好みに合わせて作成しました</string>
     <string name="feed_ago_min">%1$d分前</string>
     <string name="feed_ago_hour">%1$d時間前</string>
     <string name="feed_ago_day">%1$d日前</string>
@@ -687,7 +687,7 @@
     <string name="fpd_opening">プレイリストを開いています…</string>
     <string name="fpd_retry">もう一度試してください</string>
     <string name="fpd_loading_more">残りのトラックをロード中…</string>
-    <string name="fpd_incomplete">プレイリストが不完全 · 再試行</string>
+    <string name="fpd_incomplete">プレイリストが不完全 • 再試行</string>
     <string name="fpd_track_options_cd">トラックオプション</string>
     <string name="add_dup_single_title">すでにプレイリストにある曲</string>
     <string name="add_dup_single_text">%2$s による %1$s はすでに %3$s に存在します。プレイリストを変更しないままにすることも、別のコピーを追加することもできます。</string>
