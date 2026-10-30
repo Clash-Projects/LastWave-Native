@@ -2001,8 +2001,8 @@ private fun AddToPlaylistDialog(
                                     )
                                     Text(
                                         when {
-                                            isCheckingDuplicates && selected -> "$countLabel Â· Checking contentsâ€¦"
-                                            alreadyAdded -> "$countLabel Â· Already added"
+                                            isCheckingDuplicates && selected -> "$countLabel \u2022 Checking contents..."
+                                            alreadyAdded -> "$countLabel \u2022 Already added"
                                             else -> countLabel
                                         },
                                         style = MaterialTheme.typography.bodyMedium,
@@ -4902,7 +4902,7 @@ private fun DeckWaveform(
                         )
                     }
                     Text(
-                        text = if (trackTitle.isNotBlank()) "$trackTitle â€¢ $trackArtist" else "Standby Deck Empty",
+                        text = if (trackTitle.isNotBlank()) "$trackTitle \u2022 $trackArtist" else "Standby Deck Empty",
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface,
@@ -5138,18 +5138,15 @@ private fun AppleMusicQualityBadge(
     val haptics = LocalHapticFeedback.current
     val isSpatial = remember(state.audioCodec) { isSpatialAudioCodec(state.audioCodec) }
     val isHiRes = state.isLossless && ((state.samplingRateKHz ?: 44.1) > 48.0 || (state.bitDepth ?: 16) > 16)
-    val baseLabel = remember(state.audioCodec, state.bitrateKbps, state.samplingRateKHz, state.bitDepth, state.isLossless) {
+    val baseLabel = remember(state.audioCodec, state.bitrateKbps, state.samplingRateKHz, state.bitDepth, state.isLossless, state.deckBlendTelemetry.phase) {
         qualityBadgeLabel(state)
     }
 
-    val isMixActive = state.deckBlendTelemetry.isBlendingActive
+    val isMixActive = state.deckBlendTelemetry.isBlendingActive || state.deckBlendTelemetry.phase == com.lastwave.app.playback.automix.api.BlendPhase.MIX_COMPLETED
     val isFadeActive = state.isCrossfading && !isMixActive
 
     val displayTitle = when {
-        isMixActive -> {
-            val bpm = state.deckBlendTelemetry.syncedBpm?.let { " Â· ${it.toInt()} BPM" } ?: ""
-            "AutoMix$bpm"
-        }
+        isMixActive -> "AutoMix"
         isFadeActive -> "Crossfade"
         isSpatial -> "Dolby Atmos"
         isHiRes -> "Hi-Res Lossless"
@@ -5205,7 +5202,7 @@ private fun AppleMusicQualityBadge(
             Spacer(Modifier.width(5.dp))
             val fullText = when {
                 isMixActive || isFadeActive -> displayTitle
-                baseLabel.isNotBlank() && !baseLabel.equals(displayTitle, ignoreCase = true) && !baseLabel.equals("AUDIO", ignoreCase = true) -> "$displayTitle Â· $baseLabel"
+                baseLabel.isNotBlank() && !baseLabel.equals(displayTitle, ignoreCase = true) && !baseLabel.equals("AUDIO", ignoreCase = true) -> "$displayTitle \u00b7 $baseLabel"
                 else -> displayTitle
             }
             Text(
@@ -5673,9 +5670,9 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
                 )
                 Text(
                     if (state.isEndlessQueue) {
-                        "Unlimited songs Â· ${state.currentIndex.coerceAtLeast(0) + 1} playing"
+                        "Unlimited songs \u2022 ${state.currentIndex.coerceAtLeast(0) + 1} playing"
                     } else {
-                        "${state.queue.size} songs Â· ${state.currentIndex.coerceAtLeast(0) + 1} playing"
+                        "${state.queue.size} songs \u2022 ${state.currentIndex.coerceAtLeast(0) + 1} playing"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.White.copy(alpha = 0.70f),

@@ -515,7 +515,7 @@ class FeedRepository @Inject constructor(
         // guest/disconnected builds it from local Room listening history
         // (liked + saved) so "Heavy Rotation" never empties.
         // Taste-weighted rotation: affinity dominates (40/35-point arms), but a
-        // Â±20 jitter reorders within taste bands and last load's picks sink 20,
+        // ±20 jitter reorders within taste bands and last load's picks sink 20,
         // so Heavy Rotation feels fresh every load without going generic.
         // Mirrors quickPicks' trackScore jitter/previous-penalty pattern.
         val previousHeavyKeys = previous?.heavyRotation.orEmpty().mapTo(mutableSetOf()) { it.key }

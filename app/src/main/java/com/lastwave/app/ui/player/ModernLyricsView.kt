@@ -438,7 +438,7 @@ fun ModernLyricsPanel(
                                     color = Color.White,
                                 )
                                 Text(
-                                    "Finding lyricsâ€¦",
+                                    "Finding lyrics...",
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = Color.White.copy(alpha = 0.70f),
                                 )
@@ -522,7 +522,7 @@ fun ModernLyricsPanel(
                                 val provider = targetState.source
                                     ?.substringBefore(" (")
                                     ?.takeIf { it.isNotBlank() } ?: providerFallback
-                                "${if (isWordSynced) wordSyncLabel else lineSyncLabel} â€¢ $provider"
+                                "${if (isWordSynced) wordSyncLabel else lineSyncLabel} \u2022 $provider"
                             }
                             CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
                                 Column(

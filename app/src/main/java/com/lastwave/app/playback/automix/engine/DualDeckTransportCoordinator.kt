@@ -88,11 +88,16 @@ class DualDeckTransportCoordinator @Inject constructor(
 
         if (currentTrack == null || durationMs <= 0L) return
 
+        // If a blend is actively running, do not interfere with the transition in progress
+        if (activeSpliceJob?.isActive == true) {
+            return
+        }
+
         val trackKey = currentTrack.videoId ?: "${currentTrack.artist}|${currentTrack.title}"
         if (activeTrackKey != trackKey) {
             activeTrackKey = trackKey
             currentSplicePlan = null
-            if (_telemetry.value.phase != BlendPhase.BLENDING) {
+            if (_telemetry.value.phase != BlendPhase.BLENDING && _telemetry.value.phase != BlendPhase.LOOP_LOCKED) {
                 _telemetry.value = DeckBlendTelemetry.IDLE
             }
         }

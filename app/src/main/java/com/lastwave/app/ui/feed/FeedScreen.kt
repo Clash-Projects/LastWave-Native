@@ -1917,7 +1917,7 @@ private fun PodcastEpisodeItemCard(
     val infoLine = listOfNotNull(
         ep.subtitle?.takeIf { it.isNotBlank() },
         ep.showName?.takeIf { it.isNotBlank() },
-    ).joinToString(" â€¢ ")
+    ).joinToString(" \u2022 ")
 
     com.lastwave.app.ui.feed.cards.ShelfPodcastEpisodeCard(
         title = ep.title,
@@ -1989,7 +1989,7 @@ private fun playlistInfoLine(p: com.lastwave.app.data.music.YouTubePlaylistSumma
     listOfNotNull(
         p.author,
         p.trackCountText,
-    ).joinToString(" â€¢ ").ifBlank { p.author.orEmpty() }
+    ).joinToString(" \u2022 ").ifBlank { p.author.orEmpty() }
 
 private fun openPlaylistOrAlbum(
     playlist: com.lastwave.app.data.music.YouTubePlaylistSummary,
@@ -2053,7 +2053,7 @@ private fun SquareItemCard(
             val ep = shelfItem
             com.lastwave.app.ui.feed.cards.ShelfSquareCard(
                 title = ep.title,
-                infoLine = listOfNotNull(ep.subtitle, ep.showName).joinToString(" â€¢ "),
+                infoLine = listOfNotNull(ep.subtitle, ep.showName).joinToString(" \u2022 "),
                 artworkUrl = ep.artworkUrl,
                 fallbackIcon = Icons.Filled.Mic,
                 onClick = { onPlayTrack(ep.toYouTubeMusicTrack(), shelfTitle) },
@@ -2111,7 +2111,7 @@ private fun WideItemCard(
             val ep = shelfItem
             com.lastwave.app.ui.feed.cards.ShelfWideCard(
                 title = ep.title,
-                infoLine = listOfNotNull(ep.subtitle, ep.showName).joinToString(" â€¢ "),
+                infoLine = listOfNotNull(ep.subtitle, ep.showName).joinToString(" \u2022 "),
                 artworkUrl = ep.artworkUrl,
                 onClick = { onPlayTrack(ep.toYouTubeMusicTrack(), shelfTitle) },
                 cardWidth = com.lastwave.app.ui.feed.cards.rememberWideCardWidth(),
@@ -2170,7 +2170,7 @@ private fun FeaturedItemCard(
             val ep = shelfItem
             com.lastwave.app.ui.feed.cards.ShelfFeaturedCard(
                 title = ep.title,
-                artist = listOfNotNull(ep.subtitle, ep.showName).joinToString(" â€¢ "),
+                artist = listOfNotNull(ep.subtitle, ep.showName).joinToString(" \u2022 "),
                 artworkUrl = ep.artworkUrl,
                 caption = shelfItem.caption,
                 onClick = { onPlayTrack(ep.toYouTubeMusicTrack(), shelfTitle) },
@@ -2746,7 +2746,7 @@ private fun RecentTrackCard(
     val context = LocalContext.current
     val ago = remember(track.date?.uts, track.url) { relativeTime(context, track.date?.uts) }
     val primaryArtistName = remember(track.artist.displayName) { ArtistHelper.primaryArtist(track.artist.displayName) }
-    val subtitle = if (ago != null) "$primaryArtistName Â· $ago" else primaryArtistName
+    val subtitle = if (ago != null) "$primaryArtistName \u00b7 $ago" else primaryArtistName
     val haptics = LocalHapticFeedback.current
     val cardWidth = rememberSquareCardWidth()
     val coverHeight = rememberCoverHeight()
