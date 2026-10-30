@@ -156,15 +156,60 @@ sealed interface SyncedVideoUiState {
 @HiltViewModel
 class SyncedVideoViewModel @Inject constructor(
     private val videoRepository: SyncedVideoRepository,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow<SyncedVideoUiState>(SyncedVideoUiState.Loading)
     val uiState: StateFlow<SyncedVideoUiState> = _uiState.asStateFlow()
 
+    private val _isVideoActive = MutableStateFlow(false)
+    val isVideoActive: StateFlow<Boolean> = _isVideoActive.asStateFlow()
+
     private var currentKey: String? = null
+
+    /** Shared HTTP factory for video streams – reused across cover and fullscreen players. */
+    val httpFactory: DefaultHttpDataSource.Factory = DefaultHttpDataSource.Factory()
+        .setAllowCrossProtocolRedirects(true)
+        .setConnectTimeoutMs(15000)
+        .setReadTimeoutMs(20000)
+
+    private var _playerInitialized = false
+
+    /** Shared ExoPlayer surviving composition exits. Released only when ViewModel is cleared. */
+    @OptIn(UnstableApi::class)
+    val player: ExoPlayer by lazy {
+        _playerInitialized = true
+        val defaultDataSourceFactory = DefaultDataSource.Factory(appContext, httpFactory)
+        val chunkedFactory = DataSource.Factory {
+            ChunkedRangeDataSource(defaultDataSourceFactory.createDataSource(), chunkSize = 256 * 1024L)
+        }
+        ExoPlayer.Builder(appContext)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(chunkedFactory))
+            .build()
+            .apply {
+                volume = 0f
+                videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
+                trackSelectionParameters = trackSelectionParameters.buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                    .build()
+            }
+    }
+
+    fun setVideoActive(active: Boolean) {
+        _isVideoActive.value = active
+    }
 
     fun loadVideo(title: String, artist: String, videoId: String?, durationMs: Long? = null) {
         val key = "$title|$artist|$videoId|$durationMs"
         if (currentKey == key && _uiState.value is SyncedVideoUiState.Ready) return
+
+        if (currentKey != null && currentKey != key) {
+            // Track changed – reset video toggle and stop player
+            _isVideoActive.value = false
+            if (_playerInitialized) {
+                player.stop()
+                player.clearMediaItems()
+            }
+        }
         currentKey = key
 
         viewModelScope.launch {
@@ -204,6 +249,14 @@ class SyncedVideoViewModel @Inject constructor(
         videoRepository.invalidate(videoId)
         currentKey = null
         loadVideo(title, artist, videoId, durationMs)
+    }
+
+    @OptIn(UnstableApi::class)
+    override fun onCleared() {
+        super.onCleared()
+        if (_playerInitialized) {
+            player.release()
+        }
     }
 }
 
@@ -355,30 +408,14 @@ fun SyncedCoverVideoPlayer(
 
     var isBuffering by remember { mutableStateOf(false) }
 
-    val httpFactory = remember {
-        DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15000)
-            .setReadTimeoutMs(20000)
-    }
+    val httpFactory = viewModel.httpFactory
+    val videoPlayer = viewModel.player
 
-    val videoPlayer = remember(context) {
-        val defaultDataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
-        val chunkedFactory = DataSource.Factory {
-            ChunkedRangeDataSource(defaultDataSourceFactory.createDataSource(), chunkSize = 256 * 1024L)
-        }
-
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(chunkedFactory))
-            .build()
-            .apply {
-                volume = 0f
-                videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
-                trackSelectionParameters = trackSelectionParameters.buildUpon()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
-                    .build()
-            }
-    }
+    // Initialise isRendered from current player state so returning to a ready player
+    // does not flash the loading spinner.
+    var isRenderedLocal = videoPlayer.playbackState == Player.STATE_READY
+            && videoPlayer.currentMediaItem != null
+    if (isRenderedLocal) isRendered = true
 
     DisposableEffect(videoPlayer) {
         val listener = object : Player.Listener {
@@ -395,7 +432,6 @@ fun SyncedCoverVideoPlayer(
                 Log.w("SyncedVideo", "Video player error: ${error.message}", error)
                 val ready = uiState as? SyncedVideoUiState.Ready ?: return
                 if (ready.selectedHeight != null) {
-                    // Cleanly fallback to Auto stream if manually selected quality failed to decode
                     viewModel.selectQuality(null)
                 }
             }
@@ -404,7 +440,8 @@ fun SyncedCoverVideoPlayer(
         onDispose {
             videoPlayer.removeListener(listener)
             videoPlayer.clearVideoSurfaceView(null)
-            videoPlayer.release()
+            // Do NOT release – the ViewModel owns the player's lifecycle
+            videoPlayer.playWhenReady = false
         }
     }
 
@@ -867,30 +904,12 @@ fun FullscreenLandscapeVideoStage(
 
     var isBuffering by remember { mutableStateOf(false) }
 
-    val httpFactory = remember {
-        DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15000)
-            .setReadTimeoutMs(20000)
-    }
+    val httpFactory = viewModel.httpFactory
+    val videoPlayer = viewModel.player
 
-    val videoPlayer = remember(context) {
-        val defaultDataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
-        val chunkedFactory = DataSource.Factory {
-            ChunkedRangeDataSource(defaultDataSourceFactory.createDataSource(), chunkSize = 256 * 1024L)
-        }
-
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(chunkedFactory))
-            .build()
-            .apply {
-                volume = 0f
-                videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
-                trackSelectionParameters = trackSelectionParameters.buildUpon()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
-                    .build()
-            }
-    }
+    var isRenderedLocal = videoPlayer.playbackState == Player.STATE_READY
+            && videoPlayer.currentMediaItem != null
+    if (isRenderedLocal) isRendered = true
 
     DisposableEffect(videoPlayer) {
         val listener = object : Player.Listener {
@@ -915,7 +934,8 @@ fun FullscreenLandscapeVideoStage(
         onDispose {
             videoPlayer.removeListener(listener)
             videoPlayer.clearVideoSurfaceView(null)
-            videoPlayer.release()
+            // Do NOT release – the ViewModel owns the player's lifecycle
+            videoPlayer.playWhenReady = false
         }
     }
 

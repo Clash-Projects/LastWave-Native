@@ -2241,7 +2241,8 @@ private fun FullPlayer(
     val isTablet = isTabletOrWideScreen()
     val isTabletLandscape = isLandscape && (isTablet || configuration.screenWidthDp >= 600)
     val isCanvasActive = canvasEnabled && canvas != null
-    var showSyncedVideo by remember(track.videoId, track.title) { mutableStateOf(false) }
+    val syncedVideoVm: SyncedVideoViewModel = hiltViewModel()
+    val showSyncedVideo by syncedVideoVm.isVideoActive.collectAsStateWithLifecycle()
     val isVideoActive = showSyncedVideo && musicVideoEnabled
     val showFullBleed = canvasFullBleedEnabled && !isVideoActive
     val showSleeveCanvas = isCanvasActive && (!showFullBleed || isTabletLandscape) && !isVideoActive
@@ -2456,7 +2457,7 @@ private fun FullPlayer(
             onMinimize = { isVideoFullscreen = false },
             onCloseVideo = {
                 isVideoFullscreen = false
-                showSyncedVideo = false
+                syncedVideoVm.setVideoActive(false)
             },
             modifier = Modifier.fillMaxSize(),
         )
@@ -3037,9 +3038,9 @@ private fun FullPlayer(
                                     onOpenSignalPath = { showSignalPath = true },
                                     onOpenAudioControls = { showAudioControls = true },
                                     isVideoActive = isVideoActive,
-                                    onCloseVideo = { showSyncedVideo = false },
+                                    onCloseVideo = { syncedVideoVm.setVideoActive(false) },
                                     onEnterFullscreen = { isVideoFullscreen = true },
-                                    onToggleVideo = { showSyncedVideo = !showSyncedVideo },
+                                    onToggleVideo = { syncedVideoVm.setVideoActive(!showSyncedVideo) },
                                 )
                             } else {
                                 // â”€â”€ Standard layout (lifted and balanced) â”€â”€â”€â”€â”€â”€
@@ -3218,7 +3219,7 @@ private fun FullPlayer(
                                                     SyncedCoverVideoPlayer(
                                                         track = track,
                                                         musicPlayer = player,
-                                                        onCloseVideo = { showSyncedVideo = false },
+                                                        onCloseVideo = { syncedVideoVm.setVideoActive(false) },
                                                         onEnterFullscreen = { isVideoFullscreen = true },
                                                         modifier = Modifier.fillMaxSize(),
                                                     )
@@ -3553,7 +3554,7 @@ private fun FullPlayer(
                                         isTranslucent = LocalLiquidGlass.current || showFullBleed,
                                         onOpenAudioControls = { showAudioControls = true },
                                         isVideoActive = isVideoActive,
-                                        onToggleVideo = { showSyncedVideo = !showSyncedVideo },
+                                        onToggleVideo = { syncedVideoVm.setVideoActive(!showSyncedVideo) },
                                         modifier = Modifier.padding(top = 4.dp),
                                     )
                                 }
@@ -3611,7 +3612,7 @@ private fun FullPlayer(
             playableTrack = track,
             onDismiss = { showTrackMenu = false },
             onPlayInLastWave = { player.play(track, sourceLabel = state.sourceLabel) },
-            onWatchVideo = { showSyncedVideo = true },
+            onWatchVideo = { syncedVideoVm.setVideoActive(true) },
         )
     }
 
