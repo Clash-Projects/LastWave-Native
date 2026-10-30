@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.sp
 /**
  * Large 16:9 episode card for podcast category shelves.
  *
- * Sized to ~88% of screen width (280-420dp) so the next card peeks into view.
+ * Sized to ~80% of screen width (260-400dp) so the next card peeks into view.
  * Features a 16:9 thumbnail, duration badge, thin progress bar when progress exists,
  * exactly two fixed text lines (title and muted info line), and a 3-dot menu button.
  */
