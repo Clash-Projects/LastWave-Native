@@ -186,7 +186,16 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                     override fun onSkipToNext() = musicPlayer.next()
                     override fun onSkipToPrevious() = musicPlayer.previous()
                     override fun onSeekTo(pos: Long) = musicPlayer.seekTo(pos)
-                    override fun onStop() = musicPlayer.stopAndClear()
+                    // A stop from an external controller (Bluetooth/car unit,
+                    // OEM media card, system UI) ends playback but must not
+                    // destroy the session. Wiping the queue, the persisted
+                    // session and the notification here turned a routine focus
+                    // hand-off — another app taking over the media card, which
+                    // some OEM skins report as a stop — into "the song
+                    // disappears and I have to reopen the app". The
+                    // notification's own Stop action and ACTION_STOP still do
+                    // the destructive stop.
+                    override fun onStop() = musicPlayer.pause()
                     override fun onSkipToQueueItem(id: Long) = musicPlayer.seekToQueueItem(id.toInt())
                     override fun onSetShuffleMode(shuffleMode: Int) {
                         musicPlayer.setShuffleEnabled(shuffleMode != PlaybackStateCompat.SHUFFLE_MODE_NONE)
