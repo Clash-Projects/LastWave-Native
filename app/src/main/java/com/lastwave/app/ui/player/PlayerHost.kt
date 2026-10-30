@@ -148,6 +148,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
@@ -2788,40 +2789,32 @@ private fun FullPlayer(
                                     modifier = Modifier.size(26.dp),
                                 )
                             }
-                            if (currentTab == FullPlayerTab.NOW_PLAYING && musicVideoEnabled) {
-                                SongVideoPillSwitcher(
-                                    isVideoActive = isVideoActive,
-                                    onModeChange = { showSyncedVideo = it },
-                                    modifier = Modifier.align(Alignment.Center),
+                            Column(
+                                Modifier.align(Alignment.Center).padding(horizontal = 96.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text(
+                                    when (currentTab) {
+                                        FullPlayerTab.NOW_PLAYING -> "NOW PLAYING"
+                                        FullPlayerTab.LYRICS -> "LYRICS"
+                                        FullPlayerTab.QUEUE -> "PLAYING QUEUE"
+                                    },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Color.White.copy(alpha = 0.95f),
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.9.sp,
                                 )
-                            } else {
-                                Column(
-                                    Modifier.align(Alignment.Center).padding(horizontal = 96.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                ) {
-                                    Text(
-                                        when (currentTab) {
-                                            FullPlayerTab.NOW_PLAYING -> "NOW PLAYING"
-                                            FullPlayerTab.LYRICS -> "LYRICS"
-                                            FullPlayerTab.QUEUE -> "PLAYING QUEUE"
-                                        },
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = Color.White.copy(alpha = 0.95f),
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 0.9.sp,
-                                    )
-                                    Text(
-                                        if (currentTab == FullPlayerTab.LYRICS) {
-                                            "${track.title} • ${track.artist}"
-                                        } else {
-                                            state.sourceLabel.takeIf { it.isNotBlank() } ?: "LastWave"
-                                        },
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Color.White.copy(alpha = 0.70f),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
+                                Text(
+                                    if (currentTab == FullPlayerTab.LYRICS) {
+                                        "${track.title} • ${track.artist}"
+                                    } else {
+                                        state.sourceLabel.takeIf { it.isNotBlank() } ?: "LastWave"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.70f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             }
                             Row(
                                 modifier = Modifier.align(Alignment.CenterEnd),
@@ -2988,6 +2981,7 @@ private fun FullPlayer(
                                     isVideoActive = isVideoActive,
                                     onCloseVideo = { showSyncedVideo = false },
                                     onEnterFullscreen = { isVideoFullscreen = true },
+                                    onToggleVideo = if (musicVideoEnabled) { { showSyncedVideo = !showSyncedVideo } } else null,
                                 )
                             } else {
                                 // â”€â”€ Standard layout (lifted and balanced) â”€â”€â”€â”€â”€â”€
@@ -3500,6 +3494,8 @@ private fun FullPlayer(
                                         player = player,
                                         isTranslucent = LocalLiquidGlass.current || showFullBleed,
                                         onOpenAudioControls = { showAudioControls = true },
+                                        isVideoActive = isVideoActive,
+                                        onToggleVideo = if (musicVideoEnabled) { { showSyncedVideo = !showSyncedVideo } } else null,
                                         modifier = Modifier.padding(top = 4.dp),
                                     )
                                 }
@@ -3621,6 +3617,7 @@ private fun FullPlayerLandscape(
     isVideoActive: Boolean = false,
     onCloseVideo: () -> Unit = {},
     onEnterFullscreen: () -> Unit = {},
+    onToggleVideo: (() -> Unit)? = null,
 ) {
     var isArtworkDragging by remember { mutableStateOf(false) }
     var artworkDragX by remember { mutableFloatStateOf(0f) }
@@ -4098,6 +4095,8 @@ private fun FullPlayerLandscape(
                 player = player,
                 isTranslucent = LocalLiquidGlass.current,
                 onOpenAudioControls = onOpenAudioControls,
+                isVideoActive = isVideoActive,
+                onToggleVideo = onToggleVideo,
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
@@ -4611,6 +4610,8 @@ private fun PlayerUtilityControls(
     player: MusicPlayer,
     isTranslucent: Boolean = false,
     onOpenAudioControls: () -> Unit = {},
+    isVideoActive: Boolean = false,
+    onToggleVideo: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val edgeButtonBackground = if (isTranslucent) {
@@ -4640,14 +4641,14 @@ private fun PlayerUtilityControls(
             modifier = Modifier.weight(1f).height(if (isTranslucent) 44.dp else 48.dp),
         )
         val isCustomAudio = state.speed != 1f || state.pitch != 1f
-        PlayerModeButton(
-            active = isCustomAudio,
-            description = "Audio Controls",
-            icon = Icons.Filled.VolumeUp,
-            onClick = onOpenAudioControls,
+        DividedUtilityPill(
+            isTranslucent = isTranslucent,
             background = edgeButtonBackground,
             foreground = edgeButtonContent,
-            iconSize = if (isTranslucent) 19.dp else 20.dp,
+            isCustomAudio = isCustomAudio,
+            isVideoActive = isVideoActive,
+            onOpenAudioControls = onOpenAudioControls,
+            onToggleVideo = onToggleVideo,
             modifier = Modifier.weight(1f).height(if (isTranslucent) 44.dp else 48.dp),
         )
         PlayerModeButton(
@@ -4664,6 +4665,137 @@ private fun PlayerUtilityControls(
             iconSize = if (isTranslucent) 19.dp else 20.dp,
             modifier = Modifier.weight(1f).height(if (isTranslucent) 44.dp else 48.dp),
         )
+    }
+}
+
+/**
+ * Apple-style divided utility pill preserving the exact outer pill shape:
+ * [ (Speaker / Audio) | (Video / EQ) ]
+ * Left half opens audio controls sheet, right half toggles synchronized video.
+ */
+@Composable
+private fun DividedUtilityPill(
+    isTranslucent: Boolean,
+    background: Color,
+    foreground: Color,
+    isCustomAudio: Boolean,
+    isVideoActive: Boolean,
+    onOpenAudioControls: () -> Unit,
+    onToggleVideo: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    val container = liquidGlassContainerColor(background)
+    val speakerInteraction = remember { MutableInteractionSource() }
+    val videoInteraction = remember { MutableInteractionSource() }
+    val speakerPressed by speakerInteraction.collectIsPressedAsState()
+    val videoPressed by videoInteraction.collectIsPressedAsState()
+    val speakerScale by animateFloatAsState(
+        if (speakerPressed) 0.88f else 1f, ExpressiveMotion.spatialSpring(), label = "speakerScale",
+    )
+    val videoScale by animateFloatAsState(
+        if (videoPressed) 0.88f else 1f, ExpressiveMotion.spatialSpring(), label = "videoScale",
+    )
+
+    LiquidGlassSurface(
+        glassModifier = Modifier.liquidGlassChrome(
+            CircleShape,
+            LocalLiquidGlass.current,
+            LiquidGlassPreset.PlayerControls,
+        ),
+        shape = CircleShape,
+        color = container,
+        contentColor = foreground,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        modifier = modifier,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Left: Speaker / Audio Controls
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clickable(
+                        interactionSource = speakerInteraction,
+                        indication = null,
+                        onClick = onOpenAudioControls,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.VolumeUp,
+                    contentDescription = "Audio Controls",
+                    tint = if (isCustomAudio) MaterialTheme.colorScheme.primary else foreground,
+                    modifier = Modifier
+                        .size(if (isTranslucent) 18.dp else 19.dp)
+                        .graphicsLayer {
+                            scaleX = speakerScale
+                            scaleY = speakerScale
+                        },
+                )
+                if (isCustomAudio) {
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 4.dp)
+                            .size(3.dp)
+                            .background(MaterialTheme.colorScheme.primary, CircleShape),
+                    )
+                }
+            }
+
+            // Divider: Subtle vertical line separating the two controls
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(18.dp)
+                    .background(foreground.copy(alpha = 0.22f)),
+            )
+
+            // Right: Video Toggle / Audio EQ
+            val hasVideoAction = onToggleVideo != null
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clickable(
+                        interactionSource = videoInteraction,
+                        indication = null,
+                        onClick = {
+                            if (hasVideoAction) {
+                                onToggleVideo?.invoke()
+                            } else {
+                                onOpenAudioControls()
+                            }
+                        },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (hasVideoAction) Icons.Filled.SmartDisplay else Icons.Filled.Tune,
+                    contentDescription = if (hasVideoAction) (if (isVideoActive) "Switch to album art" else "Watch music video") else "Audio Settings",
+                    tint = if (isVideoActive) MaterialTheme.colorScheme.primary else foreground,
+                    modifier = Modifier
+                        .size(if (isTranslucent) 18.dp else 19.dp)
+                        .graphicsLayer {
+                            scaleX = videoScale
+                            scaleY = videoScale
+                        },
+                )
+                if (isVideoActive) {
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 4.dp)
+                            .size(3.dp)
+                            .background(MaterialTheme.colorScheme.primary, CircleShape),
+                    )
+                }
+            }
+        }
     }
 }
 

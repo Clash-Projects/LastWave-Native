@@ -111,7 +111,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
+import com.lastwave.app.playback.ChunkedRangeDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
@@ -199,6 +201,7 @@ class SyncedVideoViewModel @Inject constructor(
     }
 
     fun retry(title: String, artist: String, videoId: String?) {
+        videoRepository.invalidate(videoId)
         currentKey = null
         loadVideo(title, artist, videoId)
     }
@@ -352,20 +355,21 @@ fun SyncedCoverVideoPlayer(
 
     var isBuffering by remember { mutableStateOf(false) }
 
-    val videoPlayer = remember(context) {
-        val httpFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent("com.google.ios.youtube/21.10.3 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)")
+    val httpFactory = remember {
+        DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15000)
             .setReadTimeoutMs(20000)
-            .setDefaultRequestProperties(
-                mapOf("User-Agent" to "com.google.ios.youtube/21.10.3 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)")
-            )
+    }
 
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+    val videoPlayer = remember(context) {
+        val defaultDataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+        val chunkedFactory = DataSource.Factory {
+            ChunkedRangeDataSource(defaultDataSourceFactory.createDataSource(), chunkSize = 256 * 1024L)
+        }
 
         ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(chunkedFactory))
             .build()
             .apply {
                 volume = 0f
@@ -415,6 +419,11 @@ fun SyncedCoverVideoPlayer(
             val stream = state.activeStream
             val currentMediaUri = videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
             if (currentMediaUri == stream.url) return@LaunchedEffect
+
+            val streamUa = stream.requestHeaders["User-Agent"]
+                ?: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
+            httpFactory.setUserAgent(streamUa)
+            httpFactory.setDefaultRequestProperties(stream.requestHeaders)
 
             isRendered = false
             val audioPos = musicPlayer.currentPositionMs()
@@ -852,20 +861,21 @@ fun FullscreenLandscapeVideoStage(
 
     var isBuffering by remember { mutableStateOf(false) }
 
-    val videoPlayer = remember(context) {
-        val httpFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent("com.google.ios.youtube/21.10.3 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)")
+    val httpFactory = remember {
+        DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15000)
             .setReadTimeoutMs(20000)
-            .setDefaultRequestProperties(
-                mapOf("User-Agent" to "com.google.ios.youtube/21.10.3 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)")
-            )
+    }
 
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+    val videoPlayer = remember(context) {
+        val defaultDataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+        val chunkedFactory = DataSource.Factory {
+            ChunkedRangeDataSource(defaultDataSourceFactory.createDataSource(), chunkSize = 256 * 1024L)
+        }
 
         ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(chunkedFactory))
             .build()
             .apply {
                 volume = 0f
@@ -915,6 +925,11 @@ fun FullscreenLandscapeVideoStage(
             val stream = state.activeStream
             val currentMediaUri = videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
             if (currentMediaUri == stream.url) return@LaunchedEffect
+
+            val streamUa = stream.requestHeaders["User-Agent"]
+                ?: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
+            httpFactory.setUserAgent(streamUa)
+            httpFactory.setDefaultRequestProperties(stream.requestHeaders)
 
             isRendered = false
             val audioPos = musicPlayer.currentPositionMs()
@@ -1543,6 +1558,11 @@ fun SyncedVideoPlayerDialog(
             val stream = state.activeStream
             val currentMediaUri = videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
             if (currentMediaUri == stream.url) return@LaunchedEffect
+
+            val streamUa = stream.requestHeaders["User-Agent"]
+                ?: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
+            httpFactory.setUserAgent(streamUa)
+            httpFactory.setDefaultRequestProperties(stream.requestHeaders)
 
             isRendered = false
             val currentPos = videoPlayer.currentPosition.takeIf { it > 0 } ?: musicPlayer.currentPositionMs()

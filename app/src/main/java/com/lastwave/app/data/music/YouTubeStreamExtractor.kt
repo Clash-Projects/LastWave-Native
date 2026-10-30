@@ -73,11 +73,6 @@ class YouTubeStreamExtractor @Inject constructor(
         videoId: String,
     ): SyncedVideoStreamBundle = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
-        // Fast direct iOS Innertube client extraction (unthrottled, bot-free direct MP4 streams)
-        val iosBundle = resolveVideoStreamBundleWithIosClient(videoId, now)
-        if (iosBundle != null && iosBundle.availableStreams.isNotEmpty()) {
-            return@withContext iosBundle
-        }
         initialize()
         val info = try {
             StreamInfo.getInfo(ServiceList.YouTube, "https://www.youtube.com/watch?v=$videoId")

@@ -34,6 +34,12 @@ class SyncedVideoRepository @Inject constructor(
         val expiresAtMs: Long,
     )
 
+    fun invalidate(videoId: String?) {
+        if (!videoId.isNullOrBlank()) {
+            cache.remove(videoId)
+        }
+    }
+
     suspend fun resolveVideo(
         trackTitle: String,
         trackArtist: String,
