@@ -208,11 +208,17 @@
     <string name="home_sections_desc">Hidden sections disappear from your Home tab. New sections from future updates stay visible until you hide them.</string>
     <string name="home_section_hero_title">Welcome hero</string>
     <string name="home_section_hero_sub">Greeting and infinite radio</string>
+    <string name="home_section_greeting_title">Greeting header</string>
+    <string name="home_section_greeting_sub">Daily greeting and current date</string>
+    <string name="home_section_infinite_radio_title">Infinite radio</string>
+    <string name="home_section_infinite_radio_sub">Instant radio based on your taste</string>
     <string name="home_section_quick_tiles_title">Quick access</string>
     <string name="home_section_quick_tiles_sub">Shortcut tiles</string>
-    <string name="home_section_taste_strip_title">Taste tags</string>
+    <string name="home_section_taste_strip_title">My genres</string>
     <string name="home_section_taste_strip_sub">Genre and mood quick radio</string>
-    <string name="home_section_quick_picks_title">Picked for you</string>
+    <string name="home_section_discover_title">Discover new music</string>
+    <string name="home_section_discover_sub">Rotates fresh songs on refresh</string>
+    <string name="home_section_quick_picks_title">Quick picks</string>
     <string name="home_section_quick_picks_sub">Quick picks matched to your taste</string>
     <string name="home_section_because_title">Because you listen to</string>
     <string name="home_section_because_sub">Dynamic recommendation shelf</string>
@@ -236,6 +242,8 @@
     <string name="home_section_releases_sub">Fresh drops and albums</string>
     <string name="home_section_friends_title">Your friends</string>
     <string name="home_section_friends_sub">Friends listening activity</string>
+    <string name="home_section_podcasts_title">Podcasts</string>
+    <string name="home_section_podcasts_sub">Popular podcast shows</string>
 
     <!-- Downloads: custom folder + organization -->
     <string name="dl_folder">Download folder</string>
@@ -644,7 +652,7 @@
     <string name="feed_retry">Retry</string>
     <string name="feed_update_error">Couldn\'t update your feed. Please try again.</string>
     <string name="feed_quick_access">Quick access</string>
-    <string name="feed_your_sound">Your Sound</string>
+    <string name="feed_your_sound">My genres</string>
     <string name="feed_your_sound_sub">Tap a vibe to start instant radio</string>
     <string name="feed_picked_you">Picked for you</string>
     <string name="feed_quick_picks">Quick picks</string>

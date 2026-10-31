@@ -1,8 +1,5 @@
 package com.lastwave.app.ui.settings
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,23 +22,32 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.material.icons.filled.TrendingUp
@@ -57,11 +63,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -72,7 +74,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
-import com.lastwave.app.data.local.HomeSection
+import com.lastwave.app.R
 import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.ui.common.ExpressiveHeader
 import com.lastwave.app.ui.common.adaptiveContentWidth
@@ -80,24 +82,34 @@ import com.lastwave.app.ui.common.safeDrawingBottomPadding
 import com.lastwave.app.ui.common.safeHorizontalContentPadding
 import com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 val DEFAULT_YT_MUSIC_SECTIONS = listOf(
+    "Fresh finds, old favorites",
     "Listen again",
-    "Quick picks",
-    "Mixed for you",
-    "From your library",
-    "Similar to",
     "Forgotten favorites",
+    "Listen together",
+    "Mixes to explore",
+    "Favourite to revisit",
+    "Album for you",
+    "Cover and remixes",
+    "Recaps",
+    "Albums for you",
+    "From the community",
+    "Heard in shorts",
+    "From your library",
+    "Your daily discover",
+    "Featured playlist for you",
+    "Live performances",
+    "Similar to",
     "Recommended music videos",
     "COMMUNITY PLAYLISTS",
-    "Trending",
-    "NEW RELEASES",
     "Energy boosters",
     "Feel good",
     "Workout",
@@ -119,94 +131,160 @@ data class UniversalSectionItem(
     val icon: ImageVector,
 )
 
-private fun HomeSection.toUniversalItem(): UniversalSectionItem = UniversalSectionItem(
-    id = this.id,
-    titleRes = this.titleRes,
-    subtitleRes = this.subtitleRes,
-    isYouTube = false,
-    icon = when (this) {
-        HomeSection.HERO -> Icons.Filled.Home
-        HomeSection.QUICK_TILES -> Icons.Filled.Dashboard
-        HomeSection.TASTE_STRIP -> Icons.Filled.Sell
-        HomeSection.QUICK_PICKS -> Icons.Filled.Bolt
-        HomeSection.BECAUSE_YOU_LISTEN_TO -> Icons.Filled.History
-        HomeSection.FRESH_FINDS -> Icons.Filled.Whatshot
-        HomeSection.JUMP_BACK_IN -> Icons.Filled.Replay
-        HomeSection.MIXES -> Icons.Filled.Shuffle
-        HomeSection.SPOTLIGHT -> Icons.Filled.Star
-        HomeSection.TOP_ARTISTS -> Icons.Filled.People
-        HomeSection.HEAVY_ROTATION -> Icons.Filled.Favorite
-        HomeSection.ALBUMS -> Icons.Filled.Album
-        HomeSection.CHARTS -> Icons.Filled.TrendingUp
-        HomeSection.NEW_RELEASES -> Icons.Filled.NewReleases
-        HomeSection.FRIENDS -> Icons.Filled.Group
-    },
+val ALL_DEFAULT_UNIVERSAL_SECTIONS: List<UniversalSectionItem> = listOf(
+    UniversalSectionItem("hero_greeting", rawTitle = "Greeting header", rawSubtitle = "Daily greeting and current date", isYouTube = false, icon = Icons.Filled.LightMode),
+    UniversalSectionItem("infinite_radio", rawTitle = "Infinite radio", rawSubtitle = "Start instant radio based on taste", isYouTube = false, icon = Icons.Filled.Radio),
+    UniversalSectionItem("quick_tiles", titleRes = R.string.home_section_quick_tiles_title, subtitleRes = R.string.home_section_quick_tiles_sub, isYouTube = false, icon = Icons.Filled.Dashboard),
+    UniversalSectionItem("taste_strip", titleRes = R.string.home_section_taste_strip_title, subtitleRes = R.string.home_section_taste_strip_sub, isYouTube = false, icon = Icons.Filled.Sell),
+    UniversalSectionItem("discover_new_music", rawTitle = "Discover new music", rawSubtitle = "Rotates fresh songs on refresh", isYouTube = false, icon = Icons.Filled.Explore),
+    UniversalSectionItem("quick_picks", titleRes = R.string.home_section_quick_picks_title, subtitleRes = R.string.home_section_quick_picks_sub, isYouTube = false, icon = Icons.Filled.Bolt),
+    UniversalSectionItem("because_you_listen_to", titleRes = R.string.home_section_because_title, subtitleRes = R.string.home_section_because_sub, isYouTube = false, icon = Icons.Filled.History),
+    UniversalSectionItem("fresh_finds", titleRes = R.string.home_section_fresh_title, subtitleRes = R.string.home_section_fresh_sub, isYouTube = false, icon = Icons.Filled.Whatshot),
+    UniversalSectionItem("yt:Fresh finds, old favorites", rawTitle = "Fresh finds, old & favorites", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Whatshot),
+    UniversalSectionItem("yt:Listen again", rawTitle = "Listen again", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Replay),
+    UniversalSectionItem("jump_back_in", titleRes = R.string.home_section_jump_title, subtitleRes = R.string.home_section_jump_sub, isYouTube = false, icon = Icons.Filled.Replay),
+    UniversalSectionItem("yt:Forgotten favorites", rawTitle = "Forgotten favorites", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Favorite),
+    UniversalSectionItem("yt:Listen together", rawTitle = "Listen together", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Group),
+    UniversalSectionItem("yt:Mixes to explore", rawTitle = "Mixes to explore", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Shuffle),
+    UniversalSectionItem("spotlight_hero", titleRes = R.string.home_section_spotlight_title, subtitleRes = R.string.home_section_spotlight_sub, isYouTube = false, icon = Icons.Filled.Star),
+    UniversalSectionItem("top_artists", titleRes = R.string.home_section_artists_title, subtitleRes = R.string.home_section_artists_sub, isYouTube = false, icon = Icons.Filled.People),
+    UniversalSectionItem("yt:Favourite to revisit", rawTitle = "Favourite to revisit", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Favorite),
+    UniversalSectionItem("heavy_rotation", titleRes = R.string.home_section_heavy_title, subtitleRes = R.string.home_section_heavy_sub, isYouTube = false, icon = Icons.Filled.Favorite),
+    UniversalSectionItem("albums_in_rotation", titleRes = R.string.home_section_albums_title, subtitleRes = R.string.home_section_albums_sub, isYouTube = false, icon = Icons.Filled.Album),
+    UniversalSectionItem("yt:Album for you", rawTitle = "Album for you", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Album),
+    UniversalSectionItem("new_releases", titleRes = R.string.home_section_releases_title, subtitleRes = R.string.home_section_releases_sub, isYouTube = false, icon = Icons.Filled.NewReleases),
+    UniversalSectionItem("yt:Cover and remixes", rawTitle = "Cover and remixes", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.GraphicEq),
+    UniversalSectionItem("yt:Recaps", rawTitle = "Recaps", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.BarChart),
+    UniversalSectionItem("yt:Albums for you", rawTitle = "Albums for you", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Album),
+    UniversalSectionItem("trending_charts", titleRes = R.string.home_section_charts_title, subtitleRes = R.string.home_section_charts_sub, isYouTube = false, icon = Icons.Filled.TrendingUp),
+    UniversalSectionItem("yt:From the community", rawTitle = "From the community", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Group),
+    UniversalSectionItem("yt:Heard in shorts", rawTitle = "Heard in shorts", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.SmartDisplay),
+    UniversalSectionItem("yt:From your library", rawTitle = "From your library", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.LibraryMusic),
+    UniversalSectionItem("mixed_for_you", titleRes = R.string.home_section_mixes_title, subtitleRes = R.string.home_section_mixes_sub, isYouTube = false, icon = Icons.Filled.Shuffle),
+    UniversalSectionItem("yt:Your daily discover", rawTitle = "Your daily discover", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.AutoAwesome),
+    UniversalSectionItem("yt:Featured playlist for you", rawTitle = "Featured playlist for you", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.QueueMusic),
+    UniversalSectionItem("yt:Live performances", rawTitle = "Live performances", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Headphones),
+    UniversalSectionItem("friends_activity", titleRes = R.string.home_section_friends_title, subtitleRes = R.string.home_section_friends_sub, isYouTube = false, icon = Icons.Filled.Group),
+    UniversalSectionItem("podcast_shelf", rawTitle = "Podcasts", rawSubtitle = "Popular podcast shows", isYouTube = false, icon = Icons.Filled.Mic),
+    // Extra default YTM sections
+    UniversalSectionItem("yt:Similar to", rawTitle = "Similar to", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Subscriptions),
+    UniversalSectionItem("yt:Recommended music videos", rawTitle = "Recommended music videos", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.SmartDisplay),
+    UniversalSectionItem("yt:Energy boosters", rawTitle = "Energy boosters", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Bolt),
+    UniversalSectionItem("yt:Feel good", rawTitle = "Feel good", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Favorite),
+    UniversalSectionItem("yt:Workout", rawTitle = "Workout", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Whatshot),
+    UniversalSectionItem("yt:Relax", rawTitle = "Relax", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Headphones),
+    UniversalSectionItem("yt:Focus", rawTitle = "Focus", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.GraphicEq),
+    UniversalSectionItem("yt:Commute", rawTitle = "Commute", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Radio),
+    UniversalSectionItem("yt:Party", rawTitle = "Party", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.AutoAwesome),
+    UniversalSectionItem("yt:Romance", rawTitle = "Romance", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Favorite),
+    UniversalSectionItem("yt:Sleep", rawTitle = "Sleep", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Headphones),
 )
-
-private fun String.toYtUniversalItem(): UniversalSectionItem = UniversalSectionItem(
-    id = "yt:$this",
-    rawTitle = this,
-    rawSubtitle = "YouTube Music Section",
-    isYouTube = true,
-    icon = when (this.lowercase()) {
-        "listen again" -> Icons.Filled.Replay
-        "quick picks" -> Icons.Filled.Bolt
-        "mixed for you" -> Icons.Filled.Shuffle
-        "from your library" -> Icons.Filled.LibraryMusic
-        "trending" -> Icons.Filled.TrendingUp
-        "new releases" -> Icons.Filled.NewReleases
-        "community playlists" -> Icons.Filled.Group
-        else -> Icons.Filled.Subscriptions
-    },
-)
-
-private val ALL_DEFAULT_UNIVERSAL_SECTIONS: List<UniversalSectionItem> by lazy {
-    HomeSection.entries.map { it.toUniversalItem() } +
-        DEFAULT_YT_MUSIC_SECTIONS.map { it.toYtUniversalItem() }
-}
 
 @HiltViewModel
 class HomeSectionsViewModel @Inject constructor(
     private val settingsPreferences: SettingsPreferences,
 ) : ViewModel() {
-    val hiddenSections: StateFlow<Set<String>> = settingsPreferences.settings
-        .map { it.hiddenHomeSections }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+    data class UiState(
+        val sections: List<UniversalSectionItem> = ALL_DEFAULT_UNIVERSAL_SECTIONS,
+        val hiddenSections: Set<String> = emptySet(),
+        val pinnedSections: Set<String> = emptySet(),
+        val isLoaded: Boolean = false,
+    )
 
-    val ytMusicHiddenSections: StateFlow<Set<String>> = settingsPreferences.settings
-        .map { it.ytMusicHiddenSections }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+    private val _uiState = MutableStateFlow(UiState())
+    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
-    val homeSectionsOrder: StateFlow<List<String>> = settingsPreferences.settings
-        .map { it.homeSectionsOrder }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-    val pinnedSections: StateFlow<Set<String>> = settingsPreferences.settings
-        .map { it.pinnedHomeSections }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
-
-    fun saveUniversalHomeSections(order: List<String>, hidden: Set<String>, pinned: Set<String>) {
+    init {
         viewModelScope.launch {
-            settingsPreferences.saveUniversalHomeSections(order, hidden, pinned)
+            val settings = settingsPreferences.settings.first()
+            val hiddenInApp = settings.hiddenHomeSections
+            val ytHidden = settings.ytMusicHiddenSections
+            val storedOrder = settings.homeSectionsOrder
+            val pinned = settings.pinnedHomeSections
+            val allHidden = hiddenInApp + ytHidden.map { "yt:$it" }.toSet()
+
+            val defaultList = ALL_DEFAULT_UNIVERSAL_SECTIONS
+            val orderedList = if (storedOrder.isEmpty()) {
+                defaultList
+            } else {
+                val itemMap = defaultList.associateBy { it.id }
+                val list = storedOrder.mapNotNull { itemMap[it] }.toMutableList()
+                for (defaultItem in defaultList) {
+                    if (list.none { it.id == defaultItem.id }) {
+                        list.add(defaultItem)
+                    }
+                }
+                list
+            }
+
+            _uiState.value = UiState(
+                sections = orderedList,
+                hiddenSections = allHidden,
+                pinnedSections = pinned,
+                isLoaded = true,
+            )
         }
     }
 
-    fun togglePin(key: String) {
-        viewModelScope.launch {
-            settingsPreferences.togglePinHomeSection(key)
+    fun moveSection(fromIndex: Int, toIndex: Int) {
+        val current = _uiState.value
+        val list = current.sections.toMutableList()
+        if (fromIndex !in list.indices || toIndex !in list.indices) return
+        val item = list.removeAt(fromIndex)
+        list.add(toIndex, item)
+        _uiState.update { it.copy(sections = list) }
+        saveState(list, current.hiddenSections, current.pinnedSections)
+    }
+
+    fun toggleVisibility(id: String, visible: Boolean) {
+        val current = _uiState.value
+        val newHidden = if (visible) current.hiddenSections - id else current.hiddenSections + id
+        _uiState.update { it.copy(hiddenSections = newHidden) }
+        saveState(current.sections, newHidden, current.pinnedSections)
+    }
+
+    fun togglePin(id: String) {
+        val current = _uiState.value
+        val isCurrentlyPinned = id in current.pinnedSections
+        val newPinned = if (isCurrentlyPinned) current.pinnedSections - id else current.pinnedSections + id
+        val list = current.sections.toMutableList()
+        if (!isCurrentlyPinned) {
+            val idx = list.indexOfFirst { it.id == id }
+            if (idx > 0) {
+                val item = list.removeAt(idx)
+                list.add(0, item)
+            }
         }
+        _uiState.update { it.copy(sections = list, pinnedSections = newPinned) }
+        saveState(list, current.hiddenSections, newPinned)
     }
 
     fun showAll() {
-        viewModelScope.launch {
-            settingsPreferences.showAllHomeSections()
-            settingsPreferences.resetYtMusicSections()
-        }
+        val current = _uiState.value
+        _uiState.update { it.copy(hiddenSections = emptySet()) }
+        saveState(current.sections, emptySet(), current.pinnedSections)
     }
 
     fun resetAll() {
+        val defaultList = ALL_DEFAULT_UNIVERSAL_SECTIONS
+        _uiState.value = UiState(
+            sections = defaultList,
+            hiddenSections = emptySet(),
+            pinnedSections = emptySet(),
+            isLoaded = true,
+        )
         viewModelScope.launch {
             settingsPreferences.resetUniversalHomeSections()
+        }
+    }
+
+    private fun saveState(sections: List<UniversalSectionItem>, hidden: Set<String>, pinned: Set<String>) {
+        viewModelScope.launch {
+            settingsPreferences.saveUniversalHomeSections(
+                order = sections.map { it.id },
+                hidden = hidden,
+                pinned = pinned,
+            )
         }
     }
 }
@@ -217,44 +295,8 @@ fun HomeSectionsScreen(
     onBack: () -> Unit,
     viewModel: HomeSectionsViewModel = hiltViewModel(),
 ) {
-    val hiddenInApp by viewModel.hiddenSections.collectAsStateWithLifecycle()
-    val ytHidden by viewModel.ytMusicHiddenSections.collectAsStateWithLifecycle()
-    val storedOrder by viewModel.homeSectionsOrder.collectAsStateWithLifecycle()
-    val pinned by viewModel.pinnedSections.collectAsStateWithLifecycle()
-
-    val initialSections = remember(storedOrder) {
-        val defaultList = ALL_DEFAULT_UNIVERSAL_SECTIONS
-        if (storedOrder.isEmpty()) {
-            defaultList
-        } else {
-            val itemMap = defaultList.associateBy { it.id }
-            val orderedList = storedOrder.mapNotNull { itemMap[it] }.toMutableList()
-            for (defaultItem in defaultList) {
-                if (orderedList.none { it.id == defaultItem.id }) {
-                    orderedList.add(defaultItem)
-                }
-            }
-            orderedList
-        }
-    }
-
-    var currentSections by remember(initialSections) { mutableStateOf(initialSections) }
-
-    val allHidden = remember(hiddenInApp, ytHidden) {
-        hiddenInApp + ytHidden.map { "yt:$it" }.toSet()
-    }
-    var currentHidden by remember(allHidden) { mutableStateOf(allHidden) }
-    var currentPinned by remember(pinned) { mutableStateOf(pinned) }
-
-    LaunchedEffect(currentSections, currentHidden, currentPinned) {
-        viewModel.saveUniversalHomeSections(
-            order = currentSections.map { it.id },
-            hidden = currentHidden,
-            pinned = currentPinned,
-        )
-    }
-
-    val visibleCount = currentSections.size - currentHidden.size
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val visibleCount = uiState.sections.size - uiState.hiddenSections.size
 
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -267,27 +309,23 @@ fun HomeSectionsScreen(
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
         ) {
             ExpressiveHeader(
-                title = stringResource(com.lastwave.app.R.string.settings_home_sections),
+                title = stringResource(R.string.settings_home_sections),
                 subtitle = stringResource(
-                    com.lastwave.app.R.string.home_sections_visible,
+                    R.string.home_sections_visible,
                     visibleCount,
-                    currentSections.size,
+                    uiState.sections.size,
                 ),
                 onBack = onBack,
                 actions = {
                     TextButton(onClick = {
-                        currentHidden = emptySet()
                         viewModel.showAll()
-                    }, enabled = currentHidden.isNotEmpty()) {
+                    }, enabled = uiState.hiddenSections.isNotEmpty()) {
                         Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
                         Text("Show all")
                     }
                     TextButton(onClick = {
                         viewModel.resetAll()
-                        currentSections = ALL_DEFAULT_UNIVERSAL_SECTIONS
-                        currentHidden = emptySet()
-                        currentPinned = emptySet()
                     }) {
                         Icon(Icons.Filled.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
@@ -313,9 +351,9 @@ fun HomeSectionsScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize().safeHorizontalContentPadding(),
             ) {
-                itemsIndexed(currentSections, key = { _, item -> item.id }) { index, item ->
-                    val isVisible = item.id !in currentHidden
-                    val isItemPinned = item.id in currentPinned
+                itemsIndexed(uiState.sections, key = { _, item -> item.id }) { index, item ->
+                    val isVisible = item.id !in uiState.hiddenSections
+                    val isItemPinned = item.id in uiState.pinnedSections
 
                     Card(
                         shape = RoundedCornerShape(20.dp),
@@ -343,7 +381,7 @@ fun HomeSectionsScreen(
                                     MaterialTheme.colorScheme.tertiaryContainer
                                 } else {
                                     MaterialTheme.colorScheme.secondaryContainer
-                                },
+                                } ,
                                 modifier = Modifier.size(40.dp),
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -400,11 +438,7 @@ fun HomeSectionsScreen(
                                 IconButton(
                                     onClick = {
                                         if (index > 0) {
-                                            val list = currentSections.toMutableList()
-                                            val temp = list[index]
-                                            list[index] = list[index - 1]
-                                            list[index - 1] = temp
-                                            currentSections = list
+                                            viewModel.moveSection(index, index - 1)
                                         }
                                     },
                                     enabled = index > 0,
@@ -419,21 +453,17 @@ fun HomeSectionsScreen(
                                 }
                                 IconButton(
                                     onClick = {
-                                        if (index < currentSections.size - 1) {
-                                            val list = currentSections.toMutableList()
-                                            val temp = list[index]
-                                            list[index] = list[index + 1]
-                                            list[index + 1] = temp
-                                            currentSections = list
+                                        if (index < uiState.sections.size - 1) {
+                                            viewModel.moveSection(index, index + 1)
                                         }
                                     },
-                                    enabled = index < currentSections.size - 1,
+                                    enabled = index < uiState.sections.size - 1,
                                     modifier = Modifier.size(32.dp),
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.KeyboardArrowDown,
                                         contentDescription = "Move Down",
-                                        tint = if (index < currentSections.size - 1) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                                        tint = if (index < uiState.sections.size - 1) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
                                         modifier = Modifier.size(20.dp),
                                     )
                                 }
@@ -441,19 +471,7 @@ fun HomeSectionsScreen(
                                 // Pin Button
                                 IconButton(
                                     onClick = {
-                                        val newPinned = if (isItemPinned) {
-                                            currentPinned - item.id
-                                        } else {
-                                            currentPinned + item.id
-                                        }
-                                        currentPinned = newPinned
-                                        if (!isItemPinned && index > 0) {
-                                            // Pin item at the top
-                                            val list = currentSections.toMutableList()
-                                            list.removeAt(index)
-                                            list.add(0, item)
-                                            currentSections = list
-                                        }
+                                        viewModel.togglePin(item.id)
                                     },
                                     modifier = Modifier.size(32.dp),
                                 ) {
@@ -471,11 +489,7 @@ fun HomeSectionsScreen(
                                 Switch(
                                     checked = isVisible,
                                     onCheckedChange = { checked ->
-                                        currentHidden = if (checked) {
-                                            currentHidden - item.id
-                                        } else {
-                                            currentHidden + item.id
-                                        }
+                                        viewModel.toggleVisibility(item.id, checked)
                                     },
                                 )
                             }

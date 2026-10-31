@@ -2030,8 +2030,9 @@ fun SettingsScreen(
                                             iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                             title = stringResource(R.string.settings_home_sections),
                                             subtitle = run {
-                                                val total = com.lastwave.app.data.local.HomeSection.entries.size
-                                                val visible = total - misc.hiddenHomeSections.size
+                                                val total = com.lastwave.app.ui.settings.ALL_DEFAULT_UNIVERSAL_SECTIONS.size
+                                                val hiddenCount = (misc.hiddenHomeSections + misc.ytMusicHiddenSections.map { "yt:$it" }).size
+                                                val visible = (total - hiddenCount).coerceAtLeast(0)
                                                 stringResource(R.string.home_sections_visible, visible, total)
                                             },
                                             onClick = onOpenHomeSections,

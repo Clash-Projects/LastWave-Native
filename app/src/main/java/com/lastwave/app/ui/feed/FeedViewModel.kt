@@ -174,11 +174,18 @@ class FeedViewModel @Inject constructor(
         }
     }
 
-    fun loadDiscovery() {
+    fun loadDiscovery(forceRotate: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val cached = discoverRepository.allowedCachedFeed()
-                val tracks = if (cached.isNotEmpty()) cached.take(8) else discoverRepository.nextBatch(8)
+                val tracks = if (forceRotate) {
+                    val batch = discoverRepository.nextBatch(8)
+                    if (batch.isNotEmpty()) batch else cached.shuffled().take(8)
+                } else if (cached.isNotEmpty()) {
+                    cached.take(8)
+                } else {
+                    discoverRepository.nextBatch(8)
+                }
                 _discoveryTracks.value = tracks
             } catch (_: Exception) {
                 // Non-destructive fallback if offline/failed
@@ -189,7 +196,7 @@ class FeedViewModel @Inject constructor(
     fun loadFeed() = fetchFeed(refreshing = false)
 
     fun refresh() {
-        loadDiscovery()
+        loadDiscovery(forceRotate = true)
         loadTopGenres()
         fetchFeed(refreshing = true)
     }
