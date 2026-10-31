@@ -444,7 +444,7 @@ fun FeedScreen(
                                 id = item.track.videoId,
                                 title = item.track.title,
                                 author = item.track.artist,
-                                trackCount = null,
+                                trackCountText = null,
                                 artworkUrl = item.track.artworkUrl,
                             )
                             else -> null
