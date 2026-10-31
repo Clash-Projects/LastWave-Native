@@ -28,4 +28,12 @@ data class TasteProfile(
     /** Actual playable cards selected by the signed-in YT Music Home feed. */
     val ytMusicFeedRaw: List<GeneratedTrack> = emptyList(),
     val hasPersonalSignals: Boolean = false,
+    /**
+     * Optional artist name that was used as a contextual seed when this
+     * profile was built. [TasteProfileProvider] uses it to invalidate the
+     * 1-hour cache when a different seed artist is requested — ensuring
+     * "Inspired by X" mixes don't silently reuse a profile built for "Inspired
+     * by Y" just because both requests fall within the same TTL window.
+     */
+    val seedArtist: String? = null,
 )

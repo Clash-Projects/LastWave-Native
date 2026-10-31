@@ -1298,9 +1298,10 @@ class GenerateRepository @Inject constructor(
     suspend fun fetchRecommendations(
         total: Int,
         onProgress: (String) -> Unit = {},
+        seedArtist: String? = null,
     ): List<GeneratedTrack> = kotlinx.coroutines.supervisorScope {
-        onProgress("Building your taste profile\u2026")
-        val profile = tasteProfileProvider.get()
+        onProgress("Building your taste profile…")
+        val profile = tasteProfileProvider.get(seedArtist = seedArtist)
         val lastFmAvailable = runCatching { isLastFmAvailable() }.getOrDefault(false)
         // Primary: YouTube Music discovery from full taste (YT + local seeds).
         val youtubeDeferred = async(Dispatchers.IO) {
