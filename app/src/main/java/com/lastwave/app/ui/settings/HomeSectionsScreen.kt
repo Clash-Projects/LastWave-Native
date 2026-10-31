@@ -146,9 +146,6 @@ data class UniversalSectionItem(
 )
 
 val ALL_DEFAULT_UNIVERSAL_SECTIONS: List<UniversalSectionItem> = listOf(
-    UniversalSectionItem("hero_greeting", rawTitle = "Greeting header", rawSubtitle = "Daily greeting and current date", isYouTube = false, icon = Icons.Filled.LightMode),
-    UniversalSectionItem("infinite_radio", rawTitle = "Infinite radio", rawSubtitle = "Start instant radio based on taste", isYouTube = false, icon = Icons.Filled.Radio),
-    UniversalSectionItem("quick_tiles", titleRes = R.string.home_section_quick_tiles_title, subtitleRes = R.string.home_section_quick_tiles_sub, isYouTube = false, icon = Icons.Filled.Dashboard),
     UniversalSectionItem("taste_strip", titleRes = R.string.home_section_taste_strip_title, subtitleRes = R.string.home_section_taste_strip_sub, isYouTube = false, icon = Icons.Filled.Sell),
     UniversalSectionItem("discover_new_music", rawTitle = "Discover new music", rawSubtitle = "Rotates fresh songs on refresh", isYouTube = false, icon = Icons.Filled.Explore),
     UniversalSectionItem("quick_picks", titleRes = R.string.home_section_quick_picks_title, subtitleRes = R.string.home_section_quick_picks_sub, isYouTube = false, icon = Icons.Filled.Bolt),
@@ -224,7 +221,10 @@ class HomeSectionsViewModel @Inject constructor(
                 defaultList
             } else {
                 val itemMap = defaultList.associateBy { it.id }
-                val list = storedOrder.mapNotNull { itemMap[it] }.toMutableList()
+                val list = storedOrder
+                    .filter { it != "hero_greeting" && it != "infinite_radio" && it != "quick_tiles" }
+                    .mapNotNull { itemMap[it] }
+                    .toMutableList()
                 for (defaultItem in defaultList) {
                     if (list.none { it.id == defaultItem.id }) {
                         list.add(defaultItem)

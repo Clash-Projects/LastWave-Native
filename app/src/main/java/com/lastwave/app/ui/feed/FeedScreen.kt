@@ -119,6 +119,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import com.lastwave.app.R
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -478,9 +481,8 @@ fun FeedScreen(
                 }
 
                 fun isSectionIdHidden(id: String): Boolean {
+                    if (id == "hero_greeting" || id == "infinite_radio" || id == "quick_tiles" || id == "hero") return false
                     if (id in allHiddenIds || id in hiddenSections) return true
-                    if (id == "hero_greeting" && ("hero" in hiddenSections || "hero_greeting" in hiddenSections)) return true
-                    if (id == "infinite_radio" && ("hero" in hiddenSections || "infinite_radio" in hiddenSections)) return true
                     if (id == "new_releases" && ("new_releases" in hiddenSections || "yt:New releases" in allHiddenIds)) return true
                     if (id.startsWith("yt:")) {
                         val ytTitle = id.removePrefix("yt:").trim()
@@ -560,9 +562,7 @@ fun FeedScreen(
 
                 val isSectionAvailable: (String) -> Boolean = { key ->
                     when {
-                        key == "hero_greeting" -> showSynthetic
-                        key == "infinite_radio" -> showSynthetic && combinedQuickPicks.isNotEmpty()
-                        key == "quick_tiles" -> showSynthetic && quickTiles.isNotEmpty()
+                        key == "hero_greeting" || key == "infinite_radio" || key == "quick_tiles" -> false
                         key == "taste_strip" -> showSynthetic && displayTags.isNotEmpty()
                         key == "discover_new_music" -> showSynthetic && discoveryTracks.isNotEmpty()
                         key == "quick_picks" -> showSynthetic && combinedQuickPicks.isNotEmpty()
@@ -600,7 +600,8 @@ fun FeedScreen(
 
                     val allCandidateKeys = (DEFAULT_SECTION_ORDER + homeSectionsOrder + remainingShelfKeys).distinct()
                     val activeKeys = allCandidateKeys.filter { key ->
-                        !isSectionIdHidden(key) && isSectionAvailable(key)
+                        key != "hero_greeting" && key != "infinite_radio" && key != "quick_tiles" &&
+                            !isSectionIdHidden(key) && isSectionAvailable(key)
                     }
                     val baseOrder = if (homeSectionsOrder.isNotEmpty()) homeSectionsOrder else DEFAULT_SECTION_ORDER
                     val sorted = activeKeys.sortedWith(compareBy { key ->
@@ -615,7 +616,7 @@ fun FeedScreen(
                         }
                     })
                     val (pinned, unpinned) = sorted.partition { it in pinnedHomeSections }
-                    (pinned + unpinned).filter { it != "hero_greeting" && it != "infinite_radio" }
+                    (pinned + unpinned).filter { it != "hero_greeting" && it != "infinite_radio" && it != "quick_tiles" }
                 }
 
                 val visiblePagedShelfKeys = remember(state.pagedShelves, allHiddenIds, ytHidden) {
@@ -634,7 +635,18 @@ fun FeedScreen(
                     orderedFeedSections + visiblePagedShelfKeys
                 }
 
+                val isInfiniteRadioVisible = showSynthetic && combinedQuickPicks.isNotEmpty()
+                val isQuickTilesVisible = showSynthetic && quickTiles.isNotEmpty()
+                val hasSectionsBelowQuickTiles = allContainerKeys.isNotEmpty()
+                val quickTilesShape = RoundedCornerShape(
+                    topStart = if (isInfiniteRadioVisible) 0.dp else 28.dp,
+                    topEnd = if (isInfiniteRadioVisible) 0.dp else 28.dp,
+                    bottomStart = if (hasSectionsBelowQuickTiles) 0.dp else 28.dp,
+                    bottomEnd = if (hasSectionsBelowQuickTiles) 0.dp else 28.dp,
+                )
+
                 val spotlightIndex = allContainerKeys.indexOf("spotlight_hero")
+                val hasPermanentContainerAbove = isQuickTilesVisible || isInfiniteRadioVisible
                 val getContainerShape: (String) -> RoundedCornerShape = { key ->
                     val index = allContainerKeys.indexOf(key)
                     if (index == -1) {
@@ -645,7 +657,7 @@ fun FeedScreen(
                         val isBeforeSpotlight = spotlightIndex != -1 && index == spotlightIndex - 1
                         val isAfterSpotlight = spotlightIndex != -1 && index == spotlightIndex + 1
 
-                        val topRadius = if (isFirst || isAfterSpotlight) 28.dp else 0.dp
+                        val topRadius = if ((isFirst && !hasPermanentContainerAbove) || isAfterSpotlight) 28.dp else 0.dp
                         val bottomRadius = if (isLast || isBeforeSpotlight) 28.dp else 0.dp
 
                         RoundedCornerShape(
@@ -657,9 +669,7 @@ fun FeedScreen(
                     }
                 }
 
-                val isGreetingVisible = showSynthetic && !isSectionIdHidden("hero_greeting")
-                val isInfiniteRadioVisible = showSynthetic && !isSectionIdHidden("infinite_radio") && combinedQuickPicks.isNotEmpty()
-                val hasAnyFeedSections = isGreetingVisible || isInfiniteRadioVisible || allContainerKeys.isNotEmpty()
+                val hasAnyFeedSections = showSynthetic || allContainerKeys.isNotEmpty()
 
                 LazyColumn(
                     state = listState,
@@ -723,12 +733,11 @@ fun FeedScreen(
                             }
                         }
                     } else {
-                        if (isGreetingVisible) {
+                        if (showSynthetic) {
                             item(key = "hero_greeting") {
                                 ExpressiveGreetingHeader(
                                     greeting = greeting,
                                     formattedDate = formattedDate,
-                                    onLongClick = { sectionMenuTarget = "hero_greeting" to "Greeting Header" },
                                 )
                             }
                         }
@@ -738,58 +747,56 @@ fun FeedScreen(
                                 InfiniteRadioHero(
                                     quickPicks = combinedQuickPicks,
                                     onPlay = viewModel::playInfiniteRadio,
-                                    onLongClick = { sectionMenuTarget = "infinite_radio" to "Infinite Radio" },
                                 )
-                                Spacer(modifier = Modifier.height(10.dp))
+                            }
+                        }
+
+                        if (isQuickTilesVisible) {
+                            item(key = "quick_tiles") {
+                                HomeContainerSection(
+                                    shape = quickTilesShape,
+                                ) {
+                                    FeedSectionHeader(
+                                        title = stringResource(R.string.feed_quick_access),
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    QuickTilesGrid(
+                                        tiles = quickTiles,
+                                        onTileClick = { tile ->
+                                            when {
+                                                tile.collection == "radio" -> onOpenDiscover()
+                                                tile.collection == "discover_mix" || tile.title.contains("Discover Mix", ignoreCase = true) -> {
+                                                    if (!tile.playlistId.isNullOrBlank()) {
+                                                        onOpenFeedPlaylist(tile.playlistId)
+                                                    } else {
+                                                        viewModel.openDiscoverMixPlaylist(tile) { resolvedId ->
+                                                            onOpenFeedPlaylist(resolvedId)
+                                                        }
+                                                    }
+                                                }
+                                                tile.collection == "mix" -> onOpenGenerator()
+                                                tile.collection == "my_mix" -> {
+                                                    if (tile.playlistId != null) {
+                                                        viewModel.playPlaylistById(tile.playlistId, tile.title)
+                                                    } else {
+                                                        viewModel.playInfiniteRadio()
+                                                    }
+                                                }
+                                                tile.collection == "yt_liked" || tile.playlistId == "yt_liked" -> onOpenFeedPlaylist("yt_liked")
+                                                tile.collection == "yt_recent" || tile.playlistId == "yt_recent" -> onOpenFeedPlaylist("yt_recent")
+                                                tile.collection == "new_releases" -> onOpenNewReleases()
+                                                tile.localPlaylistId != null -> onOpenPlaylist(tile.localPlaylistId)
+                                                tile.playlistId != null -> onOpenFeedPlaylist(tile.playlistId)
+                                                else -> viewModel.handleQuickTileClick(tile)
+                                            }
+                                        },
+                                    )
+                                }
                             }
                         }
 
                         for (sectionKey in orderedFeedSections) {
                             when {
-                                sectionKey == "quick_tiles" -> {
-                                    item(key = "quick_tiles") {
-                                        HomeContainerSection(
-                                            shape = getContainerShape("quick_tiles"),
-                                        ) {
-                                            FeedSectionHeader(
-                                                title = stringResource(R.string.feed_quick_access),
-                                                onLongClick = { sectionMenuTarget = "quick_tiles" to "Quick Access" },
-                                            )
-                                            Spacer(modifier = Modifier.height(12.dp))
-                                            QuickTilesGrid(
-                                                tiles = quickTiles,
-                                                onTileClick = { tile ->
-                                                    when {
-                                                        tile.collection == "radio" -> onOpenDiscover()
-                                                        tile.collection == "discover_mix" || tile.title.contains("Discover Mix", ignoreCase = true) -> {
-                                                            if (!tile.playlistId.isNullOrBlank()) {
-                                                                onOpenFeedPlaylist(tile.playlistId)
-                                                            } else {
-                                                                viewModel.openDiscoverMixPlaylist(tile) { resolvedId ->
-                                                                    onOpenFeedPlaylist(resolvedId)
-                                                                }
-                                                            }
-                                                        }
-                                                        tile.collection == "mix" -> onOpenGenerator()
-                                                        tile.collection == "my_mix" -> {
-                                                            if (tile.playlistId != null) {
-                                                                viewModel.playPlaylistById(tile.playlistId, tile.title)
-                                                            } else {
-                                                                viewModel.playInfiniteRadio()
-                                                            }
-                                                        }
-                                                        tile.collection == "yt_liked" || tile.playlistId == "yt_liked" -> onOpenFeedPlaylist("yt_liked")
-                                                        tile.collection == "yt_recent" || tile.playlistId == "yt_recent" -> onOpenFeedPlaylist("yt_recent")
-                                                        tile.collection == "new_releases" -> onOpenNewReleases()
-                                                        tile.localPlaylistId != null -> onOpenPlaylist(tile.localPlaylistId)
-                                                        tile.playlistId != null -> onOpenFeedPlaylist(tile.playlistId)
-                                                        else -> viewModel.handleQuickTileClick(tile)
-                                                    }
-                                                },
-                                            )
-                                        }
-                                    }
-                                }
                                 sectionKey == "taste_strip" -> {
                                     item(key = "taste_strip") {
                                         HomeContainerSection(
@@ -1566,95 +1573,105 @@ private fun relativeTime(context: android.content.Context, uts: String?): String
     }
 }
 
+@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
+private val ExpressiveHeadlineFont = FontFamily(
+    Font(
+        R.font.google_sans_flex,
+        weight = FontWeight.Black,
+        variationSettings = FontVariation.Settings(
+            FontVariation.weight(850),
+            FontVariation.width(125f),
+            FontVariation.Setting("ROND", 60f),
+            FontVariation.Setting("opsz", 36f),
+        ),
+    ),
+)
+
 @Composable
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun ExpressiveGreetingHeader(
     greeting: String,
     formattedDate: String,
-    onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val haptics = LocalHapticFeedback.current
     val hour = remember { java.time.LocalTime.now().hour }
-    val (greetingIcon, iconTint, periodMood) = remember(hour) {
+    val (timeIcon, accentColor, tagline) = remember(hour) {
         when (hour) {
-            in 5..11 -> Triple(Icons.Filled.WbSunny, Color(0xFFFFB74D), "Morning vibe")
-            in 12..16 -> Triple(Icons.Filled.LightMode, Color(0xFFFFA726), "Afternoon rhythm")
-            in 17..21 -> Triple(Icons.Filled.AutoAwesome, Color(0xFFFF8A65), "Evening flow")
-            else -> Triple(Icons.Filled.DarkMode, Color(0xFF9FA8DA), "Night session")
+            in 5..11 -> Triple(Icons.Filled.WbSunny, Color(0xFFFFB300), "Start your day with great rhythm")
+            in 12..16 -> Triple(Icons.Filled.LightMode, Color(0xFFFF9800), "Keep the momentum going")
+            in 17..21 -> Triple(Icons.Filled.AutoAwesome, Color(0xFFAB47BC), "Unwind with your favorite tracks")
+            else -> Triple(Icons.Filled.DarkMode, Color(0xFF7986CB), "Late night listening session")
         }
     }
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 6.dp)
-            .combinedClickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = {},
-                onLongClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onLongClick()
-                },
-            ),
+            .padding(horizontal = 20.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        if (formattedDate.isNotBlank()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f),
+                shape = CircleShape,
+                color = accentColor.copy(alpha = 0.18f),
+                modifier = Modifier.size(24.dp),
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
+                Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = greetingIcon,
+                        imageVector = timeIcon,
                         contentDescription = null,
-                        tint = iconTint,
+                        tint = accentColor,
                         modifier = Modifier.size(14.dp),
                     )
-                    Text(
-                        text = "$formattedDate  ·  $periodMood",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            letterSpacing = 0.2.sp,
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
+            }
+            if (formattedDate.isNotBlank()) {
+                Text(
+                    text = formattedDate.uppercase(),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        letterSpacing = 1.3.sp,
+                        fontWeight = FontWeight.Bold,
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                )
             }
         }
 
         Text(
             text = greeting,
-            style = MaterialTheme.typography.headlineLarge.copy(
-                fontSize = 30.sp,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = (-0.6).sp,
-                lineHeight = 36.sp,
-            ),
+            fontFamily = ExpressiveHeadlineFont,
+            fontSize = 32.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = (-0.7).sp,
+            lineHeight = 38.sp,
             color = MaterialTheme.colorScheme.onSurface,
+        )
+
+        Text(
+            text = tagline,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = 13.5.sp,
+                fontWeight = FontWeight.Normal,
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
         )
     }
 }
 
 @Composable
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun InfiniteRadioHero(
     quickPicks: List<YouTubeMusicTrack>,
     onPlay: () -> Unit,
-    onLongClick: (() -> Unit)? = null,
 ) {
     val haptics = LocalHapticFeedback.current
     val heroArt = quickPicks.firstOrNull { !it.artworkUrl.isNullOrBlank() }?.artworkUrl
     val heroShape = RoundedCornerShape(
         topStart = 28.dp,
         topEnd = 28.dp,
-        bottomStart = 28.dp,
-        bottomEnd = 28.dp,
+        bottomStart = 0.dp,
+        bottomEnd = 0.dp,
     )
     Surface(
         shape = heroShape,
@@ -1663,17 +1680,7 @@ private fun InfiniteRadioHero(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .combinedClickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = {},
-                onLongClick = onLongClick?.let {
-                    {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        it()
-                    }
-                },
-            ),
+            .padding(bottom = 3.dp),
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             if (!heroArt.isNullOrBlank()) {

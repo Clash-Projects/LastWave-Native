@@ -215,9 +215,6 @@ data class MiscSettings(
 )
 
 val DEFAULT_SECTION_ORDER: List<String> = listOf(
-    "hero_greeting",
-    "infinite_radio",
-    "quick_tiles",
     "taste_strip",
     "discover_new_music",
     "quick_picks",
