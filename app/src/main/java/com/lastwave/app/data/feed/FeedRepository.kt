@@ -830,13 +830,6 @@ class FeedRepository @Inject constructor(
                     collection = "new_releases",
                 ),
             )
-            add(
-                FeedQuickTile(
-                    title = "Live Map",
-                    subtitle = "Global listeners",
-                    collection = "live_map",
-                ),
-            )
         }
 
         val defaultTasteTags = listOf("Rock", "Indie", "Pop", "Electronic", "Hip-Hop", "R&B", "Synthwave", "Alternative")

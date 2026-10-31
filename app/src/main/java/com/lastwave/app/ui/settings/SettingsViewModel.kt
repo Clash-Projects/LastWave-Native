@@ -1090,7 +1090,6 @@ class SettingsViewModel @Inject constructor(
 
     fun setSubmitNowPlaying(enabled: Boolean) = launchSettingsAction("update Now Playing submission") { scrobblerPreferences.setSubmitNowPlaying(enabled) }
     fun setScrobblePercent(percent: Int) = launchSettingsAction("update the scrobble threshold") { scrobblerPreferences.setScrobblePercent(percent) }
-    fun setLiveTelemetryEnabled(enabled: Boolean) = launchSettingsAction("update live telemetry") { settingsPreferences.setLiveTelemetryEnabled(enabled) }
 
     // ── YouTube Music account ──
 
