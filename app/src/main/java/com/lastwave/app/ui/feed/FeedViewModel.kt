@@ -318,7 +318,7 @@ class FeedViewModel @Inject constructor(
      * Selecting a new chip cancels any in-flight requests, hides synthetic sections,
      * and displays only the chip's YTM carousel shelves.
      */
-    fun onHomeChipSelected(chip: HomeChip) = selectChip(chip)
+    fun onHomeChipSelected(chip: HomeChip?) = selectChip(chip)
 
     fun selectChip(chip: HomeChip?) {
         val currentSelected = _uiState.value.selectedChip

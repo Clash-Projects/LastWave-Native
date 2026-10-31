@@ -9,6 +9,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Shuffle
@@ -27,8 +28,8 @@ import androidx.compose.ui.unit.dp
 
 /**
  * Material You Expressive Shuffle Button.
- * Features a squircle tonal container, bouncy spring scale press feedback,
- * high-contrast primary tinted icon, and tactile haptic response.
+ * Redesigned circular button with a 100% solid stroke border,
+ * subtle tonal container, bouncy spring scale feedback, and tactile haptic response.
  */
 @Composable
 fun ExpressiveShuffleButton(
@@ -54,9 +55,9 @@ fun ExpressiveShuffleButton(
             onClick()
         },
         interactionSource = interactionSource,
-        shape = RoundedCornerShape(13.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.85f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.outline),
         modifier = modifier
             .size(38.dp)
             .graphicsLayer {

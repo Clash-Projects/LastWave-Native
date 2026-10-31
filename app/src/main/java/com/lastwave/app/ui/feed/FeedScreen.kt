@@ -358,7 +358,6 @@ fun FeedScreen(
                     chips = state.homeChips,
                     selectedChip = state.selectedChip,
                     onChipClick = viewModel::onHomeChipSelected,
-                    transparentBackground = isPodcastsActive,
                 )
             }
 
@@ -403,19 +402,75 @@ fun FeedScreen(
                     hiddenSections + ytHidden.map { "yt:$it" }.toSet()
                 }
 
-                fun isTitleHidden(title: String): Boolean {
+                fun isShelfTitleHidden(title: String): Boolean {
                     val t = title.trim().lowercase()
-                    if ("yt:$title" in allHiddenIds || title in ytHidden) return true
+                    if (t.isBlank()) return true
+                    if ("yt:$title" in allHiddenIds || title in ytHidden || "yt:$t" in allHiddenIds || t in ytHidden) return true
+
+                    // Check specific mapped toggles:
+                    if (("new_releases" in hiddenSections || "yt:New releases" in allHiddenIds || ytHidden.any { it.contains("new release", ignoreCase = true) }) &&
+                        t.contains("new release")
+                    ) return true
+
+                    if (("yt:Music video for you" in allHiddenIds || ytHidden.any { it.contains("music video", ignoreCase = true) }) &&
+                        (t.contains("music video") || t.contains("music videos"))
+                    ) return true
+
+                    if (("mixed_for_you" in hiddenSections || "yt:Mixes to explore" in allHiddenIds || ytHidden.any { it.contains("mix", ignoreCase = true) }) &&
+                        (t.contains("mixed for you") || t.contains("mixes for you") || t.contains("mixes to explore") || t.contains("mixes") || t.contains("mix"))
+                    ) return true
+
+                    if (("trending_charts" in hiddenSections || "yt:Trending songs for you" in allHiddenIds || ytHidden.any { it.contains("trend", ignoreCase = true) }) &&
+                        (t.contains("trend") || t.contains("chart"))
+                    ) return true
+
+                    if (("because_you_listen_to" in hiddenSections || "yt:Similar to" in allHiddenIds || ytHidden.any { it.contains("similar", ignoreCase = true) }) &&
+                        (t.contains("similar to") || t.contains("because you"))
+                    ) return true
+
+                    if (("jump_back_in" in hiddenSections || "yt:Listen again" in allHiddenIds || ytHidden.any { it.contains("listen again", ignoreCase = true) }) &&
+                        (t.contains("listen again") || t.contains("jump back"))
+                    ) return true
+
+                    if (("quick_picks" in hiddenSections || ytHidden.any { it.contains("quick pick", ignoreCase = true) || it.contains("picked for you", ignoreCase = true) }) &&
+                        (t.contains("quick pick") || t.contains("picked for you"))
+                    ) return true
+
+                    if (("albums_in_rotation" in hiddenSections || "yt:Album for you" in allHiddenIds || "yt:Albums for you" in allHiddenIds || ytHidden.any { it.contains("album", ignoreCase = true) }) &&
+                        (t.contains("album for you") || t.contains("albums for you"))
+                    ) return true
+
+                    if (("yt:From the community" in allHiddenIds || ytHidden.any { it.contains("community", ignoreCase = true) }) &&
+                        t.contains("community")
+                    ) return true
+
+                    if (("yt:Forgotten favorites" in allHiddenIds || ytHidden.any { it.contains("forgotten", ignoreCase = true) }) &&
+                        t.contains("forgotten")
+                    ) return true
+
+                    if (("yt:From your library" in allHiddenIds || ytHidden.any { it.contains("library", ignoreCase = true) }) &&
+                        t.contains("library")
+                    ) return true
+
+                    if (("yt:Heard in shorts" in allHiddenIds || ytHidden.any { it.contains("short", ignoreCase = true) }) &&
+                        t.contains("short")
+                    ) return true
+
+                    if (("yt:Live performances" in allHiddenIds || ytHidden.any { it.contains("live", ignoreCase = true) }) &&
+                        t.contains("live performance")
+                    ) return true
+
+                    if (("yt:Cover and remixes" in allHiddenIds || ytHidden.any { it.contains("cover", ignoreCase = true) || it.contains("remix", ignoreCase = true) }) &&
+                        (t.contains("cover") || t.contains("remix"))
+                    ) return true
+
+                    if (("podcast_shelf" in hiddenSections || "podcasts" in hiddenSections) &&
+                        t.contains("podcast")
+                    ) return true
+
                     return ytHidden.any { h ->
                         val hl = h.trim().lowercase()
-                        t == hl || t.startsWith(hl) || hl.startsWith(t) ||
-                            (hl.contains("listen again") && (t.contains("listen again") || t.contains("jump back"))) ||
-                            (hl.contains("quick pick") && (t.contains("quick pick") || t.contains("picked for you"))) ||
-                            (hl.contains("mixed for you") && (t.contains("mixed for you") || t.contains("mixes"))) ||
-                            (hl.contains("trending") && t.contains("trend")) ||
-                            (hl.contains("new release") && (t.contains("new release") || t.contains("fresh drop"))) ||
-                            (hl.contains("community") && t.contains("community")) ||
-                            (hl.contains("forgotten") && t.contains("forgotten"))
+                        t == hl || t.startsWith(hl) || hl.startsWith(t)
                     }
                 }
 
@@ -423,9 +478,10 @@ fun FeedScreen(
                     if (id in allHiddenIds || id in hiddenSections) return true
                     if (id == "hero_greeting" && ("hero" in hiddenSections || "hero_greeting" in hiddenSections)) return true
                     if (id == "infinite_radio" && ("hero" in hiddenSections || "infinite_radio" in hiddenSections)) return true
+                    if (id == "new_releases" && ("new_releases" in hiddenSections || "yt:New releases" in allHiddenIds)) return true
                     if (id.startsWith("yt:")) {
                         val ytTitle = id.removePrefix("yt:").trim()
-                        return isTitleHidden(ytTitle)
+                        return isShelfTitleHidden(ytTitle)
                     }
                     return false
                 }
@@ -469,7 +525,7 @@ fun FeedScreen(
                             shelf !== ytQuickPicksShelf &&
                             shelf.items.isNotEmpty() &&
                             !isSectionIdHidden("yt:${shelf.title}") &&
-                            !isTitleHidden(shelf.title)
+                            !isShelfTitleHidden(shelf.title)
                     }
                 }
 
@@ -556,7 +612,7 @@ fun FeedScreen(
                         }
                     })
                     val (pinned, unpinned) = sorted.partition { it in pinnedHomeSections }
-                    pinned + unpinned
+                    (pinned + unpinned).filter { it != "hero_greeting" && it != "infinite_radio" }
                 }
 
                 val spotlightIndex = orderedFeedSections.indexOf("spotlight_hero")
@@ -565,7 +621,7 @@ fun FeedScreen(
                     if (index == -1) {
                         RoundedCornerShape(0.dp)
                     } else {
-                        val isFirst = index == 0 || (index == 1 && orderedFeedSections[0] == "hero_greeting")
+                        val isFirst = index == 0
                         val isLast = index == orderedFeedSections.size - 1
                         val isBeforeSpotlight = spotlightIndex != -1 && index == spotlightIndex - 1
                         val isAfterSpotlight = spotlightIndex != -1 && index == spotlightIndex + 1
@@ -581,6 +637,10 @@ fun FeedScreen(
                         )
                     }
                 }
+
+                val isGreetingVisible = showSynthetic && !isSectionIdHidden("hero_greeting")
+                val isInfiniteRadioVisible = showSynthetic && !isSectionIdHidden("infinite_radio") && combinedQuickPicks.isNotEmpty()
+                val hasAnyFeedSections = isGreetingVisible || isInfiniteRadioVisible || orderedFeedSections.isNotEmpty()
 
                 LazyColumn(
                     state = listState,
@@ -644,53 +704,56 @@ fun FeedScreen(
                             }
                         }
                     } else {
-                        for (sectionKey in orderedFeedSections) {
-                            when {
-                                sectionKey == "hero_greeting" -> {
-                                    item(key = "hero_greeting") {
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 18.dp, vertical = 6.dp)
-                                                .combinedClickable(
-                                                    interactionSource = remember { MutableInteractionSource() },
-                                                    indication = null,
-                                                    onClick = {},
-                                                    onLongClick = { sectionMenuTarget = "hero_greeting" to "Greeting Header" },
-                                                ),
-                                            verticalArrangement = Arrangement.spacedBy(2.dp),
-                                        ) {
-                                            Text(
-                                                text = greeting,
-                                                style = MaterialTheme.typography.headlineMedium.copy(
-                                                    fontSize = 24.sp,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    letterSpacing = (-0.3).sp,
-                                                ),
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                            )
-                                            if (formattedDate.isNotBlank()) {
-                                                Text(
-                                                    text = formattedDate,
-                                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                                        fontSize = 14.sp,
-                                                        fontWeight = FontWeight.Medium,
-                                                    ),
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                                sectionKey == "infinite_radio" -> {
-                                    item(key = "infinite_radio") {
-                                        InfiniteRadioHero(
-                                            quickPicks = combinedQuickPicks,
-                                            onPlay = viewModel::playInfiniteRadio,
-                                            onLongClick = { sectionMenuTarget = "infinite_radio" to "Infinite Radio" },
+                        if (isGreetingVisible) {
+                            item(key = "hero_greeting") {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 18.dp, vertical = 6.dp)
+                                        .combinedClickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                            onClick = {},
+                                            onLongClick = { sectionMenuTarget = "hero_greeting" to "Greeting Header" },
+                                        ),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                ) {
+                                    Text(
+                                        text = greeting,
+                                        style = MaterialTheme.typography.headlineMedium.copy(
+                                            fontSize = 24.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            letterSpacing = (-0.3).sp,
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    if (formattedDate.isNotBlank()) {
+                                        Text(
+                                            text = formattedDate,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Medium,
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
                                         )
                                     }
                                 }
+                            }
+                        }
+
+                        if (isInfiniteRadioVisible) {
+                            item(key = "infinite_radio") {
+                                InfiniteRadioHero(
+                                    quickPicks = combinedQuickPicks,
+                                    onPlay = viewModel::playInfiniteRadio,
+                                    onLongClick = { sectionMenuTarget = "infinite_radio" to "Infinite Radio" },
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                            }
+                        }
+
+                        for (sectionKey in orderedFeedSections) {
+                            when {
                                 sectionKey == "quick_tiles" -> {
                                     item(key = "quick_tiles") {
                                         HomeContainerSection(
@@ -1298,7 +1361,7 @@ fun FeedScreen(
                             }
                         }
 
-                        if (orderedFeedSections.isEmpty() && !state.isChipActive) {
+                        if (!hasAnyFeedSections && !state.isChipActive) {
                             item(key = "all_sections_hidden") {
                                 Box(
                                     modifier = Modifier
@@ -1342,10 +1405,10 @@ fun FeedScreen(
                         }
                     }
 
-                    if (!state.isChipActive) {
+                    if (!state.isChipActive && hasAnyFeedSections) {
                         for ((shelfIndex, shelf) in state.pagedShelves.withIndex()) {
                             val pagedKey = "yt:${shelf.title}"
-                            if (shelf.items.isEmpty() || isSectionIdHidden(pagedKey) || isTitleHidden(shelf.title)) continue
+                            if (shelf.items.isEmpty() || isSectionIdHidden(pagedKey) || isShelfTitleHidden(shelf.title)) continue
                             item(key = "paged_shelf_${shelfIndex}_${shelf.title}") {
                                 HomeContainerSection(
                                     shape = RoundedCornerShape(20.dp),
@@ -1369,7 +1432,7 @@ fun FeedScreen(
                         }
                     }
 
-                    if (state.isLoadingMore) {
+                    if (state.isLoadingMore && hasAnyFeedSections) {
                         item(key = "loading_more_indicator", contentType = "loading") {
                             Box(
                                 modifier = Modifier
@@ -1382,7 +1445,7 @@ fun FeedScreen(
                         }
                     }
 
-                    if (showSynthetic && orderedFeedSections.isNotEmpty()) {
+                    if (showSynthetic && hasAnyFeedSections) {
                         item(key = "feed_footer") {
                             FeedFooter(lastUpdatedMillis = state.feedData.lastUpdatedMillis)
                         }
@@ -1724,102 +1787,109 @@ private fun TasteStrip(
 }
 
 /**
- * Horizontally scrolling row of YouTube Music mood/activity chips
- * (e.g., Relax, Energize, Workout, Commute, Focus).
- * Placed directly above the native YTM shelves using the app's liquid-glass style.
- * Adapted from Metrolist's Home screen chip row (GPL-3.0).
- */
-@Composable
-fun HomeChipsRow(
-    chips: List<HomeChip>,
-    selectedChip: HomeChip?,
-    onChipClick: (HomeChip) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    if (chips.isEmpty()) return
-    val haptics = LocalHapticFeedback.current
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        items(chips, key = { it.title }, contentType = { "filter_chip" }) { chip ->
-            val isSelected = chip == selectedChip
-            Surface(
-                onClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onChipClick(chip)
-                },
-                shape = CircleShape,
-                color = if (isSelected) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f)
-                },
-                border = BorderStroke(
-                    width = 1.dp,
-                    color = if (isSelected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)
-                    },
-                ),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = chip.title,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                        color = if (isSelected) {
-                            MaterialTheme.colorScheme.onPrimary
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * Pinned container for the YTM chip row. Sits directly under the app bar and
- * stays visible while the feed scrolls, with a subtle gradient scrim behind
- * it so content sliding underneath stays legible. Liquid-glass styled.
+ * Pinned container for the YTM chip row. Styled identically to DownloadTabBar
+ * with an enclosing rounded container and individual pill chips, including a leading "(All)" chip.
  */
 @Composable
 private fun PinnedChipsBar(
     chips: List<HomeChip>,
     selectedChip: HomeChip?,
-    onChipClick: (HomeChip) -> Unit,
-    transparentBackground: Boolean = false,
+    onChipClick: (HomeChip?) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Box(
-        modifier = Modifier
+    if (chips.isEmpty()) return
+    val haptics = LocalHapticFeedback.current
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = modifier
             .fillMaxWidth()
-            .then(
-                if (transparentBackground) {
-                    Modifier
-                } else {
-                    Modifier.background(
-                        Brush.verticalGradient(
-                            0f to MaterialTheme.colorScheme.background.copy(alpha = 0.96f),
-                            0.7f to MaterialTheme.colorScheme.background.copy(alpha = 0.82f),
-                            1f to MaterialTheme.colorScheme.background.copy(alpha = 0f),
-                        )
-                    )
-                }
-            ),
+            .padding(horizontal = 14.dp, vertical = 6.dp),
     ) {
-        HomeChipsRow(
-            chips = chips,
-            selectedChip = selectedChip,
-            onChipClick = onChipClick,
-            modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
-        )
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // 1. (All) button chip at index 0
+            item(key = "chip_all") {
+                val isAllSelected = selectedChip == null
+                val bgColor by androidx.compose.animation.animateColorAsState(
+                    targetValue = if (isAllSelected) MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent,
+                    label = "allTabBg",
+                )
+                val textColor by androidx.compose.animation.animateColorAsState(
+                    targetValue = if (isAllSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    label = "allTabText",
+                )
+
+                Surface(
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onChipClick(null)
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    color = bgColor,
+                    modifier = Modifier.height(38.dp),
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .padding(horizontal = 16.dp),
+                    ) {
+                        Text(
+                            text = "All",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = if (isAllSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = textColor,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+
+            // 2. The mood / activity chips
+            items(chips, key = { it.title }, contentType = { "filter_chip" }) { chip ->
+                val isSelected = selectedChip == chip || selectedChip?.title.equals(chip.title, ignoreCase = true)
+                val bgColor by androidx.compose.animation.animateColorAsState(
+                    targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent,
+                    label = "tabBg",
+                )
+                val textColor by androidx.compose.animation.animateColorAsState(
+                    targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    label = "tabText",
+                )
+
+                Surface(
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onChipClick(chip)
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    color = bgColor,
+                    modifier = Modifier.height(38.dp),
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .padding(horizontal = 14.dp),
+                    ) {
+                        Text(
+                            text = chip.title,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = textColor,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -3338,8 +3408,7 @@ private fun HomeContainerSection(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .padding(bottom = 3.dp),
+            .padding(horizontal = 16.dp),
         shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
     ) {

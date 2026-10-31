@@ -251,6 +251,18 @@ val DEFAULT_SECTION_ORDER: List<String> = listOf(
     "yt:Live performances",
     "friends_activity",
     "podcast_shelf",
+    "yt:Similar to",
+    "yt:Music video for you",
+    "yt:Trending songs for you",
+    "yt:Energy boosters",
+    "yt:Feel good",
+    "yt:Workout",
+    "yt:Relax",
+    "yt:Focus",
+    "yt:Commute",
+    "yt:Party",
+    "yt:Romance",
+    "yt:Sleep",
 )
 
 /** Toggleable sections of the Home tab (see FeedScreen). Hero greeting and

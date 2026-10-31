@@ -1,5 +1,7 @@
 package com.lastwave.app.ui.settings
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,6 +30,7 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.GraphicEq
@@ -64,12 +68,22 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -168,6 +182,8 @@ val ALL_DEFAULT_UNIVERSAL_SECTIONS: List<UniversalSectionItem> = listOf(
     UniversalSectionItem("podcast_shelf", rawTitle = "Podcasts", rawSubtitle = "Popular podcast shows", isYouTube = false, icon = Icons.Filled.Mic),
     // Extra default YTM sections
     UniversalSectionItem("yt:Similar to", rawTitle = "Similar to", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Subscriptions),
+    UniversalSectionItem("yt:Music video for you", rawTitle = "Music video for you", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.SmartDisplay),
+    UniversalSectionItem("yt:Trending songs for you", rawTitle = "Trending songs for you", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.TrendingUp),
     UniversalSectionItem("yt:Recommended music videos", rawTitle = "Recommended music videos", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.SmartDisplay),
     UniversalSectionItem("yt:Energy boosters", rawTitle = "Energy boosters", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Bolt),
     UniversalSectionItem("yt:Feel good", rawTitle = "Feel good", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Favorite),
@@ -234,6 +250,20 @@ class HomeSectionsViewModel @Inject constructor(
         list.add(toIndex, item)
         _uiState.update { it.copy(sections = list) }
         saveState(list, current.hiddenSections, current.pinnedSections)
+    }
+
+    fun moveSectionLive(fromIndex: Int, toIndex: Int) {
+        val current = _uiState.value
+        val list = current.sections.toMutableList()
+        if (fromIndex !in list.indices || toIndex !in list.indices) return
+        val item = list.removeAt(fromIndex)
+        list.add(toIndex, item)
+        _uiState.update { it.copy(sections = list) }
+    }
+
+    fun commitOrder() {
+        val current = _uiState.value
+        saveState(current.sections, current.hiddenSections, current.pinnedSections)
     }
 
     fun toggleVisibility(id: String, visible: Boolean) {
@@ -335,13 +365,19 @@ fun HomeSectionsScreen(
             )
 
             Text(
-                text = "Reorder sections up/down, pin favorites to top, and toggle visibility for both LastWave and YouTube Music shelves.",
+                text = "Drag the handle to reorder sections, pin favorites to top, and toggle visibility for both LastWave and YouTube Music shelves.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
             )
 
+            val listState = rememberLazyListState()
+            val haptics = LocalHapticFeedback.current
+            var draggingIndex by remember { mutableIntStateOf(-1) }
+            var dragOffsetY by remember { mutableFloatStateOf(0f) }
+
             LazyColumn(
+                state = listState,
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
@@ -354,18 +390,25 @@ fun HomeSectionsScreen(
                 itemsIndexed(uiState.sections, key = { _, item -> item.id }) { index, item ->
                     val isVisible = item.id !in uiState.hiddenSections
                     val isItemPinned = item.id in uiState.pinnedSections
+                    val isDragging = draggingIndex == index
 
                     Card(
                         shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(
                             containerColor = if (isItemPinned) {
                                 MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                            } else if (isDragging) {
+                                MaterialTheme.colorScheme.surfaceContainerHighest
                             } else {
                                 MaterialTheme.colorScheme.surfaceContainerHigh
                             },
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
+                            .zIndex(if (isDragging) 10f else 1f)
+                            .graphicsLayer {
+                                translationY = if (isDragging) dragOffsetY else 0f
+                            }
                             .animateItem(),
                     ) {
                         Row(
@@ -374,6 +417,65 @@ fun HomeSectionsScreen(
                                 .padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
+                            // Drag Handle (Queue Style Reorder Button)
+                            Icon(
+                                imageVector = Icons.Filled.DragHandle,
+                                contentDescription = "Reorder",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (isDragging) 1f else 0.7f),
+                                modifier = Modifier
+                                    .padding(end = 8.dp)
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        if (isDragging) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                                        else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f),
+                                    )
+                                    .padding(6.dp)
+                                    .pointerInput(item.id) {
+                                        detectDragGestures(
+                                            onDragStart = {
+                                                draggingIndex = index
+                                                dragOffsetY = 0f
+                                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            },
+                                            onDragEnd = {
+                                                draggingIndex = -1
+                                                dragOffsetY = 0f
+                                                viewModel.commitOrder()
+                                            },
+                                            onDragCancel = {
+                                                draggingIndex = -1
+                                                dragOffsetY = 0f
+                                            },
+                                            onDrag = { change, dragAmount ->
+                                                change.consume()
+                                                val source = draggingIndex
+                                                if (source < 0) return@detectDragGestures
+                                                dragOffsetY += dragAmount.y
+                                                val layoutInfo = listState.layoutInfo
+                                                val draggedInfo = layoutInfo.visibleItemsInfo
+                                                    .firstOrNull { it.index == source }
+                                                    ?: return@detectDragGestures
+                                                val draggedCenter = draggedInfo.offset + draggedInfo.size / 2 + dragOffsetY.toInt()
+                                                val target = layoutInfo.visibleItemsInfo.firstOrNull { info ->
+                                                    info.index != source &&
+                                                        info.index in uiState.sections.indices &&
+                                                        draggedCenter in info.offset..(info.offset + info.size)
+                                                }?.index
+                                                if (target != null && target != source) {
+                                                    viewModel.moveSectionLive(source, target)
+                                                    val targetInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.index == target }
+                                                    if (targetInfo != null) {
+                                                        dragOffsetY += (draggedInfo.offset - targetInfo.offset).toFloat()
+                                                    }
+                                                    draggingIndex = target
+                                                    haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
+                                                }
+                                            }
+                                        )
+                                    },
+                            )
+
                             // Section Icon
                             Surface(
                                 shape = CircleShape,
@@ -381,8 +483,8 @@ fun HomeSectionsScreen(
                                     MaterialTheme.colorScheme.tertiaryContainer
                                 } else {
                                     MaterialTheme.colorScheme.secondaryContainer
-                                } ,
-                                modifier = Modifier.size(40.dp),
+                                },
+                                modifier = Modifier.size(36.dp),
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
@@ -393,12 +495,12 @@ fun HomeSectionsScreen(
                                         } else {
                                             MaterialTheme.colorScheme.onSecondaryContainer
                                         },
-                                        modifier = Modifier.size(20.dp),
+                                        modifier = Modifier.size(18.dp),
                                     )
                                 }
                             }
 
-                            Spacer(Modifier.width(12.dp))
+                            Spacer(Modifier.width(10.dp))
 
                             // Title & Subtitle
                             Column(Modifier.weight(1f)) {
@@ -433,66 +535,30 @@ fun HomeSectionsScreen(
                                 )
                             }
 
-                            // Reorder: Up / Down buttons
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(
-                                    onClick = {
-                                        if (index > 0) {
-                                            viewModel.moveSection(index, index - 1)
-                                        }
-                                    },
-                                    enabled = index > 0,
-                                    modifier = Modifier.size(32.dp),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.KeyboardArrowUp,
-                                        contentDescription = "Move Up",
-                                        tint = if (index > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                                        modifier = Modifier.size(20.dp),
-                                    )
-                                }
-                                IconButton(
-                                    onClick = {
-                                        if (index < uiState.sections.size - 1) {
-                                            viewModel.moveSection(index, index + 1)
-                                        }
-                                    },
-                                    enabled = index < uiState.sections.size - 1,
-                                    modifier = Modifier.size(32.dp),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.KeyboardArrowDown,
-                                        contentDescription = "Move Down",
-                                        tint = if (index < uiState.sections.size - 1) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                                        modifier = Modifier.size(20.dp),
-                                    )
-                                }
-
-                                // Pin Button
-                                IconButton(
-                                    onClick = {
-                                        viewModel.togglePin(item.id)
-                                    },
-                                    modifier = Modifier.size(32.dp),
-                                ) {
-                                    Icon(
-                                        imageVector = if (isItemPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
-                                        contentDescription = if (isItemPinned) "Unpin" else "Pin to top",
-                                        tint = if (isItemPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(18.dp),
-                                    )
-                                }
-
-                                Spacer(Modifier.width(4.dp))
-
-                                // Visibility Switch
-                                Switch(
-                                    checked = isVisible,
-                                    onCheckedChange = { checked ->
-                                        viewModel.toggleVisibility(item.id, checked)
-                                    },
+                            // Pin Button
+                            IconButton(
+                                onClick = {
+                                    viewModel.togglePin(item.id)
+                                },
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Icon(
+                                    imageVector = if (isItemPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                                    contentDescription = if (isItemPinned) "Unpin" else "Pin to top",
+                                    tint = if (isItemPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp),
                                 )
                             }
+
+                            Spacer(Modifier.width(4.dp))
+
+                            // Visibility Switch
+                            Switch(
+                                checked = isVisible,
+                                onCheckedChange = { checked ->
+                                    viewModel.toggleVisibility(item.id, checked)
+                                },
+                            )
                         }
                     }
                 }
