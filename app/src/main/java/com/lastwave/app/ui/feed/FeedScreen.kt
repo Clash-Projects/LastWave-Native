@@ -45,6 +45,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Explore
@@ -615,14 +618,30 @@ fun FeedScreen(
                     (pinned + unpinned).filter { it != "hero_greeting" && it != "infinite_radio" }
                 }
 
-                val spotlightIndex = orderedFeedSections.indexOf("spotlight_hero")
+                val visiblePagedShelfKeys = remember(state.pagedShelves, allHiddenIds, ytHidden) {
+                    if (state.isChipActive) emptyList()
+                    else {
+                        state.pagedShelves.mapIndexedNotNull { shelfIndex, shelf ->
+                            val pagedKey = "yt:${shelf.title}"
+                            if (shelf.items.isNotEmpty() && !isSectionIdHidden(pagedKey) && !isShelfTitleHidden(shelf.title)) {
+                                "paged_shelf_${shelfIndex}_${shelf.title}"
+                            } else null
+                        }
+                    }
+                }
+
+                val allContainerKeys = remember(orderedFeedSections, visiblePagedShelfKeys) {
+                    orderedFeedSections + visiblePagedShelfKeys
+                }
+
+                val spotlightIndex = allContainerKeys.indexOf("spotlight_hero")
                 val getContainerShape: (String) -> RoundedCornerShape = { key ->
-                    val index = orderedFeedSections.indexOf(key)
+                    val index = allContainerKeys.indexOf(key)
                     if (index == -1) {
                         RoundedCornerShape(0.dp)
                     } else {
                         val isFirst = index == 0
-                        val isLast = index == orderedFeedSections.size - 1
+                        val isLast = index == allContainerKeys.size - 1
                         val isBeforeSpotlight = spotlightIndex != -1 && index == spotlightIndex - 1
                         val isAfterSpotlight = spotlightIndex != -1 && index == spotlightIndex + 1
 
@@ -640,7 +659,7 @@ fun FeedScreen(
 
                 val isGreetingVisible = showSynthetic && !isSectionIdHidden("hero_greeting")
                 val isInfiniteRadioVisible = showSynthetic && !isSectionIdHidden("infinite_radio") && combinedQuickPicks.isNotEmpty()
-                val hasAnyFeedSections = isGreetingVisible || isInfiniteRadioVisible || orderedFeedSections.isNotEmpty()
+                val hasAnyFeedSections = isGreetingVisible || isInfiniteRadioVisible || allContainerKeys.isNotEmpty()
 
                 LazyColumn(
                     state = listState,
@@ -706,38 +725,11 @@ fun FeedScreen(
                     } else {
                         if (isGreetingVisible) {
                             item(key = "hero_greeting") {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 18.dp, vertical = 6.dp)
-                                        .combinedClickable(
-                                            interactionSource = remember { MutableInteractionSource() },
-                                            indication = null,
-                                            onClick = {},
-                                            onLongClick = { sectionMenuTarget = "hero_greeting" to "Greeting Header" },
-                                        ),
-                                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                                ) {
-                                    Text(
-                                        text = greeting,
-                                        style = MaterialTheme.typography.headlineMedium.copy(
-                                            fontSize = 24.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            letterSpacing = (-0.3).sp,
-                                        ),
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                    )
-                                    if (formattedDate.isNotBlank()) {
-                                        Text(
-                                            text = formattedDate,
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Medium,
-                                            ),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
-                                        )
-                                    }
-                                }
+                                ExpressiveGreetingHeader(
+                                    greeting = greeting,
+                                    formattedDate = formattedDate,
+                                    onLongClick = { sectionMenuTarget = "hero_greeting" to "Greeting Header" },
+                                )
                             }
                         }
 
@@ -1396,11 +1388,12 @@ fun FeedScreen(
 
                     if (!state.isChipActive && hasAnyFeedSections) {
                         for ((shelfIndex, shelf) in state.pagedShelves.withIndex()) {
+                            val shelfItemKey = "paged_shelf_${shelfIndex}_${shelf.title}"
                             val pagedKey = "yt:${shelf.title}"
                             if (shelf.items.isEmpty() || isSectionIdHidden(pagedKey) || isShelfTitleHidden(shelf.title)) continue
-                            item(key = "paged_shelf_${shelfIndex}_${shelf.title}") {
+                            item(key = shelfItemKey) {
                                 HomeContainerSection(
-                                    shape = RoundedCornerShape(20.dp),
+                                    shape = getContainerShape(shelfItemKey),
                                 ) {
                                     HomeShelfCard(
                                         shelf = shelf,
@@ -1570,6 +1563,81 @@ private fun relativeTime(context: android.content.Context, uts: String?): String
         diff < 86400 * 7 -> context.getString(R.string.feed_ago_day, (diff / 86400).toInt())
         diff < 86400 * 30 -> context.getString(R.string.feed_ago_week, (diff / (86400 * 7)).toInt())
         else -> context.getString(R.string.feed_ago_month, (diff / (86400 * 30)).toInt())
+    }
+}
+
+@Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private fun ExpressiveGreetingHeader(
+    greeting: String,
+    formattedDate: String,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val haptics = LocalHapticFeedback.current
+    val hour = remember { java.time.LocalTime.now().hour }
+    val (greetingIcon, iconTint, periodMood) = remember(hour) {
+        when (hour) {
+            in 5..11 -> Triple(Icons.Filled.WbSunny, Color(0xFFFFB74D), "Morning vibe")
+            in 12..16 -> Triple(Icons.Filled.LightMode, Color(0xFFFFA726), "Afternoon rhythm")
+            in 17..21 -> Triple(Icons.Filled.AutoAwesome, Color(0xFFFF8A65), "Evening flow")
+            else -> Triple(Icons.Filled.DarkMode, Color(0xFF9FA8DA), "Night session")
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp, vertical = 6.dp)
+            .combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onLongClick()
+                },
+            ),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        if (formattedDate.isNotBlank()) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Icon(
+                        imageVector = greetingIcon,
+                        contentDescription = null,
+                        tint = iconTint,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Text(
+                        text = "$formattedDate  ·  $periodMood",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.2.sp,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        Text(
+            text = greeting,
+            style = MaterialTheme.typography.headlineLarge.copy(
+                fontSize = 30.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = (-0.6).sp,
+                lineHeight = 36.sp,
+            ),
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 
@@ -2553,7 +2621,6 @@ private fun QuickTileCard(
         onClick = onClick,
         shape = tileShape,
         color = when {
-            isLiveMapTile -> MaterialTheme.colorScheme.tertiaryContainer
             isLikedTile -> MaterialTheme.colorScheme.primaryContainer
             isMixTile -> MaterialTheme.colorScheme.secondaryContainer
             isMyMixTile -> MaterialTheme.colorScheme.surfaceVariant
@@ -2582,14 +2649,7 @@ private fun QuickTileCard(
                     .background(iconGradient),
                 contentAlignment = Alignment.Center,
             ) {
-                if (isLiveMapTile) {
-                    Icon(
-                        Icons.Filled.Public,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                        modifier = Modifier.size(36.dp),
-                    )
-                } else if (isYtLikedTile) {
+                if (isYtLikedTile) {
                     Icon(
                         Icons.Filled.ThumbUp,
                         contentDescription = null,
@@ -3393,7 +3453,8 @@ private fun HomeContainerSection(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 3.dp),
         shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
     ) {
