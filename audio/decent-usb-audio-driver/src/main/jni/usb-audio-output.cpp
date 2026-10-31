@@ -889,13 +889,14 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
         if (ctx->urbsInFlight >= USB_AUDIO_NUM_URBS) {
             int result = reapOldestUrb(ctx, 200);
             if (result == -2) {
-                // A forward seek leaves the ring full while the next network
-                // bytes are still downloading. Killing the stream here is what
-                // stops audio after ~2s and sticks ExoPlayer on BUFFERING.
-                LOGW("submitPcmToUrbs: reap timeout, inflight=%d — drain and continue",
-                     ctx->urbsInFlight);
-                drainAllUrbs(ctx);
-                continue;
+                // Reap timed out: retry with a longer wait instead of discarding
+                // in-flight URBs, which would destroy valid audio frames.
+                result = reapOldestUrb(ctx, 300);
+                if (result == -2) {
+                    LOGW("submitPcmToUrbs: reap timeout, inflight=%d", ctx->urbsInFlight);
+                    usleep(1000);
+                    continue;
+                }
             } else if (result < 0) {
                 ctx->running.store(false);
                 free(mergedBuf);

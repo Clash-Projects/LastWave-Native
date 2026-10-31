@@ -717,7 +717,10 @@ class UsbAudioDevice private constructor(private val context: Context) {
         parsedClockSelectorId = -1
         parsedClockSelectorPins = emptyList()
         activeClockSourceId = -1
-        claimedInterface = null
+        claimedInterface?.let { iface ->
+            runCatching { connection?.releaseInterface(iface) }
+            claimedInterface = null
+        }
         runCatching { connection?.close() }
         connection = null
         currentDevice = null
