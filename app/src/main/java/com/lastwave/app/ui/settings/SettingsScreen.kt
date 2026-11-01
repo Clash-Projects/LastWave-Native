@@ -1657,7 +1657,7 @@ fun SettingsScreen(
                         else ->
                             if (!ytConnected) "Connect an account first"
                             else if (ytSyncEnabled) "Selected playlists mirror to your account, 24/7" + lastSyncSuffix(ytLastSyncAt)
-                            else "Keep your YT Music library in sync with LastWave"
+                            else "Keep your YT Music library in sync with SoundDrop"
                     }
                     // Display name of the active channel: the picked entry when
                     // the channel list was loaded, otherwise the stored name.
@@ -1969,8 +1969,8 @@ fun SettingsScreen(
                     // Discord presence, next to Last.fm because both are "tell
                     // other services what I'm listening to" integrations and
                     // neither is required for playback. Unlike Last.fm this
-                    // needs no account in LastWave — it publishes as the
-                    // LastWave application through the Discord app itself, so
+                    // needs no account in SoundDrop — it publishes as the
+                    // SoundDrop application through the Discord app itself, so
                     // the copy says exactly that.
                     SettingsToggleCard(
                         icon = Icons.Filled.Public,
@@ -2189,7 +2189,7 @@ fun SettingsScreen(
                                 title = stringResource(R.string.settings_updates_support),
                                 subtitle = stringResource(R.string.set_tg_sub),
                                 onClick = {
-                                    if (!openTelegramChannel(context, "clashprojects")) {
+                                    if (!openTelegramChannel(context, "Xaero Community")) {
                                         viewModel.showToast(context.getString(R.string.toast_no_browser_tg))
                                     }
                                 },
@@ -2203,7 +2203,7 @@ fun SettingsScreen(
                                 title = stringResource(R.string.set_discord_support),
                                 subtitle = stringResource(R.string.set_discord_support_sub),
                                 onClick = {
-                                    val discordIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://discord.gg/TMCEPSUNk2"))
+                                    val discordIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://xaero.framer.website"))
                                     if (!startActivitySafely(context, discordIntent)) {
                                         viewModel.showToast(context.getString(R.string.toast_no_browser))
                                     }
@@ -2218,7 +2218,7 @@ fun SettingsScreen(
                                 title = stringResource(R.string.settings_more_from_us),
                                 subtitle = stringResource(R.string.set_more_apps_sub),
                                 onClick = {
-                                    if (!openTelegramChannel(context, "MaterialYouApp")) {
+                                    if (!openTelegramChannel(context, "Developer official_1f81")) {
                                         viewModel.showToast(context.getString(R.string.toast_no_browser_tg))
                                     }
                                 },
@@ -2330,28 +2330,13 @@ fun SettingsScreen(
                     )
 
                     SettingsActionCard(
-                        icon = Icons.Filled.Code,
-                        iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                        iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        title = stringResource(R.string.settings_source_code),
-                        subtitle = "github.com/Clash-Projects/LastWave-native",
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Clash-Projects/LastWave-native"))
-                            if (!startActivitySafely(context, intent)) {
-                                viewModel.showToast(context.getString(R.string.toast_no_browser_plain))
-                            }
-                        },
-                        isHighlighted = (highlightedSettingId == "about.source_code"),
-                    )
-
-                    SettingsActionCard(
                         icon = Icons.Filled.Download,
                         iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                         iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                         title = stringResource(R.string.settings_desktop_app),
-                        subtitle = "github.com/Clash-Projects/LastWave-Desktop",
+                        subtitle = "xaero.framer.website/apps/SoundDrop-Desktop",
                         onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Clash-Projects/LastWave-Desktop"))
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://xaero.framer.website/apps/SoundDrop-Desktop"))
                             if (!startActivitySafely(context, intent)) {
                                 viewModel.showToast(context.getString(R.string.toast_no_browser_plain))
                             }
@@ -4882,7 +4867,7 @@ private fun MoreFromUsCard(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable { onOpenUrl("https://play.google.com/store/apps/details?id=com.sernheise.app") }
+                    .clickable { onOpenUrl("https://xaero.framer.website/apps") }
                     .padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -4915,7 +4900,7 @@ private fun MoreFromUsCard(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable { onOpenUrl("https://play.google.com/store/apps/details?id=aman.lyricify") }
+                    .clickable { onOpenUrl("https://xaero.framer.website/apps") }
                     .padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -4947,7 +4932,7 @@ private fun MoreFromUsCard(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable { onOpenUrl("https://github.com/duxtami/SleepTracker") }
+                    .clickable { onOpenUrl("https://xaero.framer.website/apps") }
                     .padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -5010,13 +4995,13 @@ private fun AboutCard(
             ) {
                 Icon(
                     painter = painterResource(appIcon.logoRes),
-                    contentDescription = "LastWave",
+                    contentDescription = "SoundDrop",
                     tint = Color.Unspecified,
                     modifier = Modifier.size(72.dp),
                 )
             }
             Spacer(Modifier.height(14.dp))
-            Text("LastWave", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("SoundDrop", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
             Surface(
                 shape = ExpressivePillShape,
@@ -5042,7 +5027,7 @@ private fun AboutCard(
                 shape = ExpressivePillShape,
                 color = MaterialTheme.colorScheme.secondaryContainer,
                 onClick = {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Clash-Projects/LastWave-Desktop"))
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://xaero.framer.website/apps/SoundDrop-Desktop"))
                     if (!startActivitySafely(context, intent)) {
                         android.widget.Toast.makeText(context, context.getString(R.string.toast_no_browser_plain), android.widget.Toast.LENGTH_SHORT).show()
                     }
@@ -5820,7 +5805,7 @@ private fun EqNativeSlider(
     }
 }
 
-/** Controls which connected-account playlists appear in LastWave. This is
+/** Controls which connected-account playlists appear in SoundDrop. This is
  * intentionally independent from importing and two-way sync. */
 /**
  * Lets the user pick which YouTube channel/profile answers inside the
@@ -6028,7 +6013,7 @@ private fun YouTubeLibraryVisibilitySheet(
                 Column(Modifier.weight(1f)) {
                     Text(stringResource(R.string.set_yt_shown_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(
-                        "Choose which account playlists appear in LastWave",
+                        "Choose which account playlists appear in SoundDrop",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
