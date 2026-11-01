@@ -46,7 +46,7 @@
         android:required="false" />
 
     <application
-        android:name=".LastWaveApplication"
+        android:name=".SoundDropApplication"
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
