@@ -113,6 +113,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ClearAll
@@ -5580,7 +5581,7 @@ private fun AudioControlsSheet(
                                     player.setPlaybackParameters(1.0f, 1.0f)
                                 },
                                 modifier = Modifier
-                                    .size(32.dp)
+                                    .size(26.dp)
                                     .clip(CircleShape)
                                     .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                             ) {
@@ -5588,7 +5589,7 @@ private fun AudioControlsSheet(
                                     imageVector = Icons.Filled.RestartAlt,
                                     contentDescription = "Reset speed and pitch",
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(18.dp),
+                                    modifier = Modifier.size(15.dp),
                                 )
                             }
                         }
@@ -5837,34 +5838,55 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
                 )
-                Text(
-                    "Current playing",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.70f),
-                )
-                val remainingQueueTimeText = remember(state.queue, state.currentIndex) {
-                    val remainingSongs = state.queue.drop(state.currentIndex.coerceAtLeast(0))
-                    val knownDurations = remainingSongs.mapNotNull { it.durationMs }.filter { it > 0 }
-                    if (knownDurations.isEmpty()) ""
-                    else {
-                        val totalSec = knownDurations.sum() / 1000
-                        val hours = totalSec / 3600
-                        val minutes = (totalSec % 3600) / 60
-                        val hasUnknown = remainingSongs.size > knownDurations.size
-                        val suffix = if (hasUnknown) "+" else ""
-                        when {
-                            hours > 0 -> "${hours}h ${minutes}m$suffix"
-                            minutes > 0 -> "${minutes}m$suffix"
-                            else -> "<1m$suffix"
+                if (state.queue.isNotEmpty()) {
+                    Text(
+                        "${state.currentIndex.coerceAtLeast(0) + 1} playing",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.70f),
+                    )
+                }
+                if (state.isEndlessQueue) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AllInclusive,
+                            contentDescription = "Unlimited queue",
+                            tint = Color.White.copy(alpha = 0.55f),
+                            modifier = Modifier.size(13.dp),
+                        )
+                        Text(
+                            "Unlimited",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.55f),
+                        )
+                    }
+                } else {
+                    val remainingQueueTimeText = remember(state.queue, state.currentIndex) {
+                        val remainingSongs = state.queue.drop(state.currentIndex.coerceAtLeast(0))
+                        val knownDurations = remainingSongs.mapNotNull { it.durationMs }.filter { it > 0 }
+                        if (knownDurations.isEmpty()) ""
+                        else {
+                            val totalSec = knownDurations.sum() / 1000
+                            val hours = totalSec / 3600
+                            val minutes = (totalSec % 3600) / 60
+                            val hasUnknown = remainingSongs.size > knownDurations.size
+                            val suffix = if (hasUnknown) "+" else ""
+                            when {
+                                hours > 0 -> "${hours}h ${minutes}m$suffix"
+                                minutes > 0 -> "${minutes}m$suffix"
+                                else -> "<1m$suffix"
+                            }
                         }
                     }
-                }
-                if (remainingQueueTimeText.isNotBlank()) {
-                    Text(
-                        remainingQueueTimeText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.55f),
-                    )
+                    if (remainingQueueTimeText.isNotBlank()) {
+                        Text(
+                            remainingQueueTimeText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.55f),
+                        )
+                    }
                 }
             }
             IconButton(

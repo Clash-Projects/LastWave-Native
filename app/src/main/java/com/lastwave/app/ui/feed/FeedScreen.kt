@@ -345,33 +345,32 @@ fun FeedScreen(
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 920.dp),
         ) {
-            Surface(
-                shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
-                color = if (isPodcastsActive) Color.Transparent else MaterialTheme.colorScheme.surfaceContainer,
-                modifier = Modifier.fillMaxWidth().zIndex(1f),
-            ) {
-                Column(Modifier.fillMaxWidth().padding(bottom = if (state.homeChips.isNotEmpty()) 4.dp else 0.dp)) {
-                    ExpressiveHeader(
-                        title = stringResource(R.string.feed_home),
-                        containerColor = Color.Transparent,
-                        actions = {
-                            HeaderActionIcon(Icons.Filled.Download, "Downloads", onOpenDownloads)
-                            HeaderActionIcon(Icons.Filled.Search, "Search", onOpenSearch)
-                            IconButton(onClick = onOpenSettings) {
-                                com.lastwave.app.ui.home.ProfileAvatar(avatarUrl = state.avatarUrl, modifier = Modifier.size(38.dp))
-                            }
-                        },
-                    )
-
-                    // Pinned YTM chip row under the app bar — stays visible while the
-                    // feed scrolls beneath it. Rendered only when chips exist.
-                    if (state.homeChips.isNotEmpty()) {
-                        PinnedChipsBar(
-                            chips = state.homeChips,
-                            selectedChip = state.selectedChip,
-                            onChipClick = viewModel::onHomeChipSelected,
-                        )
+            ExpressiveHeader(
+                title = stringResource(R.string.feed_home),
+                containerColor = if (isPodcastsActive) Color.Transparent else Color.Unspecified,
+                actions = {
+                    HeaderActionIcon(Icons.Filled.Download, "Downloads", onOpenDownloads)
+                    HeaderActionIcon(Icons.Filled.Search, "Search", onOpenSearch)
+                    IconButton(onClick = onOpenSettings) {
+                        com.lastwave.app.ui.home.ProfileAvatar(avatarUrl = state.avatarUrl, modifier = Modifier.size(38.dp))
                     }
+                },
+            )
+
+            // Pinned YTM chip row under the app bar — stays visible while the
+            // feed scrolls beneath it. Rendered only when chips exist; bottom
+            // base corners are rounded as requested.
+            if (state.homeChips.isNotEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.fillMaxWidth().zIndex(1f),
+                ) {
+                    PinnedChipsBar(
+                        chips = state.homeChips,
+                        selectedChip = state.selectedChip,
+                        onChipClick = viewModel::onHomeChipSelected,
+                    )
                 }
             }
 
