@@ -1,0 +1,13 @@
+name: Generate Key
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Keystore
+        run: |
+          keytool -genkey -v -keystore release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias sounddrop-key -storepass '4321&@sounddrop4321' -keypass '4321&@sounddrop4321' -dname "CN=SoundDrop, OU=App, O=Community, L=City, ST=State, C=US"
+          base64 release.jks
