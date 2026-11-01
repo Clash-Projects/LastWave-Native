@@ -109,15 +109,19 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import com.lastwave.app.playback.ChunkedRangeDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import com.lastwave.app.R
 import com.lastwave.app.data.music.YouTubeVideoStream
 import com.lastwave.app.data.video.SyncedVideoRepository
@@ -138,15 +142,59 @@ import kotlin.math.abs
 
 private const val TAG = "SyncedVideoPlayer"
 
+/** IPv4-first like audio: HttpURLConnection stalls on routes with broken IPv6, such as full-tunnel VPNs. */
+private val videoMediaHttp: okhttp3.OkHttpClient by lazy {
+    okhttp3.OkHttpClient.Builder()
+        .dns(com.lastwave.app.data.network.Ipv4FirstDnsResolver())
+        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
+}
+
+/**
+ * Starts Auto quality low and steps up as bandwidth is measured. The quality-up
+ * threshold sits below the default 10s because one video player buffers only 8s
+ * and could otherwise never reach it.
+ */
+@OptIn(UnstableApi::class)
+private fun adaptiveVideoPlayerBuilder(
+    context: android.content.Context,
+    dataSourceFactory: DataSource.Factory,
+): ExoPlayer.Builder = ExoPlayer.Builder(context)
+    .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+    .setBandwidthMeter(
+        DefaultBandwidthMeter.Builder(context)
+            .setInitialBitrateEstimate(500_000L)
+            .build(),
+    )
+    .setTrackSelector(
+        DefaultTrackSelector(
+            context,
+            AdaptiveTrackSelection.Factory(
+                /* minDurationForQualityIncreaseMs = */ 4_000,
+                /* maxDurationForQualityDecreaseMs = */ 6_000,
+                /* minDurationToRetainAfterDiscardMs = */ 6_000,
+                /* bandwidthFraction = */ 0.7f,
+            ),
+        ),
+    )
+
 sealed interface SyncedVideoUiState {
     data object Loading : SyncedVideoUiState
     data class Ready(
         val bundle: com.lastwave.app.data.music.SyncedVideoStreamBundle,
         val activeStream: YouTubeVideoStream,
         val selectedHeight: Int? = null,
+        val adaptiveFailed: Boolean = false,
     ) : SyncedVideoUiState {
         val stream: YouTubeVideoStream get() = activeStream
         val isAuto: Boolean get() = selectedHeight == null || selectedHeight <= 0
+        private val adaptiveUri: String?
+            get() = bundle.adaptiveManifestUri.takeIf { isAuto && !adaptiveFailed }
+        val usesAdaptive: Boolean get() = adaptiveUri != null
+        val playbackUri: String get() = adaptiveUri ?: activeStream.url
+        val playbackMimeType: String?
+            get() = if (usesAdaptive) MimeTypes.APPLICATION_MPD else activeStream.mimeType?.takeIf { it.isNotBlank() }
         val currentQualityLabel: String
             get() = if (isAuto) "Auto" else activeStream.displayQuality
     }
@@ -165,12 +213,11 @@ class SyncedVideoViewModel @Inject constructor(
     val isVideoActive: StateFlow<Boolean> = _isVideoActive.asStateFlow()
 
     private var currentKey: String? = null
+    private var loadJob: kotlinx.coroutines.Job? = null
+    private var openedAwaitingLoad = false
 
     /** Shared HTTP factory for video streams – reused across cover and fullscreen players. */
-    val httpFactory: DefaultHttpDataSource.Factory = DefaultHttpDataSource.Factory()
-        .setAllowCrossProtocolRedirects(true)
-        .setConnectTimeoutMs(15000)
-        .setReadTimeoutMs(20000)
+    val httpFactory: OkHttpDataSource.Factory = OkHttpDataSource.Factory(videoMediaHttp)
 
     private var _playerInitialized = false
 
@@ -182,8 +229,7 @@ class SyncedVideoViewModel @Inject constructor(
         val chunkedFactory = DataSource.Factory {
             ChunkedRangeDataSource(defaultDataSourceFactory.createDataSource(), chunkSize = 256 * 1024L)
         }
-        ExoPlayer.Builder(appContext)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(chunkedFactory))
+        adaptiveVideoPlayerBuilder(appContext, chunkedFactory)
             .build()
             .apply {
                 volume = 0f
@@ -195,16 +241,23 @@ class SyncedVideoViewModel @Inject constructor(
     }
 
     fun setVideoActive(active: Boolean) {
+        openedAwaitingLoad = active
         _isVideoActive.value = active
     }
 
     fun loadVideo(title: String, artist: String, videoId: String?, durationMs: Long? = null) {
         val key = "$title|$artist|$videoId|$durationMs"
-        if (currentKey == key && _uiState.value is SyncedVideoUiState.Ready) return
+        // The video view only calls this once shown, so opening it on a new song also
+        // changes the key. Only a track change under an already open video should close it.
+        val justOpened = openedAwaitingLoad
+        openedAwaitingLoad = false
+        // A resolve can take several seconds; a second one would reload the player when it lands.
+        if (currentKey == key && (_uiState.value is SyncedVideoUiState.Ready || loadJob?.isActive == true)) return
+        loadJob?.cancel()
 
         if (currentKey != null && currentKey != key) {
             // Track changed – reset video toggle and stop player
-            _isVideoActive.value = false
+            if (!justOpened) _isVideoActive.value = false
             if (_playerInitialized) {
                 player.stop()
                 player.clearMediaItems()
@@ -212,7 +265,7 @@ class SyncedVideoViewModel @Inject constructor(
         }
         currentKey = key
 
-        viewModelScope.launch {
+        loadJob = viewModelScope.launch {
             _uiState.value = SyncedVideoUiState.Loading
             videoRepository.resolveVideo(title, artist, videoId, expectedDurationMs = durationMs)
                 .onSuccess { bundle ->
@@ -243,6 +296,26 @@ class SyncedVideoViewModel @Inject constructor(
             activeStream = targetStream,
             selectedHeight = height,
         )
+    }
+
+    /** A chosen quality falls back to Auto; a failed Auto stream surfaces Retry instead of a black frame. */
+    fun onVideoPlaybackError() {
+        val ready = _uiState.value as? SyncedVideoUiState.Ready ?: return
+        if (ready.selectedHeight != null) {
+            selectQuality(null)
+            return
+        }
+        if (ready.usesAdaptive) {
+            // The default stream passed its probe, so try it before giving up.
+            _uiState.value = ready.copy(adaptiveFailed = true)
+            return
+        }
+        videoRepository.invalidate(ready.bundle.videoId)
+        if (_playerInitialized) {
+            player.stop()
+            player.clearMediaItems()
+        }
+        _uiState.value = SyncedVideoUiState.Error(appContext.getString(R.string.video_stream_unavailable))
     }
 
     fun retry(title: String, artist: String, videoId: String?, durationMs: Long? = null) {
@@ -430,10 +503,7 @@ fun SyncedCoverVideoPlayer(
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 Log.w("SyncedVideo", "Video player error: ${error.message}", error)
-                val ready = uiState as? SyncedVideoUiState.Ready ?: return
-                if (ready.selectedHeight != null) {
-                    viewModel.selectQuality(null)
-                }
+                viewModel.onVideoPlaybackError()
             }
         }
         videoPlayer.addListener(listener)
@@ -454,7 +524,7 @@ fun SyncedCoverVideoPlayer(
         if (state is SyncedVideoUiState.Ready) {
             val stream = state.activeStream
             val currentMediaUri = videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
-            if (currentMediaUri == stream.url) return@LaunchedEffect
+            if (currentMediaUri == state.playbackUri) return@LaunchedEffect
 
             val streamUa = stream.requestHeaders["User-Agent"]
                 ?: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
@@ -465,9 +535,9 @@ fun SyncedCoverVideoPlayer(
             val audioPos = musicPlayer.currentPositionMs()
             val targetPos = (audioPos + introOffsetMs).coerceAtLeast(0L)
             val mediaItem = MediaItem.Builder()
-                .setUri(stream.url)
+                .setUri(state.playbackUri)
                 .apply {
-                    stream.mimeType?.takeIf { it.isNotBlank() }?.let { setMimeType(it) }
+                    state.playbackMimeType?.let { setMimeType(it) }
                 }
                 .build()
             videoPlayer.setMediaItem(mediaItem, targetPos)
@@ -924,10 +994,7 @@ fun FullscreenLandscapeVideoStage(
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 Log.w("SyncedVideo", "Fullscreen video player error: ${error.message}", error)
-                val ready = uiState as? SyncedVideoUiState.Ready ?: return
-                if (ready.selectedHeight != null) {
-                    viewModel.selectQuality(null)
-                }
+                viewModel.onVideoPlaybackError()
             }
         }
         videoPlayer.addListener(listener)
@@ -948,7 +1015,7 @@ fun FullscreenLandscapeVideoStage(
         if (state is SyncedVideoUiState.Ready) {
             val stream = state.activeStream
             val currentMediaUri = videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
-            if (currentMediaUri == stream.url) return@LaunchedEffect
+            if (currentMediaUri == state.playbackUri) return@LaunchedEffect
 
             val streamUa = stream.requestHeaders["User-Agent"]
                 ?: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
@@ -959,9 +1026,9 @@ fun FullscreenLandscapeVideoStage(
             val audioPos = musicPlayer.currentPositionMs()
             val targetPos = (audioPos + introOffsetMs).coerceAtLeast(0L)
             val mediaItem = MediaItem.Builder()
-                .setUri(stream.url)
+                .setUri(state.playbackUri)
                 .apply {
-                    stream.mimeType?.takeIf { it.isNotBlank() }?.let { setMimeType(it) }
+                    state.playbackMimeType?.let { setMimeType(it) }
                 }
                 .build()
             videoPlayer.setMediaItem(mediaItem, targetPos)
@@ -1528,8 +1595,7 @@ fun SyncedVideoPlayerDialog(
     }
 
     val httpFactory = remember {
-        DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
+        OkHttpDataSource.Factory(videoMediaHttp)
             .setDefaultRequestProperties(
                 mapOf(
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -1556,8 +1622,7 @@ fun SyncedVideoPlayerDialog(
             ChunkedRangeDataSource(defaultDataSourceFactory.createDataSource(), chunkSize = 256 * 1024L)
         }
 
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(chunkedFactory))
+        adaptiveVideoPlayerBuilder(context, chunkedFactory)
             .setLoadControl(loadControl)
             .build()
             .apply {
@@ -1577,6 +1642,7 @@ fun SyncedVideoPlayerDialog(
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 Log.w(TAG, "Video player error: ${error.message}", error)
+                viewModel.onVideoPlaybackError()
             }
         }
         videoPlayer.addListener(listener)
@@ -1592,7 +1658,7 @@ fun SyncedVideoPlayerDialog(
         if (state is SyncedVideoUiState.Ready) {
             val stream = state.activeStream
             val currentMediaUri = videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
-            if (currentMediaUri == stream.url) return@LaunchedEffect
+            if (currentMediaUri == state.playbackUri) return@LaunchedEffect
 
             val streamUa = stream.requestHeaders["User-Agent"]
                 ?: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
@@ -1602,9 +1668,9 @@ fun SyncedVideoPlayerDialog(
             isRendered = false
             val currentPos = videoPlayer.currentPosition.takeIf { it > 0 } ?: musicPlayer.currentPositionMs()
             val mediaItem = MediaItem.Builder()
-                .setUri(stream.url)
+                .setUri(state.playbackUri)
                 .apply {
-                    stream.mimeType?.takeIf { it.isNotBlank() }?.let { setMimeType(it) }
+                    state.playbackMimeType?.let { setMimeType(it) }
                 }
                 .build()
             videoPlayer.setMediaItem(mediaItem, currentPos)

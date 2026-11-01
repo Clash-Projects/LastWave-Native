@@ -36,9 +36,13 @@ class SyncedVideoRepository @Inject constructor(
 
     fun invalidate(videoId: String?) {
         if (!videoId.isNullOrBlank()) {
-            cache.remove(videoId)
+            // Bundles are keyed by the official video id, which can differ from the resolved one.
+            cache.entries.removeIf { (key, cached) -> key == videoId || cached.bundle.videoId == videoId }
         }
     }
+
+    private suspend fun resolveBundle(videoId: String): SyncedVideoStreamBundle =
+        innerTube.resolveVideoStreamBundle(videoId) ?: streamExtractor.resolveVideoStreamBundle(videoId)
 
     suspend fun resolveVideo(
         trackTitle: String,
@@ -70,12 +74,12 @@ class SyncedVideoRepository @Inject constructor(
             val introOffsetMs = fetchIntroOffsetMs(targetVideoId)
 
             val rawBundle = try {
-                streamExtractor.resolveVideoStreamBundle(targetVideoId)
+                resolveBundle(targetVideoId)
             } catch (e: Exception) {
                 // If official video extraction failed and we had a different audioTrackVideoId,
                 // try that as fallback
                 if (!videoId.isNullOrBlank() && videoId != targetVideoId) {
-                    streamExtractor.resolveVideoStreamBundle(videoId)
+                    resolveBundle(videoId)
                 } else {
                     throw e
                 }
