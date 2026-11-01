@@ -34,7 +34,7 @@ import javax.inject.Inject
 
 // Last.fm redirects its Custom Tab to this Activity after approval.
 @AndroidEntryPoint
-class MainActivity : androidx.fragment.app.FragmentActivity() {
+open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
 
     @Inject
     lateinit var lastFmAuthCallback: LastFmAuthCallbackCoordinator
@@ -379,3 +379,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         var hasPromptedAudioThisSession = false
     }
 }
+
+/** Legacy alias class retained for backwards compatibility with any explicit intents. */
+@AndroidEntryPoint
+class MainActivity : MainShellActivity()

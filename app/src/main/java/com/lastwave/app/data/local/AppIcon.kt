@@ -17,7 +17,7 @@ enum class AppIcon(
         id = "default",
         titleRes = R.string.app_icon_default,
         subtitleRes = R.string.app_icon_default_sub,
-        componentName = "com.lastwave.app.MainActivityDefault",
+        componentName = "com.lastwave.app.MainActivity",
         logoRes = R.drawable.ic_launcher_logo,
         backgroundRes = R.color.ic_launcher_background,
     ),

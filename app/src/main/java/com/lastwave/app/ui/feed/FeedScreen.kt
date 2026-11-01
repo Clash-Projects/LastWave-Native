@@ -1580,20 +1580,6 @@ private fun relativeTime(context: android.content.Context, uts: String?): String
     }
 }
 
-@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
-private val ExpressiveHeadlineFont = FontFamily(
-    Font(
-        R.font.google_sans_flex,
-        weight = FontWeight.Black,
-        variationSettings = FontVariation.Settings(
-            FontVariation.weight(850),
-            FontVariation.width(125f),
-            FontVariation.Setting("ROND", 60f),
-            FontVariation.Setting("opsz", 36f),
-        ),
-    ),
-)
-
 @Composable
 private fun ExpressiveGreetingHeader(
     greeting: String,
@@ -1608,11 +1594,11 @@ private fun ExpressiveGreetingHeader(
     ) {
         Text(
             text = greeting,
-            fontFamily = ExpressiveHeadlineFont,
-            fontSize = 32.sp,
-            fontWeight = FontWeight.Black,
-            letterSpacing = (-0.7).sp,
-            lineHeight = 38.sp,
+            style = MaterialTheme.typography.headlineLarge.copy(
+                fontSize = 32.sp,
+                lineHeight = 38.sp,
+                letterSpacing = (-0.5).sp,
+            ),
             color = MaterialTheme.colorScheme.onSurface,
         )
 
@@ -1621,7 +1607,6 @@ private fun ExpressiveGreetingHeader(
                 text = formattedDate.uppercase(),
                 style = MaterialTheme.typography.labelSmall.copy(
                     letterSpacing = 1.3.sp,
-                    fontWeight = FontWeight.Bold,
                 ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
             )
