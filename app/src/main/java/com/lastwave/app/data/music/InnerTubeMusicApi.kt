@@ -3176,7 +3176,16 @@ class InnerTubeMusicApi @Inject constructor(
             ?.let { System.currentTimeMillis() + it.coerceAtLeast(1L) * 1_000L }
         val token = poToken?.sessionToken.takeIf { client.needsGvsPoToken }
         // Pick formats while url still holds the undecoded source, so only the kept ones get deciphered.
-        val undecoded = (streaming.array("formats").orEmpty() + streaming.array("adaptiveFormats").orEmpty())
+        val allFormats = streaming.array("formats").orEmpty() + streaming.array("adaptiveFormats").orEmpty()
+        // The video's own audio lets the player measure how this edit lines up with the song.
+        val pairedAudioFormat = allFormats
+            .filterIsInstance<JsonObject>()
+            .filter { it.string("mimeType")?.startsWith("audio/") == true }
+            .minByOrNull { it.int("bitrate") ?: Int.MAX_VALUE }
+        val pairedAudioSource = pairedAudioFormat?.let {
+            it.string("url") ?: it.string("signatureCipher") ?: it.string("cipher")
+        }
+        val undecoded = allFormats
             .mapNotNull { element ->
                 val format = element as? JsonObject ?: return@mapNotNull null
                 val mime = format.string("mimeType")?.takeIf { it.startsWith("video/mp4") || it.startsWith("video/webm") }
@@ -3202,7 +3211,9 @@ class InnerTubeMusicApi @Inject constructor(
                 )
             }
         val preferred = preferredVideoStreamPerHeight(undecoded)
-        val (directSources, cipherSources) = preferred.map { it.url }.partition { it.startsWith("https://") }
+        // Audio goes first because the cipher batch holds 8; past that, the lowest video quality drops.
+        val (directSources, cipherSources) = (listOfNotNull(pairedAudioSource) + preferred.map { it.url })
+            .partition { it.startsWith("https://") }
         val decoded: Map<String, String> = if (cipherContext != null) {
             innerTubeXExtractor.decipherAudioUrls(videoId, cipherSources, cipherContext, directSources)
         } else {
@@ -3232,6 +3243,9 @@ class InnerTubeMusicApi @Inject constructor(
             videoId = videoId,
             defaultStream = playable,
             availableStreams = available,
+            pairedAudioStreamUrl = pairedAudioSource?.let(decoded::get)?.let { appendPoToken(it, token) },
+            pairedAudioHeaders = headers,
+            pairedAudioBitrate = pairedAudioFormat?.int("bitrate"),
             adaptiveManifestUri = buildAdaptiveVideoManifest(available)?.let { manifest ->
                 "data:application/dash+xml;base64," +
                     android.util.Base64.encodeToString(manifest.toByteArray(), android.util.Base64.NO_WRAP)

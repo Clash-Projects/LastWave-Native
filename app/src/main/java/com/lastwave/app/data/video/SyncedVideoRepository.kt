@@ -1,11 +1,16 @@
 package com.lastwave.app.data.video
 
+import android.content.Context
 import android.util.Log
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.SyncedVideoStreamBundle
 import com.lastwave.app.data.music.YouTubeStreamExtractor
+import com.lastwave.app.data.music.isSameSongVideo
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -13,6 +18,11 @@ import javax.inject.Singleton
 
 private const val TAG = "SyncedVideoRepo"
 private const val CACHE_EXPIRY_MS = 3 * 60 * 60 * 1000L // 3 hours
+private const val ALIGNMENT_BUDGET_MS = 45_000L
+private const val SONG_ALIGNMENT_SECONDS = 50
+/** Longer than the song window so a long video intro still leaves the song in range. */
+private const val VIDEO_ALIGNMENT_SECONDS = 100
+private const val FALLBACK_AUDIO_BITRATE = 160_000
 
 /**
  * Resolves and caches direct video streams for synchronized music video playback.
@@ -26,8 +36,49 @@ class SyncedVideoRepository @Inject constructor(
     private val innerTube: InnerTubeMusicApi,
     private val streamExtractor: YouTubeStreamExtractor,
     private val http: OkHttpClient,
+    @ApplicationContext private val appContext: Context,
 ) {
     private val cache = ConcurrentHashMap<String, CachedVideoBundle>()
+    private val measuredOffsets = ConcurrentHashMap<String, Long>()
+    private val envelopeReader by lazy { AudioEnvelopeReader(http, appContext.cacheDir) }
+
+    /**
+     * Music videos are often a different edit from the audio track, so equal
+     * timestamps can still look out of sync. Compares the song's audio with the
+     * video's own audio to find the real offset, or null when they don't clearly match.
+     */
+    suspend fun measureContentOffsetMs(bundle: SyncedVideoStreamBundle, audioVideoId: String?): Long? =
+        withContext(Dispatchers.IO) {
+            if (audioVideoId.isNullOrBlank() || bundle.videoId == audioVideoId) return@withContext null
+            val videoAudioUrl = bundle.pairedAudioStreamUrl ?: return@withContext null
+            val key = "$audioVideoId|${bundle.videoId}"
+            measuredOffsets[key]?.let { return@withContext it }
+            try {
+                withTimeoutOrNull(ALIGNMENT_BUDGET_MS) {
+                    val songStream = innerTube.resolveAudioStream(audioVideoId)
+                    val song = envelopeReader.read(
+                        url = songStream.url,
+                        headers = songStream.requestHeaders,
+                        bitrate = songStream.bitrate.takeIf { it > 0 } ?: FALLBACK_AUDIO_BITRATE,
+                        seconds = SONG_ALIGNMENT_SECONDS,
+                    )
+                    val video = envelopeReader.read(
+                        url = videoAudioUrl,
+                        headers = bundle.pairedAudioHeaders,
+                        bitrate = bundle.pairedAudioBitrate?.takeIf { it > 0 } ?: FALLBACK_AUDIO_BITRATE,
+                        seconds = VIDEO_ALIGNMENT_SECONDS,
+                    )
+                    val offset = estimateConsistentVideoOffsetMs(onsetEnvelope(song), onsetEnvelope(video))
+                    Log.i(TAG, "Measured offset for ${bundle.videoId}: $offset ms")
+                    offset?.also { measuredOffsets[key] = it }
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                Log.w(TAG, "Could not measure offset for ${bundle.videoId}: ${error.message}")
+                null
+            }
+        }
 
     private data class CachedVideoBundle(
         val bundle: SyncedVideoStreamBundle,
@@ -131,7 +182,16 @@ class SyncedVideoRepository @Inject constructor(
                 innerTube.searchVideos(query, limit = 8)
             }.getOrNull().orEmpty()
 
-            val candidates = videoResults.filter { it.videoId.isNotBlank() }
+            val candidates = videoResults.filter { candidate ->
+                candidate.videoId.isNotBlank() && isSameSongVideo(
+                    candidateTitle = candidate.title,
+                    candidateChannel = candidate.artist,
+                    candidateSeconds = candidate.durationSeconds,
+                    songTitle = cleanTitle,
+                    songArtist = cleanArtist,
+                    songDurationMs = expectedDurationMs,
+                )
+            }
             if (candidates.isEmpty()) continue
 
             // Score candidates to guarantee the best official music video
@@ -235,6 +295,8 @@ class SyncedVideoRepository @Inject constructor(
         return title
             .replace(Regex("""\s*\(feat\..*?\)""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s*\(with.*?\)""", RegexOption.IGNORE_CASE), "")
+            // Video titles rarely repeat (From "Film"). Version clauses stay: they mean another rendition.
+            .replace(Regex("""\s*[(\[]\s*from\s+[^)\]]*[)\]]""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s*\[feat\..*?\]""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s*-\s*remaster(?:ed)?(?:\s*\d{4})?""", RegexOption.IGNORE_CASE), "")
             .replace(Regex("""\s*\(official\s*(?:music\s*)?video\)""", RegexOption.IGNORE_CASE), "")

@@ -46,6 +46,7 @@ data class SyncedVideoStreamBundle(
     val availableStreams: List<YouTubeVideoStream>,
     val pairedAudioStreamUrl: String? = null,
     val pairedAudioHeaders: Map<String, String> = emptyMap(),
+    val pairedAudioBitrate: Int? = null,
     val introOffsetMs: Long = 0L,
     val isDirectOmv: Boolean = false,
     /** Local DASH manifest as a data URI, which lets Auto quality follow measured bandwidth. */

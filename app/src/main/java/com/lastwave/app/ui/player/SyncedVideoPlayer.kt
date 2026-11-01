@@ -274,6 +274,13 @@ class SyncedVideoViewModel @Inject constructor(
                         activeStream = bundle.defaultStream,
                         selectedHeight = null,
                     )
+                    // Runs after Ready so video starts straight away; the sync loop seeks to the new offset.
+                    videoRepository.measureContentOffsetMs(bundle, videoId)?.let { offsetMs ->
+                        val ready = _uiState.value as? SyncedVideoUiState.Ready
+                        if (ready?.bundle?.videoId == bundle.videoId) {
+                            _uiState.value = ready.copy(bundle = ready.bundle.copy(introOffsetMs = offsetMs))
+                        }
+                    }
                 }
                 .onFailure { error ->
                     _uiState.value = SyncedVideoUiState.Error(
