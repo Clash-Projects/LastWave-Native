@@ -3,13 +3,13 @@
     <!-- hsl(0, 5%, 6%): the same formula Md3SchemeBuilder uses for the md
          background token, evaluated at the default hue so the splash screen
          never flashes a mismatched color. -->
-    <color name="splash_background">#FF100F0F</color>
+    <color name="splash_background">#FF9581F6</color>
 
     <!-- LastWave app icon (Aug 2026 restore): the lime circle behind the
          four bars in the official logo. Used as the adaptive icon's
          background layer, paired with ic_launcher_foreground for the bars. -->
-    <color name="ic_launcher_background">#FFC9FB00</color>
-    <color name="ic_launcher_background_desktop">#FFBFF30C</color>
-    <color name="ic_launcher_background_white">#FFFFFFFF</color>
-    <color name="ic_launcher_background_black">#FF000000</color>
+    <color name="ic_launcher_background">#FFF9FCFF</color>
+    <color name="ic_launcher_background_desktop">#FFF9FCFF</color>
+    <color name="ic_launcher_background_white">#FF9FCFF</color>
+    <color name="ic_launcher_background_black">#FF0A0A0A</color>
 </resources>
