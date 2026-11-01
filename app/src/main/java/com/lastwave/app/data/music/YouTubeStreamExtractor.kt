@@ -120,26 +120,12 @@ class YouTubeStreamExtractor @Inject constructor(
         }
 
         // For default (Auto), prefer 720p or 1080p for instant playback without buffer stalls
-        val autoCandidates = availableStreams.sortedWith(
-            compareByDescending { stream ->
-                val h = stream.height ?: 0
-                when (h) {
-                    720 -> 100
-                    1080 -> 95
-                    480 -> 80
-                    1440 -> 75
-                    2160 -> 70
-                    360 -> 60
-                    else -> 40
-                }
-            }
-        )
         val playableDefault = selectProbedCandidate(
-            candidates = autoCandidates,
+            candidates = rankedForAutoPlayback(availableStreams),
             urlOf = { it.url },
             probe = ::probePlayableVideo,
             limit = MAX_PROBED_AUDIO_STREAMS,
-        ) ?: availableStreams.first()
+        ) ?: throw IOException("YouTube video URLs were rejected for $videoId")
 
         val pairedAudioUrl = info.audioStreams.maxByOrNull { it.bitrate }?.content
         SyncedVideoStreamBundle(
@@ -285,7 +271,7 @@ class YouTubeStreamExtractor @Inject constructor(
         return resolution.orEmpty().filter { it.isDigit() }.toIntOrNull() ?: 0
     }
 
-    private fun probePlayableVideo(stream: YouTubeVideoStream): Boolean {
+    internal fun probePlayableVideo(stream: YouTubeVideoStream): Boolean {
         val request = playbackProbeRequest(stream.url, stream.requestHeaders)
         val call = http.newCall(request)
         call.timeout().timeout(PROBE_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
