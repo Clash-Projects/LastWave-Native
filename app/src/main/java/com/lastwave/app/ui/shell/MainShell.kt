@@ -920,7 +920,7 @@ private fun JoinSupportDialog(
 
                 Spacer(Modifier.height(2.dp))
 
-                // Telegram Channel: MaterialYouApp
+                // Telegram Channel: official-1f81
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -947,7 +947,7 @@ private fun JoinSupportDialog(
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.Send,
-                                    contentDescription = "Material You Channel",
+                                    contentDescription = "Developer Official_1f81",
                                     tint = Color(0xFF24A1DE),
                                     modifier = Modifier.size(18.dp),
                                 )
@@ -955,13 +955,13 @@ private fun JoinSupportDialog(
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Material You Apps",
+                                text = "Developer official_1f81",
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
                             Text(
-                                text = "t.me/MaterialYouApp",
+                                text = "t.me/official_1f81",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -975,7 +975,7 @@ private fun JoinSupportDialog(
                     }
                 }
 
-                // Telegram Support: ClashProjects
+                // Telegram Support: Xaero Community
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1010,13 +1010,13 @@ private fun JoinSupportDialog(
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "ClashProjects Support",
+                                text = "Xaero Support",
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
                             Text(
-                                text = "@clashprojects on Telegram",
+                                text = "@xaero_community on Telegram",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -1065,7 +1065,7 @@ private fun JoinSupportDialog(
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "LastWave Discord",
+                                text = "SoundDrop Discord",
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface,
@@ -1102,14 +1102,14 @@ private fun JoinSupportDialog(
 }
 
 private fun openMaterialYouChannel(context: android.content.Context) {
-    val tgIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("tg://resolve?domain=MaterialYouApp")).apply {
+    val tgIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("tg://resolve?domain=official_1f81")).apply {
         setPackage("org.telegram.messenger")
         addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
     }
-    val genericTgIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("tg://resolve?domain=MaterialYouApp")).apply {
+    val genericTgIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("tg://resolve?domain=official_1f81")).apply {
         addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
     }
-    val webIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://t.me/MaterialYouApp")).apply {
+    val webIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://t.me/official_1f81")).apply {
         addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     val success = runCatching { context.startActivity(tgIntent); true }.getOrDefault(false) ||
@@ -1121,14 +1121,14 @@ private fun openMaterialYouChannel(context: android.content.Context) {
 }
 
 private fun openTelegramSupport(context: android.content.Context) {
-    val tgIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("tg://resolve?domain=clashprojects")).apply {
+    val tgIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("tg://resolve?domain=xaero_community")).apply {
         setPackage("org.telegram.messenger")
         addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
     }
-    val genericTgIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("tg://resolve?domain=clashprojects")).apply {
+    val genericTgIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("tg://resolve?domain=xaero_community")).apply {
         addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
     }
-    val webIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://t.me/clashprojects")).apply {
+    val webIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://t.me/xaero_community")).apply {
         addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     val success = runCatching { context.startActivity(tgIntent); true }.getOrDefault(false) ||
@@ -1140,7 +1140,7 @@ private fun openTelegramSupport(context: android.content.Context) {
 }
 
 private fun openDiscordSupport(context: android.content.Context) {
-    val discordIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://discord.gg/DmyM2p2fMe")).apply {
+    val discordIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://xaero.framer.website")).apply {
         addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     val success = runCatching { context.startActivity(discordIntent); true }.getOrDefault(false)
