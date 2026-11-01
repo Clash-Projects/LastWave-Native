@@ -218,6 +218,8 @@ data class AddonStream(
     @SerialName("atmos") val atmos: Boolean = false,
     @SerialName("streamQuality") val streamQuality: String = "",
     @SerialName("encrypted") val encrypted: Boolean = false,
+    /** hybrid-v1: CDN byte ranges + AES-128 content key; chunks are fetched and decrypted on-device. */
+    @SerialName("hybrid") val hybrid: HybridPlan? = null,
     @SerialName("metadata") val rawMetadata: JsonElement? = null,
     @SerialName("meta") val rawMeta: JsonElement? = null,
     @SerialName("mediaMetadata") val rawMediaMetadata: JsonElement? = null,
