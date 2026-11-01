@@ -316,7 +316,7 @@ dependencies {
     // current release is built with a newer Kotlin metadata version than the
     // app. Runtime-only keeps the app compiler on its existing Kotlin line.
     runtimeOnly(libs.innertubex)
-    runtimeOnly("io.ktor:ktor-client-cio:3.5.2")
+    runtimeOnly("io.ktor:ktor-client-cio:3.6.0")
 
     // Unit Testing dependencies
     testImplementation("junit:junit:4.13.2")

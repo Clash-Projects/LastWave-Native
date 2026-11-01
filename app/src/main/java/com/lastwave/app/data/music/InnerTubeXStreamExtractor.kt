@@ -22,7 +22,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Small compatibility boundary for InnerTubeX. The published 0.4.x artifact
+ * Small compatibility boundary for InnerTubeX. The published artifact
  * is built with a newer Kotlin metadata version than the app, so this adapter
  * calls its public API reflectively while keeping the rest of the player typed.
  */
@@ -161,6 +161,8 @@ class InnerTubeXStreamExtractor @Inject constructor(
                 Log.i(TAG, "stage=local-cipher requested=${inputs.size} cipherCount=${ciphers.size} directCount=${directUrls.size} decoded=${result.size}")
                 result
             } catch (error: kotlinx.coroutines.CancellationException) {
+                // A batch that outlives its caller's budget otherwise leaves no trace in diagnostics.
+                Log.w(TAG, "stage=local-cipher cancelled")
                 throw error
             } catch (error: Exception) {
                 Log.w(TAG, "stage=local-cipher error=${error.javaClass.simpleName}")
@@ -249,7 +251,7 @@ class InnerTubeXStreamExtractor @Inject constructor(
         val parser = constructWithDefaults(
             "com.metrolist.innertubex.extraction.YtConfigParserImpl",
             arrayOf(httpClient, innerTube, configStore),
-            defaultMask = 8,
+            defaultMask = 24,
         )
         val extractor = constructWithDefaults(
             "com.metrolist.innertubex.extraction.InnerTubeExtractor",
