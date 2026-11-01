@@ -9,6 +9,8 @@ import com.lastwave.app.data.music.isSameSongVideo
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
@@ -23,6 +25,9 @@ private const val SONG_ALIGNMENT_SECONDS = 50
 /** Longer than the song window so a long video intro still leaves the song in range. */
 private const val VIDEO_ALIGNMENT_SECONDS = 100
 private const val FALLBACK_AUDIO_BITRATE = 160_000
+private const val OFFSET_PREFS_NAME = "synced_video_offsets"
+private const val MAX_SAVED_OFFSETS = 2_000
+private const val NO_CONFIDENT_OFFSET = Long.MIN_VALUE
 
 /**
  * Resolves and caches direct video streams for synchronized music video playback.
@@ -39,8 +44,24 @@ class SyncedVideoRepository @Inject constructor(
     @ApplicationContext private val appContext: Context,
 ) {
     private val cache = ConcurrentHashMap<String, CachedVideoBundle>()
-    private val measuredOffsets = ConcurrentHashMap<String, Long>()
     private val envelopeReader by lazy { AudioEnvelopeReader(http, appContext.cacheDir) }
+
+    /** An edit's timing never changes, so results outlive the app and a song is measured only once. */
+    private val savedOffsets by lazy { appContext.getSharedPreferences(OFFSET_PREFS_NAME, Context.MODE_PRIVATE) }
+
+    private fun offsetKey(bundle: SyncedVideoStreamBundle, audioVideoId: String?): String? =
+        audioVideoId?.takeIf { it.isNotBlank() && it != bundle.videoId }?.let { "$it|${bundle.videoId}" }
+
+    /** The offset from an earlier measurement, available before the video starts. */
+    fun savedOffsetMs(bundle: SyncedVideoStreamBundle, audioVideoId: String?): Long? {
+        val key = offsetKey(bundle, audioVideoId) ?: return null
+        return savedOffsets.getLong(key, NO_CONFIDENT_OFFSET).takeIf { it != NO_CONFIDENT_OFFSET }
+    }
+
+    private fun saveOffset(key: String, offsetMs: Long?) {
+        if (savedOffsets.all.size >= MAX_SAVED_OFFSETS) savedOffsets.edit().clear().apply()
+        savedOffsets.edit().putLong(key, offsetMs ?: NO_CONFIDENT_OFFSET).apply()
+    }
 
     /**
      * Music videos are often a different edit from the audio track, so equal
@@ -49,28 +70,35 @@ class SyncedVideoRepository @Inject constructor(
      */
     suspend fun measureContentOffsetMs(bundle: SyncedVideoStreamBundle, audioVideoId: String?): Long? =
         withContext(Dispatchers.IO) {
-            if (audioVideoId.isNullOrBlank() || bundle.videoId == audioVideoId) return@withContext null
-            val videoAudioUrl = bundle.pairedAudioStreamUrl ?: return@withContext null
-            val key = "$audioVideoId|${bundle.videoId}"
-            measuredOffsets[key]?.let { return@withContext it }
+            val key = offsetKey(bundle, audioVideoId) ?: return@withContext null
+            // Also covers "no confident match", so a song that can't be aligned isn't re-downloaded.
+            if (savedOffsets.contains(key)) return@withContext savedOffsetMs(bundle, audioVideoId)
             try {
                 withTimeoutOrNull(ALIGNMENT_BUDGET_MS) {
-                    val songStream = innerTube.resolveAudioStream(audioVideoId)
+                    val songStream = innerTube.resolveAudioStream(audioVideoId!!)
                     val song = envelopeReader.read(
                         url = songStream.url,
                         headers = songStream.requestHeaders,
                         bitrate = songStream.bitrate.takeIf { it > 0 } ?: FALLBACK_AUDIO_BITRATE,
                         seconds = SONG_ALIGNMENT_SECONDS,
                     )
+                    val alignmentAudio = if (bundle.clientName == "IOS") {
+                        innerTube.resolveVideoAudioForAlignment(bundle.videoId)
+                    } else {
+                        null
+                    }
                     val video = envelopeReader.read(
-                        url = videoAudioUrl,
-                        headers = bundle.pairedAudioHeaders,
-                        bitrate = bundle.pairedAudioBitrate?.takeIf { it > 0 } ?: FALLBACK_AUDIO_BITRATE,
+                        url = alignmentAudio?.url ?: bundle.pairedAudioStreamUrl ?: return@withTimeoutOrNull null,
+                        headers = alignmentAudio?.requestHeaders ?: bundle.pairedAudioHeaders,
+                        bitrate = alignmentAudio?.bitrate?.takeIf { it > 0 }
+                            ?: bundle.pairedAudioBitrate?.takeIf { it > 0 }
+                            ?: FALLBACK_AUDIO_BITRATE,
                         seconds = VIDEO_ALIGNMENT_SECONDS,
                     )
                     val offset = estimateConsistentVideoOffsetMs(onsetEnvelope(song), onsetEnvelope(video))
                     Log.i(TAG, "Measured offset for ${bundle.videoId}: $offset ms")
-                    offset?.also { measuredOffsets[key] = it }
+                    saveOffset(key, offset)
+                    offset
                 }
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -92,14 +120,15 @@ class SyncedVideoRepository @Inject constructor(
         }
     }
 
-    private suspend fun resolveBundle(videoId: String): SyncedVideoStreamBundle =
-        innerTube.resolveVideoStreamBundle(videoId) ?: streamExtractor.resolveVideoStreamBundle(videoId)
+    private suspend fun resolveBundle(videoId: String, avoidClientName: String?): SyncedVideoStreamBundle =
+        innerTube.resolveVideoStreamBundle(videoId, avoidClientName) ?: streamExtractor.resolveVideoStreamBundle(videoId)
 
     suspend fun resolveVideo(
         trackTitle: String,
         trackArtist: String,
         videoId: String?,
         expectedDurationMs: Long? = null,
+        avoidClientName: String? = null,
     ): Result<SyncedVideoStreamBundle> = withContext(Dispatchers.IO) {
         runCatching {
             // Find the Official Music Video (OMV) ID
@@ -121,25 +150,27 @@ class SyncedVideoRepository @Inject constructor(
                 }
             }
 
-            // Fetch SponsorBlock intro skit offset (e.g. 42.5s for Starboy)
-            val introOffsetMs = fetchIntroOffsetMs(targetVideoId)
+            val bundle = coroutineScope {
+                // Fetch SponsorBlock intro skit offset (e.g. 42.5s for Starboy) alongside the stream.
+                val introOffsetMs = async { fetchIntroOffsetMs(targetVideoId) }
 
-            val rawBundle = try {
-                resolveBundle(targetVideoId)
-            } catch (e: Exception) {
-                // If official video extraction failed and we had a different audioTrackVideoId,
-                // try that as fallback
-                if (!videoId.isNullOrBlank() && videoId != targetVideoId) {
-                    resolveBundle(videoId)
-                } else {
-                    throw e
+                val rawBundle = try {
+                    resolveBundle(targetVideoId, avoidClientName)
+                } catch (e: Exception) {
+                    // If official video extraction failed and we had a different audioTrackVideoId,
+                    // try that as fallback
+                    if (!videoId.isNullOrBlank() && videoId != targetVideoId) {
+                        resolveBundle(videoId, avoidClientName)
+                    } else {
+                        throw e
+                    }
                 }
-            }
 
-            val bundle = rawBundle.copy(
-                introOffsetMs = introOffsetMs,
-                isDirectOmv = (targetVideoId != videoId),
-            )
+                rawBundle.copy(
+                    introOffsetMs = introOffsetMs.await(),
+                    isDirectOmv = (targetVideoId != videoId),
+                )
+            }
 
             cache[targetVideoId] = CachedVideoBundle(
                 bundle = bundle,

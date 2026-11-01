@@ -261,6 +261,9 @@ class InnerTubeMusicApi @Inject constructor(
     private val failedClientsUntil = ConcurrentHashMap<String, Long>()
     private val lastResolvedStreams = ConcurrentHashMap<String, YouTubeAudioStream>()
     @Volatile private var lastSuccessfulClientName: String? = null
+    @Volatile private var lastVideoClientName: String? = null
+    @Volatile private var cachedVideoCipherContext: PlaybackCipherContext? = null
+    @Volatile private var cachedVideoCipherContextAtMs = 0L
     @Volatile private var webConfig: WebConfig? = null
     /** Last wall-clock attempt to (re)bootstrap visitor data: the fast path
      *  must not re-fetch on every song when the config endpoint is down. */
@@ -3095,7 +3098,10 @@ class InnerTubeMusicApi @Inject constructor(
      * slower, but it is the only client that passes YouTube's LOGIN_REQUIRED
      * bot check on flagged networks such as full-tunnel VPN exits.
      */
-    suspend fun resolveVideoStreamBundle(videoId: String): SyncedVideoStreamBundle? = withContext(Dispatchers.IO) {
+    suspend fun resolveVideoStreamBundle(
+        videoId: String,
+        avoidClientName: String? = null,
+    ): SyncedVideoStreamBundle? = withContext(Dispatchers.IO) {
         val config = runCatching {
             kotlinx.coroutines.withTimeoutOrNull(VISITOR_BOOTSTRAP_BUDGET_MS) { getWebConfig() }
         }.getOrNull()
@@ -3108,7 +3114,12 @@ class InnerTubeMusicApi @Inject constructor(
                     ?.let { add(it.copy(version = config.clientVersion, apiKey = config.apiKey)) }
             }
         }
-        for (client in clients) {
+        // Clients blocked on this network stay blocked, so lead with the one that last worked.
+        // A client whose links just failed mid-play goes last, but stays available.
+        val ordered = clients.sortedWith(
+            compareBy<PlayerClient> { it.name == avoidClientName }.thenBy { it.name != lastVideoClientName },
+        )
+        for (client in ordered) {
             val budgetMs = if (client.name == "WEB_REMIX") AUTHENTICATED_CIPHER_CLIENT_BUDGET_MS else VIDEO_CLIENT_TIMEOUT_MS
             val bundle = try {
                 kotlinx.coroutines.withTimeoutOrNull(budgetMs) {
@@ -3121,6 +3132,7 @@ class InnerTubeMusicApi @Inject constructor(
                 null
             }
             if (bundle != null) {
+                lastVideoClientName = client.name
                 android.util.Log.i(VIDEO_LOG_TAG, "Video client ${client.name} resolved $videoId adaptive=${bundle.adaptiveManifestUri != null} qualities=${bundle.availableStreams.map { "${it.resolution}/${it.codec?.substringBefore('.')}/${(it.bitrate ?: 0) / 1000}k" }}")
                 return@withContext bundle
             }
@@ -3128,16 +3140,63 @@ class InnerTubeMusicApi @Inject constructor(
         null
     }
 
+    /**
+     * Audio of a video from a client whose links survive a multi-chunk download. IOS
+     * links pass the first chunk and then get HTTP 403, which breaks offset measuring.
+     */
+    suspend fun resolveVideoAudioForAlignment(videoId: String): YouTubeAudioStream? = withContext(Dispatchers.IO) {
+        val visitorData = runCatching {
+            kotlinx.coroutines.withTimeoutOrNull(VISITOR_BOOTSTRAP_BUDGET_MS) { getWebConfig() }?.visitorData
+        }.getOrNull()?.takeIf { it != FALLBACK_TOKEN_SESSION }
+        for (name in ALIGNMENT_AUDIO_CLIENT_ORDER) {
+            val client = PLAYER_CLIENTS.firstOrNull { it.name == name } ?: continue
+            try {
+                return@withContext resolveDirectClientStream(
+                    videoId = videoId,
+                    client = client,
+                    visitorData = visitorData,
+                    signatureTimestamp = null,
+                    cipherContext = null,
+                    playerPoToken = null,
+                    gvsPoToken = null,
+                    authScope = playbackAuthScope(),
+                    allowCipherFormats = false,
+                    maxAttempts = 1,
+                )
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                android.util.Log.i(VIDEO_LOG_TAG, "Alignment audio client ${client.name} failed for $videoId: ${error.message}")
+            }
+        }
+        null
+    }
+
+    private suspend fun videoCipherContext(videoId: String, allowReuse: Boolean): PlaybackCipherContext? {
+        val now = SystemClock.elapsedRealtime()
+        if (allowReuse) {
+            cachedVideoCipherContext?.takeIf { now - cachedVideoCipherContextAtMs < VIDEO_CIPHER_CONTEXT_TTL_MS }
+                ?.forVideo(videoId, ytAuth.connection.value)
+                ?.let { return it }
+        }
+        return innerTubeXExtractor.fetchCipherContext(videoId)?.also {
+            cachedVideoCipherContext = it
+            cachedVideoCipherContextAtMs = now
+        }
+    }
+
     private suspend fun resolveVideoBundleFromClient(
         videoId: String,
         client: PlayerClient,
         visitorData: String?,
         poToken: PoTokenResult?,
+        allowCipherReuse: Boolean = true,
     ): SyncedVideoStreamBundle? {
         val signedIn = client.name == "WEB_REMIX"
+        val contextBefore = cachedVideoCipherContext
         // Signed-in ciphers only decode with the player script paired to this request.
         val cipherContext = if (signedIn) {
-            innerTubeXExtractor.fetchCipherContext(videoId) ?: run {
+            videoCipherContext(videoId, allowCipherReuse) ?: run {
                 android.util.Log.w(VIDEO_LOG_TAG, "Video client ${client.name} has no cipher context for $videoId")
                 return null
             }
@@ -3237,10 +3296,18 @@ class InnerTubeMusicApi @Inject constructor(
         )
         if (playable == null) {
             android.util.Log.w(VIDEO_LOG_TAG, "Video client ${client.name} had no playable URL for $videoId (${available.size} candidates)")
-            return null
+            // A stale player script produces rejected URLs, so retry once with a fresh one.
+            val reusedContext = signedIn && contextBefore != null && cachedVideoCipherContext === contextBefore
+            cachedVideoCipherContext = null
+            return if (reusedContext) {
+                resolveVideoBundleFromClient(videoId, client, visitorData, poToken, allowCipherReuse = false)
+            } else {
+                null
+            }
         }
         return SyncedVideoStreamBundle(
             videoId = videoId,
+            clientName = client.name,
             defaultStream = playable,
             availableStreams = available,
             pairedAudioStreamUrl = pairedAudioSource?.let(decoded::get)?.let { appendPoToken(it, token) },
@@ -5448,7 +5515,9 @@ class InnerTubeMusicApi @Inject constructor(
         const val VIDEO_LOG_TAG = "InnerTubeVideo"
         /** Clients that return video formats without a signed-in session. */
         val VIDEO_CLIENT_ORDER = listOf("ANDROID_VR", "VISIONOS", "IOS", "TVHTML5")
+        val ALIGNMENT_AUDIO_CLIENT_ORDER = listOf("VISIONOS", "ANDROID_VR")
         const val VIDEO_CLIENT_TIMEOUT_MS = 6_000L
+        const val VIDEO_CIPHER_CONTEXT_TTL_MS = 30 * 60 * 1000L
         const val MAX_VIDEO_PROBES_PER_CLIENT = 2
         const val MAX_FORMAT_PROBES_PER_CLIENT = 4
         const val MAX_PLAYER_REQUEST_ATTEMPTS = 2

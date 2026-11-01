@@ -47,6 +47,8 @@ data class SyncedVideoStreamBundle(
     val pairedAudioStreamUrl: String? = null,
     val pairedAudioHeaders: Map<String, String> = emptyMap(),
     val pairedAudioBitrate: Int? = null,
+    /** The InnerTube client behind these links; null for NewPipe. */
+    val clientName: String? = null,
     val introOffsetMs: Long = 0L,
     val isDirectOmv: Boolean = false,
     /** Local DASH manifest as a data URI, which lets Auto quality follow measured bandwidth. */

@@ -125,6 +125,7 @@ import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import com.lastwave.app.R
 import com.lastwave.app.data.music.YouTubeVideoStream
 import com.lastwave.app.data.video.SyncedVideoRepository
+import com.lastwave.app.data.video.shouldPreloadVideo
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.ui.common.EdgeToEdgeDialogWindow
@@ -141,6 +142,10 @@ import javax.inject.Inject
 import kotlin.math.abs
 
 private const val TAG = "SyncedVideoPlayer"
+private const val VIDEO_PREFS_NAME = "synced_video"
+private const val PREF_VIDEO_LAST_USED_MS = "video_last_used_ms"
+internal const val VIDEO_PRELOAD_DELAY_MS = 1_500L
+private const val MAX_LINK_REFRESHES_PER_SONG = 2
 
 /** IPv4-first like audio: HttpURLConnection stalls on routes with broken IPv6, such as full-tunnel VPNs. */
 private val videoMediaHttp: okhttp3.OkHttpClient by lazy {
@@ -212,6 +217,13 @@ class SyncedVideoViewModel @Inject constructor(
     private val _isVideoActive = MutableStateFlow(false)
     val isVideoActive: StateFlow<Boolean> = _isVideoActive.asStateFlow()
 
+    private val videoPrefs by lazy { appContext.getSharedPreferences(VIDEO_PREFS_NAME, android.content.Context.MODE_PRIVATE) }
+    private var linkRefreshesLeft = 0
+    private var refreshLinks: ((String?) -> Unit)? = null
+    private var alignJob: Job? = null
+    private var alignedVideoId: String? = null
+    private var currentAudioVideoId: String? = null
+
     private var currentKey: String? = null
     private var loadJob: kotlinx.coroutines.Job? = null
     private var openedAwaitingLoad = false
@@ -243,6 +255,39 @@ class SyncedVideoViewModel @Inject constructor(
     fun setVideoActive(active: Boolean) {
         openedAwaitingLoad = active
         _isVideoActive.value = active
+        if (active) {
+            videoPrefs.edit().putLong(PREF_VIDEO_LAST_USED_MS, System.currentTimeMillis()).apply()
+            startAlignmentIfNeeded()
+        }
+    }
+
+    /** Readies the video before the tap, only for people likely to want one. */
+    fun preloadVideo(title: String, artist: String, videoId: String?, durationMs: Long? = null) {
+        val lastUsedMs = videoPrefs.getLong(PREF_VIDEO_LAST_USED_MS, -1L).takeIf { it >= 0L }
+        val batterySaverOn = appContext.getSystemService(android.os.PowerManager::class.java)?.isPowerSaveMode == true
+        val preload = shouldPreloadVideo(lastUsedMs, System.currentTimeMillis(), batterySaverOn)
+        Log.i(TAG, "Preload ${if (preload) "started" else "skipped"} for '$title' (lastUsed=$lastUsedMs batterySaver=$batterySaverOn)")
+        if (preload) loadVideo(title, artist, videoId, durationMs)
+    }
+
+    /** Downloads a few MB, so it waits for an open video unless the network is unmetered. */
+    private fun startAlignmentIfNeeded() {
+        val bundle = (_uiState.value as? SyncedVideoUiState.Ready)?.bundle ?: return
+        val unmetered = appContext.getSystemService(android.net.ConnectivityManager::class.java)
+            ?.isActiveNetworkMetered == false
+        if ((!_isVideoActive.value && !unmetered) || alignedVideoId == bundle.videoId) return
+        alignedVideoId = bundle.videoId
+        val audioVideoId = currentAudioVideoId
+        alignJob?.cancel()
+        alignJob = viewModelScope.launch {
+            // The sync loop seeks to the new offset once it lands.
+            videoRepository.measureContentOffsetMs(bundle, audioVideoId)?.let { offsetMs ->
+                val ready = _uiState.value as? SyncedVideoUiState.Ready
+                if (ready?.bundle?.videoId == bundle.videoId) {
+                    _uiState.value = ready.copy(bundle = ready.bundle.copy(introOffsetMs = offsetMs))
+                }
+            }
+        }
     }
 
     fun loadVideo(title: String, artist: String, videoId: String?, durationMs: Long? = null) {
@@ -254,6 +299,9 @@ class SyncedVideoViewModel @Inject constructor(
         // A resolve can take several seconds; a second one would reload the player when it lands.
         if (currentKey == key && (_uiState.value is SyncedVideoUiState.Ready || loadJob?.isActive == true)) return
         loadJob?.cancel()
+        alignJob?.cancel()
+        alignedVideoId = null
+        currentAudioVideoId = videoId
 
         if (currentKey != null && currentKey != key) {
             // Track changed – reset video toggle and stop player
@@ -264,23 +312,32 @@ class SyncedVideoViewModel @Inject constructor(
             }
         }
         currentKey = key
+        linkRefreshesLeft = MAX_LINK_REFRESHES_PER_SONG
+        refreshLinks = { avoidClientName -> resolveStream(title, artist, videoId, durationMs, avoidClientName) }
+        resolveStream(title, artist, videoId, durationMs, avoidClientName = null)
+    }
 
+    private fun resolveStream(
+        title: String,
+        artist: String,
+        videoId: String?,
+        durationMs: Long?,
+        avoidClientName: String?,
+    ) {
         loadJob = viewModelScope.launch {
             _uiState.value = SyncedVideoUiState.Loading
-            videoRepository.resolveVideo(title, artist, videoId, expectedDurationMs = durationMs)
-                .onSuccess { bundle ->
+            videoRepository.resolveVideo(title, artist, videoId, expectedDurationMs = durationMs, avoidClientName = avoidClientName)
+                .onSuccess { resolved ->
+                    // A saved offset applies before the video starts, so there is no jump.
+                    val savedOffset = videoRepository.savedOffsetMs(resolved, videoId)
+                    if (savedOffset != null) Log.i(TAG, "Using saved offset $savedOffset ms for ${resolved.videoId}")
+                    val bundle = savedOffset?.let { resolved.copy(introOffsetMs = it) } ?: resolved
                     _uiState.value = SyncedVideoUiState.Ready(
                         bundle = bundle,
                         activeStream = bundle.defaultStream,
                         selectedHeight = null,
                     )
-                    // Runs after Ready so video starts straight away; the sync loop seeks to the new offset.
-                    videoRepository.measureContentOffsetMs(bundle, videoId)?.let { offsetMs ->
-                        val ready = _uiState.value as? SyncedVideoUiState.Ready
-                        if (ready?.bundle?.videoId == bundle.videoId) {
-                            _uiState.value = ready.copy(bundle = ready.bundle.copy(introOffsetMs = offsetMs))
-                        }
-                    }
+                    startAlignmentIfNeeded()
                 }
                 .onFailure { error ->
                     _uiState.value = SyncedVideoUiState.Error(
@@ -312,15 +369,22 @@ class SyncedVideoViewModel @Inject constructor(
             selectQuality(null)
             return
         }
-        if (ready.usesAdaptive) {
-            // The default stream passed its probe, so try it before giving up.
-            _uiState.value = ready.copy(adaptiveFailed = true)
-            return
-        }
         videoRepository.invalidate(ready.bundle.videoId)
         if (_playerInitialized) {
             player.stop()
             player.clearMediaItems()
+        }
+        // Links can die mid-song, so get new ones. The sync loop and load effect resume at the audio's position.
+        if (linkRefreshesLeft > 0) {
+            linkRefreshesLeft--
+            Log.w(TAG, "Refreshing video links after ${ready.bundle.clientName} failed ($linkRefreshesLeft refreshes left)")
+            refreshLinks?.invoke(ready.bundle.clientName)
+            return
+        }
+        if (ready.usesAdaptive) {
+            // The default stream passed its probe, so try it before giving up.
+            _uiState.value = ready.copy(adaptiveFailed = true)
+            return
         }
         _uiState.value = SyncedVideoUiState.Error(appContext.getString(R.string.video_stream_unavailable))
     }

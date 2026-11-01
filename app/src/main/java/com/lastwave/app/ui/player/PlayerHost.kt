@@ -2244,6 +2244,12 @@ private fun FullPlayer(
     val syncedVideoVm: SyncedVideoViewModel = hiltViewModel()
     val showSyncedVideo by syncedVideoVm.isVideoActive.collectAsStateWithLifecycle()
     val isVideoActive = showSyncedVideo && musicVideoEnabled
+    LaunchedEffect(track.videoId, track.title, track.durationMs, musicVideoEnabled) {
+        if (!musicVideoEnabled || track.artworkUrl?.startsWith("file://") == true) return@LaunchedEffect
+        // Waits out rapid skips, so only a song the user stays on spends the lookup.
+        delay(VIDEO_PRELOAD_DELAY_MS)
+        syncedVideoVm.preloadVideo(track.title, track.artist, track.videoId, track.durationMs)
+    }
     val showFullBleed = canvasFullBleedEnabled && !isVideoActive
     val showSleeveCanvas = isCanvasActive && (!showFullBleed || isTabletLandscape) && !isVideoActive
     // activeCanvas is the single gate every render branch below keys off, so it also
