@@ -1356,7 +1356,7 @@ fun FeedScreen(
                             }
                             if (sectionKey == orderedFeedSections.firstOrNull { it == "podcast_shelf" || it == "podcasts" }) {
                                 item(key = "moods_and_genres") {
-                                    HomeContainerSection(shape = RoundedCornerShape(28.dp)) {
+                                    HomeContainerSection {
                                         com.lastwave.app.ui.moods.HomeMoodsSection()
                                     }
                                 }
@@ -1365,7 +1365,7 @@ fun FeedScreen(
 
                         if (orderedFeedSections.none { it == "podcast_shelf" || it == "podcasts" }) {
                             item(key = "moods_and_genres") {
-                                HomeContainerSection(shape = RoundedCornerShape(28.dp)) {
+                                HomeContainerSection {
                                     com.lastwave.app.ui.moods.HomeMoodsSection()
                                 }
                             }
