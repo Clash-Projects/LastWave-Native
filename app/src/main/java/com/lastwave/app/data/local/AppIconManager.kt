@@ -2,6 +2,7 @@ package com.lastwave.app.data.local
 
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.util.Log
 
@@ -21,8 +22,11 @@ object AppIconManager {
             val targetComp = getComponent(context, icon.componentName)
             val state = pm.getComponentEnabledSetting(targetComp)
             if (icon == AppIcon.DEFAULT) {
-                state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED ||
-                    state == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
+                val defaultAliasComp = getComponent(context, "com.lastwave.app.MainActivityDefault")
+                val defaultState = pm.getComponentEnabledSetting(defaultAliasComp)
+                (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED ||
+                    state == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT) ||
+                    (defaultState == PackageManager.COMPONENT_ENABLED_STATE_ENABLED)
             } else {
                 state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
             }
@@ -40,6 +44,8 @@ object AppIconManager {
 
             val pm = context.packageManager
             val targetComp = getComponent(context, icon.componentName)
+            val defaultAliasComp = getComponent(context, "com.lastwave.app.MainActivityDefault")
+            val legacyComp = getComponent(context, "com.lastwave.app.MainActivity")
 
             // 1. Enable the target alias FIRST so there is never a moment
             // where no launcher activity is enabled
@@ -49,6 +55,13 @@ object AppIconManager {
                     PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
                     PackageManager.DONT_KILL_APP,
                 )
+                if (icon == AppIcon.DEFAULT) {
+                    pm.setComponentEnabledSetting(
+                        defaultAliasComp,
+                        PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                        PackageManager.DONT_KILL_APP,
+                    )
+                }
                 Log.d(TAG, "Enabled target alias ${icon.componentName}")
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to enable target alias ${icon.componentName}: ${e.message}")
@@ -71,6 +84,47 @@ object AppIconManager {
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to disable alias ${entry.componentName}: ${e.message}")
                 }
+            }
+
+            if (icon != AppIcon.DEFAULT) {
+                try {
+                    val defaultState = pm.getComponentEnabledSetting(defaultAliasComp)
+                    if (defaultState != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
+                        pm.setComponentEnabledSetting(
+                            defaultAliasComp,
+                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                            PackageManager.DONT_KILL_APP,
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to disable MainActivityDefault alias: ${e.message}")
+                }
+                try {
+                    val legacyState = pm.getComponentEnabledSetting(legacyComp)
+                    if (legacyState != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
+                        pm.setComponentEnabledSetting(
+                            legacyComp,
+                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                            PackageManager.DONT_KILL_APP,
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to disable legacy MainActivity alias: ${e.message}")
+                }
+            }
+
+            // 3. Immediately restart the task with the newly enabled component as the root,
+            // preventing Android ActivityManager from retaining a disabled component as baseIntent
+            // which causes the system to redirect to "App Info" on resume or app launch!
+            try {
+                val launchIntent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_LAUNCHER)
+                    component = targetComp
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                }
+                context.startActivity(launchIntent)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to relaunch task with target component: ${e.message}")
             }
         }
     }
