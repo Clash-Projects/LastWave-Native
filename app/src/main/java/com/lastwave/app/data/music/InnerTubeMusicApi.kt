@@ -261,6 +261,9 @@ class InnerTubeMusicApi @Inject constructor(
     private val failedClientsUntil = ConcurrentHashMap<String, Long>()
     private val lastResolvedStreams = ConcurrentHashMap<String, YouTubeAudioStream>()
     @Volatile private var lastSuccessfulClientName: String? = null
+    @Volatile private var lastVideoClientName: String? = null
+    @Volatile private var cachedVideoCipherContext: PlaybackCipherContext? = null
+    @Volatile private var cachedVideoCipherContextAtMs = 0L
     @Volatile private var webConfig: WebConfig? = null
     /** Last wall-clock attempt to (re)bootstrap visitor data: the fast path
      *  must not re-fetch on every song when the config endpoint is down. */
@@ -3084,6 +3087,245 @@ class InnerTubeMusicApi @Inject constructor(
     }
 
     /**
+     * Resolves video through the same InnerTube clients and PoToken session as
+     * audio. Returns null when no client yields a URL that passes a probe, so
+     * the caller can fall back to NewPipe.
+     *
+     * The signed-in WEB_REMIX session goes last because its cipher decode is
+     * slower, but it is the only client that passes YouTube's LOGIN_REQUIRED
+     * bot check on flagged networks such as full-tunnel VPN exits.
+     */
+    suspend fun resolveVideoStreamBundle(
+        videoId: String,
+        avoidClientName: String? = null,
+    ): SyncedVideoStreamBundle? = withContext(Dispatchers.IO) {
+        val config = runCatching {
+            kotlinx.coroutines.withTimeoutOrNull(VISITOR_BOOTSTRAP_BUDGET_MS) { getWebConfig() }
+        }.getOrNull()
+        val visitorData = config?.visitorData?.takeIf { it != FALLBACK_TOKEN_SESSION }
+        val poToken = fastPoToken(videoId, visitorData)
+        val clients = buildList {
+            addAll(VIDEO_CLIENT_ORDER.mapNotNull { name -> PLAYER_CLIENTS.firstOrNull { it.name == name } })
+            if (config != null && ytAuth.connection.value.isConnected) {
+                PLAYER_CLIENTS.firstOrNull { it.name == "WEB_REMIX" }
+                    ?.let { add(it.copy(version = config.clientVersion, apiKey = config.apiKey)) }
+            }
+        }
+        // Clients blocked on this network stay blocked, so lead with the one that last worked.
+        // A client whose links just failed mid-play goes last, but stays available.
+        val ordered = clients.sortedWith(
+            compareBy<PlayerClient> { it.name == avoidClientName }.thenBy { it.name != lastVideoClientName },
+        )
+        for (client in ordered) {
+            val budgetMs = if (client.name == "WEB_REMIX") AUTHENTICATED_CIPHER_CLIENT_BUDGET_MS else VIDEO_CLIENT_TIMEOUT_MS
+            val bundle = try {
+                kotlinx.coroutines.withTimeoutOrNull(budgetMs) {
+                    resolveVideoBundleFromClient(videoId, client, visitorData, poToken)
+                }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                android.util.Log.w(VIDEO_LOG_TAG, "Video client ${client.name} failed for $videoId: ${error.message}")
+                null
+            }
+            if (bundle != null) {
+                lastVideoClientName = client.name
+                android.util.Log.i(VIDEO_LOG_TAG, "Video client ${client.name} resolved $videoId adaptive=${bundle.adaptiveManifestUri != null} qualities=${bundle.availableStreams.map { "${it.resolution}/${it.codec?.substringBefore('.')}/${(it.bitrate ?: 0) / 1000}k" }}")
+                return@withContext bundle
+            }
+        }
+        null
+    }
+
+    /**
+     * Audio of a video from a client whose links survive a multi-chunk download. IOS
+     * links pass the first chunk and then get HTTP 403, which breaks offset measuring.
+     */
+    suspend fun resolveVideoAudioForAlignment(videoId: String): YouTubeAudioStream? = withContext(Dispatchers.IO) {
+        val visitorData = runCatching {
+            kotlinx.coroutines.withTimeoutOrNull(VISITOR_BOOTSTRAP_BUDGET_MS) { getWebConfig() }?.visitorData
+        }.getOrNull()?.takeIf { it != FALLBACK_TOKEN_SESSION }
+        for (name in ALIGNMENT_AUDIO_CLIENT_ORDER) {
+            val client = PLAYER_CLIENTS.firstOrNull { it.name == name } ?: continue
+            try {
+                return@withContext resolveDirectClientStream(
+                    videoId = videoId,
+                    client = client,
+                    visitorData = visitorData,
+                    signatureTimestamp = null,
+                    cipherContext = null,
+                    playerPoToken = null,
+                    gvsPoToken = null,
+                    authScope = playbackAuthScope(),
+                    allowCipherFormats = false,
+                    maxAttempts = 1,
+                )
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                android.util.Log.i(VIDEO_LOG_TAG, "Alignment audio client ${client.name} failed for $videoId: ${error.message}")
+            }
+        }
+        null
+    }
+
+    private suspend fun videoCipherContext(videoId: String, allowReuse: Boolean): PlaybackCipherContext? {
+        val now = SystemClock.elapsedRealtime()
+        if (allowReuse) {
+            cachedVideoCipherContext?.takeIf { now - cachedVideoCipherContextAtMs < VIDEO_CIPHER_CONTEXT_TTL_MS }
+                ?.forVideo(videoId, ytAuth.connection.value)
+                ?.let { return it }
+        }
+        return innerTubeXExtractor.fetchCipherContext(videoId)?.also {
+            cachedVideoCipherContext = it
+            cachedVideoCipherContextAtMs = now
+        }
+    }
+
+    private suspend fun resolveVideoBundleFromClient(
+        videoId: String,
+        client: PlayerClient,
+        visitorData: String?,
+        poToken: PoTokenResult?,
+        allowCipherReuse: Boolean = true,
+    ): SyncedVideoStreamBundle? {
+        val signedIn = client.name == "WEB_REMIX"
+        val contextBefore = cachedVideoCipherContext
+        // Signed-in ciphers only decode with the player script paired to this request.
+        val cipherContext = if (signedIn) {
+            videoCipherContext(videoId, allowCipherReuse) ?: run {
+                android.util.Log.w(VIDEO_LOG_TAG, "Video client ${client.name} has no cipher context for $videoId")
+                return null
+            }
+        } else null
+        val root = post(
+            url = "${if (signedIn) MUSIC_API else YOUTUBE_API}/player?key=${client.apiKey}&prettyPrint=false",
+            body = playbackPlayerBody(
+                videoId,
+                playerRequestContext(client, visitorData),
+                cipherContext?.signatureTimestamp,
+                poToken?.playerToken.takeIf { client.needsPoToken },
+            ),
+            clientName = client.name,
+            clientVersion = client.version,
+            userAgent = client.userAgent,
+            authenticated = signedIn,
+            origin = client.origin,
+            referer = client.referer,
+            visitorData = visitorData,
+            maxAttempts = 1,
+            callTimeoutMs = PLAYER_REQUEST_CALL_TIMEOUT_MS,
+        )
+        val streaming = root.obj("streamingData") ?: run {
+            android.util.Log.w(VIDEO_LOG_TAG, "Video client ${client.name} returned no streams: ${youtubePlayerResponseSummary(root)}")
+            return null
+        }
+        val headers = buildMap {
+            putAll(client.streamRequestHeaders)
+            if (!visitorData.isNullOrBlank()) put("X-Goog-Visitor-Id", visitorData)
+            if (signedIn) {
+                ytAuth.cookieHeaderValue()?.let { put("Cookie", it) }
+                ytAuth.authorizationHeaderValue()?.let { put("Authorization", it) }
+            }
+        }
+        val responseExpiry = streaming.string("expiresInSeconds")?.toLongOrNull()
+            ?.let { System.currentTimeMillis() + it.coerceAtLeast(1L) * 1_000L }
+        val token = poToken?.sessionToken.takeIf { client.needsGvsPoToken }
+        // Pick formats while url still holds the undecoded source, so only the kept ones get deciphered.
+        val allFormats = streaming.array("formats").orEmpty() + streaming.array("adaptiveFormats").orEmpty()
+        // The video's own audio lets the player measure how this edit lines up with the song.
+        val pairedAudioFormat = allFormats
+            .filterIsInstance<JsonObject>()
+            .filter { it.string("mimeType")?.startsWith("audio/") == true }
+            .minByOrNull { it.int("bitrate") ?: Int.MAX_VALUE }
+        val pairedAudioSource = pairedAudioFormat?.let {
+            it.string("url") ?: it.string("signatureCipher") ?: it.string("cipher")
+        }
+        val undecoded = allFormats
+            .mapNotNull { element ->
+                val format = element as? JsonObject ?: return@mapNotNull null
+                val mime = format.string("mimeType")?.takeIf { it.startsWith("video/mp4") || it.startsWith("video/webm") }
+                    ?: return@mapNotNull null
+                val source = format.string("url")
+                    ?: format.string("signatureCipher")
+                    ?: format.string("cipher")
+                    ?: return@mapNotNull null
+                YouTubeVideoStream(
+                    videoId = videoId,
+                    url = source,
+                    itag = format.int("itag"),
+                    mimeType = mime.substringBefore(';'),
+                    codec = extractCodec(mime),
+                    resolution = format.string("qualityLabel"),
+                    width = format.int("width"),
+                    height = format.int("height"),
+                    bitrate = format.int("bitrate"),
+                    durationMs = format.string("approxDurationMs")?.toLongOrNull(),
+                    requestHeaders = headers,
+                    initRange = format.obj("initRange")?.byteRange(),
+                    indexRange = format.obj("indexRange")?.byteRange(),
+                )
+            }
+        val preferred = preferredVideoStreamPerHeight(
+            undecoded.filter { VideoDecoderSupport.canDecode(it.codec, it.width ?: 0, it.height ?: 0) },
+        )
+        // Audio goes first because the cipher batch holds 8; past that, the lowest video quality drops.
+        val (directSources, cipherSources) = (listOfNotNull(pairedAudioSource) + preferred.map { it.url })
+            .partition { it.startsWith("https://") }
+        val decoded: Map<String, String> = if (cipherContext != null) {
+            innerTubeXExtractor.decipherAudioUrls(videoId, cipherSources, cipherContext, directSources)
+        } else {
+            directSources.associateWith { it } + cipherSources.mapNotNull { cipher ->
+                streamExtractor.decipherStreamUrl(videoId, cipher)?.let { cipher to it }
+            }
+        }
+        val available = preferred.mapNotNull { stream ->
+            val url = appendPoToken(decoded[stream.url] ?: return@mapNotNull null, token)
+            stream.copy(
+                url = url,
+                expiresAtEpochMs = listOfNotNull(streamExpiryEpochMs(url), responseExpiry).minOrNull()
+                    ?: (System.currentTimeMillis() + UNKNOWN_STREAM_EXPIRY_TTL_MS),
+            )
+        }
+        val playable = selectProbedCandidate(
+            candidates = rankedForAutoPlayback(available),
+            urlOf = { it.url },
+            probe = streamExtractor::probePlayableVideo,
+            limit = MAX_VIDEO_PROBES_PER_CLIENT,
+        )
+        if (playable == null) {
+            android.util.Log.w(VIDEO_LOG_TAG, "Video client ${client.name} had no playable URL for $videoId (${available.size} candidates)")
+            // A stale player script produces rejected URLs, so retry once with a fresh one.
+            val reusedContext = signedIn && contextBefore != null && cachedVideoCipherContext === contextBefore
+            cachedVideoCipherContext = null
+            return if (reusedContext) {
+                resolveVideoBundleFromClient(videoId, client, visitorData, poToken, allowCipherReuse = false)
+            } else {
+                null
+            }
+        }
+        return SyncedVideoStreamBundle(
+            videoId = videoId,
+            clientName = client.name,
+            defaultStream = playable,
+            availableStreams = available,
+            pairedAudioStreamUrl = pairedAudioSource?.let(decoded::get)?.let { appendPoToken(it, token) },
+            pairedAudioHeaders = headers,
+            pairedAudioBitrate = pairedAudioFormat?.int("bitrate"),
+            adaptiveManifestUri = buildAdaptiveVideoManifest(available)?.let { manifest ->
+                "data:application/dash+xml;base64," +
+                    android.util.Base64.encodeToString(manifest.toByteArray(), android.util.Base64.NO_WRAP)
+            },
+        )
+    }
+
+    private fun JsonObject.byteRange(): String? {
+        val start = string("start") ?: return null
+        val end = string("end") ?: return null
+        return "$start-$end"
+    }
+
+    /**
      * One youtubei/player POST. The client that served the previous song goes
      * first; the next client runs only if this one returns no direct URL.
      * Parallel hedges used to open VISIONOS, ANDROID_VR, and TVHTML5 together
@@ -3341,6 +3583,32 @@ class InnerTubeMusicApi @Inject constructor(
         }
     }
 
+    private fun playerRequestContext(client: PlayerClient, visitorData: String?): JsonObject = buildJsonObject {
+        put("client", buildJsonObject {
+            put("clientName", client.name)
+            put("clientVersion", client.version)
+            put("hl", "en")
+            put("gl", "US")
+            if (!visitorData.isNullOrBlank()) put("visitorData", visitorData)
+            if (!client.osName.isNullOrBlank()) put("osName", client.osName)
+            if (!client.osVersion.isNullOrBlank()) put("osVersion", client.osVersion)
+            if (!client.deviceMake.isNullOrBlank()) put("deviceMake", client.deviceMake)
+            if (!client.deviceModel.isNullOrBlank()) put("deviceModel", client.deviceModel)
+            if (!client.androidSdkVersion.isNullOrBlank()) {
+                put("androidSdkVersion", client.androidSdkVersion)
+            }
+        })
+        if (client.name == "WEB_REMIX" && ytAuth.connection.value.isConnected) {
+            put("user", buildJsonObject {
+                put("lockedSafetyMode", false)
+                val delegate = ytAuth.connection.value.onBehalfOfUser
+                if (!delegate.isNullOrBlank()) {
+                    put("onBehalfOfUser", delegate)
+                }
+            })
+        }
+    }
+
     private suspend fun resolveDirectClientStream(
         videoId: String,
         client: PlayerClient,
@@ -3354,31 +3622,7 @@ class InnerTubeMusicApi @Inject constructor(
         allowCipherFormats: Boolean = true,
         maxAttempts: Int = MAX_PLAYER_REQUEST_ATTEMPTS,
     ): YouTubeAudioStream {
-        val playerContext = buildJsonObject {
-            put("client", buildJsonObject {
-                put("clientName", client.name)
-                put("clientVersion", client.version)
-                put("hl", "en")
-                put("gl", "US")
-                if (!visitorData.isNullOrBlank()) put("visitorData", visitorData)
-                if (!client.osName.isNullOrBlank()) put("osName", client.osName)
-                if (!client.osVersion.isNullOrBlank()) put("osVersion", client.osVersion)
-                if (!client.deviceMake.isNullOrBlank()) put("deviceMake", client.deviceMake)
-                if (!client.deviceModel.isNullOrBlank()) put("deviceModel", client.deviceModel)
-                if (!client.androidSdkVersion.isNullOrBlank()) {
-                    put("androidSdkVersion", client.androidSdkVersion)
-                }
-            })
-            if (client.name == "WEB_REMIX" && ytAuth.connection.value.isConnected) {
-                put("user", buildJsonObject {
-                    put("lockedSafetyMode", false)
-                    val delegate = ytAuth.connection.value.onBehalfOfUser
-                    if (!delegate.isNullOrBlank()) {
-                        put("onBehalfOfUser", delegate)
-                    }
-                })
-            }
-        }
+        val playerContext = playerRequestContext(client, visitorData)
         cipherContext?.requireMatches(videoId, ytAuth.connection.value)
         val body = playbackPlayerBody(videoId, playerContext, signatureTimestamp, playerPoToken)
         val playerApi = if (client.name == "WEB_REMIX") MUSIC_API else YOUTUBE_API
@@ -5268,6 +5512,13 @@ class InnerTubeMusicApi @Inject constructor(
         const val YOUTUBE_PROMOTE_BUDGET_MS = 12_000L
         /** No-cipher clients tried first, in order (mirrors limusic's fallback order). */
         val DIRECT_FAST_CLIENT_ORDER = listOf("TVHTML5", "VISIONOS", "ANDROID_TESTSUITE", "ANDROID_VR", "IOS", "WEB_REMIX")
+        const val VIDEO_LOG_TAG = "InnerTubeVideo"
+        /** Clients that return video formats without a signed-in session. */
+        val VIDEO_CLIENT_ORDER = listOf("ANDROID_VR", "VISIONOS", "IOS", "TVHTML5")
+        val ALIGNMENT_AUDIO_CLIENT_ORDER = listOf("VISIONOS", "ANDROID_VR")
+        const val VIDEO_CLIENT_TIMEOUT_MS = 6_000L
+        const val VIDEO_CIPHER_CONTEXT_TTL_MS = 30 * 60 * 1000L
+        const val MAX_VIDEO_PROBES_PER_CLIENT = 2
         const val MAX_FORMAT_PROBES_PER_CLIENT = 4
         const val MAX_PLAYER_REQUEST_ATTEMPTS = 2
         const val CONFIG_REQUEST_TIMEOUT_MS = 6_000L

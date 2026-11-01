@@ -79,6 +79,18 @@ class UsbAudioDevice private constructor(private val context: Context) {
         private var instance: UsbAudioDevice? = null
 
         /**
+         * DACs that get their async feedback endpoint polled while streaming.
+         * Opt-in per device because polling disrupted ISO timing on other
+         * hardware (#161).
+         */
+        private val CONTINUOUS_FEEDBACK_DEVICES = setOf(
+            0x2fc6 to 0xf82d, // Luxury & Precision UAC Device (#474)
+        )
+
+        fun needsContinuousFeedback(vendorId: Int, productId: Int): Boolean =
+            (vendorId to productId) in CONTINUOUS_FEEDBACK_DEVICES
+
+        /**
          * Get the singleton instance. All callers share the same connection
          * share the same connection and fd, preventing ENODEV from competing opens.
          */

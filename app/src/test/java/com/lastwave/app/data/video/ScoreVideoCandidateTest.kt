@@ -54,6 +54,17 @@ class ScoreVideoCandidateTest {
     }
 
     @Test
+    fun labelUploadWithoutTheArtistsNameQualifies() {
+        val score = score(
+            "Kasturi | Amar Prem Ki Prem Kahani",
+            "Tips",
+            wantedTitle = "Kasturi",
+            wantedArtist = "Asha Singer",
+        )
+        assertThat(score).isAtLeast(MIN_VIDEO_CANDIDATE_SCORE)
+    }
+
+    @Test
     fun plainAudioUploadDoesNotQualify() {
         assertThat(score("The Weeknd - Starboy (Official Audio)", "The Weeknd", durationSec = null))
             .isLessThan(MIN_VIDEO_CANDIDATE_SCORE)
