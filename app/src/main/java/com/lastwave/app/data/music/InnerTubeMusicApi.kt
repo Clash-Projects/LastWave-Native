@@ -1729,7 +1729,7 @@ class InnerTubeMusicApi @Inject constructor(
             }.getOrElse { false }
         }
 
-    private suspend fun browseRoot(browseId: String, authenticated: Boolean, params: String? = null): JsonObject {
+    internal suspend fun browseRoot(browseId: String, authenticated: Boolean, params: String? = null): JsonObject {
         var config = getWebConfig()
         suspend fun executeBrowse(cfg: WebConfig): JsonObject {
             return post(
