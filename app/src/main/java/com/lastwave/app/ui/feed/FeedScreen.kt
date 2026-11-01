@@ -1354,6 +1354,21 @@ fun FeedScreen(
                                     }
                                 }
                             }
+                            if (sectionKey == orderedFeedSections.firstOrNull { it == "podcast_shelf" || it == "podcasts" }) {
+                                item(key = "moods_and_genres") {
+                                    HomeContainerSection(shape = RoundedCornerShape(28.dp)) {
+                                        com.lastwave.app.ui.moods.HomeMoodsSection()
+                                    }
+                                }
+                            }
+                        }
+
+                        if (orderedFeedSections.none { it == "podcast_shelf" || it == "podcasts" }) {
+                            item(key = "moods_and_genres") {
+                                HomeContainerSection(shape = RoundedCornerShape(28.dp)) {
+                                    com.lastwave.app.ui.moods.HomeMoodsSection()
+                                }
+                            }
                         }
 
                         if (!hasAnyFeedSections && !state.isChipActive) {
@@ -1918,7 +1933,7 @@ private fun PinnedChipsBar(
  * Used for page-1 native shelves, continuation paged shelves, and chip shelves.
  */
 @Composable
-private fun HomeShelfCard(
+internal fun HomeShelfCard(
     shelf: HomeShelf,
     onPlayTrack: (YouTubeMusicTrack, String) -> Unit,
     onPlayTracksQueue: (List<YouTubeMusicTrack>, Int, String) -> Unit,
