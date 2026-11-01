@@ -189,6 +189,10 @@ data class AddonTrack(
 data class AddonStream(
     @SerialName("url") val url: String = "",
     @SerialName("dataUrl") val dataUrl: String? = null,
+    @SerialName("directUrl") val directUrl: String? = null,
+    @SerialName("streamUrl") val streamUrl: String? = null,
+    @SerialName("downloadUrl") val downloadUrl: String? = null,
+    @SerialName("mediaUrl") val mediaUrl: String? = null,
     @SerialName("format") val format: String = "dash",
     @SerialName("codec") val codec: String = "flac",
     @SerialName("quality") val quality: String = "",
@@ -210,7 +214,7 @@ data class AddonStream(
     @SerialName("bits_per_sample") val rawBitsPerSampleSnake: JsonElement? = null,
     @SerialName("depth") val rawDepth: JsonElement? = null,
     @SerialName("bits") val rawBits: JsonElement? = null,
-    @SerialName("bitrate") val bitrate: Int? = null,
+    @SerialName("bitrate") val rawBitrate: JsonElement? = null,
     @SerialName("manifest") val manifest: String = "dash",
     @SerialName("manifestXml") val manifestXml: String? = null,
     @SerialName("audioMode") val audioMode: String? = null,
@@ -231,6 +235,14 @@ data class AddonStream(
     @SerialName("stream_metadata") val rawStreamMetadataSnake: JsonElement? = null,
     @SerialName("info") val rawInfo: JsonElement? = null,
 ) {
+    /** Tolerates decimal and quoted values, which must not fail the whole stream. */
+    val bitrate: Int?
+        get() = (rawBitrate as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()?.toInt()
+
+    /** Every direct URL field a server may answer with, in preference order. */
+    val directUrls: List<String>
+        get() = listOfNotNull(url, directUrl, streamUrl, downloadUrl, mediaUrl).filter { it.isNotBlank() }
+
     val bitDepth: Int?
         get() = extractBitDepthFromElement(rawMetadata)
             ?: extractBitDepthFromElement(rawMeta)

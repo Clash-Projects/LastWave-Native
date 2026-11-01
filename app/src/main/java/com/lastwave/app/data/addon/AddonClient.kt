@@ -48,6 +48,7 @@ class AddonClient(
             reqBuilder.header("X-LW-Sign", nativeSigned.second)
             return
         }
+        Log.d(TAG, "Native addon signing unavailable; using fallback signer")
 
         // 2. Fallback to Java HMAC if clientSecret provided or default known secret
         val secret = clientSecret?.takeIf { it.isNotBlank() } ?: DEFAULT_ADDON_SECRET
@@ -112,12 +113,10 @@ class AddonClient(
                 val body = res.body?.string().orEmpty()
                 val rootElement = runCatching { json.parseToJsonElement(body) }.getOrNull()
                 val tracks = when (rootElement) {
-                    is JsonArray -> runCatching { json.decodeFromJsonElement<List<AddonTrack>>(rootElement) }.getOrNull()
+                    is JsonArray -> decodeTracks(rootElement)
                     is JsonObject -> {
                         val tracksElement = rootElement["tracks"] ?: rootElement["data"] ?: rootElement["results"] ?: rootElement["items"]
-                        if (tracksElement is JsonArray) {
-                            runCatching { json.decodeFromJsonElement<List<AddonTrack>>(tracksElement) }.getOrNull()
-                        } else null
+                        if (tracksElement is JsonArray) decodeTracks(tracksElement) else null
                     }
                     else -> null
                 } ?: json.decodeFromString<AddonSearchResponse>(body).tracks
@@ -128,6 +127,13 @@ class AddonClient(
             Result.failure(e)
         }
     }
+
+    /** One malformed entry must not discard every other result. */
+    private fun decodeTracks(items: JsonArray): List<AddonTrack> =
+        items.mapNotNull { item ->
+            runCatching { json.decodeFromJsonElement<AddonTrack>(item) }.getOrNull()
+                ?.takeIf { it.id.isNotBlank() && it.title.isNotBlank() }
+        }
 
     suspend fun stream(
         trackId: String,
