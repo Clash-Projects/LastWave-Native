@@ -46,7 +46,7 @@
         android:required="false" />
 
     <application
-        android:name=".LastWaveApplication"
+        android:name=".SoundDropApplication"
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -102,7 +102,7 @@
                 <data android:scheme="lastwave" android:host="auth-callback" />
             </intent-filter>
 
-            <!-- LastWave Jam deep links (lastwave://jam?code=... and lastwave://sync?code=...) -->
+            <!-- SoundDrop Jam deep links (lastwave://jam?code=... and lastwave://sync?code=...) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
