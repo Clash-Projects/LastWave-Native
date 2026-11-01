@@ -1,4 +1,4 @@
-name: Build LastWave APK
+name: Build SoundDrop APK
 
 on:
   push:
@@ -57,15 +57,15 @@ jobs:
           mkdir -p final_apk
           VERSION=$(grep 'versionName = ' app/build.gradle.kts | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
           if [ -z "$VERSION" ]; then
-            VERSION="5.0.0"
+            VERSION="1.0.0"
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
-          echo "Building APK for LastWave v$VERSION"
+          echo "Building APK for SoundDrop v$VERSION"
           if [ -f "app/build/outputs/apk/release/app-release-signed.apk" ]; then
-            cp app/build/outputs/apk/release/app-release-signed.apk final_apk/LastWave-v${VERSION}-release.apk
+            cp app/build/outputs/apk/release/app-release-signed.apk final_apk/SoundDrop-v${VERSION}-release.apk
           else
-            cp app/build/outputs/apk/release/app-release.apk final_apk/LastWave-v${VERSION}-release.apk
+            cp app/build/outputs/apk/release/app-release.apk final_apk/SoundDrop-v${VERSION}-release.apk
           fi
           ls -lh final_apk/
 
@@ -88,6 +88,6 @@ jobs:
       - name: Upload Release APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: LastWave-v${{ steps.prep_apk.outputs.version }}-APK
+          name: SoundDrop-v${{ steps.prep_apk.outputs.version }}-APK
           path: final_apk/*
           if-no-files-found: error
