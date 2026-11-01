@@ -32,6 +32,7 @@ import android.util.Log
  * @param channelCount     Number of channels (1=mono, 2=stereo)
  * @param bitDepth         Bits per sample (16, 24, or 32)
  * @param maxPacketSize    Max packet size from endpoint descriptor
+ * @param continuousFeedback Poll [endpointFeedback] while streaming (see [UsbAudioDevice.needsContinuousFeedback])
  */
 class UsbAudioStream(
         fd: Int,
@@ -44,7 +45,8 @@ class UsbAudioStream(
         maxPacketSize: Int,
         dataInterval: Int,
         feedbackPacketSize: Int,
-        feedbackInterval: Int
+        feedbackInterval: Int,
+        continuousFeedback: Boolean = false
 ) {
 
     /** Native UsbAudioContext pointer. Exposed for NativeAudioEngine which
@@ -56,7 +58,7 @@ class UsbAudioStream(
         nativeHandle = nativeUsbAudioCreate(
                 fd, interfaceId, endpointOut, endpointFeedback,
                 sampleRate, channelCount, bitDepth, maxPacketSize,
-                dataInterval, feedbackPacketSize, feedbackInterval
+                dataInterval, feedbackPacketSize, feedbackInterval, continuousFeedback
         )
         if (nativeHandle == 0L) {
             Log.e(TAG, "nativeUsbAudioCreate returned 0 — check logcat for native errors")
@@ -199,7 +201,8 @@ class UsbAudioStream(
     private external fun nativeUsbAudioCreate(
             fd: Int, interfaceId: Int, endpointOut: Int, endpointFeedback: Int,
             sampleRate: Int, channelCount: Int, bitDepth: Int, maxPacketSize: Int,
-            dataInterval: Int, feedbackPacketSize: Int, feedbackInterval: Int
+            dataInterval: Int, feedbackPacketSize: Int, feedbackInterval: Int,
+            continuousFeedback: Boolean
     ): Long
 
     private external fun nativeUsbAudioSetAltSetting(handle: Long, altSetting: Int): Boolean

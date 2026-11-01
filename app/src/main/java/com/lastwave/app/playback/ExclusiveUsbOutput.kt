@@ -651,6 +651,9 @@ class ExclusiveUsbOutput @Inject constructor(
         val feedbackPacketSize = selectedFeedback?.maxPacketSize?.let { isoPacketBytes(it) }
             ?: info.feedbackPacketSize
         val feedbackInterval = selectedFeedback?.interval?.coerceAtLeast(1) ?: dataInterval
+        val pollFeedback = selectedFeedback != null &&
+            UsbAudioDevice.needsContinuousFeedback(usbDevice.vendorId, usbDevice.productId)
+        if (pollFeedback) waitForClockValid()
         val created = UsbAudioStream(
             info.fd,
             info.interfaceId,
@@ -663,6 +666,7 @@ class ExclusiveUsbOutput @Inject constructor(
             dataInterval,
             feedbackPacketSize,
             feedbackInterval,
+            pollFeedback,
         )
         if (!created.isReady || !created.start()) {
             created.release()
@@ -725,9 +729,18 @@ class ExclusiveUsbOutput @Inject constructor(
         )
         sessionSummary = "started rate=${effectiveRate}Hz alt=$alt wireBits=$wireBits reported=$reported " +
             "clockMatched=$clockMatched fallback=$autoNegotiatedFallback hardwareVolume=$hardwareVolume " +
-            "maxPacket=$maxPacket interval=$dataInterval feedback=${selectedFeedback != null}"
+            "maxPacket=$maxPacket interval=$dataInterval feedback=${selectedFeedback != null} feedbackPolled=$pollFeedback"
         startWriterLocked(created)
         return true
+    }
+
+    /** Bounded: a DAC that never reports a valid clock still gets the stream. */
+    private fun waitForClockValid() {
+        repeat(CLOCK_VALID_TRIES) {
+            if (usbAudio.readClockValid()) return
+            Thread.sleep(CLOCK_VALID_STEP_MS)
+        }
+        Log.w(TAG, "DAC clock not reported valid; starting stream anyway")
     }
 
     // ── Fork: safety guard + diagnostics ──
