@@ -9,11 +9,11 @@ class MoodMosaicPatternTest {
         val pattern = moodMosaicPattern(12)
 
         assertThat(pattern).isEqualTo(moodMosaicPattern(12))
-        assertThat(pattern.first()).isEqualTo(MoodTilePlacement(0, 0, 0, 216, 104))
-        assertThat(pattern.maxOf { it.startDp + it.widthDp }).isEqualTo(664)
-        assertThat(pattern.maxOf { it.topDp + it.heightDp }).isEqualTo(328)
-        assertMixedShapes(pattern, 104, 104)
-        assertFullRectangle(pattern, 104, 104)
+        assertThat(pattern.first()).isEqualTo(MoodTilePlacement(0, 0, 0, 184, 88))
+        assertThat(pattern.maxOf { it.startDp + it.widthDp }).isEqualTo(568)
+        assertThat(pattern.maxOf { it.topDp + it.heightDp }).isEqualTo(280)
+        assertMixedShapes(pattern, 88, 88)
+        assertFullRectangle(pattern, 88, 88)
     }
 
     @Test
@@ -23,11 +23,11 @@ class MoodMosaicPatternTest {
 
             assertReadingOrder(pattern, count)
             assertSeparated(pattern)
-            assertNoInteriorHoles(pattern, 104, 104)
+            assertNoInteriorHoles(pattern, 88, 88)
             pattern.forEach { tile ->
-                assertThat(tile.widthDp).isAnyOf(104, 216)
-                assertThat(tile.heightDp).isAnyOf(104, 216)
-                assertThat(tile.topDp + tile.heightDp).isAtMost(328)
+                assertThat(tile.widthDp).isAnyOf(88, 184)
+                assertThat(tile.heightDp).isAnyOf(88, 184)
+                assertThat(tile.topDp + tile.heightDp).isAtMost(280)
             }
         }
     }
@@ -35,10 +35,10 @@ class MoodMosaicPatternTest {
     @Test
     fun completeHomeBlocksHaveNoUnfilledCells() {
         for (count in listOf(2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 24, 96)) {
-            assertFullRectangle(moodMosaicPattern(count), 104, 104)
+            assertFullRectangle(moodMosaicPattern(count), 88, 88)
         }
         assertThat(moodMosaicPattern(0)).isEmpty()
-        assertThat(moodMosaicPattern(1)).containsExactly(MoodTilePlacement(0, 0, 0, 104, 104))
+        assertThat(moodMosaicPattern(1)).containsExactly(MoodTilePlacement(0, 0, 0, 88, 88))
     }
 
     @Test
@@ -55,13 +55,13 @@ class MoodMosaicPatternTest {
     @Test
     fun responsiveColumnsRespectTheMinimumCellAndEightDpGap() {
         assertThat(moodMosaicColumnCount(80)).isEqualTo(1)
-        assertThat(moodMosaicColumnCount(215)).isEqualTo(1)
-        assertThat(moodMosaicColumnCount(216)).isEqualTo(2)
+        assertThat(moodMosaicColumnCount(183)).isEqualTo(1)
+        assertThat(moodMosaicColumnCount(184)).isEqualTo(2)
         assertThat(moodMosaicColumnCount(328)).isEqualTo(3)
-        assertThat(moodMosaicColumnCount(768)).isEqualTo(6)
-        assertThat(moodMosaicColumnCount(1368)).isEqualTo(12)
+        assertThat(moodMosaicColumnCount(768)).isEqualTo(8)
+        assertThat(moodMosaicColumnCount(1368)).isEqualTo(14)
         assertThat(moodMosaicCellSize(328)).isEqualTo(104)
-        assertThat(moodMosaicCellSize(768)).isEqualTo(121)
+        assertThat(moodMosaicCellSize(768)).isEqualTo(89)
         assertThat(moodMosaicColumnCount(328, 176)).isEqualTo(1)
         assertThat(moodMosaicCellSize(328, 176)).isEqualTo(328)
         assertThat(moodMosaicCellSize(80)).isEqualTo(80)
@@ -75,7 +75,7 @@ class MoodMosaicPatternTest {
             assertThat(pattern).isEqualTo(moodMosaicVerticalPattern(count, 328))
             assertReadingOrder(pattern, count)
             assertSeparated(pattern)
-            assertNoInteriorHoles(pattern, 104, 104)
+            assertNoInteriorHoles(pattern, 104, 88)
         }
     }
 
@@ -84,7 +84,7 @@ class MoodMosaicPatternTest {
         for (viewport in listOf(80, 216, 328, 440, 568, 768, 1368)) {
             val columns = moodMosaicColumnCount(viewport)
             val cellSize = moodMosaicCellSize(viewport)
-            val rowHeight = maxOf(cellSize, MOOD_MIN_CELL_DP)
+            val rowHeight = MOOD_MIN_CELL_DP
             val pattern = moodMosaicVerticalPattern(columns * 4, viewport)
 
             assertReadingOrder(pattern, columns * 4)
@@ -100,10 +100,10 @@ class MoodMosaicPatternTest {
     @Test
     fun partialBandsFitEveryViewportAndLargerFontCell() {
         for (viewport in listOf(1, 80, 136, 208, 328, 568, 768, 1368)) {
-            for (minimumHeight in listOf(104, 156, 176)) {
+            for (minimumHeight in listOf(88, 156, 176)) {
                 val minimumCell = maxOf(MOOD_MIN_CELL_DP, minimumHeight)
                 val cellSize = moodMosaicCellSize(viewport, minimumCell)
-                val rowHeight = maxOf(cellSize, minimumCell)
+                val rowHeight = minimumCell
                 for (count in listOf(0, 1, 2, 3, 4, 5, 7, 11, 13, 23, 43, 100)) {
                     val pattern = moodMosaicVerticalPattern(count, viewport, minimumHeight)
 
@@ -126,31 +126,46 @@ class MoodMosaicPatternTest {
 
         assertThat(pattern.map { it.startDp }).containsExactly(0, 0, 0, 0, 0).inOrder()
         assertThat(pattern.map { it.widthDp }).containsExactly(80, 80, 80, 80, 80).inOrder()
-        assertThat(pattern.map { it.heightDp }).containsExactly(104, 104, 104, 104, 104).inOrder()
-        assertThat(pattern.map { it.topDp }).containsExactly(0, 112, 224, 336, 448).inOrder()
+        assertThat(pattern.map { it.heightDp }).containsExactly(88, 88, 88, 88, 88).inOrder()
+        assertThat(pattern.map { it.topDp }).containsExactly(0, 96, 192, 288, 384).inOrder()
         assertSeparated(pattern)
     }
 
     @Test
     fun smallPageTailsUseAvailableColumnsWithoutLargeEmptyStacks() {
-        val twoColumnPair = moodMosaicVerticalPattern(2, 216)
-        val threeColumnPair = moodMosaicVerticalPattern(2, 328)
-        val twoColumnTriple = moodMosaicVerticalPattern(3, 216)
-        val threeColumnTriple = moodMosaicVerticalPattern(3, 328)
+        val twoColumnPair = moodMosaicVerticalPattern(2, 184)
+        val threeColumnPair = moodMosaicVerticalPattern(2, 280)
+        val twoColumnTriple = moodMosaicVerticalPattern(3, 184)
+        val threeColumnTriple = moodMosaicVerticalPattern(3, 280)
 
         assertThat(twoColumnPair.map { it.topDp }).containsExactly(0, 0)
-        assertThat(twoColumnPair.map { it.widthDp }).containsExactly(104, 104)
+        assertThat(twoColumnPair.map { it.widthDp }).containsExactly(88, 88)
         assertThat(threeColumnPair.map { it.topDp }).containsExactly(0, 0)
-        assertThat(threeColumnPair.map { it.widthDp }).containsExactly(216, 104).inOrder()
-        assertThat(twoColumnTriple.maxOf { it.topDp + it.heightDp }).isEqualTo(216)
+        assertThat(threeColumnPair.map { it.widthDp }).containsExactly(184, 88).inOrder()
+        assertThat(twoColumnTriple.maxOf { it.topDp + it.heightDp }).isEqualTo(184)
         assertThat(threeColumnTriple.map { it.topDp }).containsExactly(0, 0, 0)
-        assertThat(threeColumnTriple.map { it.widthDp }).containsExactly(104, 104, 104)
-        assertFullRectangle(twoColumnPair, 104, 104)
-        assertFullRectangle(threeColumnPair, 104, 104)
-        assertFullRectangle(twoColumnTriple, 104, 104)
-        assertFullRectangle(threeColumnTriple, 104, 104)
-        val tailAfterBlock = moodMosaicVerticalPattern(9, 568).filter { it.startDp >= 345 }
-        assertThat(tailAfterBlock.maxOf { it.topDp + it.heightDp }).isAtMost(222)
+        assertThat(threeColumnTriple.map { it.widthDp }).containsExactly(88, 88, 88)
+        assertFullRectangle(twoColumnPair, 88, 88)
+        assertFullRectangle(threeColumnPair, 88, 88)
+        assertFullRectangle(twoColumnTriple, 88, 88)
+        assertFullRectangle(threeColumnTriple, 88, 88)
+        val tailAfterBlock = moodMosaicVerticalPattern(9, 472).filter { it.startDp >= 288 }
+        assertThat(tailAfterBlock.maxOf { it.topDp + it.heightDp }).isAtMost(184)
+    }
+
+    @Test
+    fun pageRowsStayCompactWhenPhoneColumnsStretchToFillWidth() {
+        for (viewport in listOf(328, 360)) {
+            val cellWidth = moodMosaicCellSize(viewport)
+            val pattern = moodMosaicVerticalPattern(6, viewport)
+
+            assertThat(cellWidth).isGreaterThan(88)
+            assertThat(pattern.maxOf { it.topDp + it.heightDp }).isEqualTo(280)
+            pattern.forEach { assertThat(it.heightDp).isAnyOf(88, 184) }
+            assertMixedShapes(pattern, cellWidth, 88)
+            assertFullRectangle(pattern, cellWidth, 88)
+            assertSeparated(pattern)
+        }
     }
 
     @Test(expected = IllegalArgumentException::class)

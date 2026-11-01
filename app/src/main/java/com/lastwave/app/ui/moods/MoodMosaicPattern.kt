@@ -1,6 +1,6 @@
 package com.lastwave.app.ui.moods
 
-internal const val MOOD_MIN_CELL_DP = 104
+internal const val MOOD_MIN_CELL_DP = 88
 internal const val MOOD_TILE_GAP_DP = 8
 
 internal data class MoodTilePlacement(
@@ -40,7 +40,7 @@ internal fun moodMosaicVerticalPattern(
     val minimumCellSizeDp = maxOf(MOOD_MIN_CELL_DP, cellHeightDp)
     val columns = moodMosaicColumnCount(availableWidthDp, minimumCellSizeDp)
     val cellSizeDp = moodMosaicCellSize(availableWidthDp, minimumCellSizeDp)
-    val rowHeightDp = maxOf(cellSizeDp, minimumCellSizeDp)
+    val rowHeightDp = minimumCellSizeDp
     if (columns == 1) {
         return List(tileCount) { MoodGridTile(0, it, 1, 1) }.toPlacements(cellSizeDp, rowHeightDp)
     }

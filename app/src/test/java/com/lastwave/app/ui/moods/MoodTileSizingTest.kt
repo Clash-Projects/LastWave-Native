@@ -38,7 +38,7 @@ class MoodTileSizingTest {
         val measurer = textMeasurer(density)
         val cellSize = moodTileMinimumSize(labels, measurer, labelStyle, density)
 
-        assertThat(cellSize).isEqualTo(104)
+        assertThat(cellSize).isEqualTo(88)
         assertLabelsFit(labels, measurer, density, cellSize)
     }
 
@@ -53,7 +53,7 @@ class MoodTileSizingTest {
         val measurer = textMeasurer(density)
         val cellSize = moodTileMinimumSize(labels, measurer, labelStyle, density)
 
-        assertThat(cellSize).isGreaterThan(104)
+        assertThat(cellSize).isGreaterThan(88)
         assertLabelsFit(labels, measurer, density, cellSize)
     }
 
@@ -130,7 +130,7 @@ class MoodTileSizingTest {
         direction: LayoutDirection = LayoutDirection.Ltr,
         cellHeightDp: Int = cellWidthDp,
     ) {
-        val paddingPx = with(density) { 12.dp.roundToPx() }
+        val paddingPx = with(density) { 8.dp.roundToPx() }
         val interiorWidthPx = with(density) { cellWidthDp.dp.roundToPx() } - 2 * paddingPx
         val interiorHeightPx = with(density) { cellHeightDp.dp.roundToPx() } - 2 * paddingPx
         labels.forEach { label ->

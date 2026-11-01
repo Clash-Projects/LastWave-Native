@@ -7,7 +7,7 @@ import androidx.compose.ui.unit.Density
 import kotlin.math.ceil
 import kotlin.math.floor
 
-internal const val MOOD_TILE_LABEL_PADDING_DP = 12
+internal const val MOOD_TILE_LABEL_PADDING_DP = 8
 
 /** Reserves enough room for every label even in the narrow square and tall tiles. */
 internal fun moodTileMinimumSize(
