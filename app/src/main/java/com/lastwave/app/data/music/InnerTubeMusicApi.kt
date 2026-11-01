@@ -2264,48 +2264,45 @@ class InnerTubeMusicApi @Inject constructor(
             )
         }.getOrNull() ?: return@withContext null
 
-        val currentType = root.asObject()?.obj("currentVideoEndpoint")
+        fun musicVideoType(renderer: JsonObject?): String? = renderer?.obj("navigationEndpoint")
             ?.obj("watchEndpoint")
             ?.obj("watchEndpointMusicSupportedConfigs")
             ?.obj("watchEndpointMusicConfig")
             ?.string("musicVideoType")
-        if (currentType == "MUSIC_VIDEO_TYPE_OMV") {
-            val curId = root.asObject()?.obj("currentVideoEndpoint")?.obj("watchEndpoint")?.string("videoId")
-            if (!curId.isNullOrBlank()) return@withContext curId
+
+        fun rendererId(renderer: JsonObject?): String? = renderer?.string("videoId")
+            ?: renderer?.obj("navigationEndpoint")?.obj("watchEndpoint")?.string("videoId")
+
+        // Only an official video is trusted as is. A user upload (gameplay, edits)
+        // goes through the official search, and stays the fallback if that finds nothing.
+        val currentEndpoint = root.asObject()?.obj("currentVideoEndpoint")?.obj("watchEndpoint")
+        val currentType = currentEndpoint
+            ?.obj("watchEndpointMusicSupportedConfigs")
+            ?.obj("watchEndpointMusicConfig")
+            ?.string("musicVideoType")
+        if (currentType == MUSIC_VIDEO_TYPE_OMV) {
+            return@withContext videoId
         }
 
+        // The response also holds the autoplay queue. Only the wrapper for this
+        // track counts; any other wrapper's video belongs to a different song.
         val wrappers = mutableListOf<JsonObject>()
         collectObjects(root, "playlistPanelVideoWrapperRenderer", wrappers)
         for (wrapper in wrappers) {
             val primary = wrapper.obj("primaryRenderer")?.obj("playlistPanelVideoRenderer")
-            val primaryId = primary?.string("videoId")
-                ?: primary?.obj("navigationEndpoint")?.obj("watchEndpoint")?.string("videoId")
+            val counterparts = wrapper.array("counterpart").orEmpty().mapNotNull {
+                it.asObject()?.obj("counterpartRenderer")?.obj("playlistPanelVideoRenderer")
+            }
+            val primaryId = rendererId(primary)
+            if (primaryId != videoId && counterparts.none { rendererId(it) == videoId }) continue
 
-            val primaryType = primary?.obj("navigationEndpoint")
-                ?.obj("watchEndpoint")
-                ?.obj("watchEndpointMusicSupportedConfigs")
-                ?.obj("watchEndpointMusicConfig")
-                ?.string("musicVideoType")
-            if (primaryType == "MUSIC_VIDEO_TYPE_OMV" && !primaryId.isNullOrBlank()) {
+            if (!primaryId.isNullOrBlank() && musicVideoType(primary) == MUSIC_VIDEO_TYPE_OMV) {
                 return@withContext primaryId
             }
-
-            val counterparts = wrapper.array("counterpart")
-            if (counterparts != null) {
-                for (i in 0 until counterparts.size) {
-                    val cpRenderer = counterparts[i].asObject()
-                        ?.obj("counterpartRenderer")
-                        ?.obj("playlistPanelVideoRenderer") ?: continue
-                    val cpId = cpRenderer.string("videoId")
-                        ?: cpRenderer.obj("navigationEndpoint")?.obj("watchEndpoint")?.string("videoId")
-                    val cpType = cpRenderer.obj("navigationEndpoint")
-                        ?.obj("watchEndpoint")
-                        ?.obj("watchEndpointMusicSupportedConfigs")
-                        ?.obj("watchEndpointMusicConfig")
-                        ?.string("musicVideoType")
-                    if (!cpId.isNullOrBlank() && (cpType == "MUSIC_VIDEO_TYPE_OMV" || cpType == "MUSIC_VIDEO_TYPE_UGC" || cpType == null)) {
-                        return@withContext cpId
-                    }
+            for (counterpart in counterparts) {
+                val counterpartId = rendererId(counterpart)
+                if (!counterpartId.isNullOrBlank() && musicVideoType(counterpart) == MUSIC_VIDEO_TYPE_OMV) {
+                    return@withContext counterpartId
                 }
             }
         }
@@ -5225,6 +5222,7 @@ class InnerTubeMusicApi @Inject constructor(
         const val YOUTUBE_ORIGIN = "https://www.youtube.com"
         const val MUSIC_API = "https://music.youtube.com/youtubei/v1"
         const val YOUTUBE_API = "https://www.youtube.com/youtubei/v1"
+        private const val MUSIC_VIDEO_TYPE_OMV = "MUSIC_VIDEO_TYPE_OMV"
         private val VIDEO_ID_PATTERN = Regex("[A-Za-z0-9_-]{11}")
         const val LIBRARY_PLAYLISTS_BROWSE_ID = "FEmusic_liked_playlists"
         const val YT_HISTORY_BROWSE_ID = "FEmusic_history"

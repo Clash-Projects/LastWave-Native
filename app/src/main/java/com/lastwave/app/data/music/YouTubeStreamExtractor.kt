@@ -89,10 +89,14 @@ class YouTubeStreamExtractor @Inject constructor(
             stream.content.isNotBlank() && (
                 stream.format?.mimeType?.contains("mp4", ignoreCase = true) == true ||
                 stream.format?.mimeType?.contains("webm", ignoreCase = true) == true
+            ) && VideoDecoderSupport.canDecode(
+                stream.codec,
+                stream.width,
+                parseResolutionHeight(stream.resolution, stream.height),
             )
         }
         if (validStreams.isEmpty()) {
-            throw IOException("YouTube returned no playable video streams for $videoId")
+            throw IOException("This device has no decoder for the video streams of $videoId")
         }
 
         // Group by resolution height (supports up to 2160p, 1440p, 1080p, 720p, 480p, 360p, 240p, 144p)
@@ -104,10 +108,11 @@ class YouTubeStreamExtractor @Inject constructor(
             .filter { it.first > 0 }
             .groupBy({ it.first }, { it.second })
             .mapValues { (_, streams) ->
+                // Codec first: an MP4 can hold AV1, and a higher bitrate must not
+                // beat H.264 on the many phones that decode AV1 slowly or not at all.
                 streams.maxWithOrNull(
                     compareBy<org.schabi.newpipe.extractor.stream.VideoStream> {
-                        // Prefer MP4 container for broad hardware decoding compatibility
-                        if (it.format?.mimeType?.contains("mp4", ignoreCase = true) == true) 1 else 0
+                        videoCodecPreference(it.codec)
                     }.thenBy { it.bitrate }
                 )!!
             }
@@ -139,7 +144,7 @@ class YouTubeStreamExtractor @Inject constructor(
             urlOf = { it.url },
             probe = ::probePlayableVideo,
             limit = MAX_PROBED_AUDIO_STREAMS,
-        ) ?: availableStreams.first()
+        ) ?: autoCandidates.first()
 
         val pairedAudioUrl = info.audioStreams.maxByOrNull { it.bitrate }?.content
         SyncedVideoStreamBundle(
@@ -282,7 +287,8 @@ class YouTubeStreamExtractor @Inject constructor(
 
     private fun parseResolutionHeight(resolution: String?, height: Int): Int {
         if (height > 0) return height
-        return resolution.orEmpty().filter { it.isDigit() }.toIntOrNull() ?: 0
+        // First number only: "1080p60" is 1080 tall.
+        return Regex("""\d+""").find(resolution.orEmpty())?.value?.toIntOrNull() ?: 0
     }
 
     private fun probePlayableVideo(stream: YouTubeVideoStream): Boolean {

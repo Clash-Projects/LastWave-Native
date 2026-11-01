@@ -3,6 +3,7 @@ package com.lastwave.app.data.video
 import android.util.Log
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.SyncedVideoStreamBundle
+import com.lastwave.app.data.music.TextMatch
 import com.lastwave.app.data.music.YouTubeStreamExtractor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -13,6 +14,92 @@ import javax.inject.Singleton
 
 private const val TAG = "SyncedVideoRepo"
 private const val CACHE_EXPIRY_MS = 3 * 60 * 60 * 1000L // 3 hours
+internal const val MIN_VIDEO_CANDIDATE_SCORE = 60
+private val UNRELATED_UPLOAD_WORDS = setOf(
+    "bgmi", "pubg", "freefire", "gameplay", "gaming", "montage", "fortnite", "minecraft", "valorant",
+    "gta", "amv", "fmv", "edit", "edits", "status", "tiktok", "reels",
+)
+private val ARTIST_SEPARATOR = Regex("""\s*(?:,|&|/|\bfeat\.?\b|\bft\.?\b|\bx\b|\band\b)\s*""", RegexOption.IGNORE_CASE)
+
+/**
+ * Scores a search result as the video for a track, or null when it is not that
+ * track at all. The title has to match and a known artist has to appear:
+ * "official video" on its own only proves it is somebody's official video.
+ */
+internal fun scoreVideoCandidate(
+    candidateTitle: String,
+    candidateArtist: String,
+    candidateDurationSec: Int?,
+    wantedTitle: String,
+    wantedArtist: String,
+    expectedDurationMs: Long?,
+): Int? {
+    val wantedTokens = TextMatch.tokens(TextMatch.baseTitle(wantedTitle))
+        .ifEmpty { TextMatch.normalize(wantedTitle).split(' ').filter(String::isNotBlank).toSet() }
+    val title = TextMatch.normalize(candidateTitle)
+    val words = title.split(' ').toSet()
+    if (wantedTokens.isEmpty() || !words.containsAll(wantedTokens)) return null
+
+    // Songs get used as background for these. Naming the song in the title
+    // doesn't make the upload its video.
+    val wantedWordsForUploads = TextMatch.normalize(wantedTitle).split(' ').toSet()
+    if (UNRELATED_UPLOAD_WORDS.any { it in words && it !in wantedWordsForUploads } || "free fire" in title) return null
+
+    fun compact(value: String) = TextMatch.normalize(value).replace(" ", "")
+    val channel = compact(candidateArtist)
+    if ("gaming" in channel || "gamer" in channel) return null
+    val compactTitle = title.replace(" ", "")
+    var artistOwnsChannel = false
+    if (wantedArtist.isNotBlank()) {
+        val artists = wantedArtist.split(ARTIST_SEPARATOR).map(::compact).filter { it.length >= 2 }
+        artistOwnsChannel = artists.any { it in channel } ||
+            (channel.length >= 2 && channel in compact(wantedArtist))
+        if (!artistOwnsChannel && artists.none { it in compactTitle }) return null
+    }
+
+    // Matching words and length never qualify on their own: a random upload has
+    // those too. It takes the artist's channel, or a title that says it's the video.
+    val claimsToBeTheVideo = "official music video" in title || "official video" in title ||
+        "music video" in title || "official visualizer" in title || "video song" in title ||
+        "full video" in title || "mv" in words || " m v " in " $title " || "vevo" in channel
+    if (!artistOwnsChannel && !claimsToBeTheVideo) return null
+
+    val wantedWords = TextMatch.normalize(wantedTitle).split(' ').toSet()
+    fun unwanted(vararg variants: String) = variants.any { it in words && it !in wantedWords }
+
+    var score = 40
+    // Anyone can type an artist's name into a title, so that alone can't qualify.
+    if (artistOwnsChannel) score += 30 else if (wantedArtist.isNotBlank()) score += 15
+    if ("official music video" in title || "official video" in title) score += 50
+    else if ("music video" in title || "official visualizer" in title || "video song" in title || "full video" in title) score += 30
+    if ("mv" in words || " m v " in " $title ") score += 25
+    if ("vevo" in channel) score += 35
+    if ("official" in channel || "records" in channel || "entertainment" in channel) score += 15
+
+    if ("lyric" in words || "lyrics" in words) score -= 30
+    if ("audio" in words || "topic" in words || candidateArtist.endsWith("- Topic")) score -= 40
+    if (unwanted("live")) score -= 50
+    if (unwanted("remix")) score -= 70
+    if (unwanted("cover", "karaoke", "reaction")) score -= 80
+    if (unwanted("mashup", "parody", "tribute")) score -= 90
+    if (unwanted("slowed", "reverb", "sped", "8d")) score -= 80
+    if (unwanted("teaser", "trailer", "preview", "bts", "short", "shorts")) score -= 100
+
+    if (expectedDurationMs != null && expectedDurationMs > 30_000L &&
+        candidateDurationSec != null && candidateDurationSec > 0
+    ) {
+        val expectedSec = (expectedDurationMs / 1000L).toInt()
+        val delta = kotlin.math.abs(candidateDurationSec - expectedSec)
+        when {
+            delta <= 15 -> score += 35
+            delta <= 45 -> score += 15
+            delta > 120 -> score -= 80
+            delta > 60 -> score -= 40
+        }
+        if (candidateDurationSec < 60 && expectedSec > 90) score -= 120
+    }
+    return score
+}
 
 /**
  * Resolves and caches direct video streams for synchronized music video playback.
@@ -34,10 +121,9 @@ class SyncedVideoRepository @Inject constructor(
         val expiresAtMs: Long,
     )
 
-    fun invalidate(videoId: String?) {
-        if (!videoId.isNullOrBlank()) {
-            cache.remove(videoId)
-        }
+    /** Keyed by the resolved video, which a retry for a track cannot name, so drop everything. */
+    fun invalidate() {
+        cache.clear()
     }
 
     suspend fun resolveVideo(
@@ -66,9 +152,6 @@ class SyncedVideoRepository @Inject constructor(
                 }
             }
 
-            // Fetch SponsorBlock intro skit offset (e.g. 42.5s for Starboy)
-            val introOffsetMs = fetchIntroOffsetMs(targetVideoId)
-
             val rawBundle = try {
                 streamExtractor.resolveVideoStreamBundle(targetVideoId)
             } catch (e: Exception) {
@@ -81,9 +164,12 @@ class SyncedVideoRepository @Inject constructor(
                 }
             }
 
+            // A video with the audio's own id shares its timeline, so only a
+            // different upload can have an intro to skip (e.g. 42.5s for Starboy).
+            val isDifferentUpload = rawBundle.videoId != videoId
             val bundle = rawBundle.copy(
-                introOffsetMs = introOffsetMs,
-                isDirectOmv = (targetVideoId != videoId),
+                introOffsetMs = if (isDifferentUpload) fetchIntroOffsetMs(rawBundle.videoId) else 0L,
+                isDirectOmv = isDifferentUpload,
             )
 
             cache[targetVideoId] = CachedVideoBundle(
@@ -107,8 +193,9 @@ class SyncedVideoRepository @Inject constructor(
             val counterpartId = runCatching {
                 innerTube.findCounterpartVideoId(audioTrackVideoId)
             }.getOrNull()
-            if (!counterpartId.isNullOrBlank() && counterpartId != audioTrackVideoId) {
-                Log.i(TAG, "Found Tier 1 official counterpart OMV for '$trackTitle': $counterpartId")
+            // Equal to the track's own id means the track already is the video.
+            if (!counterpartId.isNullOrBlank()) {
+                Log.i(TAG, "Found Tier 1 video for '$trackTitle': $counterpartId")
                 return@withContext counterpartId
             }
         }
@@ -130,63 +217,19 @@ class SyncedVideoRepository @Inject constructor(
             val candidates = videoResults.filter { it.videoId.isNotBlank() }
             if (candidates.isEmpty()) continue
 
-            // Score candidates to guarantee the best official music video
-            val scored = candidates.map { track ->
-                var score = 0
-                val t = track.title.lowercase()
-                val a = track.artist.lowercase()
-                val queryArtist = cleanArtist.lowercase()
-                val queryTitle = cleanTitle.lowercase()
-
-                if (t.contains(queryTitle)) score += 40
-                if (t.contains("official music video") || t.contains("official video")) score += 50
-                else if (t.contains("music video") || t.contains("official visualizer")) score += 30
-                if (t.contains("mv") || t.contains("m/v")) score += 25
-
-                if (queryArtist.isNotBlank()) {
-                    if (a.contains(queryArtist) || queryArtist.contains(a)) score += 30
-                    if (t.contains(queryArtist)) score += 15
-                }
-                if (a.contains("vevo") || t.contains("vevo")) score += 35
-                if (a.contains("official") || a.contains("records") || a.contains("entertainment")) score += 15
-
-                // Penalties for unwanted videos
-                if (t.contains("lyric") || t.contains("lyrics")) score -= 30
-                if (t.contains("audio") || t.contains("topic")) score -= 40
-                if (t.contains("live") && !queryTitle.contains("live")) score -= 50
-                if (t.contains("cover") || t.contains("karaoke") || t.contains("reaction")) score -= 80
-                if (t.contains("remix") && !queryTitle.contains("remix")) score -= 70
-                if (t.contains("mashup") || t.contains("parody") || t.contains("tribute")) score -= 90
-                if (t.contains("slowed") || t.contains("reverb") || t.contains("sped up") || t.contains("speed up") || t.contains("8d")) score -= 80
-                if (t.contains("teaser") || t.contains("trailer") || t.contains("preview") || t.contains("bts") || t.contains("behind the scenes")) score -= 100
-                if (t.contains("short") || t.contains("shorts") || t.contains("#shorts")) score -= 100
-
-                // Duration comparison to reject trailers, extended short films, or wrong length uploads
-                if (expectedDurationMs != null && expectedDurationMs > 30_000L) {
-                    val expectedSec = (expectedDurationMs / 1000L).toInt()
-                    val candidateSec = track.durationSeconds
-                    if (candidateSec != null && candidateSec > 0) {
-                        val delta = kotlin.math.abs(candidateSec - expectedSec)
-                        when {
-                            delta <= 15 -> score += 35
-                            delta <= 45 -> score += 15
-                            delta > 120 -> score -= 80
-                            delta > 60 -> score -= 40
-                        }
-                        if (candidateSec < 60 && expectedSec > 90) {
-                            score -= 120
-                        }
-                    }
-                }
-
-                if (track.videoId == audioTrackVideoId) {
-                    score += 10
-                }
-
-                track to score
+            val scored = candidates.mapNotNull { track ->
+                val score = scoreVideoCandidate(
+                    candidateTitle = track.title,
+                    candidateArtist = track.artist,
+                    candidateDurationSec = track.durationSeconds,
+                    wantedTitle = cleanTitle,
+                    wantedArtist = cleanArtist,
+                    expectedDurationMs = expectedDurationMs,
+                ) ?: return@mapNotNull null
+                track to if (track.videoId == audioTrackVideoId) score + 10 else score
             }.sortedByDescending { it.second }
 
-            val best = scored.firstOrNull { it.second >= 30 }?.first
+            val best = scored.firstOrNull { it.second >= MIN_VIDEO_CANDIDATE_SCORE }?.first
             if (best != null) {
                 Log.i(TAG, "Found Tier 2 official video for '$trackTitle': ${best.videoId} (${best.title}) score=${scored.first().second}")
                 return@withContext best.videoId

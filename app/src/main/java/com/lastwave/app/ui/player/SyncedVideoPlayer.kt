@@ -165,6 +165,7 @@ class SyncedVideoViewModel @Inject constructor(
     val isVideoActive: StateFlow<Boolean> = _isVideoActive.asStateFlow()
 
     private var currentKey: String? = null
+    private var loadJob: Job? = null
 
     /** Shared HTTP factory for video streams – reused across cover and fullscreen players. */
     val httpFactory: DefaultHttpDataSource.Factory = DefaultHttpDataSource.Factory()
@@ -212,7 +213,9 @@ class SyncedVideoViewModel @Inject constructor(
         }
         currentKey = key
 
-        viewModelScope.launch {
+        // A slower lookup for the previous track must not overwrite this one.
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _uiState.value = SyncedVideoUiState.Loading
             videoRepository.resolveVideo(title, artist, videoId, expectedDurationMs = durationMs)
                 .onSuccess { bundle ->
@@ -245,8 +248,32 @@ class SyncedVideoViewModel @Inject constructor(
         )
     }
 
+    /** Moves to the next lower quality, or to the error state when none is left. */
+    fun onStreamFailed(failedUrl: String?) {
+        val current = _uiState.value as? SyncedVideoUiState.Ready ?: return
+        val failed = current.activeStream
+        if (failedUrl != failed.url) return
+        val remaining = current.bundle.availableStreams.filter { it.url != failed.url }
+        val failedHeight = failed.height ?: 0
+        val next = remaining.filter { (it.height ?: 0) < failedHeight }.maxByOrNull { it.height ?: 0 }
+            ?: remaining.firstOrNull()
+        if (next == null) {
+            _uiState.value = SyncedVideoUiState.Error("This video can't be played on this device")
+            return
+        }
+        Log.w(TAG, "Video stream ${failed.height}p (${failed.codec}) failed; trying ${next.height}p (${next.codec})")
+        _uiState.value = SyncedVideoUiState.Ready(
+            bundle = current.bundle.copy(
+                availableStreams = remaining,
+                defaultStream = if (current.bundle.defaultStream.url == failed.url) next else current.bundle.defaultStream,
+            ),
+            activeStream = next,
+            selectedHeight = null,
+        )
+    }
+
     fun retry(title: String, artist: String, videoId: String?, durationMs: Long? = null) {
-        videoRepository.invalidate(videoId)
+        videoRepository.invalidate()
         currentKey = null
         loadVideo(title, artist, videoId, durationMs)
     }
@@ -430,9 +457,14 @@ fun SyncedCoverVideoPlayer(
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 Log.w("SyncedVideo", "Video player error: ${error.message}", error)
-                val ready = uiState as? SyncedVideoUiState.Ready ?: return
-                if (ready.selectedHeight != null) {
-                    viewModel.selectQuality(null)
+                viewModel.onStreamFailed(videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString())
+            }
+
+            // No error fires when no decoder takes the track: the player just
+            // runs with nothing to show, which is a black screen.
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                if (!tracks.isEmpty && !tracks.isTypeSelected(C.TRACK_TYPE_VIDEO)) {
+                    viewModel.onStreamFailed(videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString())
                 }
             }
         }
@@ -454,7 +486,8 @@ fun SyncedCoverVideoPlayer(
         if (state is SyncedVideoUiState.Ready) {
             val stream = state.activeStream
             val currentMediaUri = videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
-            if (currentMediaUri == stream.url) return@LaunchedEffect
+            // Idle means the last attempt failed, so the same URL still needs loading.
+            if (currentMediaUri == stream.url && videoPlayer.playbackState != Player.STATE_IDLE) return@LaunchedEffect
 
             val streamUa = stream.requestHeaders["User-Agent"]
                 ?: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
@@ -923,10 +956,15 @@ fun FullscreenLandscapeVideoStage(
             }
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                Log.w("SyncedVideo", "Fullscreen video player error: ${error.message}", error)
-                val ready = uiState as? SyncedVideoUiState.Ready ?: return
-                if (ready.selectedHeight != null) {
-                    viewModel.selectQuality(null)
+                Log.w("SyncedVideo", "Video player error: ${error.message}", error)
+                viewModel.onStreamFailed(videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString())
+            }
+
+            // No error fires when no decoder takes the track: the player just
+            // runs with nothing to show, which is a black screen.
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                if (!tracks.isEmpty && !tracks.isTypeSelected(C.TRACK_TYPE_VIDEO)) {
+                    viewModel.onStreamFailed(videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString())
                 }
             }
         }
@@ -948,7 +986,8 @@ fun FullscreenLandscapeVideoStage(
         if (state is SyncedVideoUiState.Ready) {
             val stream = state.activeStream
             val currentMediaUri = videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
-            if (currentMediaUri == stream.url) return@LaunchedEffect
+            // Idle means the last attempt failed, so the same URL still needs loading.
+            if (currentMediaUri == stream.url && videoPlayer.playbackState != Player.STATE_IDLE) return@LaunchedEffect
 
             val streamUa = stream.requestHeaders["User-Agent"]
                 ?: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
@@ -1577,6 +1616,13 @@ fun SyncedVideoPlayerDialog(
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 Log.w(TAG, "Video player error: ${error.message}", error)
+                viewModel.onStreamFailed(videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString())
+            }
+
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                if (!tracks.isEmpty && !tracks.isTypeSelected(C.TRACK_TYPE_VIDEO)) {
+                    viewModel.onStreamFailed(videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString())
+                }
             }
         }
         videoPlayer.addListener(listener)
@@ -1592,7 +1638,8 @@ fun SyncedVideoPlayerDialog(
         if (state is SyncedVideoUiState.Ready) {
             val stream = state.activeStream
             val currentMediaUri = videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
-            if (currentMediaUri == stream.url) return@LaunchedEffect
+            // Idle means the last attempt failed, so the same URL still needs loading.
+            if (currentMediaUri == stream.url && videoPlayer.playbackState != Player.STATE_IDLE) return@LaunchedEffect
 
             val streamUa = stream.requestHeaders["User-Agent"]
                 ?: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
