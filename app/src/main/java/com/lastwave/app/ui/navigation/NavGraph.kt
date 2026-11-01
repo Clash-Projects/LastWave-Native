@@ -592,6 +592,36 @@ fun LastWaveNavHost(
             }
         }
 
+        composable(com.lastwave.app.ui.moods.MoodsRoutes.GROUPS) { backStackEntry ->
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
+                com.lastwave.app.ui.moods.MoodsScreen(
+                    onBack = { navController.safePopBackStack(backStackEntry) },
+                )
+            }
+        }
+
+        composable(
+            route = com.lastwave.app.ui.moods.MoodsRoutes.CATEGORY,
+            arguments = listOf("browseId", "params", "title").map { name ->
+                androidx.navigation.navArgument(name) {
+                    type = androidx.navigation.NavType.StringType
+                    defaultValue = ""
+                }
+            },
+        ) { backStackEntry ->
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
+                com.lastwave.app.ui.moods.MoodsCategoryScreen(
+                    onBack = { navController.safePopBackStack(backStackEntry) },
+                    onOpenPlaylist = { playlistId ->
+                        navController.navigate(Screen.FeedPlaylistDetail.createRoute(playlistId))
+                    },
+                    onOpenAlbum = { title, artist, browseId ->
+                        navController.navigate(Screen.AlbumDetail.createRoute(title, artist, browseId))
+                    },
+                )
+            }
+        }
+
         composable(Screen.Podcasts.route) { backStackEntry ->
             PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 com.lastwave.app.ui.podcast.PodcastsScreen(

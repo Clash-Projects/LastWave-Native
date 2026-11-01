@@ -1933,7 +1933,7 @@ private fun PinnedChipsBar(
  * Used for page-1 native shelves, continuation paged shelves, and chip shelves.
  */
 @Composable
-private fun HomeShelfCard(
+internal fun HomeShelfCard(
     shelf: HomeShelf,
     onPlayTrack: (YouTubeMusicTrack, String) -> Unit,
     onPlayTracksQueue: (List<YouTubeMusicTrack>, Int, String) -> Unit,
