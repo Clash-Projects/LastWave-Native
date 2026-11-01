@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">LastWave</string>
-    <string name="widget_name">LastWave Player</string>
+    <string name="app_name">SoundDrop</string>
+    <string name="widget_name">SoundDrop Player</string>
     <string name="widget_description">Artwork, track details and playback controls for every media app</string>
-    <string name="widget_obsidian_name">LastWave Obsidian Glass</string>
+    <string name="widget_obsidian_name">SoundDrop Obsidian Glass</string>
     <string name="widget_obsidian_description">Frosted obsidian glass player with translucent depth and crystal rim</string>
 
     <!-- Bottom navigation -->
@@ -15,7 +15,7 @@
     <string name="update_available">Update Available</string>
     <string name="update">Update</string>
     <string name="dismiss_update">Dismiss update</string>
-    <string name="update_ready_to_install">LastWave v%1$s is ready to install</string>
+    <string name="update_ready_to_install">SoundDrop v%1$s is ready to install</string>
 
     <!-- Settings -->
     <string name="settings">Settings</string>
@@ -70,12 +70,12 @@
     <string name="app_icon_default">Default</string>
     <string name="app_icon_default_sub">Original Electric Lime &amp; Obsidian Teal</string>
     <string name="app_icon_desktop">Desktop</string>
-    <string name="app_icon_desktop_sub">LastWave Desktop Player edition</string>
+    <string name="app_icon_desktop_sub">SoundDrop Desktop Player edition</string>
     <string name="app_icon_white">Pure White</string>
     <string name="app_icon_white_sub">White logo with black strip lines</string>
     <string name="app_icon_black">Obsidian Black</string>
     <string name="app_icon_black_sub">Black logo with white strip lines</string>
-    <string name="settings_lastwave_theme">LastWave Signature Theme</string>
+    <string name="settings_lastwave_theme">SoundDrop Signature Theme</string>
     <string name="settings_lastwave_theme_sub">Bespoke logo palette • Electric Lime &amp; Obsidian Teal</string>
     <string name="settings_amoled">AMOLED Mode</string>
     <string name="settings_amoled_sub">Pure black background (Dark mode only)</string>
@@ -177,8 +177,8 @@
     <string name="settings_diagnostics_sub">Share logs for troubleshooting</string>
     <string name="settings_check_updates">Check for Updates</string>
     <string name="settings_source_code">Source Code</string>
-    <string name="settings_desktop_app">Download Desktop App</string>
-    <string name="about_made_by">Made by LastWave Team</string>
+    <string name="settings_desktop_app">Launching Desktop App Soon!</string>
+    <string name="about_made_by">Made by Xaero Team</string>
 
     <!-- Common dialog buttons -->
     <string name="common_cancel">Cancel</string>
@@ -379,7 +379,7 @@
     <string name="dialog_clear_all_text">This removes your credentials, playlists, downloaded songs, and cached data. This can\'t be undone.</string>
     <string name="dialog_clear_all_confirm">Clear Everything</string>
     <string name="dialog_disconnect_yt_title">Disconnect YouTube Music?</string>
-    <string name="dialog_disconnect_yt_text">Playlists already mirrored to your account stay there, but LastWave stops syncing and forgets the connection.</string>
+    <string name="dialog_disconnect_yt_text">Playlists already mirrored to your account stay there, but SoundDrop stops syncing and forgets the connection.</string>
     <string name="dialog_logout_title">Log out from Last.fm?</string>
     <string name="dialog_logout_text">Your playlists and cached data will be kept.</string>
 
@@ -551,7 +551,7 @@
     <string name="menu_quick_play_next">Play next</string>
     <string name="menu_quick_add_playlist">Add to playlist</string>
     <string name="menu_quick_jam">Jam</string>
-    <string name="settings_jam_title">LastWave Jam</string>
+    <string name="settings_jam_title">SoundDrop Jam</string>
     <string name="settings_jam_sub">Listen together in real-time \u2022 Host or join with code</string>
 
     <!-- Playlists screen -->
@@ -871,7 +871,7 @@
     <string name="set_lfm_disc_title">Disconnect Last.fm?</string>
     <string name="set_lfm_disc_text">Global scrobbles pause. Your Stats switch to local listening history — nothing is deleted.</string>
     <string name="set_lfm_disc_btn">Disconnect</string>
-    <string name="set_about_title">LastWave</string>
+    <string name="set_about_title">SoundDrop</string>
     <string name="set_color_title">Custom Color</string>
     <string name="set_hue">Hue</string>
     <string name="set_sat">Saturation</string>
@@ -880,7 +880,7 @@
     <string name="set_eq_enable">Enable Equalizer</string>
     <string name="set_eq_custom">Custom</string>
     <string name="set_yt_channel">YouTube Channel</string>
-    <string name="set_yt_channel_sub">Pick which channel\'s library, likes &amp; history LastWave uses</string>
+    <string name="set_yt_channel_sub">Pick which channel\'s library, likes &amp; history SoundDrop uses</string>
     <string name="set_yt_loading">Loading channels…</string>
     <string name="set_yt_empty_title">No channels found</string>
     <string name="set_yt_empty_sub">Check your connection, then try again.</string>
@@ -918,11 +918,11 @@
     <string name="set_usb_old">Requires Android 10 or newer</string>
     <string name="set_usb_on">Direct usbdevfs to the DAC • Bit-Perfect engages this automatically</string>
     <string name="set_usb_off">Off • Needs a USB DAC and Bit-Perfect (or this toggle)</string>
-    <string name="set_yt_hist_on">On • songs you listen to in LastWave, including lossless &amp; downloads, appear in your YouTube Music history</string>
-    <string name="set_yt_hist_off">Off • listening in LastWave stays out of your YouTube Music history</string>
+    <string name="set_yt_hist_on">On • songs you listen to in SoundDrop, including lossless &amp; downloads, appear in your YouTube Music history</string>
+    <string name="set_yt_hist_off">Off • listening in SoundDrop stays out of your YouTube Music history</string>
     <string name="set_discord_title">Discord Rich Presence</string>
     <string name="set_discord_on">On • your track, quality and cover show on your Discord profile</string>
-    <string name="set_discord_off">Off • LastWave stays off your Discord profile</string>
+    <string name="set_discord_off">Off • SoundDrop stays off your Discord profile</string>
     <string name="set_tg_sub">Join @clashprojects on Telegram</string>
     <string name="set_discord_support">Discord Support</string>
     <string name="set_discord_support_sub">Join our Discord community</string>
@@ -948,9 +948,9 @@
     <string name="toast_sync_fail">Playlist sync failed: %1$s</string>
     <string name="toast_synced">Synced %1$d playlist(s) from local JSON</string>
     <string name="toast_restored">Restored %1$d playlist(s)%2$s</string>
-    <string name="toast_newer_backup">This backup was made with a newer version of LastWave</string>
-    <string name="toast_not_backup">That file doesn\'t look like a LastWave backup</string>
-    <string name="toast_not_json">That isn\'t a LastWave backup or playlist JSON</string>
+    <string name="toast_newer_backup">This backup was made with a newer version of SoundDrop</string>
+    <string name="toast_not_backup">That file doesn\'t look like a SoundDrop backup</string>
+    <string name="toast_not_json">That isn\'t a SoundDrop backup or playlist JSON</string>
     <string name="toast_empty_file">Selected file is empty or unreadable</string>
     <string name="toast_restore_fail">Restore failed: %1$s</string>
     <string name="toast_restore_read">Restore read error: %1$s</string>
@@ -1178,7 +1178,7 @@
     <string name="lyshare_mode_lyrics">Lyrics</string>
     <string name="lyshare_action_share">Share</string>
     <string name="lyshare_action_save">Save</string>
-    <string name="lyshare_saved_to_gallery">Saved to Pictures/LastWave</string>
+    <string name="lyshare_saved_to_gallery">Saved to Pictures/SoundDrop</string>
     <string name="lyshare_save_failed">Couldn\'t save image</string>
     <string name="lyshare_share_failed">Couldn\'t share image</string>
     <string name="lyshare_button_cd">Share lyrics</string>
@@ -1193,7 +1193,7 @@
     <string name="lyshare_color_white">White</string>
     <string name="lyshare_color_black">Black</string>
     <string name="lyshare_color_accent">Accent</string>
-    <string name="lyshare_color_brand">LastWave Lime</string>
+    <string name="lyshare_color_brand">SoundDrop Lime</string>
     <string name="lyshare_accessibility_line_selected">Selected, line %1$d of %2$d</string>
     <string name="lyshare_accessibility_line_unselected">Line %1$d of %2$d</string>
     <!-- Remaining screen strings -->
@@ -1304,7 +1304,7 @@
     <string name="autoeq_msg_download_failed">Couldn\'t download this profile</string>
     <string name="autoeq_msg_device_saved">Profile saved for this device</string>
     <string name="signal_label_autoeq">AutoEQ</string>
-    <string name="signal_detail_autoeq">Correction applied by LastWave (changes the samples, Android mixer still bypassed)</string>
-    <string name="signal_verdict_direct_eq">Android mixer bypassed. LastWave applies your AutoEQ correction, then the samples go straight to the HAL.</string>
+    <string name="signal_detail_autoeq">Correction applied by SoundDrop (changes the samples, Android mixer still bypassed)</string>
+    <string name="signal_verdict_direct_eq">Android mixer bypassed. SoundDrop applies your AutoEQ correction, then the samples go straight to the HAL.</string>
     <string name="signal_direct_eq">DIRECT + EQ</string>
 </resources>
