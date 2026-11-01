@@ -4931,6 +4931,32 @@ class MusicPlayer @Inject constructor(
         cancelCrossfade()
         if (index in 0 until player.mediaItemCount) player.removeMediaItem(index)
     }
+    fun clearQueueKeepCurrent() = onMain {
+        cancelCrossfade()
+        if (isCasting) {
+            val snapshot = _state.value
+            val currentTrack = snapshot.current ?: return@onMain
+            _state.value = snapshot.copy(queue = listOf(currentTrack), currentIndex = 0, current = currentTrack)
+            persistPlaybackSession()
+            return@onMain
+        }
+        val count = player.mediaItemCount
+        if (count <= 1) return@onMain
+        val current = player.currentMediaItemIndex
+        if (current !in 0 until count) return@onMain
+        if (current + 1 < count) {
+            player.removeMediaItems(current + 1, count)
+        }
+        if (current > 0) {
+            player.removeMediaItems(0, current)
+        }
+        val snapshot = _state.value
+        val currentTrack = snapshot.current
+        if (currentTrack != null) {
+            _state.value = snapshot.copy(queue = listOf(currentTrack), currentIndex = 0, current = currentTrack)
+            persistPlaybackSession()
+        }
+    }
     fun moveQueueItem(fromIndex: Int, toIndex: Int) = onMain {
         if (fromIndex == toIndex) return@onMain
         if (isCasting) {

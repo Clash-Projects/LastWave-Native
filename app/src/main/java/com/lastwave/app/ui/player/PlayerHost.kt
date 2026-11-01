@@ -998,6 +998,7 @@ fun PlayerHost(
                     progressState = viewModel.progressState,
                     isPlaying = state.isPlaying,
                     onExpand = { expanded = true },
+                    onClose = viewModel.player::stopAndClear,
                 )
             }
             if (activeDownloads.isNotEmpty() && !expanded) {
@@ -1124,6 +1125,7 @@ private fun ExpandedPlayer(
         canvasFullBleedEnabled = settings.canvasFullBleed,
         canvasGradientBlurEnabled = settings.canvasGradientBlurEnabled,
         musicVideoEnabled = settings.musicVideoEnabled,
+        showAutoEqInVolumePanel = settings.showAutoEqInVolumePanel,
         currentTab = currentTab,
         onTabChange = onTabChange,
         onRetryLyrics = onRetryLyrics,
@@ -2220,6 +2222,7 @@ private fun FullPlayer(
     canvasFullBleedEnabled: Boolean = true,
     canvasGradientBlurEnabled: Boolean = false,
     musicVideoEnabled: Boolean = true,
+    showAutoEqInVolumePanel: Boolean = true,
     currentTab: FullPlayerTab,
     onTabChange: (FullPlayerTab) -> Unit,
     onRetryLyrics: () -> Unit,
@@ -3043,6 +3046,7 @@ private fun FullPlayer(
                                     swipeThreshold = swipeThreshold,
                                     onOpenSignalPath = { showSignalPath = true },
                                     onOpenAudioControls = { showAudioControls = true },
+                                    musicVideoEnabled = musicVideoEnabled,
                                     isVideoActive = isVideoActive,
                                     onCloseVideo = { syncedVideoVm.setVideoActive(false) },
                                     onEnterFullscreen = { isVideoFullscreen = true },
@@ -3560,6 +3564,7 @@ private fun FullPlayer(
                                         isTranslucent = LocalLiquidGlass.current || showFullBleed,
                                         onOpenAudioControls = { showAudioControls = true },
                                         isVideoActive = isVideoActive,
+                                        musicVideoEnabled = musicVideoEnabled,
                                         onToggleVideo = { syncedVideoVm.setVideoActive(!showSyncedVideo) },
                                         modifier = Modifier.padding(top = 4.dp),
                                     )
@@ -3650,6 +3655,7 @@ private fun FullPlayer(
             state = state,
             onDismiss = { showAudioControls = false },
             onOpenAutoEq = { showAutoEq = true },
+            showAutoEq = showAutoEqInVolumePanel,
         )
     }
     if (showAutoEq) {
@@ -3679,6 +3685,8 @@ private fun FullPlayerLandscape(
     swipeThreshold: Float,
     onOpenSignalPath: () -> Unit = {},
     onOpenAudioControls: () -> Unit = {},
+    musicVideoEnabled: Boolean = true,
+    showAutoEqInVolumePanel: Boolean = true,
     isVideoActive: Boolean = false,
     onCloseVideo: () -> Unit = {},
     onEnterFullscreen: () -> Unit = {},
@@ -4161,6 +4169,7 @@ private fun FullPlayerLandscape(
                 isTranslucent = LocalLiquidGlass.current,
                 onOpenAudioControls = onOpenAudioControls,
                 isVideoActive = isVideoActive,
+                musicVideoEnabled = musicVideoEnabled,
                 onToggleVideo = onToggleVideo,
                 modifier = Modifier.padding(top = 4.dp),
             )
@@ -4772,6 +4781,8 @@ private fun PlayerUtilityControls(
     isTranslucent: Boolean = false,
     onOpenAudioControls: () -> Unit = {},
     isVideoActive: Boolean = false,
+    musicVideoEnabled: Boolean = true,
+    showAutoEqInVolumePanel: Boolean = true,
     onToggleVideo: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -4802,16 +4813,29 @@ private fun PlayerUtilityControls(
             modifier = Modifier.weight(1f).height(if (isTranslucent) 44.dp else 48.dp),
         )
         val isCustomAudio = state.speed != 1f || state.pitch != 1f
-        DividedUtilityPill(
-            isTranslucent = isTranslucent,
-            background = edgeButtonBackground,
-            foreground = edgeButtonContent,
-            isCustomAudio = isCustomAudio,
-            isVideoActive = isVideoActive,
-            onOpenAudioControls = onOpenAudioControls,
-            onToggleVideo = onToggleVideo,
-            modifier = Modifier.weight(1f).height(if (isTranslucent) 44.dp else 48.dp),
-        )
+        if (musicVideoEnabled && onToggleVideo != null) {
+            DividedUtilityPill(
+                isTranslucent = isTranslucent,
+                background = edgeButtonBackground,
+                foreground = edgeButtonContent,
+                isCustomAudio = isCustomAudio,
+                isVideoActive = isVideoActive,
+                onOpenAudioControls = onOpenAudioControls,
+                onToggleVideo = onToggleVideo,
+                modifier = Modifier.weight(1f).height(if (isTranslucent) 44.dp else 48.dp),
+            )
+        } else {
+            PlayerModeButton(
+                active = isCustomAudio,
+                description = "Audio controls",
+                icon = if (isCustomAudio) Icons.Filled.Tune else Icons.Filled.VolumeUp,
+                onClick = onOpenAudioControls,
+                background = edgeButtonBackground,
+                foreground = edgeButtonContent,
+                iconSize = if (isTranslucent) 19.dp else 20.dp,
+                modifier = Modifier.weight(1f).height(if (isTranslucent) 44.dp else 48.dp),
+            )
+        }
         PlayerModeButton(
             active = state.repeatMode != Player.REPEAT_MODE_OFF,
             description = when (state.repeatMode) {
@@ -5337,6 +5361,7 @@ private fun AudioControlsSheet(
     state: MusicPlayerState,
     onDismiss: () -> Unit,
     onOpenAutoEq: () -> Unit = {},
+    showAutoEq: Boolean = true,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val haptics = LocalHapticFeedback.current
@@ -5547,6 +5572,25 @@ private fun AudioControlsSheet(
                                     iconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                 ),
                             )
+                            IconButton(
+                                onClick = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    currentSpeed = 1.0f
+                                    currentPitch = 1.0f
+                                    player.setPlaybackParameters(1.0f, 1.0f)
+                                },
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.RestartAlt,
+                                    contentDescription = "Reset speed and pitch",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
                         }
                     }
 
@@ -5647,75 +5691,77 @@ private fun AudioControlsSheet(
             }
 
             // 5. Equalizer & Acoustic Tuning Card
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+            if (showAutoEq) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer),
-                            contentAlignment = Alignment.Center,
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.GraphicEq,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = "Acoustic Tuning & EQ",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "AutoEQ correction, target curves & PEQ",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                onDismiss()
+                                onOpenAutoEq()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            ),
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.GraphicEq,
+                                imageVector = Icons.Filled.Headphones,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
                                 modifier = Modifier.size(18.dp),
                             )
-                        }
-                        Column {
+                            Spacer(Modifier.width(8.dp))
                             Text(
-                                text = "Acoustic Tuning & EQ",
-                                style = MaterialTheme.typography.titleSmall,
+                                text = "Open AutoEQ / Parametric EQ",
+                                style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                            Text(
-                                text = "AutoEQ correction, target curves & PEQ",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                    }
-
-                    Button(
-                        onClick = {
-                            onDismiss()
-                            onOpenAutoEq()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        ),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Headphones,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "Open AutoEQ / Parametric EQ",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
-                        )
                     }
                 }
             }
@@ -5792,41 +5838,35 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
                     color = Color.White,
                 )
                 Text(
-                    if (state.isEndlessQueue) {
-                        "Unlimited songs \u2022 ${state.currentIndex.coerceAtLeast(0) + 1} playing"
-                    } else {
-                        "${state.queue.size} songs \u2022 ${state.currentIndex.coerceAtLeast(0) + 1} playing"
-                    },
+                    "Current playing",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.White.copy(alpha = 0.70f),
                 )
-                if (state.queue.size > 1 && !isQueueLocked) {
+                val remainingQueueTimeText = remember(state.queue, state.currentIndex) {
+                    val remainingSongs = state.queue.drop(state.currentIndex.coerceAtLeast(0))
+                    val knownDurations = remainingSongs.mapNotNull { it.durationMs }.filter { it > 0 }
+                    if (knownDurations.isEmpty()) ""
+                    else {
+                        val totalSec = knownDurations.sum() / 1000
+                        val hours = totalSec / 3600
+                        val minutes = (totalSec % 3600) / 60
+                        val hasUnknown = remainingSongs.size > knownDurations.size
+                        val suffix = if (hasUnknown) "+" else ""
+                        when {
+                            hours > 0 -> "${hours}h ${minutes}m$suffix"
+                            minutes > 0 -> "${minutes}m$suffix"
+                            else -> "<1m$suffix"
+                        }
+                    }
+                }
+                if (remainingQueueTimeText.isNotBlank()) {
                     Text(
-                        stringResource(com.lastwave.app.R.string.queue_rearrange_hint),
+                        remainingQueueTimeText,
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White.copy(alpha = 0.55f),
                     )
                 }
             }
-            val statsText = remember(state.queue) {
-                QueueStatsFormatter.formatQueueStats(state.queue)
-            }
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color.White.copy(alpha = 0.12f))
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = statsText,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White.copy(alpha = 0.90f),
-                    maxLines = 1,
-                )
-            }
-            Spacer(Modifier.width(8.dp))
             IconButton(
                 onClick = {
                     isQueueLockedState = !isQueueLockedState
@@ -5863,6 +5903,24 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
                     Icons.Filled.Visibility,
                     "Scroll to current song",
                     tint = Color.White.copy(alpha = 0.90f),
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            IconButton(
+                onClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    player.clearQueueKeepCurrent()
+                },
+                enabled = state.queue.size > 1 && !isQueueLocked,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White.copy(alpha = 0.14f)),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.ClearAll,
+                    contentDescription = "Clear queue except playing song",
+                    tint = if (state.queue.size > 1 && !isQueueLocked) Color.White.copy(alpha = 0.90f) else Color.White.copy(alpha = 0.35f),
                 )
             }
 

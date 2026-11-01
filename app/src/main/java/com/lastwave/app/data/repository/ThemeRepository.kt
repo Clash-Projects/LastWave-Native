@@ -307,7 +307,6 @@ class ThemeRepository @Inject constructor(
 
     suspend fun setAppIcon(icon: AppIcon) {
         themePreferences.setAppIcon(icon)
-        AppIconManager.applyIcon(context, icon)
     }
 
     /** Manual pick always leaves DYNAMIC/MONOCHROME: choosing your own accent

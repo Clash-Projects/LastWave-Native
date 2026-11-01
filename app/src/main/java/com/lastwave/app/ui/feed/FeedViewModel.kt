@@ -575,25 +575,36 @@ class FeedViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(launchingRadio = title) }
             try {
-                val seeds = try {
-                    innerTube.searchSongs(query, limit = 8, prefetchStreams = false)
+                // 1. Fetch real genre discovery tracks matching this exact genre from genresRepository
+                val genreTracks = try {
+                    genresRepository.discoverMore(query)
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Exception) {
                     emptyList()
                 }
-                val seed = seeds.take(5).randomOrNull()
-                val related = seed?.let {
-                    try {
-                        relatedGraph.relatedFor(it.videoId, limit = 24, prefetchStreams = false)
+
+                if (genreTracks.isNotEmpty()) {
+                    val playable = genreTracks.map { it.toPlayableTrack() }
+                    musicPlayer.playQueue(
+                        playable,
+                        startIndex = 0,
+                        sourceLabel = title,
+                        enableRadioContinuation = true,
+                    )
+                } else {
+                    // Fallback to exact search query for this genre
+                    val searchResults = try {
+                        innerTube.searchSongs("$query songs", limit = 25, prefetchStreams = false)
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Exception) {
                         emptyList()
                     }
-                }.orEmpty()
-                val songs = (listOfNotNull(seed) + related).distinctBy(YouTubeMusicTrack::videoId)
-                if (songs.isNotEmpty()) playTracksQueue(songs, sourceLabel = title)
+                    if (searchResults.isNotEmpty()) {
+                        playTracksQueue(searchResults, sourceLabel = title)
+                    }
+                }
             } finally {
                 _uiState.update { it.copy(launchingRadio = null) }
             }

@@ -344,27 +344,34 @@ fun FeedScreen(
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 920.dp),
         ) {
-            ExpressiveHeader(
-                title = stringResource(R.string.feed_home),
-                containerColor = if (isPodcastsActive) Color.Transparent else Color.Unspecified,
-                actions = {
-                    HeaderActionIcon(Icons.Filled.Download, "Downloads", onOpenDownloads)
-                    HeaderActionIcon(Icons.Filled.Search, "Search", onOpenSearch)
-                    IconButton(onClick = onOpenSettings) {
-                        com.lastwave.app.ui.home.ProfileAvatar(avatarUrl = state.avatarUrl, modifier = Modifier.size(38.dp))
-                    }
-                },
-            )
+            Surface(
+                shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
+                color = if (isPodcastsActive) Color.Transparent else MaterialTheme.colorScheme.surfaceContainer,
+                modifier = Modifier.fillMaxWidth().zIndex(1f),
+            ) {
+                Column(Modifier.fillMaxWidth().padding(bottom = if (state.homeChips.isNotEmpty()) 4.dp else 0.dp)) {
+                    ExpressiveHeader(
+                        title = stringResource(R.string.feed_home),
+                        containerColor = Color.Transparent,
+                        actions = {
+                            HeaderActionIcon(Icons.Filled.Download, "Downloads", onOpenDownloads)
+                            HeaderActionIcon(Icons.Filled.Search, "Search", onOpenSearch)
+                            IconButton(onClick = onOpenSettings) {
+                                com.lastwave.app.ui.home.ProfileAvatar(avatarUrl = state.avatarUrl, modifier = Modifier.size(38.dp))
+                            }
+                        },
+                    )
 
-            // Pinned YTM chip row under the app bar â€” stays visible while the
-            // feed scrolls beneath it. Rendered only when chips exist; its
-            // loading/filtering/selection behaviour is unchanged.
-            if (state.homeChips.isNotEmpty()) {
-                PinnedChipsBar(
-                    chips = state.homeChips,
-                    selectedChip = state.selectedChip,
-                    onChipClick = viewModel::onHomeChipSelected,
-                )
+                    // Pinned YTM chip row under the app bar — stays visible while the
+                    // feed scrolls beneath it. Rendered only when chips exist.
+                    if (state.homeChips.isNotEmpty()) {
+                        PinnedChipsBar(
+                            chips = state.homeChips,
+                            selectedChip = state.selectedChip,
+                            onChipClick = viewModel::onHomeChipSelected,
+                        )
+                    }
+                }
             }
 
             PullToRefreshBox(
@@ -1593,52 +1600,12 @@ private fun ExpressiveGreetingHeader(
     formattedDate: String,
     modifier: Modifier = Modifier,
 ) {
-    val hour = remember { java.time.LocalTime.now().hour }
-    val (timeIcon, accentColor, tagline) = remember(hour) {
-        when (hour) {
-            in 5..11 -> Triple(Icons.Filled.WbSunny, Color(0xFFFFB300), "Start your day with great rhythm")
-            in 12..16 -> Triple(Icons.Filled.LightMode, Color(0xFFFF9800), "Keep the momentum going")
-            in 17..21 -> Triple(Icons.Filled.AutoAwesome, Color(0xFFAB47BC), "Unwind with your favorite tracks")
-            else -> Triple(Icons.Filled.DarkMode, Color(0xFF7986CB), "Late night listening session")
-        }
-    }
-
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = accentColor.copy(alpha = 0.18f),
-                modifier = Modifier.size(24.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = timeIcon,
-                        contentDescription = null,
-                        tint = accentColor,
-                        modifier = Modifier.size(14.dp),
-                    )
-                }
-            }
-            if (formattedDate.isNotBlank()) {
-                Text(
-                    text = formattedDate.uppercase(),
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        letterSpacing = 1.3.sp,
-                        fontWeight = FontWeight.Bold,
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
-                )
-            }
-        }
-
         Text(
             text = greeting,
             fontFamily = ExpressiveHeadlineFont,
@@ -1649,14 +1616,16 @@ private fun ExpressiveGreetingHeader(
             color = MaterialTheme.colorScheme.onSurface,
         )
 
-        Text(
-            text = tagline,
-            style = MaterialTheme.typography.bodyMedium.copy(
-                fontSize = 13.5.sp,
-                fontWeight = FontWeight.Normal,
-            ),
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-        )
+        if (formattedDate.isNotBlank()) {
+            Text(
+                text = formattedDate.uppercase(),
+                style = MaterialTheme.typography.labelSmall.copy(
+                    letterSpacing = 1.3.sp,
+                    fontWeight = FontWeight.Bold,
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+            )
+        }
     }
 }
 

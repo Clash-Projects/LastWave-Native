@@ -119,6 +119,8 @@ data class MiscSettings(
     val buttonNowPlayingEnabled: Boolean = false,
     /** When true, shows synced music video option in the Now Playing menu (Settings -> Experimental). On by default. */
     val musicVideoEnabled: Boolean = true,
+    /** When true (default), shows AutoEQ and Parametric EQ card in Now Playing audio controls sheet. */
+    val showAutoEqInVolumePanel: Boolean = true,
     val wordByWordLyrics: Boolean = true,
     /** Preferred lyrics source (Settings -> Experimental -> Lyrics Provider).
      *  AUTO races all providers (fastest valid word-sync wins); an explicit
@@ -374,6 +376,7 @@ class SettingsPreferences @Inject constructor(
         val SYSTEM_EFFECTS_MODE = booleanPreferencesKey("lw_system_effects_mode")
         val BUTTON_NOW_PLAYING_ENABLED = booleanPreferencesKey("lw_button_now_playing_enabled")
         val MUSIC_VIDEO_ENABLED = booleanPreferencesKey("lw_music_video_enabled")
+        val SHOW_AUTO_EQ_IN_VOLUME_PANEL = booleanPreferencesKey("lw_show_auto_eq_in_volume_panel")
         val USE_ALBUM_ARTIST_FOLDERS = booleanPreferencesKey("lw_use_album_artist_folders")
         val PRIMARY_ARTIST_ONLY = booleanPreferencesKey("lw_primary_artist_only")
         val HIDDEN_HOME_SECTIONS = stringSetPreferencesKey("lw_hidden_home_sections")
@@ -440,6 +443,7 @@ class SettingsPreferences @Inject constructor(
                 systemEffectsMode = p.readSafely(Keys.SYSTEM_EFFECTS_MODE) ?: false,
                 buttonNowPlayingEnabled = p.readSafely(Keys.BUTTON_NOW_PLAYING_ENABLED) ?: false,
                 musicVideoEnabled = p.readSafely(Keys.MUSIC_VIDEO_ENABLED) ?: true,
+                showAutoEqInVolumePanel = p.readSafely(Keys.SHOW_AUTO_EQ_IN_VOLUME_PANEL) ?: true,
                 isStudioMasterClarityEnabled = p.readSafely(Keys.MUSIC_ENHANCER) ?: true,
                 clarityPreset = p.readSafely(Keys.CLARITY_PRESET)?.takeIf { it in 0..3 } ?: 0,
                 clarityAtmosBypass = p.readSafely(Keys.CLARITY_ATMOS_BYPASS) ?: false,
@@ -693,6 +697,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setMusicVideoEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.MUSIC_VIDEO_ENABLED] = enabled }
+    }
+
+    suspend fun setShowAutoEqInVolumePanel(enabled: Boolean) {
+        dataStore.edit { it[Keys.SHOW_AUTO_EQ_IN_VOLUME_PANEL] = enabled }
     }
 
     suspend fun setButtonNowPlayingEnabled(enabled: Boolean) {

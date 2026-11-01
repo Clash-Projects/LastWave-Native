@@ -7,63 +7,49 @@ import android.util.Log
 
 object AppIconManager {
     private const val TAG = "AppIconManager"
+    private val lock = Any()
 
     fun applyIcon(context: Context, icon: AppIcon) {
-        val pm = context.packageManager
-        val pkg = context.packageName
+        synchronized(lock) {
+            val pm = context.packageManager
+            val pkg = context.packageName
+            val targetComp = ComponentName(pkg, icon.componentName)
 
-        // First, disable all aliases except the target
-        AppIcon.entries.forEach { entry ->
-            if (entry == icon) return@forEach  // enable target last
-            val comp = ComponentName(pkg, entry.componentName)
+            // 1. Enable the target alias FIRST so there is never a moment
+            // where no launcher activity is enabled (which triggers Android
+            // to open the system App Info screen on tap).
             try {
-                val currentState = pm.getComponentEnabledSetting(comp)
-                if (currentState != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
+                val targetState = pm.getComponentEnabledSetting(targetComp)
+                if (targetState != PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
                     pm.setComponentEnabledSetting(
-                        comp,
-                        PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                        PackageManager.DONT_KILL_APP
+                        targetComp,
+                        PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                        PackageManager.DONT_KILL_APP,
                     )
-                    Log.d(TAG, "Disabled ${entry.componentName}")
+                    Log.d(TAG, "Enabled target alias ${icon.componentName}")
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to disable ${entry.componentName}: ${e.message}")
+                Log.w(TAG, "Failed to enable target alias ${icon.componentName}: ${e.message}")
             }
-        }
 
-        // Enable the target alias last — this triggers the PACKAGE_CHANGED
-        // broadcast that forces launchers (including Moto, Pixel, stock AOSP)
-        // to refresh the cached icon on the home screen.
-        val targetComp = ComponentName(pkg, icon.componentName)
-        try {
-            pm.setComponentEnabledSetting(
-                targetComp,
-                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                PackageManager.DONT_KILL_APP
-            )
-            Log.d(TAG, "Enabled ${icon.componentName}")
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to enable ${icon.componentName}: ${e.message}")
-        }
-
-        // Some launchers (Moto, certain AOSP forks) cache the icon aggressively
-        // and only refresh on an explicit MY_PACKAGE_REPLACED-style event.
-        // Toggling the target alias off then back on forces the system to emit
-        // a stronger PACKAGE_CHANGED that clears the launcher icon cache.
-        try {
-            pm.setComponentEnabledSetting(
-                targetComp,
-                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                PackageManager.DONT_KILL_APP
-            )
-            pm.setComponentEnabledSetting(
-                targetComp,
-                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                PackageManager.DONT_KILL_APP
-            )
-            Log.d(TAG, "Toggled ${icon.componentName} to force launcher cache invalidation")
-        } catch (e: Exception) {
-            Log.w(TAG, "Force-toggle failed for ${icon.componentName}: ${e.message}")
+            // 2. Disable all other aliases safely
+            AppIcon.entries.forEach { entry ->
+                if (entry == icon) return@forEach
+                val comp = ComponentName(pkg, entry.componentName)
+                try {
+                    val currentState = pm.getComponentEnabledSetting(comp)
+                    if (currentState != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
+                        pm.setComponentEnabledSetting(
+                            comp,
+                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                            PackageManager.DONT_KILL_APP,
+                        )
+                        Log.d(TAG, "Disabled alias ${entry.componentName}")
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to disable alias ${entry.componentName}: ${e.message}")
+                }
+            }
         }
     }
 }
