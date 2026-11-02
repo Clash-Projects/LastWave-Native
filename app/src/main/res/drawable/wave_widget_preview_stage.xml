@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <size android:width="300dp" android:height="300dp" />
+            <corners android:radius="28dp" />
+            <solid android:color="@color/wave_widget_background" />
+        </shape>
+    </item>
+    <item android:width="82dp" android:height="82dp" android:left="14dp" android:top="14dp" android:gravity="top|left" android:drawable="@drawable/wave_widget_preview_art" />
+    <item android:width="48dp" android:height="48dp" android:top="112dp" android:gravity="top|center_horizontal" android:drawable="@drawable/wave_widget_control_accent" />
+    <item android:width="128dp" android:height="42dp" android:left="14dp" android:bottom="62dp" android:gravity="bottom|left" android:drawable="@drawable/wave_widget_list_item" />
+    <item android:width="128dp" android:height="42dp" android:right="14dp" android:bottom="62dp" android:gravity="bottom|right" android:drawable="@drawable/wave_widget_list_item" />
+    <item android:width="128dp" android:height="42dp" android:left="14dp" android:bottom="14dp" android:gravity="bottom|left" android:drawable="@drawable/wave_widget_list_item" />
+    <item android:width="128dp" android:height="42dp" android:right="14dp" android:bottom="14dp" android:gravity="bottom|right" android:drawable="@drawable/wave_widget_list_item" />
+</layer-list>

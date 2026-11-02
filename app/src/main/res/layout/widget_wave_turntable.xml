@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/wave_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="2dp">
+
+    <FrameLayout
+        android:id="@+id/wave_widget_surface"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/wave_widget_surface"
+        android:padding="2dp">
+
+        <ImageView
+            android:id="@+id/wave_surface_image"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@null"
+            android:scaleType="fitXY"
+            android:src="@drawable/wave_widget_surface" />
+
+        <FrameLayout
+            android:id="@+id/wave_art_ring"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_gravity="center"
+            android:background="@drawable/wave_widget_vinyl_ring">
+
+            <ImageView
+                android:id="@+id/wave_ring_progress"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@null"
+                android:scaleType="fitXY" />
+
+            <ImageView
+                android:id="@+id/wave_art"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_gravity="center"
+                android:layout_margin="7dp"
+                android:contentDescription="@null"
+                android:scaleType="centerCrop"
+                android:src="@drawable/wave_widget_preview_art" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/wave_play"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="center"
+            android:background="@drawable/wave_widget_control_accent"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:id="@+id/wave_play_background"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@null"
+                android:scaleType="fitXY"
+                android:src="@drawable/wave_widget_control_accent" />
+
+            <ImageView
+                android:id="@+id/wave_play_icon"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_widget_play"
+                android:tint="@color/wave_widget_on_accent" />
+        </FrameLayout>
+    </FrameLayout>
+</FrameLayout>

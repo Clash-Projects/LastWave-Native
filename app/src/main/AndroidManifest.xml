@@ -257,6 +257,83 @@
                 android:resource="@xml/now_playing_widget_info" />
         </receiver>
 
+        <!-- Wave widgets: six purpose-built picker entries backed by one state model. -->
+        <receiver
+            android:name=".widget.wave.WaveTurntableWidgetProvider"
+            android:exported="false"
+            android:label="@string/wave_widget_turntable_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/wave_turntable_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.wave.WaveVinylWidgetProvider"
+            android:exported="false"
+            android:label="@string/wave_widget_vinyl_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/wave_vinyl_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.wave.WaveDeckWidgetProvider"
+            android:exported="false"
+            android:label="@string/wave_widget_deck_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/wave_deck_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.wave.WaveStageWidgetProvider"
+            android:exported="false"
+            android:label="@string/wave_widget_stage_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/wave_stage_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.wave.WavePillWidgetProvider"
+            android:exported="false"
+            android:label="@string/wave_widget_pill_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/wave_pill_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.wave.WaveStripWidgetProvider"
+            android:exported="false"
+            android:label="@string/wave_widget_strip_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/wave_strip_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.wave.WaveWidgetActionReceiver"
+            android:exported="false" />
+
         <!-- Receiver for cancel/reconnect actions on background-download notifications -->
         <receiver
             android:name=".data.download.DownloadCancelReceiver"

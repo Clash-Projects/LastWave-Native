@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="wave_widget_background">#FF0A1515</color>
+    <color name="wave_widget_on_background">#FFE4F0ED</color>
+    <color name="wave_widget_accent">#FFC9FB00</color>
+    <color name="wave_widget_on_accent">#FF182000</color>
+    <color name="wave_widget_container">#FF1C2A29</color>
+    <color name="wave_widget_muted">#FFAABAB6</color>
+    <color name="wave_widget_scrim">#77000000</color>
+</resources>

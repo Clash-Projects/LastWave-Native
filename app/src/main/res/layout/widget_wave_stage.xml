@@ -1,0 +1,349 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/wave_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="4dp">
+
+    <FrameLayout
+        android:id="@+id/wave_widget_surface"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/wave_widget_surface">
+
+        <ImageView
+            android:id="@+id/wave_surface_image"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@null"
+            android:scaleType="fitXY"
+            android:src="@drawable/wave_widget_surface" />
+
+        <ImageView
+            android:id="@+id/wave_backdrop"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@null"
+            android:scaleType="centerCrop"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:padding="10dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="72dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:id="@+id/wave_art"
+                    android:layout_width="72dp"
+                    android:layout_height="72dp"
+                    android:contentDescription="@null"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/wave_widget_preview_art" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:gravity="center_vertical"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/wave_title"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:fontFamily="@font/google_sans_flex"
+                        android:maxLines="1"
+                        android:text="@string/wave_widget_preview_title"
+                        android:textColor="@color/wave_widget_on_background"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/wave_artist"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:fontFamily="@font/google_sans_flex"
+                        android:maxLines="1"
+                        android:text="@string/wave_widget_preview_artist"
+                        android:textColor="@color/wave_widget_muted"
+                        android:textSize="13sp" />
+
+                    <ImageView
+                        android:id="@+id/wave_progress"
+                        android:layout_width="match_parent"
+                        android:layout_height="22dp"
+                        android:layout_marginTop="4dp"
+                        android:contentDescription="@null"
+                        android:scaleType="fitXY" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/wave_stage_controls"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="4dp"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <FrameLayout
+                    android:id="@+id/wave_shuffle"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/wave_widget_control_tonal">
+                    <ImageView
+                        android:id="@+id/wave_shuffle_icon"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_gravity="center"
+                        android:contentDescription="@string/wave_widget_shuffle"
+                        android:src="@drawable/ic_widget_shuffle"
+                        android:tint="@color/wave_widget_on_background" />
+                </FrameLayout>
+
+                <FrameLayout
+                    android:id="@+id/wave_previous"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/wave_widget_control_tonal">
+                    <ImageView
+                        android:id="@+id/wave_previous_icon"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_gravity="center"
+                        android:contentDescription="@string/desc_previous"
+                        android:src="@drawable/ic_widget_skip_previous"
+                        android:tint="@color/wave_widget_on_background" />
+                </FrameLayout>
+
+                <FrameLayout
+                    android:id="@+id/wave_play"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/wave_widget_control_accent">
+                    <ImageView
+                        android:id="@+id/wave_play_background"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:contentDescription="@null"
+                        android:scaleType="fitXY"
+                        android:src="@drawable/wave_widget_control_accent" />
+                    <ImageView
+                        android:id="@+id/wave_play_icon"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:layout_gravity="center"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_widget_play"
+                        android:tint="@color/wave_widget_on_accent" />
+                </FrameLayout>
+
+                <FrameLayout
+                    android:id="@+id/wave_next"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/wave_widget_control_tonal">
+                    <ImageView
+                        android:id="@+id/wave_next_icon"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_gravity="center"
+                        android:contentDescription="@string/desc_next"
+                        android:src="@drawable/ic_widget_skip_next"
+                        android:tint="@color/wave_widget_on_background" />
+                </FrameLayout>
+
+                <FrameLayout
+                    android:id="@+id/wave_repeat"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/wave_widget_control_tonal">
+                    <ImageView
+                        android:id="@+id/wave_repeat_icon"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_gravity="center"
+                        android:contentDescription="@string/wave_widget_repeat"
+                        android:src="@drawable/ic_widget_repeat"
+                        android:tint="@color/wave_widget_on_background" />
+                </FrameLayout>
+
+                <FrameLayout
+                    android:id="@+id/wave_like"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/wave_widget_control_tonal">
+                    <ImageView
+                        android:id="@+id/wave_like_icon"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_gravity="center"
+                        android:contentDescription="@string/wave_widget_like"
+                        android:src="@drawable/ic_wave_widget_favorite"
+                        android:tint="@color/wave_widget_on_background" />
+                </FrameLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/wave_stage_lists"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="6dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:id="@+id/wave_queue_column"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/wave_queue_heading"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="@font/google_sans_flex"
+                        android:text="@string/wave_widget_up_next"
+                        android:textColor="@color/wave_widget_on_background"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:layout_marginTop="4dp"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/wave_queue_1"
+                            style="@style/WaveWidgetListRow"
+                            android:layout_width="0dp"
+                            android:layout_height="48dp"
+                            android:layout_marginTop="0dp"
+                            android:layout_weight="1"
+                            android:text="@string/wave_widget_preview_next_one" />
+                        <TextView
+                            android:id="@+id/wave_queue_2"
+                            style="@style/WaveWidgetListRow"
+                            android:layout_width="0dp"
+                            android:layout_height="48dp"
+                            android:layout_marginStart="3dp"
+                            android:layout_marginTop="0dp"
+                            android:layout_weight="1"
+                            android:text="@string/wave_widget_preview_next_two" />
+                        <TextView
+                            android:id="@+id/wave_queue_3"
+                            style="@style/WaveWidgetListRow"
+                            android:layout_width="0dp"
+                            android:layout_height="48dp"
+                            android:layout_marginStart="3dp"
+                            android:layout_marginTop="0dp"
+                            android:layout_weight="1"
+                            android:text="@string/wave_widget_preview_next_three" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/wave_playlist_column"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/wave_playlist_heading"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="@font/google_sans_flex"
+                        android:text="@string/wave_widget_playlists"
+                        android:textColor="@color/wave_widget_on_background"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:layout_marginTop="4dp"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/wave_playlist_1"
+                            style="@style/WaveWidgetListRow"
+                            android:layout_width="0dp"
+                            android:layout_height="48dp"
+                            android:layout_marginTop="0dp"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:paddingStart="4dp"
+                            android:paddingEnd="4dp"
+                            android:text="@string/wave_widget_playlist_liked" />
+                        <TextView
+                            android:id="@+id/wave_playlist_2"
+                            style="@style/WaveWidgetListRow"
+                            android:layout_width="0dp"
+                            android:layout_height="48dp"
+                            android:layout_marginStart="3dp"
+                            android:layout_marginTop="0dp"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:paddingStart="4dp"
+                            android:paddingEnd="4dp"
+                            android:text="@string/wave_widget_playlist_recent" />
+                        <TextView
+                            android:id="@+id/wave_playlist_3"
+                            style="@style/WaveWidgetListRow"
+                            android:layout_width="0dp"
+                            android:layout_height="48dp"
+                            android:layout_marginStart="3dp"
+                            android:layout_marginTop="0dp"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:paddingStart="4dp"
+                            android:paddingEnd="4dp"
+                            android:text="@string/wave_widget_playlist_most_played" />
+                        <TextView
+                            android:id="@+id/wave_playlist_4"
+                            style="@style/WaveWidgetListRow"
+                            android:layout_width="0dp"
+                            android:layout_height="48dp"
+                            android:layout_marginStart="3dp"
+                            android:layout_marginTop="0dp"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:paddingStart="4dp"
+                            android:paddingEnd="4dp"
+                            android:text="@string/wave_widget_preview_playlist_four" />
+                        <TextView
+                            android:id="@+id/wave_playlist_5"
+                            style="@style/WaveWidgetListRow"
+                            android:layout_width="0dp"
+                            android:layout_height="48dp"
+                            android:layout_marginStart="3dp"
+                            android:layout_marginTop="0dp"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:paddingStart="4dp"
+                            android:paddingEnd="4dp"
+                            android:text="@string/wave_widget_preview_playlist_five" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+</FrameLayout>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <size android:width="220dp" android:height="64dp" />
+            <corners android:radius="32dp" />
+            <solid android:color="@color/wave_widget_background" />
+        </shape>
+    </item>
+    <item android:width="48dp" android:height="48dp" android:left="8dp" android:gravity="center_vertical|left" android:drawable="@drawable/wave_widget_preview_art" />
+    <item android:width="48dp" android:height="48dp" android:right="56dp" android:gravity="center_vertical|right" android:drawable="@drawable/wave_widget_control_accent" />
+    <item android:width="48dp" android:height="48dp" android:right="8dp" android:gravity="center_vertical|right" android:drawable="@drawable/wave_widget_control_tonal" />
+</layer-list>

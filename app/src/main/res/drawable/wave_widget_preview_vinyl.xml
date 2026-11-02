@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <size android:width="180dp" android:height="180dp" />
+            <corners android:radius="28dp" />
+            <gradient android:angle="315" android:startColor="@color/wave_widget_background" android:endColor="@color/wave_widget_container" />
+        </shape>
+    </item>
+    <item android:width="104dp" android:height="104dp" android:gravity="center" android:drawable="@drawable/wave_widget_vinyl_ring" />
+    <item android:width="90dp" android:height="90dp" android:gravity="center" android:drawable="@drawable/wave_widget_preview_art" />
+    <item android:width="48dp" android:height="48dp" android:gravity="center" android:drawable="@drawable/wave_widget_control_accent" />
+    <item android:width="22dp" android:height="22dp" android:gravity="center" android:drawable="@drawable/ic_widget_play" />
+</layer-list>

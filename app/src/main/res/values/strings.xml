@@ -6,6 +6,39 @@
     <string name="widget_obsidian_name">LastWave Obsidian Glass</string>
     <string name="widget_obsidian_description">Frosted obsidian glass player with translucent depth and crystal rim</string>
 
+    <!-- Wave home-screen widgets -->
+    <string name="wave_widget_turntable_name">Wave Turntable</string>
+    <string name="wave_widget_turntable_description">A one-cell artwork turntable with a centered play control</string>
+    <string name="wave_widget_vinyl_name">Wave Vinyl</string>
+    <string name="wave_widget_vinyl_description">A compact vinyl-inspired player with artwork and transport controls</string>
+    <string name="wave_widget_deck_name">Wave Deck</string>
+    <string name="wave_widget_deck_description">Now playing, progress, and complete playback controls</string>
+    <string name="wave_widget_stage_name">Wave Stage</string>
+    <string name="wave_widget_stage_description">A full music stage with your next three tracks and playlist shortcuts</string>
+    <string name="wave_widget_pill_name">Wave Pill</string>
+    <string name="wave_widget_pill_description">A small pill player for the current track</string>
+    <string name="wave_widget_strip_name">Wave Strip</string>
+    <string name="wave_widget_strip_description">A single-row player with artwork and transport controls</string>
+    <string name="wave_widget_nothing_playing">Nothing playing</string>
+    <string name="wave_widget_tap_to_open">Tap to play something</string>
+    <string name="wave_widget_play">Play</string>
+    <string name="wave_widget_pause">Pause</string>
+    <string name="wave_widget_like">Like</string>
+    <string name="wave_widget_shuffle">Shuffle</string>
+    <string name="wave_widget_repeat">Repeat</string>
+    <string name="wave_widget_up_next">Up next</string>
+    <string name="wave_widget_playlists">Playlists</string>
+    <string name="wave_widget_playlist_liked">Liked</string>
+    <string name="wave_widget_playlist_recent">Recent</string>
+    <string name="wave_widget_playlist_most_played">Most played</string>
+    <string name="wave_widget_preview_title">Midnight Current</string>
+    <string name="wave_widget_preview_artist">LastWave Radio</string>
+    <string name="wave_widget_preview_next_one">Afterglow &#183; Lumen</string>
+    <string name="wave_widget_preview_next_two">Low Tide &#183; Nocturne</string>
+    <string name="wave_widget_preview_next_three">Signal Bloom &#183; Arc</string>
+    <string name="wave_widget_preview_playlist_four">Focus mix</string>
+    <string name="wave_widget_preview_playlist_five">Night drive</string>
+
     <!-- Bottom navigation -->
     <string name="nav_feed">Feed</string>
     <string name="nav_stats">Stats</string>
