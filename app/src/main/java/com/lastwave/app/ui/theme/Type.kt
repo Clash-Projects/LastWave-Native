@@ -12,87 +12,63 @@ import androidx.compose.ui.unit.sp
 import com.lastwave.app.R
 
 /**
- * Clean Google Sans Flex font family matching the original LastWave architecture from the repository screenshots.
- * Standard glyph width (100f), no artificial corner rounding (0f), and crisp, sharp geometric letterforms.
- * Supports standard Material 3 weight tiers (Light 300, Normal 400, Medium 500, SemiBold 600, Bold 700, ExtraBold 800).
+ * Google Sans Flex, bundled as a real variable font (res/font/google_sans_flex.ttf)
+ * rather than looked up by device font name — every device gets the same
+ * look now, not just ones that happen to ship it as a system font.
+ *
+ * The file exposes 6 axes (checked via fonttools): wght 1-1000 (default
+ * 400), wdth 25-151 (default 100), opsz 6-144 (default 18), ROND 0-100,
+ * GRAD 0-100, slnt -10-0. Each text style below dials in its own
+ * wght/wdth/ROND/opsz combination instead of reusing one instance for the
+ * whole type scale - headlines lean heavier, a touch wider, and rounder
+ * (a confident, friendly "premium app" mark), body text stays close to the
+ * font's own default (readable, unobtrusive), and labels/buttons pick up
+ * extra roundness so pill-shaped chips and the text inside them read as
+ * one continuous shape language instead of a sharp glyph inside a soft
+ * container. Optical size is set per style to that style's own
+ * approximate font size, exactly what opsz exists for.
  */
-val LastWaveFontFamily = FontFamily(
+private fun gsFlex(
+    weight: Float,
+    width: Float = 100f,
+    round: Float = 0f,
+    opticalSize: Float,
+    grade: Float = 0f,
+): FontFamily = FontFamily(
     Font(
         R.font.google_sans_flex,
-        weight = FontWeight.Light,
+        weight = when {
+            weight >= 700f -> FontWeight.Bold
+            weight >= 600f -> FontWeight.SemiBold
+            weight >= 500f -> FontWeight.Medium
+            else -> FontWeight.Normal
+        },
         variationSettings = FontVariation.Settings(
-            FontVariation.weight(300),
-            FontVariation.width(100f),
-            FontVariation.Setting("ROND", 0f),
-        ),
-    ),
-    Font(
-        R.font.google_sans_flex,
-        weight = FontWeight.Normal,
-        variationSettings = FontVariation.Settings(
-            FontVariation.weight(400),
-            FontVariation.width(100f),
-            FontVariation.Setting("ROND", 0f),
-        ),
-    ),
-    Font(
-        R.font.google_sans_flex,
-        weight = FontWeight.Medium,
-        variationSettings = FontVariation.Settings(
-            FontVariation.weight(500),
-            FontVariation.width(100f),
-            FontVariation.Setting("ROND", 0f),
-        ),
-    ),
-    Font(
-        R.font.google_sans_flex,
-        weight = FontWeight.SemiBold,
-        variationSettings = FontVariation.Settings(
-            FontVariation.weight(600),
-            FontVariation.width(100f),
-            FontVariation.Setting("ROND", 0f),
-        ),
-    ),
-    Font(
-        R.font.google_sans_flex,
-        weight = FontWeight.Bold,
-        variationSettings = FontVariation.Settings(
-            FontVariation.weight(700),
-            FontVariation.width(100f),
-            FontVariation.Setting("ROND", 0f),
-        ),
-    ),
-    Font(
-        R.font.google_sans_flex,
-        weight = FontWeight.ExtraBold,
-        variationSettings = FontVariation.Settings(
-            FontVariation.weight(800),
-            FontVariation.width(100f),
-            FontVariation.Setting("ROND", 0f),
+            FontVariation.weight(weight.toInt()),
+            FontVariation.width(width),
+            FontVariation.Setting("ROND", round),
+            FontVariation.Setting("opsz", opticalSize),
+            FontVariation.Setting("GRAD", grade),
         ),
     ),
 )
 
-/**
- * Standard LastWave Typography matching the original screenshots and release build.
- * Active when "Use Bold Font" is disabled.
- */
 val LastWaveTypography = Typography(
-    displayLarge = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.Bold, fontSize = 57.sp, lineHeight = 64.sp),
-    displayMedium = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.Bold, fontSize = 45.sp, lineHeight = 52.sp),
-    displaySmall = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.Bold, fontSize = 36.sp, lineHeight = 44.sp),
-    headlineLarge = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.Bold, fontSize = 32.sp, lineHeight = 40.sp),
-    headlineMedium = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 36.sp),
-    headlineSmall = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.SemiBold, fontSize = 24.sp, lineHeight = 32.sp),
-    titleLarge = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, lineHeight = 28.sp),
-    titleMedium = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.Medium, fontSize = 16.sp, lineHeight = 24.sp),
-    titleSmall = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 20.sp),
-    bodyLarge = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.Normal, fontSize = 16.sp, lineHeight = 24.sp),
-    bodyMedium = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.Normal, fontSize = 15.sp, lineHeight = 22.sp),
-    bodySmall = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.Normal, fontSize = 13.sp, lineHeight = 18.sp),
-    labelLarge = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 20.sp),
-    labelMedium = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp),
-    labelSmall = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 16.sp),
+    displayLarge = TextStyle(fontFamily = gsFlex(weight = 760f, width = 122f, round = 42f, opticalSize = 57f), fontWeight = FontWeight.Bold, fontSize = 57.sp, lineHeight = 64.sp),
+    displayMedium = TextStyle(fontFamily = gsFlex(weight = 740f, width = 120f, round = 40f, opticalSize = 45f), fontWeight = FontWeight.Bold, fontSize = 45.sp, lineHeight = 52.sp),
+    displaySmall = TextStyle(fontFamily = gsFlex(weight = 720f, width = 118f, round = 38f, opticalSize = 36f), fontWeight = FontWeight.Bold, fontSize = 36.sp, lineHeight = 44.sp),
+    headlineLarge = TextStyle(fontFamily = gsFlex(weight = 800f, width = 122f, round = 40f, opticalSize = 32f), fontWeight = FontWeight.Bold, fontSize = 32.sp, lineHeight = 40.sp),
+    headlineMedium = TextStyle(fontFamily = gsFlex(weight = 780f, width = 120f, round = 38f, opticalSize = 28f), fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 36.sp),
+    headlineSmall = TextStyle(fontFamily = gsFlex(weight = 760f, width = 116f, round = 36f, opticalSize = 24f), fontWeight = FontWeight.Bold, fontSize = 24.sp, lineHeight = 32.sp),
+    titleLarge = TextStyle(fontFamily = gsFlex(weight = 640f, width = 110f, round = 30f, opticalSize = 22f), fontWeight = FontWeight.SemiBold, fontSize = 22.sp, lineHeight = 28.sp),
+    titleMedium = TextStyle(fontFamily = gsFlex(weight = 600f, width = 106f, round = 28f, opticalSize = 16f), fontWeight = FontWeight.SemiBold, fontSize = 16.sp, lineHeight = 24.sp),
+    titleSmall = TextStyle(fontFamily = gsFlex(weight = 580f, width = 105f, round = 26f, opticalSize = 14f), fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 20.sp),
+    bodyLarge = TextStyle(fontFamily = gsFlex(weight = 440f, width = 102f, round = 18f, opticalSize = 16f), fontWeight = FontWeight.Normal, fontSize = 16.sp, lineHeight = 24.sp),
+    bodyMedium = TextStyle(fontFamily = gsFlex(weight = 430f, width = 102f, round = 18f, opticalSize = 15f), fontWeight = FontWeight.Normal, fontSize = 15.sp, lineHeight = 22.sp),
+    bodySmall = TextStyle(fontFamily = gsFlex(weight = 420f, width = 100f, round = 16f, opticalSize = 13f), fontWeight = FontWeight.Normal, fontSize = 13.sp, lineHeight = 18.sp),
+    labelLarge = TextStyle(fontFamily = gsFlex(weight = 680f, width = 108f, round = 46f, opticalSize = 14f), fontWeight = FontWeight.Bold, fontSize = 14.sp, lineHeight = 20.sp),
+    labelMedium = TextStyle(fontFamily = gsFlex(weight = 660f, width = 108f, round = 44f, opticalSize = 12f), fontWeight = FontWeight.SemiBold, fontSize = 12.sp, lineHeight = 16.sp),
+    labelSmall = TextStyle(fontFamily = gsFlex(weight = 660f, width = 108f, round = 44f, opticalSize = 11f), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, lineHeight = 16.sp),
 )
 
 /**
@@ -100,27 +76,45 @@ val LastWaveTypography = Typography(
  * Activated when "Use Bold Font" is enabled in Appearance settings.
  */
 val LastWaveBoldTypography = Typography(
-    displayLarge = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.ExtraBold, fontSize = 57.sp, lineHeight = 64.sp),
-    displayMedium = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.ExtraBold, fontSize = 45.sp, lineHeight = 52.sp),
-    displaySmall = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.ExtraBold, fontSize = 36.sp, lineHeight = 44.sp),
-    headlineLarge = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.ExtraBold, fontSize = 32.sp, lineHeight = 40.sp),
-    headlineMedium = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 36.sp),
-    headlineSmall = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.Bold, fontSize = 24.sp, lineHeight = 32.sp),
-    titleLarge = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.Bold, fontSize = 22.sp, lineHeight = 28.sp),
-    titleMedium = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, lineHeight = 24.sp),
-    titleSmall = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 20.sp),
-    bodyLarge = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.Medium, fontSize = 16.sp, lineHeight = 24.sp),
-    bodyMedium = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.Medium, fontSize = 15.sp, lineHeight = 22.sp),
-    bodySmall = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.Medium, fontSize = 13.sp, lineHeight = 18.sp),
-    labelLarge = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.Bold, fontSize = 14.sp, lineHeight = 20.sp),
-    labelMedium = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, lineHeight = 16.sp),
-    labelSmall = TextStyle(fontFamily = LastWaveFontFamily, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, lineHeight = 16.sp),
+    displayLarge = TextStyle(fontFamily = gsFlex(weight = 880f, width = 126f, round = 45f, opticalSize = 57f), fontWeight = FontWeight.Bold, fontSize = 57.sp, lineHeight = 64.sp),
+    displayMedium = TextStyle(fontFamily = gsFlex(weight = 860f, width = 124f, round = 42f, opticalSize = 45f), fontWeight = FontWeight.Bold, fontSize = 45.sp, lineHeight = 52.sp),
+    displaySmall = TextStyle(fontFamily = gsFlex(weight = 840f, width = 122f, round = 40f, opticalSize = 36f), fontWeight = FontWeight.Bold, fontSize = 36.sp, lineHeight = 44.sp),
+    headlineLarge = TextStyle(fontFamily = gsFlex(weight = 900f, width = 125f, round = 42f, opticalSize = 32f), fontWeight = FontWeight.Bold, fontSize = 32.sp, lineHeight = 40.sp),
+    headlineMedium = TextStyle(fontFamily = gsFlex(weight = 880f, width = 124f, round = 40f, opticalSize = 28f), fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 36.sp),
+    headlineSmall = TextStyle(fontFamily = gsFlex(weight = 860f, width = 120f, round = 38f, opticalSize = 24f), fontWeight = FontWeight.Bold, fontSize = 24.sp, lineHeight = 32.sp),
+    titleLarge = TextStyle(fontFamily = gsFlex(weight = 760f, width = 114f, round = 34f, opticalSize = 22f), fontWeight = FontWeight.Bold, fontSize = 22.sp, lineHeight = 28.sp),
+    titleMedium = TextStyle(fontFamily = gsFlex(weight = 720f, width = 110f, round = 32f, opticalSize = 16f), fontWeight = FontWeight.Bold, fontSize = 16.sp, lineHeight = 24.sp),
+    titleSmall = TextStyle(fontFamily = gsFlex(weight = 700f, width = 108f, round = 30f, opticalSize = 14f), fontWeight = FontWeight.Bold, fontSize = 14.sp, lineHeight = 20.sp),
+    bodyLarge = TextStyle(fontFamily = gsFlex(weight = 560f, width = 104f, round = 22f, opticalSize = 16f), fontWeight = FontWeight.Medium, fontSize = 16.sp, lineHeight = 24.sp),
+    bodyMedium = TextStyle(fontFamily = gsFlex(weight = 540f, width = 104f, round = 22f, opticalSize = 15f), fontWeight = FontWeight.Medium, fontSize = 15.sp, lineHeight = 22.sp),
+    bodySmall = TextStyle(fontFamily = gsFlex(weight = 520f, width = 102f, round = 20f, opticalSize = 13f), fontWeight = FontWeight.Medium, fontSize = 13.sp, lineHeight = 18.sp),
+    labelLarge = TextStyle(fontFamily = gsFlex(weight = 800f, width = 112f, round = 48f, opticalSize = 14f), fontWeight = FontWeight.Bold, fontSize = 14.sp, lineHeight = 20.sp),
+    labelMedium = TextStyle(fontFamily = gsFlex(weight = 780f, width = 112f, round = 46f, opticalSize = 12f), fontWeight = FontWeight.Bold, fontSize = 12.sp, lineHeight = 16.sp),
+    labelSmall = TextStyle(fontFamily = gsFlex(weight = 780f, width = 112f, round = 46f, opticalSize = 11f), fontWeight = FontWeight.Bold, fontSize = 11.sp, lineHeight = 16.sp),
 )
 
 /**
- * Preserved for backwards compatibility.
+ * Clean, delicate thin font scale matching the original LastWave aesthetic from the reference screenshots.
+ * Standard glyph width (100f), no artificial rounding (0f), and thin, crisp letterforms.
+ * Activated when "Use Bold Font" is disabled.
  */
-val LastWaveThinTypography = LastWaveTypography
+val LastWaveThinTypography = Typography(
+    displayLarge = TextStyle(fontFamily = gsFlex(weight = 400f, width = 100f, round = 0f, opticalSize = 57f), fontWeight = FontWeight.Normal, fontSize = 57.sp, lineHeight = 64.sp),
+    displayMedium = TextStyle(fontFamily = gsFlex(weight = 400f, width = 100f, round = 0f, opticalSize = 45f), fontWeight = FontWeight.Normal, fontSize = 45.sp, lineHeight = 52.sp),
+    displaySmall = TextStyle(fontFamily = gsFlex(weight = 400f, width = 100f, round = 0f, opticalSize = 36f), fontWeight = FontWeight.Normal, fontSize = 36.sp, lineHeight = 44.sp),
+    headlineLarge = TextStyle(fontFamily = gsFlex(weight = 550f, width = 100f, round = 0f, opticalSize = 32f), fontWeight = FontWeight.SemiBold, fontSize = 32.sp, lineHeight = 40.sp),
+    headlineMedium = TextStyle(fontFamily = gsFlex(weight = 500f, width = 100f, round = 0f, opticalSize = 28f), fontWeight = FontWeight.Medium, fontSize = 28.sp, lineHeight = 36.sp),
+    headlineSmall = TextStyle(fontFamily = gsFlex(weight = 500f, width = 100f, round = 0f, opticalSize = 24f), fontWeight = FontWeight.Medium, fontSize = 24.sp, lineHeight = 32.sp),
+    titleLarge = TextStyle(fontFamily = gsFlex(weight = 500f, width = 100f, round = 0f, opticalSize = 22f), fontWeight = FontWeight.Medium, fontSize = 22.sp, lineHeight = 28.sp),
+    titleMedium = TextStyle(fontFamily = gsFlex(weight = 450f, width = 100f, round = 0f, opticalSize = 16f), fontWeight = FontWeight.Normal, fontSize = 16.sp, lineHeight = 24.sp),
+    titleSmall = TextStyle(fontFamily = gsFlex(weight = 440f, width = 100f, round = 0f, opticalSize = 14f), fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 20.sp),
+    bodyLarge = TextStyle(fontFamily = gsFlex(weight = 340f, width = 100f, round = 0f, opticalSize = 16f), fontWeight = FontWeight.Light, fontSize = 16.sp, lineHeight = 24.sp),
+    bodyMedium = TextStyle(fontFamily = gsFlex(weight = 320f, width = 100f, round = 0f, opticalSize = 15f), fontWeight = FontWeight.Light, fontSize = 15.sp, lineHeight = 22.sp),
+    bodySmall = TextStyle(fontFamily = gsFlex(weight = 300f, width = 100f, round = 0f, opticalSize = 13f), fontWeight = FontWeight.Light, fontSize = 13.sp, lineHeight = 18.sp),
+    labelLarge = TextStyle(fontFamily = gsFlex(weight = 450f, width = 100f, round = 0f, opticalSize = 14f), fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 20.sp),
+    labelMedium = TextStyle(fontFamily = gsFlex(weight = 420f, width = 100f, round = 0f, opticalSize = 12f), fontWeight = FontWeight.Normal, fontSize = 12.sp, lineHeight = 16.sp),
+    labelSmall = TextStyle(fontFamily = gsFlex(weight = 400f, width = 100f, round = 0f, opticalSize = 11f), fontWeight = FontWeight.Normal, fontSize = 11.sp, lineHeight = 16.sp),
+)
 
 /**
  * The "Use Application Font" toggle's off-state: plain platform default
