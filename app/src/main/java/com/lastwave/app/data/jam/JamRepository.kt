@@ -329,11 +329,15 @@ class JamRepository @Inject constructor(
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.d(TAG, "Jam WebSocket closed: $code / $reason")
+                stopPingLoop()
+                activeWebSocket = null
                 _sessionState.value = JamSessionState.Disconnected
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "Jam WebSocket error: ${t.message}", t)
+                stopPingLoop()
+                activeWebSocket = null
                 _sessionState.value = JamSessionState.Error(t.localizedMessage ?: "Connection failed")
             }
         })
