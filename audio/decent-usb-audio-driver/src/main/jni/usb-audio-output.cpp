@@ -562,8 +562,14 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioWrite(
     clock_gettime(CLOCK_MONOTONIC, &writeEnd);
     long writeUs = (writeEnd.tv_sec - writeStart.tv_sec) * 1000000L +
                    (writeEnd.tv_nsec - writeStart.tv_nsec) / 1000L;
-    // Log every call that took > 10ms, or every 100th call
-    if (writeUs > 10000 || writeCallCount % 100 == 0) {
+    // A write normally blocks for about as long as the audio it carries
+    // (the URB ring is full, so the DAC paces us). Logging every call over
+    // 10ms therefore logged EVERY write (~43 lines/s at 44.1k), burning CPU
+    // and flooding the diagnostics buffer. Only report real stalls (longer
+    // than twice the block's own duration plus 20ms) or a periodic heartbeat.
+    const long blockUs = ctx->sampleRate > 0
+            ? static_cast<long>((int64_t)totalFrames * 1000000LL / ctx->sampleRate) : 0L;
+    if (writeUs > blockUs * 2 + 20000L || writeCallCount % 2000 == 0) {
         LOGI("nativeWrite #%ld: %d samples, %ldus (%.1fms), inflight=%d",
              writeCallCount, totalSamples, writeUs, writeUs / 1000.0, ctx->urbsInFlight);
     }

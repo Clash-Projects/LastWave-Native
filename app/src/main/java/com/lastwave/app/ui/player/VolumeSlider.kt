@@ -282,7 +282,7 @@ fun VolumeSlider(
     isTranslucent: Boolean = false,
     primaryColor: Color = MaterialTheme.colorScheme.primary,
 ) {
-    val state by player.state.collectAsStateWithLifecycle()
+    val state by player.stateWithoutProgress.collectAsStateWithLifecycle()
     VolumeSlider(
         volume = state.appVolume,
         onVolumeChange = player::setAppVolume,

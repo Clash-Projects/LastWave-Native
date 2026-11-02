@@ -52,6 +52,7 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         StartupTrail.mark("app.onCreate.start")
+        runCatching { com.lastwave.app.util.AppVisibility.install(this) }
         // Sync per-app locale (Settings -> Language) before any UI is drawn.
         // AppCompat restores the last requested locale itself; the collector
         // inside keeps it in sync with DataStore afterwards.
