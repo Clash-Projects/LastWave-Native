@@ -121,7 +121,21 @@ class HybridMediaServer @Inject constructor(
         }
 
         private suspend fun run() {
-            val initRange = plan.initRange ?: error("hybrid plan has no init range")
+            val planInit = plan.initRange ?: error("hybrid plan has no init range")
+            // The CDN file carries its segment index (sidx) between the init
+            // and the first fragment; the plan's initRange stops before it.
+            // Without a sidx Media3 treats the fMP4 as unseekable and every
+            // seek snaps back to 0. When the segments are contiguous from
+            // there, fetch the gap too: the served file then keeps the
+            // original layout byte-for-byte, so the sidx offsets stay valid.
+            val firstStart = plan.ranges.firstOrNull()?.start ?: (planInit.end + 1)
+            val contiguous = plan.ranges.zipWithNext().all { (a, b) -> b.start == a.end + 1 }
+            val gap = firstStart - (planInit.end + 1)
+            val initRange = if (contiguous && planInit.start == 0L && gap in 1..MAX_INDEX_GAP_BYTES) {
+                HybridRange(planInit.start, firstStart - 1)
+            } else {
+                planInit
+            }
             if (plan.encrypted && plan.key.isBlank()) error("encrypted hybrid plan missing decryption key")
             val key = if (plan.key.isNotBlank()) HybridCenc.importContentKey(plan.key) else ByteArray(0)
             val constantIvPlan = if (plan.constantIv.isNotBlank()) {
@@ -305,5 +319,7 @@ class HybridMediaServer @Inject constructor(
         const val PARALLEL = 6
         const val MAX_SESSIONS = 16
         const val READ_WAIT_MS = 30_000L
+        /** Upper bound for the init→first-fragment gap we fetch as a segment index. */
+        const val MAX_INDEX_GAP_BYTES = 256L * 1024
     }
 }
