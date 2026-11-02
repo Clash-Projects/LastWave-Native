@@ -4072,6 +4072,8 @@ class InnerTubeMusicApi @Inject constructor(
         prefetchStreams: Boolean = false,
         excludedVideoId: String? = null,
         excludedVideoIds: Set<String> = emptySet(),
+        /** Catalog length of the wanted recording; favours the same cut. */
+        expectedDurationMs: Long? = null,
     ): YouTubeMusicTrack {
         val cleanArtist = artist.takeUnless { it.equals("Unknown artist", ignoreCase = true) }.orEmpty()
         val cacheKey = "${normalize(cleanArtist)}|${normalize(title)}"
@@ -4099,7 +4101,7 @@ class InnerTubeMusicApi @Inject constructor(
         }
         val best = validCandidates.asSequence()
             .filter(isCandidateMatch)
-            .maxByOrNull { candidate -> matchScore(candidate, title, cleanArtist) }
+            .maxByOrNull { candidate -> TextMatch.matchScore(candidate, title, cleanArtist, expectedDurationMs) }
             ?: (if (searchTitle != title.trim()) {
                 val fallbackResults = searchSongs(
                     query = listOf(title.trim(), cleanArtist).filter { it.isNotBlank() }.joinToString(" "),
@@ -4110,7 +4112,7 @@ class InnerTubeMusicApi @Inject constructor(
                     it.videoId.isNotBlank() && it.videoId != excludedVideoId && it.videoId !in excludedVideoIds
                 }.asSequence()
                     .filter(isCandidateMatch)
-                    .maxByOrNull { candidate -> matchScore(candidate, title, cleanArtist) }
+                    .maxByOrNull { candidate -> TextMatch.matchScore(candidate, title, cleanArtist, expectedDurationMs) }
             } else null)
             ?: throw IOException("No reliable YouTube Music match found for $title by $artist")
         return best.also {

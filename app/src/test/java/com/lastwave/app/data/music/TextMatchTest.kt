@@ -123,4 +123,32 @@ class TextMatchTest {
         assertEquals("Nijame Ne Chebutunna", TextMatch.baseTitle(titleWithFeat).trim())
         assertTrue(TextMatch.isSafeTitleMatch(titleWithFrom, titleWithFeat, "Sid Sriram"))
     }
+
+    @Test
+    fun originalBeatsAlternateCutsWithSameArtistAndAlbum() {
+        val art = "https://lh3.googleusercontent.com/x=w120"
+        val original = YouTubeMusicTrack("orig", "Headlights (feat. KIDDO)", "Alok & Alan Walker", "Headlights", art, 161)
+        val vip = YouTubeMusicTrack("vip", "Headlights (VIP) (feat. KIDDO)", "Alok & Alan Walker", "Headlights", art, 161)
+        val sped = YouTubeMusicTrack("sped", "Headlights (feat. KIDDO) - Sped Up", "Alok & Alan Walker", "Headlights", art, 128)
+        val wanted = "Headlights (feat. KIDDO)"
+        val artist = "Alok & Alan Walker"
+        val best = listOf(vip, sped, original).maxByOrNull { TextMatch.matchScore(it, wanted, artist, 161_000L) }
+        assertEquals("orig", best?.videoId)
+    }
+
+    @Test
+    fun durationPrefersTheSameRecording() {
+        val art = "https://lh3.googleusercontent.com/x=w120"
+        val albumCut = YouTubeMusicTrack("album", "Headlights", "Alan Walker", "Album", art, 161)
+        val extended = YouTubeMusicTrack("ext", "Headlights", "Alan Walker", "Album", art, 214)
+        assertTrue(
+            TextMatch.matchScore(albumCut, "Headlights", "Alan Walker", 160_000L) >
+                TextMatch.matchScore(extended, "Headlights", "Alan Walker", 160_000L),
+        )
+        // Unknown catalog length keeps the plain title/artist score.
+        assertEquals(
+            TextMatch.matchScore(albumCut, "Headlights", "Alan Walker"),
+            TextMatch.matchScore(albumCut, "Headlights", "Alan Walker", null),
+        )
+    }
 }

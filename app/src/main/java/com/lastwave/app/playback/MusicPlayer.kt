@@ -7315,6 +7315,7 @@ class MusicPlayer @Inject constructor(
                 title = track.title,
                 artist = track.artist,
                 prefetchStreams = false,
+                expectedDurationMs = track.durationMs,
             ).videoId.takeIf { it.isNotBlank() }
                 ?: throw java.io.IOException("No playable match found")
         } finally {
@@ -7352,6 +7353,7 @@ class MusicPlayer @Inject constructor(
                 title = track.title,
                 artist = track.artist,
                 prefetchStreams = false,
+                expectedDurationMs = track.durationMs,
             ).videoId.takeIf { it.isNotBlank() }
         } catch (failure: Throwable) {
             if (failure is kotlinx.coroutines.CancellationException) throw failure
