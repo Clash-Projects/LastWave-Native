@@ -230,6 +230,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                         }
                     }
                     override fun onPlayFromSearch(query: String?, extras: Bundle?) {
+                        promoteForPlayback()
                         playCarSearch(resolveCarSearchQuery(query, extras))
                     }
                 })
