@@ -58,7 +58,7 @@ class ArtistRepository @Inject constructor(
             coroutineScope {
             // Load InnerTube artist data in parallel with Last.fm metadata
             val innerTubeDeferred = async {
-                runCatching { resolvedId?.let { innerTube.fetchArtistPage(it, artistNameFallback = cleanName, onLoaded = onLoaded) } }.getOrNull()
+                runCatching { resolvedId?.let { innerTube.fetchArtistPage(it, artistNameFallback = cleanName, onLoaded = onLoaded, includeFullDiscography = true) } }.getOrNull()
             }
 
             val lastFmDeferred = async {

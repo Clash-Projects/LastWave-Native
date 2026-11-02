@@ -2376,6 +2376,9 @@ class InnerTubeMusicApi @Inject constructor(
         browseId: String,
         artistNameFallback: String = "",
         onLoaded: (com.lastwave.app.data.model.ArtistPageData) -> Unit = {},
+        /** Follow the Albums / Singles & EPs "more" pages for every release
+         *  (artist screen). Off for callers that only need a preview (feed). */
+        includeFullDiscography: Boolean = false,
     ): com.lastwave.app.data.model.ArtistPageData? = withContext(Dispatchers.IO) {
         if (browseId.isBlank()) return@withContext null
         val config = getWebConfig()
@@ -2427,6 +2430,10 @@ class InnerTubeMusicApi @Inject constructor(
         val albums = mutableListOf<com.lastwave.app.data.model.ArtistAlbumItem>()
         val singles = mutableListOf<com.lastwave.app.data.model.ArtistAlbumItem>()
         val similarArtists = mutableListOf<com.lastwave.app.data.model.ArtistSummaryItem>()
+        // The overview carousels only embed a preview (~10-15 releases); the
+        // shelf's "more" endpoint opens the complete discography grid.
+        var albumsMore: JsonObject? = null
+        var singlesMore: JsonObject? = null
 
         for (shelf in shelves) {
             val heading = shelf.obj("title")?.array("runs")?.joinToString("") { it.asObject()?.string("text").orEmpty() }
@@ -2511,9 +2518,11 @@ class InnerTubeMusicApi @Inject constructor(
                 // type so an unknown language can never lose a shelf.
                 classifyArtistShelf(heading) == ArtistShelf.ALBUMS -> {
                     albums.addAll(parseAlbumTwoRowItems(shelf, defaultType = "Album"))
+                    if (albumsMore == null) albumsMore = artistShelfMoreEndpoint(shelf)
                 }
                 classifyArtistShelf(heading) == ArtistShelf.SINGLES -> {
                     singles.addAll(parseAlbumTwoRowItems(shelf, defaultType = "Single"))
+                    if (singlesMore == null) singlesMore = artistShelfMoreEndpoint(shelf)
                 }
                 heading.contains("similar", ignoreCase = true) || heading.contains("fans", ignoreCase = true) || heading.contains("like", ignoreCase = true) -> {
                     similarArtists.addAll(parseArtistTwoRowItems(shelf))
@@ -2556,7 +2565,7 @@ class InnerTubeMusicApi @Inject constructor(
         // Catalog pages do not resolve audio. Playback resolves the selected
         // track and, at most, the next one.
 
-        com.lastwave.app.data.model.ArtistPageData(
+        fun pageData() = com.lastwave.app.data.model.ArtistPageData(
             name = title,
             browseId = browseId,
             artworkUrl = artworkUrl,
@@ -2568,6 +2577,31 @@ class InnerTubeMusicApi @Inject constructor(
             singles = singles.distinctBy { it.browseId.ifBlank { it.title } },
             similarArtists = similarArtists.distinctBy { it.browseId.ifBlank { it.name } },
         )
+
+        if (!includeFullDiscography || (albumsMore == null && singlesMore == null)) {
+            return@withContext pageData()
+        }
+        // Show the page with the overview previews right away; the complete
+        // release lists below then replace them without delaying first paint.
+        onLoaded(pageData())
+
+        // Complete Albums / Singles & EPs: follow both "more" endpoints in
+        // parallel. Any failure keeps the preview the overview already had.
+        val (fullAlbums, fullSingles) = kotlinx.coroutines.coroutineScope {
+            val a = async { albumsMore?.let { fetchArtistReleaseGrid(it, "Album") } }
+            val b = async { singlesMore?.let { fetchArtistReleaseGrid(it, "Single") } }
+            a.await() to b.await()
+        }
+        if (fullAlbums != null && fullAlbums.size > albums.size) {
+            albums.clear()
+            albums.addAll(fullAlbums)
+        }
+        if (fullSingles != null && fullSingles.size > singles.size) {
+            singles.clear()
+            singles.addAll(fullSingles)
+        }
+
+        pageData()
     }
 
     /** Loads and parses complete album details including ordered tracklist and metadata. */
@@ -2688,6 +2722,56 @@ class InnerTubeMusicApi @Inject constructor(
             otherAlbums = otherAlbums.distinctBy { it.browseId.ifBlank { it.title } },
         )
     }
+
+    /** "More" / "See all" browse endpoint of an artist overview shelf, if any. */
+    private fun artistShelfMoreEndpoint(shelf: JsonObject): JsonObject? =
+        shelf.obj("header")?.obj("musicCarouselShelfBasicHeaderRenderer")?.obj("moreContentButton")
+            ?.obj("buttonRenderer")?.obj("navigationEndpoint")?.obj("browseEndpoint")
+            ?: shelf.obj("header")?.obj("musicCarouselShelfBasicHeaderRenderer")?.obj("title")?.array("runs")
+                ?.firstOrNull()?.asObject()?.obj("navigationEndpoint")?.obj("browseEndpoint")
+            ?: shelf.obj("bottomEndpoint")?.obj("browseEndpoint")
+            ?: shelf.obj("title")?.array("runs")?.firstOrNull()?.asObject()?.obj("navigationEndpoint")?.obj("browseEndpoint")
+            ?: shelf.obj("bottomText")?.array("runs")?.firstOrNull()?.asObject()?.obj("navigationEndpoint")?.obj("browseEndpoint")
+
+    /**
+     * Full artist discography grid (e.g. "Singles & EPs" -> all releases)
+     * behind an overview shelf's more endpoint, following continuation
+     * pages. Returns null on failure so callers keep the preview.
+     */
+    private suspend fun fetchArtistReleaseGrid(
+        endpoint: JsonObject,
+        defaultType: String,
+    ): List<com.lastwave.app.data.model.ArtistAlbumItem>? = runCatching {
+        val moreBrowseId = endpoint.string("browseId")?.takeIf(String::isNotBlank) ?: return@runCatching null
+        val config = getWebConfig()
+        val first = post(
+            url = "$MUSIC_API/browse?key=${config.apiKey}&prettyPrint=false",
+            body = buildJsonObject {
+                put("context", context("WEB_REMIX", config.clientVersion, config.visitorData))
+                put("browseId", moreBrowseId)
+                endpoint.string("params")?.takeIf(String::isNotBlank)?.let { put("params", it) }
+            },
+            clientName = "WEB_REMIX",
+            clientVersion = config.clientVersion,
+            userAgent = WEB_USER_AGENT,
+        )
+        val releases = parseAlbumTwoRowItems(first, defaultType).toMutableList()
+        var token = genericContinuationToken(first)
+        var pages = 0
+        while (pages < ARTIST_RELEASE_MAX_PAGES) {
+            val current = token?.takeIf(String::isNotBlank) ?: break
+            val next = runCatching { browseContinuation(current, authenticated = false) }.getOrNull() ?: break
+            val more = parseAlbumTwoRowItems(next, defaultType)
+            if (more.isEmpty()) break
+            releases += more
+            token = genericContinuationToken(next)?.takeIf { it != current }
+            pages++
+        }
+        releases.distinctBy { it.browseId.ifBlank { it.title } }.takeIf { it.isNotEmpty() }
+    }.onFailure { error ->
+        if (error is kotlinx.coroutines.CancellationException) throw error
+        android.util.Log.w("InnerTubeMusicApi", "Artist release grid failed: ${error.message}")
+    }.getOrNull()
 
     private fun parseAlbumTwoRowItems(container: JsonObject, defaultType: String): List<com.lastwave.app.data.model.ArtistAlbumItem> {
         val items = mutableListOf<JsonObject>()
@@ -5439,6 +5523,8 @@ class InnerTubeMusicApi @Inject constructor(
     }
 
     private companion object {
+        /** Continuation pages followed for a full artist release grid. */
+        const val ARTIST_RELEASE_MAX_PAGES = 10
         /** Whole-word "EP" — a bare substring would also match "Reprise". */
         val EP_MARKER = Regex("(^|[^a-z])ep([^a-z]|$)")
         val LATIN_AMERICA_OR_SPAIN = setOf("ES", "MX", "AR", "CO", "CL", "PE", "VE", "EC", "GT", "CU", "BO", "DO", "HN", "PY", "SV", "NI", "CR", "PR", "PA", "UY")
