@@ -309,6 +309,10 @@ open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
 
     private fun handleNavigationIntent(intent: Intent?) {
         if (intent == null) return
+        if (intent.action == com.lastwave.app.widget.wave.WaveWidgetNavigation.ACTION_OPEN_NOW_PLAYING) {
+            com.lastwave.app.widget.wave.WaveWidgetNavigation.requestOpen()
+            return
+        }
         val uri = intent.data
         if (uri?.scheme == "lastwave" && (uri.host == "jam" || uri.host == "sync")) {
             val code = uri.getQueryParameter("code")

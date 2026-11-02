@@ -936,6 +936,20 @@ fun PlayerHost(
             }
         }
     }
+    LaunchedEffect(Unit) {
+        com.lastwave.app.widget.wave.WaveWidgetNavigation.requests.collect { requestId ->
+            if (requestId <= 0L) return@collect
+            val hasTrack = viewModel.player.state.value.current != null ||
+                withTimeoutOrNull(2_000L) {
+                    viewModel.player.state.first { it.current != null }
+                    true
+                } == true
+            if (hasTrack && com.lastwave.app.widget.wave.WaveWidgetNavigation.consume(requestId)) {
+                currentTab = FullPlayerTab.NOW_PLAYING
+                expanded = true
+            }
+        }
+    }
     val miniPlayerVisible = state.current != null && !expanded && !settings.buttonNowPlayingEnabled && !hideMiniPlayer
 
     // Sibling pattern: ONE backdrop capturing feed content,
