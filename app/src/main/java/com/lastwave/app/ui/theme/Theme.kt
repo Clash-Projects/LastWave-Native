@@ -95,8 +95,8 @@ fun LastWaveTheme(
         colorScheme = activeColorScheme,
         typography = when {
             !themeState.useCustomFont -> SystemTypography
-            themeState.useBoldFont -> LastWaveTypography
-            else -> LastWaveThinTypography
+            themeState.useBoldFont -> LastWaveBoldTypography
+            else -> LastWaveTypography
         },
         shapes = LastWaveShapes,
     ) {
