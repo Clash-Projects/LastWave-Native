@@ -2335,6 +2335,7 @@ class MusicPlayer @Inject constructor(
         sourceLabel: String = "LastWave",
         startRadio: Boolean = true,
         startPositionMs: Long = 0L,
+        playWhenReady: Boolean = true,
     ) {
         pendingRestoredSession = null
         disableDiscoverQueue()
@@ -2355,6 +2356,7 @@ class MusicPlayer @Inject constructor(
             startPositionMs = startPositionMs,
             sourceLabel = sourceLabel,
             endlessDiscover = false,
+            playWhenReady = playWhenReady,
         )
         if (radioAllowed) {
             _state.update { it.copy(isEndlessQueue = true) }
@@ -2465,6 +2467,7 @@ class MusicPlayer @Inject constructor(
         sourceLabel: String,
         endlessDiscover: Boolean,
         startShuffled: Boolean = false,
+        playWhenReady: Boolean = true,
     ) {
         val selectedTrack = tracks[selectedIndex].withYoutubeArtwork()
         PlaybackStartupLog.begin(
@@ -2512,7 +2515,7 @@ class MusicPlayer @Inject constructor(
                 sourceLabel = sourceLabel,
                 isEndlessQueue = endlessDiscover || radioQueueActive,
                 isBuffering = true,
-                isPlaying = true,
+                isPlaying = playWhenReady,
                 positionMs = startPositionMs.coerceAtLeast(0L),
                 // Seed duration so the main-player seek bar has a denominator
                 // from t=0 when one is known (repeat plays, enriched metadata,
@@ -2581,7 +2584,7 @@ class MusicPlayer @Inject constructor(
                     PlaybackStartupLog.prepareStart()
                     resetRenderWatchdog()
                     player.prepare()
-                    player.play()
+                    if (playWhenReady) player.play() else player.pause()
                     enrichUpcomingQueue(selectedIndex)
                     resolved?.let { stream ->
                         if (!stream.isLossless && stream.audioCodec != "DOLBY ATMOS") {
@@ -2637,7 +2640,7 @@ class MusicPlayer @Inject constructor(
                             }
                             player.repeatMode = _state.value.repeatMode
                             player.prepare()
-                            player.play()
+                            if (playWhenReady) player.play() else player.pause()
                             enrichUpcomingQueue(selectedIndex)
                             if (endlessDiscover) {
                                 appendMissingDiscoverTracks(discoverRepository.getCachedFeed().map(GeneratedTrack::toPlayableTrack))
