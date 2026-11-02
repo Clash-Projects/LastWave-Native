@@ -7,6 +7,11 @@ import android.content.IntentFilter
 import android.hardware.usb.UsbManager
 import androidx.core.content.ContextCompat
 import android.hardware.usb.UsbConstants
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.os.Handler
+import android.os.Looper
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +48,19 @@ class UsbExclusiveState @Inject constructor(
     ) { enabled, available -> enabled && available }
         .stateIn(scope, SharingStarted.Eagerly, false)
 
+    private val audioManager =
+        context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+
+    private val deviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
+            scope.launch { refresh() }
+        }
+
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+            scope.launch { refresh() }
+        }
+    }
+
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
@@ -62,6 +80,12 @@ class UsbExclusiveState @Inject constructor(
                     addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
                 },
                 ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+        }
+        runCatching {
+            audioManager?.registerAudioDeviceCallback(
+                deviceCallback,
+                Handler(Looper.getMainLooper()),
             )
         }
         scope.launch { refresh() }
