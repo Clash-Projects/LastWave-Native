@@ -284,6 +284,11 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                 // doing string work, artwork lookup and binder-state checks.
                 .distinctUntilChanged(::sameServiceState)
                 .collect { state ->
+                    com.lastwave.app.diagnostics.SessionMarker.noteActivity(
+                        this@MusicPlaybackService,
+                        playing = state.isPlaying,
+                        trackLoaded = state.current != null,
+                    )
                     updateWakeLocks(state)
                     requestArtwork(state.current)
                     publishSystemState(state)

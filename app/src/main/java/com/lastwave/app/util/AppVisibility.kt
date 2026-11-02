@@ -28,11 +28,15 @@ object AppVisibility {
         application.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
             override fun onActivityStarted(activity: Activity) {
                 startedActivities.incrementAndGet()
+                com.lastwave.app.diagnostics.SessionMarker.noteActivity(application, uiVisible = true)
             }
 
             override fun onActivityStopped(activity: Activity) {
                 // Never go negative if a callback is ever missed.
-                startedActivities.updateAndGet { (it - 1).coerceAtLeast(0) }
+                val left = startedActivities.updateAndGet { (it - 1).coerceAtLeast(0) }
+                if (left == 0) {
+                    com.lastwave.app.diagnostics.SessionMarker.noteActivity(application, uiVisible = false)
+                }
             }
 
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
