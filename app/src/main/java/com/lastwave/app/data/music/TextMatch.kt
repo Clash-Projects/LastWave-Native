@@ -25,6 +25,10 @@ internal object TextMatch {
         "acoustic", "demo", "edit", "remaster", "remastered", "mono", "stereo",
         "version", "deluxe", "bonus", "mix", "extended", "radio", "clean", "explicit",
         "original", "orchestral", "unplugged", "rerecorded", "anniversary", "edition",
+        // Alternate cuts that otherwise slipped past the variant penalty and
+        // could replace the original (e.g. "VIP", "8D", "Super Slowed").
+        "vip", "8d", "boosted", "bassboosted", "lofi", "phonk", "spedup", "reverb",
+        "hardstyle", "techno", "rework", "bootleg", "flip", "mashup", "reprise",
         // Same rendition markers in the languages this app serves, stored
         // normalized to match [normalize] output. They feed the subset matcher
         // and [matchScore]'s unexpected-variant penalty like the English ones.
@@ -160,6 +164,24 @@ internal object TextMatch {
         return sim >= 65
     }
 
+    /**
+     * [matchScore] plus agreement with the catalog duration. Alternate cuts
+     * (extended, sped-up, radio edits, re-recordings) usually differ by many
+     * seconds even when the title looks clean, so a near-exact length is a
+     * strong "same recording" signal.
+     */
+    fun matchScore(candidate: YouTubeMusicTrack, title: String, artist: String, expectedDurationMs: Long?): Int {
+        val base = matchScore(candidate, title, artist)
+        val expected = expectedDurationMs?.takeIf { it > 0 }?.div(1000L) ?: return base
+        val got = candidate.durationSeconds?.takeIf { it > 0 }?.toLong() ?: return base
+        val diff = kotlin.math.abs(got - expected)
+        return base + when {
+            diff <= 3 -> 300
+            diff <= 8 -> 100
+            else -> -minOf(900L, (diff - 8) * 25).toInt()
+        }
+    }
+
     fun matchScore(candidate: YouTubeMusicTrack, title: String, artist: String): Int {
         val wantedTitle = normalize(title)
         val wantedArtist = normalize(artist)
@@ -175,7 +197,9 @@ internal object TextMatch {
         if (wantedArtist.isNotBlank() && candidateArtist == wantedArtist) score += 350
         val wantedVariants = tokens(title).intersect(VARIANT_WORDS)
         val unexpectedVariants = tokens(candidate.title).intersect(VARIANT_WORDS) - wantedVariants
-        score -= unexpectedVariants.size * 250
+        // Strong enough that a remix / sped-up / VIP cut only wins when no
+        // clean version is available (was 250, smaller than other bonuses).
+        score -= unexpectedVariants.size * 600
         if (wantedArtist.isNotBlank()) {
             val artistContains = candidateArtist.contains(wantedArtist) || wantedArtist.contains(candidateArtist)
             val titleContainsArtist = candidateTitle.contains(wantedArtist)
