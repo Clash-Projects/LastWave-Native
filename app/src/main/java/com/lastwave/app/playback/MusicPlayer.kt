@@ -227,6 +227,11 @@ data class PlaybackChromeState(
     val isCrossfading: Boolean = false,
 )
 
+/** Copy without the fields the progress ticker rewrites every ~60ms. */
+internal fun MusicPlayerState.withoutProgress(): MusicPlayerState =
+    if (positionMs == 0L && bufferedPositionMs == 0L) this
+    else copy(positionMs = 0L, bufferedPositionMs = 0L)
+
 /** The small, frequently changing state consumed only by progress UI. */
 @androidx.compose.runtime.Immutable
 data class PlaybackProgressState(
@@ -327,7 +332,8 @@ class MusicPlayer @Inject constructor(
             player.clearMediaItems()
         }
         if (snapshot.current != null) ensureForegroundService()
-        _state.update { it.copy(isCasting = true) }
+        // While casting, the volume UI shows/controls the cast device.
+        _state.update { it.copy(isCasting = true, appVolume = castVolume) }
         return snapshot
     }
 
@@ -365,15 +371,16 @@ class MusicPlayer @Inject constructor(
         persistPlaybackSession()
     }
 
+    /**
+     * Cast device volume reported by the receiver. Kept separate from the
+     * local in-app volume: it used to overwrite and PERSIST [appVolume], so
+     * after one cast session (receivers often sit at 30-50%) local playback
+     * stayed attenuated and the phone's max volume was no longer loud.
+     */
     internal fun onCastVolumeChanged(volume: Float) = onMain {
         val clamped = volume.coerceIn(0f, 1f)
-        if (appVolume != clamped) {
-            appVolume = clamped
-            _state.update { it.copy(appVolume = clamped) }
-            applicationScope.launch {
-                settingsPreferences.setAppVolume(clamped)
-            }
-        }
+        castVolume = clamped
+        if (isCasting) _state.update { it.copy(appVolume = clamped) }
     }
 
     internal fun castTrackEnded() {
@@ -385,7 +392,8 @@ class MusicPlayer @Inject constructor(
     }
 
     internal fun finishCasting() {
-        _state.update { it.copy(isCasting = false, isPlaying = false, isBuffering = false) }
+        // Back to local output: show/use the local in-app volume again.
+        _state.update { it.copy(isCasting = false, isPlaying = false, isBuffering = false, appVolume = appVolume) }
         persistPlaybackSession()
     }
     private val playbackPreferences = appContext.getSharedPreferences(
@@ -543,10 +551,24 @@ class MusicPlayer @Inject constructor(
         }
         .distinctUntilChanged()
         .stateIn(applicationScope, SharingStarted.Eagerly, PlaybackProgressState())
+    /**
+     * [state] with the per-tick playhead fields zeroed. UI that only needs
+     * play/pause, volume, speed, sleep timer etc. collects this instead of
+     * [state], so it no longer recomposes on every 60ms progress tick
+     * (progress-driven UI reads [progressState] in leaf composables).
+     */
+    val stateWithoutProgress: StateFlow<MusicPlayerState> = state
+        .map { it.withoutProgress() }
+        .distinctUntilChanged()
+        .stateIn(applicationScope, SharingStarted.WhileSubscribed(5_000), _state.value.withoutProgress())
 
     private var errorRetryCount = 0
+    /** Local in-app playback volume (persisted). Never holds the cast level. */
     var appVolume: Float = 1f
         private set
+    /** Last volume of the cast receiver; only meaningful while casting. */
+    private var castVolume: Float = 1f
+    private var appVolumePersistJob: Job? = null
     private var retryMediaId: String? = null
     private val losslessBypassMediaIds = ConcurrentHashMap.newKeySet<String>()
     // Written by the settings collector, read on the main thread.
@@ -2190,7 +2212,17 @@ class MusicPlayer @Inject constructor(
                             // Preserve lazy player startup when there is no
                             // restored or active queue. The short-circuit
                             // avoids touching ExoPlayer.
-                            cadenceMs = if (_state.value.isPlaying) 60L else 500L
+                            // 60ms only matters for an on-screen seek bar /
+                            // lyrics. With no screen visible, a 250ms cadence
+                            // keeps notification, widget, scrobble and Jam
+                            // positions accurate while waking the CPU ~4x less.
+                            // Transitions keep full precision near the tail.
+                            val nearTransition = transitionActive && dur > 0L && dur - pos < 90_000L
+                            cadenceMs = when {
+                                !_state.value.isPlaying -> 500L
+                                com.lastwave.app.util.AppVisibility.isVisible || nearTransition -> 60L
+                                else -> BACKGROUND_TICKER_CADENCE_MS
+                            }
                             }
                         }
                     }
@@ -2205,10 +2237,15 @@ class MusicPlayer @Inject constructor(
         }
 
         applicationScope.launch {
+            runCatching { settingsPreferences.resetAppVolumeAfterCastFixOnce() }
             settingsPreferences.appVolume.collect { vol ->
                 onMain {
+                    // Ignore our own (debounced) writes coming back and any
+                    // stale value emitted while a newer one is pending.
+                    if (appVolumePersistJob?.isActive == true) return@onMain
+                    if (kotlin.math.abs(vol - appVolume) < 1e-4f && _state.value.appVolume == appVolume) return@onMain
                     appVolume = vol
-                    _state.update { it.copy(appVolume = vol) }
+                    _state.update { if (it.isCasting) it else it.copy(appVolume = vol) }
                     if (playerDelegate.isInitialized() && unduckedVolume == null) {
                         runCatching { player.volume = if (bitPerfectEnabled) 1f else vol }
                     }
@@ -2347,6 +2384,7 @@ class MusicPlayer @Inject constructor(
         sourceLabel: String = "LastWave",
         startRadio: Boolean = true,
         startPositionMs: Long = 0L,
+        playWhenReady: Boolean = true,
     ) {
         pendingRestoredSession = null
         disableDiscoverQueue()
@@ -2367,6 +2405,7 @@ class MusicPlayer @Inject constructor(
             startPositionMs = startPositionMs,
             sourceLabel = sourceLabel,
             endlessDiscover = false,
+            playWhenReady = playWhenReady,
         )
         if (radioAllowed) {
             _state.update { it.copy(isEndlessQueue = true) }
@@ -2477,6 +2516,7 @@ class MusicPlayer @Inject constructor(
         sourceLabel: String,
         endlessDiscover: Boolean,
         startShuffled: Boolean = false,
+        playWhenReady: Boolean = true,
     ) {
         val selectedTrack = tracks[selectedIndex].withYoutubeArtwork()
         PlaybackStartupLog.begin(
@@ -2524,7 +2564,7 @@ class MusicPlayer @Inject constructor(
                 sourceLabel = sourceLabel,
                 isEndlessQueue = endlessDiscover || radioQueueActive,
                 isBuffering = true,
-                isPlaying = true,
+                isPlaying = playWhenReady,
                 positionMs = startPositionMs.coerceAtLeast(0L),
                 // Seed duration so the main-player seek bar has a denominator
                 // from t=0 when one is known (repeat plays, enriched metadata,
@@ -2593,7 +2633,7 @@ class MusicPlayer @Inject constructor(
                     PlaybackStartupLog.prepareStart()
                     resetRenderWatchdog()
                     player.prepare()
-                    player.play()
+                    if (playWhenReady) player.play() else player.pause()
                     enrichUpcomingQueue(selectedIndex)
                     resolved?.let { stream ->
                         if (!stream.isLossless && stream.audioCodec != "DOLBY ATMOS") {
@@ -2649,7 +2689,7 @@ class MusicPlayer @Inject constructor(
                             }
                             player.repeatMode = _state.value.repeatMode
                             player.prepare()
-                            player.play()
+                            if (playWhenReady) player.play() else player.pause()
                             enrichUpcomingQueue(selectedIndex)
                             if (endlessDiscover) {
                                 appendMissingDiscoverTracks(discoverRepository.getCachedFeed().map(GeneratedTrack::toPlayableTrack))
@@ -3056,6 +3096,14 @@ class MusicPlayer @Inject constructor(
 
     fun setAppVolume(volume: Float) = onMain {
         val clamped = volume.coerceIn(0f, 1f)
+        if (isCasting) {
+            // Slider / volume keys drive the receiver only; local playback
+            // volume and its saved value stay untouched.
+            castVolume = clamped
+            _state.update { it.copy(appVolume = clamped) }
+            castPlayback?.setVolume(clamped)
+            return@onMain
+        }
         appVolume = clamped
         _state.update { it.copy(appVolume = clamped) }
         if (playerDelegate.isInitialized() && unduckedVolume == null) {
@@ -3063,10 +3111,13 @@ class MusicPlayer @Inject constructor(
         }
         runCatching { nativeAudioEngine.get().setOutputVolume(if (bitPerfectEnabled) 1f else clamped) }
         runCatching { autoMixCoordinator.get().setBaseVolume(clamped) }
-        if (isCasting) {
-            castPlayback?.setVolume(clamped)
-        }
-        applicationScope.launch {
+        // Persist once the slider settles, not on every drag event (60-120/s
+        // of DataStore writes). Each write also echoed back through the
+        // collector below, snapping the slider/volume to an older value
+        // mid-drag, which made the in-app volume feel jumpy.
+        appVolumePersistJob?.cancel()
+        appVolumePersistJob = applicationScope.launch {
+            delay(APP_VOLUME_PERSIST_DEBOUNCE_MS)
             settingsPreferences.setAppVolume(clamped)
         }
     }
@@ -7480,6 +7531,7 @@ class MusicPlayer @Inject constructor(
                 title = track.title,
                 artist = track.artist,
                 prefetchStreams = false,
+                expectedDurationMs = track.durationMs,
             ).videoId.takeIf { it.isNotBlank() }
                 ?: throw java.io.IOException("No playable match found")
         } finally {
@@ -7517,6 +7569,7 @@ class MusicPlayer @Inject constructor(
                 title = track.title,
                 artist = track.artist,
                 prefetchStreams = false,
+                expectedDurationMs = track.durationMs,
             ).videoId.takeIf { it.isNotBlank() }
         } catch (failure: Throwable) {
             if (failure is kotlinx.coroutines.CancellationException) throw failure
@@ -9251,6 +9304,10 @@ class MusicPlayer @Inject constructor(
         const val KEY_VOLUME_SAVED = "bitperfect_volume_saved"
         /** Ticker-driven session persistence cadence (explicit state changes persist immediately). */
         const val TICKER_PERSIST_INTERVAL_MS = 2_000L
+        /** Steady-state progress ticker cadence while no LastWave screen is visible. */
+        const val BACKGROUND_TICKER_CADENCE_MS = 250L
+        /** In-app volume is saved this long after the slider stops moving. */
+        const val APP_VOLUME_PERSIST_DEBOUNCE_MS = 400L
         /** Podcast resume-position checkpoint cadence. */
         const val PODCAST_PROGRESS_INTERVAL_MS = 10_000L
         /** Played ratio at (or past) which an episode counts as finished. */

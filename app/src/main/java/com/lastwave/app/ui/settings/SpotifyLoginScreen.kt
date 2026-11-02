@@ -279,6 +279,20 @@ fun SpotifyLoginScreen(
                                 }
 
                                 webViewClient = object : WebViewClient() {
+                                    // Renderer crashed or was reclaimed for memory: keep the app alive
+                                    // (the default kills the whole process) and drop the dead WebView,
+                                    // which must never be touched again.
+                                    override fun onRenderProcessGone(
+                                        view: WebView?,
+                                        detail: android.webkit.RenderProcessGoneDetail?,
+                                    ): Boolean {
+                                        runCatching {
+                                            (view?.parent as? android.view.ViewGroup)?.removeView(view)
+                                            view?.destroy()
+                                        }
+                                        return true
+                                    }
+
                                     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                                         super.onPageStarted(view, url, favicon)
                                         // Sub-frames (captcha, email hints)

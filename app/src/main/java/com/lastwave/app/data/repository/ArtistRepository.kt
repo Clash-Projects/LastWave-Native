@@ -48,8 +48,10 @@ class ArtistRepository @Inject constructor(
             // 1. Resolve browseId if missing
             if (targetBrowseId == null) {
                 val searchResults = runCatching { innerTube.searchArtists(cleanName, limit = 5) }.getOrNull().orEmpty()
-                val match = searchResults.firstOrNull { it.name.equals(cleanName, ignoreCase = true) }
-                    ?: searchResults.firstOrNull()
+                // Never fall back to "whatever ranked first": a near-miss
+                // search (common names, typos, features) opened a different
+                // artist's page. No confident match -> name-based songs below.
+                val match = pickArtistMatch(searchResults, cleanName)
                 targetBrowseId = match?.browseId
                 searchArtwork = match?.artworkUrl?.takeIf(ArtworkNormalizer::isRealImage)
             }
@@ -58,7 +60,7 @@ class ArtistRepository @Inject constructor(
             coroutineScope {
             // Load InnerTube artist data in parallel with Last.fm metadata
             val innerTubeDeferred = async {
-                runCatching { resolvedId?.let { innerTube.fetchArtistPage(it, artistNameFallback = cleanName, onLoaded = onLoaded) } }.getOrNull()
+                runCatching { resolvedId?.let { innerTube.fetchArtistPage(it, artistNameFallback = cleanName, onLoaded = onLoaded, includeFullDiscography = true) } }.getOrNull()
             }
 
             val lastFmDeferred = async {
@@ -254,4 +256,27 @@ class ArtistRepository @Inject constructor(
 
         (listOfNotNull(seedTrack) + relatedPlayable).distinctBy { it.videoId ?: it.title }
     }
+}
+
+/**
+ * The search result that is really [name]: identical once case, accents
+ * and punctuation are normalised (or with spacing removed: "AC/DC" vs
+ * "ACDC"), otherwise a very close spelling among the top results.
+ */
+internal fun pickArtistMatch(
+    results: List<com.lastwave.app.data.music.YouTubeMusicEntity>,
+    name: String,
+): com.lastwave.app.data.music.YouTubeMusicEntity? {
+    val want = com.lastwave.app.data.music.TextMatch.normalize(name)
+    if (want.isBlank()) return null
+    val wantCompact = want.replace(" ", "")
+    results.firstOrNull { com.lastwave.app.data.music.TextMatch.normalize(it.name) == want }?.let { return it }
+    results.firstOrNull {
+        com.lastwave.app.data.music.TextMatch.normalize(it.name).replace(" ", "") == wantCompact
+    }?.let { return it }
+    return results.take(3)
+        .map { it to com.lastwave.app.data.music.TextMatch.similarity(it.name, name) }
+        .filter { (_, score) -> score >= 90 }
+        .maxByOrNull { (_, score) -> score }
+        ?.first
 }

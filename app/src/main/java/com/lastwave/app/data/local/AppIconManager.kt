@@ -22,11 +22,8 @@ object AppIconManager {
             val targetComp = getComponent(context, icon.componentName)
             val state = pm.getComponentEnabledSetting(targetComp)
             if (icon == AppIcon.DEFAULT) {
-                val defaultAliasComp = getComponent(context, "com.lastwave.app.MainActivityDefault")
-                val defaultState = pm.getComponentEnabledSetting(defaultAliasComp)
-                (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED ||
-                    state == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT) ||
-                    (defaultState == PackageManager.COMPONENT_ENABLED_STATE_ENABLED)
+                state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED ||
+                    state == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
             } else {
                 state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
             }
@@ -55,13 +52,6 @@ object AppIconManager {
                     PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
                     PackageManager.DONT_KILL_APP,
                 )
-                if (icon == AppIcon.DEFAULT) {
-                    pm.setComponentEnabledSetting(
-                        defaultAliasComp,
-                        PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                        PackageManager.DONT_KILL_APP,
-                    )
-                }
                 Log.d(TAG, "Enabled target alias ${icon.componentName}")
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to enable target alias ${icon.componentName}: ${e.message}")
@@ -86,19 +76,21 @@ object AppIconManager {
                 }
             }
 
-            if (icon != AppIcon.DEFAULT) {
-                try {
-                    val defaultState = pm.getComponentEnabledSetting(defaultAliasComp)
-                    if (defaultState != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
-                        pm.setComponentEnabledSetting(
-                            defaultAliasComp,
-                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                            PackageManager.DONT_KILL_APP,
-                        )
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to disable MainActivityDefault alias: ${e.message}")
+            // Always ensure MainActivityDefault is disabled to prevent duplicate launcher icons
+            try {
+                val defaultState = pm.getComponentEnabledSetting(defaultAliasComp)
+                if (defaultState != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
+                    pm.setComponentEnabledSetting(
+                        defaultAliasComp,
+                        PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                        PackageManager.DONT_KILL_APP,
+                    )
                 }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to disable MainActivityDefault alias: ${e.message}")
+            }
+
+            if (icon != AppIcon.DEFAULT) {
                 try {
                     val legacyState = pm.getComponentEnabledSetting(legacyComp)
                     if (legacyState != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {

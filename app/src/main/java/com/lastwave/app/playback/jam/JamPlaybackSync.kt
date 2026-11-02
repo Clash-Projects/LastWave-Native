@@ -280,11 +280,8 @@ class JamPlaybackSync @Inject constructor(
                 sourceLabel = "LastWave Jam",
                 startRadio = false,
                 startPositionMs = positionMs,
+                playWhenReady = isPlaying,
             )
-
-            if (!isPlaying) {
-                musicPlayer.pause()
-            }
         } else {
             loadingTrackId = null
             quietUntilMs = SystemClock.elapsedRealtime() + 800L

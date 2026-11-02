@@ -1870,7 +1870,7 @@ private fun ArtistDetailView(
                     contentPadding = PaddingValues(horizontal = 2.dp),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    items(albums, key = { it.title }) { album ->
+                    itemsIndexed(albums, key = { index, album -> "${album.artist}_${album.title}_$index" }) { _, album ->
                         Card(
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),

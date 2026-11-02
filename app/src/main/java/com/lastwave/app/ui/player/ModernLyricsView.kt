@@ -151,6 +151,8 @@ import com.lastwave.app.playback.PlaybackProgressState
 import com.lastwave.app.ui.common.ExpressiveInlineLoadingIndicator
 import com.lastwave.app.ui.common.ExpressiveMotion
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
+import androidx.lifecycle.repeatOnLifecycle
 import java.util.Locale
 
 /** Which secondary script the floating buttons currently draw under each
@@ -177,6 +179,11 @@ private const val LYRIC_SCROLL_MAX_MS = 500f
 /** Sub-line reveal: slightly unhurried in, clipped and quick out. */
 private const val LYRIC_SUBLINE_OPEN_MS = 460
 private const val LYRIC_SUBLINE_CLOSE_MS = 260
+
+/** Line-synced clock: longest gap it bridges with a timed wake before the
+ *  next playhead sample (samples arrive every ~60ms while visible); the
+ *  same 250ms cap the frame clock uses for extrapolation. */
+private const val LINE_BOUNDARY_WAKE_WINDOW_MS = 250L
 
 @Composable
 fun ModernLyricsPanel(
@@ -900,9 +907,9 @@ private fun ModernSyncedLyricsList(
                     onsetProgress.snapTo(0f)
                 }
             }
-            val onsetWave = if (isActive && isPlaying && onsetProgress.value in 0.001f..0.999f) {
-                kotlin.math.sin(Math.PI.toFloat() * onsetProgress.value)
-            } else 0f
+            // Read per frame inside graphicsLayer only: reading the animated
+            // value here recomposed the active row on every frame for 480ms.
+            val onsetActive = isActive && isPlaying
 
             val translationYTarget = if (isActive) -3.5f else if (isPast) -1.5f else 3.5f
             val translationYState = animateFloatAsState(
@@ -918,13 +925,22 @@ private fun ModernSyncedLyricsList(
                         .fillMaxWidth()
                         .padding(top = if (isNewStanza) 22.dp else 0.dp)
                         .graphicsLayer {
+                            val onset = onsetProgress.value
+                            val onsetWave = if (onsetActive && onset in 0.001f..0.999f) {
+                                kotlin.math.sin(Math.PI.toFloat() * onset)
+                            } else 0f
                             val totalScale = scaleState.value * (1f + 0.020f * onsetWave)
                             transformOrigin = TransformOrigin(if (isLineRtl) 1f else 0f, 0.5f)
                             scaleX = totalScale
                             scaleY = totalScale
                             this.translationY = (translationYState.value + trail.value) * density
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                                val r = blurRadiusState.value * density
+                                // Snap the animated radius to 0.5px steps: the
+                                // difference is invisible, but an unchanged
+                                // radius lets the RenderThread reuse the blurred
+                                // layer instead of re-blurring every row on every
+                                // frame of the 380ms depth-of-field transition.
+                                val r = kotlin.math.round(blurRadiusState.value * density * 2f) / 2f
                                 renderEffect = if (r > 0.3f) BlurEffect(r, r) else null
                             }
                             this.alpha = alphaState.value * if (isBgRow) (if (isActive) 0.85f else 0.55f) else 1f
@@ -1090,6 +1106,7 @@ private fun ModernWordByWordLine(
             }
         }
         val gradientBounds = remember { FloatArray(2) { -1f } }
+        val maskGradients = remember { KaraokeMaskGradients() }
         var gradientIsRtl by remember { mutableStateOf<Boolean?>(null) }
 
         Column(
@@ -1202,12 +1219,8 @@ private fun ModernWordByWordLine(
                                         gradientBounds[0] = xStart
                                         gradientBounds[1] = xEnd
                                         gradientIsRtl = true
-                                        maskPaint.shader = android.graphics.LinearGradient(
-                                            xStart, 0f, xEnd, 0f,
-                                            android.graphics.Color.TRANSPARENT,
-                                            android.graphics.Color.WHITE,
-                                            android.graphics.Shader.TileMode.CLAMP,
-                                        )
+                                        maskPaint.shader = null // re-bind so the moved local matrix is picked up on every API level
+                                        maskPaint.shader = maskGradients.place(rtl = true, xStart, xEnd)
                                     }
                                     canvas.drawRect(xStart, top, xEnd, bottom, maskPaint)
                                 }
@@ -1222,12 +1235,8 @@ private fun ModernWordByWordLine(
                                         gradientBounds[0] = xStart
                                         gradientBounds[1] = xEnd
                                         gradientIsRtl = false
-                                        maskPaint.shader = android.graphics.LinearGradient(
-                                            xStart, 0f, xEnd, 0f,
-                                            android.graphics.Color.WHITE,
-                                            android.graphics.Color.TRANSPARENT,
-                                            android.graphics.Shader.TileMode.CLAMP,
-                                        )
+                                        maskPaint.shader = null // re-bind so the moved local matrix is picked up on every API level
+                                        maskPaint.shader = maskGradients.place(rtl = false, xStart, xEnd)
                                     }
                                     canvas.drawRect(xStart, top, xEnd, bottom, maskPaint)
                                 }
@@ -1240,6 +1249,37 @@ private fun ModernWordByWordLine(
                 )
             }
         }
+    }
+}
+
+/**
+ * Feather gradients for the karaoke wipe. The edge moves every frame, and a
+ * fresh LinearGradient per frame churned the GC during word-synced lyrics.
+ * Instead one unit-width gradient per direction is created once and only its
+ * local matrix is moved/stretched to [xStart, xEnd]; CLAMP tiling makes it
+ * render identically to a gradient built at those coordinates.
+ */
+private class KaraokeMaskGradients {
+    private val ltr = android.graphics.LinearGradient(
+        0f, 0f, 1f, 0f,
+        android.graphics.Color.WHITE,
+        android.graphics.Color.TRANSPARENT,
+        android.graphics.Shader.TileMode.CLAMP,
+    )
+    private val rtl = android.graphics.LinearGradient(
+        0f, 0f, 1f, 0f,
+        android.graphics.Color.TRANSPARENT,
+        android.graphics.Color.WHITE,
+        android.graphics.Shader.TileMode.CLAMP,
+    )
+    private val matrix = android.graphics.Matrix()
+
+    fun place(rtl: Boolean, xStart: Float, xEnd: Float): android.graphics.Shader {
+        val shader = if (rtl) this.rtl else ltr
+        matrix.setScale((xEnd - xStart).coerceAtLeast(0.001f), 1f)
+        matrix.postTranslate(xStart, 0f)
+        shader.setLocalMatrix(matrix)
+        return shader
     }
 }
 
@@ -1400,25 +1440,56 @@ private fun SyncedLyricsProgressHost(
     displayMode: LyricsDisplayMode = LyricsDisplayMode.Original,
     modifier: Modifier = Modifier,
 ) {
-    val progress by progressFlow.collectAsStateWithLifecycle(initialValue = progressInitial)
-    val latestSampleMs by rememberUpdatedState(progress.positionMs)
+    // The ~60ms playhead samples are kept in a state that is only read from
+    // the frame clock / snapshotFlow below, never during composition, so a
+    // progress tick no longer recomposes this host and re-runs the list.
+    val latestSample = remember { mutableLongStateOf(progressInitial.positionMs) }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    LaunchedEffect(progressFlow, lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            progressFlow.collect { latestSample.longValue = it.positionMs }
+        }
+    }
     val offsetState by rememberUpdatedState(lyricsOffsetMs)
-    val framePositionMs = remember { mutableLongStateOf(progress.positionMs) }
+    val framePositionMs = remember { mutableLongStateOf(progressInitial.positionMs) }
     // Vsync clock (90/120Hz): advances by real frame time and is steered
     // toward the ExoPlayer playhead (sampled every ~60ms). Never runs
     // backwards on normal drift; snaps instantly on seeks/track changes.
-    LaunchedEffect(state.isPlaying) {
+    // Line-synced lyrics only change focus at line starts, so they do not need
+    // a 90/120Hz frame loop (which kept the main thread and GPU awake for the
+    // whole song). They follow each playhead sample and additionally wake
+    // exactly on the next line boundary, so focus still moves on time.
+    // Word-synced lyrics keep the per-frame clock for the karaoke wipe.
+    val lineSyncedOnly = remember(lines) { lines.none { it.hasSyllables } }
+    LaunchedEffect(state.isPlaying, lineSyncedOnly, if (lineSyncedOnly) lines else null) {
         if (!state.isPlaying) {
-            snapshotFlow { latestSampleMs }.collect { framePositionMs.longValue = it }
+            snapshotFlow { latestSample.longValue }.collect { framePositionMs.longValue = it }
             return@LaunchedEffect
         }
-        var lastSample = latestSampleMs
+        if (lineSyncedOnly) {
+            snapshotFlow { latestSample.longValue }.collectLatest { sample ->
+                // Like the frame clock: never step back on small jitter
+                // (a boundary wake may run a few ms ahead of the next
+                // sample), but follow seeks immediately.
+                val shown = framePositionMs.longValue
+                framePositionMs.longValue = if (sample < shown && shown - sample <= 300L) shown else sample
+                val shifted = sample + offsetState
+                val next = lines.getOrNull(activeLineIndex(lines, shifted) + 1) ?: return@collectLatest
+                val waitMs = next.timeMs - shifted
+                if (waitMs in 1L..LINE_BOUNDARY_WAKE_WINDOW_MS) {
+                    delay(waitMs)
+                    framePositionMs.longValue = sample + waitMs
+                }
+            }
+            return@LaunchedEffect
+        }
+        var lastSample = latestSample.longValue
         var sampleFrameNanos = -1L
         var lastFrameNanos = -1L
-        var display = latestSampleMs.toDouble()
+        var display = latestSample.longValue.toDouble()
         while (true) {
             withFrameNanos { now ->
-                val sample = latestSampleMs
+                val sample = latestSample.longValue
                 if (sample != lastSample || sampleFrameNanos < 0L) {
                     lastSample = sample
                     sampleFrameNanos = now

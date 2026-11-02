@@ -99,8 +99,24 @@ fun CanvasVideoPlayer(
             }
     }
 
+    // TextureView ignores videoScalingMode and stretches every frame to its
+    // bounds, distorting clips whose shape differs from the container (a
+    // wide motion clip in a tall artist header). Center-crop it ourselves
+    // with a transform that keeps the real aspect ratio.
+    var textureView by remember { mutableStateOf<TextureView?>(null) }
+    var videoAspect by remember { mutableStateOf(0f) }
+
     DisposableEffect(player) {
         val listener = object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                if (videoSize.width <= 0 || videoSize.height <= 0) return
+                val w = videoSize.width * videoSize.pixelWidthHeightRatio
+                val h = videoSize.height.toFloat()
+                val rotated = videoSize.unappliedRotationDegrees % 180 != 0
+                videoAspect = if (rotated) h / w else w / h
+                textureView?.let { applyCenterCrop(it, videoAspect) }
+            }
+
             override fun onRenderedFirstFrame() {
                 isRendered = true
                 onReady()
@@ -161,8 +177,13 @@ fun CanvasVideoPlayer(
                     )
                     isOpaque = false
                     player.setVideoTextureView(this)
+                    addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+                        applyCenterCrop(view as TextureView, videoAspect)
+                    }
+                    textureView = this
                 }
             },
+            update = { view -> applyCenterCrop(view, videoAspect) },
         )
 
         if (enableScrim) {
@@ -182,3 +203,25 @@ fun CanvasVideoPlayer(
         }
     }
 }
+
+/**
+ * Scales the (stretched-to-bounds) TextureView content so the video keeps
+ * its own aspect ratio and fills the view, cropping the overflow evenly
+ * (the TextureView equivalent of ContentScale.Crop).
+ */
+private fun applyCenterCrop(view: TextureView, videoAspect: Float) {
+    val viewW = view.width.toFloat()
+    val viewH = view.height.toFloat()
+    if (viewW <= 0f || viewH <= 0f || videoAspect <= 0f) return
+    val viewAspect = viewW / viewH
+    val matrix = android.graphics.Matrix()
+    if (videoAspect > viewAspect) {
+        // Video is wider than the view: keep full height, widen and crop sides.
+        matrix.setScale(videoAspect / viewAspect, 1f, viewW / 2f, viewH / 2f)
+    } else {
+        // Video is taller than the view: keep full width, heighten and crop top/bottom.
+        matrix.setScale(1f, viewAspect / videoAspect, viewW / 2f, viewH / 2f)
+    }
+    view.setTransform(matrix)
+}
+
