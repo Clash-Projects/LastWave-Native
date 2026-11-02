@@ -400,6 +400,11 @@ class LosslessMusicApi @Inject constructor(
             "커버", "라이브", "리믹스",
         ) + LANGUAGE_TOKENS
 
+        /** Markers for a singer's own cut of the same song ("Reprise - Female", "Female Version"). */
+        private val SOFT_VERSION_WORDS = setOf("reprise", "version")
+        private const val SOFT_VERSION_MAX_DURATION_DIFF = 5
+        private const val SOFT_VERSION_PENALTY = 400
+
         private val NEUTRAL_SEGMENTS = setOf(
             "albumversion", "originalversion", "originalmix", "singleversion",
             "radioversion", "radioedit", "stereoversion", "monoversion",
@@ -496,14 +501,24 @@ class LosslessMusicApi @Inject constructor(
 
             // 0. Pipe-separated video titles put the song first:
             // "Vaaroon Forever (Official Video) | Mirzapur The Movie | Shreya Ghoshal | Romy"
-            // Keep the first segment that is not just the artist; the rest is context.
-            if ('|' in text) {
+            // Keep the first segment that is not ONLY the artist/album (a segment
+            // merely containing the artist, "Arijit Singh: Tum Hi Ho", is the song).
+            // Later segments are context; they count as a version only when they
+            // are nothing but version words ("Remix"), so a trailing genre tag
+            // like "Hindi Love song" never becomes a version marker.
+            val wasPipeTitle = '|' in text
+            if (wasPipeTitle) {
                 val segments = text.split('|').map { it.trim() }.filter { it.isNotBlank() }
                 if (segments.size > 1) {
-                    val titleIndex = segments.indexOfFirst { !isArtistOrAlbumName(it, artist, album) }
+                    val titleIndex = segments.indexOfFirst { !isOnlyArtistOrAlbum(it, artist, album) }
                         .takeIf { it >= 0 } ?: 0
                     segments.forEachIndexed { i, segment ->
-                        if (i != titleIndex) classifySegment(segment, versions, context)
+                        if (i == titleIndex) return@forEachIndexed
+                        if (isPureVersionSegment(segment)) {
+                            classifySegment(segment, versions, context)
+                        } else {
+                            context += segmentWords(segment).filter { it.length > 2 && it !in NOISE_WORDS }
+                        }
                     }
                     text = segments[titleIndex]
                 } else if (segments.size == 1) {
@@ -563,6 +578,15 @@ class LosslessMusicApi @Inject constructor(
                 words = words.dropLast(1)
             }
 
+            // Video titles often append the singer after the song:
+            // "Heeriye (Official Video) Jasleen Royal ft Arijit Singh | ...".
+            if (wasPipeTitle) {
+                val artistWords = segmentWords(artist.lowercase(Locale.ROOT)).filter { it !in JOINING_WORDS }
+                while (words.size > 1 && words.last() in artistWords) {
+                    words = words.dropLast(1)
+                }
+            }
+
             return TitleParts(
                 words = words,
                 core = words.joinToString(""),
@@ -590,6 +614,27 @@ class LosslessMusicApi @Inject constructor(
                 return
             }
             context += words.filter { it.length > 2 && it !in NOISE_WORDS }
+        }
+
+        private fun segmentWords(segment: String): List<String> =
+            segment.split(Regex("""[\s.·/,:&+]+"""))
+                .map { it.replace(NON_ALPHANUMERIC, "") }
+                .filter { it.isNotEmpty() }
+
+        /** Every word belongs to the artist (or album) name: "Arijit Singh", "Arijit S, Shilpa R" is not. */
+        private fun isOnlyArtistOrAlbum(segment: String, artist: String, album: String?): Boolean {
+            val words = segmentWords(segment).filter { it !in JOINING_WORDS }
+            if (words.isEmpty()) return true
+            val known = (segmentWords(artist.lowercase(Locale.ROOT)) +
+                segmentWords(album.orEmpty().lowercase(Locale.ROOT))).toSet()
+            return known.isNotEmpty() && words.all { it in known }
+        }
+
+        /** "Remix", "Slowed + Reverb", "Lofi Version": only version/noise words. */
+        private fun isPureVersionSegment(segment: String): Boolean {
+            val words = segmentWords(segment)
+            return words.any { it in VERSION_WORDS } &&
+                words.all { it in VERSION_WORDS || it in NOISE_WORDS || it in NEUTRAL_SEGMENTS }
         }
 
         private fun isSegmentMetadata(segment: String): Boolean {
@@ -1282,9 +1327,20 @@ class LosslessMusicApi @Inject constructor(
         // And asking for remix must never land on original cut.
         val albumMarks = albumVersionMarkers(item.albumTitle)
         val effectiveVersions = got.versions + (albumMarks intersect wanted.versions)
+        // A singer's own cut is often catalogued as "Saiyaara Reprise - Female"
+        // while the player shows just "Saiyaara" by Shreya Ghoshal. Extra
+        // soft markers (reprise/female/male/version) are tolerated, but only
+        // with a verified artist credit and a matching length (checked below),
+        // and with a penalty so an exact-version master always wins.
+        var softVersionOnly = false
         if (wanted.versions != effectiveVersions) {
-            Log.d(TAG, "reject candidate id=${item.id}: version mismatch wanted=${wanted.versions} got=$effectiveVersions for '$title'")
-            return null
+            val extra = effectiveVersions - wanted.versions
+            softVersionOnly = (wanted.versions - effectiveVersions).isEmpty() &&
+                extra.isNotEmpty() && extra.all { it in SOFT_VERSION_WORDS }
+            if (!softVersionOnly) {
+                Log.d(TAG, "reject candidate id=${item.id}: version mismatch wanted=${wanted.versions} got=$effectiveVersions for '$title'")
+                return null
+            }
         }
 
         // Severe mismatches (karaoke, instrumental, tribute, cover)
@@ -1332,6 +1388,10 @@ class LosslessMusicApi @Inject constructor(
 
         if (!hasArtistMatch && !creditDisagreeOverride) {
             Log.d(TAG, "reject candidate id=${item.id}: artist mismatch target='$matchArtist' performer='${item.performerName}' for '$title'")
+            return null
+        }
+        if (softVersionOnly && (!hasArtistMatch || (durationDifference != null && durationDifference > SOFT_VERSION_MAX_DURATION_DIFF))) {
+            Log.d(TAG, "reject candidate id=${item.id}: soft version ${got.versions} needs artist credit and length within ${SOFT_VERSION_MAX_DURATION_DIFF}s (artist=$hasArtistMatch Δ=${durationDifference}s) for '$title'")
             return null
         }
 
@@ -1399,6 +1459,7 @@ class LosslessMusicApi @Inject constructor(
             }
         }
         durationDifference?.let { score += (maxDurationDifference - it) * 5 }
+        if (softVersionOnly) score -= SOFT_VERSION_PENALTY
         return score
     }
 
