@@ -7,6 +7,8 @@
     <string name="widget_obsidian_description">Lettore in vetro ossidiana smerigliato, con profondità traslucida e bordo cristallino</string>
 
     <!-- Bottom navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_discover">Scopri</string>
     <string name="nav_feed">Home</string>
     <string name="nav_stats">Statistiche</string>
     <string name="nav_playlists">Playlist</string>
@@ -1140,4 +1142,3 @@
     <string name="lyshare_accessibility_line_selected">Selezionata, riga %1$d di %2$d</string>
     <string name="lyshare_accessibility_line_unselected">Riga %1$d di %2$d</string>
 </resources>
-

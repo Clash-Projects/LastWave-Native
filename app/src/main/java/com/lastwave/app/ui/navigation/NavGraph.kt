@@ -238,19 +238,13 @@ fun LastWaveNavHost(
             )
         }
 
-        // Post-login container: Material3 bottom nav with Home/Generate/
-        // Playlists as swipeable tabs. Settings, Search, and Discover are
-        // NOT tabs — they're pushed screens reached from Home's top app bar
-        // (profile icon / search icon / discover icon), on this same root
-        // nav controller, so they can pop back cleanly and (on log out /
-        // clear session) return all the way to Login.
+        // Post-login container hosts the five primary tabs. Detail destinations
+        // remain on this root controller so tab state is restored when they pop.
         composable(Screen.MainShell.route) {
             MainShell(
                 onOpenSettings = {
                     navController.navigate(Screen.Settings.route) { launchSingleTop = true }
                 },
-                onOpenSearch = { navController.navigate(Screen.Search.route) },
-                onOpenDiscover = { navController.navigate(Screen.Discover.route) },
                 onOpenGenres = { navController.navigate(Screen.Genres.route) },
                 onOpenFriends = { navController.navigate(Screen.Friends.route) },
                 onOpenFriendProfile = { username, displayName, avatarUrl ->
@@ -258,6 +252,15 @@ fun LastWaveNavHost(
                 },
                 onOpenPlaylist = { playlistId ->
                     navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
+                },
+                onOpenArtist = { name, browseId ->
+                    navController.navigate(Screen.ArtistDetail.createRoute(name, browseId))
+                },
+                onOpenAlbum = { title, artist, browseId ->
+                    navController.navigate(Screen.AlbumDetail.createRoute(title, artist, browseId))
+                },
+                onOpenSearchPlaylist = { playlistId ->
+                    navController.navigate(Screen.FeedPlaylistDetail.createRoute(playlistId))
                 },
                 onOpenFeedPlaylist = { playlistId ->
                     navController.navigate(Screen.FeedPlaylistDetail.createRoute(playlistId))

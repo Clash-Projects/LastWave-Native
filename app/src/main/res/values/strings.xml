@@ -7,6 +7,8 @@
     <string name="widget_obsidian_description">Frosted obsidian glass player with translucent depth and crystal rim</string>
 
     <!-- Bottom navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_discover">Discover</string>
     <string name="nav_feed">Feed</string>
     <string name="nav_stats">Stats</string>
     <string name="nav_playlists">Playlists</string>

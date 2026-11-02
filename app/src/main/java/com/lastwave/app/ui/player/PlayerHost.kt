@@ -86,6 +86,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -101,7 +102,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.common.isTabletOrWideScreen
-import com.lastwave.app.ui.theme.LocalMd3NavBar
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -921,7 +921,7 @@ fun PlayerHost(
                     onNext = viewModel.player::next,
                     onClose = viewModel.player::stopAndClear,
                     bottomPadding = if (hasBottomNavigation) {
-                        if (LocalMd3NavBar.current) 84.dp else 80.dp
+                        WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding() + 100.dp
                     } else {
                         14.dp
                     },

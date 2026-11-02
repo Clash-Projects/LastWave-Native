@@ -4,6 +4,8 @@
     <string name="widget_name">Reproductor LastWave</string>
     <string name="widget_description">Portada, detalles de la canción y controles de reproducción para todas las apps de música</string>
 
+    <string name="nav_home">Inicio</string>
+    <string name="nav_discover">Descubrir</string>
     <string name="nav_feed">Inicio</string>
     <string name="nav_stats">Estadísticas</string>
     <string name="nav_playlists">Listas</string>
