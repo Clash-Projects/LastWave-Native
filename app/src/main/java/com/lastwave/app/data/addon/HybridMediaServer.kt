@@ -1,11 +1,18 @@
 package com.lastwave.app.data.addon
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Base64
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import fi.iki.elonen.NanoHTTPD
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -22,6 +29,7 @@ import java.io.RandomAccessFile
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -39,11 +47,15 @@ class HybridMediaServer @Inject constructor(
     okHttpClient: OkHttpClient,
 ) {
     private val http = okHttpClient.newBuilder()
+        // 206 range reads are never cacheable; skip the disk-cache lookup.
+        .cache(null)
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
+        .callTimeout(20, TimeUnit.SECONDS)
         .build()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sessions = ConcurrentHashMap<String, Session>()
+    private val sessionSequence = AtomicLong(0)
     private val token = UUID.randomUUID().toString().replace("-", "")
     private val dir: File by lazy { File(context.cacheDir, "hybrid_media").apply { mkdirs() } }
     private var server: Server? = null
@@ -59,8 +71,43 @@ class HybridMediaServer @Inject constructor(
         return created.listeningPort
     }
 
+    private val prefs by lazy { context.getSharedPreferences("hybrid_media", Context.MODE_PRIVATE) }
+    @Volatile private var lastWarmAt = 0L
+    @Volatile private var warmJob: Job? = null
+
+    /**
+     * Takes the one-time listener start (which also deletes the previous
+     * process's cache files) and the CDN TCP/TLS handshake off the tap path.
+     * Fire-and-forget and throttled; safe to call on every resolve.
+     */
+    fun prewarm() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastWarmAt < PREWARM_INTERVAL_MS || warmJob?.isActive == true) return
+        lastWarmAt = now
+        warmJob = scope.launch {
+            runCatching { ensureStarted() }
+            val origin = prefs.getString(KEY_CDN_ORIGIN, null) ?: return@launch
+            val started = SystemClock.elapsedRealtime()
+            val code = runCatching {
+                // Any complete response leaves a pooled keep-alive connection behind.
+                http.newCall(Request.Builder().url("$origin/").head().build()).execute().use { it.code }
+            }.getOrDefault(-1)
+            Log.i("HybridStartup", "event=cdn_prewarm status=$code durationMs=${SystemClock.elapsedRealtime() - started}")
+        }
+    }
+
+    private fun rememberCdnOrigin(cdnUrl: String) {
+        val origin = runCatching {
+            val uri = java.net.URI(cdnUrl)
+            if (uri.scheme != "https" || uri.host.isNullOrBlank()) null
+            else "https://${uri.host}" + (if (uri.port > 0) ":${uri.port}" else "")
+        }.getOrNull() ?: return
+        if (prefs.getString(KEY_CDN_ORIGIN, null) != origin) prefs.edit().putString(KEY_CDN_ORIGIN, origin).apply()
+    }
+
     /** Registers [plan] and returns the loopback URL to hand the player, or null on failure. */
     fun urlFor(plan: HybridPlan, cacheName: String): String? = runCatching {
+        rememberCdnOrigin(plan.cdnUrl)
         val port = ensureStarted()
         val safe = cacheName.replace(Regex("[^A-Za-z0-9_-]"), "_")
         sessions[safe]?.takeIf { it.failed }?.let { sessions.remove(safe)?.release() }
@@ -69,12 +116,22 @@ class HybridMediaServer @Inject constructor(
         session.touch()
         session.start()
         "http://127.0.0.1:$port/h/$safe.m4a?token=$token"
-    }.onFailure { Log.w(TAG, "urlFor failed: ${it.message}") }.getOrNull()
+    }.onFailure { Log.w(TAG, "urlFor failed (${it.javaClass.simpleName})") }.getOrNull()
 
     /** Drops the in-memory session and cached bytes for a track (used on playback failure). */
     fun evict(cacheName: String) {
         val safe = cacheName.replace(Regex("[^A-Za-z0-9_-]"), "_")
         sessions.remove(safe)?.release()
+    }
+
+    /** Release the loopback listener and pending network work when this owner is discarded. */
+    @Synchronized
+    internal fun shutdown() {
+        sessions.values.forEach { it.release() }
+        sessions.clear()
+        server?.stop()
+        server = null
+        scope.cancel()
     }
 
     private fun evictOldest() {
@@ -86,8 +143,13 @@ class HybridMediaServer @Inject constructor(
     private inner class Session(val name: String, private val plan: HybridPlan) {
         @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
         private val lock = java.lang.Object()
-        private val file = File(dir, "$name.m4a")
+        private val sequence = sessionSequence.incrementAndGet()
+        // A canceled writer must never truncate a replacement session's file.
+        // The logical loopback URL stays stable; physical storage is session-owned.
+        private val file = File(dir, "${name}_$sequence.m4a")
         private var started = false
+        private var sessionJob: Job? = null
+        private var startedAt = 0L
 
         @Volatile var failed = false
         @Volatile var done = false
@@ -101,26 +163,42 @@ class HybridMediaServer @Inject constructor(
             synchronized(lock) {
                 if (started) return
                 started = true
-            }
-            scope.launch {
-                try {
-                    run()
-                } catch (e: Throwable) {
-                    Log.w(TAG, "hybrid session $name failed: ${e.message}")
-                    failed = true
-                } finally {
-                    synchronized(lock) { lock.notifyAll() }
+                startedAt = SystemClock.elapsedRealtime()
+                span("session_start")
+                sessionJob = scope.launch {
+                    try {
+                        run()
+                    } catch (cancelled: CancellationException) {
+                        failed = true
+                        span("session_cancelled")
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        failed = true
+                        Log.w("HybridStartup", "event=session_failed session=$sequence error=${failure.javaClass.simpleName}")
+                    } finally {
+                        // run() has closed its writer; only this session's path is removed.
+                        if (failed) runCatching { file.delete() }
+                        synchronized(lock) { lock.notifyAll() }
+                    }
                 }
             }
         }
 
         fun release() {
-            failed = true
-            synchronized(lock) { lock.notifyAll() }
+            synchronized(lock) {
+                failed = true
+                sessionJob?.cancel()
+                lock.notifyAll()
+            }
             runCatching { file.delete() }
         }
 
-        private suspend fun run() {
+        private fun span(event: String, durationMs: Long? = null) {
+            Log.i("HybridStartup", "event=$event session=$sequence elapsedMs=${SystemClock.elapsedRealtime() - startedAt}" +
+                (durationMs?.let { " durationMs=$it" } ?: ""))
+        }
+
+        private suspend fun run() = coroutineScope {
             val planInit = plan.initRange ?: error("hybrid plan has no init range")
             // The CDN file carries its segment index (sidx) between the init
             // and the first fragment; the plan's initRange stops before it.
@@ -142,41 +220,54 @@ class HybridMediaServer @Inject constructor(
                 runCatching { Base64.decode(plan.constantIv, Base64.DEFAULT) }.getOrDefault(ByteArray(0))
             } else ByteArray(0)
 
-            // The init gates every first byte; fetch it together with segment 0.
-            val first = listOf(
-                scope.async { fetchInit(initRange) },
-                scope.async { fetchRange(plan.ranges[0]) },
-            ).awaitAll()
-            val init = first[0] ?: error("hybrid init fetch failed")
-            val seg0 = first[1] ?: error("hybrid seg0 fetch failed")
-
+            // Keep the two CDN reads concurrent, but let the extractor see the
+            // patched moov/sidx while the first media segment is still arriving.
+            val pendingInit = async {
+                fetchInit(initRange)?.also { span("init_ready") }
+            }
+            val pendingFirst = async {
+                fetchRange(plan.ranges[0])?.also { span("seg0_ready") }
+            }
+            val init = pendingInit.await() ?: error("hybrid init fetch failed")
             var ivSize = plan.ivSize
             var constantIv = constantIvPlan
             if (plan.encrypted) {
-                runCatching { HybridCenc.patchInitSegment(init) }.onSuccess {
-                    ivSize = it.ivSize
-                    if (it.constantIv.isNotEmpty()) constantIv = it.constantIv
-                }
+                val tenc = HybridCenc.patchInitSegment(init)
+                ivSize = tenc.ivSize
+                if (tenc.constantIv.isNotEmpty()) constantIv = tenc.constantIv
             }
             val decrypt = plan.encrypted && key.isNotEmpty()
-            if (decrypt) HybridCenc.decryptSegment(seg0, key, ivSize, constantIv, plan.ranges[0].start)
-
-            total = init.size + plan.ranges.sumOf { it.size }
+            val knownTotal = plan.ranges.fold(initRange.size) { bytes, range -> Math.addExact(bytes, range.size) }
+            // Init patching is synchronous and may finish after eviction/cancellation.
+            currentCoroutineContext().ensureActive()
             RandomAccessFile(file, "rw").use { out ->
                 out.setLength(0)
+                // Create the file before exposing Content-Length to loopback readers.
+                total = knownTotal
+                synchronized(lock) { lock.notifyAll() }
                 out.write(init)
+                publish(out)
+                span("init_publish")
+
+                val seg0 = pendingFirst.await() ?: error("hybrid seg0 fetch failed")
+                val decryptStarted = SystemClock.elapsedRealtime()
+                if (decrypt) HybridCenc.decryptSegment(seg0, key, ivSize, constantIv, plan.ranges[0].start)
+                span("decrypt_done", SystemClock.elapsedRealtime() - decryptStarted)
+                currentCoroutineContext().ensureActive()
                 out.write(seg0)
                 publish(out)
+                span("seg0_publish")
 
                 var base = 1
                 while (base < plan.ranges.size) {
                     val end = minOf(base + PARALLEL, plan.ranges.size)
                     val batch = (base until end).map { i ->
-                        scope.async { i to fetchRange(plan.ranges[i]) }
+                        async { i to fetchRange(plan.ranges[i]) }
                     }.awaitAll()
                     for ((i, bytes) in batch) {
-                        val chunk = bytes ?: error("hybrid segment $i fetch failed")
+                        val chunk = bytes ?: error("hybrid segment fetch failed")
                         if (decrypt) HybridCenc.decryptSegment(chunk, key, ivSize, constantIv, plan.ranges[i].start)
+                        currentCoroutineContext().ensureActive()
                         out.write(chunk)
                     }
                     publish(out)
@@ -184,7 +275,7 @@ class HybridMediaServer @Inject constructor(
                 }
             }
             done = true
-            Log.i(TAG, "hybrid session $name complete ($total bytes)")
+            span("session_complete")
         }
 
         private fun publish(out: RandomAccessFile) {
@@ -202,13 +293,16 @@ class HybridMediaServer @Inject constructor(
 
         private suspend fun fetchRange(range: HybridRange, retries: Int = 2): ByteArray? {
             for (attempt in 0..retries) {
-                val bytes = runCatching {
+                currentCoroutineContext().ensureActive()
+                val bytes = try {
                     val req = Request.Builder().url(plan.cdnUrl)
                         .header("Range", "bytes=${range.start}-${range.end}").build()
-                    http.newCall(req).execute().use { res ->
-                        if (!res.isSuccessful) null else res.body?.bytes()
-                    }
-                }.getOrNull()
+                    http.newCall(req).awaitHybridRange(range)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: IOException) {
+                    null
+                }
                 if (bytes != null && bytes.isNotEmpty()) return bytes
                 if (attempt < retries) delay(100L * (attempt + 1))
             }
@@ -220,9 +314,9 @@ class HybridMediaServer @Inject constructor(
             val deadline = System.currentTimeMillis() + READ_WAIT_MS
             synchronized(lock) {
                 while (true) {
+                    if (failed) throw IOException("hybrid session failed")
                     if (written > pos) return written - pos
                     if (done && pos >= total) return -1
-                    if (failed) throw IOException("hybrid session failed")
                     val left = deadline - System.currentTimeMillis()
                     if (left <= 0) throw IOException("timed out waiting for hybrid bytes")
                     lock.wait(minOf(left, 1000L))
@@ -230,7 +324,7 @@ class HybridMediaServer @Inject constructor(
             }
         }
 
-        /** Waits for the total to be known (set once the first segment is in). */
+        /** Waits for the file and known total; media bytes may still be downloading. */
         fun awaitTotal(): Long {
             val deadline = System.currentTimeMillis() + READ_WAIT_MS
             synchronized(lock) {
@@ -241,6 +335,7 @@ class HybridMediaServer @Inject constructor(
                     lock.wait(minOf(left, 1000L))
                 }
             }
+            if (failed) throw IOException("hybrid session failed")
             return total
         }
 
@@ -321,5 +416,8 @@ class HybridMediaServer @Inject constructor(
         const val READ_WAIT_MS = 30_000L
         /** Upper bound for the init→first-fragment gap we fetch as a segment index. */
         const val MAX_INDEX_GAP_BYTES = 256L * 1024
+        /** CloudFront keeps idle keep-alive connections well beyond this. */
+        const val PREWARM_INTERVAL_MS = 20_000L
+        const val KEY_CDN_ORIGIN = "cdn_origin"
     }
 }
