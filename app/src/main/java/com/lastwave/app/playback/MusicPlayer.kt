@@ -1648,7 +1648,9 @@ class MusicPlayer @Inject constructor(
                     },
             )
             .setLoadControl(baseLoadControl)
-            .setSeekParameters(SeekParameters.CLOSEST_SYNC)
+            // Decode from a sync point but discard audio before the requested time.
+            // Addon DASH segments are 10 s, so CLOSEST_SYNC could land seconds early.
+            .setSeekParameters(SeekParameters.EXACT)
             .build().apply {
                 // Feed ReplayGain container tags into loudness normalization.
                 // Additive listener: never touches playback, 0 dB without tags.
@@ -7846,7 +7848,7 @@ class MusicPlayer @Inject constructor(
                         withTimeoutOrNull(HOT_SWAP_READY_TIMEOUT_MS) {
                             while (swappedPlayer.playbackState == Player.STATE_BUFFERING) delay(20L)
                         }
-                        runCatching { swappedPlayer.setSeekParameters(SeekParameters.CLOSEST_SYNC) }
+                        runCatching { swappedPlayer.setSeekParameters(SeekParameters.EXACT) }
                         delay(30L)
                         val steps = 5
                         for (i in 1..steps) {
@@ -8149,7 +8151,7 @@ class MusicPlayer @Inject constructor(
                     }
                 } finally {
                     if (player === standby) standby.volume = if (bitPerfectEnabled) 1f else appVolume
-                    standby.setSeekParameters(SeekParameters.CLOSEST_SYNC)
+                    standby.setSeekParameters(SeekParameters.EXACT)
                     live.stop()
                     live.clearMediaItems()
                     hotSwapActive = false
@@ -8161,7 +8163,7 @@ class MusicPlayer @Inject constructor(
                 runCatching {
                     standby.stop()
                     standby.clearMediaItems()
-                    standby.setSeekParameters(SeekParameters.CLOSEST_SYNC)
+                    standby.setSeekParameters(SeekParameters.EXACT)
                 }
                 hotSwapActive = false
             }
