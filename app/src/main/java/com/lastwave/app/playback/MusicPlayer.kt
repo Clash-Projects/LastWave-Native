@@ -7233,7 +7233,9 @@ class MusicPlayer @Inject constructor(
             val isExplicitDash = lower.endsWith(".mpd") || lower.contains(".mpd") || lower.contains("/mpd")
             mimeType = when {
                 stream.mimeType.isNotBlank() && stream.mimeType != MimeTypes.APPLICATION_MPD -> stream.mimeType
-                isExplicitDash -> MimeTypes.APPLICATION_MPD
+                // The resolver already identified a manifest: never hand it to
+                // the progressive source ("Invalid content type: application/dash+xml").
+                isExplicitDash || stream.mimeType == MimeTypes.APPLICATION_MPD -> MimeTypes.APPLICATION_MPD
                 lower.endsWith(".m3u8") || lower.contains(".m3u8") -> "application/x-mpegURL"
                 lower.endsWith(".mp3") || stream.formatId == LosslessMusicApi.QUALITY_MP3_320 -> "audio/mpeg"
                 lower.endsWith(".aac") -> "audio/aac"
