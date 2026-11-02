@@ -490,18 +490,33 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     }
 
     private fun playCarSearch(query: String) {
-        if (query.isBlank()) {
-            musicPlayer.resume()
-            return
-        }
         scope.launch {
             val played = runCatching {
-                withContext(Dispatchers.IO) { androidAutoLibrary.playSearch(query, musicPlayer) }
+                withContext(Dispatchers.IO) {
+                    if (query.isBlank()) {
+                        // "Hey Google, play music on LastWave": no title given.
+                        androidAutoLibrary.playAnything(musicPlayer)
+                    } else {
+                        androidAutoLibrary.playSearch(query, musicPlayer)
+                    }
+                }
             }.onFailure { error ->
-                android.util.Log.w("MusicPlaybackService", "Android Auto voice search failed", error)
+                android.util.Log.w("MusicPlaybackService", "Voice search failed", error)
             }.getOrDefault(false)
-            if (!played) publishCarPlaybackError("No playable tracks found")
+            if (!played) {
+                publishCarPlaybackError("No playable tracks found")
+                demoteIfIdle()
+            }
         }
+    }
+
+    /** Drops the foreground notification promoted for a request that played nothing. */
+    private fun demoteIfIdle() {
+        val state = musicPlayer.state.value
+        if (state.current != null || state.isPlaying || state.isBuffering || !isPlaybackForeground) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE)
+        else @Suppress("DEPRECATION") stopForeground(true)
+        isPlaybackForeground = false
     }
 
     private fun resolveCarSearchQuery(query: String?, extras: Bundle?): String {
@@ -659,7 +674,14 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         // service on the isPlaying edge. If we do promote while active and the
         // system refuses, bail with START_NOT_STICKY as before.
         val state = musicPlayer.state.value
-        if (state.isPlaying || state.isBuffering || intent?.action == null) {
+        // Voice search (Google Assistant / Gemini "play X on LastWave") and
+        // media buttons arrive through startForegroundService while nothing
+        // plays yet. Not promoting them crashed the app ~5s later with
+        // ForegroundServiceDidNotStartInTimeException; if nothing ends up
+        // playing, demoteIfIdle() drops the notification again.
+        val startsPlayback = intent?.action == MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH ||
+            intent?.action == Intent.ACTION_MEDIA_BUTTON
+        if (state.isPlaying || state.isBuffering || intent?.action == null || startsPlayback || state.current != null) {
             if (!promoteForPlayback()) return START_NOT_STICKY
         }
         when (intent?.action) {
