@@ -47,11 +47,11 @@ class AudioQualityMixBadgeTest {
             phase = BlendPhase.BLENDING,
             syncedBpm = 126.4f,
             harmonicKeyPair = "8A → 9A",
-            transitionStyle = TransitionStyle.HARMONIC_BEATMIX,
+            activeTransitionStyle = TransitionStyle.HARMONIC_BEATMIX,
         )
 
         assertEquals("8A → 9A", telemetry.harmonicKeyPair)
         assertEquals(126.4f, telemetry.syncedBpm ?: 0f, 0.01f)
-        assertEquals(TransitionStyle.HARMONIC_BEATMIX, telemetry.transitionStyle)
+        assertEquals(TransitionStyle.HARMONIC_BEATMIX, telemetry.activeTransitionStyle)
     }
 }
