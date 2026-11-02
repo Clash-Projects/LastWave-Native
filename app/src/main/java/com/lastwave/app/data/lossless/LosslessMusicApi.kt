@@ -494,6 +494,23 @@ class LosslessMusicApi @Inject constructor(
                 .replace("&", " and ")
                 .replace("$", "s")
 
+            // 0. Pipe-separated video titles put the song first:
+            // "Vaaroon Forever (Official Video) | Mirzapur The Movie | Shreya Ghoshal | Romy"
+            // Keep the first segment that is not just the artist; the rest is context.
+            if ('|' in text) {
+                val segments = text.split('|').map { it.trim() }.filter { it.isNotBlank() }
+                if (segments.size > 1) {
+                    val titleIndex = segments.indexOfFirst { !isArtistOrAlbumName(it, artist, album) }
+                        .takeIf { it >= 0 } ?: 0
+                    segments.forEachIndexed { i, segment ->
+                        if (i != titleIndex) classifySegment(segment, versions, context)
+                    }
+                    text = segments[titleIndex]
+                } else if (segments.size == 1) {
+                    text = segments[0]
+                }
+            }
+
             // 1. Bracketed asides, innermost first: "(From "Satyamev Jayate")", "[Official Audio]"
             val bracketRegex = Regex("""[(\[]([^()\[\]]*)[)\]]""")
             repeat(3) {
