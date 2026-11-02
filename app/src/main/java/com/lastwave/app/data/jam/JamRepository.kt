@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -34,15 +35,33 @@ sealed interface JamSessionState {
         val roomCode: String,
         val userId: String,
         val displayName: String,
+        /** True for the main host and the co-host. */
         val isHost: Boolean,
         val roomMode: String,
         val participants: List<ParticipantPayload>,
         val currentTrack: TrackInfoPayload? = null,
         val isPlaying: Boolean = false,
         val positionMs: Long = 0L,
-    ) : JamSessionState
+        val hostId: String = "",
+        val coHostId: String = "",
+        val permanent: Boolean = false,
+        /** Friendly title of an always-on room ("India"); empty otherwise. */
+        val roomName: String = "",
+        /** The main host's upcoming queue, shared read-only. */
+        val queue: List<TrackInfoPayload> = emptyList(),
+    ) : JamSessionState {
+        /** Only the main host may give and remove co-hosts. */
+        val isMainHost: Boolean get() = userId.isNotEmpty() && userId == hostId
+    }
     data class Error(val message: String) : JamSessionState
 }
+
+/** A rejected request while inside a room (rate limit, host rules). */
+data class JamNotice(
+    val message: String,
+    /** Wall-clock ms when the playback cooldown ends; 0 when not a cooldown. */
+    val retryAtMs: Long = 0L,
+)
 
 sealed interface RemotePlaybackEvent {
     val fromUserId: String?
@@ -83,6 +102,51 @@ class JamRepository @Inject constructor(
     private val _remotePlaybackEvents = MutableSharedFlow<RemotePlaybackEvent>(extraBufferCapacity = 64)
     val remotePlaybackEvents: SharedFlow<RemotePlaybackEvent> = _remotePlaybackEvents.asSharedFlow()
 
+    private val _cooldownUntilMs = MutableStateFlow(0L)
+    /** Wall-clock ms until which pause/skip are locked for you; 0 when free. */
+    val cooldownUntilMs: StateFlow<Long> = _cooldownUntilMs.asStateFlow()
+    private var cooldownJob: Job? = null
+
+    private fun startCooldown(untilMs: Long) {
+        val wait = untilMs - System.currentTimeMillis()
+        if (wait <= 0L) return
+        _cooldownUntilMs.value = untilMs
+        cooldownJob?.cancel()
+        cooldownJob = scope.launch {
+            delay(wait + 100L)
+            if (_cooldownUntilMs.value == untilMs) _cooldownUntilMs.value = 0L
+        }
+    }
+
+    /**
+     * Live listener counts for the always-on rooms ({code: count}). Empty on
+     * any failure, so the join screen just omits the counts.
+     */
+    suspend fun fetchRoomCounts(): Map<String, Int> = withContext(Dispatchers.IO) {
+        try {
+            val httpUrl = serverUrl
+                .replaceFirst("wss://", "https://")
+                .replaceFirst("ws://", "http://")
+                .substringBefore("/ws")
+                .trimEnd('/') + "/rooms"
+            val request = Request.Builder().url(httpUrl).build()
+            okHttpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use emptyMap<String, Int>()
+                val body = response.body?.string().orEmpty()
+                json.decodeFromString<RoomsResponse>(body).rooms.associate { it.code to it.participants }
+            }
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+
+    private val _notice = MutableStateFlow<JamNotice?>(null)
+    val notice: StateFlow<JamNotice?> = _notice.asStateFlow()
+
+    fun clearNotice() {
+        _notice.value = null
+    }
+
     private var activeWebSocket: WebSocket? = null
     private var pendingAction: (() -> Unit)? = null
 
@@ -96,6 +160,19 @@ class JamRepository @Inject constructor(
         }
     }
 
+    /**
+     * Shareable https link. Opens the web invite page, which launches whichever
+     * LastWave is installed and previews with the room code in chat apps.
+     */
+    fun inviteLink(code: String): String {
+        val base = serverUrl
+            .replaceFirst("wss://", "https://")
+            .replaceFirst("ws://", "http://")
+            .substringBefore("/ws")
+            .trimEnd('/')
+        return "$base/?code=$code"
+    }
+
     fun createRoom(displayName: String, roomMode: String = JamProtocolConstants.MODE_COLLABORATIVE) {
         val trimmed = displayName.trim().takeIf { it.isNotEmpty() } ?: "Listener"
         connectAndExecute {
@@ -105,10 +182,16 @@ class JamRepository @Inject constructor(
     }
 
     fun joinRoom(roomCode: String, displayName: String) {
-        val code = roomCode.trim().uppercase()
+        val code = parseJamCode(roomCode)
         val name = displayName.trim().takeIf { it.isNotEmpty() } ?: "Listener"
         if (code.isEmpty()) {
             _sessionState.value = JamSessionState.Error("Room code is required")
+            return
+        }
+        if (JamStations.any { it.code == code } &&
+            displayName.trim().lowercase() in setOf("", "listener", "host", "guest", "user", "anonymous")
+        ) {
+            _sessionState.value = JamSessionState.Error("Pick your own display name to join this public room")
             return
         }
 
@@ -123,11 +206,30 @@ class JamRepository @Inject constructor(
         disconnect()
     }
 
-    fun sendChat(text: String) {
+    fun sendChat(text: String, replyToId: String? = null) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
-        val payload = json.encodeToJsonElement(SendChatRequest(text = trimmed))
+        val payload = json.encodeToJsonElement(SendChatRequest(text = trimmed, replyToId = replyToId))
         sendEnvelope(JamEnvelope(type = JamProtocolConstants.MSG_SEND_CHAT, payload = payload))
+    }
+
+    /** Main host only: publish the upcoming queue so listeners can see it. */
+    fun publishQueue(queue: List<TrackInfoPayload>) {
+        if (_sessionState.value !is JamSessionState.Active) return
+        val payload = json.encodeToJsonElement(QueueUpdateRequest(queue = queue.take(5)))
+        sendEnvelope(JamEnvelope(type = JamProtocolConstants.MSG_QUEUE_UPDATE, payload = payload))
+    }
+
+    /** Main host only: make [userId] a co-host (a room has at most two hosts). */
+    fun grantHost(userId: String) {
+        val payload = json.encodeToJsonElement(GrantHostRequest(userId = userId))
+        sendEnvelope(JamEnvelope(type = JamProtocolConstants.MSG_GRANT_HOST, payload = payload))
+    }
+
+    /** Main host only: remove [userId]'s co-host role. */
+    fun revokeHost(userId: String) {
+        val payload = json.encodeToJsonElement(GrantHostRequest(userId = userId))
+        sendEnvelope(JamEnvelope(type = JamProtocolConstants.MSG_REVOKE_HOST, payload = payload))
     }
 
     fun broadcastPlay(positionMs: Long) {
@@ -255,6 +357,7 @@ class JamRepository @Inject constructor(
                             userId = payload.userId,
                             displayName = payload.name.ifEmpty { "Host" },
                             isHost = true,
+                            hostId = payload.userId,
                             roomMode = payload.roomMode,
                             participants = listOf(hostParticipant),
                             currentTrack = null,
@@ -272,6 +375,11 @@ class JamRepository @Inject constructor(
                             userId = payload.userId,
                             displayName = payload.name,
                             isHost = payload.isHost,
+                            hostId = payload.hostId,
+                            coHostId = payload.coHostId,
+                            permanent = payload.permanent,
+                            roomName = payload.roomName,
+                            queue = payload.playback.queue,
                             roomMode = payload.roomMode,
                             participants = payload.participants,
                             currentTrack = payload.playback.currentTrack,
@@ -307,12 +415,28 @@ class JamRepository @Inject constructor(
                     val current = _sessionState.value
                     if (current is JamSessionState.Active && envelope.payload != null) {
                         val hostChanged = json.decodeFromJsonElement<HostChangedPayload>(envelope.payload)
-                        val newHostId = hostChanged.effectiveHostId
-                        val updatedList = current.participants.map {
-                            if (it.userId == newHostId) it.copy(isHost = true) else it.copy(isHost = false)
-                        }
-                        val isHostNow = (newHostId == current.userId)
-                        _sessionState.value = current.copy(participants = updatedList, isHost = isHostNow)
+                        applyRoles(current, hostChanged.effectiveHostId, hostChanged.coHostId)
+                    }
+                }
+
+                JamProtocolConstants.MSG_COOLDOWN -> {
+                    val cd = envelope.payload?.let { json.decodeFromJsonElement<CooldownPayload>(it) }
+                    if (cd != null) startCooldown(cd.retryAtMs)
+                }
+
+                JamProtocolConstants.MSG_QUEUE_UPDATED -> {
+                    val current = _sessionState.value
+                    if (current is JamSessionState.Active && envelope.payload != null) {
+                        val updated = json.decodeFromJsonElement<QueueUpdatedPayload>(envelope.payload)
+                        _sessionState.value = current.copy(queue = updated.queue)
+                    }
+                }
+
+                JamProtocolConstants.MSG_COHOST_CHANGED -> {
+                    val current = _sessionState.value
+                    if (current is JamSessionState.Active && envelope.payload != null) {
+                        val changed = json.decodeFromJsonElement<CoHostChangedPayload>(envelope.payload)
+                        applyRoles(current, changed.hostId.ifEmpty { current.hostId }, changed.coHostId)
                     }
                 }
 
@@ -342,12 +466,39 @@ class JamRepository @Inject constructor(
                     val err = envelope.payload?.let { json.decodeFromJsonElement<ErrorPayload>(it) }
                     val message = err?.message ?: "Unknown server error"
                     Log.w(TAG, "Server error: $message")
-                    _sessionState.value = JamSessionState.Error(message)
+                    if (_sessionState.value is JamSessionState.Active) {
+                        // A rejected request inside a room must not eject you from it.
+                        val limited = err != null && err.code == "rate_limited"
+                        val retryAt = when {
+                            !limited -> 0L
+                            err!!.retryAtMs > 0L -> err.retryAtMs
+                            else -> System.currentTimeMillis() + err.retryAfterMs
+                        }
+                        _notice.value = JamNotice(message, retryAt)
+                        if (retryAt > 0L) startCooldown(retryAt)
+                    } else {
+                        _sessionState.value = JamSessionState.Error(message)
+                    }
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse message: $text", e)
         }
+    }
+
+    private fun applyRoles(current: JamSessionState.Active, hostId: String, coHostId: String) {
+        val updated = current.participants.map {
+            it.copy(
+                isHost = it.userId == hostId || it.userId == coHostId,
+                isCoHost = coHostId.isNotEmpty() && it.userId == coHostId,
+            )
+        }
+        _sessionState.value = current.copy(
+            participants = updated,
+            hostId = hostId,
+            coHostId = coHostId,
+            isHost = current.userId == hostId || current.userId == coHostId,
+        )
     }
 
     private fun applyPlaybackAction(action: PlaybackActionPayload) {
@@ -395,5 +546,8 @@ class JamRepository @Inject constructor(
         activeWebSocket = null
         _sessionState.value = JamSessionState.Disconnected
         _chatMessages.value = emptyList()
+        _notice.value = null
+        _cooldownUntilMs.value = 0L
+        cooldownJob?.cancel()
     }
 }
