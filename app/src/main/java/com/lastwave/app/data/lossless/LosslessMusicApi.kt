@@ -839,18 +839,19 @@ class LosslessMusicApi @Inject constructor(
         return false
     }
 
-    private suspend fun resolveFromAddon(
+    private class AddonSearchPlan(
+        val queries: List<String>,
+        val qualityParam: String,
+        val isAtmosPreferred: Boolean,
+    )
+
+    /** The exact search requests [resolveFromAddon] sends, in order. */
+    private fun addonSearchPlan(
         title: String,
         artist: String,
-        expectedDurationSeconds: Int?,
         expectedAlbum: String?,
         preferredQuality: Int,
-        addonBaseUrl: String,
-        excludedUrls: Set<String>,
-        isDownload: Boolean = false,
-        noteFailures: Boolean = true,
-    ): LosslessAudioStream? {
-        val addonClient = AddonClient(addonBaseUrl, resolutionClient, nativeSecrets = nativeSecrets)
+    ): AddonSearchPlan {
         val cleanArtist = cleanForSearch(artist).ifBlank { artist }
         val cleanTitle = cleanForSearch(title).ifBlank { title }
         val parsedTarget = parseTitle(title, cleanArtist, expectedAlbum)
@@ -870,7 +871,6 @@ class LosslessMusicApi @Inject constructor(
             if (parsedTarget.core.length >= 4) foldTransliteration(searchableTitle).trim() else null,
         ).filter { it.isNotBlank() }.distinct()
 
-        val isAtmosPreferred = preferredQuality == QUALITY_DOLBY_ATMOS
         val qualityParam = when (preferredQuality) {
             QUALITY_DOLBY_ATMOS -> "lossless"
             QUALITY_MAX_HI_RES, QUALITY_HI_RES_96 -> "hi_res"
@@ -879,6 +879,61 @@ class LosslessMusicApi @Inject constructor(
             QUALITY_DATA_SAVER -> "low"
             else -> "lossless"
         }
+        return AddonSearchPlan(queries, qualityParam, preferredQuality == QUALITY_DOLBY_ATMOS)
+    }
+
+    /** Search keys already warmed this process; bounded LRU. */
+    private val warmedSearchKeys = object : LinkedHashMap<String, Unit>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Unit>?) = size > 256
+    }
+
+    /**
+     * Fires the first addon search [resolveStream] would send for this track
+     * and discards the answer. The addon caches searches server-side, so a
+     * later tap/skip to this track skips the cold upstream lookup (~0.8 s).
+     * Never records backend failures: a warm-up must not trip the cooldown.
+     */
+    suspend fun warmSearch(
+        title: String,
+        artist: String,
+        expectedAlbum: String?,
+        preferredQuality: Int,
+    ) = withContext(Dispatchers.IO) {
+        if (preferredQuality == QUALITY_YOUTUBE || title.isBlank() || artist.isBlank() || isCoolingDown) {
+            return@withContext
+        }
+        val plan = addonSearchPlan(title, artist, expectedAlbum, preferredQuality)
+        val query = plan.queries.firstOrNull() ?: return@withContext
+        for (creds in getAllEnabledCredentials()) {
+            val key = "${creds.baseUrl}|${plan.qualityParam}|${plan.isAtmosPreferred}|$query"
+            val fresh = synchronized(warmedSearchKeys) { warmedSearchKeys.put(key, Unit) == null }
+            if (!fresh) continue
+            currentCoroutineContext().ensureActive()
+            val result = AddonClient(creds.baseUrl, resolutionClient, nativeSecrets = nativeSecrets)
+                .search(query, plan.qualityParam, plan.isAtmosPreferred)
+            if (result.isFailure) {
+                // Let a later warm-up retry it.
+                synchronized(warmedSearchKeys) { warmedSearchKeys.remove(key) }
+            }
+        }
+    }
+
+    private suspend fun resolveFromAddon(
+        title: String,
+        artist: String,
+        expectedDurationSeconds: Int?,
+        expectedAlbum: String?,
+        preferredQuality: Int,
+        addonBaseUrl: String,
+        excludedUrls: Set<String>,
+        isDownload: Boolean = false,
+        noteFailures: Boolean = true,
+    ): LosslessAudioStream? {
+        val addonClient = AddonClient(addonBaseUrl, resolutionClient, nativeSecrets = nativeSecrets)
+        val plan = addonSearchPlan(title, artist, expectedAlbum, preferredQuality)
+        val queries = plan.queries
+        val isAtmosPreferred = plan.isAtmosPreferred
+        val qualityParam = plan.qualityParam
 
         var candidates: List<TidalCandidateItem> = emptyList()
         for (query in queries) {

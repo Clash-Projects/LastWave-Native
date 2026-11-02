@@ -422,6 +422,7 @@ class MusicPlayer @Inject constructor(
     private var queueEnrichmentJob: Job? = null
     private var recommendationJob: Job? = null
     private var preloadJob: Job? = null
+    private var searchWarmJob: Job? = null
     private var currentTrackCacheJob: Job? = null
     private val resolutionRequests = ConcurrentHashMap<List<Any?>, Pair<Long, Deferred<ResolvedStream>>>()
     private var discoverQueueLoadJob: Job? = null
@@ -5098,7 +5099,52 @@ class MusicPlayer @Inject constructor(
         preloadNextTrack(nextIndex, nextItem.toPlayableTrack())
     }
 
+    /**
+     * Warms the addon's server-side search cache for the few items after
+     * [nextIndex] (the next item itself gets a full preload). A tap or skip
+     * to any of them then skips the cold upstream lookup. Sequential, once
+     * per track, after a short delay so it never competes with the real
+     * next-track resolve.
+     */
+    @MainThread
+    private fun warmUpcomingSearches(nextIndex: Int) {
+        val timeline = player.currentTimeline
+        if (timeline.isEmpty || nextIndex !in 0 until timeline.windowCount) return
+        val shuffle = player.shuffleModeEnabled
+        val upcoming = ArrayList<PlayableTrack>(SEARCH_WARM_AHEAD)
+        var idx = nextIndex
+        var steps = 0
+        while (upcoming.size < SEARCH_WARM_AHEAD && steps < SEARCH_WARM_AHEAD * 3) {
+            steps++
+            idx = timeline.getNextWindowIndex(idx, Player.REPEAT_MODE_OFF, shuffle)
+            if (idx == C.INDEX_UNSET || idx == player.currentMediaItemIndex) break
+            val item = player.getMediaItemAt(idx)
+            if (item.localConfiguration?.uri?.scheme != "lastwave") continue
+            val track = item.toPlayableTrack()
+            if (track.playbackUrl != null || track.title.isBlank() || track.artist.isBlank()) continue
+            upcoming += track
+        }
+        if (upcoming.isEmpty()) return
+        searchWarmJob?.cancel()
+        searchWarmJob = applicationScope.launch(Dispatchers.IO) {
+            delay(SEARCH_WARM_DELAY_MS)
+            val misc = runCatching { settingsPreferences.settings.first() }.getOrDefault(MiscSettings())
+            if (!misc.preferLosslessStreaming ||
+                misc.losslessQuality == LosslessMusicApi.QUALITY_YOUTUBE
+            ) return@launch
+            val quality = effectiveLosslessQuality(misc)
+            for (track in upcoming) {
+                if (losslessMusicApi.isCoolingDown) return@launch
+                runCatching {
+                    losslessMusicApi.warmSearch(track.title, track.artist, track.album, quality)
+                }.onFailure { if (it is CancellationException) throw it }
+            }
+        }
+    }
+
     private fun preloadNextTrack(nextIndex: Int, nextTrack: PlayableTrack?) {
+        // Player state is main-thread only; immediate runs inline when already there.
+        applicationScope.launch(Dispatchers.Main.immediate) { warmUpcomingSearches(nextIndex) }
         if (nextTrack == null || nextTrack.playbackUrl != null) return
         val identity = nextTrack.playbackIdentity()
         if (identity == null) {
@@ -6986,6 +7032,18 @@ class MusicPlayer @Inject constructor(
         }
     }
 
+    /**
+     * Atmos plays only when explicitly selected (quality 28) AND the device
+     * can render it. No toggle, no auto-upgrade: any other tier never becomes Atmos.
+     * An Atmos request on an incapable device falls back to hi-res stereo.
+     */
+    private fun effectiveLosslessQuality(misc: MiscSettings): Int =
+        if (misc.losslessQuality == LosslessMusicApi.QUALITY_DOLBY_ATMOS && !isSpatialAudioSupportedOnDevice()) {
+            LosslessMusicApi.QUALITY_MAX_HI_RES
+        } else {
+            misc.losslessQuality
+        }
+
     private suspend fun resolveLosslessTrackAudioStream(
         track: PlayableTrack,
         misc: MiscSettings,
@@ -6993,14 +7051,7 @@ class MusicPlayer @Inject constructor(
         expectedDurationSeconds: Int? = null,
     ): ResolvedStream? {
         val atmosSupported = isSpatialAudioSupportedOnDevice()
-        // Atmos plays only when explicitly selected (quality 28) AND the device
-        // can render it. No toggle, no auto-upgrade: any other tier never becomes Atmos.
-        // An Atmos request on an incapable device falls back to hi-res stereo.
-        val effectiveQuality = if (misc.losslessQuality == LosslessMusicApi.QUALITY_DOLBY_ATMOS && !atmosSupported) {
-            LosslessMusicApi.QUALITY_MAX_HI_RES
-        } else {
-            misc.losslessQuality
-        }
+        val effectiveQuality = effectiveLosslessQuality(misc)
         val stream = losslessMusicApi.resolveStream(
             title = track.title,
             artist = track.artist,
@@ -9040,6 +9091,9 @@ class MusicPlayer @Inject constructor(
         const val HOT_SWAP_PROBE_SPEED = 4f
         const val HOT_SWAP_PROBE_TIMEOUT_MS = 8_000L
         const val HOT_SWAP_READY_TIMEOUT_MS = 6_000L
+        /** Queue items past the next one whose addon search is pre-warmed. */
+        const val SEARCH_WARM_AHEAD = 4
+        const val SEARCH_WARM_DELAY_MS = 1_500L
         const val HOT_SWAP_SEEK_LEAD_MS = 150L
         const val HOT_SWAP_SETTLE_MS = 80L
         const val HOT_SWAP_ALIGN_ROUNDS = 6
