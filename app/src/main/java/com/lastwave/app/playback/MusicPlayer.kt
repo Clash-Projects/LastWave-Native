@@ -227,6 +227,11 @@ data class PlaybackChromeState(
     val isCrossfading: Boolean = false,
 )
 
+/** Copy without the fields the progress ticker rewrites every ~60ms. */
+internal fun MusicPlayerState.withoutProgress(): MusicPlayerState =
+    if (positionMs == 0L && bufferedPositionMs == 0L) this
+    else copy(positionMs = 0L, bufferedPositionMs = 0L)
+
 /** The small, frequently changing state consumed only by progress UI. */
 @androidx.compose.runtime.Immutable
 data class PlaybackProgressState(
@@ -541,6 +546,16 @@ class MusicPlayer @Inject constructor(
         }
         .distinctUntilChanged()
         .stateIn(applicationScope, SharingStarted.Eagerly, PlaybackProgressState())
+    /**
+     * [state] with the per-tick playhead fields zeroed. UI that only needs
+     * play/pause, volume, speed, sleep timer etc. collects this instead of
+     * [state], so it no longer recomposes on every 60ms progress tick
+     * (progress-driven UI reads [progressState] in leaf composables).
+     */
+    val stateWithoutProgress: StateFlow<MusicPlayerState> = state
+        .map { it.withoutProgress() }
+        .distinctUntilChanged()
+        .stateIn(applicationScope, SharingStarted.WhileSubscribed(5_000), _state.value.withoutProgress())
 
     private var errorRetryCount = 0
     var appVolume: Float = 1f
@@ -2141,7 +2156,17 @@ class MusicPlayer @Inject constructor(
                             // Preserve lazy player startup when there is no
                             // restored or active queue. The short-circuit
                             // avoids touching ExoPlayer.
-                            cadenceMs = if (_state.value.isPlaying) 60L else 500L
+                            // 60ms only matters for an on-screen seek bar /
+                            // lyrics. With no screen visible, a 250ms cadence
+                            // keeps notification, widget, scrobble and Jam
+                            // positions accurate while waking the CPU ~4x less.
+                            // Transitions keep full precision near the tail.
+                            val nearTransition = transitionActive && dur > 0L && dur - pos < 90_000L
+                            cadenceMs = when {
+                                !_state.value.isPlaying -> 500L
+                                com.lastwave.app.util.AppVisibility.isVisible || nearTransition -> 60L
+                                else -> BACKGROUND_TICKER_CADENCE_MS
+                            }
                             }
                         }
                     }
@@ -9026,6 +9051,8 @@ class MusicPlayer @Inject constructor(
         const val KEY_VOLUME_SAVED = "bitperfect_volume_saved"
         /** Ticker-driven session persistence cadence (explicit state changes persist immediately). */
         const val TICKER_PERSIST_INTERVAL_MS = 2_000L
+        /** Steady-state progress ticker cadence while no LastWave screen is visible. */
+        const val BACKGROUND_TICKER_CADENCE_MS = 250L
         /** Podcast resume-position checkpoint cadence. */
         const val PODCAST_PROGRESS_INTERVAL_MS = 10_000L
         /** Played ratio at (or past) which an episode counts as finished. */
