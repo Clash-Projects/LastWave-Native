@@ -1377,14 +1377,18 @@ class MusicPlayer @Inject constructor(
                 } else {
                     runCatching {
                         runBlocking(Dispatchers.IO) {
-                            // Loader thread owns the audio pipeline: never park
-                            // it on a module round trip. A slow walk here is a
-                            // multi-second hole in playback, not a freebie.
+                            // Give the addon the same bounded startup window as
+                            // an interactive start: starting on Opus and then
+                            // hot-swapping to FLAC is audible (the swap often
+                            // can't align and falls back to an in-place cut),
+                            // while a healthy addon answers in well under the
+                            // window. A slow/dead addon still falls back to
+                            // YouTube after LOSSLESS_STARTUP_WAIT_MS.
                             resolveTrackAudioStreamWithRetry(
                                 track,
                                 track.videoId,
                                 allowLossless = !bypassLossless,
-                                losslessBudget = LosslessBudget.Disabled,
+                                losslessBudget = if (bypassLossless) LosslessBudget.Disabled else LosslessBudget.Interactive,
                             ).also { resolved ->
                                 logStreamEvent("loader-prepared", resolved, retry = 0)
                                 android.util.Log.i("MusicPlayer", "[MEDIA3] loader resolved '${track.title}' key=${resolved.cacheKey} codec=${resolved.audioCodec}")
@@ -5325,6 +5329,13 @@ class MusicPlayer @Inject constructor(
                             null
                         } ?: return@withContext
                         if (queuedTrack.videoId != identity.youtubeVideoId || nextIndex == livePlayer.currentMediaItemIndex) {
+                            return@withContext
+                        }
+                        // Never downgrade an item a lossless preload already
+                        // prepared: that turned a ready FLAC start into Opus
+                        // followed by an audible hot-swap.
+                        val queuedKey = livePlayer.getMediaItemAt(nextIndex).localConfiguration?.customCacheKey
+                        if (queuedKey?.startsWith("lossless:") == true) {
                             return@withContext
                         }
                         registerPreparedStream(resolved)
