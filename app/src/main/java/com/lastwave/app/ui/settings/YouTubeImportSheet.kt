@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -304,7 +305,7 @@ fun YouTubeImportSheet(
                         .heightIn(max = 240.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    items(pl.tracks, key = { it.videoId }) { track ->
+                    itemsIndexed(pl.tracks, key = { index, track -> "${track.videoId}_$index" }) { _, track ->
                         val isSelected = track.videoId in selectedVideoIds
                         Row(
                             modifier = Modifier

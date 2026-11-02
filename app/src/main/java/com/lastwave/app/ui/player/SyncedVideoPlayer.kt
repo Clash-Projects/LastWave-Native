@@ -554,7 +554,7 @@ fun SyncedCoverVideoPlayer(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val playerState by musicPlayer.state.collectAsStateWithLifecycle()
+    val playerState by musicPlayer.stateWithoutProgress.collectAsStateWithLifecycle()
     val progressState by musicPlayer.progressState.collectAsStateWithLifecycle()
 
     var controlsVisible by remember { mutableStateOf(true) }
@@ -1055,7 +1055,7 @@ fun FullscreenLandscapeVideoStage(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val playerState by musicPlayer.state.collectAsStateWithLifecycle()
+    val playerState by musicPlayer.stateWithoutProgress.collectAsStateWithLifecycle()
     val progressState by musicPlayer.progressState.collectAsStateWithLifecycle()
 
     var controlsVisible by remember { mutableStateOf(true) }
@@ -1667,7 +1667,7 @@ fun SyncedVideoPlayerDialog(
     val context = LocalContext.current
     val view = LocalView.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val playerState by musicPlayer.state.collectAsStateWithLifecycle()
+    val playerState by musicPlayer.stateWithoutProgress.collectAsStateWithLifecycle()
     val progressState by musicPlayer.progressState.collectAsStateWithLifecycle()
 
     var isFullscreen by remember { mutableStateOf(false) }

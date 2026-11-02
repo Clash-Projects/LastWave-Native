@@ -50,6 +50,12 @@ object Diagnostics {
                         appendLine("The previous session ended without a clean-shutdown marker.")
                         appendLine("The system may have killed the process, or the app may have been")
                         appendLine("swiped from recents. Recorded marker: $uncleanSession")
+                        when {
+                            uncleanSession.contains("playing=true") ->
+                                appendLine("Music WAS playing: the system stopped an active playback session.")
+                            uncleanSession.contains("uiVisible=false") ->
+                                appendLine("Idle in the background (no playback): a routine low-memory reclaim or swipe.")
+                        }
                     },
                 )
             }

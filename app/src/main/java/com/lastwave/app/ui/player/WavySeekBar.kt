@@ -1,11 +1,6 @@
 package com.lastwave.app.ui.player
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.interaction.DragInteraction
@@ -29,7 +24,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -247,40 +244,28 @@ fun WavySeekBar(
         listOf(layer3Light, layer3Dark)
     }
 
-    // Fluid wave animations
-    val infiniteTransition = rememberInfiniteTransition(label = "MaterialGlassWaveAnimation")
-
-    val phase1 = infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2400, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "Phase1",
-    )
-
-    val phase2 = infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1800, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "Phase2",
-    )
-
-    val phase3 = infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1300, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "Phase3",
-    )
-
+    // Fluid wave animations. Driven by a frame clock that only runs while
+    // the waves are actually shown (playing, not dragging): the previous
+    // infinite transition kept requesting frames while paused even though
+    // the paused waves are static. Same periods (2400/1800/1300ms, linear,
+    // restart) as before; each run starts from the paused pose, so resuming
+    // glides on instead of jumping to an unrelated phase.
+    val waveClockSeconds = remember { mutableFloatStateOf(0f) }
     val wavesActive = isPlaying && !dragging
+    LaunchedEffect(wavesActive) {
+        if (!wavesActive) {
+            waveClockSeconds.floatValue = 0f
+            return@LaunchedEffect
+        }
+        var startNanos = -1L
+        while (true) {
+            withFrameNanos { now ->
+                if (startNanos < 0L) startNanos = now
+                // Wrap at the 3 periods' common multiple (93.6s) to keep float precision.
+                waveClockSeconds.floatValue = ((now - startNanos) % WAVE_CLOCK_WRAP_NANOS) / 1_000_000_000f
+            }
+        }
+    }
 
     // 3-Tier Amplitudes with smooth dampening on seek
     val density = LocalDensity.current
@@ -417,9 +402,10 @@ fun WavySeekBar(
                             filled.close()
                         }
 
-                        val currPhase1 = if (wavesActive) phase1.value + 2.2f else 2.2f
-                        val currPhase2 = if (wavesActive) phase2.value + 1.2f else 1.2f
-                        val currPhase3 = if (wavesActive) phase3.value else 0f
+                        val waveT = if (wavesActive) waveClockSeconds.floatValue else 0f
+                        val currPhase1 = wavePhase(waveT, 2.4f) + 2.2f
+                        val currPhase2 = wavePhase(waveT, 1.8f) + 1.2f
+                        val currPhase3 = wavePhase(waveT, 1.3f)
 
                         populateWave(pathFilled1, pathContour1, waveLength1Px, amp1.value, currPhase1)
                         populateWave(pathFilled2, pathContour2, waveLength2Px, amp2.value, currPhase2)
@@ -596,3 +582,11 @@ fun WavySeekBar(
     )
 }
 
+/** 93.6s: a whole number of 2.4s, 1.8s and 1.3s periods, so wrapping is seamless. */
+private const val WAVE_CLOCK_WRAP_NANOS = 93_600_000_000L
+
+/** Linear 0..2PI phase restarting every [periodSeconds] (LinearEasing + RepeatMode.Restart). */
+private fun wavePhase(seconds: Float, periodSeconds: Float): Float {
+    val cycles = seconds / periodSeconds
+    return (cycles - kotlin.math.floor(cycles)) * (2 * PI).toFloat()
+}

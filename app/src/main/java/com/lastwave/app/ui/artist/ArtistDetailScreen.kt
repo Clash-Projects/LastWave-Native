@@ -197,7 +197,10 @@ fun ArtistDetailScreen(
                 ) {
                     // 1. Artist Hero Section (Edge-to-Edge Full Bleed)
                     item(key = "artist_hero") {
-                        val motionVideoUrl = artistCanvas?.let { it.wideUrl ?: it.tallUrl ?: it.url }
+                        // Header is 460dp tall: on phones that box is portrait,
+                        // so the tall motion clip fits; wide only on wide screens.
+                        val headerWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
+                        val motionVideoUrl = artistCanvas?.motionUrlFor(containerAspect = headerWidthDp / 460f)
                         val hasVideoAnimation = artistCanvas != null && showHeaderVideo && !motionVideoUrl.isNullOrBlank()
 
                         Box(
@@ -918,7 +921,10 @@ fun ArtistDetailScreen(
     }
 
     // Immersive Fullscreen Artist Motion View
-    val motionVideoUrl = artistCanvas?.let { it.wideUrl ?: it.tallUrl ?: it.url }
+    val screenConfig = androidx.compose.ui.platform.LocalConfiguration.current
+    val motionVideoUrl = artistCanvas?.motionUrlFor(
+        containerAspect = screenConfig.screenWidthDp.toFloat() / screenConfig.screenHeightDp.coerceAtLeast(1),
+    )
     if (showFullscreenMotion && !motionVideoUrl.isNullOrBlank()) {
         val artistData = (uiState as? ArtistUiState.Success)?.data
         val artistDisplayName = artistData?.name ?: artistName
@@ -1232,3 +1238,19 @@ private fun SimilarArtistCard(
 class ArtistDetailGenreBridge @javax.inject.Inject constructor(
     val genreExplorer: GenreExplorer,
 ) : androidx.lifecycle.ViewModel()
+
+/**
+ * Motion clip whose shape best fits a container of [containerAspect]
+ * (width / height): the tall (portrait) asset for portrait boxes such as
+ * the phone header or fullscreen portrait, the wide one for landscape boxes.
+ * Using the wide clip in a tall header forced a heavy crop.
+ */
+private fun com.lastwave.app.data.canvas.CanvasArtwork.motionUrlFor(containerAspect: Float): String? {
+    val candidates = if (containerAspect >= 1.2f) {
+        listOf(wideUrl, tallUrl, url)
+    } else {
+        listOf(tallUrl, url, wideUrl)
+    }
+    return candidates.firstOrNull { !it.isNullOrBlank() }
+}
+

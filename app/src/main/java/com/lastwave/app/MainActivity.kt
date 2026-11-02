@@ -310,8 +310,10 @@ open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
     private fun handleNavigationIntent(intent: Intent?) {
         if (intent == null) return
         val uri = intent.data
-        if (uri?.scheme == "lastwave" && (uri.host == "jam" || uri.host == "sync")) {
-            val code = uri.getQueryParameter("code")
+        val isJamDeepLink = (uri?.scheme == "lastwave" && (uri.host == "jam" || uri.host == "sync")) ||
+            ((uri?.scheme == "https" || uri?.scheme == "http") && uri?.host == "jam.clashprojects.qd.je")
+        if (isJamDeepLink) {
+            val code = uri?.getQueryParameter("code")
             runCatching { appRouteNavigator.get().navigateTo(Screen.Jam.createRoute(code)) }
             return
         }
