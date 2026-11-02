@@ -11,6 +11,11 @@ object JamProtocolConstants {
     const val MSG_SEND_CHAT = "send_chat"
     const val MSG_PLAYBACK_ACTION = "playback_action"
     const val MSG_PING = "ping"
+    const val MSG_GRANT_HOST = "grant_host"
+    const val MSG_QUEUE_UPDATE = "queue_update"
+    const val MSG_COOLDOWN = "cooldown"
+    const val MSG_QUEUE_UPDATED = "queue_updated"
+    const val MSG_REVOKE_HOST = "revoke_host"
 
     const val MSG_ROOM_CREATED = "room_created"
     const val MSG_SYNC_STATE = "sync_state"
@@ -19,6 +24,7 @@ object JamProtocolConstants {
     const val MSG_CHAT_MESSAGE = "chat_message"
     const val MSG_SYNC_PLAYBACK = "sync_playback"
     const val MSG_HOST_CHANGED = "host_changed"
+    const val MSG_COHOST_CHANGED = "cohost_changed"
     const val MSG_CHANGE_ROOM_MODE = "change_room_mode"
     const val MSG_ROOM_MODE_CHANGED = "room_mode_changed"
     const val MSG_PONG = "pong"
@@ -53,9 +59,59 @@ data class JoinRoomRequest(
     @SerialName("name") val name: String,
 )
 
+/** Accepts a bare room code or a pasted invite link (`...?code=ABC123`). */
+fun parseJamCode(raw: String): String {
+    val text = raw.trim()
+    val tail = if (text.contains("code=", ignoreCase = true)) text.substringAfter("code=", text) else text
+    return tail.takeWhile { it != '&' && it != '#' && !it.isWhitespace() }.uppercase()
+}
+
+/** Always-active stations provisioned by the server. */
+data class JamStation(val code: String, val title: String, val blurb: String)
+
+val JamStations = listOf(
+    JamStation("INDIA", "India", "Always-on room for India"),
+    JamStation("WORLD", "International", "Always-on room for everyone else"),
+)
+
 @Serializable
 data class SendChatRequest(
     @SerialName("text") val text: String,
+    @SerialName("reply_to_id") val replyToId: String? = null,
+)
+
+@Serializable
+data class CooldownPayload(
+    @SerialName("retry_at_ms") val retryAtMs: Long = 0L,
+    @SerialName("window_ms") val windowMs: Long = 0L,
+)
+
+@Serializable
+data class RoomInfoPayload(
+    @SerialName("code") val code: String = "",
+    @SerialName("name") val name: String = "",
+    @SerialName("participants") val participants: Int = 0,
+)
+
+@Serializable
+data class RoomsResponse(
+    @SerialName("rooms") val rooms: List<RoomInfoPayload> = emptyList(),
+)
+
+@Serializable
+data class QueueUpdateRequest(
+    @SerialName("queue") val queue: List<TrackInfoPayload>,
+)
+
+@Serializable
+data class QueueUpdatedPayload(
+    @SerialName("queue") val queue: List<TrackInfoPayload> = emptyList(),
+    @SerialName("host_id") val hostId: String = "",
+)
+
+@Serializable
+data class GrantHostRequest(
+    @SerialName("user_id") val userId: String,
 )
 
 @Serializable
@@ -72,6 +128,7 @@ data class ParticipantPayload(
     @SerialName("user_id") val userId: String = "",
     @SerialName("name") val name: String = "",
     @SerialName("is_host") val isHost: Boolean = false,
+    @SerialName("is_cohost") val isCoHost: Boolean = false,
     @SerialName("joined_at") val joinedAt: Long = 0L,
 )
 
@@ -81,10 +138,19 @@ data class HostChangedPayload(
     @SerialName("new_host_name") val newHostName: String = "",
     @SerialName("user_id") val userId: String = "",
     @SerialName("name") val name: String = "",
+    @SerialName("host_id") val hostId: String = "",
+    @SerialName("cohost_id") val coHostId: String = "",
 ) {
-    val effectiveHostId: String get() = newHostId.ifEmpty { userId }
+    val effectiveHostId: String get() = hostId.ifEmpty { newHostId.ifEmpty { userId } }
     val effectiveHostName: String get() = newHostName.ifEmpty { name }
 }
+
+@Serializable
+data class CoHostChangedPayload(
+    @SerialName("host_id") val hostId: String = "",
+    @SerialName("cohost_id") val coHostId: String = "",
+    @SerialName("cohost_name") val coHostName: String = "",
+)
 
 @Serializable
 data class UserLeftPayload(
@@ -106,6 +172,14 @@ data class RoomModeChangedPayload(
 )
 
 @Serializable
+data class ChatReplyPayload(
+    @SerialName("id") val id: String = "",
+    @SerialName("user_id") val userId: String = "",
+    @SerialName("user_name") val userName: String = "",
+    @SerialName("text") val text: String = "",
+)
+
+@Serializable
 data class ChatMessagePayload(
     @SerialName("id") val id: String = "",
     @SerialName("user_id") val userId: String = "",
@@ -113,6 +187,7 @@ data class ChatMessagePayload(
     @SerialName("is_host") val isHost: Boolean = false,
     @SerialName("text") val text: String = "",
     @SerialName("timestamp") val timestamp: Long = 0L,
+    @SerialName("reply_to") val replyTo: ChatReplyPayload? = null,
 )
 
 @Serializable
@@ -156,6 +231,10 @@ data class SyncStatePayload(
     @SerialName("user_id") val userId: String,
     @SerialName("name") val name: String,
     @SerialName("is_host") val isHost: Boolean,
+    @SerialName("host_id") val hostId: String = "",
+    @SerialName("cohost_id") val coHostId: String = "",
+    @SerialName("permanent") val permanent: Boolean = false,
+    @SerialName("room_name") val roomName: String = "",
     @SerialName("room_mode") val roomMode: String = JamProtocolConstants.MODE_COLLABORATIVE,
     @SerialName("playback") val playback: PlaybackStatePayload,
     @SerialName("participants") val participants: List<ParticipantPayload> = emptyList(),
@@ -166,4 +245,6 @@ data class SyncStatePayload(
 data class ErrorPayload(
     @SerialName("code") val code: String = "",
     @SerialName("message") val message: String = "",
+    @SerialName("retry_after_ms") val retryAfterMs: Long = 0L,
+    @SerialName("retry_at_ms") val retryAtMs: Long = 0L,
 )

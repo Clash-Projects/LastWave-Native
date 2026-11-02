@@ -5575,7 +5575,7 @@ private fun AudioControlsSheet(
                             )
                             Box(
                                 modifier = Modifier
-                                    .size(20.dp)
+                                    .size(32.dp)
                                     .clip(CircleShape)
                                     .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                                     .clickable {
@@ -5590,7 +5590,7 @@ private fun AudioControlsSheet(
                                     imageVector = Icons.Filled.RestartAlt,
                                     contentDescription = "Reset speed and pitch",
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(12.dp),
+                                    modifier = Modifier.size(18.dp),
                                 )
                             }
                         }

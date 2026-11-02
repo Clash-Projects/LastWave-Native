@@ -14,7 +14,10 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -51,6 +54,7 @@ class JamPlaybackSync @Inject constructor(
         start()
     }
 
+    @OptIn(FlowPreview::class)
     fun start() {
         // 1. Observe session state changes to reset broadcast history
         scope.launch {
@@ -65,6 +69,33 @@ class JamPlaybackSync @Inject constructor(
                     Log.d(TAG, "Jam session active (${session.roomCode}), host=${session.isHost}")
                 }
             }
+        }
+
+        // 1b. Admin only: share the upcoming queue with the room (read-only for others)
+        scope.launch {
+            combine(
+                musicPlayer.state
+                    .map { st ->
+                        st.queue.drop(st.currentIndex + 1).take(5).map { t ->
+                            TrackInfoPayload(
+                                id = t.videoId?.takeIf { it.isNotBlank() } ?: t.title,
+                                title = t.title,
+                                artist = t.artist,
+                                album = t.album,
+                                artworkUrl = t.artworkUrl,
+                                durationMs = t.durationMs,
+                            )
+                        }
+                    }
+                    .distinctUntilChanged(),
+                jamRepository.sessionState
+                    .map { (it as? JamSessionState.Active)?.let { a -> if (a.isMainHost) a.userId else null } }
+                    .distinctUntilChanged(),
+            ) { queue, adminId -> queue to adminId }
+                .debounce(600L)
+                .collect { (queue, adminId) ->
+                    if (adminId != null) jamRepository.publishQueue(queue)
+                }
         }
 
         // 2. Inbound: Listen for remote playback events and apply to MusicPlayer
