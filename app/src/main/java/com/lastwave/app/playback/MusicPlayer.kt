@@ -332,7 +332,8 @@ class MusicPlayer @Inject constructor(
             player.clearMediaItems()
         }
         if (snapshot.current != null) ensureForegroundService()
-        _state.update { it.copy(isCasting = true) }
+        // While casting, the volume UI shows/controls the cast device.
+        _state.update { it.copy(isCasting = true, appVolume = castVolume) }
         return snapshot
     }
 
@@ -370,15 +371,16 @@ class MusicPlayer @Inject constructor(
         persistPlaybackSession()
     }
 
+    /**
+     * Cast device volume reported by the receiver. Kept separate from the
+     * local in-app volume: it used to overwrite and PERSIST [appVolume], so
+     * after one cast session (receivers often sit at 30-50%) local playback
+     * stayed attenuated and the phone's max volume was no longer loud.
+     */
     internal fun onCastVolumeChanged(volume: Float) = onMain {
         val clamped = volume.coerceIn(0f, 1f)
-        if (appVolume != clamped) {
-            appVolume = clamped
-            _state.update { it.copy(appVolume = clamped) }
-            applicationScope.launch {
-                settingsPreferences.setAppVolume(clamped)
-            }
-        }
+        castVolume = clamped
+        if (isCasting) _state.update { it.copy(appVolume = clamped) }
     }
 
     internal fun castTrackEnded() {
@@ -390,7 +392,8 @@ class MusicPlayer @Inject constructor(
     }
 
     internal fun finishCasting() {
-        _state.update { it.copy(isCasting = false, isPlaying = false, isBuffering = false) }
+        // Back to local output: show/use the local in-app volume again.
+        _state.update { it.copy(isCasting = false, isPlaying = false, isBuffering = false, appVolume = appVolume) }
         persistPlaybackSession()
     }
     private val playbackPreferences = appContext.getSharedPreferences(
@@ -558,8 +561,11 @@ class MusicPlayer @Inject constructor(
         .stateIn(applicationScope, SharingStarted.WhileSubscribed(5_000), _state.value.withoutProgress())
 
     private var errorRetryCount = 0
+    /** Local in-app playback volume (persisted). Never holds the cast level. */
     var appVolume: Float = 1f
         private set
+    /** Last volume of the cast receiver; only meaningful while casting. */
+    private var castVolume: Float = 1f
     private var retryMediaId: String? = null
     private val losslessBypassMediaIds = ConcurrentHashMap.newKeySet<String>()
     // Written by the settings collector, read on the main thread.
@@ -2181,10 +2187,11 @@ class MusicPlayer @Inject constructor(
         }
 
         applicationScope.launch {
+            runCatching { settingsPreferences.resetAppVolumeAfterCastFixOnce() }
             settingsPreferences.appVolume.collect { vol ->
                 onMain {
                     appVolume = vol
-                    _state.update { it.copy(appVolume = vol) }
+                    _state.update { if (it.isCasting) it else it.copy(appVolume = vol) }
                     if (playerDelegate.isInitialized() && unduckedVolume == null) {
                         runCatching { player.volume = if (bitPerfectEnabled) 1f else vol }
                     }
@@ -3032,6 +3039,14 @@ class MusicPlayer @Inject constructor(
 
     fun setAppVolume(volume: Float) = onMain {
         val clamped = volume.coerceIn(0f, 1f)
+        if (isCasting) {
+            // Slider / volume keys drive the receiver only; local playback
+            // volume and its saved value stay untouched.
+            castVolume = clamped
+            _state.update { it.copy(appVolume = clamped) }
+            castPlayback?.setVolume(clamped)
+            return@onMain
+        }
         appVolume = clamped
         _state.update { it.copy(appVolume = clamped) }
         if (playerDelegate.isInitialized() && unduckedVolume == null) {
@@ -3039,9 +3054,6 @@ class MusicPlayer @Inject constructor(
         }
         runCatching { nativeAudioEngine.get().setOutputVolume(if (bitPerfectEnabled) 1f else clamped) }
         runCatching { autoMixCoordinator.get().setBaseVolume(clamped) }
-        if (isCasting) {
-            castPlayback?.setVolume(clamped)
-        }
         applicationScope.launch {
             settingsPreferences.setAppVolume(clamped)
         }

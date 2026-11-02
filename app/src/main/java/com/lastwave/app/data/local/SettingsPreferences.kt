@@ -357,6 +357,7 @@ class SettingsPreferences @Inject constructor(
         val LYRICS_OFFSET_MS = longPreferencesKey("lw_lyrics_offset_ms")
         val LYRICS_FONT_SCALE = floatPreferencesKey("lw_lyrics_font_scale")
         val APP_VOLUME = floatPreferencesKey("lw_app_volume")
+        val APP_VOLUME_CAST_FIX_DONE = booleanPreferencesKey("lw_app_volume_cast_fix_done")
         val CROSSFADE_ENABLED = booleanPreferencesKey("lw_crossfade_enabled")
         val CROSSFADE_SECONDS = intPreferencesKey("lw_crossfade_seconds")
         val WAVY_SEEKBAR_ENABLED = booleanPreferencesKey("lw_wavy_seekbar_enabled")
@@ -739,6 +740,22 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setAppVolume(volume: Float) {
         dataStore.edit { it[Keys.APP_VOLUME] = volume.coerceIn(0f, 1f) }
+    }
+
+    /**
+     * One-time repair: builds since the cast-volume integration saved the
+     * Chromecast/TV receiver level as the LOCAL in-app volume, silently
+     * capping phone playback (max volume sounded like ~50%). Users cannot
+     * tell a polluted value from a chosen one, so restore unity once; the
+     * slider still works afterwards.
+     */
+    suspend fun resetAppVolumeAfterCastFixOnce() {
+        dataStore.edit {
+            if (it[Keys.APP_VOLUME_CAST_FIX_DONE] != true) {
+                it[Keys.APP_VOLUME] = 1.0f
+                it[Keys.APP_VOLUME_CAST_FIX_DONE] = true
+            }
+        }
     }
 
     suspend fun setLyricsFontScale(scale: Float) {
