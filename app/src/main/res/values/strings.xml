@@ -716,13 +716,13 @@
     <string name="gen_mode_song_radio">Song Radio</string>
     <string name="gen_mode_song_radio_desc">YouTube Music radio from any song</string>
     <string name="gen_mode_sim_artists">Similar Artists</string>
-    <string name="gen_mode_sim_artists_desc">YouTube-first artist discovery</string>
+    <string name="gen_mode_sim_artists_desc">SoundDrop-first artist discovery</string>
     <string name="gen_mode_tag">By Tag / Genre</string>
-    <string name="gen_mode_tag_desc">YouTube-first genre picks</string>
+    <string name="gen_mode_tag_desc">SoundDrop-first genre picks</string>
     <string name="gen_mode_mix">My Mix</string>
     <string name="gen_mode_mix_desc">Your taste, mixes &amp; local favorites</string>
     <string name="gen_mode_reco">My Recommendation</string>
-    <string name="gen_mode_reco_desc">35 YouTube-first discoveries</string>
+    <string name="gen_mode_reco_desc">35 SoundDrop-first discoveries</string>
     <string name="gen_mode_never">Never Heard</string>
     <string name="gen_mode_never_desc">Fresh discoveries you\'ve never listened to before</string>
     <string name="gen_mode_library">My Library</string>
@@ -762,7 +762,7 @@
     <string name="search_voice_prompt">Speak a song, artist, or album to search</string>
     <string name="search_voice_unavailable">Voice search is not available on this device.</string>
     <string name="search_hint_users">Search Last.fm users…</string>
-    <string name="search_hint_yt">Search YouTube Music…</string>
+    <string name="search_hint_yt">Search Any Music…</string>
     <string name="search_tab_tracks">Tracks</string>
     <string name="search_tab_podcasts">Podcasts</string>
     <string name="search_tab_artists">Artists</string>
