@@ -1184,4 +1184,17 @@
     <string name="signal_usb_hardware_section">Donanım doğrudan hattı</string>
     <string name="signal_usb_interface">Arabirim</string>
     <string name="signal_usb_interface_value">Doğrudan USB (usbdevfs)</string>
+
+    <!-- Recommendations -->
+    <string name="settings_section_recommendations">Öneriler</string>
+    <string name="settings_recommendations_title">Öneri sağlayıcı</string>
+    <string name="settings_recommendations_sub_disconnected">YouTube Music • Spotify önerileri almak için Spotify\'ı bağlayın</string>
+    <string name="settings_recommendations_dialog_desc">Ana sayfa, radyo, Keşfet ve mikslerdeki parçaları seçer. Çalma her iki durumda da YouTube Music üzerinden yapılır.</string>
+    <string name="settings_recommendations_connect_first">Önce Spotify\'ı bağlayın</string>
+    <string name="recommendation_source_yt_music">YouTube Music</string>
+    <string name="recommendation_source_yt_music_sub">YouTube Music tarafından önerilir</string>
+    <string name="recommendation_source_spotify">Spotify</string>
+    <string name="recommendation_source_spotify_sub">Spotify tarafından önerilir, YouTube Music\'ten çalınır</string>
+    <string name="toast_spotify_connect_first">Önce Spotify\'ı bağlayın</string>
+    <string name="toast_spotify_disconnected">Spotify hesabının bağlantısı kesildi</string>
 </resources>

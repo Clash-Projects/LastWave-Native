@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Added & Improved
+- **Recommendation Provider Switch:** Settings → Spotify now offers a recommendation provider choice. Pick Spotify to seed Home shelves, Quick Picks, radio, Discover and mixes from your Spotify taste; the switch applies everywhere and invalidates the cached home feed. Spotify only supplies the seeds — tracks are matched back to playable YouTube Music, and any failure or empty answer silently keeps the YouTube Music graph, so playback never breaks.
+
 ## [5.0.0] - 2026-10-30
 
 ### Added & Improved

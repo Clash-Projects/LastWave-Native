@@ -1073,4 +1073,17 @@
     <string name="lyshare_color_brand">LastWave ライム</string>
     <string name="lyshare_accessibility_line_selected">選択中、%1$d / %2$d 行目</string>
     <string name="lyshare_accessibility_line_unselected">%1$d / %2$d 行目</string>
+
+    <!-- Recommendations -->
+    <string name="settings_section_recommendations">おすすめ</string>
+    <string name="settings_recommendations_title">おすすめの提供元</string>
+    <string name="settings_recommendations_sub_disconnected">YouTube Music • Spotify を連携すると Spotify からおすすめを生成します</string>
+    <string name="settings_recommendations_dialog_desc">ホーム、ラジオ、見つける、ミックスのおすすめ曲を選択します。どちらを選んでも再生は YouTube Music で行われます。</string>
+    <string name="settings_recommendations_connect_first">先に Spotify を連携してください</string>
+    <string name="recommendation_source_yt_music">YouTube Music</string>
+    <string name="recommendation_source_yt_music_sub">YouTube Music によるおすすめ</string>
+    <string name="recommendation_source_spotify">Spotify</string>
+    <string name="recommendation_source_spotify_sub">Spotify によるおすすめ、YouTube Music で再生</string>
+    <string name="toast_spotify_connect_first">先に Spotify を連携してください</string>
+    <string name="toast_spotify_disconnected">Spotify アカウントの連携を解除しました</string>
 </resources>

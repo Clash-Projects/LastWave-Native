@@ -1073,4 +1073,17 @@
     <string name="lyshare_color_brand">ليموني LastWave</string>
     <string name="lyshare_accessibility_line_selected">محدد، السطر %1$d من %2$d</string>
     <string name="lyshare_accessibility_line_unselected">السطر %1$d من %2$d</string>
+
+    <!-- Recommendations -->
+    <string name="settings_section_recommendations">التوصيات</string>
+    <string name="settings_recommendations_title">مزود التوصيات</string>
+    <string name="settings_recommendations_sub_disconnected">YouTube Music • اربط Spotify لتوليد التوصيات منه</string>
+    <string name="settings_recommendations_dialog_desc">اختيار المقاطع في الشاشة الرئيسية والراديو والاستكشاف والميكسات. سيظل التشغيل على YouTube Music في الحالتين.</string>
+    <string name="settings_recommendations_connect_first">قم بربط Spotify أولاً</string>
+    <string name="recommendation_source_yt_music">YouTube Music</string>
+    <string name="recommendation_source_yt_music_sub">مبني على توصيات YouTube Music</string>
+    <string name="recommendation_source_spotify">Spotify</string>
+    <string name="recommendation_source_spotify_sub">مبني على توصيات Spotify، ويتم التشغيل عبر YouTube Music</string>
+    <string name="toast_spotify_connect_first">قم بربط Spotify أولاً</string>
+    <string name="toast_spotify_disconnected">تم فصل حساب Spotify</string>
 </resources>

@@ -1044,6 +1044,23 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "spotify.recommendations",
+                    title = "Recommendation provider",
+                    subtitle = "Seed recommendations from YouTube Music or Spotify",
+                    keywords = listOf(
+                        "recommendation", "recommendations", "algorithm", "provider", "radio",
+                        "discover", "mix", "mixes", "spotify recommendations", "youtube recommendations"
+                    ),
+                    icon = Icons.Filled.AutoAwesome,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    parentTab = SettingsTab.SPOTIFY,
+                    section = "Recommendations",
+                    type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "spotify.token",
                     title = "Import sp_dc token",
                     subtitle = "Paste a session cookie from your browser instead of signing in here",

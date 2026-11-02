@@ -88,14 +88,26 @@ data class SpotifyWebSearchResponse(
         @Serializable
         data class TrackItem(
             val id: String? = null,
+            val uri: String? = null,
             val name: String? = null,
             val duration_ms: Long? = null,
+            val durationMs: Long? = null,
             val artists: List<ArtistItem> = emptyList(),
         ) {
             @Serializable
             data class ArtistItem(val name: String? = null)
         }
     }
+}
+
+/** `GET /v1/recommendations` — only the track fields the seed resolver needs. */
+@Serializable
+data class SpotifyRecommendationsResponse(
+    val tracks: List<SpotifyWebSearchResponse.TracksContainer.TrackItem> = emptyList(),
+    val items: List<SpotifyWebSearchResponse.TracksContainer.TrackItem> = emptyList(),
+) {
+    val allTracks: List<SpotifyWebSearchResponse.TracksContainer.TrackItem>
+        get() = tracks.ifEmpty { items }
 }
 
 @Serializable

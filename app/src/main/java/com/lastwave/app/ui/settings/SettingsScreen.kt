@@ -116,6 +116,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Waves
 import com.lastwave.app.data.local.LyricsProvider
+import com.lastwave.app.data.local.RecommendationSource
 import com.lastwave.app.ui.player.LyricsOffsetDialog
 import com.lastwave.app.ui.player.LyricsSizeDialog
 import androidx.compose.material.icons.filled.FormatSize
@@ -552,6 +553,7 @@ fun SettingsScreen(
     var showYtChannelSheet by remember { mutableStateOf(false) }
     var showYtDisconnectConfirm by remember { mutableStateOf(false) }
     var showSpotifyDisconnectConfirm by remember { mutableStateOf(false) }
+    var showRecommendationSourceDialog by remember { mutableStateOf(false) }
     var showCookieLoginDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showJamSheet by remember { mutableStateOf(false) }
@@ -1907,6 +1909,28 @@ fun SettingsScreen(
 
                         item {
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                SectionLabel(stringResource(R.string.settings_section_recommendations))
+                                SettingsGroup(rowCount = 1) { _, position ->
+                                    SettingsActionCard(
+                                        icon = Icons.Filled.AutoAwesome,
+                                        iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                        iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                        title = stringResource(R.string.settings_recommendations_title),
+                                        subtitle = if (spotifyConnected) {
+                                            "${stringResource(misc.recommendationSource.titleRes)} \u2022 ${stringResource(misc.recommendationSource.subtitleRes)}"
+                                        } else {
+                                            stringResource(R.string.settings_recommendations_sub_disconnected)
+                                        },
+                                        onClick = { showRecommendationSourceDialog = true },
+                                        position = position,
+                                        isHighlighted = (highlightedSettingId == "spotify.recommendations"),
+                                    )
+                                }
+                            }
+                        }
+
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 SectionLabel("Session Token")
                                 SettingsGroup(rowCount = 1) { _, position ->
                                     SettingsActionCard(
@@ -2683,6 +2707,18 @@ fun SettingsScreen(
     }
 
 
+
+    if (showRecommendationSourceDialog) {
+        RecommendationSourceDialog(
+            current = if (spotifyConnected) misc.recommendationSource else RecommendationSource.YOUTUBE_MUSIC,
+            spotifyConnected = spotifyConnected,
+            onSelect = {
+                viewModel.setRecommendationSource(it)
+                showRecommendationSourceDialog = false
+            },
+            onDismiss = { showRecommendationSourceDialog = false },
+        )
+    }
 
     // -- Lyrics provider picker: preferred source first, automatic
     // fallback to the rest when it returns nothing --
@@ -6224,6 +6260,46 @@ private fun SyncPlaylistsSheet(
     }
 }
 
+@Composable
+private fun RecommendationSourceDialog(
+    current: RecommendationSource,
+    spotifyConnected: Boolean,
+    onSelect: (RecommendationSource) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_recommendations_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    stringResource(R.string.settings_recommendations_dialog_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                RecommendationSource.entries.forEach { source ->
+                    val needsSpotify = source == RecommendationSource.SPOTIFY && !spotifyConnected
+                    SettingsRadioOption(
+                        label = stringResource(source.titleRes),
+                        selected = source == current,
+                        onClick = { if (!needsSpotify) onSelect(source) },
+                        enabled = !needsSpotify,
+                        subtitle = if (needsSpotify) {
+                            stringResource(R.string.settings_recommendations_connect_first)
+                        } else {
+                            stringResource(source.subtitleRes)
+                        },
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_done)) }
+        },
+    )
+}
+
 /**
  * Bottom sheet to pick from 8 experimental lyrics animation physics profiles.
  */
@@ -6327,22 +6403,38 @@ private fun SettingsRadioOption(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
+    enabled: Boolean = true,
+    subtitle: String? = null,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .clickable { onClick() }
+            .clickable(enabled = enabled) { onClick() }
             .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RadioButton(selected = selected, onClick = onClick)
+        RadioButton(selected = selected, onClick = onClick, enabled = enabled)
         Spacer(Modifier.width(8.dp))
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-        )
+        Column(Modifier.weight(1f)) {
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                color = if (enabled) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+            subtitle?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 

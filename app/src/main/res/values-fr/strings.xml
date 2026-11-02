@@ -1126,4 +1126,17 @@
     <string name="signal_detail_autoeq">Correction appliquée par LastWave (modifie les échantillons, mixer Android toujours contourné)</string>
     <string name="signal_verdict_direct_eq">Mixer Android contourné. LastWave applique ta correction AutoEQ, puis les échantillons vont directement au HAL.</string>
     <string name="signal_direct_eq">DIRECT + EQ</string>
+
+    <!-- Recommendations -->
+    <string name="settings_section_recommendations">Recommandations</string>
+    <string name="settings_recommendations_title">Fournisseur de recommandations</string>
+    <string name="settings_recommendations_sub_disconnected">YouTube Music • Associez Spotify pour générer des recommandations depuis Spotify</string>
+    <string name="settings_recommendations_dialog_desc">Choisit les morceaux pour l\'Accueil, la radio, Découverte et les mix. La lecture s\'effectue toujours sur YouTube Music.</string>
+    <string name="settings_recommendations_connect_first">Associez d\'abord Spotify</string>
+    <string name="recommendation_source_yt_music">YouTube Music</string>
+    <string name="recommendation_source_yt_music_sub">Généré par YouTube Music</string>
+    <string name="recommendation_source_spotify">Spotify</string>
+    <string name="recommendation_source_spotify_sub">Généré par Spotify, lu sur YouTube Music</string>
+    <string name="toast_spotify_connect_first">Associez d\'abord Spotify</string>
+    <string name="toast_spotify_disconnected">Compte Spotify déconnecté</string>
 </resources>

@@ -174,7 +174,20 @@ class SettingsViewModel @Inject constructor(
     fun disconnectSpotify() {
         viewModelScope.launch {
             spotifyPreferences.clearConnection()
-            _uiState.update { it.copy(toastMessage = "Spotify account disconnected") }
+            settingsPreferences.setRecommendationSource(com.lastwave.app.data.local.RecommendationSource.YOUTUBE_MUSIC)
+            _uiState.update { it.copy(toastMessage = appContext.getString(com.lastwave.app.R.string.toast_spotify_disconnected)) }
+        }
+    }
+
+    fun setRecommendationSource(source: com.lastwave.app.data.local.RecommendationSource) {
+        viewModelScope.launch {
+            val usable = source != com.lastwave.app.data.local.RecommendationSource.SPOTIFY || spotifyConnected.value
+            settingsPreferences.setRecommendationSource(
+                if (usable) source else com.lastwave.app.data.local.RecommendationSource.YOUTUBE_MUSIC,
+            )
+            if (!usable) {
+                _uiState.update { it.copy(toastMessage = appContext.getString(com.lastwave.app.R.string.toast_spotify_connect_first)) }
+            }
         }
     }
 
