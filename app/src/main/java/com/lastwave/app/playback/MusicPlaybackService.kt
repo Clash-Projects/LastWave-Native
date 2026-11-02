@@ -56,6 +56,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -103,6 +104,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     @Inject lateinit var themeRepository: ThemeRepository
     @Inject lateinit var artworkRepository: com.lastwave.app.data.artwork.ArtworkRepository
     @Inject lateinit var androidAutoLibrary: AndroidAutoMediaLibrary
+    @Inject lateinit var lyricsRepository: com.lastwave.app.data.lyrics.LyricsRepository
     @Inject lateinit var trackLikeController: TrackLikeController
     @Inject lateinit var jamPlaybackSync: com.lastwave.app.playback.jam.JamPlaybackSync
 
@@ -146,6 +148,9 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     private var cleanedSourceArtist = ""
     private var cleanedMetadata = CleanTrackMetadata("", "")
     private var artworkJob: Job? = null
+    /** Feeds synced lyrics to the OriginOS music card / Origin Island (vivo only). */
+    private var originLyricsJob: Job? = null
+    private var originLyricsMediaId: String? = null
     private var artworkUrl: String? = null
     private var artworkBitmap: Bitmap? = null
     private var notificationSignature = ""
@@ -294,6 +299,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                     publishSystemState(state)
                     publishNotification(state)
                     publishWidget(state)
+                    publishOriginOsLyrics(state)
                     publishCarBrowseState(state)
                     detectTransition(state)
                     themeRepository.updateNowPlayingArtwork(state.current?.title, state.current?.artist)
@@ -477,6 +483,46 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         if (packages.isNullOrEmpty()) return@runCatching true
         packages.contains(clientPackageName)
     }.getOrDefault(true)
+
+    /**
+     * OriginOS music card / Origin Island lyrics: once per track, fetch the
+     * synced lyrics (same cached repository the lyrics screen uses) and hand
+     * them over as whole-song LRC through the session extras, resending
+     * while the track stays current. The media id matches the metadata one.
+     */
+    private fun publishOriginOsLyrics(state: MusicPlayerState) {
+        if (!OriginOsMusicCard.isSupportedDevice()) return
+        val track = state.current
+        val mediaId = track?.let { OriginOsMusicCard.mediaIdOf(state.currentIndex, it) }
+        if (mediaId == originLyricsMediaId) return
+        originLyricsMediaId = mediaId
+        originLyricsJob?.cancel()
+        if (track == null || mediaId == null) return
+        originLyricsJob = scope.launch {
+            val result = runCatching {
+                lyricsRepository.getLyrics(
+                    title = track.title,
+                    artist = track.artist,
+                    album = track.album,
+                    durationSeconds = (state.durationMs.takeIf { it > 0 } ?: track.durationMs)
+                        ?.takeIf { it > 0 }?.let { (it / 1000).toInt() },
+                    wordByWord = false,
+                    videoId = track.videoId,
+                    localLrcPath = com.lastwave.app.data.generate.LocalAudioFormats
+                        .importedPathOrNull(track.playbackUrl)
+                        ?.let(com.lastwave.app.data.generate.LocalAudioFormats::lrcPathFor),
+                )
+            }.getOrNull() as? com.lastwave.app.data.lyrics.LyricsResult.Success ?: return@launch
+            if (!result.isSynced) return@launch
+            val lrc = OriginOsMusicCard.lrcOf(result.lines) ?: return@launch
+            // Never setExtras with an empty bundle: that wipes what the card has.
+            val extras = OriginOsMusicCard.lyricsExtras(mediaId, lrc)
+            while (isActive) {
+                runCatching { mediaSession?.setExtras(extras) }
+                delay(OriginOsMusicCard.LYRICS_RESEND_INTERVAL_MS)
+            }
+        }
+    }
 
     private fun playCarMediaId(mediaId: String) {
         scope.launch {

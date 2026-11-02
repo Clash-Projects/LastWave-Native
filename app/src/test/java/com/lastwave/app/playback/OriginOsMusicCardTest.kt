@@ -71,4 +71,33 @@ class OriginOsMusicCardTest {
         assertThat(OriginOsMusicCard.queueMediaIdOf("playlist:42")).isEqualTo("playlist:42")
         assertThat(OriginOsMusicCard.queueMediaIdOf("download:7")).isEqualTo("download:7")
     }
+
+    // --- lyrics ------------------------------------------------------------------
+
+    @Test
+    fun syncedLinesBecomeWholeSongLrc() {
+        val lines = listOf(
+            com.lastwave.app.data.lyrics.LyricLine(timeMs = 5_230L, text = "First line"),
+            com.lastwave.app.data.lyrics.LyricLine(timeMs = 65_004L, text = "Second\nline"),
+        )
+        assertThat(OriginOsMusicCard.lrcOf(lines))
+            .isEqualTo("[00:05.23]First line\n[01:05.00]Second line")
+    }
+
+    @Test
+    fun unsyncedLyricsAreNotSentAsLrc() {
+        val plain = listOf(
+            com.lastwave.app.data.lyrics.LyricLine(timeMs = 0L, text = "a"),
+            com.lastwave.app.data.lyrics.LyricLine(timeMs = 0L, text = "b"),
+        )
+        assertThat(OriginOsMusicCard.lrcOf(plain)).isNull()
+        assertThat(OriginOsMusicCard.lrcOf(emptyList())).isNull()
+    }
+
+    @Test
+    fun cardLyricsOnlyOnVivoAndIqoo() {
+        assertThat(OriginOsMusicCard.isSupportedDevice("vivo")).isTrue()
+        assertThat(OriginOsMusicCard.isSupportedDevice("iQOO")).isTrue()
+        assertThat(OriginOsMusicCard.isSupportedDevice("samsung")).isFalse()
+    }
 }
