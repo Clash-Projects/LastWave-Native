@@ -1133,8 +1133,15 @@ class MusicPlayer @Inject constructor(
                 return
             }
 
+            // Transport failures (expired signed URL, 401/403/410, network
+            // blip) say nothing about the addon's FLAC being unplayable: the
+            // addon can mint a fresh URL. Only decode/format failures may pin
+            // the track to YouTube for the session.
+            val losslessTransportFailure = failedLosslessStream && isTransportFailure(error)
             if (failedLosslessStream) {
-                if (failedMediaId != null && (errorRetryCount > 0 || !isRetryablePlaybackFailure(error))) {
+                if (failedMediaId != null && !losslessTransportFailure &&
+                    (errorRetryCount > 0 || !isRetryablePlaybackFailure(error))
+                ) {
                     losslessBypassMediaIds += failedMediaId
                 }
             } else if (!failedLocalStream && !videoId.isNullOrBlank()) {
@@ -1184,7 +1191,16 @@ class MusicPlayer @Inject constructor(
                                 // A dead stream must be replaced now: the fast
                                 // module walk used to eat the whole throttle
                                 // window and land on "Unable to resolve".
-                                losslessBudget = LosslessBudget.Disabled,
+                                // Exception: the first retry of a lossless
+                                // stream that died in transport re-asks the
+                                // addon (bounded by the startup window) so a
+                                // hi-res listener isn't dropped to Opus by an
+                                // expired URL. Later retries go straight to YouTube.
+                                losslessBudget = if (retry == 1 && losslessTransportFailure) {
+                                    LosslessBudget.Interactive
+                                } else {
+                                    LosslessBudget.Disabled
+                                },
                             )
                         }
                         withContext(Dispatchers.Main.immediate) {
@@ -1379,6 +1395,19 @@ class MusicPlayer @Inject constructor(
                                     val isCurrentlyPlaying = track.mediaIdKey() == _state.value.current?.mediaIdKey()
                                     if (isCurrentlyPlaying) {
                                         publishResolvedQuality(resolved, expectedMediaId = track.mediaIdKey())
+                                        // The loader never waits on the addon, so a
+                                        // YouTube stream here must still be promoted
+                                        // back to lossless via the hot-swap path
+                                        // (the transition handler can miss it when
+                                        // this registration lands after the transition).
+                                        if (!bypassLossless && !resolved.isLossless && resolved.audioCodec != "DOLBY ATMOS") {
+                                            scheduleQualityUpgrade(
+                                                track = track,
+                                                expectedMediaId = track.mediaIdKey(),
+                                                generation = playRequestGeneration.get(),
+                                                currentStream = resolved,
+                                            )
+                                        }
                                     }
                                     learnQueueVideoId(-1, track, resolved.youtubeCandidate?.videoId, resolved.rematchedFromVideoId)
                                 }
@@ -6145,9 +6174,13 @@ class MusicPlayer @Inject constructor(
                         track = track,
                         videoId = videoId,
                         allowLocalDownloads = false,
-                        allowLossless = !failedLosslessStream && failedMediaId !in losslessBypassMediaIds,
+                        // First attempt re-asks the addon (a lossless stream
+                        // that died mid-track usually just needs a fresh URL);
+                        // later attempts take the fast YouTube path and rely
+                        // on the quality upgrade below to return to lossless.
+                        allowLossless = attempt == 1 && failedMediaId !in losslessBypassMediaIds,
                         excludedLosslessUrls = if (failedLosslessStream) setOfNotNull(rejectedUrl) else emptySet(),
-                        losslessBudget = LosslessBudget.Disabled,
+                        losslessBudget = if (attempt == 1) LosslessBudget.Interactive else LosslessBudget.Disabled,
                     )
                 }.getOrElse { error ->
                     if (error is CancellationException) throw error
@@ -6188,6 +6221,14 @@ class MusicPlayer @Inject constructor(
                         // budget for the next error.
                         errorRetryCount = 0
                         preloadNextQueueItem(failedIndex)
+                        if (!stream.isLossless && stream.audioCodec != "DOLBY ATMOS") {
+                            scheduleQualityUpgrade(
+                                track = updated,
+                                expectedMediaId = failedMediaId,
+                                generation = generation,
+                                currentStream = stream,
+                            )
+                        }
                         true
                     } else {
                         false
@@ -8531,6 +8572,18 @@ class MusicPlayer @Inject constructor(
         if (!transientHttp && !transientNetwork) return 0L
         val exponential = PLAYBACK_RETRY_BASE_DELAY_MS * (1L shl (retry - 1).coerceAtMost(3))
         return exponential + Random.nextLong(PLAYBACK_RETRY_JITTER_MS + 1L)
+    }
+
+    /** Network/HTTP failure of the transport, as opposed to the bytes being undecodable. */
+    private fun isTransportFailure(error: PlaybackException): Boolean {
+        if (isUnsupportedMediaFailure(error)) return false
+        val status = error.httpStatusCodeOrNull()
+        if (status == 401 || status == 403 || status == 408 || status == 410 ||
+            status == 429 || (status != null && status in 500..599)
+        ) return true
+        return error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+            error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
     }
 
     private fun isRetryablePlaybackFailure(error: PlaybackException): Boolean {
