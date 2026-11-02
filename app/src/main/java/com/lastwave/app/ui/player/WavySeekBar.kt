@@ -1,11 +1,6 @@
 package com.lastwave.app.ui.player
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.interaction.DragInteraction
@@ -29,7 +24,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -40,6 +37,8 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.toArgb
+import androidx.core.graphics.ColorUtils
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -54,7 +53,7 @@ import kotlin.math.sin
 
 /**
  * Shifts the lightness and saturation of a Compose Color to produce
- * rich, dynamic tonal variations within the theme palette.
+ * rich, dynamic tonal variations within the theme palette while protecting minimum contrast.
  */
 private fun Color.shiftTonal(lightnessDelta: Float, saturationScale: Float = 1.0f): Color {
     val hsv = FloatArray(3)
@@ -66,30 +65,48 @@ private fun Color.shiftTonal(lightnessDelta: Float, saturationScale: Float = 1.0
     )
     val originalSaturation = hsv[1]
     hsv[1] = (hsv[1] * saturationScale).coerceIn(if (originalSaturation > 0.05f) 0.15f else 0.0f, 1.0f)
-    hsv[2] = (hsv[2] + lightnessDelta).coerceIn(if (originalSaturation > 0.05f) 0.15f else 0.0f, 1.0f)
+    hsv[2] = (hsv[2] + lightnessDelta).coerceIn(0.25f, 1.0f)
     val rgb = android.graphics.Color.HSVToColor(hsv)
     return Color(rgb)
 }
 
 /**
- * Ensures a color has sufficient brightness and saturation to stand out
- * vibrantly on dark scrims and backgrounds without washing out.
+ * Ensures a color has sufficient perceived luminance and saturation to stand out
+ * vibrantly on dark scrims and backgrounds without washing out or disappearing.
+ * Uses WCAG 2.1 relative luminance and HSL space to preserve the original hue.
  */
-private fun Color.ensureLuminousForDarkBackground(minBrightness: Float = 0.55f): Color {
-    val hsv = FloatArray(3)
-    android.graphics.Color.RGBToHSV(
-        (red * 255).toInt().coerceIn(0, 255),
-        (green * 255).toInt().coerceIn(0, 255),
-        (blue * 255).toInt().coerceIn(0, 255),
-        hsv,
-    )
-    if (hsv[2] < minBrightness) {
-        hsv[2] = minBrightness
+internal fun Color.ensureLuminousForDarkBackground(minLuminance: Float = 0.38f): Color {
+    val argb = this.toArgb()
+    val currentLuminance = ColorUtils.calculateLuminance(argb).toFloat()
+    if (currentLuminance >= minLuminance) {
+        return this
     }
-    if (hsv[1] in 0.05f..0.35f) {
-        hsv[1] = 0.35f
+
+    val hsl = FloatArray(3)
+    ColorUtils.colorToHSL(argb, hsl)
+
+    // If nearly achromatic (dark gray/black cover art), bring to a clean, crisp off-white/silver
+    if (hsl[1] < 0.12f) {
+        hsl[2] = hsl[2].coerceAtLeast(0.82f)
+        return Color(ColorUtils.HSLToColor(hsl))
     }
-    return Color(android.graphics.Color.HSVToColor(hsv))
+
+    // Elevate lightness iteratively until target relative luminance is met
+    var step = 0
+    while (step < 20) {
+        hsl[2] = (hsl[2] + 0.04f).coerceAtMost(0.92f)
+        // Prevent high-saturation low-luminance hues (like deep blue) from staying too dark
+        if (hsl[1] > 0.85f && hsl[2] < 0.65f) {
+            hsl[1] = (hsl[1] * 0.96f).coerceAtLeast(0.60f)
+        }
+        val candidate = ColorUtils.HSLToColor(hsl)
+        if (ColorUtils.calculateLuminance(candidate).toFloat() >= minLuminance) {
+            return Color(candidate)
+        }
+        step++
+    }
+
+    return Color(ColorUtils.HSLToColor(hsl))
 }
 
 /**
@@ -179,46 +196,42 @@ fun WavySeekBar(
     }
 
     // Ensure colors stand out vibrantly on dark scrim/translucent backgrounds
-    val effectivePrimary = remember(primaryColor, isTranslucent) {
-        if (isTranslucent) primaryColor.ensureLuminousForDarkBackground(0.60f) else primaryColor
+    val effectivePrimary = remember(primaryColor) {
+        primaryColor.ensureLuminousForDarkBackground(0.38f)
     }
-    val effectiveSecondary = remember(secondaryColor, isTranslucent) {
-        if (isTranslucent) secondaryColor.ensureLuminousForDarkBackground(0.52f) else secondaryColor
+    val effectiveSecondary = remember(secondaryColor) {
+        secondaryColor.ensureLuminousForDarkBackground(0.32f)
     }
-    val effectiveTertiary = remember(tertiaryColor, isTranslucent) {
-        if (isTranslucent) tertiaryColor.ensureLuminousForDarkBackground(0.48f) else tertiaryColor
+    val effectiveTertiary = remember(tertiaryColor) {
+        tertiaryColor.ensureLuminousForDarkBackground(0.28f)
     }
 
-    val inactiveColor = if (isTranslucent) {
-        Color.White.copy(alpha = 0.22f)
-    } else {
-        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f)
-    }
+    val inactiveColor = Color.White.copy(alpha = if (isTranslucent) 0.24f else 0.22f)
     val textColor = if (isTranslucent) {
         Color.White.copy(alpha = 0.85f)
     } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
+        Color.White.copy(alpha = 0.82f)
     }
 
     // Pre-calculated tonal palette (zero allocation in draw loop)
     val layer1Light = remember(effectiveTertiary) { effectiveTertiary.shiftTonal(lightnessDelta = +0.18f, saturationScale = 0.85f) }
-    val layer1Dark = remember(effectiveTertiary) { effectiveTertiary.shiftTonal(lightnessDelta = -0.15f, saturationScale = 1.30f) }
-    val layer2Dark = remember(effectiveSecondary) { effectiveSecondary.shiftTonal(lightnessDelta = -0.16f, saturationScale = 1.30f) }
+    val layer1Dark = remember(effectiveTertiary) { effectiveTertiary.shiftTonal(lightnessDelta = -0.06f, saturationScale = 1.15f) }
+    val layer2Dark = remember(effectiveSecondary) { effectiveSecondary.shiftTonal(lightnessDelta = -0.08f, saturationScale = 1.15f) }
     val layer2Light = remember(effectiveSecondary) { effectiveSecondary.shiftTonal(lightnessDelta = +0.18f, saturationScale = 0.85f) }
     val layer3Light = remember(effectivePrimary) { effectivePrimary.shiftTonal(lightnessDelta = +0.20f, saturationScale = 0.90f) }
-    val layer3Dark = remember(effectivePrimary) { effectivePrimary.shiftTonal(lightnessDelta = -0.14f, saturationScale = 1.35f) }
-    val thumbColor = remember(effectivePrimary) { effectivePrimary.shiftTonal(lightnessDelta = -0.06f, saturationScale = 1.15f) }
+    val layer3Dark = remember(effectivePrimary) { effectivePrimary.shiftTonal(lightnessDelta = -0.05f, saturationScale = 1.15f) }
+    val thumbColor = remember(effectivePrimary) { effectivePrimary.shiftTonal(lightnessDelta = +0.06f, saturationScale = 1.05f) }
 
     val layer1Colors = remember(layer1Light, layer1Dark, isTranslucent) {
         listOf(
-            layer1Light.copy(alpha = if (isTranslucent) 0.42f else 0.38f),
-            layer1Dark.copy(alpha = if (isTranslucent) 0.32f else 0.28f),
+            layer1Light.copy(alpha = if (isTranslucent) 0.44f else 0.40f),
+            layer1Dark.copy(alpha = if (isTranslucent) 0.34f else 0.30f),
         )
     }
     val layer2Colors = remember(layer2Dark, layer2Light, isTranslucent) {
         listOf(
-            layer2Dark.copy(alpha = if (isTranslucent) 0.72f else 0.66f),
-            layer2Light.copy(alpha = if (isTranslucent) 0.62f else 0.56f),
+            layer2Dark.copy(alpha = if (isTranslucent) 0.74f else 0.68f),
+            layer2Light.copy(alpha = if (isTranslucent) 0.64f else 0.58f),
         )
     }
     val layer3Colors = remember(layer3Light, layer3Dark, isTranslucent) {
@@ -231,40 +244,28 @@ fun WavySeekBar(
         listOf(layer3Light, layer3Dark)
     }
 
-    // Fluid wave animations
-    val infiniteTransition = rememberInfiniteTransition(label = "MaterialGlassWaveAnimation")
-
-    val phase1 = infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2400, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "Phase1",
-    )
-
-    val phase2 = infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1800, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "Phase2",
-    )
-
-    val phase3 = infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1300, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "Phase3",
-    )
-
+    // Fluid wave animations. Driven by a frame clock that only runs while
+    // the waves are actually shown (playing, not dragging): the previous
+    // infinite transition kept requesting frames while paused even though
+    // the paused waves are static. Same periods (2400/1800/1300ms, linear,
+    // restart) as before; each run starts from the paused pose, so resuming
+    // glides on instead of jumping to an unrelated phase.
+    val waveClockSeconds = remember { mutableFloatStateOf(0f) }
     val wavesActive = isPlaying && !dragging
+    LaunchedEffect(wavesActive) {
+        if (!wavesActive) {
+            waveClockSeconds.floatValue = 0f
+            return@LaunchedEffect
+        }
+        var startNanos = -1L
+        while (true) {
+            withFrameNanos { now ->
+                if (startNanos < 0L) startNanos = now
+                // Wrap at the 3 periods' common multiple (93.6s) to keep float precision.
+                waveClockSeconds.floatValue = ((now - startNanos) % WAVE_CLOCK_WRAP_NANOS) / 1_000_000_000f
+            }
+        }
+    }
 
     // 3-Tier Amplitudes with smooth dampening on seek
     val density = LocalDensity.current
@@ -401,9 +402,10 @@ fun WavySeekBar(
                             filled.close()
                         }
 
-                        val currPhase1 = if (wavesActive) phase1.value + 2.2f else 2.2f
-                        val currPhase2 = if (wavesActive) phase2.value + 1.2f else 1.2f
-                        val currPhase3 = if (wavesActive) phase3.value else 0f
+                        val waveT = if (wavesActive) waveClockSeconds.floatValue else 0f
+                        val currPhase1 = wavePhase(waveT, 2.4f) + 2.2f
+                        val currPhase2 = wavePhase(waveT, 1.8f) + 1.2f
+                        val currPhase3 = wavePhase(waveT, 1.3f)
 
                         populateWave(pathFilled1, pathContour1, waveLength1Px, amp1.value, currPhase1)
                         populateWave(pathFilled2, pathContour2, waveLength2Px, amp2.value, currPhase2)
@@ -463,8 +465,8 @@ fun WavySeekBar(
                 if (boundedDurationMs > 0) {
                     // Soft glow halo
                     drawCircle(
-                        color = thumbColor.copy(alpha = 0.28f),
-                        radius = thumbRadiusPx + 3.dp.toPx(),
+                        color = thumbColor.copy(alpha = 0.35f),
+                        radius = thumbRadiusPx + 3.5.dp.toPx(),
                         center = Offset(thumbX, centerY),
                     )
                     // Solid center circle
@@ -472,6 +474,13 @@ fun WavySeekBar(
                         color = thumbColor,
                         radius = thumbRadiusPx,
                         center = Offset(thumbX, centerY),
+                    )
+                    // High-contrast crisp border ring to ensure edge separation on any background
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.55f),
+                        radius = thumbRadiusPx,
+                        center = Offset(thumbX, centerY),
+                        style = Stroke(width = 1.2.dp.toPx()),
                     )
                 }
             }
@@ -573,3 +582,11 @@ fun WavySeekBar(
     )
 }
 
+/** 93.6s: a whole number of 2.4s, 1.8s and 1.3s periods, so wrapping is seamless. */
+private const val WAVE_CLOCK_WRAP_NANOS = 93_600_000_000L
+
+/** Linear 0..2PI phase restarting every [periodSeconds] (LinearEasing + RepeatMode.Restart). */
+private fun wavePhase(seconds: Float, periodSeconds: Float): Float {
+    val cycles = seconds / periodSeconds
+    return (cycles - kotlin.math.floor(cycles)) * (2 * PI).toFloat()
+}

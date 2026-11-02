@@ -502,6 +502,7 @@ class PlaylistRepository @Inject constructor(
      * removal made in the UI while a scan runs is never overwritten. Rows
      * whose file path is in [updates] get the fresh metadata; [additions]
      * not already present (by path) are appended in order.
+     * Automatically deduplicates rows so songs are never present twice.
      */
     suspend fun mergeLocalSongs(
         updates: Map<String, GeneratedTrack>,
@@ -511,9 +512,21 @@ class PlaylistRepository @Inject constructor(
         return saveMutex.withLock {
             val entity = dao.getById(target.id) ?: return@withLock null
             val current = entity.toDomain().tracks
-            val present = current.mapTo(mutableSetOf()) { it.url }
-            val merged = current.map { updates[it.url] ?: it } +
-                additions.filter { present.add(it.url) }
+            val rawMerged = current.map { updates[it.url] ?: it } + additions
+
+            val seenUrls = mutableSetOf<String>()
+            val seenKeys = mutableSetOf<String>()
+            val merged = mutableListOf<GeneratedTrack>()
+            for (track in rawMerged) {
+                val url = track.url.trim()
+                val key = "${track.name.trim().lowercase()}|${track.artist.trim().lowercase()}"
+                val isNewByUrl = url.isNotBlank() && seenUrls.add(url)
+                val isNewByKey = (url.isBlank() || isNewByUrl) && seenKeys.add(key)
+                if (isNewByUrl || (url.isBlank() && isNewByKey)) {
+                    merged.add(track)
+                }
+            }
+
             if (merged == current) return@withLock entity.toDomain()
             val updated = entity.copy(tracksJson = json.encodeToString(merged.map { it.toStored() }))
             dao.upsert(updated)

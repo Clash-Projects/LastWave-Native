@@ -1,5 +1,21 @@
 # Changelog
 
+## [5.0.0] - 2026-10-30
+
+### Added & Improved
+- **LastWave Jam (Listen Together & Live Chat):** Host or join real-time synchronized listening rooms with friends, featuring low-latency playback sync, shared queue control, and built-in live room chat.
+- **Synced Music & Podcast Videos (With Lossless Audio):** Watch full Official Music Videos and video podcasts directly inside the player via a native high-frame-rate video surface, seamlessly synchronized to your active Hi-Res Lossless FLAC or Opus audio stream without sacrificing audio fidelity.
+- **Native Spotify Integration & Canvas:** Connect your Spotify account for native one-tap playlist and liked-track transfers alongside looping high-resolution Spotify Canvas visuals inside Now Playing.
+- **Full Podcast Support:** Browse, stream, and follow podcast shows and episodes with dedicated episode queues, chapter navigation, and persistent playback progress.
+- **Harmonic Automixing & Enhanced Crossfade:** Added intelligent beat- and tempo-aware automixing with upgraded dual-deck crossfade transitions for seamless, gap-free track blending.
+- **Overhauled Homepage & Discovery Algorithm:** Redesigned the Home screen with a dynamic YouTube Music–style feed backed by an upgraded recommendation and taste-matching engine for smarter daily mixes, quick picks, and personalized shelves.
+
+### Changed & Fixed
+- **Bit-Perfect & Zero-Distortion Audio Fixes:** Resolved USB DAC Exclusive Mode routing issues, hardware sample rate handshakes, and FLAC/PCM clipping or distortion artifacts across devices for a clean, untouched signal path.
+- **Refined Lyrics UI & Sync Stability:** Upgraded the real-time synchronized lyrics interface with smoother scroll physics, cleaner typography, improved word-by-word karaoke timing alignment, and higher overall rendering stability.
+- **Performance, Stability & Bug Fixes:** Eliminated idle recomposition overhead, scroll hitches, and UI glitches across the app alongside extensive under-the-hood stability and memory optimizations.
+- **Version Bump:** Bumped version to 5.0.0 (versionCode 27).
+
 ## [4.3.1] - 2026-10-18
 
 ### Added & Improved

@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.FormatSize
@@ -442,6 +443,22 @@ object SettingsSearchIndex {
                     parentTab = SettingsTab.APPEARANCE,
                     section = "Appearance",
                     type = EntryType.THEME_SELECTOR,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "appearance.app_icon",
+                    title = "App Icon",
+                    subtitle = "Choose your home screen & in-app logo",
+                    keywords = listOf(
+                        "app icon", "logo", "desktop logo", "white logo", "black logo", "launcher", "icon", "theme"
+                    ),
+                    icon = Icons.Filled.Apps,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Appearance",
+                    type = EntryType.ACTION,
                 )
             )
             add(
@@ -1424,6 +1441,23 @@ object SettingsSearchIndex {
                         "contribute", "git"
                     ),
                     icon = Icons.Filled.Code,
+                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.ABOUT,
+                    section = "About & Community",
+                    type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "about.desktop_app",
+                    title = "Download Desktop App",
+                    subtitle = "View repository at github.com/Clash-Projects/LastWave-Desktop",
+                    keywords = listOf(
+                        "desktop", "pc", "windows", "mac", "linux", "electron", "github", "clash-projects",
+                        "download"
+                    ),
+                    icon = Icons.Filled.Download,
                     iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
                     parentTab = SettingsTab.ABOUT,

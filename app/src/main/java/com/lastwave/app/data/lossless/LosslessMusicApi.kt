@@ -6,13 +6,17 @@ import com.lastwave.app.data.plugin.ModuleManager
 import com.lastwave.app.data.addon.AddonClient
 import com.lastwave.app.data.addon.AddonTrack
 import com.lastwave.app.data.addon.AddonStream
+import com.lastwave.app.data.addon.HybridMediaServer
 import com.lastwave.app.data.local.SettingsPreferences
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -91,13 +95,19 @@ class LosslessMusicApi @Inject constructor(
     private val moduleManager: ModuleManager,
     private val nativeSecrets: NativeSecrets,
     private val settingsPreferences: SettingsPreferences,
+    private val hybridServer: HybridMediaServer,
 ) {
     private val client = okHttpClient.newBuilder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(5, TimeUnit.SECONDS)
         .build()
+    // Mobile radios pay a cold DNS+TLS handshake per addon call; a 5s hard
+    // ceiling aborted healthy searches/mints and dropped playback to YouTube.
+    // Desktop allows 12s for search and 4s for a warm mint.
     private val resolutionClient = client.newBuilder()
-        .callTimeout(5, TimeUnit.SECONDS)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .callTimeout(12, TimeUnit.SECONDS)
         .build()
 
     @Volatile
@@ -150,6 +160,9 @@ class LosslessMusicApi @Inject constructor(
 
         /** How long a backed-off backend stays out of the resolve path. */
         private const val FAILURE_COOLDOWN_MS = 30_000L
+
+        /** Ceiling for one lossless resolve while playback continues on another source. */
+        private const val RESOLVE_BUDGET_MS = 30_000L
 
         fun getQualityAttemptOrder(preferred: Int): List<Int> {
             // YouTube is strict: no lossless attempt, no upgrade. Empty = caller goes straight to YouTube.
@@ -684,7 +697,7 @@ class LosslessMusicApi @Inject constructor(
             return@withContext null
         }
 
-        val budgetMs = timeoutMs ?: if (isDownload) 20_000L else 8_000L
+        val budgetMs = timeoutMs ?: if (isDownload) 25_000L else RESOLVE_BUDGET_MS
         withTimeoutOrNull(budgetMs) {
             resolveStreamInternal(
                 title = title,
@@ -752,11 +765,15 @@ class LosslessMusicApi @Inject constructor(
             return null
         }
 
-        Log.i(TAG, "resolveStream racing for '$title' by '$artist' across ${allCreds.size} addons concurrently (preferredQuality=$preferredQuality, isDownload=$isDownload)")
-        val candidates = coroutineScope {
-            allCreds.map { creds ->
-                async {
-                    try {
+        // All enabled addons are queried in parallel and the first one that
+        // resolves a stream wins; the slower ones are cancelled. A dead or slow
+        // addon therefore never delays (or cools down) the working ones.
+        Log.i(TAG, "resolveStream racing for '$title' by '$artist' across ${allCreds.size} addons (first hit wins, preferredQuality=$preferredQuality, isDownload=$isDownload)")
+        val winner = coroutineScope {
+            val results = Channel<LosslessAudioStream?>(allCreds.size)
+            val jobs = allCreds.map { creds ->
+                launch {
+                    val resolved = try {
                         resolveFromAddon(
                             title = title,
                             artist = artist,
@@ -766,6 +783,7 @@ class LosslessMusicApi @Inject constructor(
                             addonBaseUrl = creds.baseUrl,
                             excludedUrls = excludedUrls,
                             isDownload = isDownload,
+                            noteFailures = false,
                         )
                     } catch (c: CancellationException) {
                         throw c
@@ -773,41 +791,38 @@ class LosslessMusicApi @Inject constructor(
                         Log.w(TAG, "resolveFromAddon failed for ${creds.baseUrl}: ${e.message}")
                         null
                     }
+                    results.trySend(resolved)
                 }
-            }.awaitAll().filterNotNull()
-        }
-        if (candidates.isEmpty()) {
-            // Atmos fallback: if Dolby Atmos was selected but not found across addons,
-            // fall back to stereo hi-res / lossless rather than failing and cooling down the backend.
-            if (preferredQuality == QUALITY_DOLBY_ATMOS) {
-                if (isCoolingDown) return null
-                Log.i(TAG, "resolveStream: Dolby Atmos not found across addons for '$title' by '$artist', falling back to stereo lossless")
-                return resolveStreamInternal(
-                    title = title,
-                    artist = artist,
-                    expectedDurationSeconds = expectedDurationSeconds,
-                    expectedAlbum = expectedAlbum,
-                    preferredQuality = QUALITY_MAX_HI_RES,
-                    excludedUrls = excludedUrls,
-                    isDownload = isDownload,
-                )
             }
-
-            return null
+            var first: LosslessAudioStream? = null
+            repeat(allCreds.size) {
+                if (first == null) first = results.receive()
+            }
+            jobs.forEach { it.cancel() }
+            first
+        }
+        if (winner != null) {
+            consecutiveFailures = 0
+            failureCooldownUntilMs = 0L
+            return winner
         }
 
-        return candidates.maxByOrNull { stream ->
-            val tierScore = when (stream.formatId) {
-                QUALITY_DOLBY_ATMOS -> 1000
-                QUALITY_MAX_HI_RES -> 800
-                QUALITY_HI_RES_96 -> 700
-                QUALITY_CD_LOSSLESS -> 500
-                QUALITY_MP3_320 -> 300
-                QUALITY_DATA_SAVER -> 100
-                else -> 50
-            }
-            tierScore + (stream.bitDepth * 5) + stream.samplingRate.toInt()
+        // Atmos fallback: if Dolby Atmos was selected but not found across addons,
+        // fall back to stereo hi-res / lossless rather than failing and cooling down the backend.
+        if (preferredQuality == QUALITY_DOLBY_ATMOS) {
+            if (isCoolingDown) return null
+            Log.i(TAG, "resolveStream: Dolby Atmos not found across addons for '$title' by '$artist', falling back to stereo lossless")
+            return resolveStreamInternal(
+                title = title,
+                artist = artist,
+                expectedDurationSeconds = expectedDurationSeconds,
+                expectedAlbum = expectedAlbum,
+                preferredQuality = QUALITY_MAX_HI_RES,
+                excludedUrls = excludedUrls,
+                isDownload = isDownload,
+            )
         }
+        return null
     }
 
     private fun isNetworkException(error: Throwable): Boolean {
@@ -833,6 +848,7 @@ class LosslessMusicApi @Inject constructor(
         addonBaseUrl: String,
         excludedUrls: Set<String>,
         isDownload: Boolean = false,
+        noteFailures: Boolean = true,
     ): LosslessAudioStream? {
         val addonClient = AddonClient(addonBaseUrl, resolutionClient, nativeSecrets = nativeSecrets)
         val cleanArtist = cleanForSearch(artist).ifBlank { artist }
@@ -870,14 +886,14 @@ class LosslessMusicApi @Inject constructor(
             val searchResult = addonClient.search(query, qualityParam, isAtmosPreferred)
             val searchError = searchResult.exceptionOrNull()
             if (searchError != null) {
-                val isServerError = searchError.message?.contains("HTTP 5") == true ||
-                    searchError.message?.contains("HTTP 429") == true ||
+                val isDefinitive = searchError.message?.contains("HTTP 429") == true ||
                     isNetworkException(searchError)
-                if (isServerError) {
-                    Log.w(TAG, "resolveFromAddon: Addon server failed for query '$query' (${searchError.message}); fast-failing query waterfall")
-                    noteBackendFailure()
+                if (isDefinitive) {
+                    Log.w(TAG, "resolveFromAddon: Addon unreachable/limited for query '$query' (${searchError.message}); falling back")
+                    if (noteFailures) noteBackendFailure()
                     return null
                 }
+                Log.w(TAG, "resolveFromAddon: search error for query '$query' (${searchError.message}); trying next query")
                 continue
             }
             val tracks = searchResult.getOrNull() ?: continue
@@ -979,32 +995,61 @@ class LosslessMusicApi @Inject constructor(
             for (candidate in targetCandidates.take(tierBudget)) {
                 currentCoroutineContext().ensureActive()
                 val trackId = candidate.rawAddonId.ifBlank { candidate.id.toString() }
-                val streamResult = addonClient.stream(trackId, q, wantAtmos, isDownload = isDownload)
+                var streamResult = addonClient.stream(trackId, q, wantAtmos, isDownload = isDownload)
+                // One quick retry (desktop parity): a transient mint failure
+                // clears on the second request; 429/quota is definitive.
+                streamResult.exceptionOrNull()?.let { first ->
+                    val retryable = first.message?.contains("HTTP 429") != true &&
+                        (first.message?.contains("HTTP 5") == true || isNetworkException(first))
+                    if (retryable) {
+                        delay(150)
+                        streamResult = addonClient.stream(trackId, q, wantAtmos, isDownload = isDownload)
+                    }
+                }
                 val streamError = streamResult.exceptionOrNull()
                 if (streamError != null) {
-                    val isServerError = streamError.message?.contains("HTTP 5") == true ||
-                        streamError.message?.contains("HTTP 429") == true ||
+                    val isDefinitive = streamError.message?.contains("HTTP 429") == true ||
                         isNetworkException(streamError)
-                    if (isServerError) {
-                        Log.w(TAG, "resolveFromAddon: Addon server stream failed for track '$trackId' (${streamError.message}); fast-failing candidate loop")
-                        noteBackendFailure()
+                    if (isDefinitive) {
+                        Log.w(TAG, "resolveFromAddon: Addon stream unreachable/limited for track '$trackId' (${streamError.message}); falling back")
+                        if (noteFailures) noteBackendFailure()
                         return null
                     }
+                    // A 5xx minting ONE catalog entry must not drop the whole
+                    // song to YouTube: try the next entry / tier first.
+                    Log.w(TAG, "resolveFromAddon: stream error for track '$trackId' q=$q (${streamError.message}); trying next candidate")
                     continue
                 }
                 val stream = streamResult.getOrNull()
 
-                val rawUrl = stream?.dataUrl?.takeIf { it.isNotBlank() }
+                // hybrid-v1: the addon only brokers the key + CDN byte ranges;
+                // the loopback server pulls the encrypted chunks from the CDN
+                // and decrypts them on-device, so no FLAC flows through the addon.
+                val hybridUrl = stream?.hybrid?.takeIf { it.isUsable }?.let { plan ->
+                    val host = runCatching { java.net.URI(addonBaseUrl).host }.getOrNull() ?: "addon"
+                    hybridServer.urlFor(plan, "${host}_${trackId}_$q")
+                }
+                // A plain FLAC needs no decrypting or manifest, so it wins when offered.
+                val progressiveFlac = if (wantAtmos) null else stream?.directUrls?.firstOrNull {
+                    it.substringBefore('?').endsWith(".flac", ignoreCase = true)
+                }
+                val rawUrl = progressiveFlac
+                    ?: hybridUrl
+                    ?: stream?.dataUrl?.takeIf { it.isNotBlank() }
                     ?: stream?.manifestXml?.takeIf { it.isNotBlank() }?.let { xml ->
                         val b64 = android.util.Base64.encodeToString(xml.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
                         "data:application/dash+xml;base64,$b64"
                     }
-                    ?: stream?.url?.takeIf { it.isNotBlank() }
+                    ?: stream?.directUrls?.firstOrNull()
                     ?: candidate.directStreamUrl?.takeIf { it.isNotBlank() }
                     ?: continue
 
                 if (rawUrl in excludedUrls) continue
-                if (isDecoyStream(rawUrl) || (stream?.url?.let(::isDecoyStream) == true)) {
+                if (isDecoyStream(rawUrl) ||
+                    stream?.directUrls?.any { isDecoyStream(it) } == true ||
+                    isDecoyStream(stream?.dataUrl) ||
+                    isDecoyStream(stream?.manifestXml)
+                ) {
                     Log.w(TAG, "resolveFromAddon: candidate $trackId returned decoy prank stream ($rawUrl); skipping")
                     continue
                 }

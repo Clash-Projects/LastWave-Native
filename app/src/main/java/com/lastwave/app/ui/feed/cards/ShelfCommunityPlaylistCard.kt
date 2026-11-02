@@ -75,7 +75,7 @@ fun ShelfCommunityPlaylistCard(
     val tint = rememberCommunityPlaylistTint(playlistId, coverUrl)
     val defaultSurface = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.76f)
     val background by animateColorAsState(
-        targetValue = tint?.copy(alpha = 0.22f)?.compositeOver(defaultSurface) ?: defaultSurface,
+        targetValue = tint?.copy(alpha = 0.38f)?.compositeOver(defaultSurface) ?: defaultSurface,
         animationSpec = tween(300), label = "community playlist tint",
     )
     Surface(

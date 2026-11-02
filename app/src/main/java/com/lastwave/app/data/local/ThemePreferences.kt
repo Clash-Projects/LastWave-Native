@@ -46,6 +46,7 @@ data class ThemePrefs(
     val hideNavTabs: Boolean = false,
     /** Dedicated LastWave Signature Theme inspired by the app logo icon (#C9FB00 & #012226). */
     val lastWaveTheme: Boolean = false,
+    val appIcon: AppIcon = AppIcon.DEFAULT,
 )
 
 @Singleton
@@ -62,6 +63,7 @@ class ThemePreferences @Inject constructor(
         val MD3_NAV_BAR = booleanPreferencesKey("lw_md3NavBar")
         val HIDE_NAV_TABS = booleanPreferencesKey("lw_hideNavTabs")
         val LASTWAVE_THEME = booleanPreferencesKey("lw_lastwave_theme")
+        val APP_ICON = stringPreferencesKey("lw_app_icon")
     }
 
     val prefs: Flow<ThemePrefs> = dataStore.data
@@ -77,6 +79,7 @@ class ThemePreferences @Inject constructor(
                 md3NavBar = p.readSafely(Keys.MD3_NAV_BAR) ?: false,
                 hideNavTabs = p.readSafely(Keys.HIDE_NAV_TABS) ?: false,
                 lastWaveTheme = p.readSafely(Keys.LASTWAVE_THEME) ?: false,
+                appIcon = AppIcon.fromId(p.readSafely(Keys.APP_ICON)),
             )
         }
 
@@ -127,5 +130,9 @@ class ThemePreferences @Inject constructor(
                 it[Keys.ACCENT_MODE] = AccentMode.MANUAL.storageValue
             }
         }
+    }
+
+    suspend fun setAppIcon(icon: AppIcon) {
+        dataStore.edit { it[Keys.APP_ICON] = icon.id }
     }
 }

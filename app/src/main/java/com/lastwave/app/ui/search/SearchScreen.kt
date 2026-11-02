@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -345,6 +346,9 @@ fun SearchScreen(
                         if (q.isEmpty()) emptyList()
                         else state.recentSearches.filter { it.lowercase().contains(q) }.take(3)
                     }
+                    val nonRecentSuggestions = remember(state.suggestions, matchingRecent) {
+                        state.suggestions.filter { !matchingRecent.contains(it) }.distinct()
+                    }
 
                     LazyColumn(
                         contentPadding = PaddingValues(
@@ -383,7 +387,7 @@ fun SearchScreen(
                         }
 
                         if (matchingRecent.isNotEmpty()) {
-                            items(matchingRecent, key = { "recent_match_$it" }) { recentText ->
+                            itemsIndexed(matchingRecent.distinct(), key = { idx, recentText -> "recent_match_${recentText}_$idx" }) { _, recentText ->
                                 SuggestionRow(
                                     fullText = recentText,
                                     query = state.query,
@@ -397,7 +401,7 @@ fun SearchScreen(
                             }
                         }
 
-                        items(state.suggestions.filter { !matchingRecent.contains(it) }, key = { "sugg_$it" }) { suggestion ->
+                        itemsIndexed(nonRecentSuggestions, key = { idx, suggestion -> "sugg_${suggestion}_$idx" }) { _, suggestion ->
                             SuggestionRow(
                                 fullText = suggestion,
                                 query = state.query,
@@ -441,7 +445,7 @@ fun SearchScreen(
                                     }
                                 }
                             }
-                            items(state.recentSearches, key = { "hist_$it" }) { recentQuery ->
+                            itemsIndexed(state.recentSearches.distinct(), key = { idx, recentQuery -> "hist_${recentQuery}_$idx" }) { _, recentQuery ->
                                 RecentSearchRow(
                                     text = recentQuery,
                                     onClick = {
@@ -573,11 +577,12 @@ fun SearchScreen(
                                         }
                                     }
 
-                                    items(
-                                        if (state.tab == SearchTab.USERS) state.results else otherResults,
-                                        key = { it.entityId ?: it.url.ifBlank { it.name + it.artist.orEmpty() } },
-                                        contentType = { "search_result" },
-                                    ) { item ->
+                                    val displayResults = if (state.tab == SearchTab.USERS) state.results else otherResults
+                                    itemsIndexed(
+                                        displayResults,
+                                        key = { index, item -> "${item.entityId ?: item.url.ifBlank { "${item.name}_${item.artist.orEmpty()}" }}_$index" },
+                                        contentType = { _, _ -> "search_result" },
+                                    ) { _, item ->
                                         val isItemPlaying = (state.tab == SearchTab.TRACKS || state.tab == SearchTab.PODCASTS) && playbackState.isPlaying &&
                                             playbackState.current?.title.equals(item.name, ignoreCase = true) &&
                                             (item.artist.isNullOrBlank() || playbackState.current?.artist.equals(item.artist, ignoreCase = true))
@@ -974,12 +979,12 @@ private fun SearchResultRow(
                 overflow = TextOverflow.Ellipsis,
             )
             val subtitle = when (tab) {
-                SearchTab.TRACKS -> listOfNotNull(item.artist, item.subtitle).joinToString(" \u00b7 ")
-                SearchTab.PODCASTS -> listOfNotNull(item.artist, item.subtitle).distinct().joinToString(" \u00b7 ")
+                SearchTab.TRACKS -> listOfNotNull(item.artist, item.subtitle).joinToString(" \u2022 ")
+                SearchTab.PODCASTS -> listOfNotNull(item.artist, item.subtitle).distinct().joinToString(" \u2022 ")
                 SearchTab.ALBUMS -> item.subtitle ?: item.artist.orEmpty()
                 SearchTab.PLAYLISTS -> item.subtitle.orEmpty()
                 SearchTab.ARTISTS -> item.subtitle.orEmpty()
-                SearchTab.USERS -> listOfNotNull(item.artist, item.listeners?.let { "$it scrobbles" }).joinToString(" \u00b7 ")
+                SearchTab.USERS -> listOfNotNull(item.artist, item.listeners?.let { "$it scrobbles" }).joinToString(" \u2022 ")
             }
             if (subtitle.isNotBlank()) {
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)

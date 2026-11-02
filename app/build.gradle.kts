@@ -60,8 +60,8 @@ android {
         applicationId = "com.lastwave.app"
         minSdk = (project.findProperty("minSdk") as? String)?.toIntOrNull() ?: 29
         targetSdk = 35
-        versionCode = 26
-        versionName = "4.3.1"
+        versionCode = 27
+        versionName = "5.0.0"
 
         (project.findProperty("targetAbis") as? String)?.let { prop ->
             ndk {
@@ -316,7 +316,7 @@ dependencies {
     // current release is built with a newer Kotlin metadata version than the
     // app. Runtime-only keeps the app compiler on its existing Kotlin line.
     runtimeOnly(libs.innertubex)
-    runtimeOnly("io.ktor:ktor-client-cio:3.5.2")
+    runtimeOnly("io.ktor:ktor-client-cio:3.6.0")
 
     // Unit Testing dependencies
     testImplementation("junit:junit:4.13.2")

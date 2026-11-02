@@ -195,7 +195,8 @@ private val YOUTUBE_VIDEO_ID_REGEX = Regex("[A-Za-z0-9_-]{11}")
  */
 fun GeneratedTrack.isLocalFile(): Boolean = isLocalAudioPath(url)
 
-fun isLocalAudioPath(url: String?): Boolean = url != null && url.startsWith("/")
+fun isLocalAudioPath(url: String?): Boolean =
+    url != null && (url.startsWith("/") || url.startsWith("content://") || url.startsWith("file://"))
 
 /**
  * Formats Media3 1.2.1 (+ the bundled FFmpeg audio decoder) can open from a
@@ -228,20 +229,28 @@ object LocalAudioFormats {
 
     val supportedExtensions: Set<String> get() = MIME_BY_EXTENSION.keys
 
-    fun extensionOf(name: String): String =
-        name.substringAfterLast('/').substringAfterLast('.', "").lowercase()
+    fun extensionOf(name: String): String {
+        val decoded = runCatching { Uri.decode(name) }.getOrNull() ?: name
+        return decoded.substringAfterLast('/').substringAfterLast('.', "").lowercase()
+    }
 
     fun isSupported(name: String): Boolean = extensionOf(name) in MIME_BY_EXTENSION
 
     fun mimeFor(name: String): String? = MIME_BY_EXTENSION[extensionOf(name)]
 
     /**
-     * Path of a file copied by the Local songs importer, or null. Accepts the
-     * `file://` form too: a queue restored from Media3 carries the file URI.
+     * Path or content URI of a local audio track, or null. Accepts the `file://` form too:
+     * a queue restored from Media3 carries the file URI.
      */
     fun importedPathOrNull(url: String?): String? {
-        val path = url?.removePrefix("file://") ?: return null
-        return path.takeIf { isLocalAudioPath(it) && it.contains("/$IMPORT_DIR/") }
+        if (url.isNullOrBlank()) return null
+        if (url.startsWith("http://") || url.startsWith("https://")) return null
+        if (url.contains("tidal_mpd") || url.contains("segdrm_mpd")) return null
+        val clean = url.removePrefix("file://")
+        if (clean.startsWith("/") || clean.startsWith("content://") || url.startsWith("content://")) {
+            return if (url.startsWith("content://")) url else clean
+        }
+        return null
     }
 
     const val IMPORT_DIR = "local_music"

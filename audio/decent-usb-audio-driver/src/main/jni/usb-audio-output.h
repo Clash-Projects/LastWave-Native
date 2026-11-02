@@ -21,10 +21,6 @@
  */
 #define USB_AUDIO_PACKETS_PER_URB 8
 
-/** Keep feedback out of the shared audio submit/reap queue because concurrent
- *  ISO IN feedback URBs on the same usbdevfs fd disrupt ISO OUT timing on Android xHCI. */
-#define USB_AUDIO_ENABLE_CONTINUOUS_FEEDBACK 0
-
 /**
  * Number of URBs in the ring buffer.
  * 80 URBs ≈ 80 ms of in-flight audio at 44.1 kHz, which empirically gives
@@ -33,7 +29,7 @@
  * SoCs. Smaller pipelines (< ~64 URBs at 44.1 kHz) trigger glitches as
  * the ring drains faster than the URB submit/reap cycle can refill it.
  */
-#define USB_AUDIO_NUM_URBS 128
+#define USB_AUDIO_NUM_URBS 80
 
 /**
  * Max bytes per URB data buffer.
@@ -141,6 +137,12 @@ struct UsbAudioContext {
     struct usbdevfs_urb *feedbackUrb;
     uint8_t feedbackBuffer[4];
     bool feedbackInFlight;
+    /**
+     * Off by default: feedback URBs sharing the audio reap queue on one usbdevfs
+     * fd disrupted ISO OUT timing on some Android xHCI hosts. Enabled per device
+     * by UsbAudioDevice.needsContinuousFeedback for DACs that need it.
+     */
+    bool continuousFeedback;
 };
 
 // ── Functions accessible from native-audio-engine ──────────────────

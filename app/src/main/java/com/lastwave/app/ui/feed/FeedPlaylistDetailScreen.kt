@@ -202,7 +202,7 @@ private fun PlaylistContent(
                     text = listOfNotNull(
                         playlist.author?.takeIf(String::isNotBlank),
                         "${playlist.tracks.size} tracks",
-                    ).joinToString(" · "),
+                    ).joinToString(" \u2022 "),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
@@ -343,7 +343,7 @@ private fun PlaylistContent(
 
 private fun YouTubeMusicTrack.artistAndAlbum(): String =
     listOfNotNull(artist.takeIf(String::isNotBlank), album?.takeIf(String::isNotBlank))
-        .joinToString(" · ")
+        .joinToString(" \u2022 ")
         .ifBlank { "YouTube Music" }
 
 private fun Int.toDurationLabel(): String = "%d:%02d".format(this / 60, this % 60)

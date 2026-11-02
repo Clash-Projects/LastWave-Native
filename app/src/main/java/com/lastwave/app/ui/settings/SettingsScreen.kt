@@ -102,6 +102,8 @@ import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FilterTiltShift
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Apps
@@ -231,6 +233,7 @@ import com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance
 import com.lastwave.app.R
 import com.lastwave.app.data.local.AccentMode
 import com.lastwave.app.data.local.ThemeMode
+import com.lastwave.app.data.local.AppIcon
 import com.lastwave.app.data.local.EQ_BAND_FREQS_HZ
 import com.lastwave.app.data.local.EQ_MAX_GAIN_DB
 import com.lastwave.app.data.local.EqualizerPresets
@@ -950,9 +953,9 @@ fun SettingsScreen(
                                 title = "AutoMix",
                                 subtitle = if (hfSettings.autoMixEnabled) {
                                     if (hfSettings.durationMode == com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO) {
-                                        "Active • Neural phrase-locked (12s–30s)"
+                                        "Active \u2022 Phrase-matched transition (Auto)"
                                     } else {
-                                        "Active • Custom DJ blend (${hfSettings.targetDurationSeconds}s)"
+                                        "Active \u2022 Custom DJ blend (${hfSettings.targetDurationSeconds}s)"
                                     }
                                 } else {
                                     "Beat-matched, key-locked seamless dual-deck mixing"
@@ -1062,7 +1065,7 @@ fun SettingsScreen(
                         LoudnessMode.ALBUM -> "Album \u2022 Keep intentional album dynamics"
                         else -> "Off \u2022 Play tagged tracks at original level"
                     }
-                    SettingsGroup(rowCount = 10) { index, position ->
+                    SettingsGroup(rowCount = 11) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.Usb,
@@ -1218,6 +1221,17 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.autoeq"),
                             )
+                            10 -> SettingsToggleCard(
+                                icon = Icons.Filled.Tune,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = "Show Auto EQ in volume panel",
+                                subtitle = "Show AutoEQ and Parametric EQ shortcut in Now Playing audio controls sheet",
+                                checked = misc.showAutoEqInVolumePanel,
+                                onCheckedChange = viewModel::setShowAutoEqInVolumePanel,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.show_autoeq_in_volume_panel"),
+                            )
                         }
                     }
                 }
@@ -1228,7 +1242,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_appearance))
-                    SettingsGroup(rowCount = 10) { index, position ->
+                    SettingsGroup(rowCount = 11) { index, position ->
                         when (index) {
                             0 -> ThemeModeSelectorCard(
                                 currentThemeMode = theme?.themeMode ?: ThemeMode.SYSTEM,
@@ -1236,7 +1250,13 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.theme_mode"),
                             )
-                            1 -> SettingsToggleCard(
+                            1 -> AppIconSelectorCard(
+                                currentIcon = theme?.appIcon ?: AppIcon.DEFAULT,
+                                onSelectAppIcon = viewModel::setAppIcon,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.app_icon"),
+                            )
+                            2 -> SettingsToggleCard(
                                 icon = Icons.Filled.AutoAwesome,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1247,7 +1267,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.lastwave_theme"),
                             )
-                            2 -> SettingsToggleCard(
+                            3 -> SettingsToggleCard(
                                 icon = Icons.Filled.Contrast,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1259,7 +1279,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.amoled"),
                             )
-                            3 -> SettingsToggleCard(
+                            4 -> SettingsToggleCard(
                                 icon = Icons.Filled.Palette,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1275,7 +1295,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.dynamic_color"),
                             )
-                            4 -> SettingsToggleCard(
+                            5 -> SettingsToggleCard(
                                 icon = Icons.Filled.BubbleChart,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1286,7 +1306,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.liquid_glass"),
                             )
-                            5 -> SettingsToggleCard(
+                            6 -> SettingsToggleCard(
                                 icon = Icons.Filled.Apps,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1297,7 +1317,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.md3_nav_bar"),
                             )
-                            6 -> SettingsToggleCard(
+                            7 -> SettingsToggleCard(
                                 icon = Icons.Filled.VisibilityOff,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1308,7 +1328,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.hide_nav_tabs"),
                             )
-                            7 -> SettingsToggleCard(
+                            8 -> SettingsToggleCard(
                                 icon = Icons.Filled.Album,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1319,7 +1339,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.dynamic_now_playing"),
                             )
-                            8 -> SettingsToggleCard(
+                            9 -> SettingsToggleCard(
                                 icon = Icons.Filled.TextFields,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1330,7 +1350,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.app_font"),
                             )
-                            9 -> SettingsToggleCard(
+                            10 -> SettingsToggleCard(
                                 icon = Icons.Filled.TextFields,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1966,45 +1986,6 @@ fun SettingsScreen(
                         onCheckedChange = viewModel::setDiscordPresenceEnabled,
                         isHighlighted = (highlightedSettingId == "discord.presence"),
                     )
-                    SectionLabel("Live Leaderboards & Global Map")
-                    SettingsToggleCard(
-                        icon = Icons.Filled.Public,
-                        iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                        iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        title = "Contribute Listening stats in Leaderboards",
-                        subtitle = if (misc.liveTelemetryEnabled) {
-                            "On • Listening ticks contribute to global leaderboards & live map"
-                        } else {
-                            "Off • Listening stats stay completely local"
-                        },
-                        checked = misc.liveTelemetryEnabled,
-                        onCheckedChange = viewModel::setLiveTelemetryEnabled,
-                        isHighlighted = (highlightedSettingId == "telemetry.enabled"),
-                    )
-                    SettingsGroup(rowCount = 1) { _, position ->
-                        SettingsActionCard(
-                            icon = Icons.Filled.Public,
-                            iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
-                            iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                            title = "Open Global Live Map",
-                            subtitle = "telemetry.clashprojects.qd.je • Real-time vector map of global listeners",
-                            onClick = {
-                                runCatching {
-                                    androidx.browser.customtabs.CustomTabsIntent.Builder().build()
-                                        .launchUrl(context, Uri.parse("https://telemetry.clashprojects.qd.je"))
-                                }.onFailure {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://telemetry.clashprojects.qd.je")).apply {
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    }
-                                    if (!startActivitySafely(context, intent)) {
-                                        viewModel.showToast("No compatible browser is available")
-                                    }
-                                }
-                            },
-                            position = position,
-                            isHighlighted = (highlightedSettingId == "telemetry.open_map"),
-                        )
-                    }
                 }
             }
                     }
@@ -2023,8 +2004,9 @@ fun SettingsScreen(
                                             iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                             title = stringResource(R.string.settings_home_sections),
                                             subtitle = run {
-                                                val total = com.lastwave.app.data.local.HomeSection.entries.size
-                                                val visible = total - misc.hiddenHomeSections.size
+                                                val total = com.lastwave.app.ui.settings.ALL_DEFAULT_UNIVERSAL_SECTIONS.size
+                                                val hiddenCount = (misc.hiddenHomeSections + misc.ytMusicHiddenSections.map { "yt:$it" }).size
+                                                val visible = (total - hiddenCount).coerceAtLeast(0)
                                                 stringResource(R.string.home_sections_visible, visible, total)
                                             },
                                             onClick = onOpenHomeSections,
@@ -2198,31 +2180,9 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_about))
-                    SettingsGroup(rowCount = 5) { index, position ->
+                    SettingsGroup(rowCount = 4) { index, position ->
                         when (index) {
                             0 -> SettingsActionCard(
-                                icon = Icons.Filled.Public,
-                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = "Global Live Map",
-                                subtitle = "telemetry.clashprojects.qd.je • Real-time listener leaderboards & map",
-                                onClick = {
-                                    runCatching {
-                                        androidx.browser.customtabs.CustomTabsIntent.Builder().build()
-                                            .launchUrl(context, Uri.parse("https://telemetry.clashprojects.qd.je"))
-                                    }.onFailure {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://telemetry.clashprojects.qd.je")).apply {
-                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        }
-                                        if (!startActivitySafely(context, intent)) {
-                                            viewModel.showToast("No compatible browser is available")
-                                        }
-                                    }
-                                },
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "about.live_map"),
-                            )
-                            1 -> SettingsActionCard(
                                 icon = Icons.AutoMirrored.Filled.Send,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -2236,7 +2196,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "about.telegram_support"),
                             )
-                            2 -> SettingsActionCard(
+                            1 -> SettingsActionCard(
                                 icon = Icons.Filled.Group,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -2251,7 +2211,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "about.discord_support"),
                             )
-                            3 -> SettingsActionCard(
+                            2 -> SettingsActionCard(
                                 icon = Icons.Filled.AutoAwesome,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -2265,7 +2225,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "about.more_apps"),
                             )
-                            4 -> SettingsActionCard(
+                            3 -> SettingsActionCard(
                                 icon = Icons.Filled.Code,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -2340,7 +2300,10 @@ fun SettingsScreen(
                         Spacer(Modifier.height(8.dp))
                     }
 
-                    AboutCard(versionName = appVersionName(context))
+                    AboutCard(
+                        versionName = appVersionName(context),
+                        appIcon = theme?.appIcon ?: AppIcon.DEFAULT,
+                    )
 
                     SettingsActionCard(
                         icon = Icons.Filled.CloudDownload,
@@ -2379,6 +2342,21 @@ fun SettingsScreen(
                             }
                         },
                         isHighlighted = (highlightedSettingId == "about.source_code"),
+                    )
+
+                    SettingsActionCard(
+                        icon = Icons.Filled.Download,
+                        iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                        iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        title = stringResource(R.string.settings_desktop_app),
+                        subtitle = "github.com/Clash-Projects/LastWave-Desktop",
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Clash-Projects/LastWave-Desktop"))
+                            if (!startActivitySafely(context, intent)) {
+                                viewModel.showToast(context.getString(R.string.toast_no_browser_plain))
+                            }
+                        },
+                        isHighlighted = (highlightedSettingId == "about.desktop_app"),
                     )
 
                     Spacer(Modifier.height(14.dp))
@@ -3270,11 +3248,11 @@ fun SettingsScreen(
 }
 
 private fun appVersionName(context: android.content.Context): String = try {
-    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "4.3.1"
+    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "5.0.0"
 } catch (error: Exception) {
-    "4.3.1"
+    "5.0.0"
 } catch (error: LinkageError) {
-    "4.3.1"
+    "5.0.0"
 }
 
 /** Small tap-scale used across the row-style cards on this screen for a
@@ -3326,6 +3304,126 @@ private fun IconBadge(painter: Painter, container: Color, tint: Color, modifier:
         contentAlignment = Alignment.Center,
     ) {
         Icon(painter, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+    }
+}
+
+@Composable
+private fun AppIconSelectorCard(
+    currentIcon: AppIcon,
+    onSelectAppIcon: (AppIcon) -> Unit,
+    position: GroupPosition = GroupPosition.SINGLE,
+    isHighlighted: Boolean = false,
+) {
+    val shape = groupShape(position)
+    var isExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    val arrowRotation by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isExpanded) 180f else 0f,
+        label = "appIconArrowRotation",
+    )
+
+    Card(
+        shape = shape,
+        colors = CardDefaults.cardColors(
+            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { isExpanded = !isExpanded },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconBadge(
+                    Icons.Filled.Apps,
+                    MaterialTheme.colorScheme.primaryContainer,
+                    MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.settings_section_app_icon),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        stringResource(currentIcon.subtitleRes),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = { isExpanded = !isExpanded }) {
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowDown,
+                        contentDescription = if (isExpanded) "Collapse app icons" else "Expand app icons",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.graphicsLayer { rotationZ = arrowRotation },
+                    )
+                }
+            }
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut(),
+            ) {
+                Column {
+                    Spacer(Modifier.height(14.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceAround,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AppIcon.entries.forEach { icon ->
+                            val isSelected = (icon == currentIcon)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .clickable { onSelectAppIcon(icon) }
+                                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(52.dp)
+                                        .clip(CircleShape)
+                                        .background(colorResource(icon.backgroundRes))
+                                        .then(
+                                            if (isSelected) {
+                                                Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                                            } else {
+                                                Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), CircleShape)
+                                            }
+                                        ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        painter = painterResource(icon.logoRes),
+                                        contentDescription = stringResource(icon.titleRes),
+                                        tint = Color.Unspecified,
+                                        modifier = Modifier.size(52.dp),
+                                    )
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    text = stringResource(icon.titleRes),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -3688,6 +3786,28 @@ private fun AutoMixControlsCard(
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val shape = groupShape(position)
 
+    val isInitialAuto = settings.durationMode == com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO
+    var sliderValue by remember { mutableStateOf(if (isInitialAuto) 11f else settings.targetDurationSeconds.coerceIn(12, 30).toFloat()) }
+    var isDragging by remember { mutableStateOf(false) }
+
+    LaunchedEffect(settings.durationMode, settings.targetDurationSeconds) {
+        if (!isDragging) {
+            sliderValue = if (settings.durationMode == com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO) {
+                11f
+            } else {
+                settings.targetDurationSeconds.coerceIn(12, 30).toFloat()
+            }
+        }
+    }
+
+    val isAuto = sliderValue.roundToInt() <= 11
+    val displayValue = if (isAuto) "Auto" else "${sliderValue.roundToInt()}s"
+    val durationDesc = if (isAuto) {
+        "Auto \u2022 Phrase-matched transition"
+    } else {
+        "${sliderValue.roundToInt()}s \u2022 Custom DJ blend"
+    }
+
     Card(
         shape = shape,
         colors = CardDefaults.cardColors(
@@ -3699,79 +3819,100 @@ private fun AutoMixControlsCard(
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    "Transition Duration Mode",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = settings.durationMode == com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO,
-                        onClick = { onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO) },
-                        label = { Text("Auto") },
-                    )
-                    FilterChip(
-                        selected = settings.durationMode == com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL,
-                        onClick = { onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL) },
-                        label = { Text("12s–30s") },
-                    )
-                }
-            }
-
-            if (settings.durationMode == com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL) {
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+                Column(Modifier.weight(1f)) {
                     Text(
-                        "Target Blend Duration",
+                        "Transition Duration",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        durationDesc,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Text(
-                        "${settings.targetDurationSeconds}s (Long DJ Blend)",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
                 }
-                Slider(
-                    value = settings.targetDurationSeconds.toFloat(),
-                    onValueChange = { value ->
-                        val rounded = value.roundToInt().coerceIn(12, 30)
-                        if (rounded != settings.targetDurationSeconds) {
-                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
-                            onSecondsChange(rounded)
-                        }
-                    },
-                    valueRange = 12f..30f,
-                    steps = 17,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
                 ) {
-                    Text("12s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                    Text("20s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                    Text("30s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                    Text(
+                        text = displayValue,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    )
                 }
             }
 
             Spacer(Modifier.height(10.dp))
+
+            Slider(
+                value = sliderValue,
+                onValueChange = { value ->
+                    isDragging = true
+                    val rounded = value.roundToInt()
+                    if (rounded != sliderValue.roundToInt()) {
+                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                    }
+                    sliderValue = value
+
+                    if (rounded <= 11) {
+                        if (settings.durationMode != com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO) {
+                            onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO)
+                        }
+                    } else {
+                        if (settings.durationMode != com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL) {
+                            onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL)
+                        }
+                        if (rounded != settings.targetDurationSeconds) {
+                            onSecondsChange(rounded)
+                        }
+                    }
+                },
+                onValueChangeFinished = {
+                    isDragging = false
+                    val rounded = sliderValue.roundToInt()
+                    if (rounded <= 11) {
+                        sliderValue = 11f
+                        onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO)
+                    } else {
+                        sliderValue = rounded.toFloat()
+                        onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL)
+                        onSecondsChange(rounded)
+                    }
+                },
+                valueRange = 11f..30f,
+                steps = 18,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("Auto", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                Text("20s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                Text("30s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+            }
+
+            Spacer(Modifier.height(12.dp))
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(12.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                IconBadge(
+                    icon = Icons.Filled.FilterTiltShift,
+                    container = MaterialTheme.colorScheme.tertiaryContainer,
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+                Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text("DJ Spectral Filter Sweeps", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                     Text("3-band Linkwitz-Riley sub-bass swap and resonant filter sweeps", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -3784,7 +3925,6 @@ private fun AutoMixControlsCard(
         }
     }
 }
-
 @Composable
 private fun SettingsActionCard(
     icon: ImageVector,
@@ -4838,7 +4978,11 @@ private fun MoreFromUsCard(
 }
 
 @Composable
-private fun AboutCard(versionName: String) {
+private fun AboutCard(
+    versionName: String,
+    appIcon: AppIcon = AppIcon.DEFAULT,
+) {
+    val context = LocalContext.current
     Card(
         shape = CardOuterShape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
@@ -4861,11 +5005,11 @@ private fun AboutCard(versionName: String) {
                     // background color + the bars vector, both plain
                     // resources) reproduces it exactly without touching the
                     // adaptive icon resource at all.
-                    .background(colorResource(R.color.ic_launcher_background)),
+                    .background(colorResource(appIcon.backgroundRes)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_launcher_logo),
+                    painter = painterResource(appIcon.logoRes),
                     contentDescription = "LastWave",
                     tint = Color.Unspecified,
                     modifier = Modifier.size(72.dp),
@@ -4888,11 +5032,41 @@ private fun AboutCard(versionName: String) {
             }
             Spacer(Modifier.height(12.dp))
             Text(
-                "Build With Love ♥️ By - ℘ꪊᦓᛕꪖ᥅",
+                stringResource(R.string.about_made_by),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
+            Spacer(Modifier.height(14.dp))
+            Surface(
+                shape = ExpressivePillShape,
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                onClick = {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Clash-Projects/LastWave-Desktop"))
+                    if (!startActivitySafely(context, intent)) {
+                        android.widget.Toast.makeText(context, context.getString(R.string.toast_no_browser_plain), android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                },
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Download,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.settings_desktop_app),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
+            }
         }
     }
 }

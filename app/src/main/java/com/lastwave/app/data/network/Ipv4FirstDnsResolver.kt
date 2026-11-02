@@ -77,10 +77,11 @@ class Ipv4FirstDnsResolver(
 
         if (result.isNotEmpty()) return result
 
-        // 2. Try Google DoH (dns.google / 8.8.8.8)
+        // 2. Try Google DoH by IP: this path runs because system DNS failed,
+        // so a hostname here could not resolve either.
         runCatching {
             val request = Request.Builder()
-                .url("https://dns.google/resolve?name=$hostname&type=A")
+                .url("https://8.8.8.8/resolve?name=$hostname&type=A")
                 .header("Accept", "application/json")
                 .build()
             dohClient.newCall(request).execute().use { response ->

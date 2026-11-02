@@ -258,7 +258,7 @@ fun NewReleasesScreen(
                                     val subtitle = listOfNotNull(
                                         track.artist.takeIf(String::isNotBlank),
                                         track.album?.takeIf(String::isNotBlank),
-                                    ).joinToString(" · ").ifBlank { "New release" }
+                                    ).joinToString(" \u2022 ").ifBlank { "New release" }
 
                                     ExpressiveGroupTrackRow(
                                         title = track.title,

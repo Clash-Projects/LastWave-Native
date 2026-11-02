@@ -402,7 +402,25 @@ class YtMusicLibraryManager @Inject constructor(
             onUpdate?.invoke(partialPlaylist)
         } ?: run {
             val fallback = details[localId]?.takeIf { it.tracks.isNotEmpty() } ?: readFromDiskCache(localId)
-            if (fallback != null) onUpdate?.invoke(fallback)
+            if (fallback != null) {
+                onUpdate?.invoke(fallback)
+                return@withContext fallback
+            }
+            if (PlaylistImportManager.isYtLikedId(remoteId)) {
+                val localLiked = playlistRepository.getLikedSongs()
+                if (localLiked != null && localLiked.tracks.isNotEmpty()) {
+                    val adopted = localLiked.copy(
+                        id = localId,
+                        title = LIKED_YT_SONGS_TITLE,
+                        subtitle = "YouTube Music • Connected account",
+                        mode = "youtube_remote",
+                        remotePlaylistId = remoteId,
+                    )
+                    details[localId] = adopted
+                    onUpdate?.invoke(adopted)
+                    return@withContext adopted
+                }
+            }
             return@withContext fallback
         }
 

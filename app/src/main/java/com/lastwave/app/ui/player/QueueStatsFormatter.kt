@@ -7,10 +7,10 @@ object QueueStatsFormatter {
      * Formats queue song count and total duration into a compact stats string:
      * - "0 songs"
      * - "1 song" (if duration unknown)
-     * - "1 song · 3m"
-     * - "58 songs · 3h 37m"
-     * - "58 songs · 42m" (under one hour)
-     * - "58 songs · 3h 37m+" (if some songs have unknown duration)
+     * - "1 song • 3m"
+     * - "58 songs • 3h 37m"
+     * - "58 songs • 42m" (under one hour)
+     * - "58 songs • 3h 37m+" (if some songs have unknown duration)
      * - "58 songs" (if none of the songs have known duration)
      */
     fun formatQueueStats(songs: List<PlayableTrack>): String {
@@ -37,6 +37,6 @@ object QueueStatsFormatter {
 
         val hasUnknown = knownDurations.size < totalCount
         val formattedDuration = if (hasUnknown) "$durationStr+" else durationStr
-        return "$countStr · $formattedDuration"
+        return "$countStr \u2022 $formattedDuration"
     }
 }

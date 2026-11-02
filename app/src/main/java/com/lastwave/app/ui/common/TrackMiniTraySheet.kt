@@ -171,7 +171,7 @@ fun TrackMiniTraySheet(
                     val sub = listOfNotNull(
                         ArtistHelper.primaryArtist(data.artist).takeIf(String::isNotBlank),
                         data.album?.takeIf(String::isNotBlank),
-                    ).joinToString(" · ")
+                    ).joinToString(" \u2022 ")
                     if (sub.isNotBlank()) {
                         Text(
                             sub,

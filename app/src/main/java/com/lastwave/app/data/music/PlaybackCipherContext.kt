@@ -10,6 +10,10 @@ internal class PlaybackCipherContext(
     val signatureTimestamp: Int,
     private val account: YtConnection,
 ) {
+    /** The player script is not per-video, so a recent context can serve another video on this account. */
+    fun forVideo(otherVideoId: String, currentAccount: YtConnection): PlaybackCipherContext? =
+        if (currentAccount == account) PlaybackCipherContext(otherVideoId, playerUrl, signatureTimestamp, account) else null
+
     fun requireMatches(requestedVideoId: String, currentAccount: YtConnection) {
         if (requestedVideoId != videoId || currentAccount != account) {
             throw CancellationException("Playback cipher context changed")

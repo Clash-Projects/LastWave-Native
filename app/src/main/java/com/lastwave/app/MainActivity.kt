@@ -34,7 +34,7 @@ import javax.inject.Inject
 
 // Last.fm redirects its Custom Tab to this Activity after approval.
 @AndroidEntryPoint
-class MainActivity : androidx.fragment.app.FragmentActivity() {
+open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
 
     @Inject
     lateinit var lastFmAuthCallback: LastFmAuthCallbackCoordinator
@@ -53,6 +53,9 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 
     @Inject
     lateinit var trackDownloadManager: dagger.Lazy<com.lastwave.app.data.download.TrackDownloadManager>
+
+    @Inject
+    lateinit var musicPlayer: dagger.Lazy<com.lastwave.app.playback.MusicPlayer>
 
     private val audioPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
         if (isGranted) {
@@ -187,9 +190,14 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 ) {
                     val navController = rememberNavController()
                     val backStackEntry by navController.currentBackStackEntryAsState()
-                    val hasBottomNavigation = backStackEntry?.destination?.route == Screen.MainShell.route && !themeState.hideNavTabs
+                    val currentRoute = backStackEntry?.destination?.route
+                    val hasBottomNavigation = currentRoute == Screen.MainShell.route && !themeState.hideNavTabs
+                    val isJamScreen = currentRoute == Screen.Jam.route || currentRoute?.startsWith("jam") == true
 
-                    PlayerHost(hasBottomNavigation = hasBottomNavigation) {
+                    PlayerHost(
+                        hasBottomNavigation = hasBottomNavigation,
+                        hideMiniPlayer = isJamScreen,
+                    ) {
                         LastWaveNavHost(navController)
                     }
                 }
@@ -344,9 +352,34 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         }
     }
 
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+            val player = runCatching { musicPlayer.get() }.getOrNull()
+            if (player != null && player.state.value.isCasting) {
+                when (event.keyCode) {
+                    android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
+                        val current = player.state.value.appVolume
+                        player.setAppVolume((current + 0.05f).coerceIn(0f, 1f))
+                        return true
+                    }
+                    android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                        val current = player.state.value.appVolume
+                        player.setAppVolume((current - 0.05f).coerceIn(0f, 1f))
+                        return true
+                    }
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     private companion object {
         const val STARTUP_TAG = "LastWaveStartup"
         @Volatile
         var hasPromptedAudioThisSession = false
     }
 }
+
+/** Legacy alias class retained for backwards compatibility with any explicit intents. */
+@AndroidEntryPoint
+class MainActivity : MainShellActivity()

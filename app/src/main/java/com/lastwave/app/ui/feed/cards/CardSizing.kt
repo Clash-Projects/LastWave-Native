@@ -59,10 +59,10 @@ fun rememberCommunityCardWidth(): Dp {
     }
 }
 
-/** Podcast episode card width: large 16:9 card ~88% of screen width, clamped ~280-420dp, next card peeking. */
+/** Podcast episode card width: large 16:9 card ~80% of screen width, clamped ~260-400dp, next card peeking. */
 @Composable
 fun rememberPodcastEpisodeCardWidth(): Dp {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-    return (screenWidth * 0.88f).coerceIn(280.dp, 420.dp)
+    return (screenWidth * 0.80f).coerceIn(260.dp, 400.dp)
 }
 

@@ -73,11 +73,6 @@ class YouTubeStreamExtractor @Inject constructor(
         videoId: String,
     ): SyncedVideoStreamBundle = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
-        // Fast direct iOS Innertube client extraction (unthrottled, bot-free direct MP4 streams)
-        val iosBundle = resolveVideoStreamBundleWithIosClient(videoId, now)
-        if (iosBundle != null && iosBundle.availableStreams.isNotEmpty()) {
-            return@withContext iosBundle
-        }
         initialize()
         val info = try {
             StreamInfo.getInfo(ServiceList.YouTube, "https://www.youtube.com/watch?v=$videoId")
@@ -94,10 +89,14 @@ class YouTubeStreamExtractor @Inject constructor(
             stream.content.isNotBlank() && (
                 stream.format?.mimeType?.contains("mp4", ignoreCase = true) == true ||
                 stream.format?.mimeType?.contains("webm", ignoreCase = true) == true
+            ) && VideoDecoderSupport.canDecode(
+                stream.codec,
+                stream.width,
+                parseResolutionHeight(stream.resolution, stream.height),
             )
         }
         if (validStreams.isEmpty()) {
-            throw IOException("YouTube returned no playable video streams for $videoId")
+            throw IOException("This device has no decoder for the video streams of $videoId")
         }
 
         // Group by resolution height (supports up to 2160p, 1440p, 1080p, 720p, 480p, 360p, 240p, 144p)
@@ -109,10 +108,11 @@ class YouTubeStreamExtractor @Inject constructor(
             .filter { it.first > 0 }
             .groupBy({ it.first }, { it.second })
             .mapValues { (_, streams) ->
+                // Codec first: an MP4 can hold AV1, and a higher bitrate must not
+                // beat H.264 on the many phones that decode AV1 slowly or not at all.
                 streams.maxWithOrNull(
                     compareBy<org.schabi.newpipe.extractor.stream.VideoStream> {
-                        // Prefer MP4 container for broad hardware decoding compatibility
-                        if (it.format?.mimeType?.contains("mp4", ignoreCase = true) == true) 1 else 0
+                        videoCodecPreference(it.codec)
                     }.thenBy { it.bitrate }
                 )!!
             }
@@ -125,31 +125,24 @@ class YouTubeStreamExtractor @Inject constructor(
         }
 
         // For default (Auto), prefer 720p or 1080p for instant playback without buffer stalls
-        val autoCandidates = availableStreams.sortedWith(
-            compareByDescending { stream ->
-                val h = stream.height ?: 0
-                when (h) {
-                    720 -> 100
-                    1080 -> 95
-                    480 -> 80
-                    1440 -> 75
-                    2160 -> 70
-                    360 -> 60
-                    else -> 40
-                }
-            }
-        )
         val playableDefault = selectProbedCandidate(
-            candidates = autoCandidates,
+            candidates = rankedForAutoPlayback(availableStreams),
             urlOf = { it.url },
             probe = ::probePlayableVideo,
             limit = MAX_PROBED_AUDIO_STREAMS,
-        ) ?: availableStreams.first()
+        ) ?: throw IOException("YouTube video URLs were rejected for $videoId")
 
+        val pairedAudioUrl = info.audioStreams.maxByOrNull { it.bitrate }?.content
         SyncedVideoStreamBundle(
             videoId = videoId,
             defaultStream = playableDefault,
             availableStreams = availableStreams,
+            pairedAudioStreamUrl = pairedAudioUrl,
+            pairedAudioHeaders = mapOf(
+                "User-Agent" to YOUTUBE_WEB_USER_AGENT,
+                "Origin" to YOUTUBE_ORIGIN,
+                "Referer" to "$YOUTUBE_ORIGIN/watch?v=$videoId",
+            ),
         )
     }
 
@@ -206,10 +199,21 @@ class YouTubeStreamExtractor @Inject constructor(
             val adaptive = streamingData.optJSONArray("adaptiveFormats") ?: return@runCatching null
             val durationSec = root.optJSONObject("videoDetails")?.optString("lengthSeconds")?.toLongOrNull() ?: 0L
 
+            var pairedAudioUrl: String? = null
+            var bestAudioBitrate = 0
             val extractedStreams = mutableListOf<YouTubeVideoStream>()
             for (i in 0 until adaptive.length()) {
                 val f = adaptive.optJSONObject(i) ?: continue
                 val mime = f.optString("mimeType")
+                if (mime.contains("audio", ignoreCase = true)) {
+                    val aUrl = f.optString("url").takeIf { it.isNotBlank() } ?: continue
+                    val aBitrate = f.optInt("bitrate", 0)
+                    if (aBitrate > bestAudioBitrate || (mime.contains("opus", ignoreCase = true) && pairedAudioUrl == null)) {
+                        bestAudioBitrate = aBitrate
+                        pairedAudioUrl = aUrl
+                    }
+                    continue
+                }
                 if (!mime.contains("video", ignoreCase = true)) continue
                 val streamUrl = f.optString("url").takeIf { it.isNotBlank() } ?: continue
                 val height = f.optInt("height", 0).takeIf { it > 0 }
@@ -250,24 +254,30 @@ class YouTubeStreamExtractor @Inject constructor(
             val availableStreams = streamsByHeight.keys.sortedDescending().map { streamsByHeight[it]!! }
             if (availableStreams.isEmpty()) return@runCatching null
 
-            val defaultStream = availableStreams.firstOrNull { it.height == 720 }
-                ?: availableStreams.firstOrNull { it.height == 1080 }
+            val defaultStream = availableStreams.firstOrNull { it.height == 1080 }
+                ?: availableStreams.firstOrNull { it.height == 720 }
                 ?: availableStreams.first()
 
             SyncedVideoStreamBundle(
                 videoId = videoId,
                 defaultStream = defaultStream,
                 availableStreams = availableStreams,
+                pairedAudioStreamUrl = pairedAudioUrl,
+                pairedAudioHeaders = mapOf(
+                    "User-Agent" to "com.google.ios.youtube/21.10.3 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)",
+                    "Range" to "bytes=0-",
+                ),
             )
         }.getOrNull()
     }
 
     private fun parseResolutionHeight(resolution: String?, height: Int): Int {
         if (height > 0) return height
-        return resolution.orEmpty().filter { it.isDigit() }.toIntOrNull() ?: 0
+        // First number only: "1080p60" is 1080 tall.
+        return Regex("""\d+""").find(resolution.orEmpty())?.value?.toIntOrNull() ?: 0
     }
 
-    private fun probePlayableVideo(stream: YouTubeVideoStream): Boolean {
+    internal fun probePlayableVideo(stream: YouTubeVideoStream): Boolean {
         val request = playbackProbeRequest(stream.url, stream.requestHeaders)
         val call = http.newCall(request)
         call.timeout().timeout(PROBE_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)

@@ -15,9 +15,9 @@ import com.lastwave.app.ui.common.ExpressiveMotion
 import kotlinx.coroutines.Job
 import android.content.ContextWrapper
 import android.util.Log
-import android.view.TextureView
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.view.SurfaceView
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.runtime.mutableDoubleStateOf
 import android.view.ViewGroup
@@ -109,16 +109,23 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
+import com.lastwave.app.playback.ChunkedRangeDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import com.lastwave.app.R
 import com.lastwave.app.data.music.YouTubeVideoStream
 import com.lastwave.app.data.video.SyncedVideoRepository
+import com.lastwave.app.data.video.shouldPreloadVideo
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.ui.common.EdgeToEdgeDialogWindow
@@ -135,6 +142,47 @@ import javax.inject.Inject
 import kotlin.math.abs
 
 private const val TAG = "SyncedVideoPlayer"
+private const val VIDEO_PREFS_NAME = "synced_video"
+private const val PREF_VIDEO_LAST_USED_MS = "video_last_used_ms"
+internal const val VIDEO_PRELOAD_DELAY_MS = 1_500L
+private const val MAX_LINK_REFRESHES_PER_SONG = 2
+
+/** IPv4-first like audio: HttpURLConnection stalls on routes with broken IPv6, such as full-tunnel VPNs. */
+private val videoMediaHttp: okhttp3.OkHttpClient by lazy {
+    okhttp3.OkHttpClient.Builder()
+        .dns(com.lastwave.app.data.network.Ipv4FirstDnsResolver())
+        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
+}
+
+/**
+ * Starts Auto quality low and steps up as bandwidth is measured. The quality-up
+ * threshold sits below the default 10s because one video player buffers only 8s
+ * and could otherwise never reach it.
+ */
+@OptIn(UnstableApi::class)
+private fun adaptiveVideoPlayerBuilder(
+    context: android.content.Context,
+    dataSourceFactory: DataSource.Factory,
+): ExoPlayer.Builder = ExoPlayer.Builder(context)
+    .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+    .setBandwidthMeter(
+        DefaultBandwidthMeter.Builder(context)
+            .setInitialBitrateEstimate(500_000L)
+            .build(),
+    )
+    .setTrackSelector(
+        DefaultTrackSelector(
+            context,
+            AdaptiveTrackSelection.Factory(
+                /* minDurationForQualityIncreaseMs = */ 4_000,
+                /* maxDurationForQualityDecreaseMs = */ 6_000,
+                /* minDurationToRetainAfterDiscardMs = */ 6_000,
+                /* bandwidthFraction = */ 0.7f,
+            ),
+        ),
+    )
 
 sealed interface SyncedVideoUiState {
     data object Loading : SyncedVideoUiState
@@ -142,50 +190,159 @@ sealed interface SyncedVideoUiState {
         val bundle: com.lastwave.app.data.music.SyncedVideoStreamBundle,
         val activeStream: YouTubeVideoStream,
         val selectedHeight: Int? = null,
+        val adaptiveFailed: Boolean = false,
     ) : SyncedVideoUiState {
         val stream: YouTubeVideoStream get() = activeStream
         val isAuto: Boolean get() = selectedHeight == null || selectedHeight <= 0
+        private val adaptiveUri: String?
+            get() = bundle.adaptiveManifestUri.takeIf { isAuto && !adaptiveFailed }
+        val usesAdaptive: Boolean get() = adaptiveUri != null
+        val playbackUri: String get() = adaptiveUri ?: activeStream.url
+        val playbackMimeType: String?
+            get() = if (usesAdaptive) MimeTypes.APPLICATION_MPD else activeStream.mimeType?.takeIf { it.isNotBlank() }
         val currentQualityLabel: String
             get() = if (isAuto) "Auto" else activeStream.displayQuality
     }
-    data class FallbackEmbed(val videoId: String) : SyncedVideoUiState
     data class Error(val message: String) : SyncedVideoUiState
 }
 
 @HiltViewModel
 class SyncedVideoViewModel @Inject constructor(
     private val videoRepository: SyncedVideoRepository,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow<SyncedVideoUiState>(SyncedVideoUiState.Loading)
     val uiState: StateFlow<SyncedVideoUiState> = _uiState.asStateFlow()
 
+    private val _isVideoActive = MutableStateFlow(false)
+    val isVideoActive: StateFlow<Boolean> = _isVideoActive.asStateFlow()
+
+    private val videoPrefs by lazy { appContext.getSharedPreferences(VIDEO_PREFS_NAME, android.content.Context.MODE_PRIVATE) }
+    private var linkRefreshesLeft = 0
+    private var refreshLinks: ((String?) -> Unit)? = null
+    private var alignJob: Job? = null
+    private var alignedVideoId: String? = null
+    private var currentAudioVideoId: String? = null
+
     private var currentKey: String? = null
+    private var loadJob: kotlinx.coroutines.Job? = null
+    private var openedAwaitingLoad = false
 
-    fun loadVideo(title: String, artist: String, videoId: String?) {
-        val key = "$title|$artist|$videoId"
-        if (currentKey == key && _uiState.value is SyncedVideoUiState.Ready) return
+    /** Shared HTTP factory for video streams – reused across cover and fullscreen players. */
+    val httpFactory: OkHttpDataSource.Factory = OkHttpDataSource.Factory(videoMediaHttp)
+
+    private var _playerInitialized = false
+
+    /** Shared ExoPlayer surviving composition exits. Released only when ViewModel is cleared. */
+    @OptIn(UnstableApi::class)
+    val player: ExoPlayer by lazy {
+        _playerInitialized = true
+        val defaultDataSourceFactory = DefaultDataSource.Factory(appContext, httpFactory)
+        val chunkedFactory = DataSource.Factory {
+            ChunkedRangeDataSource(defaultDataSourceFactory.createDataSource(), chunkSize = 256 * 1024L)
+        }
+        adaptiveVideoPlayerBuilder(appContext, chunkedFactory)
+            .build()
+            .apply {
+                volume = 0f
+                videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
+                trackSelectionParameters = trackSelectionParameters.buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                    .build()
+            }
+    }
+
+    fun setVideoActive(active: Boolean) {
+        openedAwaitingLoad = active
+        _isVideoActive.value = active
+        if (active) {
+            videoPrefs.edit().putLong(PREF_VIDEO_LAST_USED_MS, System.currentTimeMillis()).apply()
+            startAlignmentIfNeeded()
+        }
+    }
+
+    /** Readies the video before the tap, only for people likely to want one. */
+    fun preloadVideo(title: String, artist: String, videoId: String?, durationMs: Long? = null) {
+        val lastUsedMs = videoPrefs.getLong(PREF_VIDEO_LAST_USED_MS, -1L).takeIf { it >= 0L }
+        val batterySaverOn = appContext.getSystemService(android.os.PowerManager::class.java)?.isPowerSaveMode == true
+        val preload = shouldPreloadVideo(lastUsedMs, System.currentTimeMillis(), batterySaverOn)
+        Log.i(TAG, "Preload ${if (preload) "started" else "skipped"} for '$title' (lastUsed=$lastUsedMs batterySaver=$batterySaverOn)")
+        if (preload) loadVideo(title, artist, videoId, durationMs)
+    }
+
+    /** Downloads a few MB, so it waits for an open video unless the network is unmetered. */
+    private fun startAlignmentIfNeeded() {
+        val bundle = (_uiState.value as? SyncedVideoUiState.Ready)?.bundle ?: return
+        val unmetered = appContext.getSystemService(android.net.ConnectivityManager::class.java)
+            ?.isActiveNetworkMetered == false
+        if ((!_isVideoActive.value && !unmetered) || alignedVideoId == bundle.videoId) return
+        alignedVideoId = bundle.videoId
+        val audioVideoId = currentAudioVideoId
+        alignJob?.cancel()
+        alignJob = viewModelScope.launch {
+            // The sync loop seeks to the new offset once it lands.
+            videoRepository.measureContentOffsetMs(bundle, audioVideoId)?.let { offsetMs ->
+                val ready = _uiState.value as? SyncedVideoUiState.Ready
+                if (ready?.bundle?.videoId == bundle.videoId) {
+                    _uiState.value = ready.copy(bundle = ready.bundle.copy(introOffsetMs = offsetMs))
+                }
+            }
+        }
+    }
+
+    fun loadVideo(title: String, artist: String, videoId: String?, durationMs: Long? = null) {
+        val key = "$title|$artist|$videoId|$durationMs"
+        // The video view only calls this once shown, so opening it on a new song also
+        // changes the key. Only a track change under an already open video should close it.
+        val justOpened = openedAwaitingLoad
+        openedAwaitingLoad = false
+        // A resolve can take several seconds; a second one would reload the player when it lands.
+        if (currentKey == key && (_uiState.value is SyncedVideoUiState.Ready || loadJob?.isActive == true)) return
+        loadJob?.cancel()
+        alignJob?.cancel()
+        alignedVideoId = null
+        currentAudioVideoId = videoId
+
+        if (currentKey != null && currentKey != key) {
+            // Track changed – reset video toggle and stop player
+            if (!justOpened) _isVideoActive.value = false
+            if (_playerInitialized) {
+                player.stop()
+                player.clearMediaItems()
+            }
+        }
         currentKey = key
+        linkRefreshesLeft = MAX_LINK_REFRESHES_PER_SONG
+        refreshLinks = { avoidClientName -> resolveStream(title, artist, videoId, durationMs, avoidClientName) }
+        resolveStream(title, artist, videoId, durationMs, avoidClientName = null)
+    }
 
-        viewModelScope.launch {
+    private fun resolveStream(
+        title: String,
+        artist: String,
+        videoId: String?,
+        durationMs: Long?,
+        avoidClientName: String?,
+    ) {
+        loadJob = viewModelScope.launch {
             _uiState.value = SyncedVideoUiState.Loading
-            videoRepository.resolveVideo(title, artist, videoId)
-                .onSuccess { bundle ->
+            videoRepository.resolveVideo(title, artist, videoId, expectedDurationMs = durationMs, avoidClientName = avoidClientName)
+                .onSuccess { resolved ->
+                    // A saved offset applies before the video starts, so there is no jump.
+                    val savedOffset = videoRepository.savedOffsetMs(resolved, videoId)
+                    if (savedOffset != null) Log.i(TAG, "Using saved offset $savedOffset ms for ${resolved.videoId}")
+                    val bundle = savedOffset?.let { resolved.copy(introOffsetMs = it) } ?: resolved
                     _uiState.value = SyncedVideoUiState.Ready(
                         bundle = bundle,
                         activeStream = bundle.defaultStream,
                         selectedHeight = null,
                     )
+                    startAlignmentIfNeeded()
                 }
                 .onFailure { error ->
-                    val fallbackId = videoRepository.findVideoId(title, artist, videoId)
-                        ?: videoId?.takeIf { it.isNotBlank() }
-                    if (!fallbackId.isNullOrBlank()) {
-                        _uiState.value = SyncedVideoUiState.FallbackEmbed(fallbackId)
-                    } else {
-                        _uiState.value = SyncedVideoUiState.Error(
-                            error.message ?: "Unable to resolve video stream"
-                        )
-                    }
+                    _uiState.value = SyncedVideoUiState.Error(
+                        error.message ?: "Unable to resolve video stream"
+                    )
                 }
         }
     }
@@ -205,13 +362,80 @@ class SyncedVideoViewModel @Inject constructor(
         )
     }
 
-    fun retry(title: String, artist: String, videoId: String?) {
-        currentKey = null
-        loadVideo(title, artist, videoId)
+    /** A chosen quality falls back to Auto; a failed Auto stream surfaces Retry instead of a black frame. */
+    fun onVideoPlaybackError() {
+        val ready = _uiState.value as? SyncedVideoUiState.Ready ?: return
+        if (ready.selectedHeight != null) {
+            selectQuality(null)
+            return
+        }
+        videoRepository.invalidate(ready.bundle.videoId)
+        if (_playerInitialized) {
+            player.stop()
+            player.clearMediaItems()
+        }
+        // Links can die mid-song, so get new ones. The sync loop and load effect resume at the audio's position.
+        if (linkRefreshesLeft > 0) {
+            linkRefreshesLeft--
+            Log.w(TAG, "Refreshing video links after ${ready.bundle.clientName} failed ($linkRefreshesLeft refreshes left)")
+            refreshLinks?.invoke(ready.bundle.clientName)
+            return
+        }
+        if (ready.usesAdaptive) {
+            // The default stream passed its probe, so try it before giving up.
+            _uiState.value = ready.copy(adaptiveFailed = true)
+            return
+        }
+        if (fallBackToLowerStream(ready)) return
+        _uiState.value = SyncedVideoUiState.Error(appContext.getString(R.string.video_stream_unavailable))
     }
 
-    fun switchToFallbackEmbed(videoId: String) {
-        _uiState.value = SyncedVideoUiState.FallbackEmbed(videoId)
+    /** New links can't help a decoder that refuses the track, so this skips straight to other streams. */
+    fun onNoVideoTrackSelected(playingUri: String?) {
+        val ready = _uiState.value as? SyncedVideoUiState.Ready ?: return
+        if (playingUri != ready.playbackUri) return
+        Log.w(TAG, "No decoder took ${ready.activeStream.height}p (${ready.activeStream.codec}), adaptive=${ready.usesAdaptive}")
+        if (ready.usesAdaptive) {
+            _uiState.value = ready.copy(adaptiveFailed = true)
+            return
+        }
+        if (fallBackToLowerStream(ready)) return
+        if (_playerInitialized) player.stop()
+        _uiState.value = SyncedVideoUiState.Error(appContext.getString(R.string.video_stream_unavailable))
+    }
+
+    private fun fallBackToLowerStream(ready: SyncedVideoUiState.Ready): Boolean {
+        val failed = ready.activeStream
+        val remaining = ready.bundle.availableStreams.filter { it.url != failed.url }
+        val failedHeight = failed.height ?: 0
+        val next = remaining.filter { (it.height ?: 0) < failedHeight }.maxByOrNull { it.height ?: 0 }
+            ?: remaining.firstOrNull()
+            ?: return false
+        Log.w(TAG, "Video stream ${failed.height}p (${failed.codec}) failed; trying ${next.height}p (${next.codec})")
+        _uiState.value = ready.copy(
+            bundle = ready.bundle.copy(
+                availableStreams = remaining,
+                defaultStream = if (ready.bundle.defaultStream.url == failed.url) next else ready.bundle.defaultStream,
+            ),
+            activeStream = next,
+            selectedHeight = null,
+            adaptiveFailed = true,
+        )
+        return true
+    }
+
+    fun retry(title: String, artist: String, videoId: String?, durationMs: Long? = null) {
+        videoRepository.invalidate(videoId)
+        currentKey = null
+        loadVideo(title, artist, videoId, durationMs)
+    }
+
+    @OptIn(UnstableApi::class)
+    override fun onCleared() {
+        super.onCleared()
+        if (_playerInitialized) {
+            player.release()
+        }
     }
 }
 
@@ -232,112 +456,82 @@ private enum class VideoSeekSide { REWIND, FORWARD }
  * - Smoothly expands into edge-to-edge sensor landscape cinema mode when fullscreen is requested.
  */
 /**
- * Bulletproof embedded official YouTube player via WebView with YouTube IFrame API.
- * - Always runs muted (`mute()`) so that LastWave's lossless master audio drives the sound.
- * - Automatically tracks play/pause and seeks when position jumps > 1.5s.
- * - Guaranteed fallback matching lokal-music/lokal-mobile: never blocked by 403 or cipher breaks.
+ * Sleek Liquid Glass segmented pill switcher: [ Song | Video ]
+ * Modeled after YouTube Music & SimpMusic.
  */
 @Composable
-fun YouTubeEmbeddedPlayer(
-    videoId: String,
-    musicPlayer: MusicPlayer,
+fun SongVideoPillSwitcher(
+    isVideoActive: Boolean,
+    onModeChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val playerState by musicPlayer.state.collectAsStateWithLifecycle()
-    var webViewRef by remember { mutableStateOf<WebView?>(null) }
-    var lastSyncedPositionSec by remember { mutableDoubleStateOf(-1.0) }
-
-    LaunchedEffect(playerState.isPlaying) {
-        val js = if (playerState.isPlaying) {
-            "if (window.ytPlayer && ytPlayer.playVideo) { ytPlayer.playVideo(); }"
-        } else {
-            "if (window.ytPlayer && ytPlayer.pauseVideo) { ytPlayer.pauseVideo(); }"
-        }
-        webViewRef?.evaluateJavascript(js, null)
-    }
-
-    LaunchedEffect(playerState.positionMs) {
-        val currentSec = playerState.positionMs / 1000.0
-        if (abs(currentSec - lastSyncedPositionSec) > 2.0) {
-            lastSyncedPositionSec = currentSec
-            val js = "if (window.ytPlayer && ytPlayer.seekTo && Math.abs((ytPlayer.getCurrentTime ? ytPlayer.getCurrentTime() : 0) - $currentSec) > 1.5) { ytPlayer.seekTo($currentSec, true); }"
-            webViewRef?.evaluateJavascript(js, null)
-        }
-    }
-
-    AndroidView(
-        factory = { ctx ->
-            WebView(ctx).apply {
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                )
-                settings.apply {
-                    javaScriptEnabled = true
-                    mediaPlaybackRequiresUserGesture = false
-                    domStorageEnabled = true
-                    loadsImagesAutomatically = true
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = Color.White.copy(alpha = 0.10f),
+        border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.18f)),
+        modifier = modifier.height(34.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // "Song" Pill Option
+            Surface(
+                onClick = { onModeChange(false) },
+                shape = RoundedCornerShape(50),
+                color = if (!isVideoActive) Color.White.copy(alpha = 0.28f) else Color.Transparent,
+                border = if (!isVideoActive) BorderStroke(0.6.dp, Color.White.copy(alpha = 0.35f)) else null,
+                modifier = Modifier.height(28.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Filled.MusicNote,
+                        contentDescription = null,
+                        tint = if (!isVideoActive) Color.White else Color.White.copy(alpha = 0.65f),
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "Song",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (!isVideoActive) FontWeight.Bold else FontWeight.Medium,
+                        color = if (!isVideoActive) Color.White else Color.White.copy(alpha = 0.65f),
+                    )
                 }
-                setBackgroundColor(android.graphics.Color.BLACK)
-                webViewClient = WebViewClient()
-                val html = """
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                        <style>
-                            * { margin: 0; padding: 0; box-sizing: border-box; background-color: #000; overflow: hidden; }
-                            html, body, #player { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
-                        </style>
-                        <script src="https://www.youtube.com/iframe_api"></script>
-                    </head>
-                    <body>
-                        <div id="player"></div>
-                        <script>
-                            var ytPlayer;
-                            function onYouTubeIframeAPIReady() {
-                                ytPlayer = new YT.Player('player', {
-                                    width: '100%',
-                                    height: '100%',
-                                    videoId: '$videoId',
-                                    playerVars: {
-                                        'autoplay': 1,
-                                        'playsinline': 1,
-                                        'controls': 0,
-                                        'disablekb': 1,
-                                        'fs': 0,
-                                        'rel': 0,
-                                        'modestbranding': 1,
-                                        'iv_load_policy': 3,
-                                        'enablejsapi': 1,
-                                        'origin': 'https://www.youtube.com'
-                                    },
-                                    events: {
-                                        'onReady': function(event) {
-                                            event.target.mute();
-                                            ${if (playerState.isPlaying) "event.target.playVideo();" else "event.target.pauseVideo();"}
-                                        }
-                                    }
-                                });
-                            }
-                        </script>
-                    </body>
-                    </html>
-                """.trimIndent()
-                loadDataWithBaseURL("https://www.youtube.com", html, "text/html", "UTF-8", null)
-                webViewRef = this
             }
-        },
-        update = { webView ->
-            webViewRef = webView
-        },
-        modifier = modifier.fillMaxSize(),
-    )
 
-    DisposableEffect(Unit) {
-        onDispose {
-            webViewRef?.destroy()
-            webViewRef = null
+            Spacer(Modifier.width(2.dp))
+
+            // "Video" Pill Option
+            Surface(
+                onClick = { onModeChange(true) },
+                shape = RoundedCornerShape(50),
+                color = if (isVideoActive) Color.White.copy(alpha = 0.28f) else Color.Transparent,
+                border = if (isVideoActive) BorderStroke(0.6.dp, Color.White.copy(alpha = 0.35f)) else null,
+                modifier = Modifier.height(28.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Filled.SmartDisplay,
+                        contentDescription = null,
+                        tint = if (isVideoActive) Color.White else Color.White.copy(alpha = 0.65f),
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "Video",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (isVideoActive) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isVideoActive) Color.White else Color.White.copy(alpha = 0.65f),
+                    )
+                }
+            }
         }
     }
 }
@@ -360,7 +554,7 @@ fun SyncedCoverVideoPlayer(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val playerState by musicPlayer.state.collectAsStateWithLifecycle()
+    val playerState by musicPlayer.stateWithoutProgress.collectAsStateWithLifecycle()
     val progressState by musicPlayer.progressState.collectAsStateWithLifecycle()
 
     var controlsVisible by remember { mutableStateOf(true) }
@@ -371,8 +565,8 @@ fun SyncedCoverVideoPlayer(
     val coroutineScope = rememberCoroutineScope()
     var lastHardSeekTime by remember { mutableLongStateOf(0L) }
 
-    LaunchedEffect(track.videoId, track.title) {
-        viewModel.loadVideo(track.title, track.artist, track.videoId)
+    LaunchedEffect(track.videoId, track.title, track.durationMs) {
+        viewModel.loadVideo(track.title, track.artist, track.videoId, track.durationMs)
     }
 
     // Auto-hide controls after inactivity
@@ -391,119 +585,123 @@ fun SyncedCoverVideoPlayer(
         "Referer" to "https://www.youtube.com/watch?v=${activeStream?.videoId ?: track.videoId}",
     )
 
-    val videoPlayer = remember(context, requestHeaders) {
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                /* minBufferMs = */ 2_000,
-                /* maxBufferMs = */ 8_000,
-                /* bufferForPlaybackMs = */ 1_000,
-                /* bufferForPlaybackAfterRebufferMs = */ 2_000,
-            )
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .build()
+    var isBuffering by remember { mutableStateOf(false) }
 
-        val customUserAgent = requestHeaders["User-Agent"] ?: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
-        val httpFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent(customUserAgent)
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15000)
-            .setReadTimeoutMs(20000)
-            .setDefaultRequestProperties(requestHeaders)
+    val httpFactory = viewModel.httpFactory
+    val videoPlayer = viewModel.player
 
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
-
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
-            .setLoadControl(loadControl)
-            .build()
-            .apply {
-                volume = 0f
-                videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
-                trackSelectionParameters = trackSelectionParameters.buildUpon()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
-                    .build()
-            }
-    }
+    // Initialise isRendered from current player state so returning to a ready player
+    // does not flash the loading spinner.
+    var isRenderedLocal = videoPlayer.playbackState == Player.STATE_READY
+            && videoPlayer.currentMediaItem != null
+    if (isRenderedLocal) isRendered = true
 
     DisposableEffect(videoPlayer) {
         val listener = object : Player.Listener {
             override fun onRenderedFirstFrame() {
                 isRendered = true
+                isBuffering = false
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                isBuffering = (playbackState == Player.STATE_BUFFERING)
             }
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                Log.w("SyncedVideo", "Video player error: ${error.message}; switching to YouTube embed fallback", error)
-                val vid = (uiState as? SyncedVideoUiState.Ready)?.bundle?.videoId ?: track.videoId
-                if (!vid.isNullOrBlank()) {
-                    viewModel.switchToFallbackEmbed(vid)
+                Log.w("SyncedVideo", "Video player error: ${error.message}", error)
+                viewModel.onVideoPlaybackError()
+            }
+
+            // No error fires when no decoder takes the track: the player just
+            // runs with nothing to show, which is a black screen.
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                if (!tracks.isEmpty && !tracks.isTypeSelected(C.TRACK_TYPE_VIDEO)) {
+                    viewModel.onNoVideoTrackSelected(videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString())
                 }
             }
         }
         videoPlayer.addListener(listener)
         onDispose {
             videoPlayer.removeListener(listener)
-            videoPlayer.release()
+            videoPlayer.clearVideoSurfaceView(null)
+            // Do NOT release – the ViewModel owns the player's lifecycle
+            videoPlayer.playWhenReady = false
         }
     }
 
+    // Exact millisecond synchronization loop (PLL) with frame-accurate intro skit offset
+    val introOffsetMs = (uiState as? SyncedVideoUiState.Ready)?.bundle?.introOffsetMs ?: 0L
+
     // Load stream into video player when ready or when switching quality
-    LaunchedEffect(uiState) {
+    LaunchedEffect(uiState, introOffsetMs) {
         val state = uiState
         if (state is SyncedVideoUiState.Ready) {
             val stream = state.activeStream
             val currentMediaUri = videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
-            if (currentMediaUri == stream.url) return@LaunchedEffect
+            // Idle means the last attempt failed, so the same URI still needs loading.
+            if (currentMediaUri == state.playbackUri && videoPlayer.playbackState != Player.STATE_IDLE) return@LaunchedEffect
+
+            val streamUa = stream.requestHeaders["User-Agent"]
+                ?: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
+            httpFactory.setUserAgent(streamUa)
+            httpFactory.setDefaultRequestProperties(stream.requestHeaders)
 
             isRendered = false
-            val currentPos = videoPlayer.currentPosition.takeIf { it > 0 } ?: musicPlayer.currentPositionMs()
+            val audioPos = musicPlayer.currentPositionMs()
+            val targetPos = (audioPos + introOffsetMs).coerceAtLeast(0L)
             val mediaItem = MediaItem.Builder()
-                .setUri(stream.url)
+                .setUri(state.playbackUri)
                 .apply {
-                    stream.mimeType?.let { setMimeType(it) }
+                    state.playbackMimeType?.let { setMimeType(it) }
                 }
                 .build()
-            videoPlayer.setMediaItem(mediaItem)
+            videoPlayer.setMediaItem(mediaItem, targetPos)
             videoPlayer.prepare()
-            videoPlayer.seekTo(currentPos)
             videoPlayer.playWhenReady = playerState.isPlaying
         }
     }
 
-    // Exact millisecond synchronization loop (PLL) with hard-seek cooldown
-    LaunchedEffect(videoPlayer, playerState.isPlaying, uiState) {
+    LaunchedEffect(videoPlayer, playerState.isPlaying, uiState, introOffsetMs) {
         if (uiState !is SyncedVideoUiState.Ready) return@LaunchedEffect
         while (isActive) {
-            val audioPos = musicPlayer.currentPositionMs()
-            val videoPos = videoPlayer.currentPosition
-            val driftMs = videoPos - audioPos
-            val audioSpeed = playerState.speed
-            val now = SystemClock.elapsedRealtime()
-
-            // Play / Pause sync
-            if (videoPlayer.playWhenReady != playerState.isPlaying) {
-                videoPlayer.playWhenReady = playerState.isPlaying
-            }
-
-            // Sync only when ready (avoid resetting while buffering)
             if (videoPlayer.playbackState == Player.STATE_READY) {
-                if (abs(driftMs) > 300L) {
-                    if (now - lastHardSeekTime > 650L) {
-                        videoPlayer.seekTo(audioPos)
+                val audioPos = musicPlayer.currentPositionMs()
+                val targetVideoPos = (audioPos + introOffsetMs).coerceAtLeast(0L)
+                val videoPos = videoPlayer.currentPosition
+                val driftMs = videoPos - targetVideoPos
+                val now = SystemClock.elapsedRealtime()
+
+                // Play / Pause lock
+                if (videoPlayer.playWhenReady != playerState.isPlaying) {
+                    videoPlayer.playWhenReady = playerState.isPlaying
+                }
+
+                // Phase-Locked Loop (PLL) sync
+                if (abs(driftMs) > 600L) {
+                    // Drift > 600ms or user seek: snap video to exact position
+                    if (now - lastHardSeekTime > 1200L) {
+                        videoPlayer.seekTo(targetVideoPos)
                         lastHardSeekTime = now
                     }
-                    if (videoPlayer.playbackParameters.speed != audioSpeed) {
-                        videoPlayer.playbackParameters = PlaybackParameters(audioSpeed)
+                } else if (abs(driftMs) > 200L && playerState.isPlaying) {
+                    // Medium drift (200ms - 600ms): rapid catchup speed (video is muted)
+                    val targetSpeed = if (driftMs < 0) 1.15f else 0.85f
+                    if (videoPlayer.playbackParameters.speed != targetSpeed) {
+                        videoPlayer.playbackParameters = PlaybackParameters(targetSpeed)
                     }
-                } else if (abs(driftMs) > 40L) {
-                    val speedCorrection = if (driftMs > 0) 0.96f else 1.04f
-                    videoPlayer.playbackParameters = PlaybackParameters(audioSpeed * speedCorrection)
+                } else if (abs(driftMs) > 60L && playerState.isPlaying) {
+                    // Micro-drift (60ms - 200ms): gentle glide
+                    val targetSpeed = if (driftMs < 0) 1.05f else 0.95f
+                    if (videoPlayer.playbackParameters.speed != targetSpeed) {
+                        videoPlayer.playbackParameters = PlaybackParameters(targetSpeed)
+                    }
                 } else {
-                    if (videoPlayer.playbackParameters.speed != audioSpeed) {
-                        videoPlayer.playbackParameters = PlaybackParameters(audioSpeed)
+                    // Frame-locked (<60ms)
+                    if (videoPlayer.playbackParameters.speed != 1.0f) {
+                        videoPlayer.playbackParameters = PlaybackParameters(1.0f)
                     }
                 }
             }
-
             delay(50L)
         }
     }
@@ -528,7 +726,6 @@ fun SyncedCoverVideoPlayer(
     Box(
         modifier = modifier
             .aspectRatio(16f / 9f)
-            .clip(RoundedCornerShape(22.dp))
             .background(Color.Black)
             .pointerInput(Unit) {
                 detectTapGestures(
@@ -560,13 +757,7 @@ fun SyncedCoverVideoPlayer(
                     modifier = Modifier.size(36.dp),
                 )
             }
-            is SyncedVideoUiState.FallbackEmbed -> {
-                YouTubeEmbeddedPlayer(
-                    videoId = (uiState as SyncedVideoUiState.FallbackEmbed).videoId,
-                    musicPlayer = musicPlayer,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+
             is SyncedVideoUiState.Error -> {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -579,7 +770,7 @@ fun SyncedCoverVideoPlayer(
                     )
                     Spacer(Modifier.height(8.dp))
                     FilledTonalButton(
-                        onClick = { viewModel.retry(track.title, track.artist, track.videoId) },
+                        onClick = { viewModel.retry(track.title, track.artist, track.videoId, track.durationMs) },
                         contentPadding = ButtonDefaults.TextButtonContentPadding,
                     ) {
                         Text("Retry", style = MaterialTheme.typography.labelSmall)
@@ -588,22 +779,27 @@ fun SyncedCoverVideoPlayer(
             }
             is SyncedVideoUiState.Ready -> {
                 AndroidView(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .alpha(videoAlpha),
+                    modifier = Modifier.fillMaxSize(),
                     factory = { viewContext ->
-                        TextureView(viewContext).apply {
+                        SurfaceView(viewContext).apply {
                             layoutParams = FrameLayout.LayoutParams(
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                             )
-                            videoPlayer.setVideoTextureView(this)
+                            videoPlayer.setVideoSurfaceView(this)
                         }
                     },
-                    update = { textureView ->
-                        videoPlayer.setVideoTextureView(textureView)
+                    update = { surfaceView ->
+                        videoPlayer.setVideoSurfaceView(surfaceView)
                     },
                 )
+                if (isBuffering) {
+                    CircularProgressIndicator(
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 2.5.dp,
+                        modifier = Modifier.size(36.dp),
+                    )
+                }
             }
         }
 
@@ -762,18 +958,45 @@ fun SyncedCoverVideoPlayer(
                 Surface(
                     onClick = onCloseVideo,
                     shape = CircleShape,
-                    color = Color.Black.copy(alpha = 0.55f),
-                    border = BorderStroke(0.7.dp, Color.White.copy(alpha = 0.18f)),
-                    modifier = Modifier.size(32.dp),
+                    color = Color.Black.copy(alpha = 0.65f),
+                    border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.28f)),
+                    modifier = Modifier.size(34.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             Icons.Filled.Close,
                             contentDescription = "Close video, show album art",
                             tint = Color.White,
-                            modifier = Modifier.size(17.dp),
+                            modifier = Modifier.size(18.dp),
                         )
                     }
+                }
+            }
+        }
+
+        // Persistent close button in top-right when top controls bar is hidden
+        AnimatedVisibility(
+            visible = !controlsVisible,
+            enter = fadeIn(tween(150)),
+            exit = fadeOut(tween(150)),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(8.dp),
+        ) {
+            Surface(
+                onClick = onCloseVideo,
+                shape = CircleShape,
+                color = Color.Black.copy(alpha = 0.60f),
+                border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.25f)),
+                modifier = Modifier.size(34.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = "Close video, show album art",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
             }
         }
@@ -832,10 +1055,11 @@ fun FullscreenLandscapeVideoStage(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val playerState by musicPlayer.state.collectAsStateWithLifecycle()
+    val playerState by musicPlayer.stateWithoutProgress.collectAsStateWithLifecycle()
     val progressState by musicPlayer.progressState.collectAsStateWithLifecycle()
 
     var controlsVisible by remember { mutableStateOf(true) }
+    var isRendered by remember { mutableStateOf(false) }
     var isUserScrubbing by remember { mutableStateOf(false) }
     var scrubProgress by remember { mutableFloatStateOf(0f) }
     var showQualityDialog by remember { mutableStateOf(false) }
@@ -844,8 +1068,8 @@ fun FullscreenLandscapeVideoStage(
     val coroutineScope = rememberCoroutineScope()
     var lastHardSeekTime by remember { mutableLongStateOf(0L) }
 
-    LaunchedEffect(track.videoId, track.title) {
-        viewModel.loadVideo(track.title, track.artist, track.videoId)
+    LaunchedEffect(track.videoId, track.title, track.durationMs) {
+        viewModel.loadVideo(track.title, track.artist, track.videoId, track.durationMs)
     }
 
     // Auto-hide controls in fullscreen after 3.5s
@@ -863,101 +1087,114 @@ fun FullscreenLandscapeVideoStage(
         "Referer" to "https://www.youtube.com/watch?v=${activeStream?.videoId ?: track.videoId}",
     )
 
-    val videoPlayer = remember(context, requestHeaders) {
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(2_000, 8_000, 1_000, 2_000)
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .build()
+    var isBuffering by remember { mutableStateOf(false) }
 
-        val httpFactory = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15000)
-            .setReadTimeoutMs(20000)
-            .setDefaultRequestProperties(requestHeaders)
+    val httpFactory = viewModel.httpFactory
+    val videoPlayer = viewModel.player
 
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
-
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
-            .setLoadControl(loadControl)
-            .build()
-            .apply {
-                volume = 0f
-                videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
-                trackSelectionParameters = trackSelectionParameters.buildUpon()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
-                    .build()
-            }
-    }
+    var isRenderedLocal = videoPlayer.playbackState == Player.STATE_READY
+            && videoPlayer.currentMediaItem != null
+    if (isRenderedLocal) isRendered = true
 
     DisposableEffect(videoPlayer) {
         val listener = object : Player.Listener {
+            override fun onRenderedFirstFrame() {
+                isRendered = true
+                isBuffering = false
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                isBuffering = (playbackState == Player.STATE_BUFFERING)
+            }
+
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                Log.w("SyncedVideo", "Fullscreen video player error: ${error.message}; switching to YouTube embed", error)
-                val vid = (uiState as? SyncedVideoUiState.Ready)?.bundle?.videoId ?: track.videoId
-                if (!vid.isNullOrBlank()) {
-                    viewModel.switchToFallbackEmbed(vid)
+                Log.w("SyncedVideo", "Fullscreen video player error: ${error.message}", error)
+                viewModel.onVideoPlaybackError()
+            }
+
+            // No error fires when no decoder takes the track: the player just
+            // runs with nothing to show, which is a black screen.
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                if (!tracks.isEmpty && !tracks.isTypeSelected(C.TRACK_TYPE_VIDEO)) {
+                    viewModel.onNoVideoTrackSelected(videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString())
                 }
             }
         }
         videoPlayer.addListener(listener)
         onDispose {
             videoPlayer.removeListener(listener)
-            videoPlayer.release()
+            videoPlayer.clearVideoSurfaceView(null)
+            // Do NOT release – the ViewModel owns the player's lifecycle
+            videoPlayer.playWhenReady = false
         }
     }
 
+    // PLL sync loop with frame-accurate intro skit offset
+    val introOffsetMs = (uiState as? SyncedVideoUiState.Ready)?.bundle?.introOffsetMs ?: 0L
+
     // Load stream into video player
-    LaunchedEffect(uiState) {
+    LaunchedEffect(uiState, introOffsetMs) {
         val state = uiState
         if (state is SyncedVideoUiState.Ready) {
             val stream = state.activeStream
             val currentMediaUri = videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
-            if (currentMediaUri == stream.url) return@LaunchedEffect
+            // Idle means the last attempt failed, so the same URI still needs loading.
+            if (currentMediaUri == state.playbackUri && videoPlayer.playbackState != Player.STATE_IDLE) return@LaunchedEffect
 
-            val currentPos = videoPlayer.currentPosition.takeIf { it > 0 } ?: musicPlayer.currentPositionMs()
+            val streamUa = stream.requestHeaders["User-Agent"]
+                ?: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
+            httpFactory.setUserAgent(streamUa)
+            httpFactory.setDefaultRequestProperties(stream.requestHeaders)
+
+            isRendered = false
+            val audioPos = musicPlayer.currentPositionMs()
+            val targetPos = (audioPos + introOffsetMs).coerceAtLeast(0L)
             val mediaItem = MediaItem.Builder()
-                .setUri(stream.url)
+                .setUri(state.playbackUri)
                 .apply {
-                    stream.mimeType?.let { setMimeType(it) }
+                    state.playbackMimeType?.let { setMimeType(it) }
                 }
                 .build()
-            videoPlayer.setMediaItem(mediaItem)
+            videoPlayer.setMediaItem(mediaItem, targetPos)
             videoPlayer.prepare()
-            videoPlayer.seekTo(currentPos)
             videoPlayer.playWhenReady = playerState.isPlaying
         }
     }
 
-    // PLL sync loop
-    LaunchedEffect(videoPlayer, playerState.isPlaying, uiState) {
+    LaunchedEffect(videoPlayer, playerState.isPlaying, uiState, introOffsetMs) {
         if (uiState !is SyncedVideoUiState.Ready) return@LaunchedEffect
         while (isActive) {
-            val audioPos = musicPlayer.currentPositionMs()
-            val videoPos = videoPlayer.currentPosition
-            val driftMs = videoPos - audioPos
-            val audioSpeed = playerState.speed
-            val now = SystemClock.elapsedRealtime()
-
-            if (videoPlayer.playWhenReady != playerState.isPlaying) {
-                videoPlayer.playWhenReady = playerState.isPlaying
-            }
-
             if (videoPlayer.playbackState == Player.STATE_READY) {
-                if (abs(driftMs) > 300L) {
-                    if (now - lastHardSeekTime > 650L) {
-                        videoPlayer.seekTo(audioPos)
+                val audioPos = musicPlayer.currentPositionMs()
+                val targetVideoPos = (audioPos + introOffsetMs).coerceAtLeast(0L)
+                val videoPos = videoPlayer.currentPosition
+                val driftMs = videoPos - targetVideoPos
+                val now = SystemClock.elapsedRealtime()
+
+                // Play / Pause sync
+                if (videoPlayer.playWhenReady != playerState.isPlaying) {
+                    videoPlayer.playWhenReady = playerState.isPlaying
+                }
+
+                // Phase-Locked Loop (PLL)
+                if (abs(driftMs) > 600L) {
+                    if (now - lastHardSeekTime > 1200L) {
+                        videoPlayer.seekTo(targetVideoPos)
                         lastHardSeekTime = now
                     }
-                    if (videoPlayer.playbackParameters.speed != audioSpeed) {
-                        videoPlayer.playbackParameters = PlaybackParameters(audioSpeed)
+                } else if (abs(driftMs) > 200L && playerState.isPlaying) {
+                    val targetSpeed = if (driftMs < 0) 1.15f else 0.85f
+                    if (videoPlayer.playbackParameters.speed != targetSpeed) {
+                        videoPlayer.playbackParameters = PlaybackParameters(targetSpeed)
                     }
-                } else if (abs(driftMs) > 40L) {
-                    val speedCorrection = if (driftMs > 0) 0.96f else 1.04f
-                    videoPlayer.playbackParameters = PlaybackParameters(audioSpeed * speedCorrection)
+                } else if (abs(driftMs) > 60L && playerState.isPlaying) {
+                    val targetSpeed = if (driftMs < 0) 1.05f else 0.95f
+                    if (videoPlayer.playbackParameters.speed != targetSpeed) {
+                        videoPlayer.playbackParameters = PlaybackParameters(targetSpeed)
+                    }
                 } else {
-                    if (videoPlayer.playbackParameters.speed != audioSpeed) {
-                        videoPlayer.playbackParameters = PlaybackParameters(audioSpeed)
+                    if (videoPlayer.playbackParameters.speed != 1.0f) {
+                        videoPlayer.playbackParameters = PlaybackParameters(1.0f)
                     }
                 }
             }
@@ -1018,13 +1255,7 @@ fun FullscreenLandscapeVideoStage(
                     modifier = Modifier.size(48.dp),
                 )
             }
-            is SyncedVideoUiState.FallbackEmbed -> {
-                YouTubeEmbeddedPlayer(
-                    videoId = (uiState as SyncedVideoUiState.FallbackEmbed).videoId,
-                    musicPlayer = musicPlayer,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+
             is SyncedVideoUiState.Error -> {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -1037,7 +1268,7 @@ fun FullscreenLandscapeVideoStage(
                     )
                     Spacer(Modifier.height(12.dp))
                     FilledTonalButton(
-                        onClick = { viewModel.retry(track.title, track.artist, track.videoId) },
+                        onClick = { viewModel.retry(track.title, track.artist, track.videoId, track.durationMs) },
                     ) {
                         Text("Retry")
                     }
@@ -1047,18 +1278,25 @@ fun FullscreenLandscapeVideoStage(
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = { viewContext ->
-                        TextureView(viewContext).apply {
+                        SurfaceView(viewContext).apply {
                             layoutParams = FrameLayout.LayoutParams(
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                             )
-                            videoPlayer.setVideoTextureView(this)
+                            videoPlayer.setVideoSurfaceView(this)
                         }
                     },
-                    update = { textureView ->
-                        videoPlayer.setVideoTextureView(textureView)
+                    update = { surfaceView ->
+                        videoPlayer.setVideoSurfaceView(surfaceView)
                     },
                 )
+                if (isBuffering) {
+                    CircularProgressIndicator(
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(48.dp),
+                    )
+                }
             }
         }
 
@@ -1429,7 +1667,7 @@ fun SyncedVideoPlayerDialog(
     val context = LocalContext.current
     val view = LocalView.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val playerState by musicPlayer.state.collectAsStateWithLifecycle()
+    val playerState by musicPlayer.stateWithoutProgress.collectAsStateWithLifecycle()
     val progressState by musicPlayer.progressState.collectAsStateWithLifecycle()
 
     var isFullscreen by remember { mutableStateOf(false) }
@@ -1441,7 +1679,7 @@ fun SyncedVideoPlayerDialog(
     var showQualityDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(track) {
-        viewModel.loadVideo(track.title, track.artist, track.videoId)
+        viewModel.loadVideo(track.title, track.artist, track.videoId, track.durationMs)
     }
 
     // Auto-hide controls in fullscreen after inactivity
@@ -1480,6 +1718,17 @@ fun SyncedVideoPlayerDialog(
         }
     }
 
+    val httpFactory = remember {
+        OkHttpDataSource.Factory(videoMediaHttp)
+            .setDefaultRequestProperties(
+                mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Origin" to "https://www.youtube.com",
+                    "Referer" to "https://www.youtube.com",
+                )
+            )
+    }
+
     // ExoPlayer dedicated strictly for video rendering
     val videoPlayer = remember(context) {
         val loadControl = DefaultLoadControl.Builder()
@@ -1492,19 +1741,12 @@ fun SyncedVideoPlayerDialog(
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
-        val httpFactory = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setDefaultRequestProperties(
-                mapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Origin" to "https://www.youtube.com",
-                    "Referer" to "https://www.youtube.com",
-                )
-            )
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+        val defaultDataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+        val chunkedFactory = DataSource.Factory {
+            ChunkedRangeDataSource(defaultDataSourceFactory.createDataSource(), chunkSize = 256 * 1024L)
+        }
 
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+        adaptiveVideoPlayerBuilder(context, chunkedFactory)
             .setLoadControl(loadControl)
             .build()
             .apply {
@@ -1524,6 +1766,15 @@ fun SyncedVideoPlayerDialog(
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 Log.w(TAG, "Video player error: ${error.message}", error)
+                viewModel.onVideoPlaybackError()
+            }
+
+            // No error fires when no decoder takes the track: the player just
+            // runs with nothing to show, which is a black screen.
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                if (!tracks.isEmpty && !tracks.isTypeSelected(C.TRACK_TYPE_VIDEO)) {
+                    viewModel.onNoVideoTrackSelected(videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString())
+                }
             }
         }
         videoPlayer.addListener(listener)
@@ -1539,19 +1790,24 @@ fun SyncedVideoPlayerDialog(
         if (state is SyncedVideoUiState.Ready) {
             val stream = state.activeStream
             val currentMediaUri = videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
-            if (currentMediaUri == stream.url) return@LaunchedEffect
+            // Idle means the last attempt failed, so the same URI still needs loading.
+            if (currentMediaUri == state.playbackUri && videoPlayer.playbackState != Player.STATE_IDLE) return@LaunchedEffect
+
+            val streamUa = stream.requestHeaders["User-Agent"]
+                ?: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
+            httpFactory.setUserAgent(streamUa)
+            httpFactory.setDefaultRequestProperties(stream.requestHeaders)
 
             isRendered = false
             val currentPos = videoPlayer.currentPosition.takeIf { it > 0 } ?: musicPlayer.currentPositionMs()
             val mediaItem = MediaItem.Builder()
-                .setUri(stream.url)
+                .setUri(state.playbackUri)
                 .apply {
-                    stream.mimeType?.let { setMimeType(it) }
+                    state.playbackMimeType?.let { setMimeType(it) }
                 }
                 .build()
-            videoPlayer.setMediaItem(mediaItem)
+            videoPlayer.setMediaItem(mediaItem, currentPos)
             videoPlayer.prepare()
-            videoPlayer.seekTo(currentPos)
             videoPlayer.playWhenReady = playerState.isPlaying
         }
     }
@@ -1790,20 +2046,20 @@ fun SyncedVideoPlayerDialog(
                             },
                         contentAlignment = Alignment.Center,
                     ) {
-                        // Media3 ExoPlayer TextureView
+                        // Media3 ExoPlayer SurfaceView
                         AndroidView(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .alpha(videoAlpha),
+                            modifier = Modifier.fillMaxSize(),
                             factory = { viewContext ->
-                                TextureView(viewContext).apply {
+                                SurfaceView(viewContext).apply {
                                     layoutParams = FrameLayout.LayoutParams(
                                         ViewGroup.LayoutParams.MATCH_PARENT,
                                         ViewGroup.LayoutParams.MATCH_PARENT,
                                     )
-                                    isOpaque = true
-                                    videoPlayer.setVideoTextureView(this)
+                                    videoPlayer.setVideoSurfaceView(this)
                                 }
+                            },
+                            update = { surfaceView ->
+                                videoPlayer.setVideoSurfaceView(surfaceView)
                             },
                         )
 
@@ -1840,7 +2096,7 @@ fun SyncedVideoPlayerDialog(
                                 )
                                 Spacer(Modifier.height(12.dp))
                                 FilledTonalButton(
-                                    onClick = { viewModel.retry(track.title, track.artist, track.videoId) },
+                                    onClick = { viewModel.retry(track.title, track.artist, track.videoId, track.durationMs) },
                                     colors = ButtonDefaults.filledTonalButtonColors(
                                         containerColor = MaterialTheme.colorScheme.primary,
                                         contentColor = MaterialTheme.colorScheme.onPrimary,

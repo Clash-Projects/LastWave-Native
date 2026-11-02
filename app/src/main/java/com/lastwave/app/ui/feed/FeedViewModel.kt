@@ -21,6 +21,7 @@ import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistSummary
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.PlayableTrack
+import com.lastwave.app.playback.toPlayableTrack
 import com.lastwave.app.data.music.toPlayableTrack
 import com.lastwave.app.data.repository.RelatedGraphRepository
 import com.lastwave.app.data.ytmusic.YtMusicAuthManager
@@ -174,11 +175,18 @@ class FeedViewModel @Inject constructor(
         }
     }
 
-    fun loadDiscovery() {
+    fun loadDiscovery(forceRotate: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val cached = discoverRepository.allowedCachedFeed()
-                val tracks = if (cached.isNotEmpty()) cached.take(8) else discoverRepository.nextBatch(8)
+                val tracks = if (forceRotate) {
+                    val batch = discoverRepository.nextBatch(8)
+                    if (batch.isNotEmpty()) batch else cached.shuffled().take(8)
+                } else if (cached.isNotEmpty()) {
+                    cached.take(8)
+                } else {
+                    discoverRepository.nextBatch(8)
+                }
                 _discoveryTracks.value = tracks
             } catch (_: Exception) {
                 // Non-destructive fallback if offline/failed
@@ -189,7 +197,7 @@ class FeedViewModel @Inject constructor(
     fun loadFeed() = fetchFeed(refreshing = false)
 
     fun refresh() {
-        loadDiscovery()
+        loadDiscovery(forceRotate = true)
         loadTopGenres()
         fetchFeed(refreshing = true)
     }
@@ -311,7 +319,7 @@ class FeedViewModel @Inject constructor(
      * Selecting a new chip cancels any in-flight requests, hides synthetic sections,
      * and displays only the chip's YTM carousel shelves.
      */
-    fun onHomeChipSelected(chip: HomeChip) = selectChip(chip)
+    fun onHomeChipSelected(chip: HomeChip?) = selectChip(chip)
 
     fun selectChip(chip: HomeChip?) {
         val currentSelected = _uiState.value.selectedChip
@@ -568,25 +576,36 @@ class FeedViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(launchingRadio = title) }
             try {
-                val seeds = try {
-                    innerTube.searchSongs(query, limit = 8, prefetchStreams = false)
+                // 1. Fetch real genre discovery tracks matching this exact genre from genresRepository
+                val genreTracks = try {
+                    genresRepository.discoverMore(query)
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Exception) {
                     emptyList()
                 }
-                val seed = seeds.take(5).randomOrNull()
-                val related = seed?.let {
-                    try {
-                        relatedGraph.relatedFor(it.videoId, limit = 24, prefetchStreams = false)
+
+                if (genreTracks.isNotEmpty()) {
+                    val playable = genreTracks.map { it.toPlayableTrack() }
+                    musicPlayer.playQueue(
+                        playable,
+                        startIndex = 0,
+                        sourceLabel = title,
+                        enableRadioContinuation = true,
+                    )
+                } else {
+                    // Fallback to exact search query for this genre
+                    val searchResults = try {
+                        innerTube.searchSongs("$query songs", limit = 25, prefetchStreams = false)
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Exception) {
                         emptyList()
                     }
-                }.orEmpty()
-                val songs = (listOfNotNull(seed) + related).distinctBy(YouTubeMusicTrack::videoId)
-                if (songs.isNotEmpty()) playTracksQueue(songs, sourceLabel = title)
+                    if (searchResults.isNotEmpty()) {
+                        playTracksQueue(searchResults, sourceLabel = title)
+                    }
+                }
             } finally {
                 _uiState.update { it.copy(launchingRadio = null) }
             }

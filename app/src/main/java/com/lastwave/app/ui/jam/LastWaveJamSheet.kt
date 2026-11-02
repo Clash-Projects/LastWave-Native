@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -86,9 +88,6 @@ import com.lastwave.app.data.jam.JamRepository
 import com.lastwave.app.data.jam.ParticipantPayload
 import com.lastwave.app.ui.common.ArtworkImage
 
-private val LimeAccent = Color(0xFFC9FB00)
-private val DarkTeal = Color(0xFF012226)
-
 private fun formatMs(ms: Long): String {
     if (ms <= 0L) return "00:00"
     val totalSec = ms / 1000
@@ -105,9 +104,24 @@ fun LastWaveJamSheet(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val chatMessages by viewModel.chatMessages.collectAsStateWithLifecycle()
+    val notice by viewModel.notice.collectAsStateWithLifecycle()
+    val cooldownUntil by viewModel.cooldownUntilMs.collectAsStateWithLifecycle()
+    val roomCounts by viewModel.roomCounts.collectAsStateWithLifecycle()
+    val locked = cooldownUntil > 0L
+    LaunchedEffect(uiState.isConnected) {
+        while (!uiState.isConnected) {
+            viewModel.refreshRoomCounts()
+            kotlinx.coroutines.delay(15_000L)
+        }
+    }
+    var replyTo by remember { mutableStateOf<com.lastwave.app.data.jam.ChatMessagePayload?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
+
+    val isDark = com.lastwave.app.ui.theme.LocalIsDarkTheme.current
+    val LimeAccent = if (isDark) Color(0xFFC9FB00) else Color(0xFF2E6B12)
+    val DarkTeal = if (isDark) Color(0xFF012226) else Color.White
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     var chatInputText by remember { mutableStateOf("") }
@@ -131,6 +145,8 @@ fun LastWaveJamSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
+                .imePadding()
                 .padding(horizontal = 20.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -240,6 +256,15 @@ fun LastWaveJamSheet(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 if (selectedTabIndex == 0) {
+                    JamStationsList(
+                        accent = LimeAccent,
+                        onAccent = DarkTeal,
+                        enabled = !uiState.isConnecting,
+                        onJoin = { viewModel.joinJamSession(it) },
+                        counts = roomCounts,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
                     // Join Room Tab
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -266,7 +291,7 @@ fun LastWaveJamSheet(
                                         onClick = {
                                             val clip = clipboard.getText()?.text?.trim().orEmpty()
                                             if (clip.isNotBlank()) {
-                                                viewModel.setPendingCode(clip.take(6))
+                                                viewModel.setPendingCode(com.lastwave.app.data.jam.parseJamCode(clip).take(6))
                                             }
                                         },
                                     ) {
@@ -489,7 +514,7 @@ fun LastWaveJamSheet(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         Text(
-                            text = "ROOM CODE",
+                            text = if (uiState.roomName.isEmpty()) "ROOM CODE" else "${uiState.roomName.uppercase()} · ROOM CODE",
                             style = MaterialTheme.typography.labelSmall,
                             letterSpacing = 2.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -578,7 +603,7 @@ fun LastWaveJamSheet(
                             }
                         } else {
                             Text(
-                                text = "● Live Sync · ${if (uiState.roomMode == JamProtocolConstants.MODE_HOST_ONLY) "Host Only" else "Collaborative"}",
+                                text = "● Live Sync \u2022 ${if (uiState.roomMode == JamProtocolConstants.MODE_HOST_ONLY) "Host Only" else "Collaborative"}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -629,7 +654,7 @@ fun LastWaveJamSheet(
                                 )
                                 Text(
                                     text = uiState.currentTrackArtist.ifBlank { "Jam Sync" } +
-                                        if (uiState.durationMs > 0L) " · ${formatMs(uiState.currentPositionMs)} / ${formatMs(uiState.durationMs)}" else "",
+                                        if (uiState.durationMs > 0L) " \u2022 ${formatMs(uiState.currentPositionMs)} / ${formatMs(uiState.durationMs)}" else "",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
@@ -643,7 +668,7 @@ fun LastWaveJamSheet(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(
                                 onClick = { viewModel.togglePlayback() },
-                                enabled = canControl,
+                                enabled = canControl && !(locked && uiState.isPlaying),
                             ) {
                                 Icon(
                                     imageVector = if (uiState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
@@ -653,7 +678,7 @@ fun LastWaveJamSheet(
                             }
                             IconButton(
                                 onClick = { viewModel.skipNext() },
-                                enabled = canControl,
+                                enabled = canControl && !locked,
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.SkipNext,
@@ -666,6 +691,20 @@ fun LastWaveJamSheet(
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
+
+                JamCooldownHint(cooldownUntil, Modifier.padding(bottom = 6.dp))
+                JamUpNext(
+                    queue = uiState.queue,
+                    isAdmin = uiState.isMainHost,
+                    accent = LimeAccent,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                JamNoticeBanner(
+                    notice = notice,
+                    onDismiss = viewModel::clearNotice,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
 
                 // Participants Horizontal Strip
                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -715,9 +754,18 @@ fun LastWaveJamSheet(
                                             .background(LimeAccent.copy(alpha = 0.2f))
                                             .padding(horizontal = 4.dp, vertical = 1.dp),
                                     ) {
-                                        Text("HOST", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = LimeAccent)
+                                        Text(roleBadge(p), fontSize = 9.sp, fontWeight = FontWeight.Bold, color = LimeAccent)
                                     }
                                 }
+                                HostActionButton(
+                                    participant = p,
+                                    myUserId = uiState.myUserId,
+                                    isMainHost = uiState.isMainHost,
+                                    coHostId = uiState.coHostId,
+                                    accent = LimeAccent,
+                                    onGrant = viewModel::grantHost,
+                                    onRevoke = viewModel::revokeHost,
+                                )
                             }
                         }
                     }
@@ -756,25 +804,35 @@ fun LastWaveJamSheet(
                                 }
                             } else {
                                 items(chatMessages) { msg ->
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    ) {
-                                        Text(
-                                            text = msg.userName + ":",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (msg.isHost) LimeAccent else MaterialTheme.colorScheme.primary,
-                                        )
-                                        Text(
-                                            text = msg.text,
-                                            style = MaterialTheme.typography.bodySmall,
-                                        )
+                                    Column(modifier = Modifier.clickable { replyTo = msg }) {
+                                        msg.replyTo?.let { ReplyQuote(it, LimeAccent) }
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        ) {
+                                            Text(
+                                                text = msg.userName + ":",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (msg.isHost) LimeAccent else MaterialTheme.colorScheme.primary,
+                                            )
+                                            Text(
+                                                text = msg.text,
+                                                style = MaterialTheme.typography.bodySmall,
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
 
+                        replyTo?.let { target ->
+                            ReplyPreviewBar(
+                                message = target,
+                                accent = LimeAccent,
+                                onCancel = { replyTo = null },
+                            )
+                        }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
@@ -792,8 +850,9 @@ fun LastWaveJamSheet(
                             IconButton(
                                 onClick = {
                                     if (chatInputText.isNotBlank()) {
-                                        viewModel.sendChat(chatInputText)
+                                        viewModel.sendChat(chatInputText, replyTo?.id)
                                         chatInputText = ""
+                                        replyTo = null
                                     }
                                 },
                             ) {

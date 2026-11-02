@@ -27,7 +27,7 @@ import kotlinx.serialization.json.putJsonArray
  *   Listening to LastWave            <- type 2 (listening) + name
  *   ┌────┐  Song title               <- details
  *   │art │  Artist                   <- state, first line
- *   └────┘   · Hi-Res Lossless · 24-bit · 96 kHz    <- state, second line
+ *   └────┘   • Hi-Res Lossless • 24-bit • 96 kHz    <- state, second line
  *           ▁▁▁▁▁▁ 1:04 / 3:47       <- from the timestamps
  *   [ Listen On LastWave ]           <- opens the track
  *   [ Get LastWave ]                 <- opens this project's releases
@@ -104,12 +104,12 @@ object DiscordPresence {
     /** The two-line status line: artist, then the measured quality. */
     fun stateLine(artist: String, album: String?, title: String, quality: String): String {
         val head = artist.trim().ifEmpty { album?.trim()?.takeIf { it.isNotEmpty() } ?: "LastWave" }
-        val raw = if (quality.isEmpty()) clip(head) else clip(head) + "\n · " + quality
+        val raw = if (quality.isEmpty()) clip(head) else clip(head) + "\n \u2022 " + quality
         return if (raw.length > MAX_STATE) raw.substring(0, MAX_STATE - 1) + "..." else raw
     }
 
     /**
-     * "Hi-Res Lossless · 24-bit · 96 kHz · ATMOS" — every part comes from a
+     * "Hi-Res Lossless • 24-bit • 96 kHz • ATMOS" — every part comes from a
      * value the stream reported. Unknown depth or rate is omitted, never
      * inferred into a plausible-looking number.
      */
@@ -123,7 +123,7 @@ object DiscordPresence {
         if (depth > 0) parts += "$depth-bit"
         if (rateKhz > 0.0) parts += rateLabel(rateKhz)
         spatialIndicatorLabel(state.audioCodec)?.let { parts += it }
-        return parts.joinToString(" · ")
+        return parts.joinToString(" \u2022 ")
     }
 
     /** `96 kHz`, `44.1 kHz` — whole rates drop the decimal, as on desktop. */

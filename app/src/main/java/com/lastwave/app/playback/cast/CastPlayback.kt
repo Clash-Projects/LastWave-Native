@@ -42,6 +42,13 @@ internal class CastPlayback(
         override fun onMetadataUpdated() = updateState()
     }
     private val progress = RemoteMediaClient.ProgressListener { _, _ -> updateState() }
+    private val castListener = object : com.google.android.gms.cast.Cast.Listener() {
+        override fun onVolumeChanged() {
+            val s = session ?: return
+            val vol = runCatching { s.volume.toFloat() }.getOrNull() ?: return
+            owner.onCastVolumeChanged(vol)
+        }
+    }
     private val listener = object : SessionManagerListener<CastSession> {
         override fun onSessionStarted(session: CastSession, id: String) = attach(session)
         override fun onSessionResumed(session: CastSession, suspended: Boolean) = attach(session)
@@ -67,7 +74,13 @@ internal class CastPlayback(
     private fun attach(newSession: CastSession) {
         client?.unregisterCallback(callback)
         client?.removeProgressListener(progress)
+        session?.removeCastListener(castListener)
         session = newSession
+        newSession.addCastListener(castListener)
+        val initialVol = runCatching { newSession.volume.toFloat() }.getOrNull()
+        if (initialVol != null) {
+            owner.onCastVolumeChanged(initialVol)
+        }
         client = newSession.remoteMediaClient
         client?.registerCallback(callback)
         client?.addProgressListener(progress, 500)
@@ -150,6 +163,13 @@ internal class CastPlayback(
         }
     }
 
+    fun setVolume(volume: Float) {
+        val s = session ?: return
+        runCatching {
+            s.setVolume(volume.toDouble().coerceIn(0.0, 1.0))
+        }.onFailure { android.util.Log.w("CastPlayback", "Could not set Cast volume", it) }
+    }
+
     fun disconnect() = castContext.sessionManager.endCurrentSession(true)
 
     private fun updateState() {
@@ -177,6 +197,7 @@ internal class CastPlayback(
         loadJob?.cancel()
         client?.unregisterCallback(callback)
         client?.removeProgressListener(progress)
+        session?.removeCastListener(castListener)
         client = null
         session = null
         contentId = null

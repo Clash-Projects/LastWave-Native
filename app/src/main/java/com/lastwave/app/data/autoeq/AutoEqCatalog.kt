@@ -40,7 +40,7 @@ data class AutoEqEntry(
     val folderName: String
         get() = URLDecoder.decode(encodedPath.substringAfterLast('/').replace("+", "%2B"), "UTF-8")
 
-    val subtitle: String get() = if (rig.isNullOrBlank()) source else "$source · $rig"
+    val subtitle: String get() = if (rig.isNullOrBlank()) source else "$source \u2022 $rig"
 }
 
 /** Raw measurement + the lab's target (AutoEQ result CSV), normalised for display. */

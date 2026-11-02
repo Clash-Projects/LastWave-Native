@@ -165,6 +165,20 @@ fun YouTubeLoginScreen(
                         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
                         webViewClient = object : WebViewClient() {
+                            // Renderer crashed or was reclaimed for memory: keep the app alive
+                            // (the default kills the whole process) and drop the dead WebView,
+                            // which must never be touched again.
+                            override fun onRenderProcessGone(
+                                view: WebView?,
+                                detail: android.webkit.RenderProcessGoneDetail?,
+                            ): Boolean {
+                                runCatching {
+                                    (view?.parent as? android.view.ViewGroup)?.removeView(view)
+                                    view?.destroy()
+                                }
+                                return true
+                            }
+
                             override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
                                 super.doUpdateVisitedHistory(view, url, isReload)
                                 val current = viewModel.uiState.value

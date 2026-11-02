@@ -60,7 +60,7 @@ class QueueFeaturesTest {
     fun queueStats_singleSong_withDuration_returnsOneSongAndMinutes() {
         val tracks = listOf(makeTrack("Song 1", 180_000L)) // 3m
         assertThat(QueueStatsFormatter.formatQueueStats(tracks))
-            .isEqualTo("1 song · 3m")
+            .isEqualTo("1 song • 3m")
     }
 
     @Test
@@ -73,7 +73,7 @@ class QueueFeaturesTest {
             makeTrack("Song $i", base + rem)
         }
         val result = QueueStatsFormatter.formatQueueStats(tracks)
-        assertThat(result).isEqualTo("58 songs · 42m")
+        assertThat(result).isEqualTo("58 songs • 42m")
     }
 
     @Test
@@ -86,7 +86,7 @@ class QueueFeaturesTest {
             makeTrack("Song $i", base + rem)
         }
         val result = QueueStatsFormatter.formatQueueStats(tracks)
-        assertThat(result).isEqualTo("58 songs · 3h 37m")
+        assertThat(result).isEqualTo("58 songs • 3h 37m")
     }
 
     @Test
@@ -97,7 +97,7 @@ class QueueFeaturesTest {
         val tracks = known + unknown
 
         val result = QueueStatsFormatter.formatQueueStats(tracks)
-        assertThat(result).isEqualTo("58 songs · 2h 30m+")
+        assertThat(result).isEqualTo("58 songs • 2h 30m+")
     }
 
     @Test

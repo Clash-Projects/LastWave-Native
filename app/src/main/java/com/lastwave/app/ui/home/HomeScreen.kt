@@ -323,8 +323,8 @@ fun HomeScreen(
                     ) {
                         itemsIndexed(
                             rows,
-                            key = { _, row ->
-                                when (row) {
+                            key = { index, row ->
+                                val base = when (row) {
                                     is HomeRow.DateHeader -> "date_${row.label}"
                                     is HomeRow.Track -> if (row.track.isNowPlaying) {
                                         "nowplaying_${row.track.key}"
@@ -334,6 +334,7 @@ fun HomeScreen(
                                     is HomeRow.Album -> "album_${row.album.artist}_${row.album.name}"
                                     is HomeRow.Artist -> "artist_${row.artist.name}"
                                 }
+                                "${base}_$index"
                             },
                             contentType = { _, row ->
                                 when (row) {

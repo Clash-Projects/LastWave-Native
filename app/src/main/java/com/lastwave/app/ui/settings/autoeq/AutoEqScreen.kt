@@ -363,7 +363,7 @@ fun AutoEqScreen(
 @Composable
 private fun profileLabel(state: AutoEqState): String {
     val name = state.entry?.name ?: stringResource(R.string.autoeq_manual)
-    return if (state.isCustom) "$name · ${stringResource(R.string.autoeq_custom)}" else name
+    return if (state.isCustom) "$name \u2022 ${stringResource(R.string.autoeq_custom)}" else name
 }
 
 @Composable
@@ -638,10 +638,10 @@ private fun LogSlider(
 
 private fun summary(f: PeqFilter): String = buildString {
     append(f.type.code)
-    append(" · ")
+    append(" \u2022 ")
     append(formatHz(f.frequencyHz))
-    if (f.type.hasGain) append(" · %+.1f dB".format(Locale.ROOT, f.gainDb))
-    append(" · Q %.2f".format(Locale.ROOT, f.q))
+    if (f.type.hasGain) append(" \u2022 %+.1f dB".format(Locale.ROOT, f.gainDb))
+    append(" \u2022 Q %.2f".format(Locale.ROOT, f.q))
 }
 
 private fun formatHz(hz: Double): String =
