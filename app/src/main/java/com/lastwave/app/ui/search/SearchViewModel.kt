@@ -67,6 +67,7 @@ class SearchViewModel @Inject constructor(
         suggestionsJob?.cancel()
 
         if (query.isBlank()) {
+            musicPlayer.cancelSearchResultWarm()
             searchJob?.cancel()
             _uiState.update {
                 it.copy(
@@ -158,13 +159,7 @@ class SearchViewModel @Inject constructor(
         val tab = _uiState.value.tab
         when (tab) {
             SearchTab.TRACKS -> {
-                val selected = PlayableTrack(
-                    title = item.name,
-                    artist = item.artist.orEmpty(),
-                    album = item.subtitle,
-                    artworkUrl = item.artworkUrl,
-                    videoId = item.videoId,
-                )
+                val selected = trackResultToPlayable(item)
                 // Start immediately. Similar song radio queue loads and extends infinitely.
                 musicPlayer.play(selected, sourceLabel = "Search", startRadio = true)
             }
@@ -217,6 +212,9 @@ class SearchViewModel @Inject constructor(
                     results = results,
                 )
             }
+            if (tab == SearchTab.TRACKS) {
+                musicPlayer.warmLikelyPlays(results.map(::trackResultToPlayable))
+            }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             if (lastIssuedQuery != query || _uiState.value.query.trim() != query.trim() || _uiState.value.tab != tab) return
@@ -224,7 +222,17 @@ class SearchViewModel @Inject constructor(
         }
     }
 
+    /** One construction for taps and warm-ups so the warmed addon query matches the played one. */
+    private fun trackResultToPlayable(item: SearchResultItem) = PlayableTrack(
+        title = item.name,
+        artist = item.artist.orEmpty(),
+        album = item.subtitle,
+        artworkUrl = item.artworkUrl,
+        videoId = item.videoId,
+    )
+
     fun clearQuery() {
+        musicPlayer.cancelSearchResultWarm()
         debounceJob?.cancel()
         suggestionsJob?.cancel()
         searchJob?.cancel()

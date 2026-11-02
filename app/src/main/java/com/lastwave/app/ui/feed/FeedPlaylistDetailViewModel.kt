@@ -21,6 +21,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 sealed interface FeedPlaylistDetailUiState {
@@ -49,6 +51,18 @@ class FeedPlaylistDetailViewModel @Inject constructor(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow<FeedPlaylistDetailUiState>(FeedPlaylistDetailUiState.Loading)
     val uiState: StateFlow<FeedPlaylistDetailUiState> = _uiState.asStateFlow()
+
+    init {
+        // Progressive pages re-emit Success; only a new opening changes what "Play" would start.
+        viewModelScope.launch {
+            _uiState
+                .map { (it as? FeedPlaylistDetailUiState.Success)?.playlist?.tracks?.take(WARM_CANDIDATES).orEmpty() }
+                .distinctUntilChanged { a, b -> a.map { it.videoId } == b.map { it.videoId } }
+                .collect { opening ->
+                    if (opening.isNotEmpty()) musicPlayer.warmLikelyPlays(opening.map { it.toPlayableTrack() })
+                }
+        }
+    }
 
     private var currentPlaylistId: String? = null
 
@@ -219,4 +233,8 @@ class FeedPlaylistDetailViewModel @Inject constructor(
         videoId = videoId,
         durationMs = durationSeconds?.takeIf { it > 0 }?.times(1_000L),
     )
+
+    private companion object {
+        const val WARM_CANDIDATES = 6
+    }
 }

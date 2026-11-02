@@ -423,6 +423,7 @@ class MusicPlayer @Inject constructor(
     private var recommendationJob: Job? = null
     private var preloadJob: Job? = null
     private var searchWarmJob: Job? = null
+    private var searchResultWarmJob: Job? = null
     private var currentTrackCacheJob: Job? = null
     private val resolutionRequests = ConcurrentHashMap<List<Any?>, Pair<Long, Deferred<ResolvedStream>>>()
     private var discoverQueueLoadJob: Job? = null
@@ -877,13 +878,15 @@ class MusicPlayer @Inject constructor(
             }
             android.util.Log.i("MusicPlayer", "Playback state changed: $stateName, isPlaying=${player.isPlaying}, currentPos=${player.currentPosition}ms / ${player.duration}ms, bufferedPos=${player.bufferedPosition}ms, track='${_state.value.current?.title}'")
             if (playbackState == Player.STATE_BUFFERING) {
-                PlaybackStartupLog.prepareEnd()
+                // BUFFERING begins preparation; only READY ends the startup interval.
                 android.util.Log.w("MusicPlayer", "Track BUFFERING / STALLED: '${_state.value.current?.title}' at ${live.currentPosition}ms (buffered=${live.bufferedPosition}ms)")
             }
             if (playbackState == Player.STATE_READY) {
                 PlaybackStartupLog.prepareEnd()
                 PlaybackStartupLog.ready()
                 onMain { runStartupFollowUp() }
+                // Started paused: nothing competes for bandwidth any more.
+                onMain { if (!player.playWhenReady) releaseDeferredPreload() }
             }
             // Natural-end safety net: ExoPlayer auto-advances while a next
             // window exists, but when the queue truly ends â€” or the next
@@ -914,6 +917,7 @@ class MusicPlayer @Inject constructor(
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             outgoingPlayer?.playWhenReady = isPlaying
             if (isPlaying) {
+                onMain { releaseDeferredPreload() }
                 unavailableSkipJob?.cancel()
                 unavailableSkipJob = null
                 player.currentMediaItem?.mediaId?.let {
@@ -1655,6 +1659,15 @@ class MusicPlayer @Inject constructor(
                 // Feed ReplayGain container tags into loudness normalization.
                 // Additive listener: never touches playback, 0 dB without tags.
                 addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+                    override fun onAudioPositionAdvancing(
+                        eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                        playoutStartSystemTimeMs: Long,
+                    ) {
+                        if (activePlayer != null && this@apply !== activePlayer) return
+                        if (eventTime.windowIndex != currentMediaItemIndex) return
+                        PlaybackStartupLog.audioAdvancing(playoutStartSystemTimeMs)
+                    }
+
                     override fun onAudioInputFormatChanged(
                         eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
                         format: androidx.media3.common.Format,
@@ -5171,13 +5184,106 @@ class MusicPlayer @Inject constructor(
             for (track in upcoming) {
                 if (losslessMusicApi.isCoolingDown) return@launch
                 runCatching {
-                    losslessMusicApi.warmSearch(track.title, track.artist, track.album, quality)
+                    losslessMusicApi.warmSearch(
+                        track.title, track.artist, track.album, quality,
+                        expectedDurationSeconds = track.durationMs?.takeIf { it > 0 }?.div(1_000)?.toInt(),
+                    )
                 }.onFailure { if (it is CancellationException) throw it }
             }
         }
     }
 
+    /**
+     * Warms the addon search for the tracks a screen's user is most likely to
+     * play next (top search results, an album's or playlist's first rows /
+     * Play button) once they have been on screen briefly. The addon caches the
+     * search and prepares its top match's stream plan, so the tap skips
+     * ~1-2 s of cold upstream work. The newest screen's call cancels any
+     * pending warm (also [cancelSearchResultWarm]).
+     */
+    fun warmLikelyPlays(tracks: List<PlayableTrack>) {
+        searchResultWarmJob?.cancel()
+        val targets = tracks
+            .filter { it.title.isNotBlank() && it.artist.isNotBlank() && it.playbackUrl == null }
+            .take(SEARCH_RESULT_WARM_COUNT)
+        if (targets.isEmpty()) return
+        searchResultWarmJob = applicationScope.launch(Dispatchers.IO) {
+            // Results land every debounce while typing; only warm a set the user is looking at.
+            delay(SEARCH_RESULT_WARM_DWELL_MS)
+            val misc = runCatching { settingsPreferences.settings.first() }.getOrDefault(MiscSettings())
+            if (!misc.preferLosslessStreaming ||
+                misc.losslessQuality == LosslessMusicApi.QUALITY_YOUTUBE
+            ) return@launch
+            val quality = effectiveLosslessQuality(misc)
+            targets.map { track ->
+                launch {
+                    if (losslessMusicApi.isCoolingDown) return@launch
+                    runCatching {
+                        losslessMusicApi.warmSearch(
+                        track.title, track.artist, track.album, quality,
+                        expectedDurationSeconds = track.durationMs?.takeIf { it > 0 }?.div(1_000)?.toInt(),
+                    )
+                    }.onFailure { if (it is CancellationException) throw it }
+                }
+            }
+        }
+    }
+
+    private var deferredPreload: Pair<Int, PlayableTrack?>? = null
+    private var deferredPreloadTimeout: Job? = null
+
+    /** Playback was asked for but no audio is advancing yet (initial start or rebuffer). */
+    @MainThread
+    private fun isCurrentTrackStarting(): Boolean {
+        if (isCasting) return false
+        val live = player
+        return live.playWhenReady && !live.isPlaying &&
+            live.playbackState != Player.STATE_ENDED && live.mediaItemCount > 0
+    }
+
+    @MainThread
+    private fun releaseDeferredPreload(force: Boolean = false) {
+        val (nextIndex, requested) = deferredPreload ?: return
+        if (!force && isCurrentTrackStarting()) return
+        deferredPreload = null
+        deferredPreloadTimeout?.cancel()
+        deferredPreloadTimeout = null
+        // The queue may have changed while parked: only preload what is still there.
+        if (nextIndex !in 0 until player.mediaItemCount || nextIndex == player.currentMediaItemIndex) return
+        val live = player.getMediaItemAt(nextIndex).toPlayableTrack()
+        if (requested != null && live.mediaIdKey() != requested.mediaIdKey()) return
+        // A forced release bypasses the gate once: the start is stuck, not progressing.
+        forcePreloadOnce = force
+        preloadNextTrack(nextIndex, live)
+    }
+
+    private var forcePreloadOnce = false
+
+    fun cancelSearchResultWarm() {
+        searchResultWarmJob?.cancel()
+    }
+
     private fun preloadNextTrack(nextIndex: Int, nextTrack: PlayableTrack?) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            onMain { preloadNextTrack(nextIndex, nextTrack) }
+            return
+        }
+        // While the current track is still starting, its first CDN segments
+        // and the next track's resolve/download would split the bandwidth
+        // and delay first audio. Park the newest request until it plays.
+        if (!forcePreloadOnce && isCurrentTrackStarting()) {
+            deferredPreload = nextIndex to nextTrack
+            deferredPreloadTimeout?.cancel()
+            deferredPreloadTimeout = applicationScope.launch(Dispatchers.Main.immediate) {
+                // A start that never completes must not lose the preload.
+                delay(DEFERRED_PRELOAD_MAX_WAIT_MS)
+                releaseDeferredPreload(force = true)
+            }
+            return
+        }
+        forcePreloadOnce = false
+        deferredPreload = null
+        deferredPreloadTimeout?.cancel()
         // Player state is main-thread only; immediate runs inline when already there.
         applicationScope.launch(Dispatchers.Main.immediate) { warmUpcomingSearches(nextIndex) }
         if (nextTrack == null || nextTrack.playbackUrl != null) return
@@ -9162,6 +9268,11 @@ class MusicPlayer @Inject constructor(
         /** Queue items past the next one whose addon search is pre-warmed. */
         const val SEARCH_WARM_AHEAD = 4
         const val SEARCH_WARM_DELAY_MS = 1_500L
+        /** Top search results warmed per settled result set (each also costs one server plan prep). */
+        const val SEARCH_RESULT_WARM_COUNT = 2
+        const val SEARCH_RESULT_WARM_DWELL_MS = 500L
+        /** Upper bound on holding the next-track preload behind a stalled start. */
+        const val DEFERRED_PRELOAD_MAX_WAIT_MS = 10_000L
         const val HOT_SWAP_SEEK_LEAD_MS = 150L
         const val HOT_SWAP_SETTLE_MS = 80L
         const val HOT_SWAP_ALIGN_ROUNDS = 6

@@ -1,5 +1,6 @@
 package com.lastwave.app.data.lossless
 
+import android.os.SystemClock
 import android.util.Log
 import com.lastwave.app.data.artwork.awaitSuccessfulBodyOrNull
 import com.lastwave.app.data.plugin.ModuleManager
@@ -30,6 +31,7 @@ import java.net.URLEncoder
 import java.text.Normalizer
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -109,6 +111,8 @@ class LosslessMusicApi @Inject constructor(
         .readTimeout(10, TimeUnit.SECONDS)
         .callTimeout(12, TimeUnit.SECONDS)
         .build()
+
+    private val raceAttemptIds = AtomicLong(0)
 
     @Volatile
     private var cachedCredentials: BackendCredentials? = null
@@ -759,6 +763,8 @@ class LosslessMusicApi @Inject constructor(
             return@withContext null
         }
 
+        // Overlaps the CDN handshake with the addon search/stream round trips.
+        hybridServer.prewarm()
         val budgetMs = timeoutMs ?: if (isDownload) 25_000L else RESOLVE_BUDGET_MS
         withTimeoutOrNull(budgetMs) {
             resolveStreamInternal(
@@ -830,10 +836,13 @@ class LosslessMusicApi @Inject constructor(
         // All enabled addons are queried in parallel and the first one that
         // resolves a stream wins; the slower ones are cancelled. A dead or slow
         // addon therefore never delays (or cools down) the working ones.
-        Log.i(TAG, "resolveStream racing for '$title' by '$artist' across ${allCreds.size} addons (first hit wins, preferredQuality=$preferredQuality, isDownload=$isDownload)")
+        val raceAttempt = raceAttemptIds.incrementAndGet()
+        val raceStartedAt = SystemClock.elapsedRealtime()
+        var winnerSelectedAt = 0L
+        Log.i("LastWaveAddonRace", "event=race_start attempt=$raceAttempt providers=${allCreds.size}")
         val winner = coroutineScope {
-            val results = Channel<LosslessAudioStream?>(allCreds.size)
-            val jobs = allCreds.map { creds ->
+            val results = Channel<Pair<Int, LosslessAudioStream?>>(allCreds.size)
+            val jobs = allCreds.mapIndexed { providerIndex, creds ->
                 launch {
                     val resolved = try {
                         resolveFromAddon(
@@ -850,19 +859,28 @@ class LosslessMusicApi @Inject constructor(
                     } catch (c: CancellationException) {
                         throw c
                     } catch (e: Throwable) {
-                        Log.w(TAG, "resolveFromAddon failed for ${creds.baseUrl}: ${e.message}")
+                        Log.w("LastWaveAddonRace", "event=provider_failed attempt=$raceAttempt providerIndex=$providerIndex error=${e.javaClass.simpleName}")
                         null
                     }
-                    results.trySend(resolved)
+                    results.trySend(providerIndex to resolved)
                 }
             }
             var first: LosslessAudioStream? = null
             repeat(allCreds.size) {
-                if (first == null) first = results.receive()
+                if (first == null) {
+                    val (providerIndex, resolved) = results.receive()
+                    first = resolved
+                    if (resolved != null) {
+                        winnerSelectedAt = SystemClock.elapsedRealtime()
+                        Log.i("LastWaveAddonRace", "event=winner_selected attempt=$raceAttempt providerIndex=$providerIndex elapsedMs=${winnerSelectedAt - raceStartedAt}")
+                    }
+                }
             }
             jobs.forEach { it.cancel() }
             first
         }
+        val raceReturnedAt = SystemClock.elapsedRealtime()
+        Log.i("LastWaveAddonRace", "event=race_returned attempt=$raceAttempt elapsedMs=${raceReturnedAt - raceStartedAt} winnerToReturnMs=${if (winnerSelectedAt > 0L) raceReturnedAt - winnerSelectedAt else -1L} outcome=${if (winner != null) "winner" else "no_match"}")
         if (winner != null) {
             consecutiveFailures = 0
             failureCooldownUntilMs = 0L
@@ -960,25 +978,134 @@ class LosslessMusicApi @Inject constructor(
         artist: String,
         expectedAlbum: String?,
         preferredQuality: Int,
+        expectedDurationSeconds: Int? = null,
     ) = withContext(Dispatchers.IO) {
         if (preferredQuality == QUALITY_YOUTUBE || title.isBlank() || artist.isBlank() || isCoolingDown) {
             return@withContext
         }
+        hybridServer.prewarm()
         val plan = addonSearchPlan(title, artist, expectedAlbum, preferredQuality)
         val query = plan.queries.firstOrNull() ?: return@withContext
         for (creds in getAllEnabledCredentials()) {
             val key = "${creds.baseUrl}|${plan.qualityParam}|${plan.isAtmosPreferred}|$query"
             val fresh = synchronized(warmedSearchKeys) { warmedSearchKeys.put(key, Unit) == null }
             if (!fresh) continue
-            currentCoroutineContext().ensureActive()
-            val result = AddonClient(creds.baseUrl, resolutionClient, nativeSecrets = nativeSecrets)
-                .search(query, plan.qualityParam, plan.isAtmosPreferred)
+            val client = AddonClient(creds.baseUrl, resolutionClient, nativeSecrets = nativeSecrets)
+            val result = try {
+                currentCoroutineContext().ensureActive()
+                client.search(query, plan.qualityParam, plan.isAtmosPreferred)
+            } catch (cancelled: CancellationException) {
+                // An abandoned warm-up did not populate the server cache.
+                synchronized(warmedSearchKeys) { warmedSearchKeys.remove(key) }
+                throw cancelled
+            }
             if (result.isFailure) {
                 // Let a later warm-up retry it.
                 synchronized(warmedSearchKeys) { warmedSearchKeys.remove(key) }
+                continue
             }
+            // The server only pre-prepares its own #1 hit; ask it for the
+            // candidate and tier this app's matcher will actually stream first.
+            val first = firstStreamAttempt(
+                result.getOrNull().orEmpty(), title, artist, expectedDurationSeconds, expectedAlbum, plan,
+            ) ?: continue
+            currentCoroutineContext().ensureActive()
+            client.prewarm(first.first, first.second, first.second == "atmos")
         }
     }
+
+    /** (track id, tier) of the first `/stream` call [resolveFromAddon] makes for these hits. */
+    private fun firstStreamAttempt(
+        tracks: List<AddonTrack>,
+        title: String,
+        artist: String,
+        expectedDurationSeconds: Int?,
+        expectedAlbum: String?,
+        plan: AddonSearchPlan,
+    ): Pair<String, String>? {
+        if (tracks.isEmpty()) return null
+        val candidates = verifiedCandidates(tracks, title, artist, expectedDurationSeconds, expectedAlbum, plan.isAtmosPreferred)
+        val ordered = orderCandidates(candidates, plan.qualityParam, plan.isAtmosPreferred)
+        val tier = qualityTiers(plan.qualityParam, plan.isAtmosPreferred).first()
+        val candidate = tierCandidates(ordered, tier).firstOrNull() ?: return null
+        return candidate.rawAddonId.ifBlank { candidate.id.toString() } to tier
+    }
+
+    /** Search hits that pass identity verification, best first (language-gated). */
+    private fun verifiedCandidates(
+        tracks: List<AddonTrack>,
+        title: String,
+        artist: String,
+        expectedDurationSeconds: Int?,
+        expectedAlbum: String?,
+        isAtmosPreferred: Boolean,
+    ): List<TidalCandidateItem> {
+        val verified = tracks.asSequence()
+            .map { track ->
+                TidalCandidateItem(
+                    id = track.id.toLongOrNull() ?: track.id.hashCode().toLong(),
+                    title = track.title,
+                    duration = track.duration.toInt(),
+                    performerName = track.artist,
+                    albumArtistName = track.artist,
+                    albumTitle = track.album,
+                    performers = track.artist,
+                    isAtmos = track.isDolbyAtmos || track.atmos || track.audioModes.any { it.contains("DOLBY", ignoreCase = true) || it.contains("ATMOS", ignoreCase = true) },
+                    isSpatial = track.audioModes.any { it.contains("360", ignoreCase = true) || it.contains("SPATIAL", ignoreCase = true) },
+                    rawAddonId = track.id,
+                    audioQuality = track.audioQuality,
+                    bitDepth = track.bitDepth,
+                    directStreamUrl = track.directStreamUrl,
+                )
+            }
+            .mapNotNull { item ->
+                verifiedMatchScore(
+                    item = item,
+                    title = title,
+                    artist = artist,
+                    expectedDurationSeconds = expectedDurationSeconds,
+                    expectedAlbum = expectedAlbum,
+                )?.let { score ->
+                    var finalScore = score
+                    if (isAtmosPreferred && isAtmosCandidate(item)) finalScore += 200
+                    item to finalScore
+                }
+            }
+            .sortedWith(compareByDescending { it.second })
+            .map { it.first }
+            .distinctBy { it.rawAddonId.ifBlank { it.id.toString() } }
+            .toList()
+        if (verified.isEmpty()) return emptyList()
+        return gateAmbiguousLanguage(verified, title, expectedAlbum)
+    }
+
+    /** Hi-res masters first for hi-res, Atmos first for Atmos; score order kept within groups. */
+    private fun orderCandidates(
+        candidates: List<TidalCandidateItem>,
+        qualityParam: String,
+        isAtmosPreferred: Boolean,
+    ): List<TidalCandidateItem> = when {
+        isAtmosPreferred -> candidates.sortedWith(compareByDescending<TidalCandidateItem> { isAtmosCandidate(it) })
+        qualityParam == "hi_res" -> candidates.sortedWith(compareByDescending<TidalCandidateItem> { it.isHiResFlagged() })
+        else -> candidates
+    }
+
+    private fun qualityTiers(qualityParam: String, isAtmosPreferred: Boolean): List<String> = when {
+        isAtmosPreferred -> listOf("atmos", "hi_res", "lossless", "high")
+        qualityParam == "hi_res" -> listOf("hi_res", "lossless", "high")
+        qualityParam == "lossless" -> listOf("lossless", "hi_res", "high")
+        qualityParam == "high" -> listOf("high", "lossless", "hi_res")
+        qualityParam == "low" -> listOf("low", "high", "lossless", "hi_res")
+        else -> listOf(qualityParam, "lossless", "high")
+    }
+
+    /** Candidates [resolveFromAddon] streams for tier [q], in attempt order. */
+    private fun tierCandidates(ordered: List<TidalCandidateItem>, q: String): List<TidalCandidateItem> =
+        if (q == "atmos") {
+            ordered.filter { isAtmosCandidate(it) }.ifEmpty { ordered }
+        } else {
+            ordered.filter { !isAtmosCandidate(it) }.ifEmpty { ordered }
+        }
 
     private suspend fun resolveFromAddon(
         title: String,
@@ -998,6 +1125,7 @@ class LosslessMusicApi @Inject constructor(
         val qualityParam = plan.qualityParam
 
         var candidates: List<TidalCandidateItem> = emptyList()
+        var candidatePositions: Map<String, Int> = emptyMap()
         for (query in queries) {
             currentCoroutineContext().ensureActive()
             val searchResult = addonClient.search(query, qualityParam, isAtmosPreferred)
@@ -1016,48 +1144,11 @@ class LosslessMusicApi @Inject constructor(
             val tracks = searchResult.getOrNull() ?: continue
             if (tracks.isEmpty()) continue
 
-            val verified = tracks.asSequence()
-                .map { track ->
-                    TidalCandidateItem(
-                        id = track.id.toLongOrNull() ?: track.id.hashCode().toLong(),
-                        title = track.title,
-                        duration = track.duration.toInt(),
-                        performerName = track.artist,
-                        albumArtistName = track.artist,
-                        albumTitle = track.album,
-                        performers = track.artist,
-                        isAtmos = track.isDolbyAtmos || track.atmos || track.audioModes.any { it.contains("DOLBY", ignoreCase = true) || it.contains("ATMOS", ignoreCase = true) },
-                        isSpatial = track.audioModes.any { it.contains("360", ignoreCase = true) || it.contains("SPATIAL", ignoreCase = true) },
-                        rawAddonId = track.id,
-                        audioQuality = track.audioQuality,
-                        bitDepth = track.bitDepth,
-                        directStreamUrl = track.directStreamUrl,
-                    )
-                }
-                .mapNotNull { item ->
-                    verifiedMatchScore(
-                        item = item,
-                        title = title,
-                        artist = artist,
-                        expectedDurationSeconds = expectedDurationSeconds,
-                        expectedAlbum = expectedAlbum,
-                    )?.let { score ->
-                        var finalScore = score
-                        if (isAtmosPreferred && isAtmosCandidate(item)) finalScore += 200
-                        item to finalScore
-                    }
-                }
-                .sortedWith(compareByDescending { it.second })
-                .map { it.first }
-                .distinctBy { it.rawAddonId.ifBlank { it.id.toString() } }
-                .toList()
-
-            if (verified.isNotEmpty()) {
-                val gated = gateAmbiguousLanguage(verified, title, expectedAlbum)
-                if (gated.isNotEmpty()) {
-                    candidates = gated
-                    break
-                }
+            val gated = verifiedCandidates(tracks, title, artist, expectedDurationSeconds, expectedAlbum, isAtmosPreferred)
+            if (gated.isNotEmpty()) {
+                candidates = gated
+                candidatePositions = tracks.mapIndexed { index, track -> track.id to index }.toMap()
+                break
             }
         }
 
@@ -1071,40 +1162,21 @@ class LosslessMusicApi @Inject constructor(
         // identically to the 24-bit master and backend order wins the coin
         // flip, parking playback at 16-bit forever.
         val wantsHiRes = qualityParam == "hi_res" && !isAtmosPreferred
-        val ordered = if (isAtmosPreferred) {
-            candidates.sortedWith(compareByDescending<TidalCandidateItem> { isAtmosCandidate(it) })
-        } else if (wantsHiRes) {
-            candidates.sortedWith(compareByDescending<TidalCandidateItem> { it.isHiResFlagged() })
-        } else {
-            candidates
-        }
+        val ordered = orderCandidates(candidates, qualityParam, isAtmosPreferred)
 
         // Tier waterfall (backend search params). Rules:
         // - YouTube: strict, never reaches here (resolveStream returns null early).
         // - Atmos (28): atmos -> hi_res -> lossless -> high, then YouTube. Only path containing "atmos".
         // - Hi-Res (27/7): step DOWN only (hi_res -> lossless -> high), never up to Atmos. YouTube last.
         // - Lower tiers: preferred first, then higher above, then lower. Never Atmos.
-        val qualitiesToTry = when {
-            isAtmosPreferred -> listOf("atmos", "hi_res", "lossless", "high")
-            qualityParam == "hi_res" -> listOf("hi_res", "lossless", "high")
-            qualityParam == "lossless" -> listOf("lossless", "hi_res", "high")
-            qualityParam == "high" -> listOf("high", "lossless", "hi_res")
-            qualityParam == "low" -> listOf("low", "high", "lossless", "hi_res")
-            else -> listOf(qualityParam, "lossless", "high")
-        }
+        val qualitiesToTry = qualityTiers(qualityParam, isAtmosPreferred)
         for (q in qualitiesToTry) {
             // Each tier declares its own intent: only the immersive tier
             // asks for the spatial mix, later tiers ask for stereo so a
             // missing/unplayable spatial mix still resolves to stereo
             // instead of failing the whole waterfall.
             val wantAtmos = q == "atmos"
-            val targetCandidates = if (wantAtmos) {
-                val atmosMatches = ordered.filter { isAtmosCandidate(it) }
-                if (atmosMatches.isNotEmpty()) atmosMatches else ordered
-            } else {
-                val stereoMatches = ordered.filter { !isAtmosCandidate(it) }
-                if (stereoMatches.isNotEmpty()) stereoMatches else ordered
-            }
+            val targetCandidates = tierCandidates(ordered, q)
 
             // Hi-res / Atmos tiers scan wider: a silently-downgraded answer
             // below must not consume the attempt budget for the whole tier.
@@ -1250,6 +1322,7 @@ class LosslessMusicApi @Inject constructor(
                     continue
                 }
 
+                Log.i("LastWaveAddonChoice", "searchCandidateIndex=${candidatePositions[trackId] ?: -1} requestedQuality=$q formatId=$formatId hybrid=${hybridUrl != null}")
                 Log.i(TAG, "resolveFromAddon: Acquired stream for track $trackId: formatId=$formatId, bitDepth=${effectiveBitDepth ?: "unknown"}, sampleRate=${effectiveSampleRate}Hz, codec=$streamCodec")
                 consecutiveFailures = 0
                 failureCooldownUntilMs = 0L
