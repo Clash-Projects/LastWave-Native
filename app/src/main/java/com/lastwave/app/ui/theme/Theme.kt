@@ -93,11 +93,7 @@ fun LastWaveTheme(
 
     MaterialTheme(
         colorScheme = activeColorScheme,
-        typography = when {
-            !themeState.useCustomFont -> SystemTypography
-            themeState.useBoldFont -> LastWaveBoldTypography
-            else -> LastWaveTypography
-        },
+        typography = if (themeState.useCustomFont) LastWaveTypography else SystemTypography,
         shapes = LastWaveShapes,
     ) {
         Surface(
