@@ -61,6 +61,9 @@ class ExclusiveUsbOutput @Inject constructor(
     private var connection: UsbDeviceConnection? = null
     private var sourceEncoding = 0
     private var activeWireBits = 0
+    private var activeChannels = 2
+    /** Gain applied to the previous chunk; volume changes ramp from it. */
+    @Volatile private var lastPcmGain = 1f
     private var useFloatWrite = false
     @Volatile private var startMediaTimeUs = 0L
     @Volatile private var startMediaTimeNeedsInit = true
@@ -364,25 +367,31 @@ class ExclusiveUsbOutput @Inject constructor(
         }
         recheckClockLocked()
         val gain = softwareGain()
+        val fromGain = lastPcmGain
+        lastPcmGain = gain
+        val channels = activeChannels
+        // ~10ms glide on volume changes (removes zipper noise); a steady
+        // gain takes exactly the previous constant-gain path.
+        val rampFrames = (configuredRateHz / 100).coerceAtLeast(1)
         val chunk = if (isFloatBuffer) {
             val floats = FloatArray(size / Float.SIZE_BYTES)
             buffer.order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(floats)
             buffer.position(buffer.limit())
-            ExclusivePcmGain.apply(floats, gain)
+            ExclusivePcmGain.applyRamped(floats, fromGain, gain, channels, rampFrames)
             QueuedPcm(floats, null, 0, size)
         } else {
             val encoding = writeRawEncoding(sourceEncoding)
             if (encoding < 0) return false
             val bytes = ByteArray(size)
             buffer.get(bytes)
-            val attenuate = gain < 1f - 1e-6f && gain >= 0f
+            val attenuate = gain >= 0f && (gain < 1f - 1e-6f || fromGain < 1f - 1e-6f)
             if (attenuate && encoding == RAW_PCM16 && activeWireBits > 16) {
                 // Scale into 24 bits instead of back into 16: same level, no
                 // added quantization noise. The native layer passes 24-bit
                 // through (or pads it to a 32-bit alt) losslessly.
-                QueuedPcm(null, scalePcm16To24(bytes, gain), RAW_PCM24, size)
+                QueuedPcm(null, scalePcm16To24(bytes, fromGain, gain, channels, rampFrames), RAW_PCM24, size)
             } else {
-                if (attenuate) scalePcmBytes(bytes, encoding, gain)
+                if (attenuate) scalePcmRamped(bytes, encoding, fromGain, gain, channels, rampFrames)
                 QueuedPcm(null, bytes, encoding, size)
             }
         }
@@ -688,6 +697,8 @@ class ExclusiveUsbOutput @Inject constructor(
         stream = created
         sourceEncoding = effectiveEncoding
         activeWireBits = wireBits
+        activeChannels = channelCount.coerceAtLeast(1)
+        lastPcmGain = softwareGain()
         useFloatWrite = effectiveFloatSource
         configuredRateHz = effectiveRate
         currentFallbackNegotiated = autoNegotiatedFallback
@@ -1070,15 +1081,30 @@ class ExclusiveUsbOutput @Inject constructor(
             else -> -1
         }
 
-        /** 16-bit LE PCM × [gain] -> packed 24-bit LE PCM, rounded at 24-bit precision. */
-        internal fun scalePcm16To24(src: ByteArray, gain: Float): ByteArray {
+        /**
+         * 16-bit LE PCM × gain -> packed 24-bit LE PCM, rounded at 24-bit
+         * precision. Gain glides from [fromGain] to [toGain] over the first
+         * [rampFrames] frames (constant when they are equal).
+         */
+        internal fun scalePcm16To24(
+            src: ByteArray,
+            fromGain: Float,
+            toGain: Float,
+            channels: Int,
+            rampFrames: Int,
+        ): ByteArray {
             val samples = src.size / 2
             val out = ByteArray(samples * 3)
-            if (gain <= 0f) return out
-            val g = gain.toDouble() * 256.0
+            val a = fromGain.coerceIn(0f, 1f).toDouble() * 256.0
+            val b = toGain.coerceIn(0f, 1f).toDouble() * 256.0
+            val ch = channels.coerceAtLeast(1)
             var i = 0
             var o = 0
+            var sampleIndex = 0
             while (i + 1 < src.size) {
+                val frame = sampleIndex / ch
+                val g = if (a == b || frame >= rampFrames) b else a + (b - a) * frame / rampFrames
+                sampleIndex++
                 val sample = ((src[i].toInt() and 0xFF) or (src[i + 1].toInt() shl 8)).toShort().toInt()
                 val scaled = kotlin.math.round(sample * g).toInt().coerceIn(-0x800000, 0x7FFFFF)
                 out[o] = (scaled and 0xFF).toByte()
@@ -1089,6 +1115,55 @@ class ExclusiveUsbOutput @Inject constructor(
             }
             return out
         }
+
+        /**
+         * [scalePcmBytes] with a glide from [fromGain] to [toGain] across the
+         * first [rampFrames] frames, applied in short constant-gain blocks
+         * (~0.7ms at 44.1k, far below audibility). Equal gains take the
+         * plain constant path.
+         */
+        private fun scalePcmRamped(
+            bytes: ByteArray,
+            rawEncoding: Int,
+            fromGain: Float,
+            toGain: Float,
+            channels: Int,
+            rampFrames: Int,
+        ) {
+            val bytesPerSample = when (rawEncoding) {
+                RAW_PCM16 -> 2
+                RAW_PCM24 -> 3
+                RAW_PCM32 -> 4
+                else -> return
+            }
+            val frameBytes = bytesPerSample * channels.coerceAtLeast(1)
+            val totalFrames = bytes.size / frameBytes
+            if (fromGain == toGain || totalFrames == 0) {
+                if (toGain < 1f - 1e-6f) scalePcmBytes(bytes, rawEncoding, toGain)
+                return
+            }
+            val rampEnd = minOf(totalFrames, rampFrames)
+            var frame = 0
+            while (frame < totalFrames) {
+                val inRamp = frame < rampEnd
+                val n = if (inRamp) minOf(RAMP_BLOCK_FRAMES, rampEnd - frame) else totalFrames - frame
+                val g = if (inRamp) {
+                    fromGain + (toGain - fromGain) * ((frame + n / 2f) / rampFrames)
+                } else {
+                    toGain
+                }
+                if (g < 1f - 1e-6f) {
+                    val start = frame * frameBytes
+                    val end = (frame + n) * frameBytes
+                    val segment = bytes.copyOfRange(start, end)
+                    scalePcmBytes(segment, rawEncoding, g)
+                    segment.copyInto(bytes, start)
+                }
+                frame += n
+            }
+        }
+
+        private const val RAMP_BLOCK_FRAMES = 32
 
         private fun scalePcmBytes(bytes: ByteArray, rawEncoding: Int, gain: Float) {
             if (gain <= 0f) {

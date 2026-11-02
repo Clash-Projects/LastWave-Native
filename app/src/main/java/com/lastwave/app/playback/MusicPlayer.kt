@@ -566,6 +566,7 @@ class MusicPlayer @Inject constructor(
         private set
     /** Last volume of the cast receiver; only meaningful while casting. */
     private var castVolume: Float = 1f
+    private var appVolumePersistJob: Job? = null
     private var retryMediaId: String? = null
     private val losslessBypassMediaIds = ConcurrentHashMap.newKeySet<String>()
     // Written by the settings collector, read on the main thread.
@@ -2190,6 +2191,10 @@ class MusicPlayer @Inject constructor(
             runCatching { settingsPreferences.resetAppVolumeAfterCastFixOnce() }
             settingsPreferences.appVolume.collect { vol ->
                 onMain {
+                    // Ignore our own (debounced) writes coming back and any
+                    // stale value emitted while a newer one is pending.
+                    if (appVolumePersistJob?.isActive == true) return@onMain
+                    if (kotlin.math.abs(vol - appVolume) < 1e-4f && _state.value.appVolume == appVolume) return@onMain
                     appVolume = vol
                     _state.update { if (it.isCasting) it else it.copy(appVolume = vol) }
                     if (playerDelegate.isInitialized() && unduckedVolume == null) {
@@ -3054,7 +3059,13 @@ class MusicPlayer @Inject constructor(
         }
         runCatching { nativeAudioEngine.get().setOutputVolume(if (bitPerfectEnabled) 1f else clamped) }
         runCatching { autoMixCoordinator.get().setBaseVolume(clamped) }
-        applicationScope.launch {
+        // Persist once the slider settles, not on every drag event (60-120/s
+        // of DataStore writes). Each write also echoed back through the
+        // collector below, snapping the slider/volume to an older value
+        // mid-drag, which made the in-app volume feel jumpy.
+        appVolumePersistJob?.cancel()
+        appVolumePersistJob = applicationScope.launch {
+            delay(APP_VOLUME_PERSIST_DEBOUNCE_MS)
             settingsPreferences.setAppVolume(clamped)
         }
     }
@@ -9065,6 +9076,8 @@ class MusicPlayer @Inject constructor(
         const val TICKER_PERSIST_INTERVAL_MS = 2_000L
         /** Steady-state progress ticker cadence while no LastWave screen is visible. */
         const val BACKGROUND_TICKER_CADENCE_MS = 250L
+        /** In-app volume is saved this long after the slider stops moving. */
+        const val APP_VOLUME_PERSIST_DEBOUNCE_MS = 400L
         /** Podcast resume-position checkpoint cadence. */
         const val PODCAST_PROGRESS_INTERVAL_MS = 10_000L
         /** Played ratio at (or past) which an episode counts as finished. */
