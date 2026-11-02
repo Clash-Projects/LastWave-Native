@@ -375,10 +375,16 @@ class ExclusiveUsbOutput @Inject constructor(
             if (encoding < 0) return false
             val bytes = ByteArray(size)
             buffer.get(bytes)
-            if (gain < 1f - 1e-6f && gain >= 0f) {
-                scalePcmBytes(bytes, encoding, gain)
+            val attenuate = gain < 1f - 1e-6f && gain >= 0f
+            if (attenuate && encoding == RAW_PCM16 && activeWireBits > 16) {
+                // Scale into 24 bits instead of back into 16: same level, no
+                // added quantization noise. The native layer passes 24-bit
+                // through (or pads it to a 32-bit alt) losslessly.
+                QueuedPcm(null, scalePcm16To24(bytes, gain), RAW_PCM24, size)
+            } else {
+                if (attenuate) scalePcmBytes(bytes, encoding, gain)
+                QueuedPcm(null, bytes, encoding, size)
             }
-            QueuedPcm(null, bytes, encoding, size)
         }
         synchronized(pcmLock) {
             if (paused || writerStop) return false
@@ -567,7 +573,13 @@ class ExclusiveUsbOutput @Inject constructor(
             }
         }
 
-        var (alt, wireBits) = usbAudio.findAltSetting(effectiveBits, effectiveRate)
+        // 16-bit sources ride a 24-bit (or wider) alt when the DAC has one.
+        // Padding is lossless, so bit-perfect playback at full volume is
+        // unchanged, but software volume (and any other gain stage) is then
+        // applied with 8 extra bits instead of re-quantizing to 16 bits,
+        // which raised the noise floor into audible hiss on sensitive IEMs.
+        val requestBits = if (effectiveBits in 1..16) 24 else effectiveBits
+        var (alt, wireBits) = usbAudio.findAltSetting(requestBits, effectiveRate)
         var rateSetBefore = usbAudio.setSampleRate(effectiveRate)
         if (!usbAudio.setAltSetting(alt)) {
             val fallbackAlt = usbAudio.findAltSetting(24, effectiveRate)
@@ -1056,6 +1068,26 @@ class ExclusiveUsbOutput @Inject constructor(
             C.ENCODING_PCM_24BIT, RAW_PCM24 -> RAW_PCM24
             C.ENCODING_PCM_32BIT, RAW_PCM32 -> RAW_PCM32
             else -> -1
+        }
+
+        /** 16-bit LE PCM × [gain] -> packed 24-bit LE PCM, rounded at 24-bit precision. */
+        internal fun scalePcm16To24(src: ByteArray, gain: Float): ByteArray {
+            val samples = src.size / 2
+            val out = ByteArray(samples * 3)
+            if (gain <= 0f) return out
+            val g = gain.toDouble() * 256.0
+            var i = 0
+            var o = 0
+            while (i + 1 < src.size) {
+                val sample = ((src[i].toInt() and 0xFF) or (src[i + 1].toInt() shl 8)).toShort().toInt()
+                val scaled = kotlin.math.round(sample * g).toInt().coerceIn(-0x800000, 0x7FFFFF)
+                out[o] = (scaled and 0xFF).toByte()
+                out[o + 1] = ((scaled shr 8) and 0xFF).toByte()
+                out[o + 2] = ((scaled shr 16) and 0xFF).toByte()
+                i += 2
+                o += 3
+            }
+            return out
         }
 
         private fun scalePcmBytes(bytes: ByteArray, rawEncoding: Int, gain: Float) {
