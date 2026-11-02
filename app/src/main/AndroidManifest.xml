@@ -163,7 +163,7 @@
 
         <activity-alias
             android:name=".MainActivityDefault"
-            android:enabled="true"
+            android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:roundIcon="@mipmap/ic_launcher_round"
