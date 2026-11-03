@@ -169,8 +169,6 @@ class ArtworkRepository @Inject constructor(
                     publish(key, cached.url)
                     return
                 }
-                // Old low-res entry (e.g. YouTube): publish immediately as placeholder, but proceed to resolve high-res master art!
-                publish(key, cached.url)
             }
 
             // 3. Strict priority resolution: Apple Music (1200x1200bb) -> Tidal (1280x1280) -> Deezer (1000x1000) -> Spotify (640x640) -> YouTube Music (last fallback)
