@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Debug builds install alongside release (.debug suffix); label them apart. -->
-    <string name="app_name">LastWave Debug</string>
-</resources>
