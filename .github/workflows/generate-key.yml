@@ -1,13 +1,65 @@
-name: Generate Key
+name: Generate Advanced Release Keystore
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  generate-key:
     runs-on: ubuntu-latest
     steps:
-      - name: Generate Keystore
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Generate Secure Keystore
         run: |
-          keytool -genkey -v -keystore release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias sounddrop-key -storepass '4321&@sounddrop4321' -keypass '4321&@sounddrop4321' -dname "CN=SoundDrop, OU=App, O=Community, L=City, ST=State, C=US"
-          base64 release.jks
+          echo "=============================================="
+          echo "Generating 4096-bit RSA Keystore for SoundDrop"
+          echo "=============================================="
+          
+          keytool -genkeyv \
+            -keystore release.keystore \
+            -keyalg RSA \
+            -keysize 4096 \
+            -validity 10000 \
+            -alias sounddrop-key \
+            -storepass '4321&@sounddrop4321' \
+            -keypass '4321&@sounddrop4321' \
+            -dname "CN=SoundDrop, OU=App, O=Xaero Community, C=BD"
+
+      - name: Extract Details & Print Formatted Output
+        id: keystore-info
+        run: |
+          echo ""
+          echo "----------------------------------------------"
+          echo "✅ KEYSTORE GENERATED SUCCESSFULLY"
+          echo "----------------------------------------------"
+          
+          # Extract SHA-256 fingerprint
+          SHA256_FULL=$(keytool -list -v -keystore release.keystore -alias sounddrop-key -storepass '4321&@sounddrop4321' | grep "SHA256:" | sed 's/.*SHA256: *//')
+          
+          # Generate a clean short string version of the SHA-256 hash (first 16 characters without colons)
+          SHA256_SHORT=$(echo "$SHA256_FULL" | tr -d ':' | cut -c1-16)
+          
+          echo "📌 Alias:      sounddrop-key"
+          echo "📌 Country:    BD"
+          echo "📌 Org Unit:   App"
+          echo "📌 Org Name:   Xaero Community"
+          echo "📌 Common Name: SoundDrop"
+          echo "----------------------------------------------"
+          echo "🔑 SHA-256 Fingerprint (Full):"
+          echo "$SHA256_FULL"
+          echo ""
+          echo "🔑 SHA-256 Short String:"
+          echo "$SHA256_SHORT"
+          echo "----------------------------------------------"
+          echo "📦 Base64 Encoded Keystore (for GitHub Secrets):"
+          base64 -w 0 release.keystore
+          echo ""
+          echo "----------------------------------------------"
+
+      - name: Upload Keystore Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-keystore
+          path: release.keystore
+          retention-days: 90
