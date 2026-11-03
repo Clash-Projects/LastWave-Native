@@ -111,7 +111,7 @@ class InnerTubeXStreamExtractor @Inject constructor(
         } catch (error: kotlinx.coroutines.CancellationException) {
             throw error
         } catch (error: Exception) {
-            Log.w(TAG, "stage=cipher-context error=${error.javaClass.simpleName}")
+            Log.w(TAG, "stage=cipher-context error=${error.javaClass.simpleName} cause=${error.cause?.javaClass?.simpleName}")
             null
         }
     }
