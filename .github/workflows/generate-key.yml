@@ -16,7 +16,7 @@ jobs:
           echo "Generating 4096-bit RSA Keystore for SoundDrop"
           echo "=============================================="
           
-          keytool -genkeyv \
+          keytool -genkeypair -v \
             -keystore release.keystore \
             -keyalg RSA \
             -keysize 4096 \
