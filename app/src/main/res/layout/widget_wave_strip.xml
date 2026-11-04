@@ -9,25 +9,25 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:scaleType="fitXY"
-        android:src="@drawable/wave_widget_preview_strip"
+        android:src="@drawable/wave_widget_strip_surface"
         android:contentDescription="@null" />
     <LinearLayout
         android:id="@+id/wave_strip_content"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:paddingStart="76dp"
-        android:paddingEnd="8dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="2dp"
+        android:paddingStart="72dp"
         android:orientation="vertical">
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1">
+            android:layout_weight="0.36">
             <TextView
                 android:id="@+id/wave_title"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="match_parent"
+                android:paddingStart="14dp"
+                android:paddingEnd="20dp"
+                android:paddingTop="9dp"
                 android:fontFamily="@font/google_sans_flex"
                 android:includeFontPadding="false"
                 android:maxLines="1"
@@ -40,7 +40,7 @@
             android:id="@+id/wave_controls"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1.6"
+            android:layout_weight="0.64"
             android:gravity="center_vertical"
             android:orientation="horizontal">
             <FrameLayout
@@ -51,8 +51,10 @@
                 android:contentDescription="@string/wave_widget_like">
                 <ImageView
                     android:id="@+id/wave_like_icon"
-                    android:layout_width="22dp"
-                    android:layout_height="22dp"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
                     android:layout_gravity="center"
                     android:src="@drawable/ic_wave_widget_favorite"
                     android:tint="#F6F4FF"
@@ -66,10 +68,12 @@
                 android:contentDescription="@string/desc_previous">
                 <ImageView
                     android:id="@+id/wave_previous_icon"
-                    android:layout_width="27dp"
-                    android:layout_height="27dp"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:padding="5dp"
+                    android:scaleType="fitCenter"
                     android:layout_gravity="center"
-                    android:src="@drawable/ic_widget_skip_previous"
+                    android:src="@drawable/ic_wave_strip_previous"
                     android:tint="#F6F4FF"
                     android:contentDescription="@null" />
             </FrameLayout>
@@ -88,10 +92,12 @@
                     android:contentDescription="@null" />
                 <ImageView
                     android:id="@+id/wave_play_icon"
-                    android:layout_width="30dp"
-                    android:layout_height="30dp"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:padding="5dp"
+                    android:scaleType="fitCenter"
                     android:layout_gravity="center"
-                    android:src="@drawable/ic_widget_play"
+                    android:src="@drawable/ic_wave_strip_play"
                     android:tint="#F6F4FF"
                     android:contentDescription="@null" />
             </FrameLayout>
@@ -103,10 +109,12 @@
                 android:contentDescription="@string/desc_next">
                 <ImageView
                     android:id="@+id/wave_next_icon"
-                    android:layout_width="27dp"
-                    android:layout_height="27dp"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:padding="5dp"
+                    android:scaleType="fitCenter"
                     android:layout_gravity="center"
-                    android:src="@drawable/ic_widget_skip_next"
+                    android:src="@drawable/ic_wave_strip_next"
                     android:tint="#F6F4FF"
                     android:contentDescription="@null" />
             </FrameLayout>
@@ -118,8 +126,10 @@
                 android:contentDescription="@string/wave_widget_shuffle">
                 <ImageView
                     android:id="@+id/wave_shuffle_icon"
-                    android:layout_width="22dp"
-                    android:layout_height="22dp"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
                     android:layout_gravity="center"
                     android:src="@drawable/ic_widget_shuffle"
                     android:tint="#F6F4FF"

@@ -22,7 +22,7 @@ object WaveWidgetViews {
         val fallback = when (kind) {
             WaveWidgetKind.STRIP -> SizeF(300f, 72f)
             WaveWidgetKind.GLASS, WaveWidgetKind.CIRCULAR -> SizeF(160f, 160f)
-            WaveWidgetKind.LIBRARY -> SizeF(160f, 160f)
+            WaveWidgetKind.LIBRARY -> SizeF(288f, 144f)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val sizes = options.getParcelableArrayList<SizeF>(AppWidgetManager.OPTION_APPWIDGET_SIZES)
@@ -57,15 +57,20 @@ object WaveWidgetViews {
         size: SizeF,
     ): RemoteViews {
         val layout = if (kind == WaveWidgetKind.LIBRARY) {
-            when {
-                size.width >= 250f && size.height >= 160f -> R.layout.widget_wave_library
-                size.height >= 210f -> R.layout.widget_wave_library_tall
-                else -> R.layout.widget_wave_library_compact
-            }
-        } else if (kind == WaveWidgetKind.CIRCULAR && minOf(size.width, size.height) < 145f) { R.layout.widget_wave_circular_compact } else kind.layoutRes
+            // Four-column proportions and enough room for three transport targets.
+            if (size.width >= 240f && size.width >= size.height * 1.72f)
+                R.layout.widget_wave_library else R.layout.widget_wave_library_compact
+        } else if (kind == WaveWidgetKind.CIRCULAR && minOf(size.width, size.height) < 145f) {
+            R.layout.widget_wave_circular_compact
+        } else {
+            kind.layoutRes
+        }
         val views = RemoteViews(context.packageName, layout)
         val colors = art.colors ?: WaveWidgetColors.derive(0xFF555466.toInt(), dark = true)
-        val foreground = if (kind == WaveWidgetKind.STRIP) colors.onBackground else 0xFFF6F4FF.toInt()
+        // The strip uses a mid-tone cover-derived surface, like the reference player.
+        val stripBackground = WaveColorMath.mix(colors.accent, 0xFF666666.toInt(), 0.78f)
+        val foreground = if (kind == WaveWidgetKind.STRIP)
+            WaveColorMath.highContrastForeground(stripBackground) else 0xFFF6F4FF.toInt()
         val secondary = if (kind == WaveWidgetKind.STRIP) colors.muted else 0xFFD8D4E6.toInt()
         views.setOnClickPendingIntent(R.id.wave_widget_root, WaveWidgetActions.openPending(context, widgetId))
         views.setTextViewText(R.id.wave_title, state.title.takeIf { state.hasTrack }
@@ -80,14 +85,32 @@ object WaveWidgetViews {
 
         when (kind) {
             WaveWidgetKind.STRIP -> {
-                val side = minOf(size.height, size.width * 0.35f)
+                val side = minOf(size.height, size.width)
                 views.setImageViewBitmap(R.id.wave_surface_image,
-                    WaveWidgetGraphics.strip(art.art, colors.background, size.width, size.height, side))
-                views.setViewPadding(R.id.wave_strip_content, dp(context, side + 8), dp(context, 7f),
-                    dp(context, 8f), dp(context, 2f))
+                    WaveWidgetGraphics.strip(art.art, stripBackground, size.width, size.height, side))
+                views.setViewPadding(R.id.wave_strip_content, dp(context, side), 0, 0, 0)
+                val slotWidth = (size.width - side) / 5f
+                val controlHeight = size.height * 0.64f
+                val mainIconSide = minOf(size.height * 0.42f, slotWidth * 0.98f)
+                val edgeIconSide = minOf(size.height * 0.32f, slotWidth * 0.86f)
+                fun fitIcon(id: Int, iconSide: Float) {
+                    val horizontal = dp(context, (slotWidth - iconSide).coerceAtLeast(0f) / 2f)
+                    val vertical = dp(context, (controlHeight - iconSide).coerceAtLeast(0f) / 2f)
+                    views.setViewPadding(id, horizontal, vertical, horizontal, vertical)
+                }
+                intArrayOf(R.id.wave_previous_icon, R.id.wave_play_icon, R.id.wave_next_icon)
+                    .forEach { fitIcon(it, mainIconSide) }
+                intArrayOf(R.id.wave_like_icon, R.id.wave_shuffle_icon)
+                    .forEach { fitIcon(it, edgeIconSide) }
+                views.setImageViewResource(R.id.wave_play_icon,
+                    if (state.isPlaying) R.drawable.ic_wave_strip_pause else R.drawable.ic_wave_strip_play)
+                val transportColor = WaveColorMath.mix(foreground, stripBackground, 0.48f)
+                views.setInt(R.id.wave_previous_icon, "setColorFilter", transportColor)
+                views.setInt(R.id.wave_next_icon, "setColorFilter", transportColor)
                 views.setTextViewTextSize(R.id.wave_title, TypedValue.COMPLEX_UNIT_SP,
-                    if (size.width < 250) 13f else 16f)
-                views.setViewPadding(R.id.wave_title, 0, 0, dp(context, 8f), 0)
+                    (size.height * 0.205f).coerceIn(11f, 20f))
+                views.setViewPadding(R.id.wave_title, dp(context, side * 0.20f),
+                    dp(context, size.height * 0.13f), dp(context, maxOf(20f, side * 0.20f)), 0)
                 views.setInt(R.id.wave_logo, "setColorFilter", foreground)
                 views.setViewVisibility(R.id.wave_play_background, View.GONE)
             }
@@ -95,7 +118,7 @@ object WaveWidgetViews {
                 art.backdrop?.let { views.setImageViewBitmap(R.id.wave_surface_image, it) }
                 views.setImageViewBitmap(R.id.wave_progress, WaveWidgetGraphics.progress(state.progressAt()))
                 views.setTextViewTextSize(R.id.wave_title, TypedValue.COMPLEX_UNIT_SP,
-                    if (size.height < 145) 16f else 22f)
+                    if (size.height < 145) 14f else 18f)
                 views.setTextViewTextSize(R.id.wave_artist, TypedValue.COMPLEX_UNIT_SP,
                     if (size.height < 145) 11f else 13f)
                 views.setInt(R.id.wave_logo, "setColorFilter", foreground)
@@ -109,9 +132,9 @@ object WaveWidgetViews {
                 views.setImageViewBitmap(R.id.wave_surface_image,
                     WaveWidgetGraphics.circular(art.art, colors.accent, state.progressAt()))
                 views.setTextViewTextSize(R.id.wave_title, TypedValue.COMPLEX_UNIT_SP,
-                    if (side < 145) 13f else 17f)
+                    if (side < 145) 12f else 15f)
                 views.setTextViewTextSize(R.id.wave_artist, TypedValue.COMPLEX_UNIT_SP,
-                    if (side < 145) 10f else 12f)
+                    if (side < 145) 10f else 11f)
                 views.setViewVisibility(R.id.wave_play_background, View.GONE)
             }
             WaveWidgetKind.LIBRARY -> bindLibrary(context, views, widgetId, state, art, size, layout)
@@ -171,7 +194,8 @@ object WaveWidgetViews {
         views.setTextViewText(R.id.wave_time, if (state.hasTrack)
             "${formatTime(position)} / ${formatTime(state.durationMs)}" else "— / —")
         views.setTextViewTextSize(R.id.wave_title, TypedValue.COMPLEX_UNIT_SP,
-            if (layout == R.layout.widget_wave_library_compact || size.height < 165) 12f else 16f)
+            if (layout == R.layout.widget_wave_library_compact) 11f
+            else if (size.height < 128f) 12f else 13f)
         views.setOnClickPendingIntent(R.id.wave_search, WaveWidgetActions.searchPending(context, widgetId))
         val shortcut = state.playlists.firstOrNull()
         views.setTextViewText(R.id.wave_playlist_label, shortcut?.let {
@@ -185,7 +209,6 @@ object WaveWidgetViews {
         views.setOnClickPendingIntent(R.id.wave_playlist_shortcut,
             WaveWidgetActions.pending(context, widgetId, WaveWidgetActions.ACTION_PLAYLIST,
                 shortcut?.id ?: WaveWidgetActions.PLAYLIST_LIKED))
-        if (layout == R.layout.widget_wave_library_compact) return
         val containers = intArrayOf(R.id.wave_recent_1, R.id.wave_recent_2, R.id.wave_recent_3, R.id.wave_recent_4)
         val images = intArrayOf(R.id.wave_recent_art_1, R.id.wave_recent_art_2, R.id.wave_recent_art_3, R.id.wave_recent_art_4)
         val titles = intArrayOf(R.id.wave_recent_title_1, R.id.wave_recent_title_2, R.id.wave_recent_title_3, R.id.wave_recent_title_4)

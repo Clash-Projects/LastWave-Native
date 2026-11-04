@@ -8,15 +8,16 @@
         android:id="@+id/wave_surface_image"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:scaleType="fitXY"
-        android:src="@drawable/wave_widget_preview_circular"
+        android:scaleType="fitCenter"
+        android:src="@drawable/wave_widget_circular_surface"
         android:contentDescription="@null" />
     <LinearLayout
+        android:id="@+id/wave_circle_labels"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:paddingStart="54dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="26dp"
+        android:paddingStart="60dp"
+        android:paddingEnd="24dp"
+        android:paddingBottom="32dp"
         android:orientation="vertical"
         android:gravity="bottom|center_horizontal">
         <TextView
@@ -29,7 +30,8 @@
             android:ellipsize="end"
             android:text="@string/wave_widget_preview_title"
             android:textColor="#F6F4FF"
-            android:textSize="16sp" />
+            android:textSize="15sp"
+            android:textStyle="bold" />
         <TextView
             android:id="@+id/wave_artist"
             android:layout_width="match_parent"
@@ -41,19 +43,19 @@
             android:ellipsize="end"
             android:text="@string/wave_widget_preview_artist"
             android:textColor="#D8D4E6"
-            android:textSize="12sp" />
+            android:textSize="11sp" />
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp" />
     </LinearLayout>
     <FrameLayout
         android:id="@+id/wave_play"
-        android:layout_width="46dp"
-        android:layout_height="46dp"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
         android:layout_gravity="bottom|start"
-        android:layout_marginStart="4dp"
-        android:layout_marginBottom="8dp"
-        android:background="@drawable/wave_widget_glass_button"
+        android:layout_marginStart="16dp"
+        android:layout_marginBottom="16dp"
+        android:background="@drawable/wave_widget_circle_play"
         android:contentDescription="@string/wave_widget_play">
         <ImageView
             android:id="@+id/wave_play_background"
@@ -71,13 +73,14 @@
             android:contentDescription="@null" />
     </FrameLayout>
     <LinearLayout
-        android:layout_width="72dp"
+        android:id="@+id/wave_circle_navigation"
+        android:layout_width="64dp"
         android:layout_height="36dp"
         android:layout_gravity="top|end"
-        android:layout_marginTop="8dp"
-        android:layout_marginEnd="2dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="4dp"
         android:orientation="horizontal"
-        android:background="@drawable/wave_widget_glass_button">
+        android:background="@drawable/wave_widget_circle_navigation">
         <FrameLayout
             android:id="@+id/wave_previous"
             android:layout_width="0dp"

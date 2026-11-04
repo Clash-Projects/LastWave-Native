@@ -30,7 +30,8 @@
             android:ellipsize="end"
             android:text="@string/wave_widget_preview_title"
             android:textColor="#F6F4FF"
-            android:textSize="20sp" />
+            android:textSize="18sp"
+            android:textStyle="bold" />
         <TextView
             android:id="@+id/wave_artist"
             android:layout_width="match_parent"
@@ -144,8 +145,8 @@
     </LinearLayout>
     <ImageView
         android:id="@+id/wave_logo"
-        android:layout_width="14dp"
-        android:layout_height="14dp"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
         android:layout_gravity="top|end"
         android:layout_margin="8dp"
         android:src="@drawable/ic_widget_logo_mark"

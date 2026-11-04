@@ -8,15 +8,16 @@
         android:id="@+id/wave_surface_image"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:scaleType="fitXY"
-        android:src="@drawable/wave_widget_preview_circular"
+        android:scaleType="fitCenter"
+        android:src="@drawable/wave_widget_circular_surface"
         android:contentDescription="@null" />
     <LinearLayout
+        android:id="@+id/wave_circle_labels"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:paddingStart="42dp"
-        android:paddingEnd="10dp"
-        android:paddingBottom="20dp"
+        android:paddingStart="52dp"
+        android:paddingEnd="18dp"
+        android:paddingBottom="27dp"
         android:orientation="vertical"
         android:gravity="bottom|center_horizontal">
         <TextView
@@ -29,7 +30,8 @@
             android:ellipsize="end"
             android:text="@string/wave_widget_preview_title"
             android:textColor="#F6F4FF"
-            android:textSize="13sp" />
+            android:textSize="12sp"
+            android:textStyle="bold" />
         <TextView
             android:id="@+id/wave_artist"
             android:layout_width="match_parent"
@@ -51,9 +53,9 @@
         android:layout_width="36dp"
         android:layout_height="36dp"
         android:layout_gravity="bottom|start"
-        android:layout_marginStart="4dp"
-        android:layout_marginBottom="8dp"
-        android:background="@drawable/wave_widget_glass_button"
+        android:layout_marginStart="12dp"
+        android:layout_marginBottom="12dp"
+        android:background="@drawable/wave_widget_circle_play"
         android:contentDescription="@string/wave_widget_play">
         <ImageView
             android:id="@+id/wave_play_background"
@@ -71,13 +73,14 @@
             android:contentDescription="@null" />
     </FrameLayout>
     <LinearLayout
+        android:id="@+id/wave_circle_navigation"
         android:layout_width="58dp"
         android:layout_height="28dp"
         android:layout_gravity="top|end"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="12dp"
         android:layout_marginEnd="2dp"
         android:orientation="horizontal"
-        android:background="@drawable/wave_widget_glass_button">
+        android:background="@drawable/wave_widget_circle_navigation">
         <FrameLayout
             android:id="@+id/wave_previous"
             android:layout_width="0dp"
