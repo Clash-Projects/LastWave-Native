@@ -77,8 +77,7 @@ data class WaveWidgetState(
             val encoded = context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
                 .getString(STATE_KEY, null)
                 ?: return WaveWidgetState()
-            json.decodeFromString<WaveWidgetState>(encoded).sanitized()
-                .withRecentHistory(WaveWidgetState())
+            json.decodeFromString<WaveWidgetState>(encoded).sanitized().withRestoredHistory()
         }.getOrDefault(WaveWidgetState())
 
         fun write(context: Context, state: WaveWidgetState): Boolean = runCatching {
@@ -161,6 +160,35 @@ internal fun WaveWidgetState.withRecentHistory(previous: WaveWidgetState): WaveW
         ).sanitizedRecentTracks(),
 )
 
+/** The app's recorded playback order takes precedence over older widget snapshots. */
+internal fun WaveWidgetState.withRecordedHistory(
+    recorded: List<WaveQueueTrack>,
+    includeCurrent: Boolean = true,
+): WaveWidgetState {
+    val current = asRecentTrack().takeIf { includeCurrent }?.let { track ->
+        val recordedMatch = recorded.firstOrNull { it.sameRecentTrack(track) }
+        track.copy(videoId = track.videoId?.takeIf(String::isNotBlank) ?: recordedMatch?.videoId)
+    }
+    val rememberedTracks = recentTracks.toMutableList()
+    val enriched = recorded.map { track ->
+        // A remembered track without a video ID can match one known version;
+        // consume it once so different versions retain distinct replay IDs.
+        val index = rememberedTracks.indexOfFirst { it.sameRecentTrack(track) }
+        val remembered = if (index >= 0) rememberedTracks.removeAt(index) else null
+        track.copy(
+            trackId = remembered?.trackId ?: track.trackId,
+            artworkUri = track.artworkUri ?: remembered?.artworkUri,
+            videoId = track.videoId?.takeIf(String::isNotBlank) ?: remembered?.videoId,
+            playbackUri = remembered?.playbackUri,
+        )
+    }
+    return copy(recentTracks = (listOfNotNull(current) + enriched + recentTracks).sanitizedRecentTracks())
+}
+
+/** Migrate old snapshots without moving a stale current track ahead of recorded history. */
+internal fun WaveWidgetState.withRestoredHistory(): WaveWidgetState =
+    if (recentTracks.isEmpty()) withRecentHistory(WaveWidgetState()) else this
+
 private fun WaveWidgetState.asRecentTrack(previous: WaveWidgetState? = null): WaveQueueTrack? {
     if (!hasTrack) return null
     val remembered = recentTracks.firstOrNull { it.trackId == trackId }
@@ -178,9 +206,19 @@ private fun WaveWidgetState.asRecentTrack(previous: WaveWidgetState? = null): Wa
 
 private fun List<WaveQueueTrack>.sanitizedRecentTracks(): List<WaveQueueTrack> =
     filter { it.trackId.isNotBlank() && it.title.isNotBlank() }
-        .distinctBy { it.videoId?.takeIf(String::isNotBlank)?.let { id -> "video:$id" } ?: it.trackId }
+        .fold(emptyList<WaveQueueTrack>()) { tracks, track ->
+            if (tracks.any { it.sameRecentTrack(track) }) tracks else tracks + track
+        }
         .take(4)
         .map { it.copy(queueIndex = -1, title = it.title.trim(), artist = it.artist.trim()) }
+
+private fun WaveQueueTrack.sameRecentTrack(other: WaveQueueTrack): Boolean {
+    val knownVideo = videoId?.takeIf(String::isNotBlank)
+    val otherVideo = other.videoId?.takeIf(String::isNotBlank)
+    return if (knownVideo != null && otherVideo != null) knownVideo == otherVideo
+    else title.trim().equals(other.title.trim(), ignoreCase = true) &&
+        artist.trim().equals(other.artist.trim(), ignoreCase = true)
+}
 
 private fun List<WavePlaylistShortcut>.withDefaults(): List<WavePlaylistShortcut> =
     (WaveWidgetState.defaultShortcuts() + this)

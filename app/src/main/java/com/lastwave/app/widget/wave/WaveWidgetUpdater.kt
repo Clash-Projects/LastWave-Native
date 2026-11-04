@@ -4,6 +4,11 @@ import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
+import com.lastwave.app.data.repository.SongPlayStatsRepository
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -18,6 +23,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface WaveWidgetHistoryEntryPoint {
+    fun songPlayStatsRepository(): SongPlayStatsRepository
+}
 
 /** Durable publisher shared by every Wave widget shape. */
 object WaveWidgetUpdater {
@@ -50,13 +61,16 @@ object WaveWidgetUpdater {
                 updateMutex.withLock {
                     val targets = existingTargets(appContext)
                     val previous = WaveWidgetState.read(appContext)
-                    val prepared = prepareState(
+                    var prepared = prepareState(
                         context = appContext,
                         previous = previous,
                         incoming = state,
                         bitmap = bitmap,
                         cacheBitmap = targets.isNotEmpty(),
                     )
+                    if (targets.any { it.kind == WaveWidgetKind.LIBRARY }) {
+                        prepared = hydrateRecentHistory(appContext, prepared)
+                    }
                     val persisted = withContext(Dispatchers.IO) {
                         WaveWidgetState.write(appContext, prepared)
                     }
@@ -105,6 +119,13 @@ object WaveWidgetUpdater {
                     val targets = requestedIds?.toHashSet()?.let { requested ->
                         allTargets.filter { it.appWidgetId in requested }
                     } ?: allTargets
+                    if (targets.any { it.kind == WaveWidgetKind.LIBRARY }) {
+                        val hydrated = hydrateRecentHistory(appContext, state)
+                        if (hydrated.recentTracks != state.recentTracks) {
+                            state = hydrated
+                            withContext(Dispatchers.IO) { WaveWidgetState.write(appContext, state) }
+                        }
+                    }
                     if (targets.isNotEmpty()) {
                         val art = resolveArt(appContext, state, null, targets)
                         updateTargets(appContext, targets, state, art)
@@ -236,6 +257,34 @@ object WaveWidgetUpdater {
             }
         }
     }
+
+    /** Populate a newly placed widget from real listening history, including older app sessions. */
+    private suspend fun hydrateRecentHistory(context: Context, state: WaveWidgetState): WaveWidgetState =
+        withContext(Dispatchers.IO) {
+            try {
+                val repository = EntryPointAccessors.fromApplication(
+                    context.applicationContext, WaveWidgetHistoryEntryPoint::class.java,
+                ).songPlayStatsRepository()
+                val recorded = repository.recentlyPlayed(12).map { track ->
+                    val videoId = track.videoId?.takeIf(String::isNotBlank)
+                    WaveQueueTrack(
+                        trackId = videoId?.let { "video:$it" }
+                            ?: "song:${track.title.trim().lowercase()}|${track.artist.trim().lowercase()}",
+                        queueIndex = -1,
+                        title = track.title,
+                        artist = track.artist,
+                        artworkUri = track.artworkUrl,
+                        videoId = videoId,
+                    )
+                }
+                state.withRecordedHistory(recorded, includeCurrent = playbackServiceActive)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.w(TAG, "Wave recorded history unavailable", error)
+                state
+            }
+        }
 
     private fun updateTargets(
         context: Context,
