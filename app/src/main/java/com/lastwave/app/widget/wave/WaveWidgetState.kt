@@ -15,6 +15,9 @@ data class WaveQueueTrack(
     val title: String,
     val artist: String,
     val artworkUri: String? = null,
+    val videoId: String? = null,
+    /** Only durable local media sources; streaming URLs are resolved again on replay. */
+    val playbackUri: String? = null,
 )
 
 @Serializable
@@ -38,6 +41,7 @@ data class WaveWidgetState(
     val shuffleEnabled: Boolean = false,
     val repeatMode: Int = 0,
     val nextTracks: List<WaveQueueTrack> = emptyList(),
+    val recentTracks: List<WaveQueueTrack> = emptyList(),
     val playlists: List<WavePlaylistShortcut> = defaultShortcuts(),
     val updatedAtEpochMs: Long = 0L,
 ) {
@@ -74,6 +78,7 @@ data class WaveWidgetState(
                 .getString(STATE_KEY, null)
                 ?: return WaveWidgetState()
             json.decodeFromString<WaveWidgetState>(encoded).sanitized()
+                .withRecentHistory(WaveWidgetState())
         }.getOrDefault(WaveWidgetState())
 
         fun write(context: Context, state: WaveWidgetState): Boolean = runCatching {
@@ -117,6 +122,11 @@ data class WaveWidgetState(
                 shuffleEnabled = playerState.shuffleEnabled,
                 repeatMode = playerState.repeatMode,
                 nextTracks = next,
+                recentTracks = listOf(
+                    current.toWaveQueueTrack(-1).copy(
+                        artworkUri = artworkUri?.takeIf(String::isNotBlank) ?: current.artworkUrl,
+                    ),
+                ),
                 playlists = playlists.withDefaults(),
                 updatedAtEpochMs = nowEpochMs,
             ).sanitized()
@@ -137,7 +147,40 @@ private fun PlayableTrack.toWaveQueueTrack(index: Int) = WaveQueueTrack(
     title = title,
     artist = artist,
     artworkUri = artworkUrl,
+    videoId = videoId,
+    playbackUri = playbackUrl?.takeIf { uri ->
+        uri.startsWith("/") || uri.startsWith("content://") || uri.startsWith("file://")
+    },
 )
+
+/** Merge only tracks that were current, never the upcoming queue. */
+internal fun WaveWidgetState.withRecentHistory(previous: WaveWidgetState): WaveWidgetState = copy(
+    recentTracks = (
+        listOfNotNull(asRecentTrack(previous), previous.asRecentTrack()) +
+            previous.recentTracks + recentTracks
+        ).sanitizedRecentTracks(),
+)
+
+private fun WaveWidgetState.asRecentTrack(previous: WaveWidgetState? = null): WaveQueueTrack? {
+    if (!hasTrack) return null
+    val remembered = recentTracks.firstOrNull { it.trackId == trackId }
+        ?: previous?.recentTracks?.firstOrNull { it.trackId == trackId }
+    return WaveQueueTrack(
+        trackId = trackId,
+        queueIndex = -1,
+        title = title,
+        artist = artist,
+        artworkUri = artworkUri?.takeIf(String::isNotBlank) ?: remembered?.artworkUri,
+        videoId = remembered?.videoId ?: trackId.takeIf { it.startsWith("video:") }?.removePrefix("video:"),
+        playbackUri = remembered?.playbackUri,
+    )
+}
+
+private fun List<WaveQueueTrack>.sanitizedRecentTracks(): List<WaveQueueTrack> =
+    filter { it.trackId.isNotBlank() && it.title.isNotBlank() }
+        .distinctBy { it.videoId?.takeIf(String::isNotBlank)?.let { id -> "video:$id" } ?: it.trackId }
+        .take(4)
+        .map { it.copy(queueIndex = -1, title = it.title.trim(), artist = it.artist.trim()) }
 
 private fun List<WavePlaylistShortcut>.withDefaults(): List<WavePlaylistShortcut> =
     (WaveWidgetState.defaultShortcuts() + this)
@@ -156,5 +199,6 @@ private fun WaveWidgetState.sanitized(): WaveWidgetState = copy(
         .filter { it.queueIndex >= 0 && it.title.isNotBlank() }
         .distinctBy { it.queueIndex }
         .take(3),
+    recentTracks = recentTracks.sanitizedRecentTracks(),
     playlists = playlists.withDefaults(),
 )

@@ -12,12 +12,11 @@ data class WaveWidgetProviderEntry(
 /** One source of truth for updater/provider discovery. */
 object WaveWidgetProviders {
     val entries: List<WaveWidgetProviderEntry> = listOf(
-        WaveWidgetProviderEntry(WaveWidgetKind.TURNTABLE, WaveTurntableWidgetProvider::class.java),
-        WaveWidgetProviderEntry(WaveWidgetKind.VINYL, WaveVinylWidgetProvider::class.java),
-        WaveWidgetProviderEntry(WaveWidgetKind.DECK, WaveDeckWidgetProvider::class.java),
-        WaveWidgetProviderEntry(WaveWidgetKind.STAGE, WaveStageWidgetProvider::class.java),
-        WaveWidgetProviderEntry(WaveWidgetKind.PILL, WavePillWidgetProvider::class.java),
         WaveWidgetProviderEntry(WaveWidgetKind.STRIP, WaveStripWidgetProvider::class.java),
+        WaveWidgetProviderEntry(WaveWidgetKind.STRIP, WaveStripCompactWidgetProvider::class.java),
+        WaveWidgetProviderEntry(WaveWidgetKind.GLASS, WaveGlassWidgetProvider::class.java),
+        WaveWidgetProviderEntry(WaveWidgetKind.CIRCULAR, WaveCircularWidgetProvider::class.java),
+        WaveWidgetProviderEntry(WaveWidgetKind.LIBRARY, WaveLibraryWidgetProvider::class.java),
     )
 
     fun providerClass(kind: WaveWidgetKind): Class<out AppWidgetProvider> =

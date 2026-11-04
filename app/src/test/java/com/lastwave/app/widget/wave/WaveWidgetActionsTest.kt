@@ -44,6 +44,32 @@ class WaveWidgetActionsTest {
     }
 
     @Test
+    fun recentTap_restoresSessionAndRoutesStableIdentityInsteadOfQueueIndex() = runTest {
+        val calls = mutableListOf<String>()
+        WaveActionExecutor(fakeTarget(hasSession = false, calls = calls)).execute(
+            WaveActionRequest(WaveWidgetActions.ACTION_RECENT, "internal:library-id"),
+        )
+
+        assertThat(calls).containsExactly("restore", "recent:internal:library-id").inOrder()
+    }
+
+    @Test
+    fun recentReplay_preservesStoredIdentityAndLocalMediaSource() {
+        val remembered = WaveQueueTrack(
+            trackId = "internal:library-id", queueIndex = -1, title = "Song", artist = "Artist",
+            artworkUri = "content://art/one", videoId = "video-id",
+            playbackUri = "content://media/audio/one",
+        )
+
+        val replay = remembered.toPlayableTrack()
+
+        assertThat(replay.internalTrackId).isEqualTo("library-id")
+        assertThat(replay.videoId).isEqualTo("video-id")
+        assertThat(replay.playbackUrl).isEqualTo("content://media/audio/one")
+        assertThat(replay.artworkUrl).isEqualTo("content://art/one")
+    }
+
+    @Test
     fun optimisticLike_revertsOnFailureAndSettlesConfirmedState() {
         val original = WaveWidgetState(trackId = "1", title = "Song", isLiked = false)
         val optimistic = WaveLikeOptimism.optimistic(original)
@@ -66,6 +92,7 @@ class WaveWidgetActionsTest {
             override suspend fun shuffle() { calls += "shuffle" }
             override suspend fun repeat() { calls += "repeat" }
             override suspend fun jump(queueIndex: Int) { calls += "jump:$queueIndex" }
+            override suspend fun recent(trackId: String) { calls += "recent:$trackId" }
             override suspend fun playlist(id: String) { calls += "playlist:$id" }
         }
 }

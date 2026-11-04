@@ -64,7 +64,7 @@ object WaveWidgetUpdater {
                     if (persisted) cleanupRawArt(appContext, prepared.artworkPath)
 
                     if (targets.isNotEmpty()) {
-                        val art = resolveArt(appContext, prepared, bitmap)
+                        val art = resolveArt(appContext, prepared, bitmap, targets)
                         updateTargets(appContext, targets, prepared, art)
                     }
                     syncTicker(appContext, prepared, targets.isNotEmpty())
@@ -106,7 +106,7 @@ object WaveWidgetUpdater {
                         allTargets.filter { it.appWidgetId in requested }
                     } ?: allTargets
                     if (targets.isNotEmpty()) {
-                        val art = resolveArt(appContext, state, null)
+                        val art = resolveArt(appContext, state, null, targets)
                         updateTargets(appContext, targets, state, art)
                     }
                     syncTicker(appContext, state, allTargets.isNotEmpty())
@@ -176,16 +176,18 @@ object WaveWidgetUpdater {
         bitmap: Bitmap?,
         cacheBitmap: Boolean,
     ): WaveWidgetState {
+        val withHistory = incoming.withRecentHistory(previous)
         if (!incoming.hasTrack) {
             return WaveWidgetState(
                 playlists = incoming.playlists,
+                recentTracks = withHistory.recentTracks,
                 updatedAtEpochMs = incoming.updatedAtEpochMs.takeIf { it > 0L }
                     ?: System.currentTimeMillis(),
             )
         }
 
-        val normalized = if (incoming.updatedAtEpochMs > 0L) incoming else {
-            incoming.copy(updatedAtEpochMs = System.currentTimeMillis())
+        val normalized = if (withHistory.updatedAtEpochMs > 0L) withHistory else {
+            withHistory.copy(updatedAtEpochMs = System.currentTimeMillis())
         }
         val validBitmap = bitmap?.takeIf { !it.isRecycled }
         val sameArtwork = previous.trackId == normalized.trackId &&
@@ -215,18 +217,23 @@ object WaveWidgetUpdater {
         context: Context,
         state: WaveWidgetState,
         bitmap: Bitmap?,
+        targets: List<Target>,
     ): WaveWidgetArt.Result {
-        if (!state.hasTrack) return WaveWidgetArt.Result(null, null, null)
         // WaveWidgetArt also guards its own IO, while this call site ensures a
         // service/main-thread publisher never performs decode/palette work inline.
         return withContext(Dispatchers.IO) {
-            WaveWidgetArt.resolve(
+            val art = if (state.hasTrack) WaveWidgetArt.resolve(
                 context = context,
                 trackId = state.trackId,
                 artworkUri = state.artworkUri,
                 artworkPath = state.artworkPath,
                 bitmap = bitmap?.takeIf { !it.isRecycled },
-            )
+            ) else WaveWidgetArt.Result(null, null, null)
+            if (targets.any { it.kind == WaveWidgetKind.LIBRARY }) {
+                art.copy(recentArt = WaveWidgetArt.resolveRecent(context, state.recentTracks))
+            } else {
+                art
+            }
         }
     }
 

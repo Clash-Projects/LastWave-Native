@@ -244,80 +244,7 @@
             </intent-filter>
         </receiver>
 
-        <!-- Now playing widgets -->
-        <receiver
-            android:name=".widget.NowPlayingWidgetReceiver"
-            android:exported="false"
-            android:label="@string/widget_name">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/now_playing_widget_info" />
-        </receiver>
-
-        <!-- Wave widgets: six purpose-built picker entries backed by one state model. -->
-        <receiver
-            android:name=".widget.wave.WaveTurntableWidgetProvider"
-            android:exported="false"
-            android:label="@string/wave_widget_turntable_name">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/wave_turntable_widget_info" />
-        </receiver>
-
-        <receiver
-            android:name=".widget.wave.WaveVinylWidgetProvider"
-            android:exported="false"
-            android:label="@string/wave_widget_vinyl_name">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/wave_vinyl_widget_info" />
-        </receiver>
-
-        <receiver
-            android:name=".widget.wave.WaveDeckWidgetProvider"
-            android:exported="false"
-            android:label="@string/wave_widget_deck_name">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/wave_deck_widget_info" />
-        </receiver>
-
-        <receiver
-            android:name=".widget.wave.WaveStageWidgetProvider"
-            android:exported="false"
-            android:label="@string/wave_widget_stage_name">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/wave_stage_widget_info" />
-        </receiver>
-
-        <receiver
-            android:name=".widget.wave.WavePillWidgetProvider"
-            android:exported="false"
-            android:label="@string/wave_widget_pill_name">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/wave_pill_widget_info" />
-        </receiver>
-
+        <!-- Four widget designs; the strip has two fixed size entries. -->
         <receiver
             android:name=".widget.wave.WaveStripWidgetProvider"
             android:exported="false"
@@ -328,6 +255,54 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/wave_strip_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.wave.WaveStripCompactWidgetProvider"
+            android:exported="false"
+            android:label="@string/wave_widget_strip_compact_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/wave_strip_compact_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.wave.WaveGlassWidgetProvider"
+            android:exported="false"
+            android:label="@string/wave_widget_glass_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/wave_glass_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.wave.WaveCircularWidgetProvider"
+            android:exported="false"
+            android:label="@string/wave_widget_circular_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/wave_circular_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.wave.WaveLibraryWidgetProvider"
+            android:exported="false"
+            android:label="@string/wave_widget_library_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/wave_library_widget_info" />
         </receiver>
 
         <receiver

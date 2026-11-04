@@ -1,10 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="wave_widget_background">#FFF4F8F6</color>
-    <color name="wave_widget_on_background">#FF101817</color>
-    <color name="wave_widget_accent">#FF006A70</color>
-    <color name="wave_widget_on_accent">#FFFFFFFF</color>
-    <color name="wave_widget_container">#FFE0E9E6</color>
-    <color name="wave_widget_muted">#FF53615F</color>
-    <color name="wave_widget_scrim">#66000000</color>
+    <color
+        name="wave_widget_background">#FF1D1C32</color>
+    <color
+        name="wave_widget_on_background">#FFF6F4FF</color>
+    <color
+        name="wave_widget_accent">#FFE1D8FF</color>
+    <color
+        name="wave_widget_on_accent">#FF171629</color>
+    <color
+        name="wave_widget_container">#FF39374F</color>
+    <color
+        name="wave_widget_muted">#FFCECADF</color>
+    <color
+        name="wave_widget_scrim">#66000000</color>
 </resources>

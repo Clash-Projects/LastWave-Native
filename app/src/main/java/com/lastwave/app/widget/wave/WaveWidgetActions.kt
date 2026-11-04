@@ -38,6 +38,7 @@ object WaveWidgetActions {
     const val ACTION_SHUFFLE = "com.lastwave.app.wave.action.SHUFFLE"
     const val ACTION_REPEAT = "com.lastwave.app.wave.action.REPEAT"
     const val ACTION_JUMP = "com.lastwave.app.wave.action.JUMP"
+    const val ACTION_RECENT = "com.lastwave.app.wave.action.RECENT"
     const val ACTION_PLAYLIST = "com.lastwave.app.wave.action.PLAYLIST"
 
     const val PLAYLIST_LIKED = "liked"
@@ -78,6 +79,17 @@ object WaveWidgetActions {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
 
+    fun searchPending(context: Context, appWidgetId: Int): PendingIntent = PendingIntent.getActivity(
+        context,
+        stableRequestCode("$appWidgetId|search"),
+        Intent(context, MainActivity::class.java)
+            .setAction(Intent.ACTION_SEARCH)
+            .setData(Uri.parse("lastwave://wave-widget/$appWidgetId/search"))
+            .putExtra("widget_navigation", "search")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+
     private fun stableRequestCode(value: String): Int = value.fold(17) { result, char -> result * 31 + char.code }
 }
 
@@ -93,6 +105,7 @@ internal interface WaveActionTarget {
     suspend fun shuffle()
     suspend fun repeat()
     suspend fun jump(queueIndex: Int)
+    suspend fun recent(trackId: String) {}
     suspend fun playlist(id: String)
 }
 
@@ -109,6 +122,7 @@ internal class WaveActionExecutor(private val target: WaveActionTarget) {
             WaveWidgetActions.ACTION_SHUFFLE -> target.shuffle()
             WaveWidgetActions.ACTION_REPEAT -> target.repeat()
             WaveWidgetActions.ACTION_JUMP -> request.target?.toIntOrNull()?.let { target.jump(it) }
+            WaveWidgetActions.ACTION_RECENT -> request.target?.let { target.recent(it) }
             WaveWidgetActions.ACTION_PLAYLIST -> request.target?.let { target.playlist(it) }
         }
     }
@@ -222,6 +236,17 @@ class WaveWidgetActionReceiver : android.content.BroadcastReceiver() {
                 ensurePlaybackService(context)
                 playPlaylist(id)
             }
+
+            override suspend fun recent(trackId: String) {
+                val remembered = WaveWidgetState.read(context).recentTracks
+                    .firstOrNull { it.trackId == trackId } ?: return
+                // A historical item has no live queue index. Prefer the exact
+                // restored queue metadata, then let normal playback resolve it.
+                val track = musicPlayer.state.value.queue.firstOrNull { it.waveTrackId() == trackId }
+                    ?: remembered.toPlayableTrack()
+                ensurePlaybackService(context)
+                musicPlayer.play(track, sourceLabel = "Recent", startRadio = false)
+            }
         }
         WaveActionExecutor(target).execute(request)
         WaveWidgetUpdater.refresh(context)
@@ -306,3 +331,12 @@ class WaveWidgetActionReceiver : android.content.BroadcastReceiver() {
         private val ACTION_MUTEX = Mutex()
     }
 }
+
+internal fun WaveQueueTrack.toPlayableTrack(): PlayableTrack = PlayableTrack(
+    title = title,
+    artist = artist,
+    artworkUrl = artworkUri,
+    videoId = videoId ?: trackId.takeIf { it.startsWith("video:") }?.removePrefix("video:"),
+    internalTrackId = trackId.takeIf { it.startsWith("internal:") }?.removePrefix("internal:"),
+    playbackUrl = playbackUri,
+)
