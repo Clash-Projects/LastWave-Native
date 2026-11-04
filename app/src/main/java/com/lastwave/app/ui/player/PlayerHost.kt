@@ -186,7 +186,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -5261,6 +5260,30 @@ private enum class BadgeTransition { NONE, FADE, MIX }
 
 private const val TRANSITION_BADGE_HOLD_MS = 900L
 
+// Shows the transition label right away and keeps it for
+// TRANSITION_BADGE_HOLD_MS after it ends.
+private class BadgeTransitionHold {
+    private var last = BadgeTransition.NONE
+    var releaseAtMs = 0L
+        private set
+
+    fun resolve(raw: BadgeTransition, nowMs: Long): BadgeTransition {
+        if (raw != BadgeTransition.NONE) {
+            last = raw
+            releaseAtMs = Long.MAX_VALUE
+            return raw
+        }
+        if (last == BadgeTransition.NONE) return BadgeTransition.NONE
+        if (releaseAtMs == Long.MAX_VALUE) releaseAtMs = nowMs + TRANSITION_BADGE_HOLD_MS
+        if (nowMs >= releaseAtMs) {
+            last = BadgeTransition.NONE
+            releaseAtMs = 0L
+            return BadgeTransition.NONE
+        }
+        return last
+    }
+}
+
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun AppleMusicQualityBadge(
@@ -5287,12 +5310,21 @@ private fun AppleMusicQualityBadge(
     // ends. During and right after a deck swap the telemetry and the new
     // track's quality fields churn (codec cleared, then re-published), which
     // made the pill flicker between "AutoMix" and partial quality labels.
-    val shownTransition by produceState(initialValue = rawTransition, rawTransition) {
-        if (rawTransition != BadgeTransition.NONE) {
-            value = rawTransition
-        } else {
-            delay(TRANSITION_BADGE_HOLD_MS)
-            value = BadgeTransition.NONE
+    // not produceState: that updates a frame late, so the first blend frame
+    // showed "<codec> • AUTOMIXING" and very short blips skipped the hold
+    val transitionHold = remember { BadgeTransitionHold() }
+    var holdReleaseTick by remember { mutableIntStateOf(0) }
+    @Suppress("UNUSED_VARIABLE") val observeRelease = holdReleaseTick
+    val shownTransition = transitionHold.resolve(rawTransition, android.os.SystemClock.uptimeMillis())
+    val pendingReleaseAtMs = if (rawTransition == BadgeTransition.NONE && shownTransition != BadgeTransition.NONE) {
+        transitionHold.releaseAtMs
+    } else {
+        0L
+    }
+    LaunchedEffect(pendingReleaseAtMs) {
+        if (pendingReleaseAtMs > 0L) {
+            delay((pendingReleaseAtMs - android.os.SystemClock.uptimeMillis()).coerceAtLeast(0L))
+            holdReleaseTick++
         }
     }
     val isMixActive = shownTransition == BadgeTransition.MIX

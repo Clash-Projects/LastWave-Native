@@ -232,6 +232,18 @@ internal fun MusicPlayerState.withoutProgress(): MusicPlayerState =
     if (positionMs == 0L && bufferedPositionMs == 0L) this
     else copy(positionMs = 0L, bufferedPositionMs = 0L)
 
+// Keep fields owned elsewhere (automix, crossfade, jam, volume, cast) when
+// rebuilding the whole state. Use inside _state.update so they come from the
+// latest value.
+internal fun MusicPlayerState.withSubsystemStateFrom(live: MusicPlayerState): MusicPlayerState =
+    copy(
+        deckBlendTelemetry = live.deckBlendTelemetry,
+        isCrossfading = live.isCrossfading,
+        isJamActive = live.isJamActive,
+        appVolume = live.appVolume,
+        isCasting = live.isCasting,
+    )
+
 /** The small, frequently changing state consumed only by progress UI. */
 @androidx.compose.runtime.Immutable
 data class PlaybackProgressState(
@@ -1924,7 +1936,7 @@ class MusicPlayer @Inject constructor(
             // A corrupt session or OEM media-stack failure must not become a
             // permanent launch-crash loop. Discard only the resumable session.
             android.util.Log.e("MusicPlayer", "Playback restore disabled", error)
-            _state.value = MusicPlayerState()
+            _state.update { live -> MusicPlayerState().withSubsystemStateFrom(live) }
             clearPersistedPlaybackSession()
             false
         }
@@ -2547,6 +2559,8 @@ class MusicPlayer @Inject constructor(
         onMain {
             if (generation != playRequestGeneration.get()) return@onMain
             ensureForegroundService()
+            // drop any running automix blend, the old decks are going away
+            autoMixCoordinator.get().cancelTransition(revertToPrimary = true)
             cancelCrossfade()
             losslessBypassMediaIds.clear()
             errorRetryCount = 0
@@ -2557,7 +2571,7 @@ class MusicPlayer @Inject constructor(
             }
             resetPlayhead(startPositionMs, selectedTrack.mediaIdKey())
             resetRenderWatchdog()
-            _state.value = MusicPlayerState(
+            _state.update { live -> MusicPlayerState(
                 current = selectedTrack,
                 queue = tracks,
                 currentIndex = selectedIndex,
@@ -2573,8 +2587,8 @@ class MusicPlayer @Inject constructor(
                 // while the notification extrapolated via speed and looked fine.
                 durationMs = selectedTrack.durationMs ?: findKnownDuration(selectedTrack) ?: 0L,
                 shuffleEnabled = if (playerDelegate.isInitialized()) player.shuffleModeEnabled else startShuffled,
-                repeatMode = _state.value.repeatMode,
-            )
+                repeatMode = live.repeatMode,
+            ).withSubsystemStateFrom(live) }
             durationOwnerMediaId = selectedTrack.mediaIdKey()
             persistPlaybackSession()
         }
@@ -3476,12 +3490,19 @@ class MusicPlayer @Inject constructor(
 
     @MainThread
     private fun updateCrossfade(positionMs: Long): Boolean {
+        // hot-swap just pauses the fade
         if (hotSwapActive) return false
-        if (!crossfadeEnabled || bitPerfectEnabled) return false
-        if (autoMixCoordinator.get().isEnabled) return false
         // Podcast episodes are long-form speech: a crossfade would cut the
         // tail of an episode into the next one.
-        if (_state.value.current?.mediaType == MediaType.PODCAST_EPISODE) return false
+        val crossfadeBlocked = !crossfadeEnabled || bitPerfectEnabled ||
+            autoMixCoordinator.get().isEnabled ||
+            _state.value.current?.mediaType == MediaType.PODCAST_EPISODE
+        if (crossfadeBlocked) {
+            // finish a fade that was already running, otherwise isCrossfading
+            // stays true and the badge sticks on "Crossfade"
+            if (_state.value.isCrossfading) cancelCrossfade()
+            return false
+        }
         outgoingPlayer?.let { outgoing ->
             // Drive the blend off the incoming (active) player position so a
             // pause parks the fade instead of counting down underneath it.
@@ -4998,6 +5019,8 @@ class MusicPlayer @Inject constructor(
      */
     fun stopAndClear(clearSession: Boolean = true) = onMain {
         if (isCasting) castPlayback?.disconnect()
+        // stop any automix blend too
+        autoMixCoordinator.get().cancelTransition(revertToPrimary = true)
         cancelCrossfade()
         resolutionRequests.values.forEach { it.second.cancel() }
         resolutionRequests.clear()
@@ -5022,7 +5045,7 @@ class MusicPlayer @Inject constructor(
         player.shuffleModeEnabled = false
         preparedStreams.clear()
         if (clearSession) {
-            _state.value = MusicPlayerState()
+            _state.update { live -> MusicPlayerState().withSubsystemStateFrom(live) }
             clearPersistedPlaybackSession()
             applicationScope.launch(Dispatchers.IO) { WidgetUpdater.clear(appContext) }
         } else {
@@ -9019,7 +9042,7 @@ class MusicPlayer @Inject constructor(
             ?: restoredQueue[restoredIndex].durationMs
             ?: findKnownDuration(restoredQueue[restoredIndex])
             ?: 0L
-        _state.value = MusicPlayerState(
+        _state.update { live -> MusicPlayerState(
             current = restoredQueue[restoredIndex],
             queue = restoredQueue,
             currentIndex = restoredIndex,
@@ -9031,7 +9054,7 @@ class MusicPlayer @Inject constructor(
             repeatMode = session.repeatMode,
             speed = session.speed,
             pitch = session.pitch,
-        )
+        ).withSubsystemStateFrom(live) }
         durationOwnerMediaId = restoredQueue[restoredIndex].mediaIdKey()
         pendingRestoredSession = session.copy(
             queue = restoredQueue,
@@ -9205,7 +9228,7 @@ class MusicPlayer @Inject constructor(
                 ?: current?.let { findPreparedStreamFor(it, it.videoId, it.mediaIdKey() in losslessBypassMediaIds) }
         } else null
 
-        _state.value = MusicPlayerState(
+        val next = MusicPlayerState(
             current = current,
             queue = queue,
             currentIndex = player.currentMediaItemIndex.takeIf { player.mediaItemCount > 0 } ?: -1,
@@ -9228,6 +9251,9 @@ class MusicPlayer @Inject constructor(
             sleepTimerRemainingMs = sleepTimerDeadlineMs?.minus(SystemClock.elapsedRealtime())?.coerceAtLeast(0),
             error = if (isPlayingState) null else previous.error,
         )
+        // automix telemetry is written from another thread, take it from the
+        // current value instead of `previous` so we don't write back a stale one
+        _state.update { live -> next.withSubsystemStateFrom(live) }
         persistPlaybackSession()
         updateSignalPath()
     }
