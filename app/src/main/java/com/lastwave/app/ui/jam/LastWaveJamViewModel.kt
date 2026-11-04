@@ -37,6 +37,8 @@ data class JamUiState(
     val coHostId: String = "",
     val isPermanentRoom: Boolean = false,
     val roomName: String = "",
+    val isRadio: Boolean = false,
+    val stationAuto: Boolean = true,
     val queue: List<TrackInfoPayload> = emptyList(),
     val myUserId: String = "",
     val isConnected: Boolean = false,
@@ -98,6 +100,9 @@ class LastWaveJamViewModel @Inject constructor(
 
     fun revokeHost(userId: String) = jamRepository.revokeHost(userId)
 
+    /** Live stations: the admin hands the station to someone else. */
+    fun makeAdmin(userId: String) = jamRepository.transferAdmin(userId)
+
     val uiState: StateFlow<JamUiState> = combine(
         combine(jamRepository.sessionState, _pendingRoomCode, _pendingDisplayName, _pendingRoomMode) { session, code, name, mode ->
             SessionInput(session, code, name, mode)
@@ -130,6 +135,8 @@ class LastWaveJamViewModel @Inject constructor(
                 coHostId = session.coHostId,
                 isPermanentRoom = session.permanent,
                 roomName = session.roomName,
+                isRadio = session.radio,
+                stationAuto = session.stationAuto,
                 queue = session.queue,
                 myUserId = session.userId,
                 isConnected = true,

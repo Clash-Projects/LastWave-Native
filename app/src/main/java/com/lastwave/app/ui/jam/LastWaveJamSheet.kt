@@ -754,7 +754,7 @@ fun LastWaveJamSheet(
                                             .background(LimeAccent.copy(alpha = 0.2f))
                                             .padding(horizontal = 4.dp, vertical = 1.dp),
                                     ) {
-                                        Text(roleBadge(p), fontSize = 9.sp, fontWeight = FontWeight.Bold, color = LimeAccent)
+                                        Text(roleBadge(p, uiState.isRadio), fontSize = 9.sp, fontWeight = FontWeight.Bold, color = LimeAccent)
                                     }
                                 }
                                 HostActionButton(
@@ -765,6 +765,8 @@ fun LastWaveJamSheet(
                                     accent = LimeAccent,
                                     onGrant = viewModel::grantHost,
                                     onRevoke = viewModel::revokeHost,
+                                    isRadio = uiState.isRadio,
+                                    onMakeAdmin = viewModel::makeAdmin,
                                 )
                             }
                         }
