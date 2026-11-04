@@ -20,6 +20,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.lastwave.app.ui.common.PredictiveBackScreen
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -185,6 +186,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -5255,6 +5257,10 @@ private fun DeckWaveform(
     }
 }
 
+private enum class BadgeTransition { NONE, FADE, MIX }
+
+private const val TRANSITION_BADGE_HOLD_MS = 900L
+
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun AppleMusicQualityBadge(
@@ -5271,8 +5277,26 @@ private fun AppleMusicQualityBadge(
         qualityBadgeLabel(state)
     }
 
-    val isMixActive = state.deckBlendTelemetry.isBlendingActive || state.deckBlendTelemetry.phase == com.lastwave.app.playback.automix.api.BlendPhase.MIX_COMPLETED
-    val isFadeActive = state.isCrossfading && !isMixActive
+    val rawMixActive = state.deckBlendTelemetry.isBlendingActive || state.deckBlendTelemetry.phase == com.lastwave.app.playback.automix.api.BlendPhase.MIX_COMPLETED
+    val rawTransition = when {
+        rawMixActive -> BadgeTransition.MIX
+        state.isCrossfading -> BadgeTransition.FADE
+        else -> BadgeTransition.NONE
+    }
+    // A transition label appears immediately but lingers briefly after it
+    // ends. During and right after a deck swap the telemetry and the new
+    // track's quality fields churn (codec cleared, then re-published), which
+    // made the pill flicker between "AutoMix" and partial quality labels.
+    val shownTransition by produceState(initialValue = rawTransition, rawTransition) {
+        if (rawTransition != BadgeTransition.NONE) {
+            value = rawTransition
+        } else {
+            delay(TRANSITION_BADGE_HOLD_MS)
+            value = BadgeTransition.NONE
+        }
+    }
+    val isMixActive = shownTransition == BadgeTransition.MIX
+    val isFadeActive = shownTransition == BadgeTransition.FADE
 
     val displayTitle = when {
         isMixActive -> "AutoMix"
@@ -5294,6 +5318,10 @@ private fun AppleMusicQualityBadge(
     }
 
     val tintColor = when {
+        // Two decks are live during a transition, so the signal path report
+        // flips between them; keep a neutral tint until it settles.
+        (isMixActive || isFadeActive) && isTranslucent -> Color.White.copy(alpha = 0.95f)
+        isMixActive || isFadeActive -> MaterialTheme.colorScheme.onSurface
         signalPath.bitPerfect -> Color(0xFFE6C15A)
         signalPath.directToHal -> Color(0xFF7FD3C3)
         signalPath.clockFallbackResampled -> Color(0xFFFFB74D)
@@ -5318,7 +5346,8 @@ private fun AppleMusicQualityBadge(
                         onClick()
                     },
                 )
-                .padding(horizontal = 8.dp, vertical = 2.dp),
+                .padding(horizontal = 8.dp, vertical = 2.dp)
+                .animateContentSize(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
@@ -5334,16 +5363,22 @@ private fun AppleMusicQualityBadge(
                 baseLabel.isNotBlank() && !baseLabel.equals(displayTitle, ignoreCase = true) && !baseLabel.equals("AUDIO", ignoreCase = true) -> "$displayTitle \u2022 $baseLabel"
                 else -> displayTitle
             }
-            Text(
-                text = fullText,
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.4.sp,
-                ),
-                color = tintColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            AnimatedContent(
+                targetState = fullText,
+                transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(160)) },
+                label = "QualityBadgeText",
+            ) { label ->
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.4.sp,
+                    ),
+                    color = tintColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Spacer(Modifier.width(3.dp))
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,

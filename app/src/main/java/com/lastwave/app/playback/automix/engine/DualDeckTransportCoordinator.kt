@@ -135,6 +135,19 @@ class DualDeckTransportCoordinator @Inject constructor(
                 }
 
                 signatureExtractor.preAnalyzeTrack(nextTrack, nextTrackStreamUrl ?: nextTrack.playbackUrl) { sig ->
+                    // Analysis completes asynchronously (up to the extractor
+                    // timeout). By then the fallback plan may already have
+                    // started the blend, or the track may have changed. A late
+                    // result must never knock BLENDING/MIX_COMPLETED back to
+                    // ARMED: that flips the player badge from "AutoMix" back
+                    // to the quality label mid-mix.
+                    val phaseNow = _telemetry.value.phase
+                    if (activeTrackKey != trackKey ||
+                        activeSpliceJob?.isActive == true ||
+                        (phaseNow != BlendPhase.PRE_ANALYZING && phaseNow != BlendPhase.ARMED)
+                    ) {
+                        return@preAnalyzeTrack
+                    }
                     val plan = SpliceTrajectorySynthesizer.synthesizePlan(
                         outgoingTrack = currentTrack,
                         outgoingSignature = null,
