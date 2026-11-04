@@ -130,7 +130,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lastwave.app.ui.feed.cards.CardTokens
 import com.lastwave.app.ui.feed.cards.CardTextArea
-import com.lastwave.app.ui.feed.cards.rememberCoverHeight
 import com.lastwave.app.ui.feed.cards.rememberSquareCardWidth
 import com.lastwave.app.ui.feed.cards.rememberWideCardWidth
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -2872,7 +2871,7 @@ private fun FeedMediaCard(
     cardWidth: androidx.compose.ui.unit.Dp = rememberSquareCardWidth(),
 ) {
     val haptics = LocalHapticFeedback.current
-    val coverHeight = rememberCoverHeight()
+    val coverHeight = cardWidth
     Column(
         modifier = Modifier
             .width(cardWidth)
@@ -2964,7 +2963,7 @@ private fun RecentTrackCard(
     val subtitle = if (ago != null) "$primaryArtistName \u2022 $ago" else primaryArtistName
     val haptics = LocalHapticFeedback.current
     val cardWidth = rememberSquareCardWidth()
-    val coverHeight = rememberCoverHeight()
+    val coverHeight = cardWidth
     Column(
         modifier = Modifier
             .width(cardWidth)
