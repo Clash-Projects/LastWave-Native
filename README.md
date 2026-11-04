@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="lastwave_logo.png" alt="LastWave Logo" width="120" height="120" style="border-radius: 50%;" />
+<img src="lastwave_logo.png" alt="SoundDrop Logo" width="120" height="120" style="border-radius: 50%;" />
 
 # SoundDrop
 
@@ -35,27 +35,27 @@
 </p>
 
 <p align="center">
-  <a href="https://t.me/clashprojects">
+  <a href="https://t.me/xaero_community">
     <img src="https://img.shields.io/badge/Telegram-Updates%20%26%20Support-24A1DE?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram Support" />
   </a>
-  <a href="https://t.me/MaterialYouApp">
-    <img src="https://img.shields.io/badge/Telegram-More%20From%20Us-0088cc?style=for-the-badge&logo=telegram&logoColor=white" alt="More From Us" />
+  <a href="https://t.me/official_1f81">
+    <img src="https://img.shields.io/badge/Telegram-More%20From%20Us-0088cc?style=for-the-badge&logo=telegram&logoColor=white" alt="Developer" />
   </a>
-  <a href="https://discord.gg/DmyM2p2fMe">
+  <a href="https://xaero.framer.website">
     <img src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord Community" />
   </a>
 </p>
 
 <p align="center">
-  <a href="https://buymeachai.ezee.li/ajisth69" target="_blank">
+  <a href="https://buymeachai.ezee.li/1f81-official" target="_blank">
     <img src="https://img.shields.io/badge/UPI-Buy%20Me%20A%20Chai-FF813F?style=for-the-badge&logo=googlepay&logoColor=white" alt="UPI (Buy Me A Chai)" height="34" />
   </a>
   &nbsp;
-  <a href="https://buymeacoffee.com/ajisth" target="_blank">
+  <a href="https://buymeacoffee.com/1f81-official" target="_blank">
     <img src="https://img.shields.io/badge/Buy%20Me%20A%20Coffee-ajisth-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy Me A Coffee" height="34" />
   </a>
   &nbsp;
-  <a href="https://github.com/sponsors/ajisth69" target="_blank">
+  <a href="https://github.com/sponsors/1f81-official" target="_blank">
     <img src="https://img.shields.io/badge/Sponsor-GitHub-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="GitHub Sponsors" height="34" />
   </a>
 </p>
@@ -65,14 +65,23 @@
 ---
 
 <div align="center">
-  <img src="Screenshot/screenshot_1.png" width="31%" style="border-radius: 14px; margin: 4px;" />
-  <img src="Screenshot/screenshot_2.png" width="31%" style="border-radius: 14px; margin: 4px;" />
-  <img src="Screenshot/screenshot_3.png" width="31%" style="border-radius: 14px; margin: 4px;" />
+  <img src="Screenshot/SoundDrop Main.png" width="100%" style="border-radius: 14px; margin: 4px;" />
   <br/>
   <br/>
-  <img src="Screenshot/screenshot_4.png" width="31%" style="border-radius: 14px; margin: 4px;" />
-  <img src="Screenshot/screenshot_5.png" width="31%" style="border-radius: 14px; margin: 4px;" />
-  <img src="Screenshot/screenshot_6.png" width="31%" style="border-radius: 14px; margin: 4px;" />
+  <img src="Screenshot/SoundDrop 1.png" width="50%" style="border-radius: 14px; margin: 4px;" />
+  <img src="Screenshot/SoundDrop 2.png" width="50%" style="border-radius: 14px; margin: 4px;" />
+  <br/>
+  <br/>
+  <img src="Screenshot/SoundDrop 3.png" width="50%" style="border-radius: 14px; margin: 4px;" />
+  <img src="Screenshot/SoundDrop 4.png" width="50%" style="border-radius: 14px; margin: 4px;" />
+  <br/>
+  <br/>
+  <img src="Screenshot/SoundDrop 5.png" width="50%" style="border-radius: 14px; margin: 4px;" />
+  <img src="Screenshot/SoundDrop 6.png" width="50%" style="border-radius: 14px; margin: 4px;" />
+  <br/>
+  <br/>
+  <img src="Screenshot/SoundDrop 7.png" width="100%" style="border-radius: 14px; margin: 4px;" />
+  
 </div>
 
 ---
