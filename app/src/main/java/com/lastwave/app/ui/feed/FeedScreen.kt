@@ -358,20 +358,13 @@ fun FeedScreen(
             )
 
             // Pinned YTM chip row under the app bar — stays visible while the
-            // feed scrolls beneath it. Rendered only when chips exist; bottom
-            // base corners are rounded as requested.
+            // feed scrolls beneath it. Rendered only when chips exist.
             if (state.homeChips.isNotEmpty()) {
-                Surface(
-                    shape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.fillMaxWidth().zIndex(1f),
-                ) {
-                    PinnedChipsBar(
-                        chips = state.homeChips,
-                        selectedChip = state.selectedChip,
-                        onChipClick = viewModel::onHomeChipSelected,
-                    )
-                }
+                PinnedChipsBar(
+                    chips = state.homeChips,
+                    selectedChip = state.selectedChip,
+                    onChipClick = viewModel::onHomeChipSelected,
+                )
             }
 
             PullToRefreshBox(
