@@ -866,7 +866,7 @@ fun SettingsScreen(
                                             iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                             iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                             title = stringResource(R.string.set_cat_about),
-                                            subtitle = if (updateInfo.isUpdateAvailable) "Update Available (${updateInfo.latestVersion}) \u2022 v${appVersionName(context)}" else "v${appVersionName(context)} \u2022 Language, Community, Source code",
+                                            subtitle = if (updateInfo.isUpdateAvailable) "Update Available (${updateInfo.latestVersion}) \u2022 v${appVersionName(context)}" else "v${appVersionName(context)} \u2022 Language, Community, Developer",
                                             onClick = { activeTab = SettingsTab.ABOUT },
                                             position = position,
                                         )
@@ -2336,7 +2336,7 @@ fun SettingsScreen(
                         title = stringResource(R.string.settings_desktop_app),
                         subtitle = "xaero.framer.website/apps/SoundDrop-Desktop",
                         onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://xaero.framer.website/apps/SoundDrop-Desktop"))
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://sounddrop.framer.website/download"))
                             if (!startActivitySafely(context, intent)) {
                                 viewModel.showToast(context.getString(R.string.toast_no_browser_plain))
                             }
@@ -5027,7 +5027,7 @@ private fun AboutCard(
                 shape = ExpressivePillShape,
                 color = MaterialTheme.colorScheme.secondaryContainer,
                 onClick = {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://xaero.framer.website/apps/SoundDrop-Desktop"))
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://sounddrop.framer.website/download"))
                     if (!startActivitySafely(context, intent)) {
                         android.widget.Toast.makeText(context, context.getString(R.string.toast_no_browser_plain), android.widget.Toast.LENGTH_SHORT).show()
                     }
