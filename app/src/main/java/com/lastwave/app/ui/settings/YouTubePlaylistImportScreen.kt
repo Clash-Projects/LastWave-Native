@@ -241,7 +241,7 @@ fun YouTubePlaylistImportScreen(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 // TAB 0: The connected account's own library playlists —
-                // select any and import them into LastWave.
+                // select any and import them into SoundDrop.
                 if (state.selectedTab == ImportTab.LIBRARY) {
                     when {
                         state.isLoadingLibrary -> item {
@@ -467,7 +467,7 @@ fun YouTubePlaylistImportScreen(
                                     fontWeight = FontWeight.Bold,
                                 )
                                 Text(
-                                    "Paste any YouTube or YouTube Music playlist URL. LastWave resolves every track — no 100-song cap, full playlists import completely.",
+                                    "Paste any YouTube or YouTube Music playlist URL. SoundDrop resolves every track — no 100-song cap, full playlists import completely.",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
