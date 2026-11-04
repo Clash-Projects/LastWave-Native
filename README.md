@@ -65,23 +65,28 @@
 ---
 
 <div align="center">
-  <img src="Screenshot/SoundDrop Main.png" width="100%" style="border-radius: 14px; margin: 4px;" />
-  <br/>
-  <br/>
-  <img src="Screenshot/SoundDrop 1.png" width="50%" style="border-radius: 14px; margin: 4px;" />
-  <img src="Screenshot/SoundDrop 2.png" width="50%" style="border-radius: 14px; margin: 4px;" />
-  <br/>
-  <br/>
-  <img src="Screenshot/SoundDrop 3.png" width="50%" style="border-radius: 14px; margin: 4px;" />
-  <img src="Screenshot/SoundDrop 4.png" width="50%" style="border-radius: 14px; margin: 4px;" />
-  <br/>
-  <br/>
-  <img src="Screenshot/SoundDrop 5.png" width="50%" style="border-radius: 14px; margin: 4px;" />
-  <img src="Screenshot/SoundDrop 6.png" width="50%" style="border-radius: 14px; margin: 4px;" />
-  <br/>
-  <br/>
-  <img src="Screenshot/SoundDrop 7.png" width="100%" style="border-radius: 14px; margin: 4px;" />
-  
+
+  <!-- Row 1: Full Banner -->
+  <img src="Screenshot/SoundDrop Main.png" width="100%" style="border-radius: 12px; margin-bottom: 12px;" />
+
+  <!-- Row 2: Two Images Side-by-Side -->
+  <p align="center" style="margin: 0 0 12px 0;">
+    <img src="Screenshot/SoundDrop 1.png" width="49.2%" style="border-radius: 12px;" />&nbsp;&nbsp;<img src="Screenshot/SoundDrop 2.png" width="49.2%" style="border-radius: 12px;" />
+  </p>
+
+  <!-- Row 3: Two Images Side-by-Side -->
+  <p align="center" style="margin: 0 0 12px 0;">
+    <img src="Screenshot/SoundDrop 3.png" width="49.2%" style="border-radius: 12px;" />&nbsp;&nbsp;<img src="Screenshot/SoundDrop 4.png" width="49.2%" style="border-radius: 12px;" />
+  </p>
+
+  <!-- Row 4: Two Images Side-by-Side -->
+  <p align="center" style="margin: 0 0 12px 0;">
+    <img src="Screenshot/SoundDrop 5.png" width="49.2%" style="border-radius: 12px;" />&nbsp;&nbsp;<img src="Screenshot/SoundDrop 6.png" width="49.2%" style="border-radius: 12px;" />
+  </p>
+
+  <!-- Row 5: Full Banner -->
+  <img src="Screenshot/SoundDrop 7.png" width="100%" style="border-radius: 12px;" />
+
 </div>
 
 ---
