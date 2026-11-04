@@ -6,11 +6,11 @@ on:
       tag_name:
         description: 'Git Tag (e.g., 4.2.3)'
         required: true
-        default: '1.0.1'
+        default: '4.2.3'
       release_name:
         description: 'Release Title (e.g., SoundDrop 4.2.3)'
         required: true
-        default: 'Update v1.0.1'
+        default: 'Update v4.2.3'
       release_notes:
         description: 'Changelog / Release Notes'
         required: false
@@ -26,8 +26,8 @@ jobs:
       SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
       ADDON_CLIENT_SECRET: ${{ secrets.ADDON_CLIENT_SECRET }}
       RELEASE_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD || secrets.RELEASE_STORE_PASSWORD }}
-      LASTWAVE_LYRICS_TOKEN: ${{ secrets.LASTWAVE_LYRICS_TOKEN }}
-      LASTWAVE_LYRICS_URL: ${{ secrets.LASTWAVE_LYRICS_URL }}
+      SoundDrop_LYRICS_TOKEN: ${{ secrets.LASTWAVE_LYRICS_TOKEN }}
+      SoundDrop_LYRICS_URL: ${{ secrets.LASTWAVE_LYRICS_URL }}
       EXPECTED_CERT_SHA256: ${{ secrets.EXPECTED_CERT_SHA256 }}
 
     steps:
@@ -50,8 +50,8 @@ jobs:
       - name: Build Android 10 Release APKs (compressed + raw)
         env:
           ADDON_CLIENT_SECRET: ${{ secrets.ADDON_CLIENT_SECRET }}
-          LASTWAVE_LYRICS_TOKEN: ${{ secrets.LASTWAVE_LYRICS_TOKEN }}
-          LASTWAVE_LYRICS_URL: ${{ secrets.LASTWAVE_LYRICS_URL }}
+          SoundDrop_LYRICS_TOKEN: ${{ secrets.LASTWAVE_LYRICS_TOKEN }}
+          SoundDrop_LYRICS_URL: ${{ secrets.LASTWAVE_LYRICS_URL }}
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
           RELEASE_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD || secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.ALIAS || secrets.RELEASE_KEY_ALIAS || 'release_key' }}
@@ -84,8 +84,8 @@ jobs:
       - name: Build Android 7.0 Legacy APK (compressed)
         env:
           ADDON_CLIENT_SECRET: ${{ secrets.ADDON_CLIENT_SECRET }}
-          LASTWAVE_LYRICS_TOKEN: ${{ secrets.LASTWAVE_LYRICS_TOKEN }}
-          LASTWAVE_LYRICS_URL: ${{ secrets.LASTWAVE_LYRICS_URL }}
+          SoundDrop_LYRICS_TOKEN: ${{ secrets.LASTWAVE_LYRICS_TOKEN }}
+          SoundDrop_LYRICS_URL: ${{ secrets.LASTWAVE_LYRICS_URL }}
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
           RELEASE_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD || secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.ALIAS || secrets.RELEASE_KEY_ALIAS || 'release_key' }}
