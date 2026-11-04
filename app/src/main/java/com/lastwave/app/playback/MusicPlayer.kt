@@ -430,6 +430,8 @@ class MusicPlayer @Inject constructor(
     private var queueEnrichmentJob: Job? = null
     private var recommendationJob: Job? = null
     private var preloadJob: Job? = null
+    private var searchWarmJob: Job? = null
+    private var searchResultWarmJob: Job? = null
     private var currentTrackCacheJob: Job? = null
     private val resolutionRequests = ConcurrentHashMap<List<Any?>, Pair<Long, Deferred<ResolvedStream>>>()
     private var discoverQueueLoadJob: Job? = null
@@ -898,13 +900,15 @@ class MusicPlayer @Inject constructor(
             }
             android.util.Log.i("MusicPlayer", "Playback state changed: $stateName, isPlaying=${player.isPlaying}, currentPos=${player.currentPosition}ms / ${player.duration}ms, bufferedPos=${player.bufferedPosition}ms, track='${_state.value.current?.title}'")
             if (playbackState == Player.STATE_BUFFERING) {
-                PlaybackStartupLog.prepareEnd()
+                // BUFFERING begins preparation; only READY ends the startup interval.
                 android.util.Log.w("MusicPlayer", "Track BUFFERING / STALLED: '${_state.value.current?.title}' at ${live.currentPosition}ms (buffered=${live.bufferedPosition}ms)")
             }
             if (playbackState == Player.STATE_READY) {
                 PlaybackStartupLog.prepareEnd()
                 PlaybackStartupLog.ready()
                 onMain { runStartupFollowUp() }
+                // Started paused: nothing competes for bandwidth any more.
+                onMain { if (!player.playWhenReady) releaseDeferredPreload() }
             }
             // Natural-end safety net: ExoPlayer auto-advances while a next
             // window exists, but when the queue truly ends â€” or the next
@@ -935,6 +939,7 @@ class MusicPlayer @Inject constructor(
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             outgoingPlayer?.playWhenReady = isPlaying
             if (isPlaying) {
+                onMain { releaseDeferredPreload() }
                 unavailableSkipJob?.cancel()
                 unavailableSkipJob = null
                 player.currentMediaItem?.mediaId?.let {
@@ -1155,8 +1160,15 @@ class MusicPlayer @Inject constructor(
                 return
             }
 
+            // Transport failures (expired signed URL, 401/403/410, network
+            // blip) say nothing about the addon's FLAC being unplayable: the
+            // addon can mint a fresh URL. Only decode/format failures may pin
+            // the track to YouTube for the session.
+            val losslessTransportFailure = failedLosslessStream && isTransportFailure(error)
             if (failedLosslessStream) {
-                if (failedMediaId != null && (errorRetryCount > 0 || !isRetryablePlaybackFailure(error))) {
+                if (failedMediaId != null && !losslessTransportFailure &&
+                    (errorRetryCount > 0 || !isRetryablePlaybackFailure(error))
+                ) {
                     losslessBypassMediaIds += failedMediaId
                 }
             } else if (!failedLocalStream && !videoId.isNullOrBlank()) {
@@ -1206,7 +1218,16 @@ class MusicPlayer @Inject constructor(
                                 // A dead stream must be replaced now: the fast
                                 // module walk used to eat the whole throttle
                                 // window and land on "Unable to resolve".
-                                losslessBudget = LosslessBudget.Disabled,
+                                // Exception: the first retry of a lossless
+                                // stream that died in transport re-asks the
+                                // addon (bounded by the startup window) so a
+                                // hi-res listener isn't dropped to Opus by an
+                                // expired URL. Later retries go straight to YouTube.
+                                losslessBudget = if (retry == 1 && losslessTransportFailure) {
+                                    LosslessBudget.Interactive
+                                } else {
+                                    LosslessBudget.Disabled
+                                },
                             )
                         }
                         withContext(Dispatchers.Main.immediate) {
@@ -1383,14 +1404,18 @@ class MusicPlayer @Inject constructor(
                 } else {
                     runCatching {
                         runBlocking(Dispatchers.IO) {
-                            // Loader thread owns the audio pipeline: never park
-                            // it on a module round trip. A slow walk here is a
-                            // multi-second hole in playback, not a freebie.
+                            // Give the addon the same bounded startup window as
+                            // an interactive start: starting on Opus and then
+                            // hot-swapping to FLAC is audible (the swap often
+                            // can't align and falls back to an in-place cut),
+                            // while a healthy addon answers in well under the
+                            // window. A slow/dead addon still falls back to
+                            // YouTube after LOSSLESS_STARTUP_WAIT_MS.
                             resolveTrackAudioStreamWithRetry(
                                 track,
                                 track.videoId,
                                 allowLossless = !bypassLossless,
-                                losslessBudget = LosslessBudget.Disabled,
+                                losslessBudget = if (bypassLossless) LosslessBudget.Disabled else LosslessBudget.Interactive,
                             ).also { resolved ->
                                 logStreamEvent("loader-prepared", resolved, retry = 0)
                                 android.util.Log.i("MusicPlayer", "[MEDIA3] loader resolved '${track.title}' key=${resolved.cacheKey} codec=${resolved.audioCodec}")
@@ -1401,6 +1426,19 @@ class MusicPlayer @Inject constructor(
                                     val isCurrentlyPlaying = track.mediaIdKey() == _state.value.current?.mediaIdKey()
                                     if (isCurrentlyPlaying) {
                                         publishResolvedQuality(resolved, expectedMediaId = track.mediaIdKey())
+                                        // The loader never waits on the addon, so a
+                                        // YouTube stream here must still be promoted
+                                        // back to lossless via the hot-swap path
+                                        // (the transition handler can miss it when
+                                        // this registration lands after the transition).
+                                        if (!bypassLossless && !resolved.isLossless && resolved.audioCodec != "DOLBY ATMOS") {
+                                            scheduleQualityUpgrade(
+                                                track = track,
+                                                expectedMediaId = track.mediaIdKey(),
+                                                generation = playRequestGeneration.get(),
+                                                currentStream = resolved,
+                                            )
+                                        }
                                     }
                                     learnQueueVideoId(-1, track, resolved.youtubeCandidate?.videoId, resolved.rematchedFromVideoId)
                                 }
@@ -1636,11 +1674,22 @@ class MusicPlayer @Inject constructor(
                     },
             )
             .setLoadControl(baseLoadControl)
-            .setSeekParameters(SeekParameters.CLOSEST_SYNC)
+            // Decode from a sync point but discard audio before the requested time.
+            // Addon DASH segments are 10 s, so CLOSEST_SYNC could land seconds early.
+            .setSeekParameters(SeekParameters.EXACT)
             .build().apply {
                 // Feed ReplayGain container tags into loudness normalization.
                 // Additive listener: never touches playback, 0 dB without tags.
                 addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+                    override fun onAudioPositionAdvancing(
+                        eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                        playoutStartSystemTimeMs: Long,
+                    ) {
+                        if (activePlayer != null && this@apply !== activePlayer) return
+                        if (eventTime.windowIndex != currentMediaItemIndex) return
+                        PlaybackStartupLog.audioAdvancing(playoutStartSystemTimeMs)
+                    }
+
                     override fun onAudioInputFormatChanged(
                         eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
                         format: androidx.media3.common.Format,
@@ -5149,7 +5198,145 @@ class MusicPlayer @Inject constructor(
         preloadNextTrack(nextIndex, nextItem.toPlayableTrack())
     }
 
+    /**
+     * Warms the addon's server-side search cache for the few items after
+     * [nextIndex] (the next item itself gets a full preload). A tap or skip
+     * to any of them then skips the cold upstream lookup. Sequential, once
+     * per track, after a short delay so it never competes with the real
+     * next-track resolve.
+     */
+    @MainThread
+    private fun warmUpcomingSearches(nextIndex: Int) {
+        val timeline = player.currentTimeline
+        if (timeline.isEmpty || nextIndex !in 0 until timeline.windowCount) return
+        val shuffle = player.shuffleModeEnabled
+        val upcoming = ArrayList<PlayableTrack>(SEARCH_WARM_AHEAD)
+        var idx = nextIndex
+        var steps = 0
+        while (upcoming.size < SEARCH_WARM_AHEAD && steps < SEARCH_WARM_AHEAD * 3) {
+            steps++
+            idx = timeline.getNextWindowIndex(idx, Player.REPEAT_MODE_OFF, shuffle)
+            if (idx == C.INDEX_UNSET || idx == player.currentMediaItemIndex) break
+            val item = player.getMediaItemAt(idx)
+            if (item.localConfiguration?.uri?.scheme != "lastwave") continue
+            val track = item.toPlayableTrack()
+            if (track.playbackUrl != null || track.title.isBlank() || track.artist.isBlank()) continue
+            upcoming += track
+        }
+        if (upcoming.isEmpty()) return
+        searchWarmJob?.cancel()
+        searchWarmJob = applicationScope.launch(Dispatchers.IO) {
+            delay(SEARCH_WARM_DELAY_MS)
+            val misc = runCatching { settingsPreferences.settings.first() }.getOrDefault(MiscSettings())
+            if (!misc.preferLosslessStreaming ||
+                misc.losslessQuality == LosslessMusicApi.QUALITY_YOUTUBE
+            ) return@launch
+            val quality = effectiveLosslessQuality(misc)
+            for (track in upcoming) {
+                if (losslessMusicApi.isCoolingDown) return@launch
+                runCatching {
+                    losslessMusicApi.warmSearch(
+                        track.title, track.artist, track.album, quality,
+                        expectedDurationSeconds = track.durationMs?.takeIf { it > 0 }?.div(1_000)?.toInt(),
+                    )
+                }.onFailure { if (it is CancellationException) throw it }
+            }
+        }
+    }
+
+    /**
+     * Warms the addon search for the tracks a screen's user is most likely to
+     * play next (top search results, an album's or playlist's first rows /
+     * Play button) once they have been on screen briefly. The addon caches the
+     * search and prepares its top match's stream plan, so the tap skips
+     * ~1-2 s of cold upstream work. The newest screen's call cancels any
+     * pending warm (also [cancelSearchResultWarm]).
+     */
+    fun warmLikelyPlays(tracks: List<PlayableTrack>) {
+        searchResultWarmJob?.cancel()
+        val targets = tracks
+            .filter { it.title.isNotBlank() && it.artist.isNotBlank() && it.playbackUrl == null }
+            .take(SEARCH_RESULT_WARM_COUNT)
+        if (targets.isEmpty()) return
+        searchResultWarmJob = applicationScope.launch(Dispatchers.IO) {
+            // Results land every debounce while typing; only warm a set the user is looking at.
+            delay(SEARCH_RESULT_WARM_DWELL_MS)
+            val misc = runCatching { settingsPreferences.settings.first() }.getOrDefault(MiscSettings())
+            if (!misc.preferLosslessStreaming ||
+                misc.losslessQuality == LosslessMusicApi.QUALITY_YOUTUBE
+            ) return@launch
+            val quality = effectiveLosslessQuality(misc)
+            targets.map { track ->
+                launch {
+                    if (losslessMusicApi.isCoolingDown) return@launch
+                    runCatching {
+                        losslessMusicApi.warmSearch(
+                        track.title, track.artist, track.album, quality,
+                        expectedDurationSeconds = track.durationMs?.takeIf { it > 0 }?.div(1_000)?.toInt(),
+                    )
+                    }.onFailure { if (it is CancellationException) throw it }
+                }
+            }
+        }
+    }
+
+    private var deferredPreload: Pair<Int, PlayableTrack?>? = null
+    private var deferredPreloadTimeout: Job? = null
+
+    /** Playback was asked for but no audio is advancing yet (initial start or rebuffer). */
+    @MainThread
+    private fun isCurrentTrackStarting(): Boolean {
+        if (isCasting) return false
+        val live = player
+        return live.playWhenReady && !live.isPlaying &&
+            live.playbackState != Player.STATE_ENDED && live.mediaItemCount > 0
+    }
+
+    @MainThread
+    private fun releaseDeferredPreload(force: Boolean = false) {
+        val (nextIndex, requested) = deferredPreload ?: return
+        if (!force && isCurrentTrackStarting()) return
+        deferredPreload = null
+        deferredPreloadTimeout?.cancel()
+        deferredPreloadTimeout = null
+        // The queue may have changed while parked: only preload what is still there.
+        if (nextIndex !in 0 until player.mediaItemCount || nextIndex == player.currentMediaItemIndex) return
+        val live = player.getMediaItemAt(nextIndex).toPlayableTrack()
+        if (requested != null && live.mediaIdKey() != requested.mediaIdKey()) return
+        // A forced release bypasses the gate once: the start is stuck, not progressing.
+        forcePreloadOnce = force
+        preloadNextTrack(nextIndex, live)
+    }
+
+    private var forcePreloadOnce = false
+
+    fun cancelSearchResultWarm() {
+        searchResultWarmJob?.cancel()
+    }
+
     private fun preloadNextTrack(nextIndex: Int, nextTrack: PlayableTrack?) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            onMain { preloadNextTrack(nextIndex, nextTrack) }
+            return
+        }
+        // While the current track is still starting, its first CDN segments
+        // and the next track's resolve/download would split the bandwidth
+        // and delay first audio. Park the newest request until it plays.
+        if (!forcePreloadOnce && isCurrentTrackStarting()) {
+            deferredPreload = nextIndex to nextTrack
+            deferredPreloadTimeout?.cancel()
+            deferredPreloadTimeout = applicationScope.launch(Dispatchers.Main.immediate) {
+                // A start that never completes must not lose the preload.
+                delay(DEFERRED_PRELOAD_MAX_WAIT_MS)
+                releaseDeferredPreload(force = true)
+            }
+            return
+        }
+        forcePreloadOnce = false
+        deferredPreload = null
+        deferredPreloadTimeout?.cancel()
+        // Player state is main-thread only; immediate runs inline when already there.
+        applicationScope.launch(Dispatchers.Main.immediate) { warmUpcomingSearches(nextIndex) }
         if (nextTrack == null || nextTrack.playbackUrl != null) return
         val identity = nextTrack.playbackIdentity()
         if (identity == null) {
@@ -5347,6 +5534,13 @@ class MusicPlayer @Inject constructor(
                             null
                         } ?: return@withContext
                         if (queuedTrack.videoId != identity.youtubeVideoId || nextIndex == livePlayer.currentMediaItemIndex) {
+                            return@withContext
+                        }
+                        // Never downgrade an item a lossless preload already
+                        // prepared: that turned a ready FLAC start into Opus
+                        // followed by an audible hot-swap.
+                        val queuedKey = livePlayer.getMediaItemAt(nextIndex).localConfiguration?.customCacheKey
+                        if (queuedKey?.startsWith("lossless:") == true) {
                             return@withContext
                         }
                         registerPreparedStream(resolved)
@@ -6196,9 +6390,13 @@ class MusicPlayer @Inject constructor(
                         track = track,
                         videoId = videoId,
                         allowLocalDownloads = false,
-                        allowLossless = !failedLosslessStream && failedMediaId !in losslessBypassMediaIds,
+                        // First attempt re-asks the addon (a lossless stream
+                        // that died mid-track usually just needs a fresh URL);
+                        // later attempts take the fast YouTube path and rely
+                        // on the quality upgrade below to return to lossless.
+                        allowLossless = attempt == 1 && failedMediaId !in losslessBypassMediaIds,
                         excludedLosslessUrls = if (failedLosslessStream) setOfNotNull(rejectedUrl) else emptySet(),
-                        losslessBudget = LosslessBudget.Disabled,
+                        losslessBudget = if (attempt == 1) LosslessBudget.Interactive else LosslessBudget.Disabled,
                     )
                 }.getOrElse { error ->
                     if (error is CancellationException) throw error
@@ -6239,6 +6437,14 @@ class MusicPlayer @Inject constructor(
                         // budget for the next error.
                         errorRetryCount = 0
                         preloadNextQueueItem(failedIndex)
+                        if (!stream.isLossless && stream.audioCodec != "DOLBY ATMOS") {
+                            scheduleQualityUpgrade(
+                                track = updated,
+                                expectedMediaId = failedMediaId,
+                                generation = generation,
+                                currentStream = stream,
+                            )
+                        }
                         true
                     } else {
                         false
@@ -7037,6 +7243,18 @@ class MusicPlayer @Inject constructor(
         }
     }
 
+    /**
+     * Atmos plays only when explicitly selected (quality 28) AND the device
+     * can render it. No toggle, no auto-upgrade: any other tier never becomes Atmos.
+     * An Atmos request on an incapable device falls back to hi-res stereo.
+     */
+    private fun effectiveLosslessQuality(misc: MiscSettings): Int =
+        if (misc.losslessQuality == LosslessMusicApi.QUALITY_DOLBY_ATMOS && !isSpatialAudioSupportedOnDevice()) {
+            LosslessMusicApi.QUALITY_MAX_HI_RES
+        } else {
+            misc.losslessQuality
+        }
+
     private suspend fun resolveLosslessTrackAudioStream(
         track: PlayableTrack,
         misc: MiscSettings,
@@ -7044,14 +7262,7 @@ class MusicPlayer @Inject constructor(
         expectedDurationSeconds: Int? = null,
     ): ResolvedStream? {
         val atmosSupported = isSpatialAudioSupportedOnDevice()
-        // Atmos plays only when explicitly selected (quality 28) AND the device
-        // can render it. No toggle, no auto-upgrade: any other tier never becomes Atmos.
-        // An Atmos request on an incapable device falls back to hi-res stereo.
-        val effectiveQuality = if (misc.losslessQuality == LosslessMusicApi.QUALITY_DOLBY_ATMOS && !atmosSupported) {
-            LosslessMusicApi.QUALITY_MAX_HI_RES
-        } else {
-            misc.losslessQuality
-        }
+        val effectiveQuality = effectiveLosslessQuality(misc)
         val stream = losslessMusicApi.resolveStream(
             title = track.title,
             artist = track.artist,
@@ -7243,7 +7454,9 @@ class MusicPlayer @Inject constructor(
             val isExplicitDash = lower.endsWith(".mpd") || lower.contains(".mpd") || lower.contains("/mpd")
             mimeType = when {
                 stream.mimeType.isNotBlank() && stream.mimeType != MimeTypes.APPLICATION_MPD -> stream.mimeType
-                isExplicitDash -> MimeTypes.APPLICATION_MPD
+                // The resolver already identified a manifest: never hand it to
+                // the progressive source ("Invalid content type: application/dash+xml").
+                isExplicitDash || stream.mimeType == MimeTypes.APPLICATION_MPD -> MimeTypes.APPLICATION_MPD
                 lower.endsWith(".m3u8") || lower.contains(".m3u8") -> "application/x-mpegURL"
                 lower.endsWith(".mp3") || stream.formatId == LosslessMusicApi.QUALITY_MP3_320 -> "audio/mpeg"
                 lower.endsWith(".aac") -> "audio/aac"
@@ -7794,7 +8007,7 @@ class MusicPlayer @Inject constructor(
                         withTimeoutOrNull(HOT_SWAP_READY_TIMEOUT_MS) {
                             while (swappedPlayer.playbackState == Player.STATE_BUFFERING) delay(20L)
                         }
-                        runCatching { swappedPlayer.setSeekParameters(SeekParameters.CLOSEST_SYNC) }
+                        runCatching { swappedPlayer.setSeekParameters(SeekParameters.EXACT) }
                         delay(30L)
                         val steps = 5
                         for (i in 1..steps) {
@@ -8097,7 +8310,7 @@ class MusicPlayer @Inject constructor(
                     }
                 } finally {
                     if (player === standby) standby.volume = if (bitPerfectEnabled) 1f else appVolume
-                    standby.setSeekParameters(SeekParameters.CLOSEST_SYNC)
+                    standby.setSeekParameters(SeekParameters.EXACT)
                     live.stop()
                     live.clearMediaItems()
                     hotSwapActive = false
@@ -8109,7 +8322,7 @@ class MusicPlayer @Inject constructor(
                 runCatching {
                     standby.stop()
                     standby.clearMediaItems()
-                    standby.setSeekParameters(SeekParameters.CLOSEST_SYNC)
+                    standby.setSeekParameters(SeekParameters.EXACT)
                 }
                 hotSwapActive = false
             }
@@ -8584,6 +8797,18 @@ class MusicPlayer @Inject constructor(
         if (!transientHttp && !transientNetwork) return 0L
         val exponential = PLAYBACK_RETRY_BASE_DELAY_MS * (1L shl (retry - 1).coerceAtMost(3))
         return exponential + Random.nextLong(PLAYBACK_RETRY_JITTER_MS + 1L)
+    }
+
+    /** Network/HTTP failure of the transport, as opposed to the bytes being undecodable. */
+    private fun isTransportFailure(error: PlaybackException): Boolean {
+        if (isUnsupportedMediaFailure(error)) return false
+        val status = error.httpStatusCodeOrNull()
+        if (status == 401 || status == 403 || status == 408 || status == 410 ||
+            status == 429 || (status != null && status in 500..599)
+        ) return true
+        return error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+            error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
     }
 
     private fun isRetryablePlaybackFailure(error: PlaybackException): Boolean {
@@ -9097,6 +9322,14 @@ class MusicPlayer @Inject constructor(
         const val HOT_SWAP_PROBE_SPEED = 4f
         const val HOT_SWAP_PROBE_TIMEOUT_MS = 8_000L
         const val HOT_SWAP_READY_TIMEOUT_MS = 6_000L
+        /** Queue items past the next one whose addon search is pre-warmed. */
+        const val SEARCH_WARM_AHEAD = 4
+        const val SEARCH_WARM_DELAY_MS = 1_500L
+        /** Top search results warmed per settled result set (each also costs one server plan prep). */
+        const val SEARCH_RESULT_WARM_COUNT = 2
+        const val SEARCH_RESULT_WARM_DWELL_MS = 500L
+        /** Upper bound on holding the next-track preload behind a stalled start. */
+        const val DEFERRED_PRELOAD_MAX_WAIT_MS = 10_000L
         const val HOT_SWAP_SEEK_LEAD_MS = 150L
         const val HOT_SWAP_SETTLE_MS = 80L
         const val HOT_SWAP_ALIGN_ROUNDS = 6

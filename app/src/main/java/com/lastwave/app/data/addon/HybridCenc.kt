@@ -160,6 +160,13 @@ object HybridCenc {
             writeAscii(buf, sinf.start + 4, "free")
         }
 
+        // A surviving pssh makes Media3 attach DrmInitData to the (now clear)
+        // audio format. With no DrmSessionManager the renderer then reports
+        // FORMAT_UNSUPPORTED_DRM, the track is never selected, and the player
+        // runs a silent standalone clock: progress moves, no audio, seeks snap
+        // back to 0. The samples are decrypted on-device, so drop it.
+        neutralizePssh(buf, moov.contentStart, moov.end)
+
         return TencInfo(
             ivSize ?: throw DecryptException("no protected sample entry / tenc found in moov"),
             constantIv,
@@ -320,6 +327,13 @@ object HybridCenc {
         }
     }
 
+    /** Renames direct-child `pssh` boxes in [start, end) to `free` (same size, so offsets hold). */
+    fun neutralizePssh(buf: ByteArray, start: Int, end: Int) {
+        for (box in iterBoxes(buf, start, end)) {
+            if (box.type == "pssh") writeAscii(buf, box.start + 4, "free")
+        }
+    }
+
     /** Decrypts every moof/mdat pair of [buf] in place. [segmentStart] is the file offset of buf[0]. */
     fun decryptSegment(buf: ByteArray, key: ByteArray, ivSize: Int, constantIv: ByteArray, segmentStart: Long) {
         var pendingMoof: CencBox? = null
@@ -332,6 +346,8 @@ object HybridCenc {
                         processTraf(buf, child, moofStartInFile, segmentStart, ivSize, constantIv, key)
                     }
                 }
+                // Media3 also reads moof-level pssh into the format's DrmInitData.
+                neutralizePssh(buf, pendingMoof.contentStart, pendingMoof.end)
                 pendingMoof = null
             }
         }

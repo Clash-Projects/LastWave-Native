@@ -316,6 +316,9 @@ dependencies {
     // current release is built with a newer Kotlin metadata version than the
     // app. Runtime-only keeps the app compiler on its existing Kotlin line.
     runtimeOnly(libs.innertubex)
+    // CIO gets a system-CA trust manager in InnerTubeXStreamExtractor; see
+    // createCioHttpClient. Don't swap in ktor-client-android: it closes streams
+    // from a cancel handler and crashes the process ("Unbalanced enter/exit").
     runtimeOnly("io.ktor:ktor-client-cio:3.6.0")
 
     // Unit Testing dependencies
