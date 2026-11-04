@@ -31,7 +31,7 @@ object WaveWidgetArt {
 
     private const val ART_SIZE = 384
     private const val PALETTE_SIZE = 48
-    private const val BLUR_SIZE = 64
+    private const val BLUR_SIZE = 192
     private const val THUMBNAIL_SIZE = 96
     private const val CACHE_SIZE = 8
     private const val THUMBNAIL_CACHE_SIZE = 16
@@ -194,6 +194,10 @@ object WaveWidgetArt {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         try {
             Canvas(output).apply {
+                // An opaque base keeps transparent covers from exposing the launcher wallpaper.
+                paint.color = 0xFF252636.toInt()
+                drawRoundRect(bounds, corner, corner, paint)
+                paint.color = 0xFFFFFFFF.toInt()
                 paint.shader = BitmapShader(tiny, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
                     setLocalMatrix(Matrix().apply { setScale(ART_SIZE.toFloat() / BLUR_SIZE, ART_SIZE.toFloat() / BLUR_SIZE) })
                 }
@@ -233,16 +237,16 @@ object WaveWidgetArt {
         return output
     }
 
-    /** Three separable box passes approximate a soft Gaussian at a small fixed resolution. */
+    /** A light frost softens the cover without losing its faces, lettering or detail. */
     private fun blur(bitmap: Bitmap) {
         val width = bitmap.width
         val height = bitmap.height
         val pixels = IntArray(width * height)
         val scratch = IntArray(pixels.size)
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-        repeat(3) {
-            boxBlur(pixels, scratch, width, height, horizontal = true, radius = 4)
-            boxBlur(scratch, pixels, width, height, horizontal = false, radius = 4)
+        repeat(2) {
+            boxBlur(pixels, scratch, width, height, horizontal = true, radius = 1)
+            boxBlur(scratch, pixels, width, height, horizontal = false, radius = 1)
         }
         bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
     }
