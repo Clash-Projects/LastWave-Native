@@ -127,4 +127,84 @@ class WaveWidgetStateTest {
         assertThat(playing.progressAt(100_000)).isEqualTo(1f)
         assertThat(paused.progressAt(25_000)).isWithin(0.0001f).of(1f / 3f)
     }
+
+    @Test
+    fun recordedHistory_fillsFourSlotsFromEarlierSessionsInRealPlaybackOrder() {
+        val current = PlayableTrack("Current", "Artist", videoId = "current")
+        val state = WaveWidgetState.fromPlayer(MusicPlayerState(current = current), isLiked = false)
+        val recorded = listOf("current", "latest", "second", "third", "fourth").map {
+            WaveQueueTrack("video:$it", -1, if (it == "current") "Current" else it, "Artist", videoId = it)
+        }
+
+        val hydrated = state.withRecordedHistory(recorded)
+
+        assertThat(hydrated.recentTracks.map { it.videoId })
+            .containsExactly("current", "latest", "second", "third").inOrder()
+    }
+
+    @Test
+    fun recordedHistory_prefersDatabaseOrderAndRetainsDurableLocalPlaybackMetadata() {
+        val local = WaveQueueTrack("media:123", -1, "Local", "Artist", playbackUri = "content://audio/123")
+        val stale = WaveQueueTrack("video:stale", -1, "Stale", "Artist", videoId = "stale")
+        val state = WaveWidgetState(recentTracks = listOf(stale, local))
+        val latest = WaveQueueTrack("video:latest", -1, "Latest", "Artist", videoId = "latest")
+        val recordedLocal = WaveQueueTrack("song:local|artist", -1, "Local", "Artist")
+
+        val hydrated = state.withRecordedHistory(listOf(latest, recordedLocal))
+
+        assertThat(hydrated.recentTracks.map { it.title })
+            .containsExactly("Latest", "Local", "Stale").inOrder()
+        assertThat(hydrated.recentTracks[1].trackId).isEqualTo("media:123")
+        assertThat(hydrated.recentTracks[1].playbackUri).isEqualTo("content://audio/123")
+    }
+
+    @Test
+    fun recordedHistory_mergesMissingVideoIdentityButPreservesDistinctKnownVersions() {
+        val unknown = WaveQueueTrack("internal:known", -1, " Song ", "Artist")
+        val recorded = listOf(
+            WaveQueueTrack("video:one", -1, "Song", "Artist", videoId = "one"),
+            WaveQueueTrack("video:two", -1, "Song", "Artist", videoId = "two"),
+        )
+        val hydrated = WaveWidgetState(recentTracks = listOf(unknown))
+            .withRecordedHistory(recorded, includeCurrent = false)
+
+        assertThat(hydrated.recentTracks.map { it.videoId }).containsExactly("one", "two").inOrder()
+        assertThat(hydrated.recentTracks.first().trackId).isEqualTo("internal:known")
+        assertThat(hydrated.recentTracks[1].trackId).isEqualTo("video:two")
+    }
+
+    @Test
+    fun recordedHistory_usesDatabaseOrderWhenDurableCurrentSnapshotIsInactive() {
+        val old = PlayableTrack("Old current", "Artist", videoId = "old")
+        val state = WaveWidgetState.fromPlayer(MusicPlayerState(current = old), isLiked = false)
+        val recorded = (1..4).map {
+            WaveQueueTrack("video:$it", -1, "Track $it", "Artist", videoId = "$it")
+        }
+
+        val hydrated = state.withRecordedHistory(recorded, includeCurrent = false)
+
+        assertThat(hydrated.recentTracks.map { it.videoId }).containsExactly("1", "2", "3", "4").inOrder()
+        assertThat(hydrated.trackId).isEqualTo("video:old")
+
+        val restored = Json.decodeFromString<WaveWidgetState>(Json.encodeToString(hydrated))
+            .withRestoredHistory()
+        assertThat(restored.recentTracks.map { it.videoId }).containsExactly("1", "2", "3", "4").inOrder()
+        assertThat(restored.recentTracks.firstOrNull { it.trackId == hydrated.recentTracks[3].trackId })
+            .isEqualTo(hydrated.recentTracks[3])
+    }
+
+    @Test
+    fun recordedHistory_enrichesLiveMissingIdentityWithoutDiscardingDifferentKnownVersions() {
+        val current = PlayableTrack("Song", "Artist", internalTrackId = "current")
+        val state = WaveWidgetState.fromPlayer(MusicPlayerState(current = current), isLiked = false)
+        val recorded = listOf("one", "two").map {
+            WaveQueueTrack("video:$it", -1, "Song", "Artist", videoId = it)
+        }
+
+        val hydrated = state.withRecordedHistory(recorded)
+
+        assertThat(hydrated.recentTracks.map { it.videoId }).containsExactly("one", "two").inOrder()
+        assertThat(hydrated.recentTracks.map { it.trackId })
+            .containsExactly("internal:current", "video:two").inOrder()
+    }
 }
