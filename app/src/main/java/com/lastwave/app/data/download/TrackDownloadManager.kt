@@ -160,9 +160,9 @@ class TrackDownloadManager @Inject constructor(
         const val EXTRA_DOWNLOAD_TITLE = "download_title"
         const val EXTRA_DOWNLOAD_ARTIST = "download_artist"
         const val EXTRA_NAVIGATE_TO = "navigate_to"
-        private const val PUBLIC_DIR_NAME = "LastWave"
+        private const val PUBLIC_DIR_NAME = "SoundDrop"
         /** Legacy default kept for reading files downloaded before a custom folder was chosen. */
-        private const val LEGACY_PUBLIC_DIR_NAME = "LastWave"
+        private const val LEGACY_PUBLIC_DIR_NAME = "SoundDrop"
         // 128 KB keeps per-connection buffers out of the large-object heap:
         // 512 KB chunks fragmented ART heaps on low-RAM devices and a burst
         // of parallel ranges could OOM the process after a few downloads.
