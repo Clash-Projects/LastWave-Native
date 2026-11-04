@@ -422,6 +422,12 @@ fun PlaylistDetailScreen(
             "$base#$n"
         }
     }
+    // "Play" starts the first displayed row (sort/filter applied): warm the
+    // opening rows while the user looks. Local files are skipped downstream.
+    val openingKeys = displayKeys.take(6)
+    LaunchedEffect(openingKeys) {
+        musicPlayer.warmLikelyPlays(displayTracks.take(6).map(GeneratedTrack::toPlayableTrack))
+    }
     LaunchedEffect(playlist.tracks.size, displayTracks.size) {
         if (draggingIndex < 0 || draggingIndex >= displayTracks.size) {
             cancelEdgeScroll()

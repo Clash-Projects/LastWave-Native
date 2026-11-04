@@ -22,6 +22,7 @@ import javax.inject.Singleton
 private const val TAG = "SyncedVideoRepo"
 private const val CACHE_EXPIRY_MS = 3 * 60 * 60 * 1000L // 3 hours
 internal const val MIN_VIDEO_CANDIDATE_SCORE = 60
+private const val MAX_VIDEO_DURATION_DRIFT_SEC = 90
 private val UNRELATED_UPLOAD_WORDS = setOf(
     "bgmi", "pubg", "freefire", "gameplay", "gaming", "montage", "fortnite", "minecraft", "valorant",
     "gta", "amv", "fmv", "edit", "edits", "status", "tiktok", "reels",
@@ -53,6 +54,13 @@ internal fun scoreVideoCandidate(
 
     // Songs get used as background for these. Naming the song in the title
     // doesn't make the upload its video.
+    // A different take (live, remix, cover, sped up…) is another recording,
+    // not this song's video, in either direction.
+    if (!TextMatch.isSameTake(candidateTitle, wantedTitle, wantedArtist, candidateArtist)) return null
+    // Visual intros/outros stretch a video, but not by minutes: past this it
+    // is a loop, a compilation or a different song.
+    if (TextMatch.isSevereDurationMismatch(expectedDurationMs, candidateDurationSec, MAX_VIDEO_DURATION_DRIFT_SEC)) return null
+
     val wantedWordsForUploads = TextMatch.normalize(wantedTitle).split(' ').toSet()
     if (UNRELATED_UPLOAD_WORDS.any { it in words && it !in wantedWordsForUploads } || "free fire" in title) return null
 

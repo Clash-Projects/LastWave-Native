@@ -232,8 +232,17 @@ fun HostActionButton(
     onGrant: (String) -> Unit,
     onRevoke: (String) -> Unit,
     modifier: Modifier = Modifier,
+    isRadio: Boolean = false,
+    onMakeAdmin: (String) -> Unit = {},
 ) {
     if (!isMainHost || participant.userId == myUserId) return
+    if (isRadio) {
+        // Live stations have one admin and no co-hosts.
+        TextButton(onClick = { onMakeAdmin(participant.userId) }, modifier = modifier) {
+            Text("Make admin", fontSize = 12.sp, color = accent, fontWeight = FontWeight.Bold)
+        }
+        return
+    }
     when {
         participant.isCoHost -> TextButton(onClick = { onRevoke(participant.userId) }, modifier = modifier) {
             Text("Remove host", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
@@ -245,7 +254,8 @@ fun HostActionButton(
 }
 
 /** Label for a participant's role badge. */
-fun roleBadge(p: ParticipantPayload): String = if (p.isCoHost) "CO-HOST" else "HOST"
+fun roleBadge(p: ParticipantPayload, isRadio: Boolean = false): String =
+    if (isRadio) "ADMIN" else if (p.isCoHost) "CO-HOST" else "HOST"
 
 /** Read-only view of the admin's upcoming queue. */
 @Composable

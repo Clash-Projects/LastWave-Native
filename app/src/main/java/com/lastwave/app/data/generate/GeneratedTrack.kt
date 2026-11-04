@@ -45,10 +45,39 @@ data class GeneratedTrack(
     val key: String get() = "${name.normalizeTrackText()}|${artist.normalizeTrackText()}".lowercase()
 }
 
-/** Trims and collapses inner whitespace so equivalent titles compare equal. */
-fun String.normalizeTrackText(): String = trim().replace(WHITESPACE_RUN, " ")
+/**
+ * Trims and collapses inner whitespace so equivalent titles compare equal.
+ * Same result as `trim().replace(Regex("\\s+"), " ")`, without a regex
+ * matcher per call: this runs for every row of every playlist comparison.
+ */
+fun String.normalizeTrackText(): String {
+    val trimmed = trim()
+    var needsWork = false
+    for (i in trimmed.indices) {
+        val c = trimmed[i]
+        if (c.isRegexWhitespace() && (c != ' ' || (i + 1 < trimmed.length && trimmed[i + 1].isRegexWhitespace()))) {
+            needsWork = true
+            break
+        }
+    }
+    if (!needsWork) return trimmed
+    val out = StringBuilder(trimmed.length)
+    var inRun = false
+    for (c in trimmed) {
+        if (c.isRegexWhitespace()) {
+            if (!inRun) out.append(' ')
+            inRun = true
+        } else {
+            out.append(c)
+            inRun = false
+        }
+    }
+    return out.toString()
+}
 
-private val WHITESPACE_RUN = Regex("\\s+")
+/** The characters Java regex `\s` matches: space, tab, LF, VT, FF, CR. */
+private fun Char.isRegexWhitespace(): Boolean =
+    this == ' ' || this == '\t' || this == '\n' || this == '\u000B' || this == '\u000C' || this == '\r'
 
 /**
  * Strong song identity: same YouTube videoId wins outright (covers equal
@@ -66,14 +95,48 @@ fun GeneratedTrack.sameSongAs(other: GeneratedTrack): Boolean {
         artist.trim().equals(other.artist.trim(), ignoreCase = true)
 }
 
-/** Keeps the first occurrence of each song, dropping later duplicates. */
+/**
+ * Keeps the first occurrence of each song, dropping later duplicates.
+ *
+ * A track is dropped when it is [sameSongAs] any track already kept. That
+ * relation is three exact-match tests (videoId, normalized key, trimmed
+ * case-insensitive name+artist), so each is a hash lookup here: O(n)
+ * instead of comparing every pair, which took seconds on a few thousand
+ * liked songs.
+ */
 fun List<GeneratedTrack>.distinctSongs(): List<GeneratedTrack> {
     if (size < 2) return this
     val out = ArrayList<GeneratedTrack>(size)
+    val videoIds = HashSet<String>(size * 2)
+    val keys = HashSet<String>(size * 2)
+    val namePairs = HashSet<Pair<String, String>>(size * 2)
     for (track in this) {
-        if (out.none { it.sameSongAs(track) }) out.add(track)
+        val videoId = track.youtubeVideoIdOrNull()
+        if (videoId != null && videoId in videoIds) continue
+        // sameSongAs never matches two blank-named tracks past the videoId test.
+        val named = track.name.isNotBlank()
+        val namePair = track.name.trim().foldCase() to track.artist.trim().foldCase()
+        val key = track.key // read once: key normalizes both fields on every access
+        if (named && (key in keys || namePair in namePairs)) continue
+        out.add(track)
+        videoId?.let(videoIds::add)
+        if (named) {
+            keys.add(key)
+            namePairs.add(namePair)
+        }
     }
     return out
+}
+
+/**
+ * Two strings fold to the same value exactly when `equals(ignoreCase = true)`
+ * holds: it compares per character after toUpperCase, then toLowerCase of
+ * that. Plain lowercase() differs for e.g. Turkish dotted I and Greek sigma.
+ */
+private fun String.foldCase(): String {
+    val out = CharArray(length)
+    for (i in indices) out[i] = Character.toLowerCase(Character.toUpperCase(this[i]))
+    return String(out)
 }
 
 /**

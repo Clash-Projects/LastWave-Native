@@ -358,20 +358,13 @@ fun FeedScreen(
             )
 
             // Pinned YTM chip row under the app bar — stays visible while the
-            // feed scrolls beneath it. Rendered only when chips exist; bottom
-            // base corners are rounded as requested.
+            // feed scrolls beneath it. Rendered only when chips exist.
             if (state.homeChips.isNotEmpty()) {
-                Surface(
-                    shape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.fillMaxWidth().zIndex(1f),
-                ) {
-                    PinnedChipsBar(
-                        chips = state.homeChips,
-                        selectedChip = state.selectedChip,
-                        onChipClick = viewModel::onHomeChipSelected,
-                    )
-                }
+                PinnedChipsBar(
+                    chips = state.homeChips,
+                    selectedChip = state.selectedChip,
+                    onChipClick = viewModel::onHomeChipSelected,
+                )
             }
 
             PullToRefreshBox(
@@ -541,11 +534,27 @@ fun FeedScreen(
                     }
                 }
 
-                val nativeShelvesByNormalizedTitle = remember(remainingNativeShelves) {
-                    remainingNativeShelves.associateBy { it.title.trim().lowercase() }
-                }
                 val remainingShelfKeys = remember(remainingNativeShelves) {
                     remainingNativeShelves.map { "yt:${it.title}" }
+                }
+                // Maps a "yt:<title>" section key to its shelf. Blank titles are skipped,
+                // otherwise the contains() match below would match everything.
+                val resolveNativeShelf: (String) -> HomeShelf? = remember(remainingNativeShelves) {
+                    val normalized = remainingNativeShelves
+                        .map { it.title.trim().lowercase() to it }
+                        .filter { (title, _) -> title.isNotEmpty() }
+                    val byTitle = normalized.toMap()
+                    val resolver: (String) -> HomeShelf? = { sectionKey ->
+                        val target = sectionKey.removePrefix("yt:").trim().lowercase()
+                        if (target.isEmpty()) {
+                            null
+                        } else {
+                            byTitle[target] ?: normalized.firstOrNull { (title, _) ->
+                                title.contains(target) || target.contains(title)
+                            }?.second
+                        }
+                    }
+                    resolver
                 }
 
                 val quickTiles = remember(state.feedData.quickTiles, state.feedData.isYtConnected) {
@@ -585,30 +594,32 @@ fun FeedScreen(
                         key == "new_releases" -> showSynthetic && combinedNewReleases.isNotEmpty()
                         key == "friends_activity" || key == "friends" -> state.feedData.friends.isNotEmpty()
                         key == "podcast_shelf" || key == "podcasts" -> showSynthetic && podcastsEnabled && state.feedData.podcastShows.isNotEmpty()
-                        key.startsWith("yt:") -> {
-                            val title = key.removePrefix("yt:").trim().lowercase()
-                            nativeShelvesByNormalizedTitle.containsKey(title) ||
-                                remainingNativeShelves.any { it.title.trim().lowercase().contains(title) || title.contains(it.title.trim().lowercase()) }
-                        }
+                        key.startsWith("yt:") -> resolveNativeShelf(key) != null
                         else -> false
                     }
                 }
 
-                val orderedFeedSections = remember(
+                val (orderedFeedSections, ytShelfBySectionKey) = remember(
                     showSynthetic, allHiddenIds, pinnedHomeSections, homeSectionsOrder,
                     quickTiles, podcastsEnabled, state.feedData.podcastShows, displayTags,
                     combinedQuickPicks, discoveryTracks, state.feedData.becauseYouListenTo,
                     state.feedData.freshFinds, state.feedData.jumpBackIn, state.feedData.mixes,
                     individualTopArtists, state.feedData.heavyRotation, state.feedData.recentAlbums,
                     state.feedData.charts, combinedNewReleases, state.feedData.friends,
-                    remainingNativeShelves, state.feedData.spotlight
+                    remainingNativeShelves, resolveNativeShelf, state.feedData.spotlight
                 ) {
-                    if (state.isChipActive) return@remember emptyList()
+                    if (state.isChipActive) return@remember emptyList<String>() to emptyMap<String, HomeShelf>()
+
+                    // cache so each yt: key is resolved once
+                    val ytResolved = HashMap<String, HomeShelf?>()
+                    fun ytShelf(key: String): HomeShelf? =
+                        if (key in ytResolved) ytResolved[key] else resolveNativeShelf(key).also { ytResolved[key] = it }
 
                     val allCandidateKeys = (DEFAULT_SECTION_ORDER + homeSectionsOrder + remainingShelfKeys).distinct()
                     val activeKeys = allCandidateKeys.filter { key ->
                         key != "hero_greeting" && key != "infinite_radio" && key != "quick_tiles" &&
-                            !isSectionIdHidden(key) && isSectionAvailable(key)
+                            !isSectionIdHidden(key) &&
+                            (if (key.startsWith("yt:")) ytShelf(key) != null else isSectionAvailable(key))
                     }
                     val baseOrder = if (homeSectionsOrder.isNotEmpty()) homeSectionsOrder else DEFAULT_SECTION_ORDER
                     val sorted = activeKeys.sortedWith(compareBy { key ->
@@ -623,7 +634,26 @@ fun FeedScreen(
                         }
                     })
                     val (pinned, unpinned) = sorted.partition { it in pinnedHomeSections }
-                    (pinned + unpinned).filter { it != "hero_greeting" && it != "infinite_radio" && it != "quick_tiles" }
+                    val ordered = pinned + unpinned
+
+                    // Two keys can point at the same shelf (old saved key vs live title,
+                    // different case, fuzzy match). Keep one per shelf, exact title first.
+                    // Rendering the same shelf twice crashed the LazyColumn (duplicate key).
+                    fun isExactKey(key: String, shelf: HomeShelf) =
+                        key.removePrefix("yt:").trim().lowercase() == shelf.title.trim().lowercase()
+                    val winnerByShelf = HashMap<String, String>()
+                    for (key in ordered) {
+                        if (!key.startsWith("yt:")) continue
+                        val shelf = ytShelf(key) ?: continue
+                        val shelfId = shelf.title.trim().lowercase()
+                        val current = winnerByShelf[shelfId]
+                        if (current == null || (isExactKey(key, shelf) && !isExactKey(current, shelf))) {
+                            winnerByShelf[shelfId] = key
+                        }
+                    }
+                    val winners = winnerByShelf.values.toHashSet()
+                    val sections = ordered.filter { key -> !key.startsWith("yt:") || key in winners }
+                    sections to winners.associateWith { key -> ytShelf(key)!! }
                 }
 
                 val visiblePagedShelfKeys = remember(state.pagedShelves, allHiddenIds, ytHidden) {
@@ -1323,15 +1353,10 @@ fun FeedScreen(
                                     }
                                 }
                                 sectionKey.startsWith("yt:") -> {
-                                    val rawTarget = sectionKey.removePrefix("yt:").trim().lowercase()
-                                    val shelf = nativeShelvesByNormalizedTitle[rawTarget]
-                                        ?: remainingNativeShelves.firstOrNull {
-                                            it.title.trim().lowercase() == rawTarget ||
-                                            it.title.trim().lowercase().contains(rawTarget) ||
-                                            rawTarget.contains(it.title.trim().lowercase())
-                                        }
+                                    val shelf = ytShelfBySectionKey[sectionKey]
                                     if (shelf != null && shelf.items.isNotEmpty()) {
-                                        item(key = "yt_shelf_${shelf.title}") {
+                                        // unique, orderedFeedSections has one key per shelf
+                                        item(key = "yt_shelf_${shelf.title.trim().lowercase()}") {
                                             HomeContainerSection(
                                                 shape = getContainerShape(sectionKey),
                                             ) {

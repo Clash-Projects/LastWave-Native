@@ -5,7 +5,11 @@ import android.util.Log
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
+import java.security.KeyStore
 import java.util.UUID
+import javax.net.ssl.TrustManager
+import javax.net.ssl.TrustManagerFactory
+import javax.net.ssl.X509TrustManager
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.CoroutineContext
@@ -111,7 +115,7 @@ class InnerTubeXStreamExtractor @Inject constructor(
         } catch (error: kotlinx.coroutines.CancellationException) {
             throw error
         } catch (error: Exception) {
-            Log.w(TAG, "stage=cipher-context error=${error.javaClass.simpleName}")
+            Log.w(TAG, "stage=cipher-context error=${error.javaClass.simpleName} cause=${error.cause?.javaClass?.simpleName}")
             null
         }
     }
@@ -262,6 +266,9 @@ class InnerTubeXStreamExtractor @Inject constructor(
     }
 
     private fun createKtorHttpClient(): Any {
+        runCatching { createCioHttpClient() }
+            .onSuccess { return it }
+            .onFailure { Log.w(TAG, "CIO client with system trust unavailable (${it.javaClass.simpleName})") }
         val candidates = listOf("io.ktor.client.HttpClientJvmKt", "io.ktor.client.HttpClientKt")
         for (className in candidates) {
             val method = runCatching {
@@ -278,6 +285,40 @@ class InnerTubeXStreamExtractor @Inject constructor(
             }
         }
         error("Ktor JVM HttpClient factory was not found")
+    }
+
+    /**
+     * CIO's TLS verifies the chain with the hostname-less checkServerTrusted and then
+     * checks the hostname itself. Android's default trust manager rejects that call
+     * whenever network_security_config has a <domain-config> (our loopback cleartext
+     * entry), which failed every InnerTubeX request with CertificateException. A trust
+     * manager built from an explicit system CA KeyStore has no per-domain config, so
+     * the chain check is accepted. (The Android engine is not an option: it closes
+     * HttpURLConnection streams from a cancel handler and crashes the process.)
+     */
+    private fun createCioHttpClient(): Any {
+        val systemCas = KeyStore.getInstance("AndroidCAStore").apply { load(null) }
+        val trustManager = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+            .apply { init(systemCas) }
+            .trustManagers
+            .filterIsInstance<X509TrustManager>()
+            .first()
+        val cio = Class.forName("io.ktor.client.engine.cio.CIO").getField("INSTANCE").get(null)
+        val factory = Class.forName("io.ktor.client.HttpClientKt").methods.first {
+            it.name == "HttpClient" && it.parameterCount == 2 &&
+                it.parameterTypes[0].name == "io.ktor.client.engine.HttpClientEngineFactory"
+        }
+        val configureClient = { clientConfig: Any? ->
+            val engine = clientConfig!!.javaClass.methods.first { it.name == "engine" && it.parameterCount == 1 }
+            val configureEngine = { engineConfig: Any? ->
+                val https = engineConfig!!.javaClass.getMethod("getHttps").invoke(engineConfig)
+                https.javaClass.getMethod("setTrustManager", TrustManager::class.java).invoke(https, trustManager)
+                Unit
+            }
+            engine.invoke(clientConfig, configureEngine)
+            Unit
+        }
+        return factory.invoke(null, cio, configureClient)!!
     }
 
     private suspend fun invokeSuspend(

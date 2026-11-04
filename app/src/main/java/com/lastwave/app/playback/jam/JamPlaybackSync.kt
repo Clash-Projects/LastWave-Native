@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -49,6 +50,12 @@ class JamPlaybackSync @Inject constructor(
     private var lastBroadcastIsPlaying: Boolean? = null
     private var lastBroadcastPositionMs = 0L
     private var loadingTrackId: String? = null
+
+    // Live position of a 24/7 station, used to snap listeners back.
+    private var liveTrack: TrackInfoPayload? = null
+    private var livePosMs = 0L
+    private var liveAtMs = 0L
+    private var livePlaying = false
 
     init {
         start()
@@ -98,6 +105,15 @@ class JamPlaybackSync @Inject constructor(
                 }
         }
 
+        // 1c. Live stations: keep listeners on the live position every 2 s.
+        scope.launch {
+            while (true) {
+                delay(2000L)
+                val session = jamRepository.sessionState.value as? JamSessionState.Active ?: continue
+                runCatching { enforceLive(session) }
+            }
+        }
+
         // 2. Inbound: Listen for remote playback events and apply to MusicPlayer
         scope.launch {
             jamRepository.remotePlaybackEvents.collect { event ->
@@ -107,6 +123,8 @@ class JamPlaybackSync @Inject constructor(
                 if (event.fromUserId != null && event.fromUserId == session.userId) {
                     return@collect
                 }
+
+                noteLive(event, session)
 
                 // Inbound events from other peers should never be dropped by quietUntilMs,
                 // otherwise play/seek events immediately following a track change get discarded.
@@ -188,6 +206,59 @@ class JamPlaybackSync @Inject constructor(
                         }
                     }
                 }
+        }
+    }
+
+    /** Remembers where the live station is, from every server playback event. */
+    private fun noteLive(event: RemotePlaybackEvent, session: JamSessionState.Active) {
+        val now = System.currentTimeMillis()
+        fun latency(serverTimeMs: Long): Long =
+            if (serverTimeMs > 0 && now > serverTimeMs) (now - serverTimeMs).coerceAtMost(MAX_LATENCY_COMPENSATION_MS) else 0L
+        when (event) {
+            is RemotePlaybackEvent.ChangeTrack -> {
+                liveTrack = event.track; livePosMs = event.positionMs; livePlaying = event.isPlaying
+            }
+            is RemotePlaybackEvent.FullSync -> {
+                liveTrack = event.playback.currentTrack
+                livePosMs = event.playback.positionMs + latency(event.playback.serverTimeMs)
+                livePlaying = event.playback.isPlaying
+            }
+            is RemotePlaybackEvent.Play -> {
+                if (liveTrack == null) liveTrack = session.currentTrack
+                livePosMs = event.positionMs + latency(event.serverTimeMs); livePlaying = true
+            }
+            is RemotePlaybackEvent.Pause -> { livePosMs = event.positionMs; livePlaying = false }
+            is RemotePlaybackEvent.Seek -> { livePosMs = event.positionMs }
+        }
+        liveAtMs = SystemClock.elapsedRealtime()
+    }
+
+    /**
+     * Live-station listeners can't pause, seek or change the song from anywhere
+     * (notification, mini player, headset): whatever the local player does on
+     * its own is undone and it rejoins the live position.
+     */
+    private fun enforceLive(session: JamSessionState.Active) {
+        if (!session.radio || session.isHost) return
+        val live = liveTrack ?: return
+        val nowElapsed = SystemClock.elapsedRealtime()
+        if (nowElapsed < quietUntilMs) return
+        val expected = livePosMs + if (livePlaying) nowElapsed - liveAtMs else 0L
+        val st = musicPlayer.state.value
+        if (!isSameTrack(st.current, live)) {
+            applyTrackChange(live, expected, livePlaying)
+            return
+        }
+        if (livePlaying && !st.isPlaying && !st.isBuffering) {
+            quietUntilMs = nowElapsed + 800L
+            musicPlayer.resume()
+        } else if (!livePlaying && st.isPlaying) {
+            quietUntilMs = nowElapsed + 800L
+            musicPlayer.pause()
+        }
+        if (abs(musicPlayer.progressState.value.positionMs - expected) > 4000L) {
+            quietUntilMs = nowElapsed + 800L
+            musicPlayer.seekTo(expected)
         }
     }
 

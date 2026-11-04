@@ -4076,7 +4076,9 @@ class InnerTubeMusicApi @Inject constructor(
         expectedDurationMs: Long? = null,
     ): YouTubeMusicTrack {
         val cleanArtist = artist.takeUnless { it.equals("Unknown artist", ignoreCase = true) }.orEmpty()
-        val cacheKey = "${normalize(cleanArtist)}|${normalize(title)}"
+        // Same title and artist can be different recordings (album vs single
+        // edit); keep the runtime in the key so one never answers for the other.
+        val cacheKey = "${normalize(cleanArtist)}|${normalize(title)}|${expectedDurationMs?.div(1000L) ?: ""}"
         matchCache[cacheKey]?.takeIf { it.videoId != excludedVideoId && it.videoId !in excludedVideoIds }?.let { return it }
         val searchTitle = baseTitle(title).trim().ifBlank { title.trim() }
         val query = listOf(searchTitle, cleanArtist).filter { it.isNotBlank() }.joinToString(" ")
@@ -4089,6 +4091,12 @@ class InnerTubeMusicApi @Inject constructor(
             it.videoId.isNotBlank() && it.videoId != excludedVideoId && it.videoId !in excludedVideoIds
         }
         val isCandidateMatch: (YouTubeMusicTrack) -> Boolean = { candidate ->
+            // Hard vetoes first: a different take (live/remix/cover/sped up…)
+            // or a runtime far from the catalog's is never the same recording,
+            // however well the rest of the title reads. Scoring only demoted
+            // these, so they still played whenever no clean upload ranked.
+            TextMatch.isSameTake(candidate.title, title, cleanArtist, candidate.artist) &&
+                !TextMatch.isSevereDurationMismatch(expectedDurationMs, candidate.durationSeconds) &&
             (maxOf(
                 similarity(candidate.title, title),
                 similarity(baseTitle(candidate.title), baseTitle(title)),
