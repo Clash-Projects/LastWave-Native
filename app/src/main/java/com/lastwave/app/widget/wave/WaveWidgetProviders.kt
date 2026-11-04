@@ -13,7 +13,6 @@ data class WaveWidgetProviderEntry(
 object WaveWidgetProviders {
     val entries: List<WaveWidgetProviderEntry> = listOf(
         WaveWidgetProviderEntry(WaveWidgetKind.STRIP, WaveStripWidgetProvider::class.java),
-        WaveWidgetProviderEntry(WaveWidgetKind.STRIP, WaveStripCompactWidgetProvider::class.java),
         WaveWidgetProviderEntry(WaveWidgetKind.GLASS, WaveGlassWidgetProvider::class.java),
         WaveWidgetProviderEntry(WaveWidgetKind.CIRCULAR, WaveCircularWidgetProvider::class.java),
         WaveWidgetProviderEntry(WaveWidgetKind.LIBRARY, WaveLibraryWidgetProvider::class.java),

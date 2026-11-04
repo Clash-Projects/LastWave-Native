@@ -254,7 +254,7 @@
             </intent-filter>
         </receiver>
 
-        <!-- Four widget designs; the strip has two fixed size entries. -->
+        <!-- Four widget designs; strip and library resize horizontally. -->
         <receiver
             android:name=".widget.wave.WaveStripWidgetProvider"
             android:exported="false"
@@ -265,18 +265,6 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/wave_strip_widget_info" />
-        </receiver>
-
-        <receiver
-            android:name=".widget.wave.WaveStripCompactWidgetProvider"
-            android:exported="false"
-            android:label="@string/wave_widget_strip_compact_name">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/wave_strip_compact_widget_info" />
         </receiver>
 
         <receiver

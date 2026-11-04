@@ -11,5 +11,5 @@ enum class WaveWidgetKind(
     STRIP(R.layout.widget_wave_strip, 4, 1),
     GLASS(R.layout.widget_wave_glass, 2, 2),
     CIRCULAR(R.layout.widget_wave_circular, 2, 2),
-    LIBRARY(R.layout.widget_wave_library, 4, 3),
+    LIBRARY(R.layout.widget_wave_library, 4, 2),
 }

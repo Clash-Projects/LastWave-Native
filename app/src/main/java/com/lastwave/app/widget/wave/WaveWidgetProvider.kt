@@ -64,7 +64,6 @@ abstract class WaveWidgetProvider : AppWidgetProvider() {
 }
 
 class WaveStripWidgetProvider : WaveWidgetProvider()
-class WaveStripCompactWidgetProvider : WaveWidgetProvider()
 class WaveGlassWidgetProvider : WaveWidgetProvider()
 class WaveCircularWidgetProvider : WaveWidgetProvider()
 class WaveLibraryWidgetProvider : WaveWidgetProvider()
