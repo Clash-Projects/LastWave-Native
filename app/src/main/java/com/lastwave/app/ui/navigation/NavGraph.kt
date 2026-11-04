@@ -46,7 +46,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.stateIn
 
-/** Thin bridge so LastWaveNavHost (a plain composable, no direct Hilt
+/** Thin bridge so SoundDropNavHost (a plain composable, no direct Hilt
  *  singleton access) can observe GenreExplorer's pending genre and
  *  navigate — same reasoning as MainShellViewModel's bridge to
  *  MixLauncher. */
@@ -767,7 +767,7 @@ private fun LaunchGate() {
                 )
             }
             Spacer(Modifier.height(18.dp))
-            Text("LastWave", style = MaterialTheme.typography.headlineSmall)
+            Text("SoundDrop", style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(20.dp))
             ExpressiveLoadingIndicator(message = "Preparing your music")
         }
