@@ -365,7 +365,7 @@ fun HomeSectionsScreen(
             )
 
             Text(
-                text = "Drag the handle to reorder sections, pin favorites to top, and toggle visibility for both LastWave and YouTube Music shelves.",
+                text = "Drag the handle to reorder sections, pin favorites to top, and toggle visibility for both SoundDrop and YouTube Music shelves.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
