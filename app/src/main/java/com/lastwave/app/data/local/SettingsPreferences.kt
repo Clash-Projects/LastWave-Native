@@ -142,7 +142,7 @@ data class MiscSettings(
      *  When false (default), uses static blurred artwork background in the lyrics view. */
     val lyricsRotatingBackgroundEnabled: Boolean = false,
     /** When true, keeps the screen from turning off when the user has the lyrics view open. */
-    val keepLyricsScreenAwake: Boolean = false,
+    val keepLyricsScreenAwake: Boolean = true,
     /** Seconds of inactivity before the floating lyrics buttons (font size,
      *  fullscreen) fade out on the Lyrics screen; 0 = Never. Default 5. */
     val lyricsButtonsAutoHideSeconds: Int = 5,
@@ -196,7 +196,7 @@ data class MiscSettings(
     /** When true, portrait motion artwork is displayed edge-to-edge behind player controls. */
     val canvasFullBleed: Boolean = true,
     /** When true, canvas video loops melt into ambient background gradients with a bottom fade. */
-    val canvasGradientBlurEnabled: Boolean = false,
+    val canvasGradientBlurEnabled: Boolean = true,
     /** When true, canvas video loops may be fetched over cellular data. */
     val canvasOverCellular: Boolean = true,
     /** When true, a liked song is also marked as liked on YouTube Music. */

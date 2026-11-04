@@ -34,8 +34,8 @@ enum class ThemeMode(val storageValue: String) {
 
 data class ThemePrefs(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val accentColor: String = "#E03030",
-    val accentLight: String = "#FF6060",
+    val accentColor: String = "#8C21FF",
+    val accentLight: String = "#9581F6",
     val accentMode: AccentMode = AccentMode.MANUAL,
     val amoled: Boolean = false,
     /** iOS-style liquid-glass materials. Enabled by default. */
@@ -71,8 +71,8 @@ class ThemePreferences @Inject constructor(
         .map { p ->
             ThemePrefs(
                 themeMode = ThemeMode.fromStorage(p.readSafely(Keys.THEME_MODE)),
-                accentColor = p.readSafely(Keys.ACCENT_COLOR) ?: "#E03030",
-                accentLight = p.readSafely(Keys.ACCENT_LIGHT) ?: "#FF6060",
+                accentColor = p.readSafely(Keys.ACCENT_COLOR) ?: "#8C21FF",
+                accentLight = p.readSafely(Keys.ACCENT_LIGHT) ?: "#9581F6",
                 accentMode = AccentMode.fromStorage(p.readSafely(Keys.ACCENT_MODE)),
                 amoled = p.readSafely(Keys.AMOLED) ?: false,
                 liquidGlass = p.readSafely(Keys.LIQUID_GLASS) ?: true,
@@ -125,8 +125,8 @@ class ThemePreferences @Inject constructor(
         dataStore.edit {
             it[Keys.LASTWAVE_THEME] = enabled
             if (enabled) {
-                it[Keys.ACCENT_COLOR] = "#C9FB00"
-                it[Keys.ACCENT_LIGHT] = "#C9FB00"
+                it[Keys.ACCENT_COLOR] = "#9581F6"
+                it[Keys.ACCENT_LIGHT] = "#9581F6"
                 it[Keys.ACCENT_MODE] = AccentMode.MANUAL.storageValue
             }
         }

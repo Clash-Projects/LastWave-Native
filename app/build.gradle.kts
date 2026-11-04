@@ -57,7 +57,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.lastwave.app"
+        applicationId = "com.sounddrop.music"
         minSdk = (project.findProperty("minSdk") as? String)?.toIntOrNull() ?: 29
         targetSdk = 35
         versionCode = 27
