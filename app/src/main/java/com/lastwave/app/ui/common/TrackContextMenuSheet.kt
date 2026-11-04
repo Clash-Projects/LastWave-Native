@@ -385,7 +385,7 @@ fun TrackContextMenuSheet(
     capabilities: TrackMenuCapabilities,
     playableTrack: PlayableTrack? = null,
     onDismiss: () -> Unit,
-    playbackSourceLabel: String = "LastWave",
+    playbackSourceLabel: String = "SoundDrop",
     onPlayInLastWave: (() -> Unit)? = null,
     onStartMix: ((trackName: String, artistName: String) -> Unit)? = null,
     onExploreGenre: ((genre: String) -> Unit)? = null,
