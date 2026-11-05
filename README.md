@@ -5,11 +5,7 @@
 <br/>
 <br/>
 
-<img src="lastwave_logo.png" alt="LastWave Logo" width="120" height="120" style="border-radius: 50%;" />
-
-# LastWave
-
-**Next-Gen YouTube Music Client with Algorithmic Smart Playlist Generator, Real-Time Synced Lyrics & Universal Last.fm Scrobbler for Android.**
+**Simple Android YouTube Music client with Material UI, Liquid Glass, Bit-Perfect playback, Automix, Lossless addons & advanced audiophile features.**
 
 <p align="center">
   <a href="https://github.com/Clash-Projects/LastWave-native/stargazers">
