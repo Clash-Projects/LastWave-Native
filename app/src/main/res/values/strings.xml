@@ -1308,6 +1308,7 @@
     <string name="autoeq_custom_hint">Edited by hand. Choose the headphone again to get the AutoEQ profile back.</string>
     <string name="autoeq_choose">Choose headphones</string>
     <string name="autoeq_reset">Back to profile</string>
+    <string name="autoeq_reset_default">Reset to default</string>
     <string name="autoeq_curve_title">Frequency response</string>
     <string name="autoeq_target_title">Target</string>
     <string name="autoeq_target_hint">Other targets are applied as a difference from the lab\'s Harman-style target, then refitted.</string>

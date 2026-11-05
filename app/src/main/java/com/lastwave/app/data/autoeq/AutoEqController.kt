@@ -181,8 +181,29 @@ class AutoEqController @Inject constructor(
         store.edit { it[KEY_ENABLED] = true }
     }
 
+    /** Clears the active correction and its current-device association. */
     suspend fun clearProfile() {
-        writeState(AutoEqState())
+        val deviceKey = currentDevice.value?.key
+        val prefs = store.edit {
+            it[KEY_STATE] = json.encodeToString(AutoEqState.serializer(), AutoEqState())
+            it[KEY_ENABLED] = false
+            if (deviceKey != null) {
+                val profiles = it[KEY_DEVICES]?.let { raw ->
+                    runCatching { json.decodeFromString(deviceMapSerializer, raw) }.getOrNull()
+                }.orEmpty()
+                it[KEY_DEVICES] = json.encodeToString(deviceMapSerializer, profiles - deviceKey)
+                val labelSerializer = MapSerializer(String.serializer(), String.serializer())
+                val labels = it[KEY_DEVICE_LABELS]?.let { raw ->
+                    runCatching { json.decodeFromString(labelSerializer, raw) }.getOrNull()
+                }.orEmpty()
+                it[KEY_DEVICE_LABELS] = json.encodeToString(labelSerializer, labels - deviceKey)
+            }
+        }
+        if (deviceKey != null) {
+            deviceLabels.value = prefs[KEY_DEVICE_LABELS]?.let { raw ->
+                runCatching { json.decodeFromString(MapSerializer(String.serializer(), String.serializer()), raw) }.getOrNull()
+            }.orEmpty()
+        }
     }
 
     suspend fun measurement(entry: AutoEqEntry): AutoEqMeasurement? = runCatching { catalog.measurement(entry) }.getOrNull()
@@ -266,10 +287,15 @@ class AutoEqController @Inject constructor(
         _currentDevice.value = device
         if (device == null || device.key == previous?.key) return
         scope.launch {
-            if (!autoPerDevice.value) return@launch
-            val saved = deviceProfiles.value[device.key] ?: return@launch
-            Log.i(TAG, "Output ${device.label}: applying its AutoEQ profile")
-            writeState(saved)
+            store.edit { prefs ->
+                if (prefs[KEY_AUTO_DEVICE] == false || currentDevice.value?.key != device.key) return@edit
+                val profiles = prefs[KEY_DEVICES]?.let { raw ->
+                    runCatching { json.decodeFromString(deviceMapSerializer, raw) }.getOrNull()
+                }.orEmpty()
+                val saved = profiles[device.key] ?: return@edit
+                Log.i(TAG, "Output ${device.label}: applying its AutoEQ profile")
+                prefs[KEY_STATE] = json.encodeToString(AutoEqState.serializer(), saved)
+            }
         }
     }
 
