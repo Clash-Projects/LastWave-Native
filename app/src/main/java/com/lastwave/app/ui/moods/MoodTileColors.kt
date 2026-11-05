@@ -1,11 +1,13 @@
 package com.lastwave.app.ui.moods
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 
 internal data class MoodTileColors(
     val accent: Color,
     val surfaceTop: Color,
     val surfaceBottom: Color,
+    val content: Color = Color.White,
 )
 
 /** Keeps YTM's colour identity; neutral categories receive a stable colour of their own. */
@@ -31,5 +33,17 @@ internal fun moodTileColors(argb: Long, key: String): MoodTileColors {
         accent = Color.hsv(hue, 0.64f, 0.96f),
         surfaceTop = Color.hsv(hue, toneSaturation, 0.43f),
         surfaceBottom = Color.hsv((hue + 8f) % 360f, toneSaturation, 0.23f),
+    )
+}
+
+/** Soft, translucent home tiles keep the category hue without the saturated dark fill. */
+internal fun homeMoodTileColors(argb: Long, key: String): MoodTileColors {
+    val accent = moodTileColors(argb, key).accent
+    val warmWhite = Color(0xFFFAF8F4)
+    return MoodTileColors(
+        accent = lerp(warmWhite, accent, 0.56f),
+        surfaceTop = lerp(warmWhite, accent, 0.14f).copy(alpha = 0.86f),
+        surfaceBottom = lerp(warmWhite, accent, 0.24f).copy(alpha = 0.84f),
+        content = Color(0xFF242832),
     )
 }

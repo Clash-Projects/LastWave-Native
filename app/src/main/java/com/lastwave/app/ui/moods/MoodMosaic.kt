@@ -48,6 +48,7 @@ fun MoodMosaic(
     onTileClick: (MoodTile) -> Unit,
     modifier: Modifier = Modifier,
     wrapVertically: Boolean = false,
+    pastelGlass: Boolean = false,
 ) {
     if (tiles.isEmpty()) return
     val density = LocalDensity.current
@@ -85,7 +86,7 @@ fun MoodMosaic(
             val pattern = remember(tiles.size, availableWidthDp, cellHeight) {
                 moodMosaicVerticalPattern(tiles.size, availableWidthDp, cellHeight)
             }
-            MoodMosaicTiles(tiles, tileKeys, pattern, labelStyle, onTileClick, Modifier.fillMaxWidth())
+            MoodMosaicTiles(tiles, tileKeys, pattern, labelStyle, onTileClick, pastelGlass, Modifier.fillMaxWidth())
         }
     } else {
         val pattern = remember(tiles.size, minimumCellSize) {
@@ -95,7 +96,7 @@ fun MoodMosaic(
             modifier = modifier.horizontalScroll(rememberScrollState())
                 .semantics { isTraversalGroup = true }.padding(horizontal = 16.dp),
         ) {
-            MoodMosaicTiles(tiles, tileKeys, pattern, labelStyle, onTileClick)
+            MoodMosaicTiles(tiles, tileKeys, pattern, labelStyle, onTileClick, pastelGlass)
         }
     }
 }
@@ -107,6 +108,7 @@ private fun MoodMosaicTiles(
     pattern: List<MoodTilePlacement>,
     labelStyle: TextStyle,
     onTileClick: (MoodTile) -> Unit,
+    pastelGlass: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val width = pattern.maxOf { it.startDp + it.widthDp }.dp
@@ -118,6 +120,7 @@ private fun MoodMosaicTiles(
                 MoodMosaicTile(
                     tile = tile,
                     labelStyle = labelStyle,
+                    pastelGlass = pastelGlass,
                     onClick = { onTileClick(tile) },
                     modifier = Modifier
                         .offset(x = placement.startDp.dp, y = placement.topDp.dp)
@@ -134,17 +137,22 @@ private fun MoodMosaicTiles(
 private fun MoodMosaicTile(
     tile: MoodTile,
     labelStyle: TextStyle,
+    pastelGlass: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colours = remember(tile.colorArgb, tile.key) { moodTileColors(tile.colorArgb, tile.key) }
+    val colours = remember(tile.colorArgb, tile.key, pastelGlass) {
+        if (pastelGlass) homeMoodTileColors(tile.colorArgb, tile.key)
+        else moodTileColors(tile.colorArgb, tile.key)
+    }
     Surface(
         modifier = modifier.cardPressable(onClick = onClick)
             .semantics(mergeDescendants = true) { contentDescription = tile.label },
         shape = RoundedCornerShape(CardTokens.coverCornerRadius),
-        color = colours.surfaceBottom,
-        contentColor = Color.White,
-        border = BorderStroke(0.5.dp, colours.accent.copy(alpha = 0.24f)),
+        color = if (pastelGlass) Color.Transparent else colours.surfaceBottom,
+        contentColor = colours.content,
+        border = BorderStroke(0.5.dp, if (pastelGlass) Color.White.copy(alpha = 0.32f)
+            else colours.accent.copy(alpha = 0.24f)),
     ) {
         Box(
             Modifier.fillMaxSize().background(
@@ -153,7 +161,10 @@ private fun MoodMosaicTile(
                 // Keep the glass highlight subtle, including when a long label wraps upward.
                 drawRect(
                     brush = Brush.radialGradient(
-                        colors = listOf(colours.accent.copy(alpha = 0.06f), Color.Transparent),
+                        colors = listOf(
+                            if (pastelGlass) Color.White.copy(alpha = 0.14f) else colours.accent.copy(alpha = 0.06f),
+                            Color.Transparent,
+                        ),
                         center = Offset(size.width * 0.8f, 0f),
                         radius = size.width.coerceAtLeast(size.height) * 0.75f,
                     ),
@@ -167,7 +178,7 @@ private fun MoodMosaicTile(
                 modifier = Modifier.align(Alignment.BottomStart)
                     .padding(MOOD_TILE_LABEL_PADDING_DP.dp)
                     .clearAndSetSemantics {},
-                style = labelStyle,
+                style = labelStyle.copy(color = colours.content),
             )
         }
     }
