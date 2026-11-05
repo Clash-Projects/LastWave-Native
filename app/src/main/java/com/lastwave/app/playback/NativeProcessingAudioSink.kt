@@ -163,7 +163,61 @@ class NativeProcessingAudioSink(
             activeDelegate.getCurrentPositionUs(sourceEnded)
         }
 
+    private fun canReuseNativeProcessing(format: Format, outputChannels: IntArray?): Boolean {
+        if (!processingActive || nativePathDisabled || !processor.isAvailable || bitPerfectRequested || exclusiveWanted || internalWanted) {
+            return false
+        }
+        val current = configuredFormat ?: return false
+        val currentChannels = configuredOutputChannels
+        val channelsMatch = if (outputChannels == null && currentChannels == null) {
+            true
+        } else if (outputChannels != null && currentChannels != null) {
+            outputChannels.contentEquals(currentChannels)
+        } else {
+            false
+        }
+        return channelsMatch &&
+            format.sampleRate == current.sampleRate &&
+            format.channelCount == current.channelCount &&
+            format.pcmEncoding == current.pcmEncoding &&
+            format.sampleMimeType == current.sampleMimeType
+    }
+
     override fun configure(format: Format, specifiedBufferSize: Int, outputChannels: IntArray?) {
+        if (canReuseNativeProcessing(format, outputChannels)) {
+            configuredFormat = format
+            configuredBufferSize = specifiedBufferSize
+            configuredOutputChannels = outputChannels?.clone()
+            clearEndOfStream()
+            hasConfigured = true
+            exclusiveStartFailed = false
+            exclusiveEnded = false
+            internalEnded = false
+            internalStartFailed = false
+            if (format.sampleRate > 0) {
+                onConfiguredFormat?.invoke(format.sampleRate, format.pcmEncoding, format.channelCount)
+            }
+            processor.beginStream(format.encoderDelay, format.encoderPadding)
+            PlaybackDiagnostics.gaplessReuses.incrementAndGet()
+            val floatFormat = processedFormat ?: asFloatFormat(
+                format,
+                AudioProcessor.AudioFormat(
+                    processor.nativeOutputSampleRate,
+                    format.channelCount,
+                    C.ENCODING_PCM_FLOAT,
+                ),
+            )
+            activeDelegate.configure(floatFormat, 0, outputChannels)
+            return
+        }
+
+        pendingOutput?.let { pending ->
+            if (pending.hasRemaining()) {
+                runCatching {
+                    activeDelegate.handleBuffer(pending, pendingPresentationTimeUs, pendingAccessUnitCount)
+                }
+            }
+        }
         configuredFormat = format
         configuredBufferSize = specifiedBufferSize
         configuredOutputChannels = outputChannels?.clone()
@@ -441,8 +495,6 @@ class NativeProcessingAudioSink(
     }
 
     override fun handleDiscontinuity() {
-        clearPending()
-        clearEndOfStream()
         if (usbExclusive) {
             exclusiveUsb?.handleDiscontinuity()
             return
@@ -451,12 +503,7 @@ class NativeProcessingAudioSink(
             // Segment boundary, not a seek: the exclusive clock keeps running.
             return
         }
-        if (!processingActive) {
-            activeDelegate.handleDiscontinuity()
-            return
-        }
         try {
-            processor.flush()
             activeDelegate.handleDiscontinuity()
         } catch (error: Exception) {
             if (!recoverProcessingPath("Processed discontinuity handling failed", error)) throw error
