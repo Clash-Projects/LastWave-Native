@@ -254,18 +254,58 @@
             </intent-filter>
         </receiver>
 
-        <!-- Now playing widgets -->
+        <!-- Four widget designs; strip and library resize horizontally. -->
         <receiver
-            android:name=".widget.NowPlayingWidgetReceiver"
+            android:name=".widget.wave.WaveStripWidgetProvider"
             android:exported="false"
-            android:label="@string/widget_name">
+            android:label="@string/wave_widget_strip_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
-                android:resource="@xml/now_playing_widget_info" />
+                android:resource="@xml/wave_strip_widget_info" />
         </receiver>
+
+        <receiver
+            android:name=".widget.wave.WaveGlassWidgetProvider"
+            android:exported="false"
+            android:label="@string/wave_widget_glass_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/wave_glass_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.wave.WaveCircularWidgetProvider"
+            android:exported="false"
+            android:label="@string/wave_widget_circular_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/wave_circular_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.wave.WaveLibraryWidgetProvider"
+            android:exported="false"
+            android:label="@string/wave_widget_library_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/wave_library_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.wave.WaveWidgetActionReceiver"
+            android:exported="false" />
 
         <!-- Receiver for cancel/reconnect actions on background-download notifications -->
         <receiver

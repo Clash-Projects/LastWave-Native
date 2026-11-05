@@ -291,7 +291,7 @@ private fun MiniTrayRow(
         },
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 14.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             androidx.compose.foundation.layout.Box(
