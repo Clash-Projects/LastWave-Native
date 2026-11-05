@@ -1,6 +1,7 @@
 package com.lastwave.app.data.addon
 
 import android.util.Log
+import com.lastwave.app.BuildConfig
 import com.lastwave.app.data.lossless.NativeSecrets
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -51,8 +52,12 @@ class AddonClient(
         }
         Log.d(TAG, "Native addon signing unavailable; using fallback signer")
 
-        // 2. Fallback to Java HMAC only if explicit clientSecret is provided
-        val secret = clientSecret?.takeIf { it.isNotBlank() } ?: return
+        // 2. Fallback to obfuscated client secret decoded in memory at runtime (Desktop approach)
+        val secret = clientSecret?.takeIf { it.isNotBlank() }
+            ?: runCatching {
+                decodeSecretBytes(BuildConfig.ADDON_CLIENT_SECRET_BYTES, BuildConfig.SECRET_MASK_BYTES)
+            }.getOrNull()?.takeIf { it.isNotBlank() }
+            ?: return
         try {
             val uri = java.net.URI(urlStr)
             val path = uri.path ?: "/"
@@ -273,6 +278,14 @@ class AddonClient(
 
     companion object {
         private const val TAG = "AddonClient"
+
+        fun decodeSecretBytes(data: ByteArray, mask: ByteArray): String {
+            if (data.isEmpty() || mask.isEmpty()) return ""
+            val decoded = ByteArray(data.size) { i ->
+                (data[i].toInt() xor mask[i % mask.size].toInt()).toByte()
+            }
+            return String(decoded, Charsets.UTF_8).trim()
+        }
 
         fun normalizeBase(raw: String): String {
             if (raw.isBlank()) return ""

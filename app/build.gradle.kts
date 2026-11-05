@@ -74,9 +74,19 @@ android {
         buildConfigField("String", "LASTWAVE_LYRICS_TOKEN", "\"$lastWaveLyricsToken\"")
         buildConfigField("String", "LASTWAVE_LYRICS_URL", "\"$lastWaveLyricsUrl\"")
 
-        // Native secrets (addon client lock) live strictly in native .so via
-        // SecretsBridge_generated.h (tools/generate_native_secrets.py).
-        // No secret fields are exposed in DEX / BuildConfig.
+        // Desktop-style secret obfuscation: XOR-masked byte arrays in BuildConfig
+        val secretMask = listOf(0x5A, 0x3F, 0x7E, 0x1B, 0x92, 0x4C, 0xA1, 0x6D)
+        fun obfuscateSecret(plainText: String): String {
+            if (plainText.isEmpty()) return "new byte[] {}"
+            val bytes = plainText.toByteArray(Charsets.UTF_8)
+            val obfuscated = bytes.mapIndexed { idx, b -> (b.toInt() xor secretMask[idx % secretMask.size]).toByte() }
+            return "new byte[] { " + obfuscated.joinToString(", ") { "(byte) $it" } + " }"
+        }
+        val maskLiteral = "new byte[] { " + secretMask.joinToString(", ") { "(byte) $it" } + " }"
+
+        val addonClientSecret = resolveSecret("ADDON_CLIENT_SECRET")
+        buildConfigField("byte[]", "ADDON_CLIENT_SECRET_BYTES", obfuscateSecret(addonClientSecret))
+        buildConfigField("byte[]", "SECRET_MASK_BYTES", maskLiteral)
 
         externalNativeBuild {
             cmake {
@@ -355,19 +365,5 @@ tasks.withType<Test> {
     maxHeapSize = "2048m"
 }
 
-// Generate native secrets header before CMake configures.
-// CI provides ADDON_CLIENT_SECRET / RELEASE_CERT_SHA256 via env/secrets.
-val generateNativeSecrets by tasks.registering(Exec::class) {
-    onlyIf { file("tools/generate_native_secrets.py").exists() }
-    workingDir = rootProject.projectDir
-    val py = org.gradle.internal.os.OperatingSystem.current().let {
-        if (it.isWindows) "python" else "python3"
-    }
-    commandLine(py, "tools/generate_native_secrets.py")
-    // Never fail public builds when secrets absent; script emits empty header.
-    isIgnoreExitValue = true
-}
-tasks.named("preBuild").configure {
-    dependsOn(generateNativeSecrets)
-}
+
 
