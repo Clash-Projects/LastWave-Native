@@ -251,6 +251,38 @@ fun DownloadsScreen(
             }
         }
 
+    // Files saved by another install or build of the app need the user's OK
+    // before Android lets us delete them.
+    var trackAwaitingDeleteConsent by remember { mutableStateOf<DownloadedTrackEntity?>(null) }
+    val deleteConsentLauncher = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult(),
+    ) { result ->
+        trackAwaitingDeleteConsent?.let { track ->
+            viewModel.onDeleteConsentResult(track, result.resultCode == android.app.Activity.RESULT_OK)
+        }
+        trackAwaitingDeleteConsent = null
+    }
+    val deleteFailedMessage = stringResource(com.lastwave.app.R.string.dl_delete_failed)
+    LaunchedEffect(viewModel) {
+        viewModel.deleteEvents.collect { event ->
+            when (event) {
+                is DownloadsViewModel.DeleteEvent.NeedsConsent -> {
+                    trackAwaitingDeleteConsent = event.track
+                    runCatching {
+                        deleteConsentLauncher.launch(
+                            androidx.activity.result.IntentSenderRequest.Builder(event.request).build(),
+                        )
+                    }.onFailure {
+                        trackAwaitingDeleteConsent = null
+                        android.widget.Toast.makeText(context, deleteFailedMessage, android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+                DownloadsViewModel.DeleteEvent.Failed ->
+                    android.widget.Toast.makeText(context, deleteFailedMessage, android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     fun navigateTo(subView: DownloadSubView) {
         subViewStack = subViewStack + subView
     }
