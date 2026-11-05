@@ -57,8 +57,7 @@ object WaveWidgetViews {
         size: SizeF,
     ): RemoteViews {
         val layout = if (kind == WaveWidgetKind.LIBRARY) {
-            // Four-column proportions and enough room for three transport targets.
-            if (size.width >= 240f && size.width >= size.height * 1.72f)
+            if (size.width >= 240f)
                 R.layout.widget_wave_library else R.layout.widget_wave_library_compact
         } else if (kind == WaveWidgetKind.CIRCULAR && minOf(size.width, size.height) < 145f) {
             R.layout.widget_wave_circular_compact
@@ -67,10 +66,8 @@ object WaveWidgetViews {
         }
         val views = RemoteViews(context.packageName, layout)
         val colors = art.colors ?: WaveWidgetColors.derive(0xFF555466.toInt(), dark = true)
-        // The strip uses a mid-tone cover-derived surface, like the reference player.
-        val stripBackground = WaveColorMath.mix(colors.accent, 0xFF666666.toInt(), 0.78f)
-        val foreground = if (kind == WaveWidgetKind.STRIP)
-            WaveColorMath.highContrastForeground(stripBackground) else 0xFFF6F4FF.toInt()
+        val stripBackground = WaveColorMath.stripBackground(colors.accent)
+        val foreground = if (kind == WaveWidgetKind.STRIP) 0xFFFFFFFF.toInt() else 0xFFF6F4FF.toInt()
         val secondary = if (kind == WaveWidgetKind.STRIP) colors.muted else 0xFFD8D4E6.toInt()
         views.setOnClickPendingIntent(R.id.wave_widget_root, WaveWidgetActions.openPending(context, widgetId))
         views.setTextViewText(R.id.wave_title, state.title.takeIf { state.hasTrack }
@@ -93,8 +90,8 @@ object WaveWidgetViews {
                 views.setImageViewBitmap(R.id.wave_art, WaveWidgetGraphics.stripArtwork(art.art, stripBackground))
                 val slotWidth = (size.width - side) / 5f
                 val controlHeight = size.height * 0.64f
-                val mainIconSide = minOf(size.height * 0.42f, slotWidth * 0.98f)
-                val edgeIconSide = minOf(size.height * 0.32f, slotWidth * 0.86f)
+                val mainIconSide = minOf(size.height * 0.35f, slotWidth * 0.82f)
+                val edgeIconSide = minOf(size.height * 0.27f, slotWidth * 0.73f)
                 fun fitIcon(id: Int, iconSide: Float) {
                     val horizontal = dp(context, (slotWidth - iconSide).coerceAtLeast(0f) / 2f)
                     val vertical = dp(context, (controlHeight - iconSide).coerceAtLeast(0f) / 2f)
@@ -106,9 +103,6 @@ object WaveWidgetViews {
                     .forEach { fitIcon(it, edgeIconSide) }
                 views.setImageViewResource(R.id.wave_play_icon,
                     if (state.isPlaying) R.drawable.ic_wave_strip_pause else R.drawable.ic_wave_strip_play)
-                val transportColor = WaveColorMath.mix(foreground, stripBackground, 0.48f)
-                views.setInt(R.id.wave_previous_icon, "setColorFilter", transportColor)
-                views.setInt(R.id.wave_next_icon, "setColorFilter", transportColor)
                 views.setTextViewTextSize(R.id.wave_title, TypedValue.COMPLEX_UNIT_SP,
                     (size.height * 0.205f).coerceIn(10f, 20f))
                 views.setViewPadding(R.id.wave_title, dp(context, side * 0.20f),
@@ -165,7 +159,7 @@ object WaveWidgetViews {
             views.setImageViewResource(R.id.wave_like_icon,
                 if (state.isLiked) R.drawable.ic_wave_widget_favorite_filled else R.drawable.ic_wave_widget_favorite)
             views.setInt(R.id.wave_like_icon, "setColorFilter",
-                if (state.isLiked) 0xFFE2D9FF.toInt() else foreground)
+                if (kind != WaveWidgetKind.STRIP && state.isLiked) 0xFFE2D9FF.toInt() else foreground)
             views.setCharSequence(R.id.wave_like, "setContentDescription",
                 context.getString(if (state.isLiked) R.string.wave_widget_unlike else R.string.wave_widget_like))
             views.setOnClickPendingIntent(R.id.wave_like,
@@ -173,7 +167,8 @@ object WaveWidgetViews {
         }
         if (kind == WaveWidgetKind.STRIP || kind == WaveWidgetKind.GLASS) {
             views.setInt(R.id.wave_shuffle_icon, "setColorFilter",
-                if (state.shuffleEnabled) WaveColorMath.mix(accent, foreground, 0.7f) else foreground)
+                if (kind != WaveWidgetKind.STRIP && state.shuffleEnabled)
+                    WaveColorMath.mix(accent, foreground, 0.7f) else foreground)
             views.setCharSequence(R.id.wave_shuffle, "setContentDescription",
                 context.getString(if (state.shuffleEnabled) R.string.wave_widget_shuffle_on
                     else R.string.wave_widget_shuffle))
@@ -228,6 +223,24 @@ object WaveWidgetViews {
                 views.setCharSequence(viewId, "setContentDescription", "${track.title} · ${track.artist}")
                 views.setOnClickPendingIntent(viewId,
                     WaveWidgetActions.pending(context, widgetId, WaveWidgetActions.ACTION_RECENT, track.trackId))
+            }
+        }
+        if (layout != R.layout.widget_wave_library) return
+        val nextContainers = intArrayOf(R.id.wave_next_1, R.id.wave_next_2, R.id.wave_next_3, R.id.wave_next_4)
+        val nextImages = intArrayOf(R.id.wave_next_art_1, R.id.wave_next_art_2, R.id.wave_next_art_3, R.id.wave_next_art_4)
+        val next = state.nextTracks.take(4)
+        views.setViewVisibility(R.id.wave_next_empty, if (next.isEmpty()) View.VISIBLE else View.GONE)
+        nextContainers.forEachIndexed { index, viewId ->
+            val track = next.getOrNull(index)
+            views.setViewVisibility(viewId, if (track == null) View.INVISIBLE else View.VISIBLE)
+            if (track != null) {
+                art.nextArt[track.trackId]?.let {
+                    views.setImageViewBitmap(nextImages[index], WaveWidgetGraphics.circle(it))
+                } ?: views.setImageViewResource(nextImages[index], R.drawable.wave_widget_recent_placeholder)
+                views.setCharSequence(viewId, "setContentDescription", "${track.title} · ${track.artist}")
+                views.setOnClickPendingIntent(viewId,
+                    WaveWidgetActions.pending(context, widgetId, WaveWidgetActions.ACTION_JUMP,
+                        track.queueIndex.toString()))
             }
         }
     }

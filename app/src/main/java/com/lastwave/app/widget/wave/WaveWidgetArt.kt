@@ -27,6 +27,7 @@ object WaveWidgetArt {
         val backdrop: Bitmap?,
         val colors: WaveWidgetColors?,
         val recentArt: Map<String, Bitmap> = emptyMap(),
+        val nextArt: Map<String, Bitmap> = emptyMap(),
     )
 
     private const val ART_SIZE = 384
@@ -89,7 +90,7 @@ object WaveWidgetArt {
         result
     }
 
-    /** Only the library widget needs these small, clear covers. Failed loads remain retryable. */
+    /** Each library row uses up to four small covers. Failed loads remain retryable. */
     suspend fun resolveRecent(context: Context, tracks: List<WaveQueueTrack>): Map<String, Bitmap> =
         withContext(Dispatchers.IO) {
             val result = LinkedHashMap<String, Bitmap>()
