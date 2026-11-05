@@ -449,6 +449,8 @@ class LosslessMusicApi @Inject constructor(
         private val ARTIST_SEPARATORS =
             Regex("""\s*(?:[,&/;·|]|\band\b|\bx\b|\bvs\.?\b|\bfeat\.?\b|\bft\.?\b|\bfeaturing\b|\bwith\b)\s*""", RegexOption.IGNORE_CASE)
 
+        /** Candidates scoring further than this below the best match are dropped. */
+        private const val MATCH_SCORE_MARGIN = 250
         // Only strip accents from Latin letters: stripping marks from kana
         // (dakuten), Hangul jamo or Indic vowel signs destroys the title and
         // made non-English songs normalize to blank, so they never matched a
@@ -1045,7 +1047,7 @@ class LosslessMusicApi @Inject constructor(
         expectedAlbum: String?,
         isAtmosPreferred: Boolean,
     ): List<TidalCandidateItem> {
-        val verified = tracks.asSequence()
+        val scored = tracks.asSequence()
             .map { track ->
                 TidalCandidateItem(
                     id = track.id.toLongOrNull() ?: track.id.hashCode().toLong(),
@@ -1077,9 +1079,16 @@ class LosslessMusicApi @Inject constructor(
                 }
             }
             .sortedWith(compareByDescending { it.second })
+            .toList()
+        // Wrong-song guard: orderCandidates() later floats hi-res/Atmos
+        // entries to the front regardless of score, so a weak match (fuzzy
+        // title, uncredited artist, off duration) could be streamed ahead of
+        // the exact one. Keep only candidates near the best score.
+        val bestScore = scored.firstOrNull()?.second ?: return emptyList()
+        val verified = scored
+            .filter { it.second >= bestScore - MATCH_SCORE_MARGIN }
             .map { it.first }
             .distinctBy { it.rawAddonId.ifBlank { it.id.toString() } }
-            .toList()
         if (verified.isEmpty()) return emptyList()
         return gateAmbiguousLanguage(verified, title, expectedAlbum)
     }
