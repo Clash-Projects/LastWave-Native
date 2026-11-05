@@ -24,17 +24,24 @@ internal object WaveWidgetGraphics {
     private fun key(art: Bitmap?) = art?.let { "${System.identityHashCode(it)}:${it.generationId}" } ?: "empty"
     private fun paint(color: Int) = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { this.color = color }
 
-    fun strip(art: Bitmap?, color: Int, widthDp: Float, heightDp: Float, sideDp: Float): Bitmap {
+    fun strip(
+        art: Bitmap?, color: Int, widthDp: Float, heightDp: Float, sideDp: Float,
+        leftCornersOnly: Boolean = false,
+    ): Bitmap {
         val scale = minOf(3f, 1024f / widthDp.coerceAtLeast(1f), 384f / heightDp.coerceAtLeast(1f))
         val width = (widthDp * scale).toInt().coerceIn(1, 1024)
         val height = (heightDp * scale).toInt().coerceIn(1, 384)
         val side = minOf(height.toFloat(), sideDp * scale)
-        return cached("strip:${key(art)}:$color:$width:$height:$side") {
+        return cached("strip:${key(art)}:$color:$width:$height:$side:$leftCornersOnly") {
             Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
                 val canvas = Canvas(bitmap)
                 val bounds = RectF(0f, 0f, width.toFloat(), height.toFloat())
-                val radius = height * 0.07f
-                val clip = Path().apply { addRoundRect(bounds, radius, radius, Path.Direction.CW) }
+                val radius = height * 0.14f
+                val clip = Path().apply {
+                    addRoundRect(bounds, if (leftCornersOnly)
+                        floatArrayOf(radius, radius, 0f, 0f, 0f, 0f, radius, radius)
+                    else FloatArray(8) { radius }, Path.Direction.CW)
+                }
                 canvas.clipPath(clip)
                 canvas.drawColor(color)
                 if (art != null && !art.isRecycled) {
@@ -42,7 +49,7 @@ internal object WaveWidgetGraphics {
                     val target = RectF(0f, 0f, side, height.toFloat())
                     canvas.drawBitmap(art, centerCrop(art, target.width() / target.height()),
                         target, paint(Color.WHITE))
-                } else {
+                } else if (side > 0f) {
                     canvas.drawRect(0f, 0f, side, height.toFloat(), paint(WaveColorMath.mix(color, Color.WHITE, 0.12f)))
                     val line = paint(Color.WHITE).apply { strokeWidth = side / 12; strokeCap = Paint.Cap.ROUND }
                     for (index in 0..3) {
@@ -54,6 +61,9 @@ internal object WaveWidgetGraphics {
             }
         }
     }
+
+    fun stripArtwork(art: Bitmap?, color: Int): Bitmap =
+        strip(art, color, 384f, 384f, 384f, leftCornersOnly = true)
 
     fun rounded(art: Bitmap): Bitmap = masked(art, circular = false)
     fun circle(art: Bitmap): Bitmap = masked(art, circular = true)
@@ -92,14 +102,14 @@ internal object WaveWidgetGraphics {
                 canvas.drawCircle(center, center, 190f, paint(0xFF343147.toInt()).apply {
                     style = Paint.Style.STROKE; strokeWidth = 1.5f
                 })
-                val clip = Path().apply { addCircle(center, center, 149f, Path.Direction.CW) }
+                val clip = Path().apply { addCircle(center, center, 163f, Path.Direction.CW) }
                 canvas.save()
                 canvas.clipPath(clip)
                 if (art != null && !art.isRecycled) {
-                    canvas.drawBitmap(art, centerCrop(art, 1f), RectF(43f, 43f, 341f, 341f), paint(Color.WHITE))
+                    canvas.drawBitmap(art, centerCrop(art, 1f), RectF(29f, 29f, 355f, 355f), paint(Color.WHITE))
                 } else canvas.drawColor(WaveColorMath.mix(accent, 0xFF121125.toInt(), 0.7f))
-                canvas.drawRect(43f, 43f, 341f, 341f, paint(Color.WHITE).apply {
-                    shader = LinearGradient(0f, 178f, 0f, 341f,
+                canvas.drawRect(29f, 29f, 355f, 355f, paint(Color.WHITE).apply {
+                    shader = LinearGradient(0f, 178f, 0f, 355f,
                         intArrayOf(0x00000000, 0xDB000000.toInt()), null, Shader.TileMode.CLAMP)
                 })
                 canvas.restore()

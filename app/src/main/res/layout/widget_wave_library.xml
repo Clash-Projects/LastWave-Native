@@ -109,8 +109,10 @@
                         android:contentDescription="@string/desc_previous">
                         <ImageView
                             android:id="@+id/wave_previous_icon"
-                            android:layout_width="17dp"
-                            android:layout_height="17dp"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:padding="3dp"
+                            android:scaleType="fitCenter"
                             android:contentDescription="@null"
                             android:src="@drawable/ic_widget_skip_previous"
                             android:layout_gravity="center"
@@ -132,8 +134,10 @@
                             android:scaleType="fitCenter" />
                         <ImageView
                             android:id="@+id/wave_play_icon"
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:padding="5dp"
+                            android:scaleType="fitCenter"
                             android:contentDescription="@null"
                             android:src="@drawable/ic_widget_play"
                             android:layout_gravity="center"
@@ -147,8 +151,10 @@
                         android:contentDescription="@string/desc_next">
                         <ImageView
                             android:id="@+id/wave_next_icon"
-                            android:layout_width="17dp"
-                            android:layout_height="17dp"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:padding="3dp"
+                            android:scaleType="fitCenter"
                             android:contentDescription="@null"
                             android:src="@drawable/ic_widget_skip_next"
                             android:layout_gravity="center"
@@ -188,6 +194,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="match_parent"
                             android:gravity="center"
+                            android:weightSum="4"
                             android:orientation="horizontal">
                             <LinearLayout
                                 android:id="@+id/wave_recent_1"

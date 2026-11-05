@@ -87,8 +87,10 @@ object WaveWidgetViews {
             WaveWidgetKind.STRIP -> {
                 val side = minOf(size.height, size.width)
                 views.setImageViewBitmap(R.id.wave_surface_image,
-                    WaveWidgetGraphics.strip(art.art, stripBackground, size.width, size.height, side))
-                views.setViewPadding(R.id.wave_strip_content, dp(context, side), 0, 0, 0)
+                    WaveWidgetGraphics.strip(null, stripBackground, size.width, size.height, 0f))
+                // The launcher measures a real square cover beside the controls; a stretched
+                // background bitmap can no longer move the art boundary underneath them.
+                views.setImageViewBitmap(R.id.wave_art, WaveWidgetGraphics.stripArtwork(art.art, stripBackground))
                 val slotWidth = (size.width - side) / 5f
                 val controlHeight = size.height * 0.64f
                 val mainIconSide = minOf(size.height * 0.42f, slotWidth * 0.98f)
@@ -108,9 +110,9 @@ object WaveWidgetViews {
                 views.setInt(R.id.wave_previous_icon, "setColorFilter", transportColor)
                 views.setInt(R.id.wave_next_icon, "setColorFilter", transportColor)
                 views.setTextViewTextSize(R.id.wave_title, TypedValue.COMPLEX_UNIT_SP,
-                    (size.height * 0.205f).coerceIn(11f, 20f))
+                    (size.height * 0.205f).coerceIn(10f, 20f))
                 views.setViewPadding(R.id.wave_title, dp(context, side * 0.20f),
-                    dp(context, size.height * 0.13f), dp(context, maxOf(20f, side * 0.20f)), 0)
+                    0, dp(context, maxOf(20f, side * 0.20f)), 0)
                 views.setInt(R.id.wave_logo, "setColorFilter", foreground)
                 views.setViewVisibility(R.id.wave_play_background, View.GONE)
             }
@@ -216,7 +218,8 @@ object WaveWidgetViews {
         views.setViewVisibility(R.id.wave_recent_empty, if (recent.isEmpty()) View.VISIBLE else View.GONE)
         containers.forEachIndexed { index, viewId ->
             val track = recent.getOrNull(index)
-            views.setViewVisibility(viewId, if (track == null) View.GONE else View.VISIBLE)
+            // Keep history thumbnails in equal columns, even with fewer than four tracks.
+            views.setViewVisibility(viewId, if (track == null) View.INVISIBLE else View.VISIBLE)
             if (track != null) {
                 views.setTextViewText(titles[index], track.title)
                 art.recentArt[track.trackId]?.let {
