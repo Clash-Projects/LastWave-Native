@@ -2,10 +2,12 @@
 
 <img src="LastWave_banner_v2_1440p.png" alt="LastWave Banner" width="100%" style="border-radius: 16px;" />
 
-<br/>
-<br/>
+<h1>LastWave</h1>
 
 **Simple Android YouTube Music client with Material UI, Liquid Glass, Bit-Perfect playback, Automix, Lossless addons & advanced audiophile features.**
+
+<br/>
+<br/>
 
 <p align="center">
   <a href="https://github.com/Clash-Projects/LastWave-native/stargazers">
