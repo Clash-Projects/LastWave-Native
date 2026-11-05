@@ -7,20 +7,11 @@
 **Simple Android YouTube Music client with Material UI, Liquid Glass, Bit-Perfect playback, Automix, Lossless addons & advanced audiophile features.**
 
 <br/>
-<br/>
 
 <p align="center">
-  <a href="https://t.me/clashprojects" target="_blank">
-    <img src="docs/badges/btn_telegram_updates.svg" alt="Telegram Updates" height="42" />
-  </a>
-  &nbsp;
-  <a href="https://t.me/MaterialYouApp" target="_blank">
-    <img src="docs/badges/btn_telegram_channel.svg" alt="More From Us" height="42" />
-  </a>
-  &nbsp;
-  <a href="https://discord.gg/DmyM2p2fMe" target="_blank">
-    <img src="docs/badges/btn_discord.svg" alt="Join Discord" height="42" />
-  </a>
+  <a href="https://t.me/clashprojects" target="_blank"><img src="docs/badges/btn_telegram_support.svg" alt="Telegram Support" height="42" /></a>
+  <a href="https://t.me/MaterialYouApp" target="_blank"><img src="docs/badges/btn_telegram_channel.svg" alt="Telegram Channel" height="42" /></a>
+  <a href="https://discord.gg/DmyM2p2fMe" target="_blank"><img src="docs/badges/btn_discord.svg" alt="Discord Community" height="42" /></a>
 </p>
 
 <p align="center">
