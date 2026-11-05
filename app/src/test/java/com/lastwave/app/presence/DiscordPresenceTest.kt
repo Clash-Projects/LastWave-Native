@@ -77,12 +77,14 @@ class DiscordPresenceTest {
     fun cardIsListeningToLastWaveWithTitleAndArtist() {
         val activity = DiscordPresence.buildActivity(state(), NOW_MS)
         assertEquals(2, activity["type"]?.jsonPrimitive?.int) // 2 = Listening
-        assertEquals("LastWave", str(activity, "name"))
+        // The compact member-list line renders "Listening to " + name, so the
+        // name carries the track to read "Listening to LastWave · <song>".
+        assertEquals("LastWave \u00B7 Sunglasses at Night", str(activity, "name"))
         assertEquals("Sunglasses at Night", str(activity, "details"))
         assertEquals("Moondrop \u00B7 Hi-Res Lossless \u00B7 24-bit \u00B7 96 kHz", str(activity, "state"))
-        // The compact member-list line shows the track (details), not the
-        // app name — the desktop card's setting.
-        assertEquals(2, activity["status_display_type"]?.jsonPrimitive?.int)
+        // No status_display_type: the compact member-list line falls back to
+        // the activity name, so others see "Listening to LastWave".
+        assertNull(activity["status_display_type"])
         // Discord's mobile clients collapse a newline in `state` to an
         // ellipsis, so the quality must never move to a second line.
         assertFalse(str(activity, "state")!!.contains('\n'))

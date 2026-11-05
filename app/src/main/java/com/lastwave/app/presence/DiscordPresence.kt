@@ -16,16 +16,17 @@ import kotlinx.serialization.json.putJsonArray
  *
  * Ported field for field from the desktop client
  * (`LastWave-Desktop/lib/features/presence/discord_presence_service.dart`) so a
- * user's profile reads identically on both apps: same application id, same
- * `type`, same `status_display_type`, same line layout, same two buttons, same
- * asset slots, same clip lengths. Only the transport differs (see
+ * user's profile reads the same on both apps: same application id, same `type`,
+ * same line layout, same two buttons, same asset slots, same clip lengths. Two
+ * Android-specific deviations keep the card readable without a mouse (see
+ * [activityName] and [stateLine]). Only the transport differs (see
  * [DiscordIpcTransport]) — on Android the Discord app itself hosts the endpoint,
  * so there is no `discord-ipc-N` socket to hand-roll the way the desktop build
  * does.
  *
  * The card one [buildActivity] call produces:
  * ```
- *   Listening to LastWave            <- type 2 (listening) + name
+ *   Listening to LastWave · Song title  <- type 2 + name (see [activityName])
  *   ┌────┐  Song title               <- details
  *   │art │  Artist · Hi-Res Lossless · 24-bit · 96 kHz   <- state, one line
  *   │  ○ │  (brand badge)            <- small_image
@@ -34,13 +35,13 @@ import kotlinx.serialization.json.putJsonArray
  *   [ Get LastWave ]                 <- opens this project's releases
  * ```
  *
- * [STATUS_DISPLAY_DETAILS] makes the compact member-list line show the track
- * (`details`) rather than the app name, which is what makes the card read like
- * the desktop client's. The audio-format line rides in `state` on the same line
- * as the artist: Discord on Android collapses a newline in `state` to an
- * ellipsis and has no hover, so a separate line (or only the `small_text`
- * tooltip) would hide the quality on mobile. The badge tooltip still carries it
- * for desktop viewers.
+ * `status_display_type` is deliberately left unset so the compact member-list
+ * line falls back to the activity name: with [activityName] that reads
+ * "Listening to LastWave · <song>". The audio-format line rides in `state` on
+ * the same line as the artist: Discord on Android collapses a newline in
+ * `state` to an ellipsis and has no hover, so a separate line (or only the
+ * `small_text` tooltip) would hide the quality on mobile. The badge tooltip
+ * still carries it for desktop viewers.
  *
  * Deliberately free of Android and Discord SDK types: every rule here is pure,
  * so the format is unit-testable on the JVM and can never drift from the
@@ -104,14 +105,6 @@ object DiscordPresence {
     /** 2 = "Listening to". */
     const val TYPE_LISTENING = 2
 
-    /**
-     * Discord's `status_display_type`: which field the compact status line
-     * under the username renders (0 = name, 1 = state, 2 = details). DETAILS
-     * makes the member-list card show the track instead of "LastWave" — the
-     * usual split of name/detail rows, and the desktop client's setting.
-     */
-    const val STATUS_DISPLAY_DETAILS = 2
-
     fun isConfigured(): Boolean =
         APPLICATION_ID.isNotEmpty() && APPLICATION_ID != "YOUR_DISCORD_APPLICATION_ID"
 
@@ -126,6 +119,17 @@ object DiscordPresence {
     fun clip(value: String, limit: Int = MAX_FIELD): String {
         val trimmed = value.trim()
         return if (trimmed.length > limit) trimmed.substring(0, limit - 1) + "..." else trimmed
+    }
+
+    /**
+     * The activity name. Discord prefixes it with "Listening to" in the member
+     * list, so appending the track makes the compact line read
+     * `Listening to LastWave · <song>`. The plain app name is used when there
+     * is no track text.
+     */
+    fun activityName(title: String): String {
+        val trimmed = title.trim()
+        return if (trimmed.isEmpty()) "LastWave" else "LastWave \u00B7 " + clip(trimmed)
     }
 
     /**
@@ -277,10 +281,9 @@ object DiscordPresence {
 
         return buildJsonObject {
             put("type", TYPE_LISTENING)
-            put("name", "LastWave")
+            put("name", activityName(title))
             put("details", title)
             put("state", stateLine(track.artist, track.album, quality))
-            put("status_display_type", STATUS_DISPLAY_DETAILS)
             timestamps?.let { put("timestamps", it) }
             put("assets", buildJsonObject {
                 put("large_image", largeImage(track.artworkUrl))
