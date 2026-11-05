@@ -1,17 +1,20 @@
 <div align="center">
 
-<img src="lastwave_logo.png" alt="SoundDrop Logo" width="120" height="120" style="border-radius: 50%;" />
+<img src="LastWave_banner_v2_1440p.png" alt="LastWave Banner" width="100%" style="border-radius: 16px;" />
 
-# SoundDrop
+<h1>LastWave</h1>
 
-**Best Music Player With An Immersive Sound Experience - Lyrics Synced, Fully Ads Free. Liquid Glass & Minimal - Modern UI With Offline Downloads**
+**Simple Android YouTube Music client with Material UI, Liquid Glass, Bit-Perfect playback, Automix, Lossless addons & advanced audiophile features.**
+
+<br/>
+<br/>
 
 <p align="center">
-  <a href="https://github.com/1f81-official/SoundDrop/stargazers">
-    <img src="https://img.shields.io/github/stars/1f81-official/SoundDrop?style=for-the-badge&color=ffd0b0&labelColor=2d2d2d" alt="Stars" />
+  <a href="https://github.com/Clash-Projects/LastWave-native/stargazers">
+    <img src="https://img.shields.io/github/stars/Clash-Projects/LastWave-native?style=for-the-badge&color=ffd0b0&labelColor=2d2d2d" alt="Stars" />
   </a>
-  <a href="https://github.com/1f81-official/SoundDrop/network/members">
-    <img src="https://img.shields.io/github/forks/1f81-official/SoundDrop?style=for-the-badge&color=ffb4a2&labelColor=2d2d2d" alt="Forks" />
+  <a href="https://github.com/Clash-Projects/LastWave-native/network/members">
+    <img src="https://img.shields.io/github/forks/Clash-Projects/LastWave-native?style=for-the-badge&color=ffb4a2&labelColor=2d2d2d" alt="Forks" />
   </a>
   <a href="#">
     <img src="https://img.shields.io/badge/Client-YouTube%20Music-FF0000?style=for-the-badge&logo=youtubemusic&logoColor=white&labelColor=2d2d2d" alt="YouTube Music Client" />
@@ -35,39 +38,27 @@
 </p>
 
 <p align="center">
-  <a href="https://t.me/xaero_community">
+  <a href="https://t.me/clashprojects">
     <img src="https://img.shields.io/badge/Telegram-Updates%20%26%20Support-24A1DE?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram Support" />
   </a>
-  <a href="https://t.me/official_1f81">
-    <img src="https://img.shields.io/badge/Telegram-More%20From%20Us-0088cc?style=for-the-badge&logo=telegram&logoColor=white" alt="Developer" />
+  <a href="https://t.me/MaterialYouApp">
+    <img src="https://img.shields.io/badge/Telegram-More%20From%20Us-0088cc?style=for-the-badge&logo=telegram&logoColor=white" alt="More From Us" />
   </a>
-  <a href="https://xaero.framer.website">
+  <a href="https://discord.gg/DmyM2p2fMe">
     <img src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord Community" />
   </a>
 </p>
 
 <p align="center">
-  <a href="https://instagram.com/official_1f81">
-    <img src="https://img.shields.io/badge/Follow%20%40official_1f81?style=social&logo=instagram&logoColor=%23FF0069" alt="official_1f81 Instagram" />
-  </a>
-  <a href="https://threads.com/@official_1f81">
-    <img src="https://img.shields.io/badge/Follow%20%40official_1f81?style=social&logo=threads&logoColor=%23000000" alt="official_1f81 Threads" />
-  </a>
-  <a href="https://instagram.com/xaero_community">
-    <img src="https://img.shields.io/badge/Follow%20%40Xaero%20Community?style=social&logo=instagram&logoColor=%23FF0069" alt="Xaero Community Instagram" />
-  </a>
-</p>
-
-<p align="center">
-  <a href="https://buymeachai.ezee.li/1f81-official" target="_blank">
+  <a href="https://buymeachai.ezee.li/ajisth69" target="_blank">
     <img src="https://img.shields.io/badge/UPI-Buy%20Me%20A%20Chai-FF813F?style=for-the-badge&logo=googlepay&logoColor=white" alt="UPI (Buy Me A Chai)" height="34" />
   </a>
   &nbsp;
-  <a href="https://buymeacoffee.com/1f81-official" target="_blank">
+  <a href="https://buymeacoffee.com/ajisth" target="_blank">
     <img src="https://img.shields.io/badge/Buy%20Me%20A%20Coffee-ajisth-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy Me A Coffee" height="34" />
   </a>
   &nbsp;
-  <a href="https://github.com/sponsors/1f81-official" target="_blank">
+  <a href="https://github.com/sponsors/ajisth69" target="_blank">
     <img src="https://img.shields.io/badge/Sponsor-GitHub-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="GitHub Sponsors" height="34" />
   </a>
 </p>
@@ -77,28 +68,14 @@
 ---
 
 <div align="center">
-
-  <!-- Row 1: Full Banner -->
-  <img src="Screenshot/SoundDrop Main.png" width="100%" style="border-radius: 12px; margin-bottom: 12px;" />
-
-  <!-- Row 2: Two Images Side-by-Side -->
-  <p align="center" style="margin: 0 0 12px 0;">
-    <img src="Screenshot/SoundDrop 1.png" width="49.2%" style="border-radius: 12px;" />&nbsp;&nbsp;<img src="Screenshot/SoundDrop 2.png" width="49.2%" style="border-radius: 12px;" />
-  </p>
-
-  <!-- Row 3: Two Images Side-by-Side -->
-  <p align="center" style="margin: 0 0 12px 0;">
-    <img src="Screenshot/SoundDrop 3.png" width="49.2%" style="border-radius: 12px;" />&nbsp;&nbsp;<img src="Screenshot/SoundDrop 4.png" width="49.2%" style="border-radius: 12px;" />
-  </p>
-
-  <!-- Row 4: Two Images Side-by-Side -->
-  <p align="center" style="margin: 0 0 12px 0;">
-    <img src="Screenshot/SoundDrop 5.png" width="49.2%" style="border-radius: 12px;" />&nbsp;&nbsp;<img src="Screenshot/SoundDrop 6.png" width="49.2%" style="border-radius: 12px;" />
-  </p>
-
-  <!-- Row 5: Full Banner -->
-  <img src="Screenshot/SoundDrop 7.png" width="100%" style="border-radius: 12px;" />
-
+  <img src="Screenshot/screenshot_1.png" width="31%" style="border-radius: 14px; margin: 4px;" />
+  <img src="Screenshot/screenshot_2.png" width="31%" style="border-radius: 14px; margin: 4px;" />
+  <img src="Screenshot/screenshot_3.png" width="31%" style="border-radius: 14px; margin: 4px;" />
+  <br/>
+  <br/>
+  <img src="Screenshot/screenshot_4.png" width="31%" style="border-radius: 14px; margin: 4px;" />
+  <img src="Screenshot/screenshot_5.png" width="31%" style="border-radius: 14px; margin: 4px;" />
+  <img src="Screenshot/screenshot_6.png" width="31%" style="border-radius: 14px; margin: 4px;" />
 </div>
 
 ---
@@ -106,9 +83,9 @@
 
 ## <img src="https://api.iconify.design/lucide/sparkles.svg?color=%23C6F100" width="20" height="20" align="center" /> Overview
 
-**SoundDrop** is a modern native Android music client powered by the global YouTube Music catalog, designed for listeners who want intelligent recommendations, kinetic visuals, and seamless music tracking. 
+**LastWave** is a modern native Android music client powered by the global YouTube Music catalog, designed for listeners who want intelligent recommendations, kinetic visuals, and seamless music tracking. 
 
-Built with **Material 3 Expressive**, SoundDrop combines effortless ad-free streaming, an AI-powered smart playlist generator, real-time synchronized karaoke lyrics, and a built-in Last.fm scrobbler that watches your playback across your favorite music apps.
+Built with **Material 3 Expressive**, LastWave combines effortless ad-free streaming, an AI-powered smart playlist generator, real-time synchronized karaoke lyrics, and a built-in Last.fm scrobbler that watches your playback across your favorite music apps.
 
 ---
 
@@ -123,7 +100,7 @@ Built with **Material 3 Expressive**, SoundDrop combines effortless ad-free stre
 | <img src="https://api.iconify.design/lucide/mic.svg?color=%23FFB4A2" width="20" height="20" /> | **Real-Time Synced Lyrics** | Millisecond-accurate animated karaoke lyrics powered by LRCLIB with 8 customizable fluid physics motions. |
 | <img src="https://api.iconify.design/lucide/arrow-down-to-line.svg?color=%23C6F100" width="20" height="20" /> | **Offline Downloader** | One-tap downloads saved directly to local storage (`Music/LastWave`), fully tagged with high-res cover art and synchronized `.lrc` lyrics. |
 | <img src="https://api.iconify.design/lucide/compass.svg?color=%2300E5FF" width="20" height="20" /> | **Discovery Feed & Genre DNA** | Personalized recommendation radar with deep genre breakdowns, weekly listening recaps, and instant "Start Mix" radios. |
-| <img src="https://api.iconify.design/lucide/share-2.svg?color=%23C6F100" width="20" height="20" /> | **Cross-Platform Playlist Import** | Instantly import public playlists from Spotify and Apple Music directly into your SoundDrop library. |
+| <img src="https://api.iconify.design/lucide/share-2.svg?color=%23C6F100" width="20" height="20" /> | **Cross-Platform Playlist Import** | Instantly import public playlists from Spotify and Apple Music directly into your LastWave library. |
 | <img src="https://api.iconify.design/lucide/users.svg?color=%23FFB4A2" width="20" height="20" /> | **Social Feed & Friends** | Follow friends' listening activity via Last.fm, browse their recent scrobbles, and explore their top tracks. |
 | <img src="https://api.iconify.design/lucide/palette.svg?color=%23C6F100" width="20" height="20" /> | **Material 3 Expressive** | Dynamic wallpaper theming, custom HSL color palette engine, album art color extraction, fluid card animations, and tactile haptics. |
 
@@ -145,8 +122,8 @@ Built with **Material 3 Expressive**, SoundDrop combines effortless ad-free stre
 
 ## <img src="https://api.iconify.design/lucide/rocket.svg?color=%23C6F100" width="20" height="20" align="center" /> Getting Started
 
-1. Download the latest APK from the **[Releases](https://github.com/1f81-official/SoundDrop/releases)** or **[Actions](https://github.com/1f81-official/SoundDrop/actions)** tab.
-2. Install `SoundDrop-v1.0.0-release.apk` on your Android device (Android 7.0+).
+1. Download the latest APK from the **[Releases](https://github.com/Clash-Projects/LastWave-native/releases)** or **[Actions](https://github.com/Clash-Projects/LastWave-native/actions)** tab.
+2. Install `LastWave-v5.0.0-release.apk` on your Android device (Android 7.0+).
 3. Connect your Last.fm account in **Settings → Integrations** to unlock the scrobbler, taste mixes, and personalized discovery radar.
 4. Enjoy ad-free streaming and smart playlist generation!
 
@@ -156,7 +133,7 @@ Built with **Material 3 Expressive**, SoundDrop combines effortless ad-free stre
 ## <img src="https://api.iconify.design/lucide/terminal.svg?color=%23C6F100" width="20" height="20" align="center" /> Building from Source
 
 ```bash
-git clone https://github.com/1f81-official/SoundDrop.git
+git clone https://github.com/Clash-Projects/LastWave-native.git
 cd LastWave-native
 ./gradlew assembleRelease
 ```
@@ -168,13 +145,13 @@ cd LastWave-native
 
 ## <img src="https://api.iconify.design/lucide/message-circle.svg?color=%2324A1DE" width="20" height="20" align="center" /> Community & Support
 
-* <img src="https://api.iconify.design/lucide/send.svg?color=%2324A1DE" width="16" height="16" align="center" /> **Updates & Support:** [Join @Xaero_Community on Telegram](https://t.me/Xaero_Community)
+* <img src="https://api.iconify.design/lucide/send.svg?color=%2324A1DE" width="16" height="16" align="center" /> **Updates & Support:** [Join @clashprojects on Telegram](https://t.me/clashprojects)
 
-* <img src="https://api.iconify.design/lucide/sparkles.svg?color=%230088cc" width="16" height="16" align="center" /> **More From Us:** [Join @official_1f81 on Instagram](https://instagram.com/official_1f81)
+* <img src="https://api.iconify.design/lucide/sparkles.svg?color=%230088cc" width="16" height="16" align="center" /> **More From Us:** [Join @MaterialYouApp on Telegram](https://t.me/MaterialYouApp)
 
-* <img src="https://api.iconify.design/lucide/message-square.svg?color=%235865F2" width="16" height="16" align="center" /> **Discord Community:** [Join Discord](https://xaero.framer.website)
+* <img src="https://api.iconify.design/lucide/message-square.svg?color=%235865F2" width="16" height="16" align="center" /> **Discord Community:** [Join Discord](https://discord.gg/DmyM2p2fMe)
 
-* <img src="https://api.iconify.design/lucide/globe.svg?color=%2324A1DE" width="16" height="16" align="center" /> **SoundDrop Website:** [visit site now](https://sounddrop.framer.website)
+* <img src="https://api.iconify.design/lucide/globe.svg?color=%2324A1DE" width="16" height="16" align="center" /> **LastWave Website:** [visit site now](https://lastwave.pages.dev)
 
 ---
 
@@ -184,15 +161,15 @@ cd LastWave-native
 > [!NOTE]
 > **Educational & Research Notice**
 >
-> SoundDrop is an open-source, non-commercial application developed strictly for research and educational purposes to demonstrate modern Android application architecture with Jetpack Compose and AndroidX Media3.
+> LastWave is an open-source, non-commercial application developed strictly for research and educational purposes to demonstrate modern Android application architecture with Jetpack Compose and AndroidX Media3.
 >
 > **No Affiliation & Content Policy**
-> - SoundDrop is an independent project and is **not affiliated with, endorsed, or sponsored by Google LLC, YouTube, YouTube Music, Spotify, Apple Inc., Last.fm, or any music service**.
-> - SoundDrop **does not host, stream from private servers, or distribute any copyrighted media**. All content and metadata are accessed directly from public endpoints in accordance with their respective terms. All trademarks belong to their respective owners.
+> - LastWave is an independent project and is **not affiliated with, endorsed, or sponsored by Google LLC, YouTube, YouTube Music, Spotify, Apple Inc., Last.fm, or any music service**.
+> - LastWave **does not host, stream from private servers, or distribute any copyrighted media**. All content and metadata are accessed directly from public endpoints in accordance with their respective terms. All trademarks belong to their respective owners.
 
 ---
 
 
 ---
 
-[![GitGem](https://gitgem.org/api/badge/github/1f81-official/SoundDrop.svg)](https://gitgem.org/github/1f81-official/SoundDrop)
+[![GitGem](https://gitgem.org/api/badge/github/Clash-Projects/LastWave-Native.svg)](https://gitgem.org/github/Clash-Projects/LastWave-Native)
