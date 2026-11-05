@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/wave_widget_strip_description"
+    android:initialLayout="@layout/widget_wave_strip"
+    android:minWidth="250dp"
+    android:minHeight="40dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="40dp"
+    android:maxResizeHeight="40dp"
+    android:resizeMode="horizontal"
+    android:previewImage="@drawable/wave_widget_preview_strip"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

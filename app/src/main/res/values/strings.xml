@@ -6,6 +6,43 @@
     <string name="widget_obsidian_name">LastWave Obsidian Glass</string>
     <string name="widget_obsidian_description">Frosted obsidian glass player with translucent depth and crystal rim</string>
 
+    <!-- Wave home-screen widgets -->
+    <string name="wave_widget_strip_name">LastWave Strip · 3×1–4×1</string>
+    <string name="wave_widget_strip_description">Full-cover player with like, previous, play, next and shuffle; resize between 3×1 and 4×1</string>
+    <string name="wave_widget_glass_name">LastWave Glass · 2×2</string>
+    <string name="wave_widget_glass_description">A fixed square glass player with cover colors, progress and playback controls</string>
+    <string name="wave_widget_circular_name">LastWave Wave Circular · 2×2</string>
+    <string name="wave_widget_circular_description">A fixed circular cover with a wave ring and previous, play and next controls</string>
+    <string name="wave_widget_library_name">LastWave Library Grid</string>
+    <string name="wave_widget_library_description">Now playing, four recent tracks and quick access; resize between 3×2 and 4×2</string>
+    <string name="wave_widget_recently_played">Recently played</string>
+    <string name="wave_widget_quick_access">Quick access</string>
+    <string name="wave_widget_search">Search</string>
+    <string name="wave_widget_playlist_shortcut">Playlist shortcut</string>
+    <string name="wave_widget_no_recent">Your played music appears here</string>
+    <string name="wave_widget_preview_time">1:15 / 3:42</string>
+    <string name="wave_widget_unlike">Remove like</string>
+    <string name="wave_widget_shuffle_on">Turn shuffle off</string>
+    <string name="wave_widget_nothing_playing">Nothing playing</string>
+    <string name="wave_widget_tap_to_open">Tap to play something</string>
+    <string name="wave_widget_play">Play</string>
+    <string name="wave_widget_pause">Pause</string>
+    <string name="wave_widget_like">Like</string>
+    <string name="wave_widget_shuffle">Shuffle</string>
+    <string name="wave_widget_repeat">Repeat</string>
+    <string name="wave_widget_up_next">Up next</string>
+    <string name="wave_widget_playlists">Playlists</string>
+    <string name="wave_widget_playlist_liked">Liked</string>
+    <string name="wave_widget_playlist_recent">Recent</string>
+    <string name="wave_widget_playlist_most_played">Most played</string>
+    <string name="wave_widget_preview_title">Midnight Current</string>
+    <string name="wave_widget_preview_artist">LastWave Radio</string>
+    <string name="wave_widget_preview_next_one">Afterglow &#183; Lumen</string>
+    <string name="wave_widget_preview_next_two">Low Tide &#183; Nocturne</string>
+    <string name="wave_widget_preview_next_three">Signal Bloom &#183; Arc</string>
+    <string name="wave_widget_preview_playlist_four">Focus mix</string>
+    <string name="wave_widget_preview_playlist_five">Night drive</string>
+
     <!-- Bottom navigation -->
     <string name="nav_feed">Feed</string>
     <string name="nav_stats">Stats</string>
