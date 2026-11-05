@@ -29,6 +29,7 @@ data class SearchUiState(
     val status: SearchStatus = SearchStatus.IDLE,
     val results: List<SearchResultItem> = emptyList(),
     val suggestions: List<String> = emptyList(),
+    val songSuggestions: List<SearchResultItem> = emptyList(),
     val recentSearches: List<String> = emptyList(),
     val isShowingSuggestions: Boolean = false,
 )
@@ -62,7 +63,9 @@ class SearchViewModel @Inject constructor(
     }
 
     fun setQuery(query: String) {
-        _uiState.update { it.copy(query = query, isShowingSuggestions = query.isNotBlank()) }
+        _uiState.update {
+            it.copy(query = query, songSuggestions = emptyList(), isShowingSuggestions = query.isNotBlank())
+        }
         debounceJob?.cancel()
         suggestionsJob?.cancel()
 
@@ -101,6 +104,7 @@ class SearchViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 tab = tab,
+                songSuggestions = emptyList(),
                 isShowingSuggestions = false,
                 results = emptyList(),
                 status = if (it.query.isBlank()) SearchStatus.IDLE else SearchStatus.LOADING,
@@ -210,6 +214,7 @@ class SearchViewModel @Inject constructor(
                 it.copy(
                     status = if (results.isEmpty()) SearchStatus.EMPTY else SearchStatus.RESULTS,
                     results = results,
+                    songSuggestions = if (tab == SearchTab.TRACKS) results.take(5) else emptyList(),
                 )
             }
             if (tab == SearchTab.TRACKS) {
@@ -242,6 +247,7 @@ class SearchViewModel @Inject constructor(
                 status = SearchStatus.IDLE,
                 results = emptyList(),
                 suggestions = emptyList(),
+                songSuggestions = emptyList(),
                 isShowingSuggestions = false,
             )
         }
