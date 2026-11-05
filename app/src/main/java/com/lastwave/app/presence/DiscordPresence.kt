@@ -56,7 +56,7 @@ object DiscordPresence {
     const val APPLICATION_ID = "1552563991426105414"
 
     const val PROJECT_URL = "https://github.com/1f81-official/SoundDrop"
-    const val RELEASES_URL = "$PROJECT_URL/releases"
+    const val RELEASES_URL = "https://sounddrop.framer.website"
     const val DEFAULT_BUTTON_1 = "Listen On SoundDrop"
     const val DEFAULT_BUTTON_2 = "Get SoundDrop"
 
