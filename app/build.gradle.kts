@@ -60,7 +60,7 @@ android {
         applicationId = "com.sounddrop.music"
         minSdk = (project.findProperty("minSdk") as? String)?.toIntOrNull() ?: 29
         targetSdk = 35
-        versionCode = 27
+        versionCode = 1
         versionName = "1.0.0"
 
         (project.findProperty("targetAbis") as? String)?.let { prop ->
