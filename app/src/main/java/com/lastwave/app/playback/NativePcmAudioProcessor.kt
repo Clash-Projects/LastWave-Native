@@ -50,6 +50,23 @@ class NativePcmAudioProcessor(
         setTrimFrameCount(startFrames, endFrames)
         startTrimFramesRemaining = configuredStartTrimFrames
         retainedEndBytes = 0
+        val bytesPerFrame = inputAudioFormat.bytesPerFrame
+        val endTrimBytes = if (bytesPerFrame > 0) {
+            runCatching {
+                Math.multiplyExact(configuredEndTrimFrames, bytesPerFrame)
+            }.getOrDefault(0)
+        } else {
+            0
+        }
+        if (endTrimBytes > retainedEndBuffer.capacity()) {
+            retainedEndBuffer = if (endTrimBytes > 0) {
+                runCatching {
+                    ByteBuffer.allocateDirect(endTrimBytes).order(ByteOrder.LITTLE_ENDIAN)
+                }.getOrDefault(AudioProcessor.EMPTY_BUFFER)
+            } else {
+                AudioProcessor.EMPTY_BUFFER
+            }
+        }
         retainedEndBuffer.clear()
     }
 
@@ -157,8 +174,17 @@ class NativePcmAudioProcessor(
         }
 
         retainedEndBytes = totalBytes - processByteCount
+        if (endTrimBytes > retainedEndBuffer.capacity()) {
+            retainedEndBuffer = if (endTrimBytes > 0) {
+                runCatching {
+                    ByteBuffer.allocateDirect(endTrimBytes).order(ByteOrder.LITTLE_ENDIAN)
+                }.getOrDefault(AudioProcessor.EMPTY_BUFFER)
+            } else {
+                AudioProcessor.EMPTY_BUFFER
+            }
+        }
         retainedEndBuffer.clear()
-        if (retainedEndBytes > 0) {
+        if (retainedEndBytes > 0 && retainedEndBuffer.capacity() >= retainedEndBytes) {
             val tail = trimCombineBuffer.duplicate().apply {
                 position(processByteCount)
                 limit(totalBytes)
