@@ -1,5 +1,10 @@
 <div align="center">
 
+<img src="LastWave_banner_v2_1440p.png" alt="LastWave Banner" width="100%" style="border-radius: 16px;" />
+
+<br/>
+<br/>
+
 <img src="lastwave_logo.png" alt="LastWave Logo" width="120" height="120" style="border-radius: 50%;" />
 
 # LastWave
