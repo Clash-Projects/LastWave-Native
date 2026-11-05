@@ -358,6 +358,7 @@ tasks.withType<Test> {
 // Generate native secrets header before CMake configures.
 // CI provides ADDON_CLIENT_SECRET / RELEASE_CERT_SHA256 via env/secrets.
 val generateNativeSecrets by tasks.registering(Exec::class) {
+    onlyIf { file("tools/generate_native_secrets.py").exists() }
     workingDir = rootProject.projectDir
     val py = org.gradle.internal.os.OperatingSystem.current().let {
         if (it.isWindows) "python" else "python3"
