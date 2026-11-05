@@ -47,6 +47,18 @@
 </p>
 
 <p align="center">
+  <a href="https://instagram.com/official_1f81">
+    <img src="https://img.shields.io/badge/Follow%20%40official_1f81?style=social&logo=instagram&logoColor=%23FF0069" alt="official_1f81 Instagram" />
+  </a>
+  <a href="https://threads.com/@official_1f81">
+    <img src="https://img.shields.io/badge/Follow%20%40official_1f81?style=social&logo=threads&logoColor=%23000000" alt="official_1f81 Threads" />
+  </a>
+  <a href="https://instagram.com/xaero_community">
+    <img src="https://img.shields.io/badge/Follow%20%40Xaero%20Community?style=social&logo=instagram&logoColor=%23FF0069" alt="Xaero Community Instagram" />
+  </a>
+</p>
+
+<p align="center">
   <a href="https://buymeachai.ezee.li/1f81-official" target="_blank">
     <img src="https://img.shields.io/badge/UPI-Buy%20Me%20A%20Chai-FF813F?style=for-the-badge&logo=googlepay&logoColor=white" alt="UPI (Buy Me A Chai)" height="34" />
   </a>
