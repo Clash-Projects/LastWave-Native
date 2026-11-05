@@ -16,6 +16,8 @@
     <string name="wave_widget_library_name">LastWave Library Grid</string>
     <string name="wave_widget_library_description">Now playing, four recent tracks and quick access; resize between 3×2 and 4×2</string>
     <string name="wave_widget_recently_played">Recently played</string>
+    <string name="wave_widget_coming_next">Coming next</string>
+    <string name="wave_widget_no_up_next">Queue is empty</string>
     <string name="wave_widget_quick_access">Quick access</string>
     <string name="wave_widget_search">Search</string>
     <string name="wave_widget_playlist_shortcut">Playlist shortcut</string>

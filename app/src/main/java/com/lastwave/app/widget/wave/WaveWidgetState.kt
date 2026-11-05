@@ -102,7 +102,7 @@ data class WaveWidgetState(
             val currentIndex = playerState.currentIndex.takeIf { it in playerState.queue.indices }
                 ?: playerState.queue.indexOf(current)
             val next = if (currentIndex >= 0) {
-                (currentIndex + 1..currentIndex + 3).mapNotNull { index ->
+                (currentIndex + 1..currentIndex + 4).mapNotNull { index ->
                     playerState.queue.getOrNull(index)?.toWaveQueueTrack(index)
                 }
             } else {
@@ -236,7 +236,7 @@ private fun WaveWidgetState.sanitized(): WaveWidgetState = copy(
     nextTracks = nextTracks
         .filter { it.queueIndex >= 0 && it.title.isNotBlank() }
         .distinctBy { it.queueIndex }
-        .take(3),
+        .take(4),
     recentTracks = recentTracks.sanitizedRecentTracks(),
     playlists = playlists.withDefaults(),
 )

@@ -61,6 +61,26 @@ data class WaveWidgetColors(
 internal object WaveColorMath {
     fun ensureOpaque(color: Int): Int = color or (0xFF shl 24)
 
+    /** Preserve the cover hue with a rich, dark surface that keeps white controls readable. */
+    fun stripBackground(accent: Int): Int {
+        val channels = intArrayOf(red(accent), green(accent), blue(accent))
+        val maximum = channels.maxOrNull()!!.coerceAtLeast(1)
+        val minimum = channels.minOrNull()!!
+        val spread = (maximum - minimum).coerceAtLeast(1)
+        val saturation = (spread.toFloat() / maximum).coerceIn(0.76f, 0.94f)
+        val value = (maximum / 255f * 0.62f).coerceIn(0.34f, 0.55f)
+        val floor = value * (1f - saturation)
+        val chroma = value * saturation
+        val vivid = channels.map { channel ->
+            ((floor + (channel - minimum).toFloat() / spread * chroma) * 255f).toInt()
+        }
+        var background = argb(255, vivid[0], vivid[1], vivid[2])
+        while (contrastRatio(0xFFFFFFFF.toInt(), background) < 4.5) {
+            background = mix(background, 0xFF000000.toInt(), 0.06f)
+        }
+        return background
+    }
+
     fun mix(first: Int, second: Int, secondWeight: Float): Int {
         val weight = secondWeight.coerceIn(0f, 1f)
         val inverse = 1f - weight

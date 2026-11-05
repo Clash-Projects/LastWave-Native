@@ -11,7 +11,7 @@ import org.junit.Test
 
 class WaveWidgetStateTest {
     @Test
-    fun fromPlayer_mapsCurrentModesAndNextThreeWithRealQueueIndices() {
+    fun fromPlayer_mapsCurrentModesAndAvailableNextTracksWithRealQueueIndices() {
         val queue = (0..5).map { index ->
             PlayableTrack(
                 title = "Song $index",
@@ -43,6 +43,26 @@ class WaveWidgetStateTest {
         assertThat(snapshot.nextTracks.map { it.title }).containsExactly("Song 3", "Song 4", "Song 5").inOrder()
         assertThat(snapshot.recentTracks.map { it.title }).containsExactly("Song 2")
         assertThat(snapshot.recentTracks.single().queueIndex).isEqualTo(-1)
+    }
+
+    @Test
+    fun fromPlayer_limitsUpNextToFourAfterCurrentAndPreservesReplayIndicesOnRestore() {
+        val queue = (0..8).map { index ->
+            PlayableTrack("Song $index", "Artist", videoId = "video-$index")
+        }
+        val snapshot = WaveWidgetState.fromPlayer(
+            MusicPlayerState(current = queue[2], queue = queue, currentIndex = 2),
+            isLiked = false,
+        )
+        val restored = Json.decodeFromString<WaveWidgetState>(Json.encodeToString(snapshot))
+
+        assertThat(snapshot.nextTracks.map { it.queueIndex }).containsExactly(3, 4, 5, 6).inOrder()
+        assertThat(snapshot.nextTracks.map { it.videoId })
+            .containsExactly("video-3", "video-4", "video-5", "video-6").inOrder()
+        assertThat(snapshot.recentTracks.map { it.title }).containsExactly("Song 2")
+        assertThat(restored.nextTracks).isEqualTo(snapshot.nextTracks)
+        assertThat(restored.nextTracks.last().queueIndex).isEqualTo(6)
+        assertThat(restored.nextTracks.last().trackId).isEqualTo("video:video-6")
     }
 
     @Test
