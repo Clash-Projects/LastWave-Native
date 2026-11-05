@@ -51,8 +51,8 @@ class AddonClient(
         }
         Log.d(TAG, "Native addon signing unavailable; using fallback signer")
 
-        // 2. Fallback to Java HMAC if clientSecret provided or default known secret
-        val secret = clientSecret?.takeIf { it.isNotBlank() } ?: DEFAULT_ADDON_SECRET
+        // 2. Fallback to Java HMAC only if explicit clientSecret is provided
+        val secret = clientSecret?.takeIf { it.isNotBlank() } ?: return
         try {
             val uri = java.net.URI(urlStr)
             val path = uri.path ?: "/"
@@ -273,7 +273,6 @@ class AddonClient(
 
     companion object {
         private const val TAG = "AddonClient"
-        private const val DEFAULT_ADDON_SECRET = "36d96a751b12ee481c281a8a8e64c482d0c1634a22061ab72f40175017818b85"
 
         fun normalizeBase(raw: String): String {
             if (raw.isBlank()) return ""

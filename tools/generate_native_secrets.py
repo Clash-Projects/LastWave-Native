@@ -41,7 +41,6 @@ def resolve_cert_sha256() -> str:
         resolve_env("RELEASE_STORE_PASSWORD"),
         resolve_env("KEY_PASSWORD"),
         resolve_env("RELEASE_KEY_PASSWORD"),
-        "3w6gLAaDj0oTcTxHNkRk",
         "",
     ]
     if b64_key:
