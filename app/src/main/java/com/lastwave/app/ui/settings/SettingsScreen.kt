@@ -138,6 +138,7 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.SmartDisplay
+import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.SwitchAccount
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.QueueMusic
@@ -1016,6 +1017,23 @@ fun SettingsScreen(
                                 onCheckedChange = viewModel::setKeepLyricsScreenAwake,
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.keep_lyrics_screen_awake"),
+                            )
+                        }
+                        add { position ->
+                            SettingsToggleCard(
+                                icon = Icons.Filled.StopCircle,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = stringResource(R.string.settings_stop_on_recents),
+                                subtitle = if (misc.stopPlaybackOnTaskRemoved) {
+                                    stringResource(R.string.settings_stop_on_recents_on)
+                                } else {
+                                    stringResource(R.string.settings_stop_on_recents_off)
+                                },
+                                checked = misc.stopPlaybackOnTaskRemoved,
+                                onCheckedChange = viewModel::setStopPlaybackOnTaskRemoved,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.stop_on_recents"),
                             )
                         }
                         add { position ->

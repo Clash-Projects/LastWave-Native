@@ -125,6 +125,28 @@
 
 ## Unreleased
 
+### Fixed
+- **Playback continuing after LastWave was swiped from Recents.**
+  `MusicPlaybackService.onTaskRemoved()` was a no-op that relied on
+  `android:stopWithTask="true"`, but the service deliberately stays a
+  media-playback foreground service whenever a track is loaded (even paused),
+  and Android does not stop a foreground service on task removal. Task removal
+  is now handled explicitly: playback stops and the service, cast session,
+  notification and wake/wifi locks are torn down, while the last queue is kept
+  restorable for the next launch. A new Audio & Playback toggle — "Stop
+  Playback When Swiped Away", on by default — preserves background playback
+  for users who want it.
+
+  Files changed:
+  `app/src/main/java/com/lastwave/app/playback/MusicPlaybackService.kt`,
+  `app/src/main/java/com/lastwave/app/playback/MusicPlayer.kt`,
+  `app/src/main/java/com/lastwave/app/data/local/SettingsPreferences.kt`,
+  `app/src/main/java/com/lastwave/app/ui/settings/SettingsViewModel.kt`,
+  `app/src/main/java/com/lastwave/app/ui/settings/SettingsScreen.kt`,
+  `app/src/main/java/com/lastwave/app/ui/settings/SettingsSearchIndex.kt`,
+  `app/src/main/res/values/strings.xml`,
+  `app/src/main/AndroidManifest.xml`
+
 ### Added
 - **One-tap "Save album to library" on the album detail screen (#79).**
   Previously an album could only be kept by adding its songs one by one to

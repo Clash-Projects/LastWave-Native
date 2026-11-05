@@ -512,6 +512,16 @@ class MusicPlayer @Inject constructor(
     private var crossfadeEnabled = false
     @Volatile
     private var crossfadeDurationMs = 5_000L
+    /**
+     * Mirror of [MiscSettings.stopPlaybackOnTaskRemoved] for the playback
+     * service, which cannot block on DataStore from onTaskRemoved(). The
+     * default matches the preference's default so a task removal that races
+     * the first settings emission still stops playback.
+     */
+    @Volatile
+    private var stopPlaybackOnTaskRemovedPref = true
+    val stopPlaybackOnTaskRemoved: Boolean
+        get() = stopPlaybackOnTaskRemovedPref
     private var activePlayer: ExoPlayer? = null
     private var secondaryPlayer: ExoPlayer? = null
     private var secondaryNativeEngine: NativeAudioEngine? = null
@@ -2271,6 +2281,7 @@ class MusicPlayer @Inject constructor(
             settingsPreferences.settings.collect { settings ->
                 crossfadeEnabled = settings.crossfadeEnabled
                 crossfadeDurationMs = settings.crossfadeSeconds.coerceIn(1, 12) * 1000L
+                stopPlaybackOnTaskRemovedPref = settings.stopPlaybackOnTaskRemoved
                 val wasBitPerfect = bitPerfectEnabled
                 bitPerfectEnabled = settings.isBitPerfectEnabled
                 systemEffectsModePref = settings.systemEffectsMode
