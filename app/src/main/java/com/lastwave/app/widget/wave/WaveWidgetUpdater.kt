@@ -251,7 +251,10 @@ object WaveWidgetUpdater {
                 bitmap = bitmap?.takeIf { !it.isRecycled },
             ) else WaveWidgetArt.Result(null, null, null)
             if (targets.any { it.kind == WaveWidgetKind.LIBRARY }) {
-                art.copy(recentArt = WaveWidgetArt.resolveRecent(context, state.recentTracks))
+                art.copy(
+                    recentArt = WaveWidgetArt.resolveRecent(context, state.recentTracks),
+                    nextArt = WaveWidgetArt.resolveRecent(context, state.nextTracks),
+                )
             } else {
                 art
             }

@@ -173,7 +173,7 @@
                     android:layout_weight="1"
                     android:background="@drawable/wave_widget_library_panel"
                     android:orientation="vertical"
-                    android:padding="4dp">
+                    android:padding="2dp">
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="12dp"
@@ -183,12 +183,12 @@
                         android:maxLines="1"
                         android:text="@string/wave_widget_recently_played"
                         android:textColor="#FFF6F4FF"
-                        android:textSize="11sp"
+                        android:textSize="10sp"
                         android:textStyle="bold" />
                     <FrameLayout
                         android:layout_width="match_parent"
                         android:layout_height="0dp"
-                        android:layout_marginTop="2dp"
+                        android:layout_marginTop="1dp"
                         android:layout_weight="1">
                         <LinearLayout
                             android:layout_width="match_parent"
@@ -215,6 +215,7 @@
                                     android:scaleType="fitCenter" />
                                 <TextView
                                     android:id="@+id/wave_recent_title_1"
+                                    android:visibility="gone"
                                     android:layout_width="match_parent"
                                     android:layout_height="11dp"
                                     android:layout_marginTop="2dp"
@@ -246,6 +247,7 @@
                                     android:scaleType="fitCenter" />
                                 <TextView
                                     android:id="@+id/wave_recent_title_2"
+                                    android:visibility="gone"
                                     android:layout_width="match_parent"
                                     android:layout_height="11dp"
                                     android:layout_marginTop="2dp"
@@ -277,6 +279,7 @@
                                     android:scaleType="fitCenter" />
                                 <TextView
                                     android:id="@+id/wave_recent_title_3"
+                                    android:visibility="gone"
                                     android:layout_width="match_parent"
                                     android:layout_height="11dp"
                                     android:layout_marginTop="2dp"
@@ -308,6 +311,7 @@
                                     android:scaleType="fitCenter" />
                                 <TextView
                                     android:id="@+id/wave_recent_title_4"
+                                    android:visibility="gone"
                                     android:layout_width="match_parent"
                                     android:layout_height="11dp"
                                     android:layout_marginTop="2dp"
@@ -333,16 +337,113 @@
                             android:textSize="10sp"
                             android:visibility="gone" />
                     </FrameLayout>
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="12dp"
+                        android:layout_marginTop="2dp"
+                        android:ellipsize="end"
+                        android:fontFamily="@font/google_sans_flex"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:text="@string/wave_widget_coming_next"
+                        android:textColor="#FFF6F4FF"
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+                    <FrameLayout
+                        android:id="@+id/wave_next_row"
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_marginTop="1dp"
+                        android:layout_weight="1">
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:gravity="center"
+                            android:weightSum="4"
+                            android:orientation="horizontal">
+                            <FrameLayout
+                                android:id="@+id/wave_next_1"
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_weight="1"
+                                android:paddingStart="1dp"
+                                android:paddingEnd="1dp">
+                                <ImageView
+                                    android:id="@+id/wave_next_art_1"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="match_parent"
+                                    android:contentDescription="@null"
+                                    android:src="@drawable/wave_widget_preview_recent_1"
+                                    android:scaleType="fitCenter" />
+                            </FrameLayout>
+                            <FrameLayout
+                                android:id="@+id/wave_next_2"
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_weight="1"
+                                android:paddingStart="1dp"
+                                android:paddingEnd="1dp">
+                                <ImageView
+                                    android:id="@+id/wave_next_art_2"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="match_parent"
+                                    android:contentDescription="@null"
+                                    android:src="@drawable/wave_widget_preview_recent_2"
+                                    android:scaleType="fitCenter" />
+                            </FrameLayout>
+                            <FrameLayout
+                                android:id="@+id/wave_next_3"
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_weight="1"
+                                android:paddingStart="1dp"
+                                android:paddingEnd="1dp">
+                                <ImageView
+                                    android:id="@+id/wave_next_art_3"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="match_parent"
+                                    android:contentDescription="@null"
+                                    android:src="@drawable/wave_widget_preview_recent_3"
+                                    android:scaleType="fitCenter" />
+                            </FrameLayout>
+                            <FrameLayout
+                                android:id="@+id/wave_next_4"
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_weight="1"
+                                android:paddingStart="1dp"
+                                android:paddingEnd="1dp">
+                                <ImageView
+                                    android:id="@+id/wave_next_art_4"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="match_parent"
+                                    android:contentDescription="@null"
+                                    android:src="@drawable/wave_widget_preview_recent_4"
+                                    android:scaleType="fitCenter" />
+                            </FrameLayout>
+                        </LinearLayout>
+                        <TextView
+                            android:id="@+id/wave_next_empty"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:fontFamily="@font/google_sans_flex"
+                            android:gravity="center"
+                            android:includeFontPadding="false"
+                            android:text="@string/wave_widget_no_up_next"
+                            android:textColor="#FFC4C4DB"
+                            android:textSize="9sp"
+                            android:visibility="gone" />
+                    </FrameLayout>
                 </LinearLayout>
                 <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="30dp"
-                    android:layout_marginTop="4dp"
+                    android:layout_height="26dp"
+                    android:layout_marginTop="2dp"
                     android:background="@drawable/wave_widget_library_panel"
                     android:contentDescription="@string/wave_widget_quick_access"
                     android:gravity="center_vertical"
                     android:orientation="horizontal"
-                    android:padding="3dp">
+                    android:padding="2dp">
                     <FrameLayout
                         android:id="@+id/wave_search"
                         android:layout_width="24dp"

@@ -27,19 +27,19 @@
     </group>
     <path
         android:fillColor="#FFF6F4FF"
-        android:pathData="M10,79H79V84H10Z M10,95H63V98H10Z M115,13H209V17H115Z M118,87H146V90H118Z M159,87H187V90H159Z M200,87H228V90H200Z M241,87H269V90H241Z" />
+        android:pathData="M10,79H79V84H10Z M10,95H63V98H10Z M115,13H209V17H115Z M115,60H190V64H115Z" />
     <path
         android:fillColor="#FFB97051"
-        android:pathData="M132,39a17,17 0,1 0,0 34a17,17 0,1 0,0 -34" />
+        android:pathData="M132,22a14,14 0,1 0,0 28a14,14 0,1 0,0 -28 M132,73a14,14 0,1 0,0 28a14,14 0,1 0,0 -28" />
     <path
         android:fillColor="#FF507D92"
-        android:pathData="M173,39a17,17 0,1 0,0 34a17,17 0,1 0,0 -34" />
+        android:pathData="M173,22a14,14 0,1 0,0 28a14,14 0,1 0,0 -28 M173,73a14,14 0,1 0,0 28a14,14 0,1 0,0 -28" />
     <path
         android:fillColor="#FFB68863"
-        android:pathData="M214,39a17,17 0,1 0,0 34a17,17 0,1 0,0 -34" />
+        android:pathData="M214,22a14,14 0,1 0,0 28a14,14 0,1 0,0 -28 M214,73a14,14 0,1 0,0 28a14,14 0,1 0,0 -28" />
     <path
         android:fillColor="#FF726BC0"
-        android:pathData="M255,39a17,17 0,1 0,0 34a17,17 0,1 0,0 -34" />
+        android:pathData="M255,22a14,14 0,1 0,0 28a14,14 0,1 0,0 -28 M255,73a14,14 0,1 0,0 28a14,14 0,1 0,0 -28" />
     <path
         android:fillColor="#FFE7DEFF"
         android:pathData="M55,108a14,14 0,1 0,0 28a14,14 0,1 0,0 -28 M20,116H22V128H20Z M24,122L32,117V127Z M79,117L87,122L79,127Z M89,116H91V128H89Z" />
