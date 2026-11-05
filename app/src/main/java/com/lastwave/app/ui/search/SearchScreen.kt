@@ -80,6 +80,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -96,6 +97,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.lastwave.app.data.search.SearchResultItem
 import com.lastwave.app.data.search.SearchTab
 import com.lastwave.app.ui.common.ArtworkImage
@@ -340,7 +342,7 @@ fun SearchScreen(
         Box(Modifier.fillMaxSize().safeHorizontalContentPadding()) {
             when {
                 // 1. Live Auto-Complete Suggestions (while actively typing)
-                state.isShowingSuggestions && state.suggestions.isNotEmpty() -> {
+                state.isShowingSuggestions && (state.songSuggestions.isNotEmpty() || state.suggestions.isNotEmpty()) -> {
                     val matchingRecent = remember(state.query, state.recentSearches) {
                         val q = state.query.trim().lowercase()
                         if (q.isEmpty()) emptyList()
@@ -357,6 +359,20 @@ fun SearchScreen(
                         ),
                         modifier = Modifier.fillMaxSize(),
                     ) {
+                        itemsIndexed(state.songSuggestions, key = { index, song -> "song_sugg_${song.videoId}_$index" }) { _, song ->
+                            SuggestionRow(
+                                fullText = song.name,
+                                query = state.query,
+                                isHistory = false,
+                                onClick = {
+                                    focusManager.clearFocus()
+                                    viewModel.executeSearch(song.name)
+                                },
+                                onInsert = { viewModel.setQuery(song.name) },
+                                song = song,
+                            )
+                        }
+
                         item(key = "explicit_direct_search") {
                             Row(
                                 modifier = Modifier
@@ -796,6 +812,7 @@ private fun SuggestionRow(
     isHistory: Boolean,
     onClick: () -> Unit,
     onInsert: () -> Unit,
+    song: SearchResultItem? = null,
 ) {
     val baseColor = MaterialTheme.colorScheme.onSurface
     val highlightColor = MaterialTheme.colorScheme.primary
@@ -810,12 +827,36 @@ private fun SuggestionRow(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            if (isHistory) Icons.Filled.History else Icons.Filled.Search,
-            contentDescription = null,
-            tint = if (isHistory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(22.dp),
-        )
+        if (song != null) {
+            val thumbnailUrl = remember(song.artworkUrl) { suggestionThumbnailUrl(song.artworkUrl) }
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Filled.MusicNote,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+                AsyncImage(
+                    model = thumbnailUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        } else {
+            Icon(
+                if (isHistory) Icons.Filled.History else Icons.Filled.Search,
+                contentDescription = null,
+                tint = if (isHistory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp),
+            )
+        }
         Text(
             text = annotated,
             style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp),
@@ -838,6 +879,17 @@ private fun SuggestionRow(
                     .graphicsLayer { rotationZ = 135f },
             )
         }
+    }
+}
+
+private fun suggestionThumbnailUrl(url: String?): String? {
+    if (url.isNullOrBlank()) return null
+    return when {
+        url.contains("googleusercontent.com") || url.contains("ggpht.com") ->
+            url.substringBeforeLast('=') + "=w120-h120-l90-rj"
+        url.contains("ytimg.com") || url.contains("img.youtube.com/vi/") ->
+            url.substringBeforeLast('/') + if (url.contains("/vi_webp/")) "/default.webp" else "/default.jpg"
+        else -> url
     }
 }
 
