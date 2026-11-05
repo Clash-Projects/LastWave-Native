@@ -468,7 +468,7 @@ enum class SettingsTab(
         titleRes = R.string.set_cat_about,
         subtitleRes = R.string.set_cat_about_sub,
         title = "About & Community",
-        subtitle = "Version info, Telegram community, GitHub repository",
+        subtitle = "Version info, Telegram Community, About",
         icon = Icons.Filled.Info,
     ),
 }
