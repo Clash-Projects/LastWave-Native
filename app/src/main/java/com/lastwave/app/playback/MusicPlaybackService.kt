@@ -20,6 +20,7 @@ import android.media.session.MediaSession
 import android.media.session.PlaybackState as PlatformPlaybackState
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.MediaStore
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.MediaDescriptionCompat
@@ -27,6 +28,7 @@ import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.RatingCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import android.view.KeyEvent
 import android.view.View
 import android.widget.RemoteViews
 import androidx.compose.ui.graphics.toArgb
@@ -41,6 +43,9 @@ import com.lastwave.app.MainActivity
 import com.lastwave.app.R
 import com.lastwave.app.data.local.ScrobblerPreferences
 import com.lastwave.app.data.local.ScrobblerSettings
+import com.lastwave.app.data.playlist.LIKED_SONGS_MODE
+import com.lastwave.app.data.playlist.PlaylistRepository
+import com.lastwave.app.data.playlist.SavedPlaylist
 import com.lastwave.app.data.playlist.TrackLikeController
 import com.lastwave.app.data.repository.ScrobbleRepository
 import com.lastwave.app.data.repository.ThemeRepository
@@ -48,7 +53,12 @@ import com.lastwave.app.playback.resolve.MetadataLog
 
 import com.lastwave.app.widget.ActiveMediaSessionHolder
 import com.lastwave.app.widget.WidgetUpdater
+import com.lastwave.app.widget.wave.WavePlaylistShortcut
+import com.lastwave.app.widget.wave.WaveWidgetActions
+import com.lastwave.app.widget.wave.WaveWidgetActionReceiver
+import com.lastwave.app.widget.wave.WaveWidgetUpdater
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -62,10 +72,12 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import kotlin.math.abs
 
 private val TOPIC_SUFFIX_REGEX = Regex("""(?i)\s*-\s*topic$""")
 private val VEVO_SUFFIX_REGEX = Regex("""(?i)\s*vevo$""")
@@ -106,6 +118,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     @Inject lateinit var androidAutoLibrary: AndroidAutoMediaLibrary
     @Inject lateinit var lyricsRepository: com.lastwave.app.data.lyrics.LyricsRepository
     @Inject lateinit var trackLikeController: TrackLikeController
+    @Inject lateinit var playlistRepository: PlaylistRepository
     @Inject lateinit var jamPlaybackSync: com.lastwave.app.playback.jam.JamPlaybackSync
 
     // SupervisorJob stops sibling failure propagation; the handler below
@@ -155,6 +168,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     private var artworkBitmap: Bitmap? = null
     private var notificationSignature = ""
     private var widgetSignature = ""
+    private var waveWidgetSignature = ""
     private var systemStateSignature = ""
     private var legacyBroadcastSignature = ""
     private var sessionQueueSignature = ""
@@ -162,11 +176,15 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     @Volatile private var isPlaybackForeground = false
     private var artworkRequestKey = ""
     private var notificationPalette = NotificationPalette.default()
+    private var wavePlaylistShortcuts: List<WavePlaylistShortcut> = emptyList()
+    private var lastWaveObservedState: MusicPlayerState? = null
+    private var lastWaveObservedAtMs = 0L
     private var playbackWakeLock: PowerManager.WakeLock? = null
     private var playbackWifiLock: WifiManager.WifiLock? = null
 
     override fun onCreate() {
         super.onCreate()
+        WaveWidgetUpdater.setPlaybackServiceActive(true)
         val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
         playbackWakeLock = powerManager?.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
@@ -230,6 +248,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                         }
                     }
                     override fun onPlayFromSearch(query: String?, extras: Bundle?) {
+                        promoteForPlayback()
                         playCarSearch(resolveCarSearchQuery(query, extras))
                     }
                 })
@@ -266,6 +285,10 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             ActiveMediaSessionHolder.ownToken = null
         }
         notificationPalette = NotificationPalette.from(themeRepository.uiState.value.colorScheme)
+        scope.launch {
+            wavePlaylistShortcuts = loadWavePlaylistShortcuts()
+            publishWaveWidget(musicPlayer.state.value, force = true)
+        }
         scope.launch { scrobblerPreferences.settings.collect { settings = it } }
         scope.launch {
             themeRepository.uiState.collectLatest { theme ->
@@ -282,6 +305,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         }
         scope.launch {
             musicPlayer.state
+                .onEach(::detectWaveSeek)
                 // Position/buffer ticks arrive about 16 times per second for
                 // the seek bar. Notification, widget and MediaSession chrome
                 // do not need that cadence; Android extrapolates a playing
@@ -300,6 +324,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                     publishNotification(state)
                     publishWidget(state)
                     publishOriginOsLyrics(state)
+                    publishWaveWidget(state)
                     publishCarBrowseState(state)
                     detectTransition(state)
                     themeRepository.updateNowPlayingArtwork(state.current?.title, state.current?.artist)
@@ -321,6 +346,8 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             androidAutoLibrary.playlistChanges.collect {
                 notifyCarLibraryChanged(AndroidAutoMediaLibrary.PLAYLISTS_ID)
                 notifyChildrenChangedSafely(OriginOsMusicCard.LIST_FAVORITE)
+                wavePlaylistShortcuts = loadWavePlaylistShortcuts()
+                publishWaveWidget(musicPlayer.state.value, force = true)
             }
         }
         scope.launch {
@@ -333,6 +360,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             // The heart of the metadata follows a like made anywhere in the app.
             trackLikeController.likedTrackKeys.drop(1).collect {
                 publishSystemState(musicPlayer.state.value)
+                publishWaveWidget(musicPlayer.state.value, force = true)
             }
         }
         startDetector()
@@ -720,6 +748,10 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         // service on the isPlaying edge. If we do promote while active and the
         // system refuses, bail with START_NOT_STICKY as before.
         val state = musicPlayer.state.value
+        val fromWaveWidget = intent?.getBooleanExtra(
+            WaveWidgetActionReceiver.EXTRA_WAVE_WIDGET,
+            false,
+        ) == true
         // Voice search (Google Assistant / Gemini "play X on LastWave") and
         // media buttons arrive through startForegroundService while nothing
         // plays yet. Not promoting them crashed the app ~5s later with
@@ -727,11 +759,14 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         // playing, demoteIfIdle() drops the notification again.
         val startsPlayback = intent?.action == MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH ||
             intent?.action == Intent.ACTION_MEDIA_BUTTON
-        if (state.isPlaying || state.isBuffering || intent?.action == null || startsPlayback || state.current != null) {
+        if (state.isPlaying || state.isBuffering || intent?.action == null || startsPlayback || state.current != null || fromWaveWidget) {
             if (!promoteForPlayback()) return START_NOT_STICKY
         }
         when (intent?.action) {
-            Intent.ACTION_MEDIA_BUTTON -> androidx.media.session.MediaButtonReceiver.handleIntent(mediaSession, intent)
+            Intent.ACTION_MEDIA_BUTTON -> {
+                if (fromWaveWidget) handleWaveWidgetMediaButton(intent)
+                else androidx.media.session.MediaButtonReceiver.handleIntent(mediaSession, intent)
+            }
             MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH -> playCarSearch(
                 resolveCarSearchQuery(intent.getStringExtra(android.app.SearchManager.QUERY), intent.extras),
             )
@@ -745,19 +780,44 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         return START_NOT_STICKY
     }
 
+    private fun handleWaveWidgetMediaButton(intent: Intent) {
+        @Suppress("DEPRECATION")
+        val event = intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT) ?: return
+        if (event.action != KeyEvent.ACTION_DOWN) return
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            KeyEvent.KEYCODE_HEADSETHOOK,
+            -> musicPlayer.togglePlayPause()
+            KeyEvent.KEYCODE_MEDIA_NEXT -> musicPlayer.next()
+            KeyEvent.KEYCODE_MEDIA_PREVIOUS -> musicPlayer.previous()
+        }
+    }
+
     override fun onTaskRemoved(rootIntent: Intent?) {
-        // With android:stopWithTask="true" in the Manifest, the system now
-        // automatically stops this service when the task is removed from Recents.
-        // If playback is active, the service is a foreground service (promoted
-        // in onStartCommand) and will survive the task removal.
-        // If nothing is playing, the service is not foreground and will be
-        // stopped by the system, releasing wake/wifi locks via onDestroy().
-        // We no longer need to manually call stopAndClear() here — the system
-        // handles it correctly based on foreground state.
+        // stopWithTask is false in the Manifest because it cannot express the
+        // user's choice: this service deliberately stays a media-playback
+        // foreground service whenever a track is loaded (even paused), and a
+        // foreground service survives task removal. So the swipe behavior is
+        // handled explicitly here.
+        val shouldStop = musicPlayer.stopPlaybackOnTaskRemoved ||
+            musicPlayer.state.value.current == null
+        if (shouldStop) {
+            // clearSession = false keeps the last queue/track restorable on the
+            // next launch while still stopping audio, notification, cast and
+            // wake/wifi locks immediately.
+            musicPlayer.stopAndClear(clearSession = false)
+        }
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
+        // Safety net: if the service is torn down while the singleton player is
+        // still producing audio (an OEM stop, a system-initiated service stop
+        // or a missed task-removal path), never leave orphaned playback behind.
+        val playerState = musicPlayer.state.value
+        if (playerState.isPlaying || playerState.isBuffering) {
+            musicPlayer.stopAndClear(clearSession = false)
+        }
         runCatching { if (playbackWakeLock?.isHeld == true) playbackWakeLock?.release() }
         runCatching { if (playbackWifiLock?.isHeld == true) playbackWifiLock?.release() }
         // The service is the last thing standing in a playback-only session, so
@@ -765,6 +825,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         com.lastwave.app.diagnostics.AppLog.flush()
         detectorJob?.cancel()
         artworkJob?.cancel()
+        WaveWidgetUpdater.setPlaybackServiceActive(false)
         if (isPlaybackForeground) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE)
             else @Suppress("DEPRECATION") stopForeground(true)
@@ -1190,6 +1251,98 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         }
     }
 
+    private suspend fun loadWavePlaylistShortcuts(): List<WavePlaylistShortcut> =
+        withContext(Dispatchers.IO) {
+            val playlists = try {
+                playlistRepository.getAll()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                android.util.Log.w("MusicPlaybackService", "Wave playlist shortcuts unavailable", error)
+                emptyList()
+            }
+            playlists
+                .asSequence()
+                .filter { playlist ->
+                    playlist.mode != LIKED_SONGS_MODE &&
+                        playlist.title.isNotBlank() &&
+                        (playlist.tracks.isNotEmpty() || (playlist.remoteTrackCount ?: 0) > 0)
+                }
+                .sortedWith(
+                    compareByDescending<SavedPlaylist> { it.isPinned }
+                        .thenByDescending { it.createdAtMillis },
+                )
+                .take(MAX_WAVE_USER_PLAYLISTS)
+                .map { playlist ->
+                    WavePlaylistShortcut(
+                        id = WaveWidgetActions.PLAYLIST_USER_PREFIX + playlist.id,
+                        title = playlist.title.trim(),
+                    )
+                }
+                .toList()
+        }
+
+    /**
+     * The service's main collector deliberately drops ordinary playing-position
+     * ticks. Watch the unfiltered stream only for a real discontinuity so a
+     * seek can reset the Wave widget's extrapolation anchor without restoring
+     * the high-frequency widget work that collector avoids.
+     */
+    private fun detectWaveSeek(state: MusicPlayerState) {
+        val nowMs = SystemClock.elapsedRealtime()
+        val previous = lastWaveObservedState
+        if (
+            previous != null &&
+            previous.current == state.current &&
+            previous.current != null &&
+            previous.isPlaying &&
+            state.isPlaying
+        ) {
+            val elapsedMs = (nowMs - lastWaveObservedAtMs).coerceAtLeast(0L)
+            val expectedAdvanceMs = (elapsedMs * previous.speed.coerceAtLeast(0f)).toLong()
+            val actualAdvanceMs = state.positionMs - previous.positionMs
+            if (abs(actualAdvanceMs - expectedAdvanceMs) >= WAVE_SEEK_DISCONTINUITY_MS) {
+                publishWaveWidget(state, force = true)
+            }
+        }
+        lastWaveObservedState = state
+        lastWaveObservedAtMs = nowMs
+    }
+
+    private fun publishWaveWidget(state: MusicPlayerState, force: Boolean = false) {
+        val track = state.current
+        val isLiked = track?.let(trackLikeController::isLiked) == true
+        val shortcuts = wavePlaylistShortcuts
+        val resolvedArtworkUri = artworkUrl ?: track?.artworkUrl
+        val bitmap = artworkBitmap
+        val signature = buildString {
+            append(track).append('|')
+            append(state.queue.hashCode()).append('|')
+            append(state.currentIndex).append('|')
+            append(state.isPlaying).append('|')
+            append(state.positionMs).append('|')
+            append(state.durationMs).append('|')
+            append(state.shuffleEnabled).append('|')
+            append(state.repeatMode).append('|')
+            append(isLiked).append('|')
+            append(resolvedArtworkUri).append('|')
+            append(bitmap?.let { System.identityHashCode(it) } ?: 0).append('|')
+            append(shortcuts.hashCode())
+        }
+        if (!force && signature == waveWidgetSignature) return
+        waveWidgetSignature = signature
+        scope.launch {
+            WaveWidgetUpdater.publish(
+                context = this@MusicPlaybackService,
+                playerState = state,
+                isLiked = isLiked,
+                artworkUri = resolvedArtworkUri,
+                bitmap = bitmap,
+                playlists = shortcuts,
+            )
+        }
+    }
+
     private fun publishWidget(state: MusicPlayerState) {
         val track = state.current ?: return
         val active = ActiveMediaSessionHolder.controller
@@ -1338,6 +1491,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                 artworkBitmap = cached
                 widgetSignature = ""
                 publishWidget(musicPlayer.state.value)
+                publishWaveWidget(musicPlayer.state.value, force = true)
             }
         }
 
@@ -1359,6 +1513,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             publishNotification(state, force = true)
             widgetSignature = ""
             publishWidget(state)
+            publishWaveWidget(state, force = true)
         }
     }
 
@@ -1701,6 +1856,8 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         const val CONTENT_STYLE_LIST = 1
         const val MAX_CAR_QUEUE_ITEMS = 100
         const val MAX_CAR_QUEUE_BEFORE_CURRENT = 50
+        const val MAX_WAVE_USER_PLAYLISTS = 5
+        const val WAVE_SEEK_DISCONTINUITY_MS = 1_500L
         const val CHANNEL_ID = "lastwave_playback_v3"
         const val LEGACY_CHANNEL_ID = "lastwave_playback_v2"
         const val LEGACY_CHANNEL_ID_V1 = "lastwave_playback"

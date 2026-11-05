@@ -12,6 +12,8 @@ object JamProtocolConstants {
     const val MSG_PLAYBACK_ACTION = "playback_action"
     const val MSG_PING = "ping"
     const val MSG_GRANT_HOST = "grant_host"
+    const val MSG_TRANSFER_HOST = "transfer_host"
+    const val MSG_STATION_MODE = "station_mode"
     const val MSG_QUEUE_UPDATE = "queue_update"
     const val MSG_COOLDOWN = "cooldown"
     const val MSG_QUEUE_UPDATED = "queue_updated"
@@ -107,6 +109,14 @@ data class QueueUpdateRequest(
 data class QueueUpdatedPayload(
     @SerialName("queue") val queue: List<TrackInfoPayload> = emptyList(),
     @SerialName("host_id") val hostId: String = "",
+)
+
+/** A 24/7 station is on auto radio, or run by a station admin. */
+@Serializable
+data class StationModePayload(
+    @SerialName("auto") val auto: Boolean = true,
+    @SerialName("admin_id") val adminId: String = "",
+    @SerialName("admin_name") val adminName: String = "",
 )
 
 @Serializable
@@ -235,6 +245,8 @@ data class SyncStatePayload(
     @SerialName("cohost_id") val coHostId: String = "",
     @SerialName("permanent") val permanent: Boolean = false,
     @SerialName("room_name") val roomName: String = "",
+    @SerialName("radio") val radio: Boolean = false,
+    @SerialName("station_auto") val stationAuto: Boolean = true,
     @SerialName("room_mode") val roomMode: String = JamProtocolConstants.MODE_COLLABORATIVE,
     @SerialName("playback") val playback: PlaybackStatePayload,
     @SerialName("participants") val participants: List<ParticipantPayload> = emptyList(),

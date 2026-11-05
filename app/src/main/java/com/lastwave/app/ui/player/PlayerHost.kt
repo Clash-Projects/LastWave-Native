@@ -20,6 +20,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.lastwave.app.ui.common.PredictiveBackScreen
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -933,6 +934,20 @@ fun PlayerHost(
             if (genre != null) {
                 expanded = false
                 currentTab = FullPlayerTab.NOW_PLAYING
+            }
+        }
+    }
+    LaunchedEffect(Unit) {
+        com.lastwave.app.widget.wave.WaveWidgetNavigation.requests.collect { requestId ->
+            if (requestId <= 0L) return@collect
+            val hasTrack = viewModel.player.state.value.current != null ||
+                withTimeoutOrNull(2_000L) {
+                    viewModel.player.state.first { it.current != null }
+                    true
+                } == true
+            if (hasTrack && com.lastwave.app.widget.wave.WaveWidgetNavigation.consume(requestId)) {
+                currentTab = FullPlayerTab.NOW_PLAYING
+                expanded = true
             }
         }
     }
@@ -5255,6 +5270,34 @@ private fun DeckWaveform(
     }
 }
 
+private enum class BadgeTransition { NONE, FADE, MIX }
+
+private const val TRANSITION_BADGE_HOLD_MS = 900L
+
+// Shows the transition label right away and keeps it for
+// TRANSITION_BADGE_HOLD_MS after it ends.
+private class BadgeTransitionHold {
+    private var last = BadgeTransition.NONE
+    var releaseAtMs = 0L
+        private set
+
+    fun resolve(raw: BadgeTransition, nowMs: Long): BadgeTransition {
+        if (raw != BadgeTransition.NONE) {
+            last = raw
+            releaseAtMs = Long.MAX_VALUE
+            return raw
+        }
+        if (last == BadgeTransition.NONE) return BadgeTransition.NONE
+        if (releaseAtMs == Long.MAX_VALUE) releaseAtMs = nowMs + TRANSITION_BADGE_HOLD_MS
+        if (nowMs >= releaseAtMs) {
+            last = BadgeTransition.NONE
+            releaseAtMs = 0L
+            return BadgeTransition.NONE
+        }
+        return last
+    }
+}
+
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun AppleMusicQualityBadge(
@@ -5271,8 +5314,35 @@ private fun AppleMusicQualityBadge(
         qualityBadgeLabel(state)
     }
 
-    val isMixActive = state.deckBlendTelemetry.isBlendingActive || state.deckBlendTelemetry.phase == com.lastwave.app.playback.automix.api.BlendPhase.MIX_COMPLETED
-    val isFadeActive = state.isCrossfading && !isMixActive
+    val rawMixActive = state.deckBlendTelemetry.isBlendingActive || state.deckBlendTelemetry.phase == com.lastwave.app.playback.automix.api.BlendPhase.MIX_COMPLETED
+    val rawTransition = when {
+        rawMixActive -> BadgeTransition.MIX
+        state.isCrossfading -> BadgeTransition.FADE
+        else -> BadgeTransition.NONE
+    }
+    // A transition label appears immediately but lingers briefly after it
+    // ends. During and right after a deck swap the telemetry and the new
+    // track's quality fields churn (codec cleared, then re-published), which
+    // made the pill flicker between "AutoMix" and partial quality labels.
+    // not produceState: that updates a frame late, so the first blend frame
+    // showed "<codec> • AUTOMIXING" and very short blips skipped the hold
+    val transitionHold = remember { BadgeTransitionHold() }
+    var holdReleaseTick by remember { mutableIntStateOf(0) }
+    @Suppress("UNUSED_VARIABLE") val observeRelease = holdReleaseTick
+    val shownTransition = transitionHold.resolve(rawTransition, android.os.SystemClock.uptimeMillis())
+    val pendingReleaseAtMs = if (rawTransition == BadgeTransition.NONE && shownTransition != BadgeTransition.NONE) {
+        transitionHold.releaseAtMs
+    } else {
+        0L
+    }
+    LaunchedEffect(pendingReleaseAtMs) {
+        if (pendingReleaseAtMs > 0L) {
+            delay((pendingReleaseAtMs - android.os.SystemClock.uptimeMillis()).coerceAtLeast(0L))
+            holdReleaseTick++
+        }
+    }
+    val isMixActive = shownTransition == BadgeTransition.MIX
+    val isFadeActive = shownTransition == BadgeTransition.FADE
 
     val displayTitle = when {
         isMixActive -> "AutoMix"
@@ -5294,6 +5364,10 @@ private fun AppleMusicQualityBadge(
     }
 
     val tintColor = when {
+        // Two decks are live during a transition, so the signal path report
+        // flips between them; keep a neutral tint until it settles.
+        (isMixActive || isFadeActive) && isTranslucent -> Color.White.copy(alpha = 0.95f)
+        isMixActive || isFadeActive -> MaterialTheme.colorScheme.onSurface
         signalPath.bitPerfect -> Color(0xFFE6C15A)
         signalPath.directToHal -> Color(0xFF7FD3C3)
         signalPath.clockFallbackResampled -> Color(0xFFFFB74D)
@@ -5318,7 +5392,8 @@ private fun AppleMusicQualityBadge(
                         onClick()
                     },
                 )
-                .padding(horizontal = 8.dp, vertical = 2.dp),
+                .padding(horizontal = 8.dp, vertical = 2.dp)
+                .animateContentSize(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
@@ -5334,16 +5409,22 @@ private fun AppleMusicQualityBadge(
                 baseLabel.isNotBlank() && !baseLabel.equals(displayTitle, ignoreCase = true) && !baseLabel.equals("AUDIO", ignoreCase = true) -> "$displayTitle \u2022 $baseLabel"
                 else -> displayTitle
             }
-            Text(
-                text = fullText,
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.4.sp,
-                ),
-                color = tintColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            AnimatedContent(
+                targetState = fullText,
+                transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(160)) },
+                label = "QualityBadgeText",
+            ) { label ->
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.4.sp,
+                    ),
+                    color = tintColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Spacer(Modifier.width(3.dp))
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,

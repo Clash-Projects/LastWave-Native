@@ -734,7 +734,7 @@ fun JamScreen(
                                     color = jamAccentContainer,
                                     modifier = Modifier
                                         .clip(CircleShape)
-                                        .clickable(enabled = uiState.isHost) {
+                                        .clickable(enabled = uiState.isHost && !uiState.isRadio) {
                                             val newMode = if (uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE)
                                                 JamProtocolConstants.MODE_HOST_ONLY else JamProtocolConstants.MODE_COLLABORATIVE
                                             viewModel.changeActiveRoomMode(newMode)
@@ -752,10 +752,12 @@ fun JamScreen(
                                                 .background(liveGreen)
                                         )
                                         Text(
-                                            text = if (uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE)
-                                                "Collaborative \u2022 Anyone can control"
-                                            else
-                                                "Host Only \u2022 Only host controls",
+                                            text = when {
+                                                uiState.isRadio && uiState.stationAuto -> "Live station \u2022 Auto radio"
+                                                uiState.isRadio -> "Live station \u2022 Admin in control"
+                                                uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE -> "Collaborative \u2022 Anyone can control"
+                                                else -> "Host Only \u2022 Only host controls"
+                                            },
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Medium,
                                             color = onJamAccentContainer,
@@ -1043,7 +1045,11 @@ fun JamScreen(
 
                                     if (uiState.isHost) {
                                         Text(
-                                            text = if (uiState.isMainHost) "You are Host" else "You are Co-host",
+                                            text = when {
+                                                uiState.isRadio -> "You are the station admin"
+                                                uiState.isMainHost -> "You are Host"
+                                                else -> "You are Co-host"
+                                            },
                                             fontSize = 12.sp,
                                             color = jamAccent,
                                             fontWeight = FontWeight.Bold,
@@ -1096,7 +1102,7 @@ fun JamScreen(
 
                                             if (p.isHost) {
                                                 Text(
-                                                    text = roleBadge(p),
+                                                    text = roleBadge(p, uiState.isRadio),
                                                     color = jamAccent,
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.ExtraBold,
@@ -1114,6 +1120,8 @@ fun JamScreen(
                                                 accent = jamAccent,
                                                 onGrant = viewModel::grantHost,
                                                 onRevoke = viewModel::revokeHost,
+                                                isRadio = uiState.isRadio,
+                                                onMakeAdmin = viewModel::makeAdmin,
                                             )
                                         }
                                     }

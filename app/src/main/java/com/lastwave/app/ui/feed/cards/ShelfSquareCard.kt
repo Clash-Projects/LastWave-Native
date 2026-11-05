@@ -32,7 +32,7 @@ fun ShelfSquareCard(
     fallbackIcon: ImageVector = Icons.Filled.MusicNote,
     cardWidth: Dp = rememberSquareCardWidth(),
 ) {
-    val coverHeight = rememberCoverHeight()
+    val coverHeight = cardWidth
     Column(
         modifier = modifier
             .width(cardWidth)

@@ -432,7 +432,7 @@ class InnerTubeMusicApi @Inject constructor(
         // purpose (60k tracks) — it only exists to bound a pathological loop.
         fun continuation(containers: List<JsonElement>, pageJson: JsonElement): String? =
             if (playlistPage) {
-                containers.firstNotNullOfOrNull(::playlistTrackContinuationToken) ?: genericContinuationToken(pageJson)
+                playlistPageContinuationToken(pageJson)
             } else {
                 containers.firstNotNullOfOrNull(::genericContinuationToken) ?: genericContinuationToken(pageJson)
             }
@@ -478,12 +478,18 @@ class InnerTubeMusicApi @Inject constructor(
             val pageContainers = trackContainers(nextPage)
             val pageSongs = if (pageContainers.isNotEmpty()) {
                 pageContainers.flatMap(::parseSongRenderers)
+            } else if (playlistPage) {
+                emptyList()
             } else {
                 parseSongRenderers(nextPage)
             }
             val nextToken = continuation(pageContainers, nextPage)
             if (pageSongs.isEmpty()) {
                 if (nextToken.isNullOrBlank()) {
+                    if (playlistPage && isFinalPlaylistContinuation(nextPage)) {
+                        token = null
+                        break
+                    }
                     android.util.Log.w(
                         PLAYLIST_LOG_TAG,
                         "playlist-continuation-empty browseId=$browseId page=$page collected=${songs.size}",
@@ -1811,6 +1817,26 @@ class InnerTubeMusicApi @Inject constructor(
             }
     }
 
+
+    /** A finished track shelf must not continue into the playlist's recommendations. */
+    internal fun playlistPageContinuationToken(root: JsonElement): String? =
+        playlistTrackContainers(root).firstNotNullOfOrNull(::playlistTrackContinuationToken)
+
+    /** Known empty/unavailable final pages are exhausted, rather than failed reads. */
+    internal fun isFinalPlaylistContinuation(root: JsonElement): Boolean {
+        val containers = playlistTrackContainers(root)
+        if (containers.isEmpty() || containers.any { playlistTrackContinuationToken(it) != null }) return false
+        return containers.all { container ->
+            val rows = (container as? JsonArray) ?: container.array("contents") ?: return@all false
+            rows.all { item ->
+                val row = item.obj("musicResponsiveListItemRenderer")
+                    ?: item.obj("playlistVideoRenderer")
+                row != null && (row.string("isPlayable") == "false" ||
+                    row.string("displayPolicy") == "MUSIC_ITEM_RENDERER_DISPLAY_POLICY_GREY_OUT" ||
+                    row.obj("unplayableText") != null)
+            }
+        }
+    }
 
     private fun playlistTrackContinuationToken(container: JsonElement): String? {
         val contents = (container as? JsonArray) ?: container.array("contents")
@@ -4076,7 +4102,9 @@ class InnerTubeMusicApi @Inject constructor(
         expectedDurationMs: Long? = null,
     ): YouTubeMusicTrack {
         val cleanArtist = artist.takeUnless { it.equals("Unknown artist", ignoreCase = true) }.orEmpty()
-        val cacheKey = "${normalize(cleanArtist)}|${normalize(title)}"
+        // Same title and artist can be different recordings (album vs single
+        // edit); keep the runtime in the key so one never answers for the other.
+        val cacheKey = "${normalize(cleanArtist)}|${normalize(title)}|${expectedDurationMs?.div(1000L) ?: ""}"
         matchCache[cacheKey]?.takeIf { it.videoId != excludedVideoId && it.videoId !in excludedVideoIds }?.let { return it }
         val searchTitle = baseTitle(title).trim().ifBlank { title.trim() }
         val query = listOf(searchTitle, cleanArtist).filter { it.isNotBlank() }.joinToString(" ")
@@ -4089,6 +4117,12 @@ class InnerTubeMusicApi @Inject constructor(
             it.videoId.isNotBlank() && it.videoId != excludedVideoId && it.videoId !in excludedVideoIds
         }
         val isCandidateMatch: (YouTubeMusicTrack) -> Boolean = { candidate ->
+            // Hard vetoes first: a different take (live/remix/cover/sped up…)
+            // or a runtime far from the catalog's is never the same recording,
+            // however well the rest of the title reads. Scoring only demoted
+            // these, so they still played whenever no clean upload ranked.
+            TextMatch.isSameTake(candidate.title, title, cleanArtist, candidate.artist) &&
+                !TextMatch.isSevereDurationMismatch(expectedDurationMs, candidate.durationSeconds) &&
             (maxOf(
                 similarity(candidate.title, title),
                 similarity(baseTitle(candidate.title), baseTitle(title)),

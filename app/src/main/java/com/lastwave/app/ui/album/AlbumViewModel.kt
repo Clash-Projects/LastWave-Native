@@ -80,6 +80,8 @@ class AlbumViewModel @Inject constructor(
                 }
                 coroutineContext.ensureActive()
                 _uiState.value = AlbumUiState.Success(data)
+                // "Play" starts track 1; warm the opening tracks while the user looks.
+                musicPlayer.warmLikelyPlays(data.tracks.take(WARM_CANDIDATES))
                 refreshSavedState(data)
             } catch (e: CancellationException) {
                 throw e
@@ -177,4 +179,8 @@ class AlbumViewModel @Inject constructor(
         album = album,
         url = videoId?.let { "https://music.youtube.com/watch?v=$it" }.orEmpty(),
     )
+
+    private companion object {
+        const val WARM_CANDIDATES = 6
+    }
 }

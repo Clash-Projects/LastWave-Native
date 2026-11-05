@@ -100,7 +100,11 @@ class ModulesViewModel @Inject constructor(
 
                 val current = httpAddons.value
                 val targetId = if (id.isNullOrBlank()) {
-                    val existing = if (current.size == 1) current.first() else null
+                    // Adding never replaces another addon; re-adding the same
+                    // URL refreshes that entry instead of duplicating it.
+                    val existing = current.firstOrNull {
+                        com.lastwave.app.data.addon.AddonClient.normalizeBase(it.url) == trimmed
+                    }
                     if (existing != null) {
                         settingsPreferences.updateHttpAddon(existing.id, trimmed, manifestName)
                         existing.id

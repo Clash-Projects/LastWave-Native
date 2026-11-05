@@ -75,13 +75,13 @@ class ScoreVideoCandidateTest {
         val alive = score("Alive (Official Video)", "Sia", wantedTitle = "Alive", wantedArtist = "Sia")
         val live = score("Alive Live (Official Video)", "Sia", wantedTitle = "Alive", wantedArtist = "Sia")
         assertThat(alive).isAtLeast(MIN_VIDEO_CANDIDATE_SCORE)
-        assertThat(live!!).isLessThan(alive!!)
+        // A live take is a different recording, not this song's video.
+        assertThat(live).isNull()
     }
 
     @Test
     fun wrongLengthUploadWithoutOfficialMarkerDoesNotQualify() {
-        assertThat(score("The Weeknd - Starboy", "The Weeknd", durationSec = 600))
-            .isLessThan(MIN_VIDEO_CANDIDATE_SCORE)
+        assertThat(score("The Weeknd - Starboy", "The Weeknd", durationSec = 600)).isNull()
     }
 
     @Test
@@ -101,5 +101,11 @@ class ScoreVideoCandidateTest {
         assertThat(videoCodecMime("avc1.42001E, mp4a.40.2")).isEqualTo("video/avc")
         assertThat(videoCodecMime("av01.0.08M.08")).isEqualTo("video/av01")
         assertThat(videoCodecMime(null)).isNull()
+    }
+
+    @Test
+    fun differentTakeIsNeverTheVideoEvenFromTheArtist() {
+        assertThat(score("The Weeknd - Starboy (Remix) [Official Video]", "TheWeekndVEVO")).isNull()
+        assertThat(score("The Weeknd - Starboy (Sped Up)", "The Weeknd")).isNull()
     }
 }

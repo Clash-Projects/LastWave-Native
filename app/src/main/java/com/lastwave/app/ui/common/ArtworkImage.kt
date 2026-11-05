@@ -1,5 +1,6 @@
 package com.lastwave.app.ui.common
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Icon
@@ -13,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -62,6 +64,7 @@ fun ArtworkImage(
     var resolvedFailed by remember(key, resolvedUrl) { mutableStateOf(false) }
     var embeddedFailed by remember(name, artist, embeddedUrl) { mutableStateOf(false) }
     var refreshRequested by remember(key) { mutableStateOf(false) }
+    var lastSuccessfulPainter by remember(key) { mutableStateOf<Painter?>(null) }
 
     // Local songs: a cover extracted from the user's own file wins
     // over any online lookup, and no lookup is started for it.
@@ -92,6 +95,7 @@ fun ArtworkImage(
         null
     }
 
+    val retainedPainter = lastSuccessfulPainter
     Box(modifier = modifier, contentAlignment = alignment) {
         if (!displayUrl.isNullOrBlank()) {
             val model = remember(displayUrl, decodeSizePx, transformations, context) {
@@ -107,6 +111,9 @@ fun ArtworkImage(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 alignment = alignment,
+                placeholder = retainedPainter,
+                error = retainedPainter,
+                onSuccess = { lastSuccessfulPainter = it.painter },
                 modifier = Modifier.fillMaxSize(),
                 onError = {
                     if (localCover) {
@@ -117,6 +124,14 @@ fun ArtworkImage(
                         embeddedFailed = true
                     }
                 },
+            )
+        } else if (retainedPainter != null) {
+            Image(
+                painter = retainedPainter,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                alignment = alignment,
+                modifier = Modifier.fillMaxSize(),
             )
         } else {
             Icon(
