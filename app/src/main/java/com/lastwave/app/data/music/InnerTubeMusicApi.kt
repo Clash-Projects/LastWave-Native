@@ -432,7 +432,7 @@ class InnerTubeMusicApi @Inject constructor(
         // purpose (60k tracks) — it only exists to bound a pathological loop.
         fun continuation(containers: List<JsonElement>, pageJson: JsonElement): String? =
             if (playlistPage) {
-                containers.firstNotNullOfOrNull(::playlistTrackContinuationToken) ?: genericContinuationToken(pageJson)
+                playlistPageContinuationToken(pageJson)
             } else {
                 containers.firstNotNullOfOrNull(::genericContinuationToken) ?: genericContinuationToken(pageJson)
             }
@@ -478,12 +478,18 @@ class InnerTubeMusicApi @Inject constructor(
             val pageContainers = trackContainers(nextPage)
             val pageSongs = if (pageContainers.isNotEmpty()) {
                 pageContainers.flatMap(::parseSongRenderers)
+            } else if (playlistPage) {
+                emptyList()
             } else {
                 parseSongRenderers(nextPage)
             }
             val nextToken = continuation(pageContainers, nextPage)
             if (pageSongs.isEmpty()) {
                 if (nextToken.isNullOrBlank()) {
+                    if (playlistPage && isFinalPlaylistContinuation(nextPage)) {
+                        token = null
+                        break
+                    }
                     android.util.Log.w(
                         PLAYLIST_LOG_TAG,
                         "playlist-continuation-empty browseId=$browseId page=$page collected=${songs.size}",
@@ -1811,6 +1817,26 @@ class InnerTubeMusicApi @Inject constructor(
             }
     }
 
+
+    /** A finished track shelf must not continue into the playlist's recommendations. */
+    internal fun playlistPageContinuationToken(root: JsonElement): String? =
+        playlistTrackContainers(root).firstNotNullOfOrNull(::playlistTrackContinuationToken)
+
+    /** Known empty/unavailable final pages are exhausted, rather than failed reads. */
+    internal fun isFinalPlaylistContinuation(root: JsonElement): Boolean {
+        val containers = playlistTrackContainers(root)
+        if (containers.isEmpty() || containers.any { playlistTrackContinuationToken(it) != null }) return false
+        return containers.all { container ->
+            val rows = (container as? JsonArray) ?: container.array("contents") ?: return@all false
+            rows.all { item ->
+                val row = item.obj("musicResponsiveListItemRenderer")
+                    ?: item.obj("playlistVideoRenderer")
+                row != null && (row.string("isPlayable") == "false" ||
+                    row.string("displayPolicy") == "MUSIC_ITEM_RENDERER_DISPLAY_POLICY_GREY_OUT" ||
+                    row.obj("unplayableText") != null)
+            }
+        }
+    }
 
     private fun playlistTrackContinuationToken(container: JsonElement): String? {
         val contents = (container as? JsonArray) ?: container.array("contents")
