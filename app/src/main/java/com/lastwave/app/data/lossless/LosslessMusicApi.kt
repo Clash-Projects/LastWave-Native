@@ -449,12 +449,17 @@ class LosslessMusicApi @Inject constructor(
         private val ARTIST_SEPARATORS =
             Regex("""\s*(?:[,&/;·|]|\band\b|\bx\b|\bvs\.?\b|\bfeat\.?\b|\bft\.?\b|\bfeaturing\b|\bwith\b)\s*""", RegexOption.IGNORE_CASE)
 
-        private val DIACRITICS = Regex("\\p{M}+")
-        private val NON_ALPHANUMERIC = Regex("[^a-z0-9]+")
+        // Only strip accents from Latin letters: stripping marks from kana
+        // (dakuten), Hangul jamo or Indic vowel signs destroys the title and
+        // made non-English songs normalize to blank, so they never matched a
+        // lossless candidate and fell back to the Opus stream.
+        private val DIACRITICS = Regex("(?<=\\p{IsLatin})\\p{M}+")
+        private val NON_ALPHANUMERIC = Regex("[^\\p{L}\\p{N}\\p{M}]+")
         private val MULTI_SPACE = Regex("\\s+")
 
         fun normalizeText(raw: String): String = Normalizer.normalize(raw, Normalizer.Form.NFD)
             .replace(DIACRITICS, "")
+            .let { Normalizer.normalize(it, Normalizer.Form.NFKC) }
             .lowercase(Locale.ROOT)
             .replace("$", "s")
             .replace(NON_ALPHANUMERIC, " ")
