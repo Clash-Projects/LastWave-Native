@@ -661,6 +661,8 @@
     <string name="pd_loading">Loading tracks…</string>
     <string name="pd_empty">No tracks in this playlist yet.</string>
     <string name="pd_reorder_hint">Switch to Custom order to rearrange</string>
+    <string name="playlist_rearrange_songs">Rearrange songs</string>
+    <string name="playlist_rearrange_clear_search">Clear search to rearrange songs</string>
     <string name="pd_building">Building a fresh playlist…</string>
     <string name="pd_sort_custom">Custom order</string>
     <string name="pd_sort_date">Date added</string>
