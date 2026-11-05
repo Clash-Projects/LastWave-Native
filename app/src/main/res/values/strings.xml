@@ -853,6 +853,7 @@
     <string name="dl_delete_title">Delete “%1$s”?</string>
     <string name="dl_delete_text">You can delete the local audio file to free storage space, or remove it from history only.</string>
     <string name="dl_delete_file">Delete File</string>
+    <string name="dl_delete_failed">Couldn\'t delete the file</string>
     <string name="dl_history_only">History Only</string>
     <string name="dl_filter_all">All</string>
     <string name="dl_filter_lossless">Lossless / FLAC</string>
