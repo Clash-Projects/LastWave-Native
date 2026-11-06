@@ -39,19 +39,73 @@ For audio lovers, LastWave packs Bit-Perfect USB DAC output, Lossless FLAC addon
 ---
 
 
-## <img src="https://api.iconify.design/lucide/layers.svg?color=%23C6F100" width="20" height="20" align="center" /> Key Features
+## Features
 
-| Icon | Feature | Highlight |
-|:---:|:---|:---|
-| <img src="https://api.iconify.design/lucide/play-circle.svg?color=%23FF0000" width="20" height="20" /> | **YouTube Music Client** | Stream tracks, albums, artists, and public playlists from YouTube Music with zero ads and background playback. |
-| <img src="https://api.iconify.design/lucide/wand-2.svg?color=%23C6F100" width="20" height="20" /> | **Smart Playlist Generator** | Algorithmic taste mixes and mood radios generated from your listening history, seed artists, loved tracks, and top genres. |
-| <img src="https://api.iconify.design/lucide/headphones.svg?color=%23C6F100" width="20" height="20" /> | **Bit-Perfect & AutoEQ** | Audiophile playback engine bypassing OS resampling, integrated AutoEQ profile database, and a 15-band parametric equalizer. |
-| <img src="https://api.iconify.design/lucide/mic.svg?color=%23FFB4A2" width="20" height="20" /> | **Real-Time Synced Lyrics** | Millisecond-accurate animated karaoke lyrics powered by LRCLIB with 8 customizable fluid physics motions. |
-| <img src="https://api.iconify.design/lucide/arrow-down-to-line.svg?color=%23C6F100" width="20" height="20" /> | **Offline Downloader** | One-tap downloads saved directly to local storage (`Music/LastWave`), fully tagged with high-res cover art and synchronized `.lrc` lyrics. |
-| <img src="https://api.iconify.design/lucide/compass.svg?color=%2300E5FF" width="20" height="20" /> | **Discovery Feed & Genre DNA** | Personalized recommendation radar with deep genre breakdowns, weekly listening recaps, and instant "Start Mix" radios. |
-| <img src="https://api.iconify.design/lucide/share-2.svg?color=%23C6F100" width="20" height="20" /> | **Cross-Platform Playlist Import** | Instantly import public playlists from Spotify and Apple Music directly into your LastWave library. |
-| <img src="https://api.iconify.design/lucide/disc.svg?color=%2300E5FF" width="20" height="20" align="center" /> | **Lossless Addons & Automix** | Modular addon service for 24-bit Hi-Res FLAC streaming/downloads alongside DJ-style smart Automix crossfading. |
-| <img src="https://api.iconify.design/lucide/sparkles.svg?color=%23C6F100" width="20" height="20" /> | **Material 3 & Liquid Glass** | Real-time backdrop refraction shaders, dynamic monet theming, fluid card physics, and tactile haptics. |
+<table>
+  <tr>
+    <td width="50%" valign="top">
+
+#### Playback
+- Stream any song or video from YouTube Music
+- Background playback
+- Download & cache for offline use
+- Skip silence
+- Sleep timer
+
+</td>
+    <td width="50%" valign="top">
+
+#### Audio
+- Bit-Perfect USB DAC output & Lossless FLAC addon support
+- Audio normalization
+- Tempo & pitch control
+- 15-band Parametric Equalizer & AutoEQ presets
+- Smart Automix & Crossfade transitions
+
+</td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+
+#### Lyrics & Discovery
+- Live synced lyrics
+- AI-powered lyrics translation
+- Personalized quick picks
+- Search songs, albums, artists, videos, and playlists
+
+</td>
+    <td width="50%" valign="top">
+
+#### Library & Account
+- Full library management
+- Local playlists
+- Import playlists (Spotify & Apple Music)
+- Reorder songs in playlist or queue
+- YouTube Music account login
+- Sync songs, artists, albums, and playlists
+
+</td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+
+#### Social
+- Listen together with friends in real-time
+- Last.fm integration for scrobbling
+- Safe Discord Rich Presence
+
+</td>
+    <td width="50%" valign="top">
+
+#### Interface
+- Home screen widget
+- Light / Dark / Black / Dynamic theme modes
+- Dynamic color + 19 preset color palettes
+- Built with Material 3 Expressive & Liquid Glass UI
+
+</td>
+  </tr>
+</table>
 
 ---
 
