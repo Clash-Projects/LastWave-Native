@@ -186,6 +186,22 @@ If LastWave has been useful to you, consider supporting its development.
 ---
 
 
+## Acknowledgements
+
+LastWave is made possible thanks to these open-source projects:
+
+- **[Metrolist](https://github.com/MetrolistGroup/Metrolist)** — InnerTubeX integration & upstream foundation
+- **[SimpMusic](https://github.com/maxrave-dev/SimpMusic)** — Canvas extraction methods & Liquid Glass implementation
+- **[InnerTune](https://github.com/z-huang/InnerTune)** — Playback architecture & UI design inspiration
+- **[Decent USB Audio Driver](https://github.com/silva96/decent-usb-audio-driver)** — Bit-perfect direct USB DAC audio engine
+- **[AutoEQ](https://github.com/jaakkopasanen/AutoEq)** — Headphone & IEM frequency-response calibration targets
+- **[NewPipe](https://github.com/TeamNewPipe/NewPipeExtractor)** — Stream extraction & media URL resolving
+- **[SponsorBlock](https://sponsor.ajay.app/)** — Video segment detection for music video intro skit synchronization
+- **[LRCLIB](https://lrclib.net/)** — Real-time millisecond-synchronized lyrics database
+- **[Kyant](https://github.com/kyant0)** — Jetpack Compose backdrop refraction & shape shaders
+
+---
+
 ## Contributors
 
 LastWave wouldn't be possible without our incredible community of contributors. Thank you for making it better every day!
