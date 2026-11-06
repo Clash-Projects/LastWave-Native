@@ -1,5 +1,6 @@
 package com.lastwave.app.data.music
 
+import android.content.Context
 import android.net.Uri
 import android.os.SystemClock
 import android.util.Base64
@@ -238,11 +239,12 @@ class InnerTubeMusicApi @Inject constructor(
     private val innerTubeXExtractor: InnerTubeXStreamExtractor,
     private val ytAuth: YtMusicAuthManager,
     private val settingsPreferences: SettingsPreferences,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: Context,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val connectionPool = okhttp3.ConnectionPool(10, 5, TimeUnit.MINUTES)
     private val innerTubeClient: OkHttpClient = http.newBuilder()
-        .dns(com.lastwave.app.data.network.Ipv4FirstDnsResolver(http))
+        .dns(com.lastwave.app.data.network.Ipv4FirstDnsResolver(http, appContext))
         .connectionPool(connectionPool)
         .retryOnConnectionFailure(true)
         .connectTimeout(8, TimeUnit.SECONDS)
@@ -5640,7 +5642,7 @@ class InnerTubeMusicApi @Inject constructor(
         const val AUTHENTICATED_CIPHER_PATH_BUDGET_MS = 24_000L
         const val AUTHENTICATED_CIPHER_CLIENT_BUDGET_MS = 20_000L
         /** Whole-call cap for one player-API POST (connect + read + body). */
-        const val PLAYER_REQUEST_CALL_TIMEOUT_MS = 8_000L
+        const val PLAYER_REQUEST_CALL_TIMEOUT_MS = 20_000L
         /** Max wait on the direct-client/NewPipe race before the last-resort stage. */
         const val CLIENT_RACE_TIMEOUT_MS = 8_000L
         /** Hard cap for one full stream resolution; callers retry with fresh state. */
@@ -5672,7 +5674,7 @@ class InnerTubeMusicApi @Inject constructor(
         const val SEARCH_REQUEST_TIMEOUT_MS = 10_000L
         const val ACCOUNT_SWITCHER_TIMEOUT_MS = 15_000L
         /** Per-probe socket timeout for the 0-1 byte stream validity check. */
-        const val STREAM_PROBE_TIMEOUT_MS = 6_000L
+        const val STREAM_PROBE_TIMEOUT_MS = 15_000L
         const val HISTORY_PING_TIMEOUT_MS = 15_000L
         const val URL_EXPIRY_MARGIN_MS = 2 * 60 * 1000L
         const val REQUEST_RETRY_BASE_DELAY_MS = 250L

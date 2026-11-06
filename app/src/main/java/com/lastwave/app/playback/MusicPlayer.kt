@@ -759,9 +759,9 @@ class MusicPlayer @Inject constructor(
         // waits a full connect timeout on broken IPv6 routes before trying IPv4.
         // Keep media off the API client's interceptors and disk HTTP cache.
         val mediaHttp = okhttp3.OkHttpClient.Builder()
-            .dns(com.lastwave.app.data.network.Ipv4FirstDnsResolver())
-            .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+            .dns(com.lastwave.app.data.network.Ipv4FirstDnsResolver(context = appContext))
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
             .build()

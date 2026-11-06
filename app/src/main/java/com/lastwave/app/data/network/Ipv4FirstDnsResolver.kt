@@ -1,5 +1,8 @@
 package com.lastwave.app.data.network
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.util.Log
 import okhttp3.Dns
 import okhttp3.OkHttpClient
@@ -18,13 +21,14 @@ import java.util.concurrent.TimeUnit
  *
  * 1) When on standard cellular/Wi-Fi, prioritizes IPv4 (Inet4Address) ahead of IPv6 (Inet6Address)
  *    to avoid cellular IPv6 blackholing.
- * 2) When a VPN interface is active (tun/ppp/wg/vpn), respects the system / VPN DNS ordering directly
- *    so internal VPN routes and tunnels are not broken.
+ * 2) When Android reports the active network as a VPN, or a common VPN tunnel interface is exposed,
+ *    preserves the system / VPN DNS ordering so VPN-specific routes are not reordered.
  * 3) Automatically falls back to DNS-over-HTTPS (Cloudflare and Google DoH) for both A and AAAA records
  *    if system DNS throws UnknownHostException, times out, or fails.
  */
 class Ipv4FirstDnsResolver(
     private val bootstrapClient: OkHttpClient? = null,
+    private val context: Context? = null,
 ) : Dns {
 
     private val dohClient: OkHttpClient by lazy {
@@ -59,6 +63,18 @@ class Ipv4FirstDnsResolver(
     }
 
     private fun isVpnActive(): Boolean {
+        val platformReportsVpn = context?.let { appContext ->
+            runCatching {
+                val connectivity = appContext.getSystemService(ConnectivityManager::class.java)
+                    ?: return@runCatching false
+                val activeNetwork = connectivity.activeNetwork ?: return@runCatching false
+                val capabilities = connectivity.getNetworkCapabilities(activeNetwork)
+                    ?: return@runCatching false
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+            }.getOrDefault(false)
+        } ?: false
+        if (platformReportsVpn) return true
+
         return runCatching {
             val interfaces = NetworkInterface.getNetworkInterfaces() ?: return false
             interfaces.asSequence().any { iface ->
@@ -67,7 +83,8 @@ class Ipv4FirstDnsResolver(
                     iface.name.startsWith("ppp", ignoreCase = true) ||
                     iface.name.startsWith("p2p", ignoreCase = true) ||
                     iface.name.contains("vpn", ignoreCase = true) ||
-                    iface.name.startsWith("wg", ignoreCase = true)
+                    iface.name.startsWith("wg", ignoreCase = true) ||
+                    iface.name.startsWith("ipsec", ignoreCase = true)
                 )
             }
         }.getOrDefault(false)
