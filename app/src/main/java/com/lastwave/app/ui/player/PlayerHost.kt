@@ -2269,18 +2269,18 @@ private fun FullPlayer(
         delay(VIDEO_PRELOAD_DELAY_MS)
         syncedVideoVm.preloadVideo(track.title, track.artist, track.videoId, track.durationMs)
     }
-    val showFullBleed = canvasFullBleedEnabled && !isVideoActive
-    val showSleeveCanvas = isCanvasActive && (!showFullBleed || isTabletLandscape) && !isVideoActive
+    val showFullBleed = canvasFullBleedEnabled && !isVideoActive && !isTablet
+    val showSleeveCanvas = isCanvasActive && (!showFullBleed || isTablet) && !isVideoActive
     // activeCanvas is the single gate every render branch below keys off, so it also
     // carries the Animated Album Canvas toggle. The ViewModel nulls canvasState
     // asynchronously, so without this a disabled toggle still paints one frame of
     // motion artwork over the cover.
-    val activeCanvas = remember(canvas, showFullBleed, canvasEnabled, isTabletLandscape) {
+    val activeCanvas = remember(canvas, showFullBleed, canvasEnabled, isTablet) {
         if (!canvasEnabled) {
             null
         } else {
             val tall = canvas?.tallUrl
-            if (showFullBleed && !isTabletLandscape && canvas != null && !tall.isNullOrBlank()) {
+            if (showFullBleed && !isTablet && canvas != null && !tall.isNullOrBlank()) {
                 canvas.copy(url = tall)
             } else {
                 canvas
@@ -2655,7 +2655,7 @@ private fun FullPlayer(
                             ),
                         ),
                 )
-                if (showFullBleed && !isTabletLandscape) {
+                if (showFullBleed && !isTablet) {
                     val isTallCanvas = remember(activeCanvas, canvasAspect, canvasGradientBlurEnabled) {
                         if (canvasGradientBlurEnabled || activeCanvas == null) false
                         else if (canvasAspect > 0f) {
@@ -3196,11 +3196,11 @@ private fun FullPlayer(
                                                     }
                                                 }
                                             },
-                                        contentAlignment = if (isVideoActive) Alignment.Center else BiasAlignment(0f, -0.55f),
+                                        contentAlignment = if (isVideoActive) Alignment.Center else BiasAlignment(0f, if (isTablet) -0.15f else -0.55f),
                                     ) {
                                         val artworkSize = (minOf(maxWidth, maxHeight) - 6.dp)
                                             .coerceAtLeast(0.dp)
-                                            .coerceAtMost(370.dp)
+                                            .coerceAtMost(if (isTablet) 460.dp else 370.dp)
 
                                         if (sleeveAlpha > 0.001f) {
                                             if (isVideoActive) {

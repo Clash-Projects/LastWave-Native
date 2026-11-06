@@ -21,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -164,10 +165,11 @@ fun CanvasVideoPlayer(
         label = "canvasCrossfade",
     )
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize().clipToBounds()) {
         AndroidView(
             modifier = Modifier
                 .fillMaxSize()
+                .clipToBounds()
                 .alpha(alpha),
             factory = { viewContext ->
                 TextureView(viewContext).apply {

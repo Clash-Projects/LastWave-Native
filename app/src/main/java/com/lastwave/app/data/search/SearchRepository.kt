@@ -113,14 +113,20 @@ class SearchRepository @Inject constructor(
                     entityId = artist.browseId,
                 )
             }
-            SearchTab.ALBUMS -> innerTube.searchAlbums(trimmed).map { album ->
-                SearchResultItem(
-                    name = album.name,
-                    artist = album.artist,
-                    artworkUrl = album.artworkUrl,
-                    subtitle = album.subtitle,
-                    entityId = album.browseId,
-                )
+            SearchTab.ALBUMS -> {
+                val albums = innerTube.searchAlbums(trimmed)
+                val finalAlbums = if (albums.isEmpty() && !trimmed.lowercase().contains("album")) {
+                    innerTube.searchAlbums("$trimmed album")
+                } else albums
+                finalAlbums.map { album ->
+                    SearchResultItem(
+                        name = album.name,
+                        artist = album.artist,
+                        artworkUrl = album.artworkUrl,
+                        subtitle = album.subtitle,
+                        entityId = album.browseId,
+                    )
+                }
             }
             SearchTab.PLAYLISTS -> innerTube.searchPlaylists(trimmed).map { playlist ->
                 SearchResultItem(

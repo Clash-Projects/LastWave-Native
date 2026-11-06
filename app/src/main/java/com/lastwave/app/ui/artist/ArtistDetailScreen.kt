@@ -52,7 +52,14 @@ import androidx.compose.material.icons.filled.Verified
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.lastwave.app.ui.common.EdgeToEdgeDialogWindow
+import com.lastwave.app.ui.player.CanvasArtworkPlayer
+import com.lastwave.app.ui.player.CanvasContentMode
 import com.lastwave.app.ui.player.CanvasVideoPlayer
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -202,11 +209,15 @@ fun ArtistDetailScreen(
                         val headerWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
                         val motionVideoUrl = artistCanvas?.motionUrlFor(containerAspect = headerWidthDp / 460f)
                         val hasVideoAnimation = artistCanvas != null && showHeaderVideo && !motionVideoUrl.isNullOrBlank()
+                        val activeArtistCanvas = remember(artistCanvas, motionVideoUrl) {
+                            artistCanvas?.copy(url = motionVideoUrl ?: artistCanvas.url)
+                        }
 
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(460.dp)
+                                .clipToBounds()
                                 .then(
                                     if (hasVideoAnimation) {
                                         Modifier.clickable {
@@ -223,13 +234,35 @@ fun ArtistDetailScreen(
                             var artworkIndex by remember(data) { mutableStateOf(0) }
                             val artistArtwork = artworkCandidates.getOrNull(artworkIndex)
                             if (artistArtwork != null) {
-                                AsyncImage(
-                                    model = artistArtwork,
-                                    contentDescription = data.name,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize(),
-                                    onError = { artworkIndex++ },
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                                        .drawWithContent {
+                                            drawContent()
+                                            val fadeFrac = 0.45f
+                                            val fadeStartY = size.height * (1f - fadeFrac)
+                                            drawRect(
+                                                brush = Brush.verticalGradient(
+                                                    0f to Color.Black,
+                                                    (fadeStartY / size.height) to Color.Black,
+                                                    1f to Color.Transparent,
+                                                    startY = 0f,
+                                                    endY = size.height,
+                                                ),
+                                                blendMode = BlendMode.DstIn,
+                                            )
+                                        },
+                                ) {
+                                    AsyncImage(
+                                        model = artistArtwork,
+                                        contentDescription = data.name,
+                                        contentScale = ContentScale.Crop,
+                                        alignment = Alignment.TopCenter,
+                                        modifier = Modifier.fillMaxSize(),
+                                        onError = { artworkIndex++ },
+                                    )
+                                }
                             } else {
                                 Surface(
                                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -247,26 +280,33 @@ fun ArtistDetailScreen(
                             }
 
                             // Apple Music Artist Motion animated looping video
-                            if (hasVideoAnimation) {
-                                CanvasVideoPlayer(
-                                    videoUrl = motionVideoUrl!!,
+                            if (hasVideoAnimation && activeArtistCanvas != null) {
+                                CanvasArtworkPlayer(
+                                    canvas = activeArtistCanvas,
                                     isPlaying = true,
-                                    enableScrim = false,
-                                    modifier = Modifier.fillMaxSize(),
+                                    contentMode = CanvasContentMode.CROP,
+                                    alignPortraitTop = true,
+                                    bottomFade = 0.45f,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clipToBounds(),
                                 )
                             }
 
-                            // Seamless dark gradient overlay (top scrim for status bar, bottom fade into background)
+                            // Seamless dark gradient overlay (top scrim for status bar, smooth multi-stop bottom fade into background)
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .background(
                                         Brush.verticalGradient(
-                                            0.0f to Color.Black.copy(alpha = 0.5f),
-                                            0.25f to Color.Transparent,
-                                            0.55f to Color.Black.copy(alpha = 0.25f),
-                                            0.82f to Color.Black.copy(alpha = 0.78f),
-                                            1.0f to MaterialTheme.colorScheme.background,
+                                            colorStops = arrayOf(
+                                                0.0f to Color.Black.copy(alpha = 0.55f),
+                                                0.22f to Color.Transparent,
+                                                0.50f to Color.Black.copy(alpha = 0.20f),
+                                                0.72f to MaterialTheme.colorScheme.background.copy(alpha = 0.65f),
+                                                0.90f to MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
+                                                1.0f to MaterialTheme.colorScheme.background,
+                                            ),
                                         ),
                                     ),
                             )

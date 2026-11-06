@@ -1666,6 +1666,7 @@ class InnerTubeMusicApi @Inject constructor(
             collectObjects(element, "musicResponsiveListItemRenderer", renderers)
             collectObjects(element, "playlistVideoRenderer", renderers)
             for (renderer in renderers) {
+                if (isSuggestionItem(renderer)) continue
                 val videoId = renderer.obj("playlistItemData")?.string("videoId")
                     ?: (renderer["videoId"] as? JsonPrimitive)?.contentOrNull
                     ?: findString(renderer, "videoId")
@@ -1812,8 +1813,17 @@ class InnerTubeMusicApi @Inject constructor(
         return listOf("onResponseReceivedActions", "onResponseReceivedEndpoints", "onResponseReceivedCommands")
             .flatMap { key -> root.array(key).orEmpty() }
             .mapNotNull { action ->
-                (action.obj("appendContinuationItemsAction") ?: action.obj("reloadContinuationItemsCommand"))
-                    ?.array("continuationItems")
+                val continuationAction = action.obj("appendContinuationItemsAction") ?: action.obj("reloadContinuationItemsCommand")
+                val targetId = continuationAction?.string("targetId").orEmpty()
+                if (targetId.contains("suggestion", ignoreCase = true)) return@mapNotNull null
+                val continuationItems = continuationAction?.array("continuationItems") ?: return@mapNotNull null
+                val renderers = mutableListOf<JsonObject>()
+                collectObjects(continuationItems, "musicResponsiveListItemRenderer", renderers)
+                if (renderers.isNotEmpty() && renderers.all(::isSuggestionItem)) {
+                    null
+                } else {
+                    continuationItems
+                }
             }
     }
 
@@ -2218,8 +2228,21 @@ class InnerTubeMusicApi @Inject constructor(
     suspend fun searchArtists(query: String, limit: Int = 30): List<YouTubeMusicEntity> =
         searchEntities(query, YouTubeMusicEntityKind.ARTIST, ARTIST_SEARCH_FILTER, limit)
 
-    suspend fun searchAlbums(query: String, limit: Int = 30): List<YouTubeMusicEntity> =
-        searchEntities(query, YouTubeMusicEntityKind.ALBUM, ALBUM_SEARCH_FILTER, limit)
+    suspend fun searchAlbums(query: String, limit: Int = 30): List<YouTubeMusicEntity> {
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) return emptyList()
+        val direct = searchEntities(trimmed, YouTubeMusicEntityKind.ALBUM, ALBUM_SEARCH_FILTER, limit)
+        if (direct.isNotEmpty()) return direct
+
+        val fallback = searchEntitiesFallback(trimmed, YouTubeMusicEntityKind.ALBUM, limit)
+        if (fallback.isNotEmpty()) return fallback
+
+        if (!trimmed.lowercase().contains("album")) {
+            val albumQuery = searchEntitiesFallback("$trimmed album", YouTubeMusicEntityKind.ALBUM, limit)
+            if (albumQuery.isNotEmpty()) return albumQuery
+        }
+        return emptyList()
+    }
 
     suspend fun searchPodcasts(query: String, limit: Int = 30): List<PodcastEpisode> =
         searchPodcastEpisodes(query, limit)
@@ -2553,6 +2576,10 @@ class InnerTubeMusicApi @Inject constructor(
                 heading.contains("similar", ignoreCase = true) || heading.contains("fans", ignoreCase = true) || heading.contains("like", ignoreCase = true) -> {
                     similarArtists.addAll(parseArtistTwoRowItems(shelf))
                 }
+                normalizedHeading.contains("video") || normalizedHeading.contains("live") ||
+                    normalizedHeading.contains("episode") || normalizedHeading.contains("clip") -> {
+                    // Ignore video / live shelves from albums
+                }
                 else -> {
                     // Unknown heading (a language the table above doesn't
                     // cover, or a layout rename). Classify by the items
@@ -2562,6 +2589,7 @@ class InnerTubeMusicApi @Inject constructor(
                         similarArtists.addAll(parseArtistTwoRowItems(shelf))
                     } else {
                         for (item in items) {
+                            if (item.browseId.isBlank() || item.browseId.startsWith("UC")) continue
                             when (item.type?.lowercase()) {
                                 "album" -> albums.add(item)
                                 "single", "ep" -> singles.add(item)
@@ -2665,25 +2693,33 @@ class InnerTubeMusicApi @Inject constructor(
         val allArtists = if (artistRuns.isNotEmpty()) {
             artistRuns.mapNotNull { it.string("text")?.trim() }.filter { it.isNotBlank() }.joinToString(", ")
         } else {
-            val beforeMeta = subRuns.takeWhile { run ->
-                val txt = run.string("text")?.trim().orEmpty()
-                !txt.matches(Regex("^(19|20)\\d{2}$")) &&
-                    txt != "•" && txt != "·" &&
-                    !txt.equals("Album", ignoreCase = true) &&
-                    !txt.equals("EP", ignoreCase = true) &&
-                    !txt.equals("Single", ignoreCase = true) &&
-                    !txt.contains("song", ignoreCase = true) &&
-                    !txt.contains("min", ignoreCase = true)
-            }.mapNotNull { it.string("text")?.trim() }.filter { it.isNotBlank() && it != "," && it != "&" }
-            if (beforeMeta.isNotEmpty()) {
-                beforeMeta.joinToString(", ")
+            val facepileName = header?.obj("facepile")?.obj("avatarStackViewModel")?.obj("text")?.string("content")?.trim()
+            if (!facepileName.isNullOrBlank()) {
+                facepileName
             } else {
-                header?.obj("straplineTextOne")?.array("runs")?.mapNotNull { it.asObject()?.string("text") }?.joinToString("")?.trim()?.takeIf { it.isNotBlank() }
-                    ?: artistFallback.ifBlank { "Various Artists" }
+                val beforeMeta = subRuns.takeWhile { run ->
+                    val txt = run.string("text")?.trim().orEmpty()
+                    !txt.matches(Regex("^(19|20)\\d{2}$")) &&
+                        txt != "•" && txt != "·" &&
+                        !txt.equals("Playlist", ignoreCase = true) &&
+                        !txt.equals("Album", ignoreCase = true) &&
+                        !txt.equals("EP", ignoreCase = true) &&
+                        !txt.equals("Single", ignoreCase = true) &&
+                        !txt.contains("song", ignoreCase = true) &&
+                        !txt.contains("min", ignoreCase = true)
+                }.mapNotNull { it.string("text")?.trim() }.filter { it.isNotBlank() && it != "," && it != "&" }
+                if (beforeMeta.isNotEmpty()) {
+                    beforeMeta.joinToString(", ")
+                } else {
+                    header?.obj("straplineTextOne")?.array("runs")?.mapNotNull { it.asObject()?.string("text") }?.joinToString("")?.trim()?.takeIf { it.isNotBlank() }
+                        ?: artistFallback.ifBlank { "Various Artists" }
+                }
             }
         }
         val artist = allArtists.ifBlank { artistFallback.ifBlank { "Various Artists" } }
         val artistBrowseId = artistRuns.firstOrNull()?.obj("navigationEndpoint")?.obj("browseEndpoint")?.string("browseId")
+            ?: header?.obj("facepile")?.obj("avatarStackViewModel")?.obj("rendererContext")?.obj("commandContext")
+                ?.obj("onTap")?.obj("innertubeCommand")?.obj("browseEndpoint")?.string("browseId")
 
         val releaseYear = subRuns.mapNotNull { it.string("text") }.firstOrNull { it.trim().matches(Regex("^(19|20)\\d{2}$")) }
 
@@ -2809,6 +2845,7 @@ class InnerTubeMusicApi @Inject constructor(
             val nav = item.obj("navigationEndpoint")?.obj("browseEndpoint")
                 ?: item.obj("title")?.array("runs")?.firstOrNull()?.asObject()?.obj("navigationEndpoint")?.obj("browseEndpoint")
             val browseId = nav?.string("browseId") ?: ""
+            if (browseId.isBlank() || browseId.startsWith("UC")) return@mapNotNull null
             val subtitleRuns = item.obj("subtitle")?.array("runs")?.mapNotNull { it.asObject()?.string("text") }.orEmpty()
             val year = subtitleRuns.firstOrNull { it.trim().matches(Regex("^(19|20)\\d{2}$")) }
             // The type label is localized too ("Albüm", "Tekli", "Single'lar"),
@@ -4624,7 +4661,7 @@ class InnerTubeMusicApi @Inject constructor(
 
         val renderers = mutableListOf<JsonObject>()
         collectObjects(root, "musicResponsiveListItemRenderer", renderers)
-        songs.addAll(renderers.mapNotNull(::parseSong))
+        songs.addAll(renderers.filterNot(::isSuggestionItem).mapNotNull(::parseSong))
 
 
         val queueRenderers = mutableListOf<JsonObject>()
@@ -5265,6 +5302,7 @@ class InnerTubeMusicApi @Inject constructor(
     }
 
     private fun parseSong(renderer: JsonObject): YouTubeMusicTrack? {
+        if (isSuggestionItem(renderer)) return null
         val videoId = directWatchVideoId(renderer)
             ?: findString(renderer, "videoId")
             ?: return null
@@ -5309,15 +5347,21 @@ class InnerTubeMusicApi @Inject constructor(
     private fun parseEntityRenderers(root: JsonElement, kind: YouTubeMusicEntityKind): List<YouTubeMusicEntity> {
         val renderers = mutableListOf<JsonObject>()
         collectObjects(root, "musicResponsiveListItemRenderer", renderers)
-        return renderers.mapNotNull { renderer -> parseEntity(renderer, kind) }
-            .distinctBy { it.browseId }
+        val fromList = renderers.mapNotNull { renderer -> parseEntity(renderer, kind) }
+        val twoRowRenderers = mutableListOf<JsonObject>()
+        collectObjects(root, "musicTwoRowItemRenderer", twoRowRenderers)
+        val fromTwoRow = twoRowRenderers.mapNotNull { renderer -> parseTwoRowEntity(renderer, kind) }
+        return (fromList + fromTwoRow).distinctBy { it.browseId }
     }
 
     private fun parseEntity(renderer: JsonObject, kind: YouTubeMusicEntityKind): YouTubeMusicEntity? {
         val navigation = renderer.obj("navigationEndpoint")?.obj("browseEndpoint") ?: return null
         val browseId = navigation.string("browseId") ?: return null
         if (kind == YouTubeMusicEntityKind.ARTIST && !browseId.startsWith("UC")) return null
-        if (kind == YouTubeMusicEntityKind.ALBUM && !browseId.startsWith("MPRE")) return null
+        if (kind == YouTubeMusicEntityKind.ALBUM &&
+            !browseId.startsWith("MPRE") && !browseId.startsWith("VL") &&
+            !browseId.startsWith("OLAK") && !browseId.startsWith("PL")
+        ) return null
 
         val columns = renderer.array("flexColumns")
         val name = columns?.getOrNull(0)?.asObject()
@@ -5327,10 +5371,20 @@ class InnerTubeMusicApi @Inject constructor(
         val details = columns?.getOrNull(1)?.asObject()
             ?.obj("musicResponsiveListItemFlexColumnRenderer")?.obj("text")?.array("runs")
             ?.mapNotNull { it.asObject() }.orEmpty()
+
+        if (kind == YouTubeMusicEntityKind.ALBUM && !browseId.startsWith("MPRE")) {
+            val subtitleLower = details.mapNotNull { it.string("text") }.joinToString(" ").lowercase()
+            val nameLower = name.lowercase()
+            val isRelease = subtitleLower.contains("album") || subtitleLower.contains("single") ||
+                subtitleLower.contains("ep") || subtitleLower.contains("disc") ||
+                (subtitleLower.contains("playlist") && (nameLower.contains("album") || nameLower.contains("ep")))
+            if (!isRelease) return null
+        }
+
         val artist = if (kind == YouTubeMusicEntityKind.ALBUM) {
             details.firstOrNull { run ->
                 run.obj("navigationEndpoint")?.obj("browseEndpoint")?.string("browseId")?.startsWith("UC") == true
-            }?.string("text")
+            }?.string("text") ?: details.mapNotNull { it.string("text") }.firstOrNull { it.isLikelyArtistDetail() }
         } else null
         val subtitle = details.mapNotNull { it.string("text")?.trim() }
             .filter { it.isNotBlank() && it !in setOf("•", "·", "Artist", "Album", "EP", "Single") }
@@ -5351,6 +5405,82 @@ class InnerTubeMusicApi @Inject constructor(
             playlistId = findString(renderer, "playlistId"),
             artworkUrl = artwork,
         )
+    }
+
+    private fun parseTwoRowEntity(renderer: JsonObject, kind: YouTubeMusicEntityKind): YouTubeMusicEntity? {
+        val navigation = renderer.obj("navigationEndpoint")?.obj("browseEndpoint")
+            ?: renderer.obj("title")?.array("runs")?.firstOrNull()?.asObject()?.obj("navigationEndpoint")?.obj("browseEndpoint")
+            ?: return null
+        val browseId = navigation.string("browseId") ?: return null
+        if (kind == YouTubeMusicEntityKind.ARTIST && !browseId.startsWith("UC")) return null
+        if (kind == YouTubeMusicEntityKind.ALBUM &&
+            !browseId.startsWith("MPRE") && !browseId.startsWith("VL") &&
+            !browseId.startsWith("OLAK") && !browseId.startsWith("PL")
+        ) return null
+
+        val name = renderer.obj("title")?.array("runs")?.joinToString("") { it.asObject()?.string("text").orEmpty() }
+            ?: renderer.obj("title")?.string("simpleText")
+            ?: return null
+        if (name.isBlank()) return null
+
+        val subtitleRuns = renderer.obj("subtitle")?.array("runs")?.mapNotNull { it.asObject() }.orEmpty()
+
+        if (kind == YouTubeMusicEntityKind.ALBUM && !browseId.startsWith("MPRE")) {
+            val subtitleLower = subtitleRuns.mapNotNull { it.string("text") }.joinToString(" ").lowercase()
+            val nameLower = name.lowercase()
+            val isRelease = subtitleLower.contains("album") || subtitleLower.contains("single") ||
+                subtitleLower.contains("ep") || subtitleLower.contains("disc") ||
+                (subtitleLower.contains("playlist") && (nameLower.contains("album") || nameLower.contains("ep")))
+            if (!isRelease) return null
+        }
+
+        val artist = if (kind == YouTubeMusicEntityKind.ALBUM) {
+            subtitleRuns.firstOrNull { run ->
+                run.obj("navigationEndpoint")?.obj("browseEndpoint")?.string("browseId")?.startsWith("UC") == true
+            }?.string("text") ?: subtitleRuns.mapNotNull { it.string("text") }.firstOrNull { it.isLikelyArtistDetail() }
+        } else null
+        val subtitle = subtitleRuns.mapNotNull { it.string("text")?.trim() }
+            .filter { it.isNotBlank() && it !in setOf("•", "·", "Artist", "Album", "EP", "Single") }
+            .joinToString(" \u2022 ")
+            .trim()
+            .takeIf(String::isNotBlank)
+        val thumbs = renderer.obj("thumbnailRenderer")?.obj("musicThumbnailRenderer")?.obj("thumbnail")?.array("thumbnails")
+            ?: renderer.obj("thumbnail")?.array("thumbnails")
+        val artwork = thumbs?.lastOrNull()?.asObject()?.string("url")?.let {
+            (if (it.startsWith("//")) "https:$it" else it).highResolutionArtwork()
+        }
+        return YouTubeMusicEntity(
+            kind = kind,
+            name = name.trim(),
+            artist = artist?.trim(),
+            subtitle = subtitle,
+            browseId = browseId,
+            playlistId = findString(renderer, "playlistId"),
+            artworkUrl = artwork,
+        )
+    }
+
+    private suspend fun searchEntitiesFallback(
+        query: String,
+        kind: YouTubeMusicEntityKind,
+        limit: Int,
+    ): List<YouTubeMusicEntity> = withContext(Dispatchers.IO) {
+        if (query.isBlank()) return@withContext emptyList()
+        val config = getWebConfig()
+        val root = runCatching {
+            post(
+                url = "$MUSIC_API/search?key=${config.apiKey}&prettyPrint=false",
+                body = buildJsonObject {
+                    put("context", context("WEB_REMIX", config.clientVersion, config.visitorData))
+                    put("query", query.trim())
+                },
+                clientName = "WEB_REMIX",
+                clientVersion = config.clientVersion,
+                userAgent = WEB_USER_AGENT,
+            )
+        }.getOrNull() ?: return@withContext emptyList()
+
+        parseEntityRenderers(root, kind).take(limit)
     }
 
     private fun parsePlaylistRenderers(root: JsonElement): List<YouTubePlaylistSummary> {
@@ -5854,7 +5984,31 @@ internal fun collectObjects(element: JsonElement, key: String, output: MutableLi
     }
 }
 
+internal fun isSuggestionItem(renderer: JsonObject): Boolean {
+    val editEndpoints = mutableListOf<JsonObject>()
+    collectObjects(renderer, "playlistEditEndpoint", editEndpoints)
+    if (editEndpoints.isNotEmpty()) {
+        val hasAdd = editEndpoints.any { ep ->
+            ep.array("actions")?.any { act ->
+                val a = act.asObject()?.string("action").orEmpty()
+                a.contains("ACTION_ADD", ignoreCase = true) || a.contains("ADD_VIDEO", ignoreCase = true)
+            } == true
+        }
+        val hasRemove = editEndpoints.any { ep ->
+            ep.array("actions")?.any { act ->
+                val a = act.asObject()?.string("action").orEmpty()
+                a.contains("ACTION_REMOVE", ignoreCase = true) || a.contains("REMOVE_VIDEO", ignoreCase = true)
+            } == true
+        }
+        if (hasAdd && !hasRemove) return true
+    }
+    return false
+}
+
 internal fun isSuggestionShelf(shelf: JsonObject): Boolean {
+    val targetId = shelf.string("targetId").orEmpty()
+    if (targetId.contains("suggestion", ignoreCase = true)) return true
+
     val titleText = shelf.obj("title")?.array("runs")?.joinToString("") {
         it.asObject()?.string("text").orEmpty()
     } ?: shelf.obj("title")?.string("simpleText")
@@ -5890,17 +6044,11 @@ internal fun isSuggestionShelf(shelf: JsonObject): Boolean {
     }
     val contents = shelf.array("contents") ?: shelf.array("items")
     if (contents != null && contents.isNotEmpty()) {
-        val allHaveAddAction = contents.all { item ->
-            val itemObj = item.asObject() ?: return@all false
-            val editEndpoints = mutableListOf<JsonObject>()
-            collectObjects(itemObj, "playlistEditEndpoint", editEndpoints)
-            editEndpoints.any { ep ->
-                ep.array("actions")?.any { act ->
-                    act.asObject()?.string("action")?.contains("ACTION_ADD", ignoreCase = true) == true
-                } == true
-            }
+        val songItems = contents.mapNotNull { it.asObject()?.obj("musicResponsiveListItemRenderer") ?: it.asObject() }
+            .filter { it.obj("playlistItemData") != null || it.array("flexColumns") != null }
+        if (songItems.isNotEmpty() && songItems.all(::isSuggestionItem)) {
+            return true
         }
-        if (allHaveAddAction) return true
     }
     return false
 }

@@ -98,28 +98,52 @@ class AlbumRepository @Inject constructor(
                 // Mapping raw search hits 1:1 used to render a single random
                 // song (or unrelated songs) as the whole "tracklist".
                 if (tracks.isEmpty() && finalTitle.isNotBlank()) {
-                    val songs = runCatching {
-                        innerTube.searchSongs("$finalTitle $finalArtist", limit = 20)
-                    }.getOrDefault(emptyList())
+                    if (resolvedId != null && (resolvedId.startsWith("VL") || resolvedId.startsWith("PL"))) {
+                        val playlistResult = runCatching { innerTube.fetchPlaylist(resolvedId) }.getOrNull()
+                        if (playlistResult != null && playlistResult.tracks.isNotEmpty()) {
+                            tracks = playlistResult.tracks.map { track ->
+                                PlayableTrack(
+                                    title = track.title,
+                                    artist = track.artist.takeUnless { it == "Unknown artist" } ?: finalArtist,
+                                    album = track.album?.takeIf(String::isNotBlank) ?: finalTitle,
+                                    artworkUrl = track.artworkUrl ?: artwork,
+                                    videoId = track.videoId,
+                                    durationMs = track.durationSeconds?.takeIf { it > 0 }?.times(1_000L),
+                                )
+                            }
+                        }
+                    }
 
-                    tracks = songs.filter { track ->
-                        if (track.videoId.isBlank()) return@filter false
-                        val artistOk = track.artist.equals(finalArtist, ignoreCase = true) ||
-                            com.lastwave.app.util.ArtistHelper.splitArtists(track.artist)
-                                .any { it.equals(finalArtist, ignoreCase = true) } ||
-                            finalArtist.contains(track.artist, ignoreCase = true) ||
-                            track.artist.equals("Unknown artist", ignoreCase = true)
-                        val albumOk = track.album.equals(finalTitle, ignoreCase = true) ||
-                            (track.album.isNullOrBlank() && track.title.equals(finalTitle, ignoreCase = true))
-                        artistOk && albumOk
-                    }.map { track ->
-                        PlayableTrack(
-                            title = track.title,
-                            artist = track.artist.takeUnless { it == "Unknown artist" } ?: finalArtist,
-                            album = track.album?.takeIf(String::isNotBlank) ?: finalTitle,
-                            artworkUrl = track.artworkUrl ?: artwork,
-                            videoId = track.videoId,
-                        )
+                    if (tracks.isEmpty()) {
+                        val songs = runCatching {
+                            innerTube.searchSongs("$finalTitle $finalArtist", limit = 20)
+                        }.getOrDefault(emptyList())
+
+                        tracks = songs.filter { track ->
+                            if (track.videoId.isBlank()) return@filter false
+                            val lowerTitle = track.title.lowercase()
+                            val isCoverOrReaction = lowerTitle.contains("cover") || lowerTitle.contains("reaction") ||
+                                lowerTitle.contains("tutorial") || lowerTitle.contains("lesson")
+                            if (isCoverOrReaction && !finalTitle.lowercase().contains("cover")) return@filter false
+
+                            val artistOk = track.artist.equals(finalArtist, ignoreCase = true) ||
+                                com.lastwave.app.util.ArtistHelper.splitArtists(track.artist)
+                                    .any { it.equals(finalArtist, ignoreCase = true) } ||
+                                finalArtist.contains(track.artist, ignoreCase = true) ||
+                                track.artist.equals("Unknown artist", ignoreCase = true)
+                            val albumOk = track.album.equals(finalTitle, ignoreCase = true) ||
+                                (track.album.isNullOrBlank() && track.title.equals(finalTitle, ignoreCase = true))
+                            artistOk && albumOk
+                        }.map { track ->
+                            PlayableTrack(
+                                title = track.title,
+                                artist = track.artist.takeUnless { it == "Unknown artist" } ?: finalArtist,
+                                album = track.album?.takeIf(String::isNotBlank) ?: finalTitle,
+                                artworkUrl = track.artworkUrl ?: artwork,
+                                videoId = track.videoId,
+                                durationMs = track.durationSeconds?.takeIf { it > 0 }?.times(1_000L),
+                            )
+                        }
                     }
                 }
 
