@@ -23,6 +23,7 @@ data class MatchResult(
 object FuzzyMatcher {
 
     private const val MIN_SCORE_THRESHOLD = 20
+    private val WHITESPACE_REGEX = Regex("\\s+")
 
     /**
      * Searches a list of [SettingsEntry] items using weighted fuzzy matching.
@@ -36,7 +37,7 @@ object FuzzyMatcher {
         if (trimmed.isEmpty()) return emptyList()
 
         val lowerQuery = trimmed.lowercase(Locale.ROOT)
-        val queryWords = lowerQuery.split("\\s+".toRegex()).filter { it.isNotEmpty() }
+        val queryWords = lowerQuery.split(WHITESPACE_REGEX).filter { it.isNotEmpty() }
 
         val results = ArrayList<MatchResult>(entries.size)
 

@@ -1175,7 +1175,7 @@ class InnerTubeMusicApi @Inject constructor(
             } else {
                 account.authUserIndex?.let { builder.header("X-Goog-AuthUser", it.toString()) }
             }
-            webConfig?.visitorData?.let { builder.header("X-Goog-Visitor-Id", it) }
+            webConfig?.visitorData?.takeIf { isValidVisitorData(it) }?.let { builder.header("X-Goog-Visitor-Id", it) }
             val call = innerTubeClient.newCall(builder.build())
             call.timeout().timeout(HISTORY_PING_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             suspendCancellableCoroutine { continuation ->
@@ -1331,7 +1331,7 @@ class InnerTubeMusicApi @Inject constructor(
         // The web client always sends an explicit authuser here (0 for the
         // first login); brand rows under it carry `authuser=0&pageid=...`.
         builder.header("X-Goog-AuthUser", (account.authUserIndex ?: 0).toString())
-        webConfig?.visitorData?.let { builder.header("X-Goog-Visitor-Id", it) }
+        webConfig?.visitorData?.takeIf { isValidVisitorData(it) }?.let { builder.header("X-Goog-Visitor-Id", it) }
         val call = innerTubeClient.newCall(builder.build())
         call.timeout().timeout(ACCOUNT_SWITCHER_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         val (status, text) = call.readResponseBody()
@@ -1963,7 +1963,7 @@ class InnerTubeMusicApi @Inject constructor(
         if (results.isEmpty()) {
             webConfig = null
             val freshVisitor = fetchFreshVisitorData()
-            if (!freshVisitor.isNullOrBlank()) {
+            if (isValidVisitorData(freshVisitor)) {
                 config = WebConfig(FALLBACK_WEB_KEY, FALLBACK_WEB_VERSION, freshVisitor)
                 webConfig = config
                 filtered = runCatching { runSearch("EgWKAQIIAWoKEAkQBRAKEAMQBA==") }.getOrDefault(emptyList())
@@ -3212,7 +3212,7 @@ class InnerTubeMusicApi @Inject constructor(
         val config = runCatching {
             kotlinx.coroutines.withTimeoutOrNull(VISITOR_BOOTSTRAP_BUDGET_MS) { getWebConfig() }
         }.getOrNull()
-        val visitorData = config?.visitorData?.takeIf { it != FALLBACK_TOKEN_SESSION }
+        val visitorData = config?.visitorData?.takeIf { isValidVisitorData(it) }
         val poToken = fastPoToken(videoId, visitorData)
         val clients = buildList {
             addAll(VIDEO_CLIENT_ORDER.mapNotNull { name -> PLAYER_CLIENTS.firstOrNull { it.name == name } })
@@ -3254,7 +3254,7 @@ class InnerTubeMusicApi @Inject constructor(
     suspend fun resolveVideoAudioForAlignment(videoId: String): YouTubeAudioStream? = withContext(Dispatchers.IO) {
         val visitorData = runCatching {
             kotlinx.coroutines.withTimeoutOrNull(VISITOR_BOOTSTRAP_BUDGET_MS) { getWebConfig() }?.visitorData
-        }.getOrNull()?.takeIf { it != FALLBACK_TOKEN_SESSION }
+        }.getOrNull()?.takeIf { isValidVisitorData(it) }
         for (name in ALIGNMENT_AUDIO_CLIENT_ORDER) {
             val client = PLAYER_CLIENTS.firstOrNull { it.name == name } ?: continue
             try {
@@ -3452,7 +3452,7 @@ class InnerTubeMusicApi @Inject constructor(
         // it here (bounded, throttled) when the startup pre-warm hasn't —
         // including when the cached value is only the synthetic placeholder,
         // so a transient scrape miss self-heals instead of sticking.
-        var visitorData = webConfig?.visitorData?.takeIf { it != FALLBACK_TOKEN_SESSION }
+        var visitorData = webConfig?.visitorData?.takeIf { isValidVisitorData(it) }
         if (visitorData.isNullOrBlank()) {
             val now = System.currentTimeMillis()
             if (now - lastVisitorBootstrapAttemptMs >= VISITOR_BOOTSTRAP_RETRY_COOLDOWN_MS) {
@@ -3461,7 +3461,7 @@ class InnerTubeMusicApi @Inject constructor(
                     kotlinx.coroutines.withTimeoutOrNull(VISITOR_BOOTSTRAP_BUDGET_MS) {
                         getWebConfig()
                     }?.visitorData
-                }.getOrNull()?.takeIf { it != FALLBACK_TOKEN_SESSION } ?: visitorData
+                }.getOrNull()?.takeIf { isValidVisitorData(it) } ?: visitorData
             }
             noteAttempt("direct-fast=visitor-${if (!visitorData.isNullOrBlank()) "ok" else "missing"}")
         }
@@ -3679,7 +3679,7 @@ class InnerTubeMusicApi @Inject constructor(
     private suspend fun fastPoToken(videoId: String, visitorData: String?): PoTokenResult? {
         if (videoId.isBlank()) return null
         // Tokens must be bound to the visitor actually sent in the player request.
-        val session = visitorData?.takeIf { it.isNotBlank() && it != FALLBACK_TOKEN_SESSION }
+        val session = visitorData?.takeIf { isValidVisitorData(it) }
             ?: return null
         return try {
             kotlinx.coroutines.withTimeoutOrNull(POTOKEN_FAST_BUDGET_MS) {
@@ -3699,7 +3699,7 @@ class InnerTubeMusicApi @Inject constructor(
             put("clientVersion", client.version)
             put("hl", "en")
             put("gl", "US")
-            if (!visitorData.isNullOrBlank()) put("visitorData", visitorData)
+            if (isValidVisitorData(visitorData)) put("visitorData", visitorData)
             if (!client.osName.isNullOrBlank()) put("osName", client.osName)
             if (!client.osVersion.isNullOrBlank()) put("osVersion", client.osVersion)
             if (!client.deviceMake.isNullOrBlank()) put("deviceMake", client.deviceMake)
@@ -4225,7 +4225,7 @@ class InnerTubeMusicApi @Inject constructor(
      *  blocking fetch. Safe to call from a startup coroutine; never throws. */
     suspend fun preWarmPlayback() {
         val config = runCatching { getWebConfig() }.getOrNull()
-        val visitor = config?.visitorData ?: FALLBACK_TOKEN_SESSION
+        val visitor = config?.visitorData?.takeIf { isValidVisitorData(it) } ?: FALLBACK_TOKEN_SESSION
         runCatching { BotGuardTokenGenerator.preWarm(visitor) }
     }
 
@@ -4279,16 +4279,23 @@ class InnerTubeMusicApi @Inject constructor(
                 }
             }
             val fallback = webConfig
-                ?: WebConfig(FALLBACK_WEB_KEY, FALLBACK_WEB_VERSION, FALLBACK_TOKEN_SESSION)
+                ?: WebConfig(FALLBACK_WEB_KEY, FALLBACK_WEB_VERSION, null)
             webConfig = fallback
             fallback
         }
     }
 
+    private fun isValidVisitorData(token: String?): Boolean {
+        if (token.isNullOrBlank()) return false
+        if (token == FALLBACK_TOKEN_SESSION || token == "lastwave_session") return false
+        if (token.length < 15) return false
+        return token.all { it.isLetterOrDigit() || it in "+/=-_%~" }
+    }
+
     /** True when the config's visitor data came from an actual homepage
-     *  scrape rather than the synthetic placeholder. */
+     *  scrape or API response rather than the synthetic placeholder. */
     private fun WebConfig.hasRealVisitorData(): Boolean =
-        !visitorData.isNullOrBlank() && visitorData != FALLBACK_TOKEN_SESSION
+        isValidVisitorData(visitorData)
 
     private suspend fun fetchWebConfig(): WebConfig {
         val request = Request.Builder()
@@ -4301,12 +4308,11 @@ class InnerTubeMusicApi @Inject constructor(
         }
         val (status, html) = call.readResponseBody()
         if (status !in 200..299) throw IOException("YouTube Music config HTTP $status")
+        val rawVisitor = findConfig(html, "VISITOR_DATA") ?: findConfig(html, "EOM_VISITOR_DATA")
         return WebConfig(
             apiKey = findConfig(html, "INNERTUBE_API_KEY") ?: FALLBACK_WEB_KEY,
             clientVersion = findConfig(html, "INNERTUBE_CONTEXT_CLIENT_VERSION") ?: FALLBACK_WEB_VERSION,
-            visitorData = findConfig(html, "VISITOR_DATA")
-                ?: findConfig(html, "EOM_VISITOR_DATA")
-                ?: FALLBACK_TOKEN_SESSION,
+            visitorData = rawVisitor?.takeIf { isValidVisitorData(it) },
         )
     }
 
@@ -4337,7 +4343,7 @@ class InnerTubeMusicApi @Inject constructor(
             if (code in 200..299) {
                 val jsonResp = json.parseToJsonElement(resp).jsonObject
                 val token = jsonResp.obj("responseContext")?.string("visitorData")
-                if (!token.isNullOrBlank()) return@withContext token
+                if (isValidVisitorData(token)) return@withContext token
             }
         } catch (_: Exception) {}
 
@@ -4353,7 +4359,7 @@ class InnerTubeMusicApi @Inject constructor(
                 val match = Regex("""["'](?:visitorData|VISITOR_DATA)["']\s*:\s*["']([^"']+)["']""").find(resp)
                     ?: Regex("""["']([A-Za-z0-9_-]{20,28}%3D*|[A-Za-z0-9+/=]{20,28})["']""").find(resp)
                 val token = match?.groupValues?.getOrNull(1)
-                if (!token.isNullOrBlank()) return@withContext token
+                if (isValidVisitorData(token)) return@withContext token
             }
         } catch (_: Exception) {}
 
@@ -4414,8 +4420,9 @@ class InnerTubeMusicApi @Inject constructor(
                     header("Accept-Language", "$hl-$gl,$hl;q=0.9,en;q=0.8")
                 }
 
-            if (!visitorData.isNullOrBlank()) {
-                builder.header("X-Goog-Visitor-Id", visitorData)
+            val validVisitor = visitorData?.takeIf { isValidVisitorData(it) }
+            if (validVisitor != null) {
+                builder.header("X-Goog-Visitor-Id", validVisitor)
             }
 
             val consentCookies = "CONSENT=YES+cb.20210328-17-p0.en+FX+100; SOCS=CAISEwgDEgk0ODE3Nzk3MjQaAmVuIAEaBgiA_LyaBg"
@@ -4456,10 +4463,13 @@ class InnerTubeMusicApi @Inject constructor(
                 val (status, text) = call.readResponseBody()
                 if (status !in 200..299) {
                     if (status == 400 || status == 403 || status == 429) {
-                        webConfig = null
+                        val currentConf = webConfig
+                        if (currentConf != null) {
+                            webConfig = WebConfig(currentConf.apiKey, currentConf.clientVersion, null)
+                        }
                         if (attempt < maxAttempts && (status == 400 || status == 403)) {
                             val freshVisitor = fetchFreshVisitorData()
-                            if (!freshVisitor.isNullOrBlank()) {
+                            if (isValidVisitorData(freshVisitor)) {
                                 webConfig = WebConfig(FALLBACK_WEB_KEY, FALLBACK_WEB_VERSION, freshVisitor)
                             }
                         }
@@ -4472,11 +4482,20 @@ class InnerTubeMusicApi @Inject constructor(
                     }
                     throw InnerTubeHttpException(status)
                 }
-                return try {
+                val parsed = try {
                     json.parseToJsonElement(text).jsonObject
                 } catch (error: Exception) {
                     throw IOException("Invalid InnerTube response", error)
                 }
+                val respVisitor = parsed.obj("responseContext")?.string("visitorData")
+                if (isValidVisitorData(respVisitor) && webConfig?.hasRealVisitorData() != true) {
+                    webConfig = WebConfig(
+                        apiKey = webConfig?.apiKey ?: FALLBACK_WEB_KEY,
+                        clientVersion = webConfig?.clientVersion ?: FALLBACK_WEB_VERSION,
+                        visitorData = respVisitor,
+                    )
+                }
+                return parsed
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -4579,7 +4598,7 @@ class InnerTubeMusicApi @Inject constructor(
                 put("clientVersion", version)
                 put("hl", hl)
                 put("gl", gl)
-                if (!visitorData.isNullOrBlank()) put("visitorData", visitorData)
+                if (isValidVisitorData(visitorData)) put("visitorData", visitorData)
                 if (!osVersion.isNullOrBlank()) put("osVersion", osVersion)
             })
             // Brand-channel delegation: same session cookies, but YouTube
