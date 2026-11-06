@@ -46,21 +46,22 @@ For audio lovers, LastWave packs Bit-Perfect USB DAC output, Lossless FLAC addon
     <td width="50%" valign="top">
 
 #### Playback
-- Stream any song or video from YouTube Music
-- Background playback
-- Download & cache for offline use
-- Skip silence
-- Sleep timer
+- Stream any track or video from YouTube Music (ad-free)
+- Background playback with lockscreen & Android Auto controls
+- High-res audio downloads with embedded tags & `.lrc` lyrics
+- Download & cache for offline listening
+- Skip silence & sleep timer
 
 </td>
     <td width="50%" valign="top">
 
 #### Audio
-- Bit-Perfect USB DAC output & Lossless FLAC addon support
-- Audio normalization
-- Tempo & pitch control
-- 15-band Parametric Equalizer & AutoEQ presets
-- Smart Automix & Crossfade transitions
+- Bit-Perfect USB DAC output (direct hardware bypass)
+- Lossless FLAC addon support (up to 24-bit Hi-Res)
+- 15-band Parametric Equalizer & AutoEQ headphone presets
+- Smart Automix transitions & smooth crossfade
+- Audio normalization (ReplayGain / LUFS)
+- Real-time tempo & pitch control
 
 </td>
   </tr>
@@ -68,21 +69,23 @@ For audio lovers, LastWave packs Bit-Perfect USB DAC output, Lossless FLAC addon
     <td width="50%" valign="top">
 
 #### Lyrics & Discovery
-- Live synced lyrics
-- AI-powered lyrics translation
-- Personalized quick picks
+- Live millisecond-synchronized lyrics (LRCLIB)
+- Lyrics romanization for non-Latin scripts (Japanese, Korean, etc.)
+- Multi-language lyrics translation
+- Spotify, Apple Music & Tidal animated Canvas backgrounds
+- Personalized quick picks, mood radios & genre discovery
 - Search songs, albums, artists, videos, and playlists
 
 </td>
     <td width="50%" valign="top">
 
 #### Library & Account
-- Full library management
-- Local playlists
-- Import playlists (Spotify & Apple Music)
-- Reorder songs in playlist or queue
-- YouTube Music account login
-- Sync songs, artists, albums, and playlists
+- Full library management & offline cached library
+- Local & cloud playlists
+- Import public playlists from Spotify & Apple Music
+- Reorder songs in playlist or playback queue
+- YouTube Music account login & bidirectional sync
+- Custom audio tag editing & cover art selection
 
 </td>
   </tr>
@@ -91,17 +94,19 @@ For audio lovers, LastWave packs Bit-Perfect USB DAC output, Lossless FLAC addon
 
 #### Social
 - Listen together with friends in real-time
-- Last.fm integration for scrobbling
-- Safe Discord Rich Presence
+- Built-in Last.fm scrobbler with background tracking
+- Safe Discord Rich Presence with live album art
+- Export and share lyrics as aesthetic quote cards
 
 </td>
     <td width="50%" valign="top">
 
 #### Interface
-- Home screen widget
-- Light / Dark / Black / Dynamic theme modes
-- Dynamic color + 19 preset color palettes
-- Built with Material 3 Expressive & Liquid Glass UI
+- Material 3 Expressive & Liquid Glass UI
+- Real-time backdrop refraction shaders
+- Dynamic Monet theming + 19 preset color palettes
+- Light, Dark, Pure Black (AMOLED), and Dynamic modes
+- Interactive home screen widgets & fluid tactile haptics
 
 </td>
   </tr>
