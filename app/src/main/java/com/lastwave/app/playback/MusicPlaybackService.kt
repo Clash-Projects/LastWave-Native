@@ -181,6 +181,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     private var lastWaveObservedAtMs = 0L
     private var playbackWakeLock: PowerManager.WakeLock? = null
     private var playbackWifiLock: WifiManager.WifiLock? = null
+    private var wakeLockReleaseJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -680,6 +681,8 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     private fun updateWakeLocks(state: MusicPlayerState) {
         val shouldHold = state.isPlaying || state.isBuffering
         if (shouldHold) {
+            wakeLockReleaseJob?.cancel()
+            wakeLockReleaseJob = null
             runCatching {
                 if (playbackWakeLock?.isHeld == false) {
                     playbackWakeLock?.acquire()
@@ -689,9 +692,15 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                 }
             }
         } else {
-            runCatching {
-                if (playbackWakeLock?.isHeld == true) playbackWakeLock?.release()
-                if (playbackWifiLock?.isHeld == true) playbackWifiLock?.release()
+            if (wakeLockReleaseJob == null && (playbackWakeLock?.isHeld == true || playbackWifiLock?.isHeld == true)) {
+                wakeLockReleaseJob = scope.launch {
+                    delay(WAKELOCK_RELEASE_GRACE_MS)
+                    runCatching {
+                        if (playbackWakeLock?.isHeld == true) playbackWakeLock?.release()
+                        if (playbackWifiLock?.isHeld == true) playbackWifiLock?.release()
+                    }
+                    wakeLockReleaseJob = null
+                }
             }
         }
     }
@@ -794,18 +803,32 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        // With android:stopWithTask="true" in the Manifest, the system now
-        // automatically stops this service when the task is removed from Recents.
-        // If playback is active, the service is a foreground service (promoted
-        // in onStartCommand) and will survive the task removal.
-        // If nothing is playing, the service is not foreground and will be
-        // stopped by the system, releasing wake/wifi locks via onDestroy().
-        // We no longer need to manually call stopAndClear() here — the system
-        // handles it correctly based on foreground state.
+        // stopWithTask is false in the Manifest because it cannot express the
+        // user's choice: this service deliberately stays a media-playback
+        // foreground service whenever a track is loaded (even paused), and a
+        // foreground service survives task removal. So the swipe behavior is
+        // handled explicitly here.
+        val shouldStop = musicPlayer.stopPlaybackOnTaskRemoved ||
+            musicPlayer.state.value.current == null
+        if (shouldStop) {
+            // clearSession = false keeps the last queue/track restorable on the
+            // next launch while still stopping audio, notification, cast and
+            // wake/wifi locks immediately.
+            musicPlayer.stopAndClear(clearSession = false)
+        }
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
+        // Safety net: if the service is torn down while the singleton player is
+        // still producing audio (an OEM stop, a system-initiated service stop
+        // or a missed task-removal path), never leave orphaned playback behind.
+        val playerState = musicPlayer.state.value
+        if (playerState.isPlaying || playerState.isBuffering) {
+            musicPlayer.stopAndClear(clearSession = false)
+        }
+        wakeLockReleaseJob?.cancel()
+        wakeLockReleaseJob = null
         runCatching { if (playbackWakeLock?.isHeld == true) playbackWakeLock?.release() }
         runCatching { if (playbackWifiLock?.isHeld == true) playbackWifiLock?.release() }
         // The service is the last thing standing in a playback-only session, so
@@ -1835,6 +1858,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     }
 
     private companion object {
+        const val WAKELOCK_RELEASE_GRACE_MS = 10_000L
         // Expanded RemoteViews content needs ~117dp (brand + title + artist +
         // album + 44dp controls + margins); 128dp clipped the transport row
         // whenever the album line was visible. 152dp leaves breathing room.

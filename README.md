@@ -7,20 +7,11 @@
 **Simple Android YouTube Music client with Material UI, Liquid Glass, Bit-Perfect playback, Automix, Lossless addons & advanced audiophile features.**
 
 <br/>
-<br/>
 
 <p align="center">
-  <a href="https://t.me/clashprojects" target="_blank">
-    <img src="docs/badges/btn_telegram_updates.svg" alt="Telegram Updates" height="42" />
-  </a>
-  &nbsp;
-  <a href="https://t.me/MaterialYouApp" target="_blank">
-    <img src="docs/badges/btn_telegram_channel.svg" alt="More From Us" height="42" />
-  </a>
-  &nbsp;
-  <a href="https://discord.gg/DmyM2p2fMe" target="_blank">
-    <img src="docs/badges/btn_discord.svg" alt="Join Discord" height="42" />
-  </a>
+  <a href="https://t.me/clashprojects" target="_blank"><img src="docs/badges/btn_telegram_support.svg" alt="Telegram Support" height="42" /></a>
+  <a href="https://t.me/MaterialYouApp" target="_blank"><img src="docs/badges/btn_telegram_channel.svg" alt="Telegram Channel" height="42" /></a>
+  <a href="https://discord.gg/DmyM2p2fMe" target="_blank"><img src="docs/badges/btn_discord.svg" alt="Discord Community" height="42" /></a>
 </p>
 
 <p align="center">
@@ -32,37 +23,11 @@
     <img src="https://trendshift.io/api/badge/trendshift/repositories/197973/weekly?language=Kotlin" alt="Clash-Projects%2FLastWave-Native | Trendshift" width="250" height="55" />
   </a>
 </p>
-
-<p align="center">
-  <a href="https://buymeachai.ezee.li/ajisth69" target="_blank">
-    <img src="https://img.shields.io/badge/UPI-Buy%20Me%20A%20Chai-FF813F?style=for-the-badge&logo=googlepay&logoColor=white" alt="UPI (Buy Me A Chai)" height="34" />
-  </a>
-  &nbsp;
-  <a href="https://buymeacoffee.com/ajisth" target="_blank">
-    <img src="https://img.shields.io/badge/Buy%20Me%20A%20Coffee-ajisth-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy Me A Coffee" height="34" />
-  </a>
-  &nbsp;
-  <a href="https://github.com/sponsors/ajisth69" target="_blank">
-    <img src="https://img.shields.io/badge/Sponsor-GitHub-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="GitHub Sponsors" height="34" />
-  </a>
-</p>
-
 </div>
 
 ---
 
-<div align="center">
-  <img src="Screenshot/screenshot_1.png" width="31%" style="border-radius: 14px; margin: 4px;" />
-  <img src="Screenshot/screenshot_2.png" width="31%" style="border-radius: 14px; margin: 4px;" />
-  <img src="Screenshot/screenshot_3.png" width="31%" style="border-radius: 14px; margin: 4px;" />
-  <br/>
-  <br/>
-  <img src="Screenshot/screenshot_4.png" width="31%" style="border-radius: 14px; margin: 4px;" />
-  <img src="Screenshot/screenshot_5.png" width="31%" style="border-radius: 14px; margin: 4px;" />
-  <img src="Screenshot/screenshot_6.png" width="31%" style="border-radius: 14px; margin: 4px;" />
-</div>
 
----
 
 
 ## Overview
@@ -122,6 +87,28 @@ cd LastWave-native
 ./gradlew assembleRelease
 ```
 
+---
+
+## Support the Project
+
+If LastWave has been useful to you, consider supporting its development.
+
+<div align="left">
+  <table style="margin: 0 auto; border-collapse: collapse; border: none;">
+    <tr>
+      <td align="center" style="padding: 15px; border: none;">
+        <a href="https://buymeacoffee.com/ajisth" target="_blank" style="text-decoration:none;"><img src="docs/badges/bmac.png" alt="Buy Me A Coffee" width="140" style="border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.2);"/></a>
+      </td>
+      <td align="center" style="padding: 15px; border: none;">
+        <a href="https://buymeachai.ezee.li/ajisth69" target="_blank" style="text-decoration:none;"><img src="docs/badges/upi.png" alt="UPI (Buy Me A Chai)" width="140" style="border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.2);"/></a>
+      </td>
+      <td align="center" style="padding: 15px; border: none;">
+        <a href="https://github.com/sponsors/ajisth69" target="_blank" style="text-decoration:none;"><img src="docs/badges/github_sponsors.svg" alt="GitHub Sponsors" width="140" style="border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.2);"/></a>
+      </td>
+    </tr>
+  </table>
+</div>
+
 
 
 ---
@@ -150,9 +137,6 @@ cd LastWave-native
 > **No Affiliation & Content Policy**
 > - LastWave is an independent project and is **not affiliated with, endorsed, or sponsored by Google LLC, YouTube, YouTube Music, Spotify, Apple Inc., Last.fm, or any music service**.
 > - LastWave **does not host, stream from private servers, or distribute any copyrighted media**. All content and metadata are accessed directly from public endpoints in accordance with their respective terms. All trademarks belong to their respective owners.
-
----
-
 
 ---
 

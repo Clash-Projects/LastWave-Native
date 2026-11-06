@@ -183,6 +183,9 @@
     <string name="settings_crossfade_sub">Blend the end of a track into the next one</string>
     <string name="settings_keep_lyrics_screen_awake">Keep Screen Awake on Lyrics</string>
     <string name="settings_keep_lyrics_screen_awake_desc">Prevent screen from turning off while viewing lyrics</string>
+    <string name="settings_stop_on_recents">Stop Playback When Swiped Away</string>
+    <string name="settings_stop_on_recents_on">Removing LastWave from Recents stops playback</string>
+    <string name="settings_stop_on_recents_off">Playback continues in the background after leaving Recents</string>
     <string name="settings_download_lyrics">Download Synced Lyrics</string>
     <string name="settings_download_lyrics_on">Save .lrc companion files &amp; embed lyrics in downloads</string>
     <string name="settings_download_lyrics_off">Do not fetch or save lyrics when downloading</string>

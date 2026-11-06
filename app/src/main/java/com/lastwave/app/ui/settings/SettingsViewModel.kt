@@ -656,6 +656,10 @@ class SettingsViewModel @Inject constructor(
     fun setPodcastsEnabled(enabled: Boolean) = launchSettingsAction("update podcasts setting") {
         settingsPreferences.setPodcastsEnabled(enabled)
     }
+    fun setStopPlaybackOnTaskRemoved(enabled: Boolean) =
+        launchSettingsAction("update stop playback on recents setting") {
+            settingsPreferences.setStopPlaybackOnTaskRemoved(enabled)
+        }
     fun setWordByWordLyrics(enabled: Boolean) = launchSettingsAction("update word-by-word lyrics") { settingsPreferences.setWordByWordLyrics(enabled) }
     fun setLyricsProvider(provider: com.lastwave.app.data.local.LyricsProvider) = launchSettingsAction("update lyrics provider") { settingsPreferences.setLyricsProvider(provider) }
     fun setLyricsOffsetMs(offsetMs: Long) = launchSettingsAction("update lyrics sync offset") {
