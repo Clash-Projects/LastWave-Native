@@ -478,6 +478,7 @@ fun Modifier.drawInteractiveGlass(
     blurScale: Float = 1f,
     minScrim: Float = GlassRecipe.MIN_SCRIM,
     maxScrim: Float = GlassRecipe.MAX_SCRIM,
+    lensEnabled: Boolean = true,
 ): Modifier =
     this
         .drawBackdrop(
@@ -509,12 +510,14 @@ fun Modifier.drawInteractiveGlass(
                         }
                     ) * blurScale + GlassRecipe.PRESS_BLUR_DP.dp.toPx() * press,
                 )
-                lens(
-                    size.minDimension / GlassRecipe.LENS_DIVISOR +
-                        GlassRecipe.PRESS_BLUR_DP.dp.toPx() * press,
-                    size.minDimension / 2f,
-                    false,
-                )
+                if (lensEnabled) {
+                    lens(
+                        size.minDimension / GlassRecipe.LENS_DIVISOR +
+                            GlassRecipe.PRESS_BLUR_DP.dp.toPx() * press,
+                        size.minDimension / 2f,
+                        false,
+                    )
+                }
             },
             onDrawBackdrop = { drawBackdrop ->
                 drawBackdrop()
@@ -574,6 +577,9 @@ fun Modifier.liquidGlass(
     interactive: Boolean = true,
     highlight: Highlight = Highlight.Default,
     forceDark: Boolean = false,
+    minScrim: Float = GlassRecipe.MIN_SCRIM,
+    maxScrim: Float = GlassRecipe.MAX_SCRIM,
+    lensEnabled: Boolean = true,
 ): Modifier {
     if (!LocalLiquidGlass.current) {
         return this
@@ -596,6 +602,9 @@ fun Modifier.liquidGlass(
         shape = shape,
         interaction = if (interactive) interaction else null,
         highlight = highlight,
+        minScrim = minScrim,
+        maxScrim = maxScrim,
+        lensEnabled = lensEnabled,
     )
 }
 
@@ -745,6 +754,7 @@ fun LiquidGlassIconButton(
 /** Kept for call-site compat; values are ignored — recipe is fixed. */
 enum class LiquidGlassPreset {
     BottomNavigation,
+    BottomNavigationIndicator,
     MiniPlayer,
     PlayerControls,
     FloatingControls,
@@ -757,6 +767,7 @@ enum class LiquidGlassPreset {
 
 private fun LiquidGlassPreset.isGlassTarget(): Boolean = when (this) {
     LiquidGlassPreset.BottomNavigation,
+    LiquidGlassPreset.BottomNavigationIndicator,
     LiquidGlassPreset.MiniPlayer,
     LiquidGlassPreset.PlayerControls,
     LiquidGlassPreset.FloatingControls,
@@ -795,9 +806,30 @@ fun Modifier.liquidGlassChrome(
     return this.liquidGlass(
         backdrop = backdrop,
         shape = shape,
-        interactive = preset != LiquidGlassPreset.BottomNavigation && preset != LiquidGlassPreset.Header,
-        highlight = Highlight.Default,
+        interactive = preset != LiquidGlassPreset.BottomNavigation &&
+            preset != LiquidGlassPreset.BottomNavigationIndicator &&
+            preset != LiquidGlassPreset.Header,
+        highlight = if (
+            preset == LiquidGlassPreset.BottomNavigation
+        ) {
+            Highlight(width = 0.dp, alpha = 0f)
+        } else if (
+            preset == LiquidGlassPreset.BottomNavigationIndicator
+        ) {
+            Highlight(width = 0.5.dp, alpha = 0.35f)
+        } else {
+            Highlight.Default
+        },
         forceDark = shouldForceDark,
+        minScrim = if (
+            preset == LiquidGlassPreset.BottomNavigation ||
+            preset == LiquidGlassPreset.BottomNavigationIndicator
+        ) 0.24f else GlassRecipe.MIN_SCRIM,
+        maxScrim = if (
+            preset == LiquidGlassPreset.BottomNavigation ||
+            preset == LiquidGlassPreset.BottomNavigationIndicator
+        ) 0.64f else GlassRecipe.MAX_SCRIM,
+        lensEnabled = preset != LiquidGlassPreset.BottomNavigation,
     )
 }
 

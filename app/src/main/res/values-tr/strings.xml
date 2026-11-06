@@ -7,6 +7,8 @@
     <string name="widget_obsidian_description">Yarı saydam derinlikli ve kristal çerçeveli buzlu obsidyen cam oynatıcı</string>
 
     <!-- Alt gezinti -->
+    <string name="nav_home">Ana sayfa</string>
+    <string name="nav_discover">Keşfet</string>
     <string name="nav_feed">Akış</string>
     <string name="nav_stats">İstatistik</string>
     <string name="nav_playlists">Listeler</string>

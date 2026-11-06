@@ -4,6 +4,8 @@
     <string name="widget_name">LastWave Player</string>
     <string name="widget_description">Cover, Trackdetails und Wiedergabesteuerung für alle Medien-Apps</string>
 
+    <string name="nav_home">Start</string>
+    <string name="nav_discover">Entdecken</string>
     <string name="nav_feed">Feed</string>
     <string name="nav_stats">Statistiken</string>
     <string name="nav_playlists">Playlists</string>

@@ -4,6 +4,8 @@
     <string name="widget_name">مشغّل LastWave</string>
     <string name="widget_description">الغلاف وتفاصيل المقطوعة وعناصر التحكم بالتشغيل لجميع تطبيقات الوسائط</string>
 
+    <string name="nav_home">الرئيسية</string>
+    <string name="nav_discover">استكشف</string>
     <string name="nav_feed">الموجز</string>
     <string name="nav_stats">الإحصائيات</string>
     <string name="nav_playlists">القوائم</string>

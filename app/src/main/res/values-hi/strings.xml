@@ -4,6 +4,8 @@
     <string name="widget_name">LastWave प्लेयर</string>
     <string name="widget_description">सभी मीडिया ऐप्स के लिए कवर, गाने की जानकारी और प्लेबैक नियंत्रण</string>
 
+    <string name="nav_home">होम</string>
+    <string name="nav_discover">खोजें</string>
     <string name="nav_feed">फ़ीड</string>
     <string name="nav_stats">आँकड़े</string>
     <string name="nav_playlists">प्लेलिस्ट</string>
