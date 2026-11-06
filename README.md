@@ -124,6 +124,7 @@ For audio lovers, LastWave packs Bit-Perfect USB DAC output, Lossless FLAC addon
 |:---|:---|:---|
 | **Stable Release** | [GitHub Releases](https://github.com/Clash-Projects/LastWave-native/releases) | Recommended for all users • Android 7.0+ (API 24+) |
 | **Nightly Builds** | [GitHub Actions](https://github.com/Clash-Projects/LastWave-native/actions) | Latest automated builds with bleeding-edge features |
+| **Desktop App** | [LastWave-Desktop](https://github.com/Clash-Projects/LastWave-Desktop) | Official desktop client for Windows, macOS & Linux |
 
 ### Quick Setup
 
