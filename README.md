@@ -34,7 +34,7 @@
 
 LastWave is a fast, native YouTube Music client for Android that looks great and sounds even better. Built with Material 3 Expressive and Liquid Glass UI, it gives you a clean, fluid design that adapts to your music.
 
-For audio lovers, LastWave packs Bit-Perfect USB DAC output, Lossless FLAC addon support, AutoEQ headphone presets with parametric EQ, smooth Automix transitions, and real-time synced lyrics, all in a lightweight app.
+For audio lovers, LastWave packs Bit-Perfect USB DAC output, Lossless FLAC addon support, AutoEQ headphone presets with parametric EQ, smooth Automix transitions, Spotify Canvas & integration, and real-time synced lyrics, all in a lightweight app.
 
 ---
 
@@ -72,7 +72,7 @@ For audio lovers, LastWave packs Bit-Perfect USB DAC output, Lossless FLAC addon
 - Live millisecond-synchronized lyrics (LRCLIB)
 - Lyrics romanization for non-Latin scripts (Japanese, Korean, etc.)
 - Multi-language lyrics translation
-- Spotify, Apple Music & Tidal animated Canvas backgrounds
+- Spotify Canvas & animated video backgrounds (Apple Music & Tidal)
 - Personalized quick picks, mood radios & genre discovery
 - Search songs, albums, artists, videos, and playlists
 
@@ -81,10 +81,10 @@ For audio lovers, LastWave packs Bit-Perfect USB DAC output, Lossless FLAC addon
 
 #### Library & Account
 - Full library management & offline cached library
-- Local & cloud playlists
+- Spotify Integration (Account login, Liked Songs sync & deep links)
 - Import public playlists from Spotify & Apple Music
-- Reorder songs in playlist or playback queue
 - YouTube Music account login & bidirectional sync
+- Local & cloud playlists with custom reordering
 - Custom audio tag editing & cover art selection
 
 </td>
