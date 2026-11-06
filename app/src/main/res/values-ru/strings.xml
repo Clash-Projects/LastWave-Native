@@ -1073,4 +1073,17 @@
     <string name="lyshare_color_brand">Лайм LastWave</string>
     <string name="lyshare_accessibility_line_selected">Выбрана, строка %1$d из %2$d</string>
     <string name="lyshare_accessibility_line_unselected">Строка %1$d из %2$d</string>
+
+    <!-- Recommendations -->
+    <string name="settings_section_recommendations">Рекомендации</string>
+    <string name="settings_recommendations_title">Источник рекомендаций</string>
+    <string name="settings_recommendations_sub_disconnected">YouTube Music • Подключите Spotify для рекомендаций из Spotify</string>
+    <string name="settings_recommendations_dialog_desc">Выбирает треки для Главной, радио, Обзора и миксов. Воспроизведение в любом случае остается на YouTube Music.</string>
+    <string name="settings_recommendations_connect_first">Сначала подключите Spotify</string>
+    <string name="recommendation_source_yt_music">YouTube Music</string>
+    <string name="recommendation_source_yt_music_sub">Рекомендации от YouTube Music</string>
+    <string name="recommendation_source_spotify">Spotify</string>
+    <string name="recommendation_source_spotify_sub">Рекомендации от Spotify, воспроизведение через YouTube Music</string>
+    <string name="toast_spotify_connect_first">Сначала подключите Spotify</string>
+    <string name="toast_spotify_disconnected">Аккаунт Spotify отключен</string>
 </resources>

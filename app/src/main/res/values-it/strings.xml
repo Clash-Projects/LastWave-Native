@@ -1139,5 +1139,18 @@
     <string name="lyshare_color_brand">Lime LastWave</string>
     <string name="lyshare_accessibility_line_selected">Selezionata, riga %1$d di %2$d</string>
     <string name="lyshare_accessibility_line_unselected">Riga %1$d di %2$d</string>
+
+    <!-- Recommendations -->
+    <string name="settings_section_recommendations">Consigli</string>
+    <string name="settings_recommendations_title">Fornitore di consigli</string>
+    <string name="settings_recommendations_sub_disconnected">YouTube Music • Collega Spotify per ottenere consigli da Spotify</string>
+    <string name="settings_recommendations_dialog_desc">Sceglie i brani per la Home, la radio, Scopri e i mix. La riproduzione rimane comunque su YouTube Music.</string>
+    <string name="settings_recommendations_connect_first">Prima collega Spotify</string>
+    <string name="recommendation_source_yt_music">YouTube Music</string>
+    <string name="recommendation_source_yt_music_sub">Consigli da YouTube Music</string>
+    <string name="recommendation_source_spotify">Spotify</string>
+    <string name="recommendation_source_spotify_sub">Consigli da Spotify, riproduzione su YouTube Music</string>
+    <string name="toast_spotify_connect_first">Prima collega Spotify</string>
+    <string name="toast_spotify_disconnected">Account Spotify disconnesso</string>
 </resources>
 

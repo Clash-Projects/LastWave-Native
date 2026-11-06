@@ -24,8 +24,8 @@ import com.lastwave.app.data.podcast.PodcastShelf
 import com.lastwave.app.data.podcast.PodcastShow
 import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.playlist.PlaylistRepository
+import com.lastwave.app.data.recommend.RecommendationRepository
 import com.lastwave.app.data.repository.HomeRepository
-import com.lastwave.app.data.repository.RelatedGraphRepository
 import com.lastwave.app.data.ytmusic.YtMusicAuthManager
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
@@ -121,7 +121,7 @@ data class FeedData(
 @Singleton
 class FeedRepository @Inject constructor(
     private val innerTube: InnerTubeMusicApi,
-    private val relatedGraph: RelatedGraphRepository,
+    private val recommendationRepository: RecommendationRepository,
     private val homeRepository: HomeRepository,
     private val tasteProfileProvider: TasteProfileProvider,
     private val ytAuth: YtMusicAuthManager,
@@ -140,8 +140,9 @@ class FeedRepository @Inject constructor(
         onUpdate: (FeedData) -> Unit = {},
     ): FeedData = coroutineScope {
         val connectionPre = ytAuth.awaitLoadedConnection()
-        val podcastsEnabled = settingsPreferences.settings.first().podcastsEnabled
-        val cacheKey = "${username.orEmpty()}|$connectionPre|podcasts=$podcastsEnabled"
+        val settingsSnapshot = settingsPreferences.settings.first()
+        val podcastsEnabled = settingsSnapshot.podcastsEnabled
+        val cacheKey = "${username.orEmpty()}|$connectionPre|podcasts=$podcastsEnabled|rec=${settingsSnapshot.recommendationSource.id}"
         val previous = cachedFeed?.takeIf { cachedKey == cacheKey }
         previous?.let(onUpdate)
         val random = kotlin.random.Random(System.nanoTime())
@@ -324,16 +325,23 @@ class FeedRepository @Inject constructor(
             YouTubeMusicTrack(it.youtubeVideoIdOrNull().orEmpty(), it.name, it.artist, it.album, it.artworkUrl)
         }
 
+        val spotifySeeds = recommendationRepository.isSpotifyActive()
         val discoverySeeds = (ytLikedSongs + ytRecentSongs + regularPicks + localQuickPicks)
             .filter { it.videoId.isNotBlank() }
             .shuffled(random)
             .distinctBy { ArtistHelper.primaryArtist(it.artist).lowercase() }
-            .take(3)
+            .take(if (spotifySeeds) 1 else 3)
         val discoveryDef = async(Dispatchers.IO) {
             discoverySeeds.map { seed ->
                 async {
                     try {
-                        relatedGraph.relatedFor(seed.videoId, limit = 30, prefetchStreams = false)
+                        recommendationRepository.relatedFor(
+                            seedVideoId = seed.videoId,
+                            title = seed.title,
+                            artist = seed.artist,
+                            limit = 30,
+                            durationSeconds = seed.durationSeconds,
+                        )
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Exception) {
@@ -746,7 +754,13 @@ class FeedRepository @Inject constructor(
             ?.takeIf { it.isNotEmpty() }
             ?: radioSeed?.takeIf { it.videoId.isNotBlank() }?.let { seed ->
                 try {
-                    relatedGraph.relatedFor(seed.videoId, limit = 15, prefetchStreams = false)
+                    recommendationRepository.relatedFor(
+                        seedVideoId = seed.videoId,
+                        title = seed.title,
+                        artist = seed.artist,
+                        limit = 15,
+                        durationSeconds = seed.durationSeconds,
+                    )
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Exception) {

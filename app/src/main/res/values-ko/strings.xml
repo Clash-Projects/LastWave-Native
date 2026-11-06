@@ -1073,4 +1073,17 @@
     <string name="lyshare_color_brand">라스트웨이브 라임</string>
     <string name="lyshare_accessibility_line_selected">선택됨, %2$d줄 중 %1$d번째 줄</string>
     <string name="lyshare_accessibility_line_unselected">%2$d줄 중 %1$d번째 줄</string>
+
+    <!-- Recommendations -->
+    <string name="settings_section_recommendations">추천</string>
+    <string name="settings_recommendations_title">추천 제공자</string>
+    <string name="settings_recommendations_sub_disconnected">YouTube Music • Spotify를 연결하여 Spotify 기반 추천을 받으세요</string>
+    <string name="settings_recommendations_dialog_desc">홈, 라디오, 탐색 및 믹스의 트랙을 선택합니다. 어느 쪽이든 재생은 YouTube Music에서 유지됩니다.</string>
+    <string name="settings_recommendations_connect_first">먼저 Spotify를 연결하세요</string>
+    <string name="recommendation_source_yt_music">YouTube Music</string>
+    <string name="recommendation_source_yt_music_sub">YouTube Music 기반 추천</string>
+    <string name="recommendation_source_spotify">Spotify</string>
+    <string name="recommendation_source_spotify_sub">Spotify 기반 추천, YouTube Music에서 재생</string>
+    <string name="toast_spotify_connect_first">먼저 Spotify를 연결하세요</string>
+    <string name="toast_spotify_disconnected">Spotify 계정 연결이 해제되었습니다</string>
 </resources>

@@ -1073,4 +1073,17 @@
     <string name="lyshare_color_brand">Lima LastWave</string>
     <string name="lyshare_accessibility_line_selected">Seleccionada, línea %1$d de %2$d</string>
     <string name="lyshare_accessibility_line_unselected">Línea %1$d de %2$d</string>
+
+    <!-- Recommendations -->
+    <string name="settings_section_recommendations">Recomendaciones</string>
+    <string name="settings_recommendations_title">Proveedor de recomendaciones</string>
+    <string name="settings_recommendations_sub_disconnected">YouTube Music • Conecta Spotify para basar las recomendaciones en Spotify</string>
+    <string name="settings_recommendations_dialog_desc">Elige las canciones para Inicio, radio, Descubrir y mezclas. La reproducción siempre se realiza en YouTube Music.</string>
+    <string name="settings_recommendations_connect_first">Conecta Spotify primero</string>
+    <string name="recommendation_source_yt_music">YouTube Music</string>
+    <string name="recommendation_source_yt_music_sub">Basado en YouTube Music</string>
+    <string name="recommendation_source_spotify">Spotify</string>
+    <string name="recommendation_source_spotify_sub">Basado en Spotify, reproducido desde YouTube Music</string>
+    <string name="toast_spotify_connect_first">Conecta Spotify primero</string>
+    <string name="toast_spotify_disconnected">Cuenta de Spotify desconectada</string>
 </resources>

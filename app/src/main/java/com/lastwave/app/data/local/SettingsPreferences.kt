@@ -73,6 +73,24 @@ enum class LyricsProvider(val id: String, val title: String, val subtitle: Strin
     }
 }
 
+enum class RecommendationSource(val id: String, val titleRes: Int, val subtitleRes: Int) {
+    YOUTUBE_MUSIC(
+        "youtube_music",
+        com.lastwave.app.R.string.recommendation_source_yt_music,
+        com.lastwave.app.R.string.recommendation_source_yt_music_sub,
+    ),
+    SPOTIFY(
+        "spotify",
+        com.lastwave.app.R.string.recommendation_source_spotify,
+        com.lastwave.app.R.string.recommendation_source_spotify_sub,
+    );
+
+    companion object {
+        fun fromId(id: String?): RecommendationSource =
+            entries.firstOrNull { it.id == id } ?: YOUTUBE_MUSIC
+    }
+}
+
 data class MiscSettings(
     /** When on, the app's accent color follows the dominant color of the
      *  currently-scrobbling track's artwork (Home's "now playing" track),
@@ -126,6 +144,10 @@ data class MiscSettings(
      *  AUTO races all providers (fastest valid word-sync wins); an explicit
      *  pick is tried first with the rest as fallback. */
     val lyricsProvider: LyricsProvider = LyricsProvider.AUTO,
+    /** Which service seeds recommendations (Settings -> Spotify). */
+    val recommendationSource: RecommendationSource = RecommendationSource.YOUTUBE_MUSIC,
+    /** Whether Spotify account playlists & Liked Songs are shown in the Playlists library. */
+    val spotifyPlaylistsSyncEnabled: Boolean = false,
     val lyricsOffsetMs: Long = 0L,
     /** Scale factor applied to lyrics font size across both modern and classic views.
      *  Default 1.0f (100%), clamped between 0.7f (70%) and 1.5f (150%). */
@@ -358,6 +380,8 @@ class SettingsPreferences @Inject constructor(
         val BIT_PERFECT_ENABLED = booleanPreferencesKey("lw_bit_perfect_enabled")
         val WORD_BY_WORD_LYRICS = booleanPreferencesKey("lw_word_by_word_lyrics")
         val LYRICS_PROVIDER = stringPreferencesKey("lw_lyrics_provider")
+        val RECOMMENDATION_SOURCE = stringPreferencesKey("lw_recommendation_source")
+        val SPOTIFY_PLAYLISTS_SYNC_ENABLED = booleanPreferencesKey("lw_spotify_playlists_sync_enabled")
         val LYRICS_OFFSET_MS = longPreferencesKey("lw_lyrics_offset_ms")
         val LYRICS_FONT_SCALE = floatPreferencesKey("lw_lyrics_font_scale")
         val APP_VOLUME = floatPreferencesKey("lw_app_volume")
@@ -456,6 +480,8 @@ class SettingsPreferences @Inject constructor(
                 isBitPerfectEnabled = p.readSafely(Keys.BIT_PERFECT_ENABLED) ?: false,
                 wordByWordLyrics = p.readSafely(Keys.WORD_BY_WORD_LYRICS) ?: true,
                 lyricsProvider = LyricsProvider.fromId(p.readSafely(Keys.LYRICS_PROVIDER)),
+                recommendationSource = RecommendationSource.fromId(p.readSafely(Keys.RECOMMENDATION_SOURCE)),
+                spotifyPlaylistsSyncEnabled = p.readSafely(Keys.SPOTIFY_PLAYLISTS_SYNC_ENABLED) ?: false,
                 lyricsOffsetMs = (p.readSafely(Keys.LYRICS_OFFSET_MS) ?: 0L).coerceIn(-10000L, 10000L),
                 lyricsFontScale = (p.readSafely(Keys.LYRICS_FONT_SCALE) ?: 1.0f).coerceIn(0.7f, 1.5f),
                 crossfadeEnabled = p.readSafely(Keys.CROSSFADE_ENABLED) ?: false,
@@ -740,6 +766,14 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setLyricsProvider(provider: LyricsProvider) {
         dataStore.edit { it[Keys.LYRICS_PROVIDER] = provider.id }
+    }
+
+    suspend fun setRecommendationSource(source: RecommendationSource) {
+        dataStore.edit { it[Keys.RECOMMENDATION_SOURCE] = source.id }
+    }
+
+    suspend fun setSpotifyPlaylistsSyncEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.SPOTIFY_PLAYLISTS_SYNC_ENABLED] = enabled }
     }
 
     suspend fun setLyricsOffsetMs(offsetMs: Long) {

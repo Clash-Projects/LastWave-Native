@@ -1077,4 +1077,17 @@
     <string name="lyshare_color_brand">लास्टवेव लाइम</string>
     <string name="lyshare_accessibility_line_selected">चयनित, पंक्ति %1$d / %2$d</string>
     <string name="lyshare_accessibility_line_unselected">पंक्ति %1$d / %2$d</string>
+
+    <!-- Recommendations -->
+    <string name="settings_section_recommendations">सिफारिशें</string>
+    <string name="settings_recommendations_title">सिफारिश प्रदाता</string>
+    <string name="settings_recommendations_sub_disconnected">YouTube Music • Spotify से सिफारिशें पाने के लिए Spotify कनेक्ट करें</string>
+    <string name="settings_recommendations_dialog_desc">होम, रेडियो, डिस्कवर और मिक्स के लिए गाने चुनता है। प्लेबैक हमेशा YouTube Music पर ही रहेगा।</string>
+    <string name="settings_recommendations_connect_first">पहले Spotify कनेक्ट करें</string>
+    <string name="recommendation_source_yt_music">YouTube Music</string>
+    <string name="recommendation_source_yt_music_sub">YouTube Music द्वारा सिफारिशें</string>
+    <string name="recommendation_source_spotify">Spotify</string>
+    <string name="recommendation_source_spotify_sub">Spotify द्वारा सिफारिशें, YouTube Music पर प्लेबैक</string>
+    <string name="toast_spotify_connect_first">पहले Spotify कनेक्ट करें</string>
+    <string name="toast_spotify_disconnected">Spotify खाता डिस्कनेक्ट हो गया</string>
 </resources>

@@ -1073,4 +1073,17 @@
     <string name="lyshare_color_brand">LastWave Lime</string>
     <string name="lyshare_accessibility_line_selected">Dipilih, baris %1$d dari %2$d</string>
     <string name="lyshare_accessibility_line_unselected">Baris %1$d dari %2$d</string>
+
+    <!-- Recommendations -->
+    <string name="settings_section_recommendations">Rekomendasi</string>
+    <string name="settings_recommendations_title">Penyedia rekomendasi</string>
+    <string name="settings_recommendations_sub_disconnected">YouTube Music • Hubungkan Spotify untuk menggunakan rekomendasi dari Spotify</string>
+    <string name="settings_recommendations_dialog_desc">Memilih trek untuk Beranda, radio, Jelajahi, dan mix. Pemutaran tetap di YouTube Music dalam kedua pilihan.</string>
+    <string name="settings_recommendations_connect_first">Hubungkan Spotify terlebih dahulu</string>
+    <string name="recommendation_source_yt_music">YouTube Music</string>
+    <string name="recommendation_source_yt_music_sub">Rekomendasi dari YouTube Music</string>
+    <string name="recommendation_source_spotify">Spotify</string>
+    <string name="recommendation_source_spotify_sub">Rekomendasi dari Spotify, diputar dari YouTube Music</string>
+    <string name="toast_spotify_connect_first">Hubungkan Spotify terlebih dahulu</string>
+    <string name="toast_spotify_disconnected">Akun Spotify terputus</string>
 </resources>

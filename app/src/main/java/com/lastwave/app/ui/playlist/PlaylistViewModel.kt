@@ -29,6 +29,13 @@ import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import com.lastwave.app.data.playlist.SpotifyUserPlaylist
+import com.lastwave.app.data.playlist.SpotifyPlaylistImporter
+import com.lastwave.app.data.spotify.SpotifyPreferences
+import com.lastwave.app.data.local.SettingsPreferences
 
 enum class ExportFormat { CSV, M3U }
 enum class PlaylistSortMode { DATE_DESC, DATE_ASC, NAME, TRACK_COUNT }
@@ -37,6 +44,9 @@ enum class PlaylistSortMode { DATE_DESC, DATE_ASC, NAME, TRACK_COUNT }
 data class PlaylistUiState(
     val isLoading: Boolean = true,
     val playlists: List<SavedPlaylist> = emptyList(),
+    val spotifyPlaylists: List<SpotifyUserPlaylist> = emptyList(),
+    val isSpotifySyncEnabled: Boolean = false,
+    val isSpotifyLoading: Boolean = false,
     val sortMode: PlaylistSortMode = PlaylistSortMode.DATE_DESC,
     val expandedIds: Set<Long> = emptySet(),
     val newestId: Long? = null,
@@ -79,6 +89,9 @@ class PlaylistViewModel @Inject constructor(
     private val innerTubeApi: com.lastwave.app.data.music.InnerTubeMusicApi,
     private val routeNavigator: com.lastwave.app.ui.navigation.AppRouteNavigator,
     private val localMusicLibrary: com.lastwave.app.data.localmusic.LocalMusicLibrary,
+    private val spotifyPlaylistImporter: SpotifyPlaylistImporter,
+    private val spotifyPreferences: SpotifyPreferences,
+    private val settingsPreferences: SettingsPreferences,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PlaylistUiState())
@@ -114,6 +127,21 @@ class PlaylistViewModel @Inject constructor(
 
     init {
         load()
+        viewModelScope.launch {
+            combine(
+                settingsPreferences.settings.map { it.spotifyPlaylistsSyncEnabled },
+                spotifyPreferences.isConnected,
+            ) { enabled, connected ->
+                enabled && connected
+            }.distinctUntilChanged().collect { active ->
+                _uiState.update { it.copy(isSpotifySyncEnabled = active) }
+                if (active) {
+                    loadSpotifyPlaylists()
+                } else {
+                    _uiState.update { it.copy(spotifyPlaylists = emptyList(), isSpotifyLoading = false) }
+                }
+            }
+        }
         viewModelScope.launch {
             var wasGenerating = false
             generationStatus.state.collect { progress ->
@@ -166,7 +194,26 @@ class PlaylistViewModel @Inject constructor(
     /** Re-reads from Room. Called on first composition and again whenever
      *  the Playlist tab regains visibility (e.g. right after Generate
      *  saves a new playlist) — see PlaylistScreen's LaunchedEffect. */
+    fun loadSpotifyPlaylists() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSpotifyLoading = true) }
+            val raw = runCatching { spotifyPlaylistImporter.fetchUserPlaylists() }.getOrDefault(emptyList())
+            val likedSummary = SpotifyUserPlaylist(
+                id = "liked",
+                name = "Liked Songs",
+                description = "Your Spotify likes",
+                artworkUrl = null,
+                trackCount = 0,
+            )
+            val fullList = listOf(likedSummary) + raw
+            _uiState.update { it.copy(spotifyPlaylists = fullList, isSpotifyLoading = false) }
+        }
+    }
+
     fun load(justGeneratedId: Long? = null) {
+        if (_uiState.value.isSpotifySyncEnabled) {
+            loadSpotifyPlaylists()
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             val local = try {

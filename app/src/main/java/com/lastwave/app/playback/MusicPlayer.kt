@@ -82,7 +82,7 @@ import com.lastwave.app.data.playlist.PlaylistRepository
 import com.lastwave.app.data.plugin.ModuleDrmFactory
 import com.lastwave.app.data.plugin.SegmentedDashBridge
 import com.lastwave.app.data.plugin.stableCacheKey
-import com.lastwave.app.data.repository.RelatedGraphRepository
+import com.lastwave.app.data.recommend.RecommendationRepository
 import com.lastwave.app.playback.resolve.MetadataLog
 import com.lastwave.app.playback.resolve.PlaybackStartupLog
 import com.lastwave.app.playback.resolve.StreamCache
@@ -262,7 +262,7 @@ data class PlaybackProgressState(
 class MusicPlayer @Inject constructor(
     @ApplicationContext context: Context,
     private val innerTube: InnerTubeMusicApi,
-    private val relatedGraph: RelatedGraphRepository,
+    private val recommendationRepository: RecommendationRepository,
     private val losslessMusicApi: LosslessMusicApi,
     private val moduleDrmFactory: ModuleDrmFactory,
     private val moduleManager: com.lastwave.app.data.plugin.ModuleManager,
@@ -5788,6 +5788,26 @@ class MusicPlayer @Inject constructor(
             return emptyList()
         }
         radioUsedSeeds.add(seedVideoId)
+        if (recommendationRepository.isSpotifyActive()) {
+            android.util.Log.i("MusicPlayer", "Re-seeding Spotify recommendations from queue track: $seedVideoId")
+            val seeded = recommendationRepository.relatedFor(
+                seedVideoId = seedVideoId,
+                title = candidateTrack.title,
+                artist = candidateTrack.artist,
+                limit = 30,
+                durationSeconds = candidateTrack.durationMs?.let { (it / 1000L).toInt() },
+            )
+            return PureRadioQueue.filterStrictYtmRadioBatch(
+                incomingTracks = seeded.map { it.toPlayableTrack() },
+                existingVideoIds = knownVideoIds,
+                existingKeys = knownKeys,
+                existingSongKeys = knownSongKeys,
+                recentVideoIds = recentHistoryKeys,
+                recentKeys = recentHistoryKeys,
+                seedVideoId = seedVideoId,
+                seedSongKey = PureRadioQueue.normalizedSongKey(candidateTrack.title, candidateTrack.artist),
+            )
+        }
         android.util.Log.i("MusicPlayer", "Re-seeding YTM radio with RDAMVM of queue track: $seedVideoId")
         val reseedResult = retryRadioRequest { innerTube.fetchRadio(seedVideoId) }
         return if (reseedResult != null && reseedResult.tracks.isNotEmpty()) {
@@ -5858,7 +5878,26 @@ class MusicPlayer @Inject constructor(
                     val existingSongKeys = existingTracks.mapTo(mutableSetOf()) { PureRadioQueue.normalizedSongKey(it.title, it.artist) }
                     val recentHistoryKeys = playHistory.takeLast(50).toSet()
 
-                    val toAdd: List<PlayableTrack> = if (seedVideoId != null) {
+                    val toAdd: List<PlayableTrack> = if (seedVideoId != null && recommendationRepository.isSpotifyActive()) {
+                        val seeded = recommendationRepository.relatedFor(
+                            seedVideoId = seedVideoId,
+                            title = seed.title,
+                            artist = seed.artist,
+                            limit = 30,
+                            durationSeconds = seed.durationMs?.let { (it / 1000L).toInt() },
+                        )
+                        if (expectedGeneration != playRequestGeneration.get() || !radioQueueActive) return@withLock
+                        PureRadioQueue.filterStrictYtmRadioBatch(
+                            incomingTracks = seeded.map { it.toPlayableTrack() },
+                            existingVideoIds = existingVideoIds,
+                            existingKeys = existingKeys,
+                            existingSongKeys = existingSongKeys,
+                            recentVideoIds = recentHistoryKeys,
+                            recentKeys = recentHistoryKeys,
+                            seedVideoId = seedVideoId,
+                            seedSongKey = PureRadioQueue.normalizedSongKey(seed.title, seed.artist),
+                        )
+                    } else if (seedVideoId != null) {
                         val radioResult = retryRadioRequest { innerTube.fetchRadio(seedVideoId) }
                         if (expectedGeneration != playRequestGeneration.get() || !radioQueueActive) return@withLock
 

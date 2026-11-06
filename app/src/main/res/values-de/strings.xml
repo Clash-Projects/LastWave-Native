@@ -1073,4 +1073,17 @@
     <string name="lyshare_color_brand">LastWave Limette</string>
     <string name="lyshare_accessibility_line_selected">Ausgewählt, Zeile %1$d von %2$d</string>
     <string name="lyshare_accessibility_line_unselected">Zeile %1$d von %2$d</string>
+
+    <!-- Recommendations -->
+    <string name="settings_section_recommendations">Empfehlungen</string>
+    <string name="settings_recommendations_title">Empfehlungsanbieter</string>
+    <string name="settings_recommendations_sub_disconnected">YouTube Music • Verbinde Spotify, um Empfehlungen von Spotify zu erhalten</string>
+    <string name="settings_recommendations_dialog_desc">Wählt die Titel für Start, Radio, Entdecken und Mixe. Die Wiedergabe bleibt in jedem Fall auf YouTube Music.</string>
+    <string name="settings_recommendations_connect_first">Zuerst Spotify verbinden</string>
+    <string name="recommendation_source_yt_music">YouTube Music</string>
+    <string name="recommendation_source_yt_music_sub">Empfohlen von YouTube Music</string>
+    <string name="recommendation_source_spotify">Spotify</string>
+    <string name="recommendation_source_spotify_sub">Empfohlen von Spotify, abgespielt über YouTube Music</string>
+    <string name="toast_spotify_connect_first">Zuerst Spotify verbinden</string>
+    <string name="toast_spotify_disconnected">Spotify-Konto getrennt</string>
 </resources>
