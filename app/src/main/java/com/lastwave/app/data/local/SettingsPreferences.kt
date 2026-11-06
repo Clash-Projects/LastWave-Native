@@ -50,7 +50,6 @@ enum class LyricsProvider(val id: String, val title: String, val subtitle: Strin
     BETTER_LYRICS_PORTATO("better_lyrics_portato", "QQ Karaoke", "QQ Music karaoke word timings first"),
     KUGOU("kugou", "Kugou", "KRC word-synced lyrics first"),
     BINI_LYRICS("bini_lyrics", "Syllable-Sync", "Recording-matched syllable lyrics first"),
-    SIMP_MUSIC("simp_music", "Video-Match", "Matched on the playing video first"),
     MUSIXMATCH("musixmatch", "Catalog", "Largest catalogue line-sync first"),
     LRCLIB("lrclib", "LRCLIB", "Line-synced community lyrics first"),
     LYRICS_PLUS("lyrics_plus", "LyricsPlus", "Syllable-synced on community mirrors first"),
@@ -63,7 +62,7 @@ enum class LyricsProvider(val id: String, val title: String, val subtitle: Strin
 
     val isWordProvider: Boolean get() =
         this == LASTWAVE || this == LRC_RED || this == APPLE_MUSIC || this == BETTER_LYRICS || this == KUGOU ||
-            this == BINI_LYRICS || this == SIMP_MUSIC || this == MUSIXMATCH || this == SPOTIFY ||
+            this == BINI_LYRICS || this == MUSIXMATCH || this == SPOTIFY ||
             this == BETTER_LYRICS_PORTATO || this == LYRICS_PLUS || this == UNISON ||
             this == YOUTUBE_CAPTIONS || this == YOUTUBE_MUSIC || this == MEGALOBIZ || this == GENIUS
 

@@ -99,7 +99,6 @@ fun providerForSource(source: String?): com.lastwave.app.data.local.LyricsProvid
         s.startsWith("qq karaoke") || s.startsWith("portato") -> com.lastwave.app.data.local.LyricsProvider.BETTER_LYRICS_PORTATO
         s.startsWith("kugou") -> com.lastwave.app.data.local.LyricsProvider.KUGOU
         s.startsWith("syllable-sync") || s.startsWith("bini") -> com.lastwave.app.data.local.LyricsProvider.BINI_LYRICS
-        s.startsWith("video-match") || s.startsWith("simp") -> com.lastwave.app.data.local.LyricsProvider.SIMP_MUSIC
         s.startsWith("catalog") || s.startsWith("musixmatch") -> com.lastwave.app.data.local.LyricsProvider.MUSIXMATCH
         s.startsWith("lrclib") -> com.lastwave.app.data.local.LyricsProvider.LRCLIB
         s.startsWith("lyricsplus") -> com.lastwave.app.data.local.LyricsProvider.LYRICS_PLUS
@@ -122,7 +121,6 @@ class LyricsRepository @Inject constructor(
     private val lastWaveLyricsApi: LastWaveLyricsApi,
     private val biniApi: BiniLyricsApi,
     private val lrcRedLyricsApi: LrcRedLyricsApi,
-    private val simpMusicApi: SimpMusicLyricsApi,
     private val musixmatchApi: MusixmatchLyricsApi,
     private val lyricsPlusApi: LyricsPlusLyricsApi,
     private val unisonApi: UnisonLyricsApi,
@@ -494,9 +492,6 @@ class LyricsRepository @Inject constructor(
                     if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.KUGOU)) {
                         requests.add(async<LyricsResult.Success?> { fetchWordFromKugou(title, artist, durationSeconds) })
                     }
-                    if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.SIMP_MUSIC)) {
-                        requests.add(async<LyricsResult.Success?> { fetchWordFromSimpMusic(effectiveVideoId, durationSeconds) })
-                    }
                     if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.BETTER_LYRICS_PORTATO)) {
                         requests.add(async<LyricsResult.Success?> { fetchWordFromPortato(title, artist, album, durationSeconds) })
                     }
@@ -726,8 +721,6 @@ class LyricsRepository @Inject constructor(
             fetchWordFromBetterLyrics(title, artist, album, durationSeconds)
         com.lastwave.app.data.local.LyricsProvider.KUGOU ->
             fetchWordFromKugou(title, artist, durationSeconds)
-        com.lastwave.app.data.local.LyricsProvider.SIMP_MUSIC ->
-            fetchWordFromSimpMusic(videoId, durationSeconds)
         com.lastwave.app.data.local.LyricsProvider.MUSIXMATCH ->
             fetchWordFromMusixmatch(title, artist, durationSeconds)
         com.lastwave.app.data.local.LyricsProvider.BINI_LYRICS ->
@@ -870,31 +863,6 @@ class LyricsRepository @Inject constructor(
                 isInstrumental = false,
                 source = if (hasWordTiming) "Syllable-Sync (Word-Sync)" else "Syllable-Sync (Line-Sync)",
             )
-        } catch (cancellation: kotlinx.coroutines.CancellationException) {
-            throw cancellation
-        } catch (_: Exception) {
-        }
-        return null
-    }
-
-    private suspend fun fetchWordFromSimpMusic(
-        videoId: String?,
-        durationSeconds: Int?,
-    ): LyricsResult.Success? {
-        try {
-            val lines = simpMusicApi.fetchLyrics(videoId, durationSeconds)
-            if (!lines.isNullOrEmpty()) {
-                if (!plausibleDuration(lines, durationSeconds)) return null
-                val hasWordTiming = lines.any { it.hasSyllables }
-                return LyricsResult.Success(
-                    lines = lines,
-                    isSynced = true,
-                    isWordSynced = hasWordTiming,
-                    plainLyrics = lines.joinToString("\n") { it.text },
-                    isInstrumental = false,
-                    source = if (hasWordTiming) "Video-Match (Word-Sync)" else "Video-Match (Line-Sync)",
-                )
-            }
         } catch (cancellation: kotlinx.coroutines.CancellationException) {
             throw cancellation
         } catch (_: Exception) {

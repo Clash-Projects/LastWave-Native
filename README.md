@@ -192,7 +192,6 @@ If LastWave has been useful to you, consider supporting its development.
 LastWave is made possible thanks to these open-source projects:
 
 - **[Metrolist](https://github.com/MetrolistGroup/Metrolist)** — InnerTubeX & stream resolving
-- **[SimpMusic](https://github.com/maxrave-dev/SimpMusic)** — Canvas extraction & Liquid Glass inspiration
 - **[InnerTune](https://github.com/z-huang/InnerTune)** — InnerTube extraction architecture
 - **[Decent USB Audio Driver](https://github.com/silva96/decent-usb-audio-driver)** — Bit-perfect direct USB DAC audio engine
 - **[AutoEQ](https://github.com/jaakkopasanen/AutoEq)** — Headphone & IEM frequency-response calibration targets
