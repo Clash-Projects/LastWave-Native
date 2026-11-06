@@ -46,7 +46,7 @@ For audio lovers, LastWave packs Bit-Perfect USB DAC output, Lossless FLAC addon
     <td width="50%" valign="top">
 
 #### Playback
-- Stream any track or video from YouTube Music 
+- Stream any track or video from YouTube Music
 - Background playback with lockscreen & Android Auto controls
 - High-res audio downloads with embedded tags & `.lrc` lyrics
 - Download & cache for offline listening
@@ -133,7 +133,7 @@ For audio lovers, LastWave packs Bit-Perfect USB DAC output, Lossless FLAC addon
    - **Bit-Perfect Output:** Enable exclusive USB DAC mode for bit-perfect audio.
    - **AutoEQ Presets:** Search for your headphones/IEMs to apply calibrated parametric EQ curves.
    - **Lossless Addons:** Enable the modular addon service for 24-bit Hi-Res FLAC playback.
-3. Start streaming ad-free music, listening to customized radios, and enjoying synced lyrics!
+3. Start streaming music, listening to customized radios, and enjoying synced lyrics!
 
 ---
 
