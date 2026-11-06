@@ -60,7 +60,6 @@ keystore_credentials.txt
 app/src/main/assets/modules/
 *.lwp
 tools/*
-!tools/generate_native_secrets.py
 provider.js
 # Single raw provider source at repo base only (plaintext JSON, encrypted at build)
 provider.json
@@ -88,6 +87,7 @@ lastwave-jam/
 docs/superpowers/
 .superpowers/
 
-# Reference screenshots
+# Reference screenshots and zip archives
 reference screenshot/
+reference zip/
 

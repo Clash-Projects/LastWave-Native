@@ -188,11 +188,6 @@ class ThemeRepository @Inject constructor(
             }
         }
 
-        applicationScope.launch {
-            themePreferences.prefs.map { it.appIcon }.distinctUntilChanged().collect { icon ->
-                AppIconManager.applyIcon(context, icon)
-            }
-        }
     }
 
     /** Wallpaper seed for DYNAMIC mode on pre-S devices (and as the data-layer

@@ -584,6 +584,10 @@ class SettingsViewModel @Inject constructor(
         settingsPreferences.setMusicVideoEnabled(enabled)
     }
 
+    fun setShowAutoEqInVolumePanel(enabled: Boolean) = launchSettingsAction("update show autoeq in volume panel") {
+        settingsPreferences.setShowAutoEqInVolumePanel(enabled)
+    }
+
     fun setButtonNowPlayingEnabled(enabled: Boolean) = launchSettingsAction("update button now playing setting") {
         settingsPreferences.setButtonNowPlayingEnabled(enabled)
     }
@@ -676,6 +680,10 @@ class SettingsViewModel @Inject constructor(
     fun setPodcastsEnabled(enabled: Boolean) = launchSettingsAction("update podcasts setting") {
         settingsPreferences.setPodcastsEnabled(enabled)
     }
+    fun setStopPlaybackOnTaskRemoved(enabled: Boolean) =
+        launchSettingsAction("update stop playback on recents setting") {
+            settingsPreferences.setStopPlaybackOnTaskRemoved(enabled)
+        }
     fun setWordByWordLyrics(enabled: Boolean) = launchSettingsAction("update word-by-word lyrics") { settingsPreferences.setWordByWordLyrics(enabled) }
     fun setLyricsProvider(provider: com.lastwave.app.data.local.LyricsProvider) = launchSettingsAction("update lyrics provider") { settingsPreferences.setLyricsProvider(provider) }
     fun setLyricsOffsetMs(offsetMs: Long) = launchSettingsAction("update lyrics sync offset") {

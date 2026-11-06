@@ -14,6 +14,8 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -34,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +45,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntOffset
@@ -50,13 +54,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.playback.PlaybackProgressState
 import com.lastwave.app.ui.common.ArtworkImage
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /**
  * Experimental "Button Now Playing": a draggable floating button that replaces
  * the bottom mini player card when enabled. Shows the song's album art in a circle
  * with an interactive progress ring around it. Clicking opens the full player screen.
+ * Holding for 10 seconds closes/stops Now Playing.
  */
 @Composable
 fun DraggableNowPlayingButton(
@@ -65,8 +72,10 @@ fun DraggableNowPlayingButton(
     isPlaying: Boolean,
     modifier: Modifier = Modifier,
     onExpand: () -> Unit,
+    onClose: () -> Unit = {},
 ) {
     val progressFractionState = remember { mutableFloatStateOf(0f) }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(progressState, track.durationMs) {
         progressState?.collect { s ->
             val dur = s.durationMs.takeIf { it > 0 } ?: track.durationMs ?: 0L
@@ -115,34 +124,50 @@ fun DraggableNowPlayingButton(
                 modifier = Modifier
                     .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
                     .size(buttonSizeDp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onExpand,
-                    )
-                    .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDragStart = {
-                                isDragging = true
-                                dragDistance = 0f
-                            },
-                            onDragEnd = {
-                                isDragging = false
-                                if (dragDistance < 15f) {
+                    .pointerInput(onClose, onExpand) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val downId = down.id
+                            var isHeld = true
+                            var dragDist = 0f
+                            var closed = false
+
+                            val holdJob = scope.launch {
+                                delay(10_000L)
+                                if (isHeld && dragDist < 20f) {
+                                    closed = true
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    onExpand()
+                                    onClose()
                                 }
-                            },
-                            onDragCancel = {
-                                isDragging = false
-                            },
-                            onDrag = { change, dragAmount ->
-                                change.consume()
-                                dragDistance += kotlin.math.hypot(dragAmount.x, dragAmount.y)
-                                offsetX = (offsetX + dragAmount.x).coerceIn(minMarginX, maxMarginX)
-                                offsetY = (offsetY + dragAmount.y).coerceIn(minMarginY, maxMarginY)
-                            },
-                        )
+                            }
+
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == downId } ?: break
+                                if (!change.pressed) {
+                                    isHeld = false
+                                    holdJob.cancel()
+                                    if (!closed && dragDist < 15f) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onExpand()
+                                    }
+                                    break
+                                }
+                                val posChange = change.positionChange()
+                                dragDist += kotlin.math.hypot(posChange.x, posChange.y)
+                                if (dragDist > 15f) {
+                                    holdJob.cancel()
+                                }
+                                if (posChange != androidx.compose.ui.geometry.Offset.Zero) {
+                                    change.consume()
+                                    offsetX = (offsetX + posChange.x).coerceIn(minMarginX, maxMarginX)
+                                    offsetY = (offsetY + posChange.y).coerceIn(minMarginY, maxMarginY)
+                                    isDragging = true
+                                }
+                            }
+                            isDragging = false
+                            holdJob.cancel()
+                        }
                     },
                 contentAlignment = Alignment.Center,
             ) {

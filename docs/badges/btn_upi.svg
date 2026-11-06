@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="198" height="48" viewBox="0 0 198 48" fill="none">
+  <rect width="198" height="48" rx="14" fill="#FFE3D1"/>
+  <g transform="translate(13, 10.0)">
+    <circle cx="14" cy="14" r="14" fill="#FFFFFF"/>
+    <g transform="translate(13.5, 4.5)">
+      <path d="M 0,0 L 4.80,9.50 L -5.30,19.00 Z" fill="#E9661C"/>
+      <path d="M 3.36,0 L 8.16,9.50 L -1.94,19.00 Z" fill="#27803B"/>
+    </g>
+  </g>
+  <text x="50" y="19" fill="#8C3D00" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10.5" font-weight="800" letter-spacing="1.4px">UPI</text>
+  <text x="50" y="36.5" fill="#4A1C00" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="800">Buy Me A Chai</text>
+</svg>

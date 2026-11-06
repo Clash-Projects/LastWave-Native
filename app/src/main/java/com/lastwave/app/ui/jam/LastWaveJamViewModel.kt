@@ -33,6 +33,14 @@ data class JamUiState(
     val sessionState: JamSessionState = JamSessionState.Disconnected,
     val roomCode: String = "",
     val isHost: Boolean = false,
+    val isMainHost: Boolean = false,
+    val coHostId: String = "",
+    val isPermanentRoom: Boolean = false,
+    val roomName: String = "",
+    val isRadio: Boolean = false,
+    val stationAuto: Boolean = true,
+    val queue: List<TrackInfoPayload> = emptyList(),
+    val myUserId: String = "",
     val isConnected: Boolean = false,
     val isConnecting: Boolean = false,
     val roomMode: String = JamProtocolConstants.MODE_COLLABORATIVE,
@@ -69,6 +77,32 @@ class LastWaveJamViewModel @Inject constructor(
 
     val chatMessages: StateFlow<List<ChatMessagePayload>> = jamRepository.chatMessages
 
+    /** Server rejections shown inside a room (cooldown, host rules). */
+    val notice: StateFlow<com.lastwave.app.data.jam.JamNotice?> = jamRepository.notice
+
+    fun clearNotice() = jamRepository.clearNotice()
+
+    /** Wall-clock ms until which pause/skip are locked in a public room; 0 = free. */
+    val cooldownUntilMs: StateFlow<Long> = jamRepository.cooldownUntilMs
+
+    private val _roomCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    /** Live listener counts for the always-on rooms, keyed by room code. */
+    val roomCounts: StateFlow<Map<String, Int>> = _roomCounts.asStateFlow()
+
+    fun refreshRoomCounts() {
+        viewModelScope.launch {
+            val counts = jamRepository.fetchRoomCounts()
+            if (counts.isNotEmpty()) _roomCounts.value = counts
+        }
+    }
+
+    fun grantHost(userId: String) = jamRepository.grantHost(userId)
+
+    fun revokeHost(userId: String) = jamRepository.revokeHost(userId)
+
+    /** Live stations: the admin hands the station to someone else. */
+    fun makeAdmin(userId: String) = jamRepository.transferAdmin(userId)
+
     val uiState: StateFlow<JamUiState> = combine(
         combine(jamRepository.sessionState, _pendingRoomCode, _pendingDisplayName, _pendingRoomMode) { session, code, name, mode ->
             SessionInput(session, code, name, mode)
@@ -97,6 +131,14 @@ class LastWaveJamViewModel @Inject constructor(
                 sessionState = session,
                 roomCode = session.roomCode,
                 isHost = session.isHost,
+                isMainHost = session.isMainHost,
+                coHostId = session.coHostId,
+                isPermanentRoom = session.permanent,
+                roomName = session.roomName,
+                isRadio = session.radio,
+                stationAuto = session.stationAuto,
+                queue = session.queue,
+                myUserId = session.userId,
                 isConnected = true,
                 isConnecting = false,
                 roomMode = session.roomMode,
@@ -221,28 +263,30 @@ class LastWaveJamViewModel @Inject constructor(
 
     fun togglePlayback() {
         val isAllowed = !uiState.value.isConnected || uiState.value.isHost || uiState.value.roomMode == JamProtocolConstants.MODE_COLLABORATIVE
-        if (isAllowed) {
+        // Resuming is always allowed; only pausing is locked during the cooldown.
+        val pauseLocked = uiState.value.isPlaying && cooldownUntilMs.value > 0L
+        if (isAllowed && !pauseLocked) {
             musicPlayer.togglePlayPause()
         }
     }
 
     fun skipNext() {
         val isAllowed = !uiState.value.isConnected || uiState.value.isHost || uiState.value.roomMode == JamProtocolConstants.MODE_COLLABORATIVE
-        if (isAllowed) {
+        if (isAllowed && cooldownUntilMs.value == 0L) {
             musicPlayer.next()
         }
     }
 
     fun skipPrevious() {
         val isAllowed = !uiState.value.isConnected || uiState.value.isHost || uiState.value.roomMode == JamProtocolConstants.MODE_COLLABORATIVE
-        if (isAllowed) {
+        if (isAllowed && cooldownUntilMs.value == 0L) {
             musicPlayer.previous()
         }
     }
 
     fun seekTo(positionMs: Long) {
         val isAllowed = !uiState.value.isConnected || uiState.value.isHost || uiState.value.roomMode == JamProtocolConstants.MODE_COLLABORATIVE
-        if (isAllowed) {
+        if (isAllowed && cooldownUntilMs.value == 0L) {
             musicPlayer.seekTo(positionMs)
         }
     }
@@ -263,12 +307,12 @@ class LastWaveJamViewModel @Inject constructor(
         jamRepository.leaveRoom()
     }
 
-    fun sendChat(text: String) {
-        jamRepository.sendChat(text)
+    fun sendChat(text: String, replyToId: String? = null) {
+        jamRepository.sendChat(text, replyToId)
     }
 
     fun shareInvite(roomCode: String) {
-        val inviteLink = "lastwave://jam?code=$roomCode"
+        val inviteLink = jamRepository.inviteLink(roomCode)
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_SUBJECT, "Join my LastWave Jam session")

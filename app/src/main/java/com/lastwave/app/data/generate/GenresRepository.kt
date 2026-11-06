@@ -255,22 +255,32 @@ class GenresRepository @Inject constructor(
         val pool = mutableListOf<GeneratedTrack>()
         val profile = try { tasteProfileProvider.get() } catch (e: Exception) { null }
 
-        // 1. Tag top tracks across random pages
-        val tagTracksDeferred = async(Dispatchers.IO) {
+        // 1. Tag top tracks across primary and secondary pages (100% verified genre tracks)
+        val page1Deferred = async(Dispatchers.IO) {
             try {
-                val page = (1..5).random()
-                val d = call(mapOf("method" to "tag.gettoptracks", "tag" to genre.trim(), "limit" to "50", "page" to page.toString()))
+                val d = call(mapOf("method" to "tag.gettoptracks", "tag" to genre.trim(), "limit" to "50", "page" to "1"))
                 GenerateJson.normalise(d["tracks"]?.jsonObject?.get("track"))
             } catch (e: Exception) {
-                Log.d(TAG, "discoverMore tag.gettoptracks miss", e)
+                Log.d(TAG, "discoverMore page 1 tag.gettoptracks miss", e)
                 emptyList()
             }
         }
 
-        // 2. Tag top artists
+        val page2Deferred = async(Dispatchers.IO) {
+            try {
+                val randomPage = (2..5).random().toString()
+                val d = call(mapOf("method" to "tag.gettoptracks", "tag" to genre.trim(), "limit" to "50", "page" to randomPage))
+                GenerateJson.normalise(d["tracks"]?.jsonObject?.get("track"))
+            } catch (e: Exception) {
+                Log.d(TAG, "discoverMore page 2 tag.gettoptracks miss", e)
+                emptyList()
+            }
+        }
+
+        // 2. Tag top artists definitively associated with this genre
         val tagArtistsDeferred = async(Dispatchers.IO) {
             try {
-                val d = call(mapOf("method" to "tag.gettopartists", "tag" to genre.trim(), "limit" to "12"))
+                val d = call(mapOf("method" to "tag.gettopartists", "tag" to genre.trim(), "limit" to "25"))
                 GenerateJson.namesOf(d["topartists"]?.jsonObject?.get("artist"))
             } catch (e: Exception) {
                 Log.d(TAG, "discoverMore tag.gettopartists miss", e)
@@ -278,17 +288,27 @@ class GenresRepository @Inject constructor(
             }
         }
 
-        val tagTracks = tagTracksDeferred.await()
+        val page1Tracks = page1Deferred.await()
+        val page2Tracks = page2Deferred.await()
         val tagArtists = tagArtistsDeferred.await()
-        pool += tagTracks
 
-        // 3. Concurrently fetch top tracks for top genre artists
+        pool += page1Tracks
+        pool += page2Tracks
+
+        // 3. Prioritize artists in this genre that also appear in the user's taste profile,
+        // strictly ensuring NO artists from outside this genre are ever injected!
         val profileArtists = (profile?.topArtistsRaw.orEmpty() +
             profile?.ytMusicFeedRaw.orEmpty().map { it.artist })
             .filter(String::isNotBlank)
-                .distinctBy { it.trim().lowercase() }
-        val artistSeeds = profileArtists.shuffled().take(3) + tagArtists.shuffled().take(5)
-        val artistTopTracks = artistSeeds.distinct().take(6).map { artistName ->
+            .distinctBy { it.trim().lowercase() }
+        val tagArtistsLower = tagArtists.map { it.trim().lowercase() }.toSet()
+        val matchingProfileArtists = profileArtists.filter { it.trim().lowercase() in tagArtistsLower }
+
+        val artistSeeds = (matchingProfileArtists.shuffled().take(3) + tagArtists.shuffled().take(6))
+            .distinct()
+            .take(6)
+
+        val artistTopTracks = artistSeeds.map { artistName ->
             async(Dispatchers.IO) {
                 try {
                     val page = (1..3).random()
@@ -300,20 +320,6 @@ class GenresRepository @Inject constructor(
             }
         }.awaitAll().flatten()
         pool += artistTopTracks
-
-        // 4. Concurrently fetch similar tracks for 2-3 pool seeds
-        val trackSeeds = pool.filter { it.name.isNotBlank() && it.artist.isNotBlank() }.shuffled().take(3)
-        val similarTracks = trackSeeds.map { seed ->
-            async(Dispatchers.IO) {
-                try {
-                    val d = call(mapOf("method" to "track.getsimilar", "track" to seed.name, "artist" to seed.artist, "limit" to "8"))
-                    GenerateJson.normalise(d["similartracks"]?.jsonObject?.get("track"))
-                } catch (e: Exception) {
-                    emptyList()
-                }
-            }
-        }.awaitAll().flatten()
-        pool += similarTracks
 
         val heardKeys = (profile?.topTracksRaw ?: emptyList()).map { it.key }.toSet()
         val deduped = generateRepository.deduplicate(pool)

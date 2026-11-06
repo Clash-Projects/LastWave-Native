@@ -237,9 +237,13 @@ class CanvasRepository @Inject constructor(
                 }
             }
             firstHit(*sources.toTypedArray()) { artwork ->
+                // The clip must credit THIS artist: an uncredited clip, or a
+                // substring hit ("Mo" in "Mohit"), put another artist's
+                // motion video on the profile.
                 val want = credit.normalizeForMatch()
-                val got = artwork.artist?.normalizeForMatch().orEmpty()
-                got.isBlank() || got.contains(want) || want.contains(got)
+                val credited = com.lastwave.app.util.ArtistHelper.splitArtists(artwork.artist)
+                    .map { it.normalizeForMatch() }
+                want.isNotBlank() && (artwork.artist?.normalizeForMatch() == want || credited.any { it == want })
             }
         }
     }

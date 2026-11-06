@@ -123,4 +123,56 @@ class TextMatchTest {
         assertEquals("Nijame Ne Chebutunna", TextMatch.baseTitle(titleWithFeat).trim())
         assertTrue(TextMatch.isSafeTitleMatch(titleWithFrom, titleWithFeat, "Sid Sriram"))
     }
+
+    @Test
+    fun originalBeatsAlternateCutsWithSameArtistAndAlbum() {
+        val art = "https://lh3.googleusercontent.com/x=w120"
+        val original = YouTubeMusicTrack("orig", "Headlights (feat. KIDDO)", "Alok & Alan Walker", "Headlights", art, 161)
+        val vip = YouTubeMusicTrack("vip", "Headlights (VIP) (feat. KIDDO)", "Alok & Alan Walker", "Headlights", art, 161)
+        val sped = YouTubeMusicTrack("sped", "Headlights (feat. KIDDO) - Sped Up", "Alok & Alan Walker", "Headlights", art, 128)
+        val wanted = "Headlights (feat. KIDDO)"
+        val artist = "Alok & Alan Walker"
+        val best = listOf(vip, sped, original).maxByOrNull { TextMatch.matchScore(it, wanted, artist, 161_000L) }
+        assertEquals("orig", best?.videoId)
+    }
+
+    @Test
+    fun durationPrefersTheSameRecording() {
+        val art = "https://lh3.googleusercontent.com/x=w120"
+        val albumCut = YouTubeMusicTrack("album", "Headlights", "Alan Walker", "Album", art, 161)
+        val extended = YouTubeMusicTrack("ext", "Headlights", "Alan Walker", "Album", art, 214)
+        assertTrue(
+            TextMatch.matchScore(albumCut, "Headlights", "Alan Walker", 160_000L) >
+                TextMatch.matchScore(extended, "Headlights", "Alan Walker", 160_000L),
+        )
+        // Unknown catalog length keeps the plain title/artist score.
+        assertEquals(
+            TextMatch.matchScore(albumCut, "Headlights", "Alan Walker"),
+            TextMatch.matchScore(albumCut, "Headlights", "Alan Walker", null),
+        )
+    }
+
+    @Test
+    fun differentTakeIsRefusedInBothDirections() {
+        assertTrue(!TextMatch.isSameTake("Mr. Brightside (Live)", "Mr. Brightside", "The Killers"))
+        assertTrue(!TextMatch.isSameTake("Mr. Brightside", "Mr. Brightside - Live at Wembley", "The Killers"))
+        assertTrue(!TextMatch.isSameTake("Blinding Lights (Sped Up)", "Blinding Lights", "The Weeknd"))
+        assertTrue(!TextMatch.isSameTake("Yellow (Acoustic Cover)", "Yellow", "Coldplay"))
+    }
+
+    @Test
+    fun packagingAndTitleWordsAreNotTakes() {
+        assertTrue(TextMatch.isSameTake("Bohemian Rhapsody (Remastered 2011)", "Bohemian Rhapsody", "Queen"))
+        assertTrue(TextMatch.isSameTake("Song (Radio Edit)", "Song", "X"))
+        assertTrue(TextMatch.isSameTake("Live Forever", "Live Forever", "Oasis"))
+        assertTrue(TextMatch.isSameTake("Snowman", "Snowman", "Lofi Girl", "Lofi Girl"))
+    }
+
+    @Test
+    fun severeDurationMismatchNeedsBothRuntimes() {
+        assertTrue(TextMatch.isSevereDurationMismatch(200_000L, 600))
+        assertTrue(!TextMatch.isSevereDurationMismatch(200_000L, 215))
+        assertTrue(!TextMatch.isSevereDurationMismatch(null, 600))
+        assertTrue(!TextMatch.isSevereDurationMismatch(200_000L, null))
+    }
 }

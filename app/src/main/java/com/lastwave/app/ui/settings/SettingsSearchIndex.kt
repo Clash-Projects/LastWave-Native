@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.SmartDisplay
+import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.SwitchAccount
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Timer
@@ -216,6 +217,23 @@ object SettingsSearchIndex {
                     icon = Icons.Filled.Lyrics,
                     iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Audio & Playback",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "audio.stop_on_recents",
+                    title = "Stop Playback When Swiped Away",
+                    subtitle = "Stop music when LastWave is removed from Recents",
+                    keywords = listOf(
+                        "recents", "swipe", "swipe away", "stop playback", "background playback",
+                        "continue playing", "task removed", "kill app", "close app"
+                    ),
+                    icon = Icons.Filled.StopCircle,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
                     parentTab = SettingsTab.AUDIO,
                     section = "Audio & Playback",
                     type = EntryType.TOGGLE,

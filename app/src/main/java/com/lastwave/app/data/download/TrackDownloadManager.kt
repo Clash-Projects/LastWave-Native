@@ -171,6 +171,9 @@ class TrackDownloadManager @Inject constructor(
         // Up to 5 tracks download at once; per-download buffers stay small
         // (128 KB x 4 ranges) so this remains safe on low-RAM devices.
         private const val MAX_CONCURRENT_DOWNLOADS = 5
+        private const val MAX_CONCURRENT_YOUTUBE_RESOLVES = 2
+        private const val RESOLVE_RETRY_DELAY_MS = 3_000L
+        private const val RESOLVE_RETRY_NETWORK_WAIT_MS = 15_000L
         /** Reconnectable transfer failures tolerated before the attempt is abandoned. */
         private const val MAX_TRANSFER_RETRIES = 6
         /** Bound on each YouTube stream-resolve step so one candidate can't wedge a slot. */
@@ -189,6 +192,8 @@ class TrackDownloadManager @Inject constructor(
 
         const val SCAN_PREFS_NAME = "downloads_restore_prefs"
         const val KEY_DOWNLOADS_SCANNED = "downloads_scanned"
+        private const val HIDDEN_PREFS_NAME = "download_history_hidden"
+        private const val KEY_HIDDEN_REFS = "hidden_refs"
         private const val SCAN_MARKER_FILE = "downloads_scanned.marker"
         private val AUDIO_EXTENSIONS = setOf("flac", "m4a", "mp3", "opus", "ogg", "webm", "wav", "aac")
         private val BRACKET_SONG_ID_REGEX = Regex("""\[([a-zA-Z0-9_-]{11})\]""")
@@ -270,6 +275,7 @@ class TrackDownloadManager @Inject constructor(
     private val activeFiles = ConcurrentHashMap<String, File>()
     private val reconnectGenerations = ConcurrentHashMap<String, AtomicLong>()
     private val downloadSlots = Semaphore(MAX_CONCURRENT_DOWNLOADS)
+    private val youtubeResolveGate = Semaphore(MAX_CONCURRENT_YOUTUBE_RESOLVES)
     private val restoreMutex = Mutex()
 
     private val _downloads = MutableStateFlow<Map<String, DownloadProgress>>(emptyMap())
@@ -420,28 +426,30 @@ class TrackDownloadManager @Inject constructor(
             }
             if (fileStillPresent) return@withContext true
         }
+        // Removed from history: the file may still be on disk, but offer
+        // Download again so the user can bring it back into the list.
+        if (existing == null && isHiddenFromHistory(key)) return@withContext false
 
-        // Check if file already exists in the download directories (active folder + legacy default, incl. subfolders).
-        // The walk is guarded: on scoped-storage devices the public Music dir
-        // can throw (or a concurrent download can churn it), and that must
-        // degrade to "not found" rather than crashing the caller.
+        val onDisk = findDownloadOnDisk(title, artist) ?: return@withContext false
+        existing != null || !isHiddenFromHistory(key, onDisk.absolutePath)
+    }
+
+    /**
+     * Looks for "Artist - Title.ext" in the download folders (active + legacy,
+     * incl. subfolders). Guarded: on scoped-storage devices the public Music
+     * dir can throw, or a concurrent download can churn it, and that must
+     * degrade to "not found" rather than crashing the caller.
+     */
+    private suspend fun findDownloadOnDisk(title: String, artist: String): File? {
         val dirName = currentDownloadDirName()
-        val candidateExtensions = listOf("flac", "m4a", "opus", "mp3", "webm")
-        val sanitizedBase = sanitizeFilename("${artist.trim()} - ${title.trim()}")
-        val candidateNames = candidateExtensions.map { "$sanitizedBase.$it" }.toSet()
-        val foundOnDisk = runCatching {
-            downloadSearchDirs(dirName).any { publicDir ->
-                publicDir.exists() && publicDir.isDirectory &&
-                    publicDir.walkTopDown().maxDepth(6).any { f ->
-                        f.isFile && f.name in candidateNames && f.length() > 0
-                    }
-            }
-        }.getOrDefault(false)
-        if (foundOnDisk) {
-            return@withContext true
-        }
-
-        false
+        return runCatching {
+            val sanitizedBase = sanitizeFilename("${artist.trim()} - ${title.trim()}")
+            val candidateNames = listOf("flac", "m4a", "opus", "mp3", "webm").map { "$sanitizedBase.$it" }.toSet()
+            downloadSearchDirs(dirName).asSequence()
+                .filter { it.exists() && it.isDirectory }
+                .flatMap { it.walkTopDown().maxDepth(6) }
+                .firstOrNull { f -> f.isFile && f.name in candidateNames && f.length() > 0 }
+        }.getOrNull()
     }
 
     fun cancelDownload(key: String) {
@@ -563,27 +571,21 @@ class TrackDownloadManager @Inject constructor(
                 // and re-download; the unique trackKey index means the insert
                 // below will REPLACE this row instead of duplicating it.
             } else {
-                val dirName = try {
-                    currentDownloadDirName()
-                } catch (cancelled: CancellationException) {
-                    abandonAcquiredDownload(key)
-                    return
-                }
-                val sanitizedBase = sanitizeFilename("${artist.trim()} - ${title.trim()}")
-                val candidateNames = setOf("flac", "m4a", "opus", "mp3", "webm").map { "$sanitizedBase.$it" }.toSet()
-                // Guarded: this ran outside any try/catch, so a filesystem
-                // hiccup here used to escape the coroutine and kill the app.
-                val found = runCatching {
-                    downloadSearchDirs(dirName).any { publicDir ->
-                        publicDir.exists() && publicDir.isDirectory &&
-                            publicDir.walkTopDown().maxDepth(6).any { f ->
-                                f.isFile && f.name in candidateNames && f.length() > 0
-                            }
-                    }
-                }.getOrDefault(false)
-                if (found) {
+                val found = findDownloadOnDisk(title, artist)
+                if (found != null) {
                     downloadSlots.release()
                     forgetDownloadKey(key)
+                    // Removed from history but the file is still here: bring
+                    // the existing file back instead of downloading it again.
+                    if (unhideKey(key, found.absolutePath)) {
+                        try {
+                            syncDownloadsFromStorage()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            android.util.Log.w("TrackDownloadManager", "Couldn't restore hidden download $key", error)
+                        }
+                    }
                     return
                 }
             }
@@ -775,6 +777,8 @@ class TrackDownloadManager @Inject constructor(
                 var dashManifestCodec = ""
                 /** Manifest really carries FLAC (so the .m4a wrapper should be unwrapped). */
                 var dashIsFlacInMp4 = false
+                /** Quality badge to use if a progressive .m4a turns out to hold FLAC. */
+                var flacInMp4Badge: String? = null
                 var bytesReadTotal = 0L
                 var totalBytesRecorded = -1L
                 var downloadSucceeded = false
@@ -930,6 +934,17 @@ class TrackDownloadManager @Inject constructor(
                                     losslessStream.formatId == LosslessMusicApi.QUALITY_DATA_SAVER -> "96 kbps"
                                     isLossless -> formatDetailedQualityBadge(depth, rateKHz)
                                     else -> if (extension.equals("mp3", ignoreCase = true)) "MP3" else "AAC"
+                                }
+                                // Lossless tiers served as .m4a are FLAC in an MP4
+                                // wrapper. The file is checked after download.
+                                if (!isAtmosStream &&
+                                    losslessStream.formatId != LosslessMusicApi.QUALITY_MP3_320 &&
+                                    losslessStream.formatId != LosslessMusicApi.QUALITY_DATA_SAVER
+                                ) {
+                                    flacInMp4Badge = formatDetailedQualityBadge(depth, rateKHz)
+                                    // Show the expected lossless quality in the progress
+                                    // notification; it falls back to AAC if the check fails.
+                                    if (extension == "m4a") formatBadge = flacInMp4Badge ?: formatBadge
                                 }
                                 durationMs = (losslessStream.durationSeconds * 1000L).takeIf { it > 0 } ?: 0L
                             }
@@ -1170,7 +1185,7 @@ class TrackDownloadManager @Inject constructor(
                                     } else if (contentType.contains("mp4") || contentType.contains("m4a") || contentType.contains("aac")) {
                                         extension = "m4a"
                                         mimeType = "audio/mp4"
-                                        formatBadge = "M4A AAC"
+                                        formatBadge = flacInMp4Badge ?: "M4A AAC"
                                     }
                                     bytesReadTotal = transfer.bytesDownloaded
                                     totalBytesRecorded = transfer.totalBytes
@@ -1222,6 +1237,7 @@ class TrackDownloadManager @Inject constructor(
                         dashStartNumber = 1
                         dashManifestCodec = ""
                         dashIsFlacInMp4 = false
+                        flacInMp4Badge = null
                         bytesReadTotal = 0L
                         totalBytesRecorded = -1L
                         continue
@@ -1240,7 +1256,6 @@ class TrackDownloadManager @Inject constructor(
                         // Never single-shot strict match — search more, try each.
                         // Budgeted so one wedged track cannot hold a
                         // download slot and stall the batch queue.
-                        val ytFallbackStartMs = android.os.SystemClock.elapsedRealtime()
                         val ytResolveBudgetMs = 60_000L
                         val candidateTracks = linkedMapOf<String, YouTubeMusicTrack>()
                         val isPlausibleTrack: (YouTubeMusicTrack) -> Boolean = { track ->
@@ -1273,46 +1288,64 @@ class TrackDownloadManager @Inject constructor(
                         var actualVideoId: String? = null
                         var chosenTrack: YouTubeMusicTrack? = null
                         var lastResolveError: Throwable? = null
-                        for ((candidateId, candidateTrack) in candidateTracks) {
-                            if (android.os.SystemClock.elapsedRealtime() - ytFallbackStartMs > ytResolveBudgetMs) {
-                                android.util.Log.w(
-                                    "TrackDownloadManager",
-                                    "YouTube resolve budget exhausted for $finalTitle by $finalArtist; skipping remaining candidates",
-                                )
-                                break
-                            }
-                            // 1. Same waterfall playback uses (cache + multi-client direct URLs).
-                            val playbackStream = try {
-                                kotlinx.coroutines.withTimeoutOrNull(YT_STREAM_RESOLVE_TIMEOUT_MS) {
-                                    innerTube.peekCachedStream(candidateId)
-                                        ?: innerTube.resolveAudioStream(candidateId)
+                        // Parallel resolves queue on one local cipher until their budgets
+                        // expire, and bursts of player requests invite the bot check.
+                        // Only resolving is limited here; transfers still run in parallel.
+                        youtubeResolveGate.acquire()
+                        try {
+                            val ytFallbackStartMs = android.os.SystemClock.elapsedRealtime()
+                            for (resolveRound in 0..1) {
+                                for ((candidateId, candidateTrack) in candidateTracks) {
+                                    if (android.os.SystemClock.elapsedRealtime() - ytFallbackStartMs > ytResolveBudgetMs) {
+                                        android.util.Log.w(
+                                            "TrackDownloadManager",
+                                            "YouTube resolve budget exhausted for $finalTitle by $finalArtist; skipping remaining candidates",
+                                        )
+                                        break
+                                    }
+                                    // 1. Same waterfall playback uses (cache + multi-client direct URLs).
+                                    val playbackStream = try {
+                                        kotlinx.coroutines.withTimeoutOrNull(YT_STREAM_RESOLVE_TIMEOUT_MS) {
+                                            innerTube.peekCachedStream(candidateId)
+                                                ?: innerTube.resolveAudioStream(candidateId)
+                                        }
+                                    } catch (cancelled: CancellationException) {
+                                        throw cancelled
+                                    } catch (error: Exception) {
+                                        lastResolveError = error
+                                        null
+                                    }
+                                    // 2. Opus preference: if playback picked AAC (or failed),
+                                    // ask NewPipe for the WebM/Opus rendition, which is
+                                    // remuxed below into a fully tagged .opus file.
+                                    val opusStream = playbackStream?.takeIf { it.isOpusStream() } ?: try {
+                                        kotlinx.coroutines.withTimeoutOrNull(YT_STREAM_RESOLVE_TIMEOUT_MS) {
+                                            innerTube.resolveDownloadStream(candidateId)
+                                        }
+                                    } catch (cancelled: CancellationException) {
+                                        throw cancelled
+                                    } catch (error: Exception) {
+                                        lastResolveError = error
+                                        null
+                                    }
+                                    pickedStream = opusStream?.takeIf { it.isOpusStream() } ?: playbackStream ?: opusStream
+                                    if (pickedStream != null) {
+                                        actualVideoId = candidateId
+                                        resolvedYtVideoId = candidateId
+                                        chosenTrack = candidateTrack
+                                        break
+                                    }
                                 }
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (error: Exception) {
-                                lastResolveError = error
-                                null
-                            }
-                            // 2. Opus preference: if playback picked AAC (or failed),
-                            // ask NewPipe for the WebM/Opus rendition, which is
-                            // remuxed below into a fully tagged .opus file.
-                            val opusStream = playbackStream?.takeIf { it.isOpusStream() } ?: try {
-                                kotlinx.coroutines.withTimeoutOrNull(YT_STREAM_RESOLVE_TIMEOUT_MS) {
-                                    innerTube.resolveDownloadStream(candidateId)
+                                if (pickedStream != null ||
+                                    android.os.SystemClock.elapsedRealtime() - ytFallbackStartMs > ytResolveBudgetMs
+                                ) {
+                                    break
                                 }
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (error: Exception) {
-                                lastResolveError = error
-                                null
+                                // One more pass for a dropped connection or a brief failure.
+                                if (resolveRound == 0) awaitNetworkForResolveRetry()
                             }
-                            pickedStream = opusStream?.takeIf { it.isOpusStream() } ?: playbackStream ?: opusStream
-                            if (pickedStream != null) {
-                                actualVideoId = candidateId
-                                resolvedYtVideoId = candidateId
-                                chosenTrack = candidateTrack
-                                break
-                            }
+                        } finally {
+                            youtubeResolveGate.release()
                         }
                         val resolvedStream = pickedStream
                             ?: throw (lastResolveError ?: IOException("No playable YouTube stream for $finalTitle by $finalArtist"))
@@ -1553,7 +1586,19 @@ class TrackDownloadManager @Inject constructor(
                     // raw frames from every mdat; nothing is decoded or re-encoded,
                     // so 24-bit hi-res stays bit-exact. On failure the .m4a is kept
                     // rather than losing a completed download.
-                    if (dashIsFlacInMp4 && extension == "m4a") {
+                    // Addon streams can also be progressive FLAC-in-MP4 (served
+                    // as audio/mp4), so check the file and not only the manifest.
+                    val progressiveFlacInMp4 = !dashIsFlacInMp4 && extension == "m4a" &&
+                        flacInMp4Badge != null && Mp4FlacRemuxer.isMp4Flac(currentAudioFile)
+                    if (progressiveFlacInMp4) {
+                        isLossless = true
+                        formatBadge = flacInMp4Badge ?: "FLAC"
+                    } else if (!dashIsFlacInMp4 && extension == "m4a" && flacInMp4Badge != null) {
+                        // Lossless tier, but the file really is AAC.
+                        isLossless = false
+                        formatBadge = "M4A AAC"
+                    }
+                    if ((dashIsFlacInMp4 || progressiveFlacInMp4) && extension == "m4a") {
                         val nativeFlac = File.createTempFile("dl_flac_", ".flac", context.cacheDir)
                         if (Mp4FlacRemuxer.remux(currentAudioFile, nativeFlac)) {
                             runCatching { currentAudioFile.delete() }
@@ -1814,6 +1859,7 @@ class TrackDownloadManager @Inject constructor(
                     downloadedAtMillis = System.currentTimeMillis(),
                 )
                 downloadedTrackDao.insert(entity)
+                unhideFromHistory(entity)
 
                 // 6b. Module DRM: persist offline keys + sidecar so the encrypted
                 // file plays without network. Skipped when transcoding already
@@ -2504,6 +2550,16 @@ class TrackDownloadManager @Inject constructor(
         }
     }
 
+    private suspend fun awaitNetworkForResolveRetry() {
+        delay(RESOLVE_RETRY_DELAY_MS)
+        val waitStartMs = android.os.SystemClock.elapsedRealtime()
+        while (!hasUsableNetwork() &&
+            android.os.SystemClock.elapsedRealtime() - waitStartMs < RESOLVE_RETRY_NETWORK_WAIT_MS
+        ) {
+            delay(RECONNECT_POLL_INTERVAL_MS)
+        }
+    }
+
     private fun hasUsableNetwork(): Boolean = runCatching {
         val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
             ?: return@runCatching true
@@ -3019,29 +3075,214 @@ class TrackDownloadManager @Inject constructor(
     }
 
 
-    suspend fun deleteDownloadedTrack(track: DownloadedTrackEntity) = withContext(Dispatchers.IO) {
+    /**
+     * Removes the row but keeps the file. The file is remembered so the next
+     * storage scan doesn't import it straight back.
+     */
+    suspend fun removeFromHistoryOnly(track: DownloadedTrackEntity) = withContext(Dispatchers.IO) {
+        hideFromHistory(listOf(track))
         downloadedTrackDao.delete(track)
-        // Delete physical audio file
-        if (!track.mediaStoreUri.isNullOrBlank()) {
-            runCatching { context.contentResolver.delete(Uri.parse(track.mediaStoreUri), null, null) }
-        }
-        if (track.filePath.isNotBlank()) {
-            runCatching {
-                val f = File(track.filePath)
-                if (f.exists()) f.delete()
+    }
+
+    suspend fun clearHistoryOnly() = withContext(Dispatchers.IO) {
+        hideFromHistory(downloadedTrackDao.getAllList())
+        downloadedTrackDao.clearAll()
+    }
+
+    /** One hidden download: its track key plus the file path / content URI it was stored at. */
+    private data class HiddenDownload(val key: String, val refs: Set<String>) {
+        fun encode(): String = (listOf(key) + refs).joinToString("\n")
+
+        companion object {
+            fun of(track: DownloadedTrackEntity, extraRefs: Collection<String> = emptyList()) = HiddenDownload(
+                key = track.trackKey,
+                refs = (
+                    listOfNotNull(
+                        track.filePath.takeIf { it.isNotBlank() },
+                        track.mediaStoreUri?.takeIf { it.isNotBlank() },
+                    ) + extraRefs.filter { it.isNotBlank() }
+                    ).toSet(),
+            )
+
+            fun decode(raw: String): HiddenDownload {
+                val parts = raw.split("\n")
+                return HiddenDownload(parts.first(), parts.drop(1).filter { it.isNotBlank() }.toSet())
             }
         }
-        // Delete companion .lrc file if present
-        if (!track.lrcFilePath.isNullOrBlank()) {
-            if (track.lrcFilePath.startsWith("content://")) {
-                runCatching { context.contentResolver.delete(Uri.parse(track.lrcFilePath), null, null) }
-            } else {
-                runCatching {
-                    val lf = File(track.lrcFilePath)
-                    if (lf.exists()) lf.delete()
+    }
+
+    private class HiddenHistory(val entries: List<HiddenDownload>) {
+        val keys: Set<String> = entries.mapTo(mutableSetOf()) { it.key }
+        val refs: Set<String> = entries.flatMapTo(mutableSetOf()) { it.refs }
+    }
+
+    /** Decoded once and kept in memory; isTrackDownloaded runs per list row. */
+    @Volatile
+    private var hiddenHistoryCache: HiddenHistory? = null
+
+    private fun hiddenHistory(): HiddenHistory {
+        hiddenHistoryCache?.let { return it }
+        val loaded = HiddenHistory(
+            runCatching {
+                context.getSharedPreferences(HIDDEN_PREFS_NAME, Context.MODE_PRIVATE)
+                    .getStringSet(KEY_HIDDEN_REFS, emptySet())
+                    .orEmpty()
+                    .map(HiddenDownload::decode)
+            }.getOrDefault(emptyList()),
+        )
+        hiddenHistoryCache = loaded
+        return loaded
+    }
+
+    private fun saveHiddenHistory(entries: Collection<HiddenDownload>) {
+        hiddenHistoryCache = HiddenHistory(entries.toList())
+        runCatching {
+            context.getSharedPreferences(HIDDEN_PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putStringSet(KEY_HIDDEN_REFS, entries.mapTo(mutableSetOf()) { it.encode() })
+                .commit()
+        }
+    }
+
+    private fun hideFromHistory(tracks: List<DownloadedTrackEntity>) {
+        if (tracks.isEmpty()) return
+        // Store the real file path too: the folder scan matches files by
+        // path, and a MediaStore row only records its content:// URI.
+        val hidden = tracks.map { track ->
+            val realPath = track.mediaStoreUri?.let(::filePathForMediaStoreUri)
+            HiddenDownload.of(track, listOfNotNull(realPath))
+        }
+        synchronized(hiddenRefsLock) {
+            saveHiddenHistory(hiddenHistory().entries + hidden)
+        }
+    }
+
+    /** True if [key] or the file at [path] was removed with "History only". */
+    private fun isHiddenFromHistory(key: String, path: String? = null): Boolean {
+        val hidden = hiddenHistory()
+        return key in hidden.keys || (path != null && path in hidden.refs)
+    }
+
+    /** A fresh download of a hidden song should show up again. */
+    private fun unhideFromHistory(track: DownloadedTrackEntity) {
+        val refs = HiddenDownload.of(track).refs
+        unhideWhere { it.key == track.trackKey || it.refs.any(refs::contains) }
+    }
+
+    /** Returns true if [key] or the file at [path] was hidden. */
+    private fun unhideKey(key: String, path: String? = null): Boolean =
+        unhideWhere { it.key == key || (path != null && path in it.refs) }
+
+    private fun unhideWhere(match: (HiddenDownload) -> Boolean): Boolean =
+        synchronized(hiddenRefsLock) {
+            val entries = hiddenHistory().entries
+            val kept = entries.filterNot(match)
+            if (kept.size == entries.size) return false
+            saveHiddenHistory(kept)
+            true
+        }
+
+    private val hiddenRefsLock = Any()
+
+    sealed interface DeleteDownloadResult {
+        object Deleted : DeleteDownloadResult
+
+        /** The file belongs to another app; the user has to confirm the delete. */
+        class NeedsUserConsent(val request: android.content.IntentSender) : DeleteDownloadResult
+
+        object Failed : DeleteDownloadResult
+    }
+
+    suspend fun deleteDownloadedTrack(track: DownloadedTrackEntity): DeleteDownloadResult = withContext(Dispatchers.IO) {
+        // Only remove the row after the recorded media has been deleted. This
+        // keeps failed deletes retryable and avoids sync re-importing the song.
+        if (deleteRecordedDownload(track)) {
+            forgetOfflineSidecar(track)
+            downloadedTrackDao.delete(track)
+            return@withContext DeleteDownloadResult.Deleted
+        }
+        consentDeleteRequest(track)?.let { return@withContext DeleteDownloadResult.NeedsUserConsent(it) }
+        DeleteDownloadResult.Failed
+    }
+
+    /** Call after the user approved the system delete prompt. */
+    suspend fun finishConsentedDelete(track: DownloadedTrackEntity): Boolean = withContext(Dispatchers.IO) {
+        if (!deleteRecordedDownload(track)) return@withContext false
+        forgetOfflineSidecar(track)
+        downloadedTrackDao.delete(track)
+        true
+    }
+
+    /** DRM module downloads keep a descriptor sidecar; drop it with the audio. */
+    private fun forgetOfflineSidecar(track: DownloadedTrackEntity) {
+        runCatching { moduleManager.deleteOfflineSidecar(track.title, track.artist) }
+    }
+
+    /**
+     * Only used when the direct delete failed. Our own downloads delete without
+     * a prompt; files we don't own (saved before a reinstall, by another build
+     * such as release vs debug, or copied in by a file manager/PC) can't be
+     * deleted directly on Android 11+, so MediaStore asks the user instead.
+     * Android 10 and lower have no such prompt and the delete just fails.
+     */
+    private fun consentDeleteRequest(track: DownloadedTrackEntity): android.content.IntentSender? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        val uris = listOfNotNull(track.mediaStoreUri, track.filePath)
+            .filter { it.isNotBlank() }
+            .distinct()
+            .mapNotNull { ref ->
+                if (ref.startsWith("content://")) {
+                    Uri.parse(ref).takeIf { it.authority == MediaStore.AUTHORITY }
+                } else {
+                    ref.takeIf { File(it).exists() }?.let(::mediaStoreUriForPath)
                 }
             }
+            .distinct()
+            .filter { contentUriPresence(it) != false }
+        if (uris.isEmpty()) return null
+        return try {
+            MediaStore.createDeleteRequest(context.contentResolver, uris).intentSender
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            android.util.Log.w("TrackDownloadManager", "Couldn't build delete request for ${track.title}", error)
+            null
         }
+    }
+
+    private fun mediaStoreUriForPath(path: String): Uri? = try {
+        context.contentResolver.query(
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+            arrayOf(MediaStore.Audio.Media._ID),
+            "${MediaStore.MediaColumns.DATA} = ?",
+            arrayOf(path),
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                android.content.ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, cursor.getLong(0))
+            } else {
+                null
+            }
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun filePathForMediaStoreUri(uriString: String): String? = try {
+        val uri = Uri.parse(uriString)
+        if (uri.authority != MediaStore.AUTHORITY) {
+            null
+        } else {
+            context.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)
+                ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+                ?.takeIf { it.isNotBlank() }
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        null
     }
 
     /**
@@ -3115,7 +3356,8 @@ class TrackDownloadManager @Inject constructor(
 
     private fun deleteRecordedDownload(track: DownloadedTrackEntity): Boolean {
         val uriDeleted = deleteContentUriIfRecorded(track.mediaStoreUri)
-        val audioDeleted = deleteFileIfRecorded(track.filePath)
+        // MediaStore downloads record the same content:// URI in both fields.
+        val audioDeleted = track.filePath == track.mediaStoreUri || deleteFileIfRecorded(track.filePath)
         val lyricsDeleted = deleteFileIfRecorded(track.lrcFilePath)
         if (!uriDeleted || !audioDeleted || !lyricsDeleted) {
             android.util.Log.w(
@@ -3151,12 +3393,15 @@ class TrackDownloadManager @Inject constructor(
             return false
         }
         try {
-            context.contentResolver.delete(uri, null, null)
+            if (context.contentResolver.delete(uri, null, null) > 0) return true
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: FileNotFoundException) {
             return true
         } catch (security: SecurityException) {
+            // MediaStore also throws this for ids that no longer exist, so
+            // only treat it as a failure if the item is still there.
+            if (!contentUriStillPresent(uri)) return true
             android.util.Log.w("TrackDownloadManager", "Couldn't delete download uri $uriString", security)
             return false
         } catch (error: Exception) {
@@ -3165,9 +3410,29 @@ class TrackDownloadManager @Inject constructor(
         return !contentUriStillPresent(uri)
     }
 
-    /** True when the provider can still open the URI, so the row must stay retryable. */
-    private fun contentUriStillPresent(uri: Uri): Boolean = try {
-        context.contentResolver.openInputStream(uri)?.use { true } ?: false
+    /** True unless the URI is confirmed gone, so the row stays retryable. */
+    private fun contentUriStillPresent(uri: Uri): Boolean = contentUriPresence(uri) != false
+
+    /**
+     * Whether a content URI still points at audio: true if present, false if
+     * confirmed gone, null if it can't be told (no permission, provider error).
+     */
+    private fun contentUriPresence(uri: Uri): Boolean? = try {
+        if (uri.authority == MediaStore.AUTHORITY) {
+            // Opening a deleted MediaStore id throws SecurityException, so ask
+            // the index directly. Without audio permission other apps' items
+            // are invisible, so an empty result proves nothing.
+            context.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns._ID), null, null, null)
+                ?.use { cursor ->
+                    when {
+                        cursor.count > 0 -> true
+                        hasStoragePermission() -> false
+                        else -> null
+                    }
+                }
+        } else {
+            context.contentResolver.openFileDescriptor(uri, "r")?.use { true }
+        }
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (_: FileNotFoundException) {
@@ -3175,9 +3440,9 @@ class TrackDownloadManager @Inject constructor(
     } catch (_: IllegalArgumentException) {
         false
     } catch (_: SecurityException) {
-        true
+        null
     } catch (_: Exception) {
-        true
+        null
     }
 
     /**
@@ -3659,9 +3924,23 @@ class TrackDownloadManager @Inject constructor(
         runCatching { restoreDownloadsAfterReinstall() }
         runCatching { repairCorruptedDownloadMetadata() }
         val existingEntities = downloadedTrackDao.getAllList().toMutableList()
+        // Storage scans can discover new downloads, but must also reconcile
+        // rows whose files were removed outside LastWave (for example in a
+        // file manager). Otherwise Room keeps showing a song that no longer
+        // exists on disk forever.
+        val missingTracks = existingEntities.filter { recordedAudioAvailability(it) == false }
+        for (track in missingTracks) {
+            // The audio is gone; drop its companion lyrics file too.
+            runCatching { deleteFileIfRecorded(track.lrcFilePath) }
+            forgetOfflineSidecar(track)
+            downloadedTrackDao.delete(track)
+        }
+        existingEntities.removeAll(missingTracks.toSet())
         val existingPaths = existingEntities.map { it.filePath }.toMutableSet()
         val existingUris = existingEntities.mapNotNull { it.mediaStoreUri }.toMutableSet()
         val existingKeys = existingEntities.map { makeDownloadKey(it.title, it.artist) }.toMutableSet()
+        // Songs removed with "History only" keep their file; don't re-import them.
+        val hidden = hiddenHistory()
         val dirName = currentDownloadDirName()
 
         // 1. Scan download directories on device (active folder + legacy default, incl. subfolders)
@@ -3676,6 +3955,7 @@ class TrackDownloadManager @Inject constructor(
 
             for (file in audioFiles) {
                 if (file.absolutePath in existingPaths) continue
+                if (file.absolutePath in hidden.refs) continue
 
                 val retriever = android.media.MediaMetadataRetriever()
                 try {
@@ -3703,6 +3983,7 @@ class TrackDownloadManager @Inject constructor(
                     artist = artist!!.trim().ifBlank { "Unknown Artist" }
                     val trackKey = makeDownloadKey(title, artist)
                     if (trackKey in existingKeys) continue
+                    if (trackKey in hidden.keys) continue
 
                     val album = rawAlbum.trim().takeUnless { ArtistHelper.isPlayCountOrStat(it) }.orEmpty()
                     val durStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
@@ -3801,6 +4082,7 @@ class TrackDownloadManager @Inject constructor(
                         val id = cursor.getLong(idCol)
                         val uri = Uri.withAppendedPath(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id.toString())
                         if (uri.toString() in existingUris) continue
+                        if (uri.toString() in hidden.refs) continue
 
                         val rawTitle = cursor.getString(titleCol) ?: "Unknown Track"
                         val rawArtist = cursor.getString(artistCol) ?: "Unknown Artist"
@@ -3811,6 +4093,7 @@ class TrackDownloadManager @Inject constructor(
                             ?.takeIf { it.isNotBlank() } ?: "Unknown Artist"
                         val trackKey = makeDownloadKey(title, artist)
                         if (trackKey in existingKeys) continue
+                        if (trackKey in hidden.keys) continue
 
                         val album = rawAlbum.trim()
                             .takeUnless { ArtistHelper.isPlayCountOrStat(it) }.orEmpty()
@@ -3852,6 +4135,65 @@ class TrackDownloadManager @Inject constructor(
                 }
             }
         }
+    }
+
+    /**
+     * Returns true if any recorded audio reference is still readable, false
+     * only when every reference is confirmed missing, and null if access could
+     * not be determined (for example a revoked SAF permission).
+     */
+    private fun recordedAudioAvailability(track: DownloadedTrackEntity): Boolean? {
+        val references = listOfNotNull(
+            track.mediaStoreUri?.takeIf { it.isNotBlank() },
+            track.filePath.takeIf { it.isNotBlank() },
+        ).distinct()
+        if (references.isEmpty()) return false
+
+        var accessUnknown = false
+        for (reference in references) {
+            val presence = if (reference.startsWith("content://")) {
+                runCatching { contentUriPresence(Uri.parse(reference)) }.getOrNull()
+            } else {
+                filePresence(File(reference))
+            }
+            when (presence) {
+                true -> return true
+                null -> accessUnknown = true
+                false -> Unit
+            }
+        }
+        return if (accessUnknown) null else false
+    }
+
+    /** Like [contentUriPresence] for plain paths; null while the volume is unmounted or unreadable. */
+    private fun filePresence(file: File): Boolean? = try {
+        val volumeState = Environment.getExternalStorageState(file)
+        val onUnmountedVolume = volumeState != Environment.MEDIA_UNKNOWN &&
+            volumeState != Environment.MEDIA_MOUNTED &&
+            volumeState != Environment.MEDIA_MOUNTED_READ_ONLY
+        when {
+            file.exists() -> true
+            // An SD card or USB drive that isn't mounted yet looks like every
+            // file on it was deleted; never prune on that.
+            onUnmountedVolume -> null
+            !hasStoragePermission() &&
+                file.absolutePath.startsWith(Environment.getExternalStorageDirectory().absolutePath) -> null
+            // A removed card can report MEDIA_UNKNOWN; its /storage/<id> root
+            // is then missing or empty.
+            storageVolumeRootMissing(file) -> null
+            else -> false
+        }
+    } catch (_: SecurityException) {
+        null
+    }
+
+    private fun storageVolumeRootMissing(file: File): Boolean {
+        val segments = file.absolutePath.split('/').filter { it.isNotEmpty() }
+        if (segments.size < 2 || segments[0] != "storage") return false
+        // Primary storage (/storage/emulated, /storage/self) is always present.
+        if (segments[1] == "emulated" || segments[1] == "self") return false
+        val root = File("/storage/${segments[1]}")
+        return !root.isDirectory || root.list().isNullOrEmpty()
     }
 
     private fun com.lastwave.app.data.music.YouTubeAudioStream.isOpusStream(): Boolean {

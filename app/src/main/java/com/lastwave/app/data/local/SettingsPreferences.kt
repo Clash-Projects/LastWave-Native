@@ -137,6 +137,8 @@ data class MiscSettings(
     val buttonNowPlayingEnabled: Boolean = false,
     /** When true, shows synced music video option in the Now Playing menu (Settings -> Experimental). On by default. */
     val musicVideoEnabled: Boolean = true,
+    /** When true (default), shows AutoEQ and Parametric EQ card in Now Playing audio controls sheet. */
+    val showAutoEqInVolumePanel: Boolean = true,
     val wordByWordLyrics: Boolean = true,
     /** Preferred lyrics source (Settings -> Experimental -> Lyrics Provider).
      *  AUTO races all providers (fastest valid word-sync wins); an explicit
@@ -226,6 +228,10 @@ data class MiscSettings(
     /** When false, podcast shelves, screens and episode search stay hidden.
      *  Existing progress is preserved so re-enabling resumes where you left off. */
     val podcastsEnabled: Boolean = true,
+    /** When true (default), removing LastWave from Recents stops playback and
+     *  tears down the playback service. When false, playback keeps running in
+     *  the background after the task is removed. */
+    val stopPlaybackOnTaskRemoved: Boolean = true,
     val suppressYouTubeLoginPrompt: Boolean = false,
     val hasDismissedJoinSupportPrompt: Boolean = false,
     /** Display name used in LastWave Jam sessions. */
@@ -379,6 +385,7 @@ class SettingsPreferences @Inject constructor(
         val LYRICS_OFFSET_MS = longPreferencesKey("lw_lyrics_offset_ms")
         val LYRICS_FONT_SCALE = floatPreferencesKey("lw_lyrics_font_scale")
         val APP_VOLUME = floatPreferencesKey("lw_app_volume")
+        val APP_VOLUME_CAST_FIX_DONE = booleanPreferencesKey("lw_app_volume_cast_fix_done")
         val CROSSFADE_ENABLED = booleanPreferencesKey("lw_crossfade_enabled")
         val CROSSFADE_SECONDS = intPreferencesKey("lw_crossfade_seconds")
         val WAVY_SEEKBAR_ENABLED = booleanPreferencesKey("lw_wavy_seekbar_enabled")
@@ -398,6 +405,7 @@ class SettingsPreferences @Inject constructor(
         val SYSTEM_EFFECTS_MODE = booleanPreferencesKey("lw_system_effects_mode")
         val BUTTON_NOW_PLAYING_ENABLED = booleanPreferencesKey("lw_button_now_playing_enabled")
         val MUSIC_VIDEO_ENABLED = booleanPreferencesKey("lw_music_video_enabled")
+        val SHOW_AUTO_EQ_IN_VOLUME_PANEL = booleanPreferencesKey("lw_show_auto_eq_in_volume_panel")
         val USE_ALBUM_ARTIST_FOLDERS = booleanPreferencesKey("lw_use_album_artist_folders")
         val PRIMARY_ARTIST_ONLY = booleanPreferencesKey("lw_primary_artist_only")
         val HIDDEN_HOME_SECTIONS = stringSetPreferencesKey("lw_hidden_home_sections")
@@ -417,6 +425,7 @@ class SettingsPreferences @Inject constructor(
         val LIKED_SONGS_LOCAL_SYNC = booleanPreferencesKey("lw_liked_songs_local_sync")
         val LIKED_SONGS_LOCAL_ONLY = stringPreferencesKey("lw_liked_songs_local_only")
         val PODCASTS_ENABLED = booleanPreferencesKey("lw_podcasts_enabled")
+        val STOP_PLAYBACK_ON_TASK_REMOVED = booleanPreferencesKey("lw_stop_playback_on_task_removed")
         val SUPPRESS_YOUTUBE_LOGIN_PROMPT = booleanPreferencesKey("lw_suppress_youtube_login_prompt")
         val HAS_DISMISSED_JOIN_SUPPORT_PROMPT = booleanPreferencesKey("lw_has_dismissed_join_support_prompt")
         val JAM_DISPLAY_NAME = stringPreferencesKey("lw_jam_display_name")
@@ -464,6 +473,7 @@ class SettingsPreferences @Inject constructor(
                 systemEffectsMode = p.readSafely(Keys.SYSTEM_EFFECTS_MODE) ?: false,
                 buttonNowPlayingEnabled = p.readSafely(Keys.BUTTON_NOW_PLAYING_ENABLED) ?: false,
                 musicVideoEnabled = p.readSafely(Keys.MUSIC_VIDEO_ENABLED) ?: true,
+                showAutoEqInVolumePanel = p.readSafely(Keys.SHOW_AUTO_EQ_IN_VOLUME_PANEL) ?: true,
                 isStudioMasterClarityEnabled = p.readSafely(Keys.MUSIC_ENHANCER) ?: true,
                 clarityPreset = p.readSafely(Keys.CLARITY_PRESET)?.takeIf { it in 0..3 } ?: 0,
                 clarityAtmosBypass = p.readSafely(Keys.CLARITY_ATMOS_BYPASS) ?: false,
@@ -509,6 +519,7 @@ class SettingsPreferences @Inject constructor(
                 likedSongsYouTubeSync = p.readSafely(Keys.LIKED_SONGS_YOUTUBE_SYNC) ?: true,
                 likedSongsLocalSync = p.readSafely(Keys.LIKED_SONGS_LOCAL_SYNC) ?: true,
                 podcastsEnabled = p.readSafely(Keys.PODCASTS_ENABLED) ?: true,
+                stopPlaybackOnTaskRemoved = p.readSafely(Keys.STOP_PLAYBACK_ON_TASK_REMOVED) ?: true,
                 suppressYouTubeLoginPrompt = p.readSafely(Keys.SUPPRESS_YOUTUBE_LOGIN_PROMPT) ?: false,
                 hasDismissedJoinSupportPrompt = p.readSafely(Keys.HAS_DISMISSED_JOIN_SUPPORT_PROMPT) ?: false,
                 jamDisplayName = p.readSafely(Keys.JAM_DISPLAY_NAME)?.trim().orEmpty(),
@@ -679,6 +690,10 @@ class SettingsPreferences @Inject constructor(
         dataStore.edit { it[Keys.PODCASTS_ENABLED] = enabled }
     }
 
+    suspend fun setStopPlaybackOnTaskRemoved(enabled: Boolean) {
+        dataStore.edit { it[Keys.STOP_PLAYBACK_ON_TASK_REMOVED] = enabled }
+    }
+
     suspend fun setSuppressYouTubeLoginPrompt(suppress: Boolean) {
         dataStore.edit { it[Keys.SUPPRESS_YOUTUBE_LOGIN_PROMPT] = suppress }
     }
@@ -719,6 +734,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setMusicVideoEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.MUSIC_VIDEO_ENABLED] = enabled }
+    }
+
+    suspend fun setShowAutoEqInVolumePanel(enabled: Boolean) {
+        dataStore.edit { it[Keys.SHOW_AUTO_EQ_IN_VOLUME_PANEL] = enabled }
     }
 
     suspend fun setButtonNowPlayingEnabled(enabled: Boolean) {
@@ -765,6 +784,22 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setAppVolume(volume: Float) {
         dataStore.edit { it[Keys.APP_VOLUME] = volume.coerceIn(0f, 1f) }
+    }
+
+    /**
+     * One-time repair: builds since the cast-volume integration saved the
+     * Chromecast/TV receiver level as the LOCAL in-app volume, silently
+     * capping phone playback (max volume sounded like ~50%). Users cannot
+     * tell a polluted value from a chosen one, so restore unity once; the
+     * slider still works afterwards.
+     */
+    suspend fun resetAppVolumeAfterCastFixOnce() {
+        dataStore.edit {
+            if (it[Keys.APP_VOLUME_CAST_FIX_DONE] != true) {
+                it[Keys.APP_VOLUME] = 1.0f
+                it[Keys.APP_VOLUME_CAST_FIX_DONE] = true
+            }
+        }
     }
 
     suspend fun setLyricsFontScale(scale: Float) {

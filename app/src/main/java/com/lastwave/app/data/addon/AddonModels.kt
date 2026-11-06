@@ -189,6 +189,10 @@ data class AddonTrack(
 data class AddonStream(
     @SerialName("url") val url: String = "",
     @SerialName("dataUrl") val dataUrl: String? = null,
+    @SerialName("directUrl") val directUrl: String? = null,
+    @SerialName("streamUrl") val streamUrl: String? = null,
+    @SerialName("downloadUrl") val downloadUrl: String? = null,
+    @SerialName("mediaUrl") val mediaUrl: String? = null,
     @SerialName("format") val format: String = "dash",
     @SerialName("codec") val codec: String = "flac",
     @SerialName("quality") val quality: String = "",
@@ -210,7 +214,7 @@ data class AddonStream(
     @SerialName("bits_per_sample") val rawBitsPerSampleSnake: JsonElement? = null,
     @SerialName("depth") val rawDepth: JsonElement? = null,
     @SerialName("bits") val rawBits: JsonElement? = null,
-    @SerialName("bitrate") val bitrate: Int? = null,
+    @SerialName("bitrate") val rawBitrate: JsonElement? = null,
     @SerialName("manifest") val manifest: String = "dash",
     @SerialName("manifestXml") val manifestXml: String? = null,
     @SerialName("audioMode") val audioMode: String? = null,
@@ -218,6 +222,8 @@ data class AddonStream(
     @SerialName("atmos") val atmos: Boolean = false,
     @SerialName("streamQuality") val streamQuality: String = "",
     @SerialName("encrypted") val encrypted: Boolean = false,
+    /** hybrid-v1: CDN byte ranges + AES-128 content key; chunks are fetched and decrypted on-device. */
+    @SerialName("hybrid") val hybrid: HybridPlan? = null,
     @SerialName("metadata") val rawMetadata: JsonElement? = null,
     @SerialName("meta") val rawMeta: JsonElement? = null,
     @SerialName("mediaMetadata") val rawMediaMetadata: JsonElement? = null,
@@ -229,6 +235,14 @@ data class AddonStream(
     @SerialName("stream_metadata") val rawStreamMetadataSnake: JsonElement? = null,
     @SerialName("info") val rawInfo: JsonElement? = null,
 ) {
+    /** Tolerates decimal and quoted values, which must not fail the whole stream. */
+    val bitrate: Int?
+        get() = (rawBitrate as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()?.toInt()
+
+    /** Every direct URL field a server may answer with, in preference order. */
+    val directUrls: List<String>
+        get() = listOfNotNull(url, directUrl, streamUrl, downloadUrl, mediaUrl).filter { it.isNotBlank() }
+
     val bitDepth: Int?
         get() = extractBitDepthFromElement(rawMetadata)
             ?: extractBitDepthFromElement(rawMeta)

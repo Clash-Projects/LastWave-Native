@@ -39,6 +39,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Dns
@@ -124,6 +125,18 @@ fun JamScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val chatMessages by viewModel.chatMessages.collectAsStateWithLifecycle()
+    val notice by viewModel.notice.collectAsStateWithLifecycle()
+    val cooldownUntil by viewModel.cooldownUntilMs.collectAsStateWithLifecycle()
+    val roomCounts by viewModel.roomCounts.collectAsStateWithLifecycle()
+    val locked = cooldownUntil > 0L
+    // Refresh the "N listening" counts while on the join screen.
+    LaunchedEffect(uiState.isConnected) {
+        while (!uiState.isConnected) {
+            viewModel.refreshRoomCounts()
+            kotlinx.coroutines.delay(15_000L)
+        }
+    }
+    var replyTo by remember { mutableStateOf<ChatMessagePayload?>(null) }
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
 
@@ -165,7 +178,7 @@ fun JamScreen(
                 // Top Header with live status badge
                 ExpressiveHeader(
                     title = "Jam",
-                    subtitle = if (uiState.isConnected) "Room ${uiState.roomCode}" else "Listen together in real time",
+                    subtitle = if (uiState.isConnected) (uiState.roomName.ifEmpty { "Room ${uiState.roomCode}" }) else "Listen together in real time",
                     onBack = onBack,
                     actions = {
                         if (uiState.isConnected) {
@@ -288,6 +301,15 @@ fun JamScreen(
 
                         // Mode Specific Form
                         if (setupModeIndex == 0) {
+                            // ALWAYS-ON ROOMS (INDIA / WORLD)
+                            JamStationsList(
+                                accent = jamAccent,
+                                onAccent = onJamAccent,
+                                enabled = !uiState.isConnecting,
+                                onJoin = { viewModel.joinJamSession(it) },
+                                counts = roomCounts,
+                            )
+
                             // JOIN ROOM FORM
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -319,7 +341,7 @@ fun JamScreen(
                                     onClick = {
                                         val clip = clipboard.getText()?.text?.trim()
                                         if (!clip.isNullOrBlank()) {
-                                            val cleanCode = clip.substringAfter("code=").take(8).uppercase()
+                                            val cleanCode = com.lastwave.app.data.jam.parseJamCode(clip).take(8)
                                             viewModel.setPendingCode(cleanCode)
                                         }
                                     },
@@ -527,11 +549,19 @@ fun JamScreen(
                             }
                         }
 
+                        JamNoticeBanner(
+                            notice = notice,
+                            onDismiss = viewModel::clearNotice,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                        )
+
                         // ==========================================
                         // TAB 0: CONTROLS (Pure, Focused Player)
                         // ==========================================
                         if (selectedTabIndex == 0) {
                             val canControl = uiState.isHost || uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE
+                            // Resuming is always allowed; only pausing is locked during the cooldown.
+                            val canPlayPause = canControl && !(locked && uiState.isPlaying)
 
                             Column(
                                 modifier = Modifier
@@ -646,7 +676,7 @@ fun JamScreen(
                                 ) {
                                     IconButton(
                                         onClick = { viewModel.skipPrevious() },
-                                        enabled = canControl,
+                                        enabled = canControl && !locked,
                                         modifier = Modifier.size(50.dp),
                                     ) {
                                         Icon(
@@ -663,8 +693,8 @@ fun JamScreen(
                                         modifier = Modifier
                                             .size(64.dp)
                                             .clip(CircleShape)
-                                            .clickable(enabled = canControl) { viewModel.togglePlayback() },
-                                        color = if (canControl) jamAccent else jamAccent.copy(alpha = 0.4f),
+                                            .clickable(enabled = canPlayPause) { viewModel.togglePlayback() },
+                                        color = if (canPlayPause) jamAccent else jamAccent.copy(alpha = 0.4f),
                                         shape = CircleShape,
                                         shadowElevation = 2.dp,
                                     ) {
@@ -682,7 +712,7 @@ fun JamScreen(
 
                                     IconButton(
                                         onClick = { viewModel.skipNext() },
-                                        enabled = canControl,
+                                        enabled = canControl && !locked,
                                         modifier = Modifier.size(50.dp),
                                     ) {
                                         Icon(
@@ -694,6 +724,8 @@ fun JamScreen(
                                     }
                                 }
 
+                                JamCooldownHint(cooldownUntil, Modifier.padding(top = 8.dp))
+
                                 Spacer(modifier = Modifier.height(24.dp))
 
                                 // Mode Chip (Tap to toggle if host)
@@ -702,7 +734,7 @@ fun JamScreen(
                                     color = jamAccentContainer,
                                     modifier = Modifier
                                         .clip(CircleShape)
-                                        .clickable(enabled = uiState.isHost) {
+                                        .clickable(enabled = uiState.isHost && !uiState.isRadio) {
                                             val newMode = if (uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE)
                                                 JamProtocolConstants.MODE_HOST_ONLY else JamProtocolConstants.MODE_COLLABORATIVE
                                             viewModel.changeActiveRoomMode(newMode)
@@ -720,16 +752,26 @@ fun JamScreen(
                                                 .background(liveGreen)
                                         )
                                         Text(
-                                            text = if (uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE)
-                                                "Collaborative \u2022 Anyone can control"
-                                            else
-                                                "Host Only \u2022 Only host controls",
+                                            text = when {
+                                                uiState.isRadio && uiState.stationAuto -> "Live station \u2022 Auto radio"
+                                                uiState.isRadio -> "Live station \u2022 Admin in control"
+                                                uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE -> "Collaborative \u2022 Anyone can control"
+                                                else -> "Host Only \u2022 Only host controls"
+                                            },
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Medium,
                                             color = onJamAccentContainer,
                                         )
                                     }
                                 }
+
+                                Spacer(modifier = Modifier.height(24.dp))
+
+                                JamUpNext(
+                                    queue = uiState.queue,
+                                    isAdmin = uiState.isMainHost,
+                                    accent = jamAccent,
+                                )
                             }
                         }
 
@@ -768,7 +810,7 @@ fun JamScreen(
                                         }
                                     } else {
                                         items(chatMessages, key = { it.id.ifEmpty { it.timestamp.toString() + it.userId } }) { msg ->
-                                            val isMe = msg.userName == uiState.pendingDisplayName
+                                            val isMe = msg.userId == uiState.myUserId
                                             Column(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 horizontalAlignment = if (isMe) Alignment.End else Alignment.Start,
@@ -793,25 +835,48 @@ fun JamScreen(
                                                     }
                                                 }
                                                 Spacer(modifier = Modifier.height(2.dp))
-                                                Surface(
-                                                    shape = RoundedCornerShape(
-                                                        topStart = 14.dp,
-                                                        topEnd = 14.dp,
-                                                        bottomStart = if (isMe) 14.dp else 2.dp,
-                                                        bottomEnd = if (isMe) 2.dp else 14.dp,
-                                                    ),
-                                                    color = if (isMe) jamAccent else MaterialTheme.colorScheme.surfaceVariant,
-                                                ) {
-                                                    Text(
-                                                        text = msg.text,
-                                                        fontSize = 14.sp,
-                                                        color = if (isMe) onJamAccent else MaterialTheme.colorScheme.onSurface,
-                                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                                    )
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    if (isMe) {
+                                                        IconButton(onClick = { replyTo = msg }, modifier = Modifier.size(32.dp)) {
+                                                            Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = "Reply", modifier = Modifier.size(16.dp))
+                                                        }
+                                                    }
+                                                    Surface(
+                                                        shape = RoundedCornerShape(
+                                                            topStart = 14.dp,
+                                                            topEnd = 14.dp,
+                                                            bottomStart = if (isMe) 14.dp else 2.dp,
+                                                            bottomEnd = if (isMe) 2.dp else 14.dp,
+                                                        ),
+                                                        color = if (isMe) jamAccent else MaterialTheme.colorScheme.surfaceVariant,
+                                                        modifier = Modifier.weight(1f, fill = false),
+                                                    ) {
+                                                        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                                                            msg.replyTo?.let { ReplyQuote(it, if (isMe) onJamAccent else jamAccent) }
+                                                            Text(
+                                                                text = msg.text,
+                                                                fontSize = 14.sp,
+                                                                color = if (isMe) onJamAccent else MaterialTheme.colorScheme.onSurface,
+                                                            )
+                                                        }
+                                                    }
+                                                    if (!isMe) {
+                                                        IconButton(onClick = { replyTo = msg }, modifier = Modifier.size(32.dp)) {
+                                                            Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = "Reply", modifier = Modifier.size(16.dp))
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
                                     }
+                                }
+
+                                replyTo?.let { target ->
+                                    ReplyPreviewBar(
+                                        message = target,
+                                        accent = jamAccent,
+                                        onCancel = { replyTo = null },
+                                    )
                                 }
 
                                 // Minimalist floating pill chat input
@@ -838,8 +903,9 @@ fun JamScreen(
                                             keyboardActions = KeyboardActions(
                                                 onSend = {
                                                     if (chatInputText.isNotBlank()) {
-                                                        viewModel.sendChat(chatInputText)
+                                                        viewModel.sendChat(chatInputText, replyTo?.id)
                                                         chatInputText = ""
+                                                        replyTo = null
                                                     }
                                                 }
                                             ),
@@ -855,8 +921,9 @@ fun JamScreen(
                                                 .clip(CircleShape)
                                                 .clickable {
                                                     if (chatInputText.isNotBlank()) {
-                                                        viewModel.sendChat(chatInputText)
+                                                        viewModel.sendChat(chatInputText, replyTo?.id)
                                                         chatInputText = ""
+                                                        replyTo = null
                                                     }
                                                 },
                                             shape = CircleShape,
@@ -891,7 +958,7 @@ fun JamScreen(
                                 Spacer(modifier = Modifier.height(12.dp))
 
                                 Text(
-                                    text = "ROOM CODE",
+                                    text = if (uiState.roomName.isEmpty()) "ROOM CODE" else "${uiState.roomName.uppercase()} · ROOM CODE",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -978,7 +1045,11 @@ fun JamScreen(
 
                                     if (uiState.isHost) {
                                         Text(
-                                            text = "You are Host",
+                                            text = when {
+                                                uiState.isRadio -> "You are the station admin"
+                                                uiState.isMainHost -> "You are Host"
+                                                else -> "You are Co-host"
+                                            },
                                             fontSize = 12.sp,
                                             color = jamAccent,
                                             fontWeight = FontWeight.Bold,
@@ -1023,7 +1094,7 @@ fun JamScreen(
                                             Spacer(modifier = Modifier.width(12.dp))
 
                                             Text(
-                                                text = p.name + if (p.name == uiState.pendingDisplayName) " (You)" else "",
+                                                text = p.name + if (p.userId == uiState.myUserId) " (You)" else "",
                                                 fontWeight = FontWeight.SemiBold,
                                                 fontSize = 14.sp,
                                                 modifier = Modifier.weight(1f),
@@ -1031,7 +1102,7 @@ fun JamScreen(
 
                                             if (p.isHost) {
                                                 Text(
-                                                    text = "HOST",
+                                                    text = roleBadge(p, uiState.isRadio),
                                                     color = jamAccent,
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.ExtraBold,
@@ -1041,6 +1112,17 @@ fun JamScreen(
                                                         .padding(horizontal = 6.dp, vertical = 3.dp),
                                                 )
                                             }
+                                            HostActionButton(
+                                                participant = p,
+                                                myUserId = uiState.myUserId,
+                                                isMainHost = uiState.isMainHost,
+                                                coHostId = uiState.coHostId,
+                                                accent = jamAccent,
+                                                onGrant = viewModel::grantHost,
+                                                onRevoke = viewModel::revokeHost,
+                                                isRadio = uiState.isRadio,
+                                                onMakeAdmin = viewModel::makeAdmin,
+                                            )
                                         }
                                     }
                                 }

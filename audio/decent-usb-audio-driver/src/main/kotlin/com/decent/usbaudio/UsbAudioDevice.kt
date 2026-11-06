@@ -79,6 +79,18 @@ class UsbAudioDevice private constructor(private val context: Context) {
         private var instance: UsbAudioDevice? = null
 
         /**
+         * DACs that get their async feedback endpoint polled while streaming.
+         * Opt-in per device because polling disrupted ISO timing on other
+         * hardware (#161).
+         */
+        private val CONTINUOUS_FEEDBACK_DEVICES = setOf(
+            0x2fc6 to 0xf82d, // Luxury & Precision UAC Device (#474)
+        )
+
+        fun needsContinuousFeedback(vendorId: Int, productId: Int): Boolean =
+            (vendorId to productId) in CONTINUOUS_FEEDBACK_DEVICES
+
+        /**
          * Get the singleton instance. All callers share the same connection
          * share the same connection and fd, preventing ENODEV from competing opens.
          */
@@ -409,6 +421,20 @@ class UsbAudioDevice private constructor(private val context: Context) {
     /** Optional CLOCK_SELECTOR (0x0B) entity ID and its 1-indexed input pin -> clockSourceId list. */
     private var parsedClockSelectorId: Int = -1
     private var parsedClockSelectorPins: List<Int> = emptyList()
+    /**
+     * Clock Source IDs that actually drive the PLAYBACK path: the playback
+     * AS interface's bTerminalLink -> USB-streaming Input Terminal ->
+     * bCSourceID, followed through Clock Multipliers / Selectors. Empty when
+     * the topology can't be resolved (then every parsed source is tried).
+     *
+     * DACs with a microphone/capture path expose more than one Clock Source
+     * (e.g. CrinEar Protocol Micro: 0x1B for the mic, 0x1E for playback).
+     * Setting/reading the first one in descriptor order programmed the mic
+     * clock and then "verified" it, leaving the real playback clock at its
+     * old rate; on an adaptive endpoint that underruns continuously and
+     * sounds distorted/hissy.
+     */
+    private var playbackClockSourceIds: List<Int> = emptyList()
     /** Active clock source ID last selected via setSampleRate(). */
     @Volatile private var activeClockSourceId: Int = -1
     /** Per-Clock-Source supported sample rates discovered via GET_RANGE. */
@@ -471,16 +497,88 @@ class UsbAudioDevice private constructor(private val context: Context) {
             i += bLength
         }
 
-        parsedClockSourceIds = sources
+        val playbackClocks = resolvePlaybackClockSources(raw, sources)
+        // Playback-path clocks first, so every "try in order" loop below
+        // (set / read / range / valid) hits the right entity first.
+        parsedClockSourceIds = (playbackClocks + sources).distinct()
+        playbackClockSourceIds = playbackClocks
         parsedClockSelectorId = selectorId
         parsedClockSelectorPins = selectorPins
-        val primary = sources.firstOrNull() ?: -1
+        if (playbackClocks.isNotEmpty()) {
+            Log.i(TAG, "parseClockSourceId: playback clock(s)=${playbackClocks.map { "0x" + it.toString(16) }} of ${sources.map { "0x" + it.toString(16) }}")
+            trace("playbackClock=${playbackClocks.joinToString(",") { "0x" + it.toString(16) }} allClocks=${sources.joinToString(",") { "0x" + it.toString(16) }}")
+        }
+        val primary = parsedClockSourceIds.firstOrNull() ?: -1
         activeClockSourceId = primary
         if (primary < 0) {
             Log.w(TAG, "parseClockSourceId: no CLOCK_SOURCE descriptor found")
         }
         return primary
     }
+
+    /**
+     * Walks the UAC2 topology from the playback streaming interface to the
+     * Clock Source(s) feeding it. Returns an empty list when anything is
+     * missing or ambiguous; callers then fall back to descriptor order.
+     */
+    private fun resolvePlaybackClockSources(raw: ByteArray, allSources: List<Int>): List<Int> = runCatching {
+        if (allSources.size <= 1) return@runCatching allSources
+        val inputTerminalClock = mutableMapOf<Int, Int>()   // terminal ID -> bCSourceID
+        val multiplierSource = mutableMapOf<Int, Int>()     // multiplier ID -> bCSourceID
+        val selectorInputs = mutableMapOf<Int, List<Int>>() // selector ID -> pins
+        var terminalLink = -1
+        var inAudioControl = false
+        var currentIface = -1
+        var i = 0
+        while (i + 1 < raw.size) {
+            val bLength = raw[i].toInt() and 0xFF
+            if (bLength < 2 || i + bLength > raw.size) break
+            val type = raw[i + 1].toInt() and 0xFF
+            if (type == 0x04 && bLength >= 9) {
+                currentIface = raw[i + 2].toInt() and 0xFF
+                val cls = raw[i + 5].toInt() and 0xFF
+                val sub = raw[i + 6].toInt() and 0xFF
+                inAudioControl = cls == 1 && sub == 1
+            } else if (type == 0x24 && bLength >= 4) {
+                val subtype = raw[i + 2].toInt() and 0xFF
+                if (inAudioControl) {
+                    val id = raw[i + 3].toInt() and 0xFF
+                    when (subtype) {
+                        // INPUT_TERMINAL: [.., bTerminalID, wTerminalType(2), bAssocTerminal, bCSourceID, ..]
+                        0x02 -> if (bLength >= 8) inputTerminalClock[id] = raw[i + 7].toInt() and 0xFF
+                        // CLOCK_SELECTOR: [.., bClockID, bNrInPins, baCSourceID...]
+                        0x0B -> if (bLength >= 5) {
+                            val n = raw[i + 4].toInt() and 0xFF
+                            selectorInputs[id] = (0 until n).mapNotNull { p ->
+                                (i + 5 + p).takeIf { it < i + bLength }?.let { raw[it].toInt() and 0xFF }
+                            }
+                        }
+                        // CLOCK_MULTIPLIER: [.., bClockID, bCSourceID, ..]
+                        0x0C -> if (bLength >= 5) multiplierSource[id] = raw[i + 4].toInt() and 0xFF
+                    }
+                } else if (subtype == 0x01 && bLength >= 4 && terminalLink < 0 &&
+                    playbackInterfaceId >= 0 && currentIface == playbackInterfaceId
+                ) {
+                    // AS_GENERAL of the playback interface: [.., bTerminalLink, ..]
+                    terminalLink = raw[i + 3].toInt() and 0xFF
+                }
+            }
+            i += bLength
+        }
+        val start = inputTerminalClock[terminalLink] ?: return@runCatching emptyList()
+        val result = linkedSetOf<Int>()
+        val seen = mutableSetOf<Int>()
+        fun walk(id: Int) {
+            if (!seen.add(id)) return
+            when {
+                id in allSources -> result += id
+                id in multiplierSource -> walk(multiplierSource.getValue(id))
+                id in selectorInputs -> selectorInputs.getValue(id).forEach { walk(it) }
+            }
+        }
+        walk(start)
+        result.toList()
+    }.getOrDefault(emptyList())
 
     /**
      * Parse raw USB descriptors to find the best (highest bit depth) alt setting
@@ -714,6 +812,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
         cachedDeviceInfo = null
         clockSourceRateMap.clear()
         parsedClockSourceIds = emptyList()
+        playbackClockSourceIds = emptyList()
         parsedClockSelectorId = -1
         parsedClockSelectorPins = emptyList()
         activeClockSourceId = -1
@@ -909,12 +1008,23 @@ class UsbAudioDevice private constructor(private val context: Context) {
 
         // Prioritize the Clock Source entity whose GET_RANGE explicitly includes sampleRateHz
         // (critical for dual-oscillator DACs with separate 44.1kHz and 48kHz crystals).
+        // When several clocks accept the rate, prefer the one with the widest
+        // range: a clock fixed to a single rate (typically 48 kHz) is almost
+        // always the capture/mic path (e.g. KEFINE Loric: 0x3={48k} vs
+        // 0x6={44.1k..384k}). Only matters if the topology walk failed.
         val matchingClockSources = clockSourceRateMap.entries
             .filter { sampleRateHz in it.value }
+            .sortedByDescending { it.value.size }
             .map { it.key }
         val detectedId = cachedDeviceInfo?.clockSourceId ?: -1
+        val playbackClocks = playbackClockSourceIds
         val clockSourceIds = buildList {
-            if (matchingClockSources.isNotEmpty()) {
+            if (playbackClocks.isNotEmpty()) {
+                // Known topology: only ever program the playback path. A
+                // capture-path clock accepting the rate proves nothing.
+                addAll(matchingClockSources.filter { it in playbackClocks })
+                addAll(playbackClocks)
+            } else if (matchingClockSources.isNotEmpty()) {
                 addAll(matchingClockSources)
             } else if (parsedClockSourceIds.isNotEmpty()) {
                 addAll(parsedClockSourceIds)

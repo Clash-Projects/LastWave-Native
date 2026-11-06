@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="moods_title">Moods &amp; genres</string>
+    <string name="moods_open_all">Browse all moods and genres</string>
+    <string name="moods_load_failed">Couldn’t load this page. Try again.</string>
+    <string name="moods_empty">Nothing here right now. Try again later.</string>
+    <string name="moods_retry">Retry</string>
+    <string name="moods_loading">Loading moods and genres</string>
+</resources>

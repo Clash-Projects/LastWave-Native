@@ -34,7 +34,7 @@ import javax.inject.Inject
 
 // Last.fm redirects its Custom Tab to this Activity after approval.
 @AndroidEntryPoint
-class MainActivity : androidx.fragment.app.FragmentActivity() {
+open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
 
     @Inject
     lateinit var lastFmAuthCallback: LastFmAuthCallbackCoordinator
@@ -309,9 +309,19 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 
     private fun handleNavigationIntent(intent: Intent?) {
         if (intent == null) return
+        if (intent.getStringExtra("widget_navigation") == "search") {
+            runCatching { appRouteNavigator.get().navigateTo(Screen.Search.route) }
+            return
+        }
+        if (intent.action == com.lastwave.app.widget.wave.WaveWidgetNavigation.ACTION_OPEN_NOW_PLAYING) {
+            com.lastwave.app.widget.wave.WaveWidgetNavigation.requestOpen()
+            return
+        }
         val uri = intent.data
-        if (uri?.scheme == "lastwave" && (uri.host == "jam" || uri.host == "sync")) {
-            val code = uri.getQueryParameter("code")
+        val isJamDeepLink = (uri?.scheme == "lastwave" && (uri.host == "jam" || uri.host == "sync")) ||
+            ((uri?.scheme == "https" || uri?.scheme == "http") && uri?.host == "jam.clashprojects.qd.je")
+        if (isJamDeepLink) {
+            val code = uri?.getQueryParameter("code")
             runCatching { appRouteNavigator.get().navigateTo(Screen.Jam.createRoute(code)) }
             return
         }
@@ -379,3 +389,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         var hasPromptedAudioThisSession = false
     }
 }
+
+/** Legacy alias class retained for backwards compatibility with any explicit intents. */
+@AndroidEntryPoint
+class MainActivity : MainShellActivity()

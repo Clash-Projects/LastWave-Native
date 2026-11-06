@@ -16,6 +16,10 @@ data class YouTubeVideoStream(
     val durationMs: Long? = null,
     val requestHeaders: Map<String, String> = emptyMap(),
     val expiresAtEpochMs: Long? = null,
+    /** Byte range of the init segment, such as "0-740". Present on adaptive formats only. */
+    val initRange: String? = null,
+    /** Byte range of the segment index, such as "741-1500". Present on adaptive formats only. */
+    val indexRange: String? = null,
 ) {
     val displayQuality: String
         get() = when (height) {
@@ -42,6 +46,11 @@ data class SyncedVideoStreamBundle(
     val availableStreams: List<YouTubeVideoStream>,
     val pairedAudioStreamUrl: String? = null,
     val pairedAudioHeaders: Map<String, String> = emptyMap(),
+    val pairedAudioBitrate: Int? = null,
+    /** The InnerTube client behind these links; null for NewPipe. */
+    val clientName: String? = null,
     val introOffsetMs: Long = 0L,
     val isDirectOmv: Boolean = false,
+    /** Local DASH manifest as a data URI, which lets Auto quality follow measured bandwidth. */
+    val adaptiveManifestUri: String? = null,
 )

@@ -16,24 +16,32 @@ import kotlinx.serialization.json.putJsonArray
  *
  * Ported field for field from the desktop client
  * (`LastWave-Desktop/lib/features/presence/discord_presence_service.dart`) so a
- * user's profile reads identically on both apps: same application id, same
- * `type`, same line layout, same two buttons, same asset keys, same clip
- * lengths. Only the transport differs (see [DiscordSdkTransport]) — on Android
- * the Discord app itself hosts the endpoint, so there is no `discord-ipc-N`
- * socket to hand-roll the way the desktop build does.
+ * user's profile reads the same on both apps: same application id, same `type`,
+ * same line layout, same two buttons, same asset slots, same clip lengths. Two
+ * Android-specific deviations keep the card readable without a mouse (see
+ * [activityName] and [stateLine]). Only the transport differs (see
+ * [DiscordIpcTransport]) — on Android the Discord app itself hosts the endpoint,
+ * so there is no `discord-ipc-N` socket to hand-roll the way the desktop build
+ * does.
  *
  * The card one [buildActivity] call produces:
  * ```
- *   Listening to LastWave            <- type 2 (listening) + name
+ *   Listening to LastWave · Song title  <- type 2 + name (see [activityName])
  *   ┌────┐  Song title               <- details
- *   │art │  Artist                   <- state, first line
- *   └────┘   • Hi-Res Lossless • 24-bit • 96 kHz    <- state, second line
- *           ▁▁▁▁▁▁ 1:04 / 3:47       <- from the timestamps
+ *   │art │  Artist · Hi-Res Lossless · 24-bit · 96 kHz   <- state, one line
+ *   │  ○ │  (brand badge)            <- small_image
+ *   └────┘  ▁▁▁▁▁▁ 1:04 / 3:47       <- from the timestamps
  *   [ Listen On LastWave ]           <- opens the track
  *   [ Get LastWave ]                 <- opens this project's releases
  * ```
  *
- * One cover art only: no small_image/small_text play/pause badge is ever sent.
+ * `status_display_type` is deliberately left unset so the compact member-list
+ * line falls back to the activity name: with [activityName] that reads
+ * "Listening to LastWave · <song>". The audio-format line rides in `state` on
+ * the same line as the artist: Discord on Android collapses a newline in
+ * `state` to an ellipsis and has no hover, so a separate line (or only the
+ * `small_text` tooltip) would hide the quality on mobile. The badge tooltip
+ * still carries it for desktop viewers.
  *
  * Deliberately free of Android and Discord SDK types: every rule here is pure,
  * so the format is unit-testable on the JVM and can never drift from the
@@ -55,6 +63,10 @@ object DiscordPresence {
      */
     const val APPLICATION_ID = "1552563991426105414"
 
+    /**
+     * Repo the card's buttons open — this Android project, so "Get LastWave"
+     * lands on the native build.
+     */
     const val PROJECT_URL = "https://github.com/Clash-Projects/LastWave-Native"
     const val RELEASES_URL = "$PROJECT_URL/releases"
     const val DEFAULT_BUTTON_1 = "Listen On LastWave"
@@ -62,6 +74,8 @@ object DiscordPresence {
 
     /** Discord truncates nothing for us: over-long fields are dropped. */
     const val MAX_FIELD = 120
+
+    /** Cap for the two-line subtitle (artist + quality). */
     const val MAX_STATE = 125
 
     /**
@@ -79,8 +93,14 @@ object DiscordPresence {
      */
     const val RETRY_INTERVAL_MS = 15_000L
 
-    /** Asset key the desktop client uploads as the LastWave logo. */
-    const val FALLBACK_ASSET = "logo"
+    /**
+     * Brand mark for the card's small badge and the fallback large image —
+     * this project's hosted logo URL. Discord resolves https URLs in asset
+     * slots exactly like Rich Presence asset keys, so no Developer Portal
+     * upload is required.
+     */
+    const val DISCORD_LOGO_URL =
+        "https://raw.githubusercontent.com/Clash-Projects/LastWave-Native/main/lastwave_logo.png"
 
     /** 2 = "Listening to". */
     const val TYPE_LISTENING = 2
@@ -101,17 +121,36 @@ object DiscordPresence {
         return if (trimmed.length > limit) trimmed.substring(0, limit - 1) + "..." else trimmed
     }
 
-    /** The two-line status line: artist, then the measured quality. */
-    fun stateLine(artist: String, album: String?, title: String, quality: String): String {
-        val head = artist.trim().ifEmpty { album?.trim()?.takeIf { it.isNotEmpty() } ?: "LastWave" }
-        val raw = if (quality.isEmpty()) clip(head) else clip(head) + "\n \u2022 " + quality
-        return if (raw.length > MAX_STATE) raw.substring(0, MAX_STATE - 1) + "..." else raw
+    /**
+     * The activity name. Discord prefixes it with "Listening to" in the member
+     * list, so appending the track makes the compact line read
+     * `Listening to LastWave · <song>`. The plain app name is used when there
+     * is no track text.
+     */
+    fun activityName(title: String): String {
+        val trimmed = title.trim()
+        return if (trimmed.isEmpty()) "LastWave" else "LastWave \u00B7 " + clip(trimmed)
     }
 
     /**
-     * "Hi-Res Lossless • 24-bit • 96 kHz • ATMOS" — every part comes from a
-     * value the stream reported. Unknown depth or rate is omitted, never
-     * inferred into a plausible-looking number.
+     * The card's subtitle: the track's artist, then the measured quality.
+     *
+     * They must share one line. Discord's mobile clients do not render a
+     * newline in `state` — they show the first line and an ellipsis, which is
+     * exactly how the quality disappeared from the Android card (mobile has no
+     * hover for the badge tooltip either). A single `artist · quality` line is
+     * visible on both platforms, so the audio format never depends on hovering.
+     */
+    fun stateLine(artist: String, album: String?, quality: String): String {
+        val head = artist.trim().ifEmpty { album?.trim()?.takeIf { it.isNotEmpty() } ?: "LastWave" }
+        return clip(if (quality.isEmpty()) head else "$head \u00B7 $quality", MAX_STATE)
+    }
+
+    /**
+     * "Hi-Res Lossless · 24-bit · 96 kHz · ATMOS" — every part comes from a
+     * value the stream reported, joined exactly like the desktop client's line.
+     * Unknown depth or rate is omitted, never inferred into a plausible-looking
+     * number.
      */
     fun qualityLine(state: MusicPlayerState): String {
         val parts = mutableListOf<String>()
@@ -123,28 +162,25 @@ object DiscordPresence {
         if (depth > 0) parts += "$depth-bit"
         if (rateKhz > 0.0) parts += rateLabel(rateKhz)
         spatialIndicatorLabel(state.audioCodec)?.let { parts += it }
-        return parts.joinToString(" \u2022 ")
+        return parts.joinToString(" \u00B7 ")
     }
 
     /** `96 kHz`, `44.1 kHz` — whole rates drop the decimal, as on desktop. */
     fun rateLabel(rateKhz: Double): String {
         val rounded = Math.round(rateKhz).toInt()
-        return if (kotlin.math.abs(rateKhz - rounded) < 0.05) "$rounded kHz" else "%.1f kHz".format(rateKhz)
+        return if (kotlin.math.abs(rateKhz - rounded) < 0.05) "$rounded kHz"
+        else String.format(java.util.Locale.US, "%.1f kHz", rateKhz)
     }
 
     /**
-     * Cover Discord can actually fetch: the track's own http(s) artwork,
-     * else the video thumbnail, else the uploaded logo key. Pure so the
-     * format stays unit-testable.
+     * Cover Discord can actually fetch: the track's own http(s) artwork, else
+     * the hosted logo — exactly what the desktop client sends. A local file
+     * path cannot be fetched by Discord, and the desktop never substitutes a
+     * video thumbnail. Pure so the format stays unit-testable.
      */
-    fun largeImage(artworkUrl: String?, videoId: String?): String {
+    fun largeImage(artworkUrl: String?): String {
         val artwork = artworkUrl?.trim().orEmpty()
-        val vid = videoId?.trim().orEmpty()
-        return when {
-            artwork.startsWith("http://") || artwork.startsWith("https://") -> artwork
-            vid.isNotEmpty() -> "https://i.ytimg.com/vi/$vid/hqdefault.jpg"
-            else -> FALLBACK_ASSET
-        }
+        return if (artwork.startsWith("http://") || artwork.startsWith("https://")) artwork else DISCORD_LOGO_URL
     }
 
     /**
@@ -189,6 +225,9 @@ object DiscordPresence {
             append(track.videoId.orEmpty()).append('|')
             append(track.title).append('|')
             append(track.artist).append('|')
+            // Album feeds the card's large-image tooltip; a change there is a
+            // visible change and must repush.
+            append(track.album.orEmpty()).append('|')
             // Artwork is part of identity: provider art typically resolves
             // after playback starts, and its arrival must repush the card
             // instead of being deduped away as "unchanged".
@@ -235,17 +274,24 @@ object DiscordPresence {
 
         val album = track.album?.trim().orEmpty()
         val videoId = track.videoId?.trim().orEmpty()
-        val largeImage = largeImage(track.artworkUrl, track.videoId)
+        val quality = qualityLine(state)
+        // The desktop card keeps the subtitle for the artist and parks the
+        // audio-format line in the brand badge's tooltip.
+        val smallText = clip(if (quality.isEmpty()) "LastWave" else "LastWave \u00B7 $quality")
 
         return buildJsonObject {
             put("type", TYPE_LISTENING)
-            put("name", "LastWave")
+            put("name", activityName(title))
             put("details", title)
-            put("state", stateLine(track.artist, track.album, track.title, qualityLine(state)))
+            put("state", stateLine(track.artist, track.album, quality))
             timestamps?.let { put("timestamps", it) }
             put("assets", buildJsonObject {
-                put("large_image", largeImage)
+                put("large_image", largeImage(track.artworkUrl))
                 put("large_text", if (album.isEmpty()) title else clip(album))
+                // Brand badge, drawn as the little corner overlay; its tooltip
+                // carries the audio-format line, exactly as on desktop.
+                put("small_image", DISCORD_LOGO_URL)
+                put("small_text", smallText)
             })
             putJsonArray("buttons") {
                 // Buttons are plain URLs and cannot detect the app, so the

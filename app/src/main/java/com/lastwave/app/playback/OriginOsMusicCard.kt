@@ -27,6 +27,7 @@ internal object OriginOsMusicCard {
     private const val EVENT_PLAY_CONTROL = 1L
     private const val EVENT_MUSIC_INFO = 1L shl 1
     private const val EVENT_MUSIC_IMAGE = 1L shl 2
+    private const val EVENT_LYRICS = 1L shl 3
     private const val EVENT_SEEK_POSITION = 1L shl 4
     private const val EVENT_FAVORITE = 1L shl 6
     private const val EVENT_LOOP_MODE = 1L shl 7
@@ -34,10 +35,47 @@ internal object OriginOsMusicCard {
     private const val EVENT_LIST_FAVORITE = 1L shl 9
     private const val EVENT_LIST_LOCAL = 1L shl 10
 
-    /** Lyrics (bit 3) stay with LastWave's own lyrics screen. */
+    /** Everything except custom colours (bit 5): the card keeps its own palette. */
     const val SUPPORTED_EVENTS = EVENT_PLAY_CONTROL or EVENT_MUSIC_INFO or EVENT_MUSIC_IMAGE or
-        EVENT_SEEK_POSITION or EVENT_FAVORITE or EVENT_LOOP_MODE or
+        EVENT_LYRICS or EVENT_SEEK_POSITION or EVENT_FAVORITE or EVENT_LOOP_MODE or
         EVENT_LIST_CURRENT or EVENT_LIST_FAVORITE or EVENT_LIST_LOCAL
+
+    // Lyrics for the card / Origin Island arrive through the session extras.
+    // The misspellings ("meida", "meidia") are the card's own key names and
+    // must stay exactly as they are.
+    const val EXTRA_KEY_ACTION = "vivomusicmix.meida.extra.key.action"
+    const val ACTION_LRC_CHANGE = "vivomusicmix.extra.lrc_change"
+    const val EXTRA_KEY_LYRIC = "vivomusicmix.extra.key.lyric"
+    const val EXTRA_KEY_MEDIA_ID = "vivomusicmix.extra.key.meidia_id"
+
+    /** The card drops lyrics it has not heard about for a while; resend this often. */
+    const val LYRICS_RESEND_INTERVAL_MS = 25_000L
+
+    /** Only vivo / iQOO run the card; other phones never fetch lyrics for it. */
+    fun isSupportedDevice(manufacturer: String = android.os.Build.MANUFACTURER): Boolean {
+        val m = manufacturer.lowercase()
+        return m.contains("vivo") || m.contains("iqoo")
+    }
+
+    /** Synced lines as whole-song LRC (`[mm:ss.xx]text`), or null without timed lines. */
+    fun lrcOf(lines: List<com.lastwave.app.data.lyrics.LyricLine>): String? {
+        val timed = lines.filter { it.timeMs >= 0 }
+        if (timed.isEmpty() || timed.all { it.timeMs == 0L }) return null
+        return timed.joinToString("\n") { line ->
+            val totalCs = line.timeMs / 10
+            val minutes = totalCs / 6000
+            val seconds = (totalCs / 100) % 60
+            val centis = totalCs % 100
+            "[%02d:%02d.%02d]%s".format(java.util.Locale.ROOT, minutes, seconds, centis, line.text.replace('\n', ' '))
+        }
+    }
+
+    /** The extras that hand [lrc] for the track with metadata media id [mediaId] to the card. */
+    fun lyricsExtras(mediaId: String, lrc: String): Bundle = Bundle().apply {
+        putString(EXTRA_KEY_ACTION, ACTION_LRC_CHANGE)
+        putString(EXTRA_KEY_LYRIC, lrc)
+        putString(EXTRA_KEY_MEDIA_ID, mediaId)
+    }
 
     const val KEY_LOOP_MODE = "vivomusicmix.media.metadata.LOOP_MODE"
     const val LOOP_MODE_LIST = 1

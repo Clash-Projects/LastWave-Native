@@ -3,12 +3,6 @@ package com.lastwave.app.widget
 import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffXfermode
-import android.graphics.RectF
 import android.os.Build
 import android.util.SizeF
 import android.view.View
@@ -16,7 +10,6 @@ import android.widget.RemoteViews
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.lastwave.app.R
-import java.io.File
 
 /**
  * Multi-size responsive RemoteViews factory. One rule: this NEVER throws.
@@ -79,15 +72,14 @@ internal object WidgetViews {
         memoryArt: Bitmap? = null,
     ): RemoteViews {
         val resolved = resolve(context)
-        val artBitmap = memoryArt?.let { if (!it.isRecycled) roundedCorners(it, 0.22f) else null }
-            ?: resolveArtBitmap(resolved.snapshot.artPath)
+        val themed = WidgetTheme.resolve(resolved.snapshot.artPath, memoryArt)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val sizeMap = mapOf(
-                SizeF(120f, 50f) to buildLayout(context, R.layout.widget_now_playing_compact, resolved, appWidgetId, eqFrame, progressOverride, artBitmap),
-                SizeF(220f, 50f) to buildLayout(context, R.layout.widget_now_playing, resolved, appWidgetId, eqFrame, progressOverride, artBitmap),
-                SizeF(120f, 115f) to buildLayout(context, R.layout.widget_now_playing_square, resolved, appWidgetId, eqFrame, progressOverride, artBitmap),
-                SizeF(250f, 115f) to buildLayout(context, R.layout.widget_now_playing_expanded, resolved, appWidgetId, eqFrame, progressOverride, artBitmap),
+                SizeF(120f, 50f) to buildLayout(context, R.layout.widget_now_playing_compact, resolved, appWidgetId, eqFrame, progressOverride, themed),
+                SizeF(220f, 50f) to buildLayout(context, R.layout.widget_now_playing, resolved, appWidgetId, eqFrame, progressOverride, themed),
+                SizeF(120f, 115f) to buildLayout(context, R.layout.widget_now_playing_square, resolved, appWidgetId, eqFrame, progressOverride, themed),
+                SizeF(250f, 115f) to buildLayout(context, R.layout.widget_now_playing_expanded, resolved, appWidgetId, eqFrame, progressOverride, themed),
             )
             return RemoteViews(sizeMap)
         }
@@ -101,7 +93,7 @@ internal object WidgetViews {
             width in 1 until 220 -> R.layout.widget_now_playing_compact
             else -> R.layout.widget_now_playing
         }
-        return buildLayout(context, layoutId, resolved, appWidgetId, eqFrame, progressOverride, artBitmap)
+        return buildLayout(context, layoutId, resolved, appWidgetId, eqFrame, progressOverride, themed)
     }
 
     private fun buildLayout(
@@ -111,7 +103,7 @@ internal object WidgetViews {
         appWidgetId: Int,
         eqFrame: Int?,
         progressOverride: Float?,
-        artBitmap: Bitmap?,
+        themed: WidgetTheme.Themed,
     ): RemoteViews {
         val views = RemoteViews(context.packageName, layoutId)
         bind(
@@ -121,7 +113,7 @@ internal object WidgetViews {
             appWidgetId = appWidgetId,
             eqFrame = eqFrame,
             progressOverride = progressOverride,
-            artBitmap = artBitmap,
+            themed = themed,
             isCompact = (layoutId == R.layout.widget_now_playing_compact),
         )
         return views
@@ -134,7 +126,7 @@ internal object WidgetViews {
         appWidgetId: Int,
         eqFrame: Int?,
         progressOverride: Float?,
-        artBitmap: Bitmap?,
+        themed: WidgetTheme.Themed,
         isCompact: Boolean,
     ) {
         val snapshot = resolved.snapshot
@@ -207,56 +199,9 @@ internal object WidgetViews {
             views.setInt(R.id.widget_next, "setColorFilter", tint)
         }
 
-        // Dynamic color extraction per song from album art
-        if (artBitmap != null && !artBitmap.isRecycled) {
-            runCatching {
-                val palette = androidx.palette.graphics.Palette.from(artBitmap).maximumColorCount(16).generate()
-                val swatch = palette.vibrantSwatch
-                    ?: palette.dominantSwatch
-                    ?: palette.mutedSwatch
-                if (swatch != null) {
-                    val primaryColor = swatch.rgb
-                    val onPrimaryColor = swatch.titleTextColor
-
-                    views.setTextColor(R.id.widget_state, onPrimaryColor)
-                    views.setInt(R.id.widget_play_pause, "setColorFilter", onPrimaryColor)
-                    views.setInt(R.id.widget_next, "setColorFilter", onPrimaryColor)
-                    views.setInt(R.id.widget_prev, "setColorFilter", primaryColor)
-
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        views.setColorStateList(
-                            R.id.widget_play_pause_container,
-                            "setBackgroundTintList",
-                            android.content.res.ColorStateList.valueOf(primaryColor),
-                        )
-                        views.setColorStateList(
-                            R.id.widget_next_container,
-                            "setBackgroundTintList",
-                            android.content.res.ColorStateList.valueOf(primaryColor),
-                        )
-                        val bgTint = androidx.core.graphics.ColorUtils.blendARGB(
-                            ContextCompat.getColor(context, R.color.widget_surface),
-                            primaryColor,
-                            0.45f,
-                        )
-                        views.setColorStateList(
-                            R.id.widget_root,
-                            "setBackgroundTintList",
-                            android.content.res.ColorStateList.valueOf(bgTint),
-                        )
-                        views.setColorStateList(
-                            R.id.widget_progress,
-                            "setProgressTintList",
-                            android.content.res.ColorStateList.valueOf(primaryColor),
-                        )
-                    }
-                }
-            }
-        }
-
-        // Artwork: pre-decoded squircle bitmap or fallback
-        if (artBitmap != null && !artBitmap.isRecycled) {
-            views.setImageViewBitmap(R.id.widget_art, artBitmap)
+        WidgetTheme.apply(views, themed.colors)
+        if (themed.art != null) {
+            views.setImageViewBitmap(R.id.widget_art, themed.art)
         } else {
             views.setImageViewResource(R.id.widget_art, R.drawable.widget_art_placeholder)
         }
@@ -287,37 +232,4 @@ internal object WidgetViews {
             WidgetActions.nextPending(context, NowPlayingWidgetReceiver::class.java),
         )
     }
-
-    /**
-     * Pre-decodes and rounds artwork once per push to minimize memory and IPC payload.
-     */
-    private fun resolveArtBitmap(path: String?): Bitmap? = runCatching {
-        if (path.isNullOrBlank()) return null
-        val file = File(path)
-        if (!file.exists()) return null
-        BitmapFactory.decodeFile(file.absolutePath)?.let { decoded ->
-            val art = roundedCorners(decoded, 0.22f)
-            if (art !== decoded) runCatching { decoded.recycle() }
-            art
-        }
-    }.getOrNull()
-
-    /**
-     * Softens square album art into a rounded squircle. Pure bitmap math —
-     * safe to run in any process, including the widget bind path.
-     */
-    private fun roundedCorners(src: Bitmap, radiusFraction: Float): Bitmap = runCatching {
-        val w = src.width
-        val h = src.height
-        if (w <= 0 || h <= 0) return src
-        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(out)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        val radius = minOf(w, h) * radiusFraction
-        canvas.drawRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), radius, radius, paint)
-        paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
-        canvas.drawBitmap(src, 0f, 0f, paint)
-        paint.xfermode = null
-        out
-    }.getOrNull() ?: src
 }

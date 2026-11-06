@@ -401,7 +401,8 @@ fun PlaylistDetailScreen(
         !playlist.isYouTubeOnly &&
         (!hasManyFolders || selectedFolderUri == null || selectedFolderUri == "__all__") &&
         currentSort == PlaylistTrackSort.CUSTOM &&
-        sortAscending
+        sortAscending &&
+        searchQuery.isBlank()
     // Stable content keys aligned to the DISPLAYED order (not playlist.tracks
     // order) so animateItem() never sees duplicate or shifting keys at the
     // scroll edge. The old code built keys from playlist.tracks but consumed
@@ -422,8 +423,14 @@ fun PlaylistDetailScreen(
             "$base#$n"
         }
     }
-    LaunchedEffect(playlist.tracks.size, displayTracks.size) {
-        if (draggingIndex < 0 || draggingIndex >= displayTracks.size) {
+    // "Play" starts the first displayed row (sort/filter applied): warm the
+    // opening rows while the user looks. Local files are skipped downstream.
+    val openingKeys = displayKeys.take(6)
+    LaunchedEffect(openingKeys) {
+        musicPlayer.warmLikelyPlays(displayTracks.take(6).map(GeneratedTrack::toPlayableTrack))
+    }
+    LaunchedEffect(playlist.tracks.size, displayTracks.size, reorderEnabled) {
+        if (!reorderEnabled || draggingIndex < 0 || draggingIndex >= displayTracks.size) {
             cancelEdgeScroll()
             draggingIndex = -1
             dragOffsetY = 0f
@@ -1053,7 +1060,10 @@ fun PlaylistDetailScreen(
                 if (!isReorderLocked && !reorderEnabled && !playlist.isYouTubeOnly && displayTracks.size > 1) {
                     item(key = "reorder_sort_hint", contentType = "hint") {
                         Text(
-                            stringResource(com.lastwave.app.R.string.pd_reorder_hint),
+                            stringResource(
+                                if (searchQuery.isNotBlank()) com.lastwave.app.R.string.playlist_rearrange_clear_search
+                                else com.lastwave.app.R.string.pd_reorder_hint,
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
@@ -1374,6 +1384,25 @@ fun PlaylistDetailScreen(
                             tonalElevation = 6.dp,
                             shadowElevation = 12.dp,
                         ) {
+                            if (!playlist.isYouTubeOnly && !inFolderStep &&
+                                (!hasManyFolders || selectedFolderUri == "__all__")
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(com.lastwave.app.R.string.playlist_rearrange_songs)) },
+                                    leadingIcon = { Icon(Icons.Filled.DragHandle, contentDescription = null) },
+                                    enabled = playlist.tracks.size > 1,
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        currentSort = PlaylistTrackSort.CUSTOM
+                                        sortAscending = true
+                                        PlaylistSortMemory.save(context, playlistId, currentSort, sortAscending)
+                                        searchQuery = ""
+                                        isSearchActive = false
+                                        isReorderLocked = false
+                                        overflowMenuOpen = false
+                                    },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text(if (playlist.isPinned) stringResource(com.lastwave.app.R.string.pd_unpin) else stringResource(com.lastwave.app.R.string.pd_pin_top)) },
                                 leadingIcon = { Icon(Icons.Filled.PushPin, contentDescription = null) },

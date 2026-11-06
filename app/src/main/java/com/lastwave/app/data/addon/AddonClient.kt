@@ -1,7 +1,9 @@
 package com.lastwave.app.data.addon
 
 import android.util.Log
+import com.lastwave.app.BuildConfig
 import com.lastwave.app.data.lossless.NativeSecrets
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -48,9 +50,14 @@ class AddonClient(
             reqBuilder.header("X-LW-Sign", nativeSigned.second)
             return
         }
+        Log.d(TAG, "Native addon signing unavailable; using fallback signer")
 
-        // 2. Fallback to Java HMAC if clientSecret provided or default known secret
-        val secret = clientSecret?.takeIf { it.isNotBlank() } ?: DEFAULT_ADDON_SECRET
+        // 2. Fallback to obfuscated client secret decoded in memory at runtime (Desktop approach)
+        val secret = clientSecret?.takeIf { it.isNotBlank() }
+            ?: runCatching {
+                decodeSecretBytes(BuildConfig.ADDON_CLIENT_SECRET_BYTES, BuildConfig.SECRET_MASK_BYTES)
+            }.getOrNull()?.takeIf { it.isNotBlank() }
+            ?: return
         try {
             val uri = java.net.URI(urlStr)
             val path = uri.path ?: "/"
@@ -64,7 +71,7 @@ class AddonClient(
             reqBuilder.header("X-LW-TS", ts)
             reqBuilder.header("X-LW-Sign", sign)
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to sign addon request: ${e.message}")
+            Log.w(TAG, "Failed to sign addon request (${e.javaClass.simpleName})")
         }
     }
 
@@ -75,14 +82,17 @@ class AddonClient(
             val reqBuilder = Request.Builder().url(url).get()
             signRequest(url, "GET", reqBuilder)
             val req = reqBuilder.build()
-            client.newCall(req).execute().use { res ->
+            client.newCall(req).awaitAddonResponse().let { res ->
+                Log.i("LastWaveAddonHttp", "operation=manifest elapsedMs=${res.elapsedMs} cache=${res.cacheState ?: "UNKNOWN"} timings=${res.timingMs}")
                 if (!res.isSuccessful) {
                     return@withContext Result.failure(Exception("Manifest request failed (HTTP ${res.code})"))
                 }
-                val body = res.body?.string().orEmpty()
+                val body = res.body
                 val manifest = json.decodeFromString<AddonManifest>(body)
                 Result.success(manifest)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -105,27 +115,83 @@ class AddonClient(
             val reqBuilder = Request.Builder().url(url).get()
             signRequest(url, "GET", reqBuilder)
             val req = reqBuilder.build()
-            client.newCall(req).execute().use { res ->
+            client.newCall(req).awaitAddonResponse().let { res ->
+                Log.i("LastWaveAddonHttp", "operation=search elapsedMs=${res.elapsedMs} cache=${res.cacheState ?: "UNKNOWN"} timings=${res.timingMs}")
                 if (!res.isSuccessful) {
                     return@withContext Result.failure(Exception("Search failed (HTTP ${res.code})"))
                 }
-                val body = res.body?.string().orEmpty()
+                val body = res.body
                 val rootElement = runCatching { json.parseToJsonElement(body) }.getOrNull()
                 val tracks = when (rootElement) {
-                    is JsonArray -> runCatching { json.decodeFromJsonElement<List<AddonTrack>>(rootElement) }.getOrNull()
+                    is JsonArray -> decodeTracks(rootElement)
                     is JsonObject -> {
                         val tracksElement = rootElement["tracks"] ?: rootElement["data"] ?: rootElement["results"] ?: rootElement["items"]
-                        if (tracksElement is JsonArray) {
-                            runCatching { json.decodeFromJsonElement<List<AddonTrack>>(tracksElement) }.getOrNull()
-                        } else null
+                        if (tracksElement is JsonArray) decodeTracks(tracksElement) else null
                     }
                     else -> null
                 } ?: json.decodeFromString<AddonSearchResponse>(body).tracks
                 Result.success(tracks)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.w(TAG, "Search request failed for '$query': ${e.message}")
+            Log.w(TAG, "Search request failed (${e.javaClass.simpleName})")
             Result.failure(e)
+        }
+    }
+
+    /** One malformed entry must not discard every other result. */
+    private fun decodeTracks(items: JsonArray): List<AddonTrack> =
+        items.mapNotNull { item ->
+            runCatching { json.decodeFromJsonElement<AddonTrack>(item) }.getOrNull()
+                ?.takeIf { it.id.isNotBlank() && it.title.isNotBlank() }
+        }
+
+    /**
+     * Asks the addon to prepare (not return) the plan `/stream` would build for
+     * this exact id/tier, so the real play request is a cache hit.
+     *
+     * ## Addon contract (optional route — for addon developers)
+     *
+     * `GET {base}/prewarm/{id}?quality={atmos|hi_res|lossless|high|low}&atmos={auto|none}`
+     *
+     * - `{id}` and the query use exactly the values the app will later send to
+     *   `GET {base}/stream/{id}`; the app picks them with the same matcher it
+     *   plays with, so implementers should prepare *that* id/tier, not their own
+     *   top search hit.
+     * - Signed like `/stream` (`X-LW-TS` / `X-LW-Sign`) when client auth is on.
+     * - Must return immediately and do the work in the background:
+     *   `202 {"state":"started"|"duplicate"}` — queued, or already preparing/cached;
+     *   `503 {"state":"busy"}` — background capacity full, nothing queued;
+     *   `429 {"state":"quota"}` — the token cannot play today, nothing queued;
+     *   `400` invalid id, `403` client auth failed, `404` route not supported.
+     * - Must be FREE: never consume play quota and never return the plan, key
+     *   or media URLs. The later `/stream` call is what charges, and should
+     *   join an in-flight preparation (single-flight) or read the cached plan.
+     * - Should cap concurrent background preparations (reference addon: 4) and
+     *   validate `{id}` before any upstream request.
+     *
+     * Every failure here is silent: the app treats anything but 202 as "not
+     * warmed" and plays normally, so addons without the route lose nothing.
+     * Reference implementation: amz-addon `src/addon/routes.ts` (`handlePrewarm`).
+     *
+     * @return true only when the addon accepted the warm-up (HTTP 202).
+     */
+    suspend fun prewarm(trackId: String, quality: String, atmos: Boolean): Boolean = withContext(Dispatchers.IO) {
+        val cleanId = trackId.trim()
+        if (baseUrl.isBlank() || cleanId.isBlank()) return@withContext false
+        val url = "$baseUrl/prewarm/$cleanId?quality=$quality&atmos=${if (atmos) "auto" else "none"}"
+        try {
+            val reqBuilder = Request.Builder().url(url).get()
+            signRequest(url, "GET", reqBuilder)
+            client.newCall(reqBuilder.build()).awaitAddonResponse().let { res ->
+                Log.i("LastWaveAddonHttp", "operation=prewarm elapsedMs=${res.elapsedMs} status=${res.code}")
+                res.code == 202
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            false
         }
     }
 
@@ -154,11 +220,12 @@ class AddonClient(
             }
             signRequest(url, "GET", reqBuilder)
             val req = reqBuilder.build()
-            client.newCall(req).execute().use { res ->
+            client.newCall(req).awaitAddonResponse().let { res ->
+                Log.i("LastWaveAddonHttp", "operation=stream elapsedMs=${res.elapsedMs} cache=${res.cacheState ?: "UNKNOWN"} timings=${res.timingMs}")
                 if (!res.isSuccessful) {
                     return@withContext Result.failure(Exception("Stream failed (HTTP ${res.code})"))
                 }
-                val body = res.body?.string().orEmpty()
+                val body = res.body
                 val rootJson = runCatching { json.parseToJsonElement(body) }.getOrNull()
                 val streamElement = (rootJson as? JsonObject)?.let { obj ->
                     obj["stream"] ?: obj["data"] ?: obj
@@ -181,8 +248,10 @@ class AddonClient(
                 )
                 Result.success(finalStream)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.w(TAG, "Stream request failed for '$trackId': ${e.message}")
+            Log.w(TAG, "Stream request failed (${e.javaClass.simpleName})")
             Result.failure(e)
         }
     }
@@ -209,7 +278,14 @@ class AddonClient(
 
     companion object {
         private const val TAG = "AddonClient"
-        private const val DEFAULT_ADDON_SECRET = "36d96a751b12ee481c281a8a8e64c482d0c1634a22061ab72f40175017818b85"
+
+        fun decodeSecretBytes(data: ByteArray, mask: ByteArray): String {
+            if (data.isEmpty() || mask.isEmpty()) return ""
+            val decoded = ByteArray(data.size) { i ->
+                (data[i].toInt() xor mask[i % mask.size].toInt()).toByte()
+            }
+            return String(decoded, Charsets.UTF_8).trim()
+        }
 
         fun normalizeBase(raw: String): String {
             if (raw.isBlank()) return ""

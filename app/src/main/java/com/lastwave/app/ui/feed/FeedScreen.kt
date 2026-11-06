@@ -105,6 +105,7 @@ import com.lastwave.app.ui.navigation.FeedTapAction
 import com.lastwave.app.ui.navigation.resolveFeedTapAction
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -129,7 +130,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lastwave.app.ui.feed.cards.CardTokens
 import com.lastwave.app.ui.feed.cards.CardTextArea
-import com.lastwave.app.ui.feed.cards.rememberCoverHeight
 import com.lastwave.app.ui.feed.cards.rememberSquareCardWidth
 import com.lastwave.app.ui.feed.cards.rememberWideCardWidth
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -356,9 +356,8 @@ fun FeedScreen(
                 },
             )
 
-            // Pinned YTM chip row under the app bar â€” stays visible while the
-            // feed scrolls beneath it. Rendered only when chips exist; its
-            // loading/filtering/selection behaviour is unchanged.
+            // Pinned YTM chip row under the app bar — stays visible while the
+            // feed scrolls beneath it. Rendered only when chips exist.
             if (state.homeChips.isNotEmpty()) {
                 PinnedChipsBar(
                     chips = state.homeChips,
@@ -534,11 +533,27 @@ fun FeedScreen(
                     }
                 }
 
-                val nativeShelvesByNormalizedTitle = remember(remainingNativeShelves) {
-                    remainingNativeShelves.associateBy { it.title.trim().lowercase() }
-                }
                 val remainingShelfKeys = remember(remainingNativeShelves) {
                     remainingNativeShelves.map { "yt:${it.title}" }
+                }
+                // Maps a "yt:<title>" section key to its shelf. Blank titles are skipped,
+                // otherwise the contains() match below would match everything.
+                val resolveNativeShelf: (String) -> HomeShelf? = remember(remainingNativeShelves) {
+                    val normalized = remainingNativeShelves
+                        .map { it.title.trim().lowercase() to it }
+                        .filter { (title, _) -> title.isNotEmpty() }
+                    val byTitle = normalized.toMap()
+                    val resolver: (String) -> HomeShelf? = { sectionKey ->
+                        val target = sectionKey.removePrefix("yt:").trim().lowercase()
+                        if (target.isEmpty()) {
+                            null
+                        } else {
+                            byTitle[target] ?: normalized.firstOrNull { (title, _) ->
+                                title.contains(target) || target.contains(title)
+                            }?.second
+                        }
+                    }
+                    resolver
                 }
 
                 val quickTiles = remember(state.feedData.quickTiles, state.feedData.isYtConnected) {
@@ -578,30 +593,32 @@ fun FeedScreen(
                         key == "new_releases" -> showSynthetic && combinedNewReleases.isNotEmpty()
                         key == "friends_activity" || key == "friends" -> state.feedData.friends.isNotEmpty()
                         key == "podcast_shelf" || key == "podcasts" -> showSynthetic && podcastsEnabled && state.feedData.podcastShows.isNotEmpty()
-                        key.startsWith("yt:") -> {
-                            val title = key.removePrefix("yt:").trim().lowercase()
-                            nativeShelvesByNormalizedTitle.containsKey(title) ||
-                                remainingNativeShelves.any { it.title.trim().lowercase().contains(title) || title.contains(it.title.trim().lowercase()) }
-                        }
+                        key.startsWith("yt:") -> resolveNativeShelf(key) != null
                         else -> false
                     }
                 }
 
-                val orderedFeedSections = remember(
+                val (orderedFeedSections, ytShelfBySectionKey) = remember(
                     showSynthetic, allHiddenIds, pinnedHomeSections, homeSectionsOrder,
                     quickTiles, podcastsEnabled, state.feedData.podcastShows, displayTags,
                     combinedQuickPicks, discoveryTracks, state.feedData.becauseYouListenTo,
                     state.feedData.freshFinds, state.feedData.jumpBackIn, state.feedData.mixes,
                     individualTopArtists, state.feedData.heavyRotation, state.feedData.recentAlbums,
                     state.feedData.charts, combinedNewReleases, state.feedData.friends,
-                    remainingNativeShelves, state.feedData.spotlight
+                    remainingNativeShelves, resolveNativeShelf, state.feedData.spotlight
                 ) {
-                    if (state.isChipActive) return@remember emptyList()
+                    if (state.isChipActive) return@remember emptyList<String>() to emptyMap<String, HomeShelf>()
+
+                    // cache so each yt: key is resolved once
+                    val ytResolved = HashMap<String, HomeShelf?>()
+                    fun ytShelf(key: String): HomeShelf? =
+                        if (key in ytResolved) ytResolved[key] else resolveNativeShelf(key).also { ytResolved[key] = it }
 
                     val allCandidateKeys = (DEFAULT_SECTION_ORDER + homeSectionsOrder + remainingShelfKeys).distinct()
                     val activeKeys = allCandidateKeys.filter { key ->
                         key != "hero_greeting" && key != "infinite_radio" && key != "quick_tiles" &&
-                            !isSectionIdHidden(key) && isSectionAvailable(key)
+                            !isSectionIdHidden(key) &&
+                            (if (key.startsWith("yt:")) ytShelf(key) != null else isSectionAvailable(key))
                     }
                     val baseOrder = if (homeSectionsOrder.isNotEmpty()) homeSectionsOrder else DEFAULT_SECTION_ORDER
                     val sorted = activeKeys.sortedWith(compareBy { key ->
@@ -616,7 +633,26 @@ fun FeedScreen(
                         }
                     })
                     val (pinned, unpinned) = sorted.partition { it in pinnedHomeSections }
-                    (pinned + unpinned).filter { it != "hero_greeting" && it != "infinite_radio" && it != "quick_tiles" }
+                    val ordered = pinned + unpinned
+
+                    // Two keys can point at the same shelf (old saved key vs live title,
+                    // different case, fuzzy match). Keep one per shelf, exact title first.
+                    // Rendering the same shelf twice crashed the LazyColumn (duplicate key).
+                    fun isExactKey(key: String, shelf: HomeShelf) =
+                        key.removePrefix("yt:").trim().lowercase() == shelf.title.trim().lowercase()
+                    val winnerByShelf = HashMap<String, String>()
+                    for (key in ordered) {
+                        if (!key.startsWith("yt:")) continue
+                        val shelf = ytShelf(key) ?: continue
+                        val shelfId = shelf.title.trim().lowercase()
+                        val current = winnerByShelf[shelfId]
+                        if (current == null || (isExactKey(key, shelf) && !isExactKey(current, shelf))) {
+                            winnerByShelf[shelfId] = key
+                        }
+                    }
+                    val winners = winnerByShelf.values.toHashSet()
+                    val sections = ordered.filter { key -> !key.startsWith("yt:") || key in winners }
+                    sections to winners.associateWith { key -> ytShelf(key)!! }
                 }
 
                 val visiblePagedShelfKeys = remember(state.pagedShelves, allHiddenIds, ytHidden) {
@@ -1316,15 +1352,10 @@ fun FeedScreen(
                                     }
                                 }
                                 sectionKey.startsWith("yt:") -> {
-                                    val rawTarget = sectionKey.removePrefix("yt:").trim().lowercase()
-                                    val shelf = nativeShelvesByNormalizedTitle[rawTarget]
-                                        ?: remainingNativeShelves.firstOrNull {
-                                            it.title.trim().lowercase() == rawTarget ||
-                                            it.title.trim().lowercase().contains(rawTarget) ||
-                                            rawTarget.contains(it.title.trim().lowercase())
-                                        }
+                                    val shelf = ytShelfBySectionKey[sectionKey]
                                     if (shelf != null && shelf.items.isNotEmpty()) {
-                                        item(key = "yt_shelf_${shelf.title}") {
+                                        // unique, orderedFeedSections has one key per shelf
+                                        item(key = "yt_shelf_${shelf.title.trim().lowercase()}") {
                                             HomeContainerSection(
                                                 shape = getContainerShape(sectionKey),
                                             ) {
@@ -1345,6 +1376,21 @@ fun FeedScreen(
                                             }
                                         }
                                     }
+                                }
+                            }
+                            if (sectionKey == orderedFeedSections.firstOrNull { it == "podcast_shelf" || it == "podcasts" }) {
+                                item(key = "moods_and_genres") {
+                                    HomeContainerSection {
+                                        com.lastwave.app.ui.moods.HomeMoodsSection()
+                                    }
+                                }
+                            }
+                        }
+
+                        if (orderedFeedSections.none { it == "podcast_shelf" || it == "podcasts" }) {
+                            item(key = "moods_and_genres") {
+                                HomeContainerSection {
+                                    com.lastwave.app.ui.moods.HomeMoodsSection()
                                 }
                             }
                         }
@@ -1573,90 +1619,37 @@ private fun relativeTime(context: android.content.Context, uts: String?): String
     }
 }
 
-@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
-private val ExpressiveHeadlineFont = FontFamily(
-    Font(
-        R.font.google_sans_flex,
-        weight = FontWeight.Black,
-        variationSettings = FontVariation.Settings(
-            FontVariation.weight(850),
-            FontVariation.width(125f),
-            FontVariation.Setting("ROND", 60f),
-            FontVariation.Setting("opsz", 36f),
-        ),
-    ),
-)
-
 @Composable
 private fun ExpressiveGreetingHeader(
     greeting: String,
     formattedDate: String,
     modifier: Modifier = Modifier,
 ) {
-    val hour = remember { java.time.LocalTime.now().hour }
-    val (timeIcon, accentColor, tagline) = remember(hour) {
-        when (hour) {
-            in 5..11 -> Triple(Icons.Filled.WbSunny, Color(0xFFFFB300), "Start your day with great rhythm")
-            in 12..16 -> Triple(Icons.Filled.LightMode, Color(0xFFFF9800), "Keep the momentum going")
-            in 17..21 -> Triple(Icons.Filled.AutoAwesome, Color(0xFFAB47BC), "Unwind with your favorite tracks")
-            else -> Triple(Icons.Filled.DarkMode, Color(0xFF7986CB), "Late night listening session")
-        }
-    }
-
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = accentColor.copy(alpha = 0.18f),
-                modifier = Modifier.size(24.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = timeIcon,
-                        contentDescription = null,
-                        tint = accentColor,
-                        modifier = Modifier.size(14.dp),
-                    )
-                }
-            }
-            if (formattedDate.isNotBlank()) {
-                Text(
-                    text = formattedDate.uppercase(),
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        letterSpacing = 1.3.sp,
-                        fontWeight = FontWeight.Bold,
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
-                )
-            }
-        }
-
         Text(
             text = greeting,
-            fontFamily = ExpressiveHeadlineFont,
-            fontSize = 32.sp,
-            fontWeight = FontWeight.Black,
-            letterSpacing = (-0.7).sp,
-            lineHeight = 38.sp,
+            style = MaterialTheme.typography.headlineLarge.copy(
+                fontSize = 32.sp,
+                lineHeight = 38.sp,
+                letterSpacing = (-0.5).sp,
+            ),
             color = MaterialTheme.colorScheme.onSurface,
         )
 
-        Text(
-            text = tagline,
-            style = MaterialTheme.typography.bodyMedium.copy(
-                fontSize = 13.5.sp,
-                fontWeight = FontWeight.Normal,
-            ),
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-        )
+        if (formattedDate.isNotBlank()) {
+            Text(
+                text = formattedDate.uppercase(),
+                style = MaterialTheme.typography.labelSmall.copy(
+                    letterSpacing = 1.3.sp,
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+            )
+        }
     }
 }
 
@@ -1964,7 +1957,7 @@ private fun PinnedChipsBar(
  * Used for page-1 native shelves, continuation paged shelves, and chip shelves.
  */
 @Composable
-private fun HomeShelfCard(
+internal fun HomeShelfCard(
     shelf: HomeShelf,
     onPlayTrack: (YouTubeMusicTrack, String) -> Unit,
     onPlayTracksQueue: (List<YouTubeMusicTrack>, Int, String) -> Unit,
@@ -2878,7 +2871,7 @@ private fun FeedMediaCard(
     cardWidth: androidx.compose.ui.unit.Dp = rememberSquareCardWidth(),
 ) {
     val haptics = LocalHapticFeedback.current
-    val coverHeight = rememberCoverHeight()
+    val coverHeight = cardWidth
     Column(
         modifier = Modifier
             .width(cardWidth)
@@ -2970,7 +2963,7 @@ private fun RecentTrackCard(
     val subtitle = if (ago != null) "$primaryArtistName \u2022 $ago" else primaryArtistName
     val haptics = LocalHapticFeedback.current
     val cardWidth = rememberSquareCardWidth()
-    val coverHeight = rememberCoverHeight()
+    val coverHeight = cardWidth
     Column(
         modifier = Modifier
             .width(cardWidth)

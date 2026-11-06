@@ -59,6 +59,7 @@ import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -244,6 +245,7 @@ class HomeSectionsViewModel @Inject constructor(
 
     fun moveSection(fromIndex: Int, toIndex: Int) {
         val current = _uiState.value
+        if (!current.isLoaded) return
         val list = current.sections.toMutableList()
         if (fromIndex !in list.indices || toIndex !in list.indices) return
         val item = list.removeAt(fromIndex)
@@ -254,6 +256,7 @@ class HomeSectionsViewModel @Inject constructor(
 
     fun moveSectionLive(fromIndex: Int, toIndex: Int) {
         val current = _uiState.value
+        if (!current.isLoaded) return
         val list = current.sections.toMutableList()
         if (fromIndex !in list.indices || toIndex !in list.indices) return
         val item = list.removeAt(fromIndex)
@@ -263,11 +266,13 @@ class HomeSectionsViewModel @Inject constructor(
 
     fun commitOrder() {
         val current = _uiState.value
+        if (!current.isLoaded) return
         saveState(current.sections, current.hiddenSections, current.pinnedSections)
     }
 
     fun toggleVisibility(id: String, visible: Boolean) {
         val current = _uiState.value
+        if (!current.isLoaded) return
         val newHidden = if (visible) current.hiddenSections - id else current.hiddenSections + id
         _uiState.update { it.copy(hiddenSections = newHidden) }
         saveState(current.sections, newHidden, current.pinnedSections)
@@ -275,6 +280,7 @@ class HomeSectionsViewModel @Inject constructor(
 
     fun togglePin(id: String) {
         val current = _uiState.value
+        if (!current.isLoaded) return
         val isCurrentlyPinned = id in current.pinnedSections
         val newPinned = if (isCurrentlyPinned) current.pinnedSections - id else current.pinnedSections + id
         val list = current.sections.toMutableList()
@@ -291,11 +297,13 @@ class HomeSectionsViewModel @Inject constructor(
 
     fun showAll() {
         val current = _uiState.value
+        if (!current.isLoaded) return
         _uiState.update { it.copy(hiddenSections = emptySet()) }
         saveState(current.sections, emptySet(), current.pinnedSections)
     }
 
     fun resetAll() {
+        if (!_uiState.value.isLoaded) return
         val defaultList = ALL_DEFAULT_UNIVERSAL_SECTIONS
         _uiState.value = UiState(
             sections = defaultList,
@@ -340,29 +348,36 @@ fun HomeSectionsScreen(
         ) {
             ExpressiveHeader(
                 title = stringResource(R.string.settings_home_sections),
-                subtitle = stringResource(
+                subtitle = if (uiState.isLoaded) stringResource(
                     R.string.home_sections_visible,
                     visibleCount,
                     uiState.sections.size,
-                ),
+                ) else null,
                 onBack = onBack,
                 actions = {
                     TextButton(onClick = {
                         viewModel.showAll()
-                    }, enabled = uiState.hiddenSections.isNotEmpty()) {
+                    }, enabled = uiState.isLoaded && uiState.hiddenSections.isNotEmpty()) {
                         Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
                         Text("Show all")
                     }
                     TextButton(onClick = {
                         viewModel.resetAll()
-                    }) {
+                    }, enabled = uiState.isLoaded) {
                         Icon(Icons.Filled.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
                         Text("Reset")
                     }
                 },
             )
+
+            if (!uiState.isLoaded) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+                return@Column
+            }
 
             Text(
                 text = "Drag the handle to reorder sections, pin favorites to top, and toggle visibility for both LastWave and YouTube Music shelves.",

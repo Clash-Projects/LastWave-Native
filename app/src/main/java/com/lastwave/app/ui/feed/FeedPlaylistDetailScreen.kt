@@ -134,7 +134,7 @@ fun FeedPlaylistDetailScreen(
                 }
                 if (current.loadError != null) {
                     FilledTonalButton(onClick = { viewModel.load(playlistId, force = true) }) {
-                        Text(stringResource(R.string.fpd_incomplete))
+                        Text(stringResource(if (current.playlist.isComplete) R.string.fpd_retry else R.string.fpd_incomplete))
                     }
                 }
                 PlaylistContent(

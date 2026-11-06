@@ -16,6 +16,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
@@ -115,6 +118,16 @@ class DownloadsViewModel @Inject constructor(
 ) : ViewModel() {
 
     val isOnline: StateFlow<Boolean> = networkMonitor.isOnline
+
+    sealed interface DeleteEvent {
+        /** Android needs the user to approve deleting a file the app doesn't own. */
+        class NeedsConsent(val track: DownloadedTrackEntity, val request: android.content.IntentSender) : DeleteEvent
+
+        object Failed : DeleteEvent
+    }
+
+    private val _deleteEvents = MutableSharedFlow<DeleteEvent>(extraBufferCapacity = 4)
+    val deleteEvents: SharedFlow<DeleteEvent> = _deleteEvents.asSharedFlow()
 
     val downloadedTracks: StateFlow<List<DownloadedTrackEntity>> =
         downloadedTrackDao.getAll().withDownloadsFallback(emptyList()).stateIn(
@@ -429,13 +442,25 @@ class DownloadsViewModel @Inject constructor(
 
     fun deleteTrack(track: DownloadedTrackEntity) {
         launchDownloadAction("delete download") {
-            downloadManager.deleteDownloadedTrack(track)
+            when (val result = downloadManager.deleteDownloadedTrack(track)) {
+                TrackDownloadManager.DeleteDownloadResult.Deleted -> Unit
+                is TrackDownloadManager.DeleteDownloadResult.NeedsUserConsent ->
+                    _deleteEvents.emit(DeleteEvent.NeedsConsent(track, result.request))
+                TrackDownloadManager.DeleteDownloadResult.Failed -> _deleteEvents.emit(DeleteEvent.Failed)
+            }
+        }
+    }
+
+    fun onDeleteConsentResult(track: DownloadedTrackEntity, approved: Boolean) {
+        if (!approved) return
+        launchDownloadAction("finish delete") {
+            if (!downloadManager.finishConsentedDelete(track)) _deleteEvents.emit(DeleteEvent.Failed)
         }
     }
 
     fun deleteHistoryRecordOnly(track: DownloadedTrackEntity) {
         launchDownloadAction("delete download history") {
-            downloadedTrackDao.delete(track)
+            downloadManager.removeFromHistoryOnly(track)
         }
     }
 
@@ -447,7 +472,7 @@ class DownloadsViewModel @Inject constructor(
 
     fun clearHistoryOnly() {
         launchDownloadAction("clear download history") {
-            downloadedTrackDao.clearAll()
+            downloadManager.clearHistoryOnly()
         }
     }
 

@@ -25,6 +25,10 @@ internal object TextMatch {
         "acoustic", "demo", "edit", "remaster", "remastered", "mono", "stereo",
         "version", "deluxe", "bonus", "mix", "extended", "radio", "clean", "explicit",
         "original", "orchestral", "unplugged", "rerecorded", "anniversary", "edition",
+        // Alternate cuts that otherwise slipped past the variant penalty and
+        // could replace the original (e.g. "VIP", "8D", "Super Slowed").
+        "vip", "8d", "boosted", "bassboosted", "lofi", "phonk", "spedup", "reverb",
+        "hardstyle", "techno", "rework", "bootleg", "flip", "mashup", "reprise",
         // Same rendition markers in the languages this app serves, stored
         // normalized to match [normalize] output. They feed the subset matcher
         // and [matchScore]'s unexpected-variant penalty like the English ones.
@@ -36,6 +40,51 @@ internal object TextMatch {
         "现场", "翻唱", "混音",
         "лайв", "кавер", "ремикс",
     )
+    /**
+     * Words that mark a *different recording* rather than different packaging.
+     * Unlike [VARIANT_WORDS] these never describe the ordinary release
+     * ("Radio Edit", "Album Version", "Remastered" are left out), so a title
+     * carrying one on one side only is a different take and is refused in
+     * both directions: asking for the studio cut must not land on the live
+     * take, and asking for the live take must not land on the studio cut.
+     */
+    val TAKE_WORDS = setOf(
+        "live", "remix", "remixes", "rmx", "karaoke", "cover", "instrumental", "slowed", "sped",
+        "spedup", "nightcore", "acoustic", "demo", "extended", "unplugged", "rerecorded",
+        "vip", "8d", "boosted", "bassboosted", "lofi", "reverb", "rework", "bootleg",
+        "flip", "mashup", "medley", "reprise", "acapella", "acappella", "orchestral",
+        "symphonic", "concert",
+        "vivo", "acustico", "acoustique", "akustik", "canli",
+        "ライブ", "カバー", "リミックス", "アコースティック", "カラオケ",
+        "라이브", "커버", "리믹스", "어쿠스틱",
+        "مباشر", "ريمكس",
+        "लाइव", "कवर", "रीमिक्स",
+        "现场", "翻唱", "混音",
+        "лайв", "кавер", "ремикс",
+    )
+
+    /** Same-recording guard: takes must agree whichever side names one. */
+    const val SEVERE_DURATION_DRIFT_SEC = 30
+
+    fun takes(title: String, ignore: Set<String> = emptySet()): Set<String> =
+        normalize(title).split(' ').filter { it in TAKE_WORDS && it !in ignore }.toSet()
+
+    /**
+     * True when both titles describe the same take. Artist words are ignored
+     * so a credit like "Lofi Girl" or "Cover Drive" is not read as a version.
+     */
+    fun isSameTake(candidateTitle: String, wantedTitle: String, vararg artists: String): Boolean {
+        val ignore = artists.flatMap { normalize(it).split(' ') }.toSet()
+        return takes(candidateTitle, ignore) == takes(wantedTitle, ignore)
+    }
+
+    /** Runtimes too far apart to be the same master: loops, snippets, extended cuts. */
+    fun isSevereDurationMismatch(expectedMs: Long?, candidateSec: Int?, limitSec: Int = SEVERE_DURATION_DRIFT_SEC): Boolean {
+        val expected = expectedMs?.takeIf { it > 0 }?.div(1000L) ?: return false
+        val got = candidateSec?.takeIf { it > 0 } ?: return false
+        return kotlin.math.abs(got - expected) > limitSec
+    }
+
     val MATCH_NOISE_WORDS = setOf(
         "official", "audio", "video", "visualizer", "lyrics", "lyric", "hd", "hq", "4k", "track", "music",
         "ost", "soundtrack", "lyrical", "full"
@@ -160,6 +209,24 @@ internal object TextMatch {
         return sim >= 65
     }
 
+    /**
+     * [matchScore] plus agreement with the catalog duration. Alternate cuts
+     * (extended, sped-up, radio edits, re-recordings) usually differ by many
+     * seconds even when the title looks clean, so a near-exact length is a
+     * strong "same recording" signal.
+     */
+    fun matchScore(candidate: YouTubeMusicTrack, title: String, artist: String, expectedDurationMs: Long?): Int {
+        val base = matchScore(candidate, title, artist)
+        val expected = expectedDurationMs?.takeIf { it > 0 }?.div(1000L) ?: return base
+        val got = candidate.durationSeconds?.takeIf { it > 0 }?.toLong() ?: return base
+        val diff = kotlin.math.abs(got - expected)
+        return base + when {
+            diff <= 3 -> 300
+            diff <= 8 -> 100
+            else -> -minOf(900L, (diff - 8) * 25).toInt()
+        }
+    }
+
     fun matchScore(candidate: YouTubeMusicTrack, title: String, artist: String): Int {
         val wantedTitle = normalize(title)
         val wantedArtist = normalize(artist)
@@ -175,7 +242,9 @@ internal object TextMatch {
         if (wantedArtist.isNotBlank() && candidateArtist == wantedArtist) score += 350
         val wantedVariants = tokens(title).intersect(VARIANT_WORDS)
         val unexpectedVariants = tokens(candidate.title).intersect(VARIANT_WORDS) - wantedVariants
-        score -= unexpectedVariants.size * 250
+        // Strong enough that a remix / sped-up / VIP cut only wins when no
+        // clean version is available (was 250, smaller than other bonuses).
+        score -= unexpectedVariants.size * 600
         if (wantedArtist.isNotBlank()) {
             val artistContains = candidateArtist.contains(wantedArtist) || wantedArtist.contains(candidateArtist)
             val titleContainsArtist = candidateTitle.contains(wantedArtist)

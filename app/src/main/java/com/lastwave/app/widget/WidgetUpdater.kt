@@ -68,25 +68,30 @@ object WidgetUpdater {
     ) = publishMutex.withLock {
         memoryArtBitmap = art
         val currentSnapshot = WidgetSnapshot.read(context)
-        val artPath = art?.let { bitmap -> writeArt(context, bitmap) }
-            ?: if (currentSnapshot.title == title && currentSnapshot.artist == artist) currentSnapshot.artPath else null
+        val sameTrack = currentSnapshot.title == title && currentSnapshot.artist == artist
+        val keptArtPath = if (sameTrack) currentSnapshot.artPath else null
         // Snapshot the position now: the controller is fresh at publish time.
         val fraction = readLiveFraction(context, 0f)
-        WidgetSnapshot.write(
-            context,
-            WidgetSnapshot(
-                title = title,
-                artist = artist,
-                album = album.orEmpty(),
-                sourceApp = sourceApp,
-                sourcePackage = sourcePackage,
-                artPath = artPath,
-                isPlaying = isPlaying,
-                hasSession = true,
-                progress = fraction,
-            ),
+        val snapshot = WidgetSnapshot(
+            title = title,
+            artist = artist,
+            album = album.orEmpty(),
+            sourceApp = sourceApp,
+            sourcePackage = sourcePackage,
+            artPath = keptArtPath,
+            isPlaying = isPlaying,
+            hasSession = true,
+            progress = fraction,
         )
+        // Push first (art travels in memory) so the widget updates at once;
+        // the disk cache for process-death recovery is written afterwards.
+        WidgetSnapshot.write(context, snapshot)
         pushAll(context)
+        if (art != null) {
+            writeArt(context, art)?.let { path ->
+                if (path != keptArtPath) WidgetSnapshot.write(context, snapshot.copy(artPath = path))
+            }
+        }
         if (isPlaying) startWaveAnimation(context) else stopWaveAnimation()
     }
 
@@ -168,16 +173,19 @@ object WidgetUpdater {
         val file = File(context.filesDir, ART_FILE_NAME)
         val pending = File(context.filesDir, "$ART_FILE_NAME.pending")
         val largest = maxOf(bitmap.width, bitmap.height)
-        val cached = if (largest <= 384) bitmap else {
+        val cached = if (largest <= 384 && bitmap.config != Bitmap.Config.HARDWARE) bitmap else {
             val scale = 384f / largest
+            val soft = if (bitmap.config == Bitmap.Config.HARDWARE) {
+                bitmap.copy(Bitmap.Config.ARGB_8888, false)
+            } else bitmap
             Bitmap.createScaledBitmap(
-                bitmap,
-                (bitmap.width * scale).toInt().coerceAtLeast(1),
-                (bitmap.height * scale).toInt().coerceAtLeast(1),
+                soft,
+                (soft.width * scale).toInt().coerceAtLeast(1),
+                (soft.height * scale).toInt().coerceAtLeast(1),
                 true,
-            )
+            ).also { if (soft !== bitmap) soft.recycle() }
         }
-        FileOutputStream(pending).use { out -> cached.compress(Bitmap.CompressFormat.PNG, 90, out) }
+        FileOutputStream(pending).use { out -> cached.compress(Bitmap.CompressFormat.JPEG, 92, out) }
         if (cached !== bitmap) cached.recycle()
         if (!pending.renameTo(file)) {
             pending.copyTo(file, overwrite = true)

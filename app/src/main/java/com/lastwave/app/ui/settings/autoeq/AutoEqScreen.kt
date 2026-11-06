@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -244,7 +246,7 @@ fun AutoEqScreen(
             }
         }
 
-        item { ProfileCard(state, onSearch = { searchOpen = true }, viewModel = viewModel) }
+        item { ProfileCard(state, busy = busy, onSearch = { searchOpen = true }, viewModel = viewModel) }
 
         item {
             SectionCard {
@@ -378,7 +380,8 @@ private fun SectionCard(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun ProfileCard(state: AutoEqState, onSearch: () -> Unit, viewModel: AutoEqViewModel) {
+@OptIn(ExperimentalLayoutApi::class)
+private fun ProfileCard(state: AutoEqState, busy: Boolean, onSearch: () -> Unit, viewModel: AutoEqViewModel) {
     SectionCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.Headphones, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -406,7 +409,7 @@ private fun ProfileCard(state: AutoEqState, onSearch: () -> Unit, viewModel: Aut
             }
         }
         Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onSearch) {
                 Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
@@ -418,6 +421,11 @@ private fun ProfileCard(state: AutoEqState, onSearch: () -> Unit, viewModel: Aut
                     Spacer(Modifier.width(6.dp))
                     Text(stringResource(R.string.autoeq_reset))
                 }
+            }
+            OutlinedButton(onClick = { viewModel.clearProfile() }, enabled = !busy) {
+                Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.autoeq_reset_default))
             }
         }
     }

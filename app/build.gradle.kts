@@ -74,9 +74,19 @@ android {
         buildConfigField("String", "LASTWAVE_LYRICS_TOKEN", "\"$lastWaveLyricsToken\"")
         buildConfigField("String", "LASTWAVE_LYRICS_URL", "\"$lastWaveLyricsUrl\"")
 
-        // Native secrets (addon client lock) live strictly in native .so via
-        // SecretsBridge_generated.h (tools/generate_native_secrets.py).
-        // No secret fields are exposed in DEX / BuildConfig.
+        // Desktop-style secret obfuscation: XOR-masked byte arrays in BuildConfig
+        val secretMask = listOf(0x5A, 0x3F, 0x7E, 0x1B, 0x92, 0x4C, 0xA1, 0x6D)
+        fun obfuscateSecret(plainText: String): String {
+            if (plainText.isEmpty()) return "new byte[] {}"
+            val bytes = plainText.toByteArray(Charsets.UTF_8)
+            val obfuscated = bytes.mapIndexed { idx, b -> (b.toInt() xor secretMask[idx % secretMask.size]).toByte() }
+            return "new byte[] { " + obfuscated.joinToString(", ") { "(byte) $it" } + " }"
+        }
+        val maskLiteral = "new byte[] { " + secretMask.joinToString(", ") { "(byte) $it" } + " }"
+
+        val addonClientSecret = resolveSecret("ADDON_CLIENT_SECRET")
+        buildConfigField("byte[]", "ADDON_CLIENT_SECRET_BYTES", obfuscateSecret(addonClientSecret))
+        buildConfigField("byte[]", "SECRET_MASK_BYTES", maskLiteral)
 
         externalNativeBuild {
             cmake {
@@ -301,8 +311,8 @@ dependencies {
     // decoders remain as automatic fallbacks.
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.2.1+1")
 
-    // Core library desugaring required by the FFmpeg decoder AAR metadata.
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    // NIO also backports NewPipe's URL encoder/decoder overloads below API 33.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.0.4")
 
     // Low-latency native output. Version 1.10 remains API-compatible with the
     // requested Oboe 1.8+ baseline and exposes its CMake target through Prefab.
@@ -316,7 +326,10 @@ dependencies {
     // current release is built with a newer Kotlin metadata version than the
     // app. Runtime-only keeps the app compiler on its existing Kotlin line.
     runtimeOnly(libs.innertubex)
-    runtimeOnly("io.ktor:ktor-client-cio:3.5.2")
+    // CIO gets a system-CA trust manager in InnerTubeXStreamExtractor; see
+    // createCioHttpClient. Don't swap in ktor-client-android: it closes streams
+    // from a cancel handler and crashes the process ("Unbalanced enter/exit").
+    runtimeOnly("io.ktor:ktor-client-cio:3.6.0")
 
     // Unit Testing dependencies
     testImplementation("junit:junit:4.13.2")
@@ -352,18 +365,5 @@ tasks.withType<Test> {
     maxHeapSize = "2048m"
 }
 
-// Generate native secrets header before CMake configures.
-// CI provides ADDON_CLIENT_SECRET / RELEASE_CERT_SHA256 via env/secrets.
-val generateNativeSecrets by tasks.registering(Exec::class) {
-    workingDir = rootProject.projectDir
-    val py = org.gradle.internal.os.OperatingSystem.current().let {
-        if (it.isWindows) "python" else "python3"
-    }
-    commandLine(py, "tools/generate_native_secrets.py")
-    // Never fail public builds when secrets absent; script emits empty header.
-    isIgnoreExitValue = true
-}
-tasks.named("preBuild").configure {
-    dependsOn(generateNativeSecrets)
-}
+
 

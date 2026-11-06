@@ -102,6 +102,8 @@ import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FilterTiltShift
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Apps
@@ -137,6 +139,7 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.SmartDisplay
+import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.SwitchAccount
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.QueueMusic
@@ -1020,6 +1023,23 @@ fun SettingsScreen(
                         }
                         add { position ->
                             SettingsToggleCard(
+                                icon = Icons.Filled.StopCircle,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = stringResource(R.string.settings_stop_on_recents),
+                                subtitle = if (misc.stopPlaybackOnTaskRemoved) {
+                                    stringResource(R.string.settings_stop_on_recents_on)
+                                } else {
+                                    stringResource(R.string.settings_stop_on_recents_off)
+                                },
+                                checked = misc.stopPlaybackOnTaskRemoved,
+                                onCheckedChange = viewModel::setStopPlaybackOnTaskRemoved,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.stop_on_recents"),
+                            )
+                        }
+                        add { position ->
+                            SettingsToggleCard(
                                 icon = Icons.Filled.Lyrics,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1065,7 +1085,7 @@ fun SettingsScreen(
                         LoudnessMode.ALBUM -> "Album \u2022 Keep intentional album dynamics"
                         else -> "Off \u2022 Play tagged tracks at original level"
                     }
-                    SettingsGroup(rowCount = 10) { index, position ->
+                    SettingsGroup(rowCount = 11) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.Usb,
@@ -1220,6 +1240,17 @@ fun SettingsScreen(
                                 onClick = { showAutoEq = true },
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.autoeq"),
+                            )
+                            10 -> SettingsToggleCard(
+                                icon = Icons.Filled.Tune,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = "Show Auto EQ in volume panel",
+                                subtitle = "Show AutoEQ and Parametric EQ shortcut in Now Playing audio controls sheet",
+                                checked = misc.showAutoEqInVolumePanel,
+                                onCheckedChange = viewModel::setShowAutoEqInVolumePanel,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.show_autoeq_in_volume_panel"),
                             )
                         }
                     }
@@ -1928,7 +1959,7 @@ fun SettingsScreen(
                                         iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
                                         title = stringResource(R.string.settings_recommendations_title),
                                         subtitle = if (spotifyConnected) {
-                                            "${stringResource(misc.recommendationSource.titleRes)} \u2022 ${stringResource(misc.recommendationSource.subtitleRes)}"
+                                            "${stringResource(misc.recommendationSource.titleRes)} • ${stringResource(misc.recommendationSource.subtitleRes)}"
                                         } else {
                                             stringResource(R.string.settings_recommendations_sub_disconnected)
                                         },
@@ -2436,6 +2467,18 @@ fun SettingsScreen(
         )
     }
 
+    if (showRecommendationSourceDialog) {
+        RecommendationSourceDialog(
+            current = if (spotifyConnected) misc.recommendationSource else RecommendationSource.YOUTUBE_MUSIC,
+            spotifyConnected = spotifyConnected,
+            onSelect = {
+                viewModel.setRecommendationSource(it)
+                showRecommendationSourceDialog = false
+            },
+            onDismiss = { showRecommendationSourceDialog = false },
+        )
+    }
+
     // -- Spotify disconnect confirm --
     if (showSpotifyDisconnectConfirm) {
         AlertDialog(
@@ -2718,18 +2761,6 @@ fun SettingsScreen(
     }
 
 
-
-    if (showRecommendationSourceDialog) {
-        RecommendationSourceDialog(
-            current = if (spotifyConnected) misc.recommendationSource else RecommendationSource.YOUTUBE_MUSIC,
-            spotifyConnected = spotifyConnected,
-            onSelect = {
-                viewModel.setRecommendationSource(it)
-                showRecommendationSourceDialog = false
-            },
-            onDismiss = { showRecommendationSourceDialog = false },
-        )
-    }
 
     // -- Lyrics provider picker: preferred source first, automatic
     // fallback to the rest when it returns nothing --
@@ -3349,6 +3380,11 @@ private fun AppIconSelectorCard(
     isHighlighted: Boolean = false,
 ) {
     val shape = groupShape(position)
+    var isExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    val arrowRotation by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isExpanded) 180f else 0f,
+        label = "appIconArrowRotation",
+    )
 
     Card(
         shape = shape,
@@ -3363,7 +3399,13 @@ private fun AppIconSelectorCard(
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { isExpanded = !isExpanded },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 IconBadge(
                     Icons.Filled.Apps,
                     MaterialTheme.colorScheme.primaryContainer,
@@ -3382,51 +3424,67 @@ private fun AppIconSelectorCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                IconButton(onClick = { isExpanded = !isExpanded }) {
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowDown,
+                        contentDescription = if (isExpanded) "Collapse app icons" else "Expand app icons",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.graphicsLayer { rotationZ = arrowRotation },
+                    )
+                }
             }
-            Spacer(Modifier.height(14.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.CenterVertically,
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut(),
             ) {
-                AppIcon.entries.forEach { icon ->
-                    val isSelected = (icon == currentIcon)
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(14.dp))
-                            .clickable { onSelectAppIcon(icon) }
-                            .padding(vertical = 6.dp, horizontal = 4.dp),
+                Column {
+                    Spacer(Modifier.height(14.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceAround,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(52.dp)
-                                .clip(CircleShape)
-                                .background(colorResource(icon.backgroundRes))
-                                .then(
-                                    if (isSelected) {
-                                        Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
-                                    } else {
-                                        Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), CircleShape)
-                                    }
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                painter = painterResource(icon.logoRes),
-                                contentDescription = stringResource(icon.titleRes),
-                                tint = Color.Unspecified,
-                                modifier = Modifier.size(52.dp),
-                            )
+                        AppIcon.entries.forEach { icon ->
+                            val isSelected = (icon == currentIcon)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .clickable { onSelectAppIcon(icon) }
+                                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(52.dp)
+                                        .clip(CircleShape)
+                                        .background(colorResource(icon.backgroundRes))
+                                        .then(
+                                            if (isSelected) {
+                                                Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                                            } else {
+                                                Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), CircleShape)
+                                            }
+                                        ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        painter = painterResource(icon.logoRes),
+                                        contentDescription = stringResource(icon.titleRes),
+                                        tint = Color.Unspecified,
+                                        modifier = Modifier.size(52.dp),
+                                    )
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    text = stringResource(icon.titleRes),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
                         }
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = stringResource(icon.titleRes),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.Center,
-                        )
                     }
                 }
             }
@@ -3914,6 +3972,12 @@ private fun AutoMixControlsCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                IconBadge(
+                    icon = Icons.Filled.FilterTiltShift,
+                    container = MaterialTheme.colorScheme.tertiaryContainer,
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+                Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text("DJ Spectral Filter Sweeps", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                     Text("3-band Linkwitz-Riley sub-bass swap and resonant filter sweeps", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -6271,46 +6335,6 @@ private fun SyncPlaylistsSheet(
     }
 }
 
-@Composable
-private fun RecommendationSourceDialog(
-    current: RecommendationSource,
-    spotifyConnected: Boolean,
-    onSelect: (RecommendationSource) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.settings_recommendations_title)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    stringResource(R.string.settings_recommendations_dialog_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(4.dp))
-                RecommendationSource.entries.forEach { source ->
-                    val needsSpotify = source == RecommendationSource.SPOTIFY && !spotifyConnected
-                    SettingsRadioOption(
-                        label = stringResource(source.titleRes),
-                        selected = source == current,
-                        onClick = { if (!needsSpotify) onSelect(source) },
-                        enabled = !needsSpotify,
-                        subtitle = if (needsSpotify) {
-                            stringResource(R.string.settings_recommendations_connect_first)
-                        } else {
-                            stringResource(source.subtitleRes)
-                        },
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_done)) }
-        },
-    )
-}
-
 /**
  * Bottom sheet to pick from 8 experimental lyrics animation physics profiles.
  */
@@ -6399,6 +6423,46 @@ private fun LyricsAutoHideDialog(
                         label = stringResource(R.string.set_lyrics_autohide_seconds, seconds),
                         selected = currentSeconds == seconds,
                         onClick = { onSelect(seconds) },
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_done)) }
+        },
+    )
+}
+
+@Composable
+private fun RecommendationSourceDialog(
+    current: RecommendationSource,
+    spotifyConnected: Boolean,
+    onSelect: (RecommendationSource) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_recommendations_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    stringResource(R.string.settings_recommendations_dialog_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                RecommendationSource.entries.forEach { source ->
+                    val needsSpotify = source == RecommendationSource.SPOTIFY && !spotifyConnected
+                    SettingsRadioOption(
+                        label = stringResource(source.titleRes),
+                        selected = source == current,
+                        onClick = { if (!needsSpotify) onSelect(source) },
+                        enabled = !needsSpotify,
+                        subtitle = if (needsSpotify) {
+                            stringResource(R.string.settings_recommendations_connect_first)
+                        } else {
+                            stringResource(source.subtitleRes)
+                        },
                     )
                 }
             }

@@ -875,9 +875,12 @@ class HomeViewModel @Inject constructor(
      *  so polling stops the moment the screen backgrounds. Polls whichever
      *  account is currently being viewed (yours, or a friend's). */
     suspend fun pollWhileActive() = coroutineScope {
-        // Immediately fetch newest tracks and stats on opening/returning to Home screen
-        refreshSilently()
+        // We no longer refresh automatically on opening/returning to Home screen
+        // refreshSilently()
 
+        // Also disabling the automatic polling loops to prevent auto-refreshing at the home page.
+        // If users want new data, they must manually pull-to-refresh.
+        /*
         launch {
             while (true) {
                 delay(NOW_PLAYING_POLL_MS)
@@ -897,7 +900,7 @@ class HomeViewModel @Inject constructor(
                         }
                         // When a track finishes or changes, auto-refresh recent tracks list immediately
                         if (trackEnded || (trackChanged && previousNp != null)) {
-                            refreshSilently()
+                            // refreshSilently() // disabled
                         }
                     }?.onFailure {
                         // On error or rate limit, back off for 15 seconds before retrying
@@ -906,6 +909,8 @@ class HomeViewModel @Inject constructor(
                 }
             }
         }
+        */
+        /*
         launch {
             while (true) {
                 delay(RECENT_TRACKS_POLL_MS)
@@ -935,6 +940,7 @@ class HomeViewModel @Inject constructor(
                 }
             }
         }
+        */
         launch {
             while (true) {
                 delay(LISTEN_TICK_MS)

@@ -157,8 +157,24 @@ class AndroidAutoMediaLibrary @Inject constructor(
 
         val tracks = searchTracks(cleanQuery)
         if (tracks.isEmpty()) return false
-        player.playQueue(tracks, sourceLabel = "Android Auto Search: $cleanQuery")
+        player.playQueue(tracks, sourceLabel = "Voice search: $cleanQuery")
         return true
+    }
+
+    /**
+     * Voice request without a title ("play music on LastWave"): resume the
+     * loaded queue, else the newest playlist that has tracks, else downloads.
+     */
+    suspend fun playAnything(player: MusicPlayer): Boolean {
+        if (player.state.value.current != null) {
+            player.resume()
+            return true
+        }
+        val playlists = runCatching { getMergedPlaylists() }.getOrDefault(emptyList())
+        for (playlist in playlists.take(5)) {
+            if (runCatching { playPlaylist(playlist.id, 0, player) }.getOrDefault(false)) return true
+        }
+        return runCatching { playDownloads(player) }.getOrDefault(false)
     }
 
     private suspend fun getMergedPlaylists(): List<SavedPlaylist> {
