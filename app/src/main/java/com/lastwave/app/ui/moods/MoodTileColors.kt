@@ -36,14 +36,14 @@ internal fun moodTileColors(argb: Long, key: String): MoodTileColors {
     )
 }
 
-/** Soft, translucent home tiles keep the category hue without the saturated dark fill. */
+/** Muted, translucent tiles keep the category hue on Home and the genres page. */
 internal fun homeMoodTileColors(argb: Long, key: String): MoodTileColors {
     val accent = moodTileColors(argb, key).accent
-    val warmWhite = Color(0xFFFAF8F4)
+    val warmBase = Color(0xFFE8E5E0)
     return MoodTileColors(
-        accent = lerp(warmWhite, accent, 0.56f),
-        surfaceTop = lerp(warmWhite, accent, 0.14f).copy(alpha = 0.86f),
-        surfaceBottom = lerp(warmWhite, accent, 0.24f).copy(alpha = 0.84f),
+        accent = lerp(warmBase, accent, 0.56f),
+        surfaceTop = lerp(warmBase, accent, 0.14f).copy(alpha = 0.86f),
+        surfaceBottom = lerp(warmBase, accent, 0.24f).copy(alpha = 0.84f),
         content = Color(0xFF242832),
     )
 }
