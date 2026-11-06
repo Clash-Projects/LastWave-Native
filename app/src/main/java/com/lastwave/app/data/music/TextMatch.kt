@@ -113,17 +113,22 @@ internal object TextMatch {
     /** Combining marks following a Latin base character. Java supports this
      *  bounded lookbehind; a leading stray mark falls through to NON_WORD. */
     private val LATIN_DIACRITICS = Regex("(?<=[A-Za-z])\\p{M}+")
+    private val ARABIC_ALEF = Regex("[أإآٱ]")
+    private val ARABIC_TASHKEEL = Regex("[\u064B-\u0655\u0670]")
 
     /** Standard Arabic search folding: hamza-alef variants have no NFD
      *  decomposition, so mark-stripping alone never folds them (أ stays أ).
      *  Tashkeel (optional vocalization) is stripped; base letters are kept. */
-    private fun foldArabic(value: String): String = value
-        .replace(Regex("[أإآٱ]"), "ا")
-        .replace(Regex("ؤ"), "و")
-        .replace(Regex("ئ"), "ي")
-        .replace(Regex("ة"), "ه")
-        .replace(Regex("ى"), "ي")
-        .replace(Regex("[\u064B-\u0655\u0670]"), "")
+    private fun foldArabic(value: String): String {
+        if (value.none { it in '\u0600'..'\u06FF' }) return value
+        return value
+            .replace(ARABIC_ALEF, "ا")
+            .replace('ؤ', 'و')
+            .replace('ئ', 'ي')
+            .replace('ة', 'ه')
+            .replace('ى', 'ي')
+            .replace(ARABIC_TASHKEEL, "")
+    }
 
     /** True when the string carries letters outside A-Z: CJK, Thai, Indic,
      *  Arabic, Cyrillic, Hangul, … — scripts where partial overlap at modest

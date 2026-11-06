@@ -8,6 +8,7 @@ import org.json.JSONObject
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
+import java.net.NetworkInterface
 import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
@@ -15,8 +16,11 @@ import java.util.concurrent.TimeUnit
  * Custom DNS resolver designed for Realme UI / ColorOS and Indian carriers where IPv6 (AAAA)
  * connections frequently blackhole or time out, and ISP DNS resolvers intermittently drop InnerTube queries.
  *
- * 1) Queries system DNS and prioritizes IPv4 (Inet4Address) ahead of IPv6 (Inet6Address).
- * 2) Automatically falls back to DNS-over-HTTPS (https://1.1.1.1/dns-query and https://dns.google/resolve)
+ * 1) When on standard cellular/Wi-Fi, prioritizes IPv4 (Inet4Address) ahead of IPv6 (Inet6Address)
+ *    to avoid cellular IPv6 blackholing.
+ * 2) When a VPN interface is active (tun/ppp/wg/vpn), respects the system / VPN DNS ordering directly
+ *    so internal VPN routes and tunnels are not broken.
+ * 3) Automatically falls back to DNS-over-HTTPS (Cloudflare and Google DoH) for both A and AAAA records
  *    if system DNS throws UnknownHostException, times out, or fails.
  */
 class Ipv4FirstDnsResolver(
@@ -27,18 +31,20 @@ class Ipv4FirstDnsResolver(
         val builder = bootstrapClient?.newBuilder() ?: OkHttpClient.Builder()
         builder
             .dns(Dns.SYSTEM)
-            .connectTimeout(4, TimeUnit.SECONDS)
-            .readTimeout(4, TimeUnit.SECONDS)
-            .writeTimeout(4, TimeUnit.SECONDS)
+            .connectTimeout(2500, TimeUnit.MILLISECONDS)
+            .readTimeout(2500, TimeUnit.MILLISECONDS)
+            .writeTimeout(2500, TimeUnit.MILLISECONDS)
             .retryOnConnectionFailure(true)
             .build()
     }
 
     override fun lookup(hostname: String): List<InetAddress> {
+        val vpnActive = isVpnActive()
         try {
             val systemAddresses = Dns.SYSTEM.lookup(hostname)
             if (systemAddresses.isNotEmpty()) {
-                return sortIpv4First(systemAddresses)
+                // If on VPN, preserve system DNS order directly to honor the VPN's internal routing
+                return if (vpnActive) systemAddresses else sortIpv4First(systemAddresses)
             }
         } catch (e: Exception) {
             Log.w(TAG, "System DNS lookup failed for $hostname (${e.message}), falling back to DoH")
@@ -46,55 +52,65 @@ class Ipv4FirstDnsResolver(
 
         val dohResults = resolveDoh(hostname)
         if (dohResults.isNotEmpty()) {
-            return sortIpv4First(dohResults)
+            return if (vpnActive) dohResults else sortIpv4First(dohResults)
         }
 
         throw UnknownHostException("Unable to resolve host '$hostname' via system DNS or DoH fallback")
     }
 
+    private fun isVpnActive(): Boolean {
+        return runCatching {
+            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return false
+            interfaces.asSequence().any { iface ->
+                iface.isUp && (
+                    iface.name.startsWith("tun", ignoreCase = true) ||
+                    iface.name.startsWith("ppp", ignoreCase = true) ||
+                    iface.name.startsWith("p2p", ignoreCase = true) ||
+                    iface.name.contains("vpn", ignoreCase = true) ||
+                    iface.name.startsWith("wg", ignoreCase = true)
+                )
+            }
+        }.getOrDefault(false)
+    }
+
     private fun sortIpv4First(addresses: List<InetAddress>): List<InetAddress> {
+        val hasIpv4 = addresses.any { it is Inet4Address }
+        val hasIpv6 = addresses.any { it is Inet6Address }
+        if (!hasIpv4 || !hasIpv6) return addresses
         return addresses.sortedWith(compareBy { if (it is Inet4Address) 0 else 1 })
     }
 
     private fun resolveDoh(hostname: String): List<InetAddress> {
         val result = mutableListOf<InetAddress>()
 
-        // 1. Try Cloudflare DoH (1.1.1.1 direct IP, avoids recursive DNS resolution)
-        runCatching {
-            val request = Request.Builder()
-                .url("https://1.1.1.1/dns-query?name=$hostname&type=A")
-                .header("Accept", "application/dns-json")
-                .build()
-            dohClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body?.string().orEmpty()
-                    parseDohAnswers(body, result)
-                }
-            }
-        }.onFailure {
-            Log.w(TAG, "Cloudflare DoH failed for $hostname", it)
-        }
+        // 1. Try Cloudflare DoH (1.1.1.1 direct IP, query A and AAAA)
+        queryDohEndpoint("https://1.1.1.1/dns-query?name=$hostname&type=A", result)
+        queryDohEndpoint("https://1.1.1.1/dns-query?name=$hostname&type=AAAA", result)
 
         if (result.isNotEmpty()) return result
 
-        // 2. Try Google DoH by IP: this path runs because system DNS failed,
-        // so a hostname here could not resolve either.
+        // 2. Try Google DoH by IP (8.8.8.8 direct IP, query A and AAAA)
+        queryDohEndpoint("https://8.8.8.8/resolve?name=$hostname&type=A", result)
+        queryDohEndpoint("https://8.8.8.8/resolve?name=$hostname&type=AAAA", result)
+
+        return result
+    }
+
+    private fun queryDohEndpoint(url: String, out: MutableList<InetAddress>) {
         runCatching {
             val request = Request.Builder()
-                .url("https://8.8.8.8/resolve?name=$hostname&type=A")
-                .header("Accept", "application/json")
+                .url(url)
+                .header("Accept", "application/dns-json, application/json")
                 .build()
             dohClient.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
                     val body = response.body?.string().orEmpty()
-                    parseDohAnswers(body, result)
+                    parseDohAnswers(body, out)
                 }
             }
         }.onFailure {
-            Log.w(TAG, "Google DoH failed for $hostname", it)
+            Log.w(TAG, "DoH query failed for $url: ${it.message}")
         }
-
-        return result
     }
 
     private fun parseDohAnswers(jsonStr: String, out: MutableList<InetAddress>) {
@@ -108,7 +124,9 @@ class Ipv4FirstDnsResolver(
             if ((type == 1 || type == 28) && data.isNotBlank()) {
                 runCatching {
                     val address = InetAddress.getByName(data)
-                    out.add(address)
+                    if (!out.contains(address)) {
+                        out.add(address)
+                    }
                 }
             }
         }
