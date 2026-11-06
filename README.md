@@ -111,35 +111,48 @@ For audio lovers, LastWave packs Bit-Perfect USB DAC output, Lossless FLAC addon
 
 
 
-## Tech Stack & Architecture
-
-- **Language & UI:** 100% Kotlin + Jetpack Compose (Material 3 Expressive)
-- **Audio Engine:** AndroidX Media3 ExoPlayer with lockscreen media controls & Android Auto integration
-- **Streaming Catalog:** YouTube Music streaming engine with high-efficiency Opus audio
-- **Audiophile Pipeline:** Bit-Perfect playback engine, AutoEQ database integration & modular Lossless Addon Service
-- **Lyrics Engine:** [LRCLIB](https://lrclib.net) millisecond-synchronized lyrics
-- **Architecture:** MVVM + Clean Architecture, Room DB, Jetpack DataStore, Dagger Hilt, Coroutines & Flow
-
----
-
-
 ## Getting Started
 
-1. Download the latest APK from the **[Releases](https://github.com/Clash-Projects/LastWave-native/releases)** or **[Actions](https://github.com/Clash-Projects/LastWave-native/actions)** tab.
-2. Install `LastWave-v5.0.0-release.apk` on your Android device (Android 7.0+).
-3. Configure your audio pipeline, AutoEQ headphone profile, and Lossless Addons in **Settings → Audio**.
-4. Enjoy ad-free streaming, bit-perfect playback, and intelligent Automix radios!
+### Installation
+
+| Channel | Source | Compatibility |
+|:---|:---|:---|
+| **Stable Release** | [GitHub Releases](https://github.com/Clash-Projects/LastWave-native/releases) | Recommended for all users • Android 7.0+ (API 24+) |
+| **Nightly Builds** | [GitHub Actions](https://github.com/Clash-Projects/LastWave-native/actions) | Latest automated builds with bleeding-edge features |
+
+### Quick Setup
+
+1. Install the APK on your Android device.
+2. *(Optional)* Navigate to **Settings → Audio** to configure:
+   - **Bit-Perfect Output:** Enable exclusive USB DAC mode for bit-perfect audio.
+   - **AutoEQ Presets:** Search for your headphones/IEMs to apply calibrated parametric EQ curves.
+   - **Lossless Addons:** Enable the modular addon service for 24-bit Hi-Res FLAC playback.
+3. Start streaming ad-free music, listening to customized radios, and enjoying synced lyrics!
 
 ---
-
 
 ## Building from Source
 
+### Prerequisites
+- **JDK:** OpenJDK 17 or higher
+- **Android SDK:** API Level 34+ with CMake & Android NDK installed (for native audio C++ engine & USB driver)
+
+### Build Instructions
+
 ```bash
+# Clone the repository
 git clone https://github.com/Clash-Projects/LastWave-native.git
 cd LastWave-native
+
+# Build the release APK
 ./gradlew assembleRelease
+
+# The generated APK will be at:
+# app/build/outputs/apk/release/app-release-unsigned.apk
 ```
+
+> [!TIP]
+> For local development and debugging, run `./gradlew assembleDebug` or install directly to a connected device via `./gradlew installDebug`.
 
 ---
 
