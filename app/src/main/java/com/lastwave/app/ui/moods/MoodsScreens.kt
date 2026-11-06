@@ -47,7 +47,12 @@ internal fun MoodsScreen(onBack: () -> Unit, viewModel: MoodsViewModel = hiltVie
                     itemsIndexed(state.groups, key = { index, group -> "$index:${group.title}" }) { _, group ->
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             ShelfHeaderV2(title = group.title)
-                            MoodMosaic(tiles = group.tiles, onTileClick = viewModel::openTile, wrapVertically = true)
+                            MoodMosaic(
+                                tiles = group.tiles,
+                                onTileClick = viewModel::openTile,
+                                wrapVertically = true,
+                                pastelGlass = true,
+                            )
                         }
                     }
                 }
