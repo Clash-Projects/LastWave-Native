@@ -1320,4 +1320,9 @@
     <string name="recommendation_source_spotify_sub">Seeded by Spotify, played from YouTube Music</string>
     <string name="toast_spotify_connect_first">Connect Spotify first</string>
     <string name="toast_spotify_disconnected">Spotify account disconnected</string>
+    <string name="settings_spotify_live_playlists_title">Live sync playlists</string>
+    <string name="settings_spotify_live_playlists_sub">Show Spotify playlists &amp; Liked Songs in your Playlists library</string>
+    <string name="spotify_playlists_section_title">Spotify</string>
+    <string name="spotify_liked_songs_title">Liked Songs</string>
+    <string name="spotify_liked_songs_sub">Your Spotify likes</string>
 </resources>

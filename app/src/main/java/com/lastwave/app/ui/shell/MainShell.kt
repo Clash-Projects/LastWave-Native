@@ -409,6 +409,7 @@ fun MainShell(
                     )
                     MainTab.PLAYLISTS -> PlaylistScreen(
                         onOpenPlaylist = onOpenPlaylist,
+                        onOpenFeedPlaylist = onOpenFeedPlaylist,
                         onOpenGenerator = onOpenGenerator,
                     )
                 }

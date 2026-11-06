@@ -45,6 +45,8 @@ import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.FilledTonalButton
@@ -127,6 +129,7 @@ import java.util.Locale
 @Composable
 fun PlaylistScreen(
     onOpenPlaylist: (Long) -> Unit = {},
+    onOpenFeedPlaylist: (String) -> Unit = {},
     onOpenGenerator: () -> Unit = {},
     viewModel: PlaylistViewModel = hiltViewModel(),
 ) {
@@ -319,7 +322,7 @@ fun PlaylistScreen(
             ) {
                 when {
                     state.isLoading && state.playlists.isEmpty() && !state.isGenerating -> LoadingState()
-                    filteredPlaylists.isEmpty() && !state.isGenerating -> EmptyState()
+                    filteredPlaylists.isEmpty() && !state.isGenerating && (!state.isSpotifySyncEnabled || state.spotifyPlaylists.isEmpty()) -> EmptyState()
                     else -> LazyColumn(
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = FloatingNavDefaults.contentBottomPadding()),
                         verticalArrangement = Arrangement.spacedBy(com.lastwave.app.ui.common.GroupGap),
@@ -347,6 +350,76 @@ fun PlaylistScreen(
                                         modifier = Modifier.padding(14.dp),
                                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                                         fontWeight = FontWeight.Medium,
+                                    )
+                                }
+                            }
+                        }
+
+                        if (state.isSpotifySyncEnabled && state.spotifyPlaylists.isNotEmpty()) {
+                            item(key = "spotify_section_header") {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 4.dp, bottom = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.CloudSync,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.spotify_playlists_section_title),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                    ) {
+                                        Text(
+                                            text = "${state.spotifyPlaylists.size}",
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                    }
+                                }
+                            }
+
+                            item(key = "spotify_playlists_row") {
+                                androidx.compose.foundation.lazy.LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 2.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    items(
+                                        items = state.spotifyPlaylists,
+                                        key = { "sp_${it.id}" },
+                                    ) { pl ->
+                                        SpotifyPlaylistCard(
+                                            playlist = pl,
+                                            onClick = {
+                                                val routeId = if (pl.id == "liked") "sp_liked" else "sp_${pl.id}"
+                                                onOpenFeedPlaylist(routeId)
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (filteredPlaylists.isNotEmpty()) {
+                                item(key = "local_playlists_header") {
+                                    Text(
+                                        text = stringResource(R.string.nav_playlists),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                                        color = MaterialTheme.colorScheme.onSurface,
                                     )
                                 }
                             }
@@ -936,3 +1009,112 @@ private fun FormatOptionRow(title: String, description: String, selected: Boolea
 
 private fun formatDate(millis: Long): String =
     SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(millis))
+
+
+@Composable
+private fun SpotifyPlaylistCard(
+    playlist: com.lastwave.app.data.playlist.SpotifyUserPlaylist,
+    onClick: () -> Unit,
+) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val isLiked = playlist.id == "liked"
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val cardScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "spCardScale",
+    )
+
+    Column(
+        modifier = Modifier
+            .width(136.dp)
+            .graphicsLayer {
+                scaleX = cardScale
+                scaleY = cardScale
+            }
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = {
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                    onClick()
+                },
+            ),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(136.dp)
+                .clip(RoundedCornerShape(14.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (isLiked) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            androidx.compose.ui.graphics.Brush.linearGradient(
+                                colors = listOf(
+                                    androidx.compose.ui.graphics.Color(0xFF1DB954),
+                                    androidx.compose.ui.graphics.Color(0xFF191414),
+                                ),
+                            ),
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Favorite,
+                        contentDescription = null,
+                        modifier = Modifier.size(44.dp),
+                        tint = androidx.compose.ui.graphics.Color.White,
+                    )
+                }
+            } else if (!playlist.artworkUrl.isNullOrBlank()) {
+                coil.compose.AsyncImage(
+                    model = playlist.artworkUrl,
+                    contentDescription = playlist.name,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(6.dp))
+
+        Text(
+            text = playlist.name,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+
+        Text(
+            text = if (isLiked) {
+                stringResource(R.string.spotify_liked_songs_sub)
+            } else {
+                "${playlist.trackCount} tracks"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}

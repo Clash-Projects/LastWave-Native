@@ -175,7 +175,18 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             spotifyPreferences.clearConnection()
             settingsPreferences.setRecommendationSource(com.lastwave.app.data.local.RecommendationSource.YOUTUBE_MUSIC)
+            settingsPreferences.setSpotifyPlaylistsSyncEnabled(false)
             _uiState.update { it.copy(toastMessage = appContext.getString(com.lastwave.app.R.string.toast_spotify_disconnected)) }
+        }
+    }
+
+    fun setSpotifyPlaylistsSyncEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            if (enabled && !spotifyConnected.value) {
+                _uiState.update { it.copy(toastMessage = appContext.getString(com.lastwave.app.R.string.toast_spotify_connect_first)) }
+                return@launch
+            }
+            settingsPreferences.setSpotifyPlaylistsSyncEnabled(enabled)
         }
     }
 

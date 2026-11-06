@@ -1849,7 +1849,7 @@ fun SettingsScreen(
                                 SectionLabel("Spotify")
                                 val spotifyCanvasEnabled by viewModel.spotifyCanvasEnabled.collectAsStateWithLifecycle()
                                 val spotifyPreferCanvas by viewModel.spotifyPreferCanvas.collectAsStateWithLifecycle()
-                                SettingsGroup(rowCount = if (spotifyConnected) 4 else 3) { index, position ->
+                                SettingsGroup(rowCount = if (spotifyConnected) 5 else 3) { index, position ->
                                     when (index) {
                                         0 -> if (spotifyConnected) {
                                             SpotifyAccountRow(
@@ -1901,6 +1901,17 @@ fun SettingsScreen(
                                             onCheckedChange = viewModel::setSpotifyPreferCanvas,
                                             position = position,
                                             isHighlighted = (highlightedSettingId == "spotify.prefer_canvas"),
+                                        )
+                                        4 -> SettingsToggleCard(
+                                            icon = Icons.Filled.CloudSync,
+                                            iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                            title = stringResource(R.string.settings_spotify_live_playlists_title),
+                                            subtitle = stringResource(R.string.settings_spotify_live_playlists_sub),
+                                            checked = misc.spotifyPlaylistsSyncEnabled,
+                                            onCheckedChange = viewModel::setSpotifyPlaylistsSyncEnabled,
+                                            position = position,
+                                            isHighlighted = (highlightedSettingId == "spotify.live_playlists"),
                                         )
                                     }
                                 }
