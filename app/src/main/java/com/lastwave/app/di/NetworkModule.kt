@@ -134,7 +134,7 @@ object NetworkModule {
                 host.contains("apple") || host.contains("itunes") || host.contains("mzstatic") -> "apple"
                 host.contains("tidal") -> "tidal"
                 host.contains("lrclib") || host.contains("lyrics") || host.contains("kugou") ||
-                    host.contains("boidu") || host.contains("musixmatch") ||
+                    host.contains("boidu") || host.contains("simpmusic") || host.contains("musixmatch") ||
                     host.contains("lrc.red") -> "lyrics"
                 else -> "other"
             }
