@@ -111,7 +111,7 @@ For audio lovers, LastWave packs Bit-Perfect USB DAC output, Lossless FLAC addon
 
 
 
-## <img src="https://api.iconify.design/lucide/cpu.svg?color=%23C6F100" width="20" height="20" align="center" /> Tech Stack & Architecture
+## Tech Stack & Architecture
 
 - **Language & UI:** 100% Kotlin + Jetpack Compose (Material 3 Expressive)
 - **Audio Engine:** AndroidX Media3 ExoPlayer with lockscreen media controls & Android Auto integration
@@ -123,7 +123,7 @@ For audio lovers, LastWave packs Bit-Perfect USB DAC output, Lossless FLAC addon
 ---
 
 
-## <img src="https://api.iconify.design/lucide/rocket.svg?color=%23C6F100" width="20" height="20" align="center" /> Getting Started
+## Getting Started
 
 1. Download the latest APK from the **[Releases](https://github.com/Clash-Projects/LastWave-native/releases)** or **[Actions](https://github.com/Clash-Projects/LastWave-native/actions)** tab.
 2. Install `LastWave-v5.0.0-release.apk` on your Android device (Android 7.0+).
@@ -133,7 +133,7 @@ For audio lovers, LastWave packs Bit-Perfect USB DAC output, Lossless FLAC addon
 ---
 
 
-## <img src="https://api.iconify.design/lucide/terminal.svg?color=%23C6F100" width="20" height="20" align="center" /> Building from Source
+## Building from Source
 
 ```bash
 git clone https://github.com/Clash-Projects/LastWave-native.git
@@ -181,7 +181,7 @@ LastWave wouldn't be possible without our incredible community of contributors. 
 ---
 
 
-## <img src="https://api.iconify.design/lucide/shield-alert.svg?color=%23FFB4A2" width="20" height="20" align="center" /> Disclaimer
+## Disclaimer
 
 > [!NOTE]
 > **Educational & Research Notice**
