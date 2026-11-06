@@ -181,6 +181,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     private var lastWaveObservedAtMs = 0L
     private var playbackWakeLock: PowerManager.WakeLock? = null
     private var playbackWifiLock: WifiManager.WifiLock? = null
+    private var wakeLockReleaseJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -680,6 +681,8 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     private fun updateWakeLocks(state: MusicPlayerState) {
         val shouldHold = state.isPlaying || state.isBuffering
         if (shouldHold) {
+            wakeLockReleaseJob?.cancel()
+            wakeLockReleaseJob = null
             runCatching {
                 if (playbackWakeLock?.isHeld == false) {
                     playbackWakeLock?.acquire()
@@ -689,9 +692,15 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                 }
             }
         } else {
-            runCatching {
-                if (playbackWakeLock?.isHeld == true) playbackWakeLock?.release()
-                if (playbackWifiLock?.isHeld == true) playbackWifiLock?.release()
+            if (wakeLockReleaseJob == null && (playbackWakeLock?.isHeld == true || playbackWifiLock?.isHeld == true)) {
+                wakeLockReleaseJob = scope.launch {
+                    delay(WAKELOCK_RELEASE_GRACE_MS)
+                    runCatching {
+                        if (playbackWakeLock?.isHeld == true) playbackWakeLock?.release()
+                        if (playbackWifiLock?.isHeld == true) playbackWifiLock?.release()
+                    }
+                    wakeLockReleaseJob = null
+                }
             }
         }
     }
@@ -818,6 +827,8 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         if (playerState.isPlaying || playerState.isBuffering) {
             musicPlayer.stopAndClear(clearSession = false)
         }
+        wakeLockReleaseJob?.cancel()
+        wakeLockReleaseJob = null
         runCatching { if (playbackWakeLock?.isHeld == true) playbackWakeLock?.release() }
         runCatching { if (playbackWifiLock?.isHeld == true) playbackWifiLock?.release() }
         // The service is the last thing standing in a playback-only session, so
@@ -1847,6 +1858,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     }
 
     private companion object {
+        const val WAKELOCK_RELEASE_GRACE_MS = 10_000L
         // Expanded RemoteViews content needs ~117dp (brand + title + artist +
         // album + 44dp controls + margins); 128dp clipped the transport row
         // whenever the album line was visible. 152dp leaves breathing room.
