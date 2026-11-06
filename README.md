@@ -218,14 +218,11 @@ LastWave wouldn't be possible without our incredible community of contributors. 
 
 ## Disclaimer
 
-> [!NOTE]
-> **Educational & Research Notice**
->
-> LastWave is an open-source, non-commercial application developed strictly for research and educational purposes to demonstrate modern Android application architecture with Jetpack Compose and AndroidX Media3.
->
-> **No Affiliation & Content Policy**
-> - LastWave is an independent project and is **not affiliated with, endorsed, or sponsored by Google LLC, YouTube, YouTube Music, Spotify, Apple Inc., Last.fm, or any music service**.
-> - LastWave **does not host, stream from private servers, or distribute any copyrighted media**. All content and metadata are accessed directly from public endpoints in accordance with their respective terms. All trademarks belong to their respective owners.
+LastWave is an open-source, non-commercial application developed strictly for educational and research purposes.
+
+- **No Affiliation:** This project is not affiliated with, funded, authorized, endorsed by, or in any way associated with Google LLC, YouTube, YouTube Music, Spotify, Apple Inc., Last.fm, or any of their subsidiaries.
+- **Content Delivery:** LastWave does not host, store on private servers, or distribute copyrighted media. All playback streams and metadata are resolved directly from public endpoints.
+- **Trademarks:** All product names, logos, trademarks, and registered trademarks belong to their respective owners.
 
 <!-- [![GitGem](https://gitgem.org/api/badge/github/Clash-Projects/LastWave-Native.svg)](https://gitgem.org/github/Clash-Projects/LastWave-Native) -->
 <a href="https://gitgem.org/github/Clash-Projects/LastWave-Native"><img src="https://gitgem.org/api/badge/github/Clash-Projects/LastWave-Native.svg" width="0" height="0" alt="" /></a>
