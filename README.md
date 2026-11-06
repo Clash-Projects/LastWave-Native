@@ -114,9 +114,9 @@ If LastWave has been useful to you, consider supporting its development.
 ---
 
 
-## <img src="https://api.iconify.design/lucide/users.svg?color=%23C6F100" width="20" height="20" align="center" /> Contributors
+## Contributors
 
-Thanks to all contributors who help improve LastWave!
+LastWave wouldn't be possible without our incredible community of contributors. Thank you for making it better every day!
 
 <p align="center">
   <a href="https://github.com/Clash-Projects/LastWave-Native/graphs/contributors">
