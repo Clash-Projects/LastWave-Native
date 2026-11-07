@@ -317,6 +317,13 @@ fun PlaylistScreen(
                 }
             }
 
+            val filteredSpotifyPlaylists = remember(state.spotifyPlaylists, searchQuery) {
+                if (searchQuery.isBlank()) state.spotifyPlaylists
+                else state.spotifyPlaylists.filter {
+                    it.name.contains(searchQuery, ignoreCase = true)
+                }
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -324,7 +331,7 @@ fun PlaylistScreen(
             ) {
                 when {
                     state.isLoading && state.playlists.isEmpty() && !state.isGenerating -> LoadingState()
-                    filteredPlaylists.isEmpty() && !state.isGenerating && (!state.isSpotifySyncEnabled || state.spotifyPlaylists.isEmpty()) -> EmptyState()
+                    filteredPlaylists.isEmpty() && !state.isGenerating && (!state.isSpotifySyncEnabled || filteredSpotifyPlaylists.isEmpty()) -> EmptyState()
                     else -> LazyColumn(
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = FloatingNavDefaults.contentBottomPadding()),
                         verticalArrangement = Arrangement.spacedBy(com.lastwave.app.ui.common.GroupGap),
@@ -357,7 +364,7 @@ fun PlaylistScreen(
                             }
                         }
 
-                        if (state.isSpotifySyncEnabled && state.spotifyPlaylists.isNotEmpty()) {
+                        if (state.isSpotifySyncEnabled && filteredSpotifyPlaylists.isNotEmpty()) {
                             item(key = "spotify_section_header") {
                                 Row(
                                     modifier = Modifier
@@ -383,7 +390,7 @@ fun PlaylistScreen(
                                         color = MaterialTheme.colorScheme.primaryContainer,
                                     ) {
                                         Text(
-                                            text = "${state.spotifyPlaylists.size}",
+                                            text = "${filteredSpotifyPlaylists.size}",
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -393,24 +400,19 @@ fun PlaylistScreen(
                                 }
                             }
 
-                            item(key = "spotify_playlists_row") {
-                                androidx.compose.foundation.lazy.LazyRow(
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    contentPadding = PaddingValues(horizontal = 2.dp),
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    items(
-                                        items = state.spotifyPlaylists,
-                                        key = { "sp_${it.id}" },
-                                    ) { pl ->
-                                        SpotifyPlaylistCard(
-                                            playlist = pl,
-                                            onClick = {
-                                                val routeId = if (pl.id == "liked") "sp_liked" else "sp_${pl.id}"
-                                                onOpenFeedPlaylist(routeId)
-                                            },
-                                        )
-                                    }
+                            itemsIndexed(
+                                items = filteredSpotifyPlaylists,
+                                key = { _, pl -> "sp_${pl.id}" },
+                            ) { index, pl ->
+                                Box(Modifier.animateItem()) {
+                                    SpotifyPlaylistCard(
+                                        playlist = pl,
+                                        position = com.lastwave.app.ui.common.groupPositionFor(index, filteredSpotifyPlaylists.size),
+                                        onClick = {
+                                            val routeId = if (pl.id == "liked") "sp_liked" else "sp_${pl.id}"
+                                            onOpenFeedPlaylist(routeId)
+                                        },
+                                    )
                                 }
                             }
 
@@ -1013,9 +1015,11 @@ private fun formatDate(millis: Long): String =
     SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(millis))
 
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun SpotifyPlaylistCard(
     playlist: com.lastwave.app.data.playlist.SpotifyUserPlaylist,
+    position: com.lastwave.app.ui.common.GroupPosition = com.lastwave.app.ui.common.GroupPosition.SINGLE,
     onClick: () -> Unit,
 ) {
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
@@ -1023,100 +1027,110 @@ private fun SpotifyPlaylistCard(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val cardScale by animateFloatAsState(
-        targetValue = if (isPressed) 0.95f else 1f,
+        targetValue = if (isPressed) 0.975f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
         label = "spCardScale",
     )
 
-    Column(
+    Card(
+        shape = com.lastwave.app.ui.common.groupShape(position),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier
-            .width(136.dp)
+            .fillMaxWidth()
             .graphicsLayer {
                 scaleX = cardScale
                 scaleY = cardScale
-            }
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = {
-                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.ContextClick)
-                    onClick()
-                },
-            ),
+            },
     ) {
-        Box(
+        Row(
             modifier = Modifier
-                .size(136.dp)
-                .clip(RoundedCornerShape(14.dp)),
-            contentAlignment = Alignment.Center,
+                .fillMaxWidth()
+                .combinedClickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = {
+                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.ContextClick)
+                        onClick()
+                    },
+                )
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (isLiked) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            androidx.compose.ui.graphics.Brush.linearGradient(
-                                colors = listOf(
-                                    androidx.compose.ui.graphics.Color(0xFF1DB954),
-                                    androidx.compose.ui.graphics.Color(0xFF191414),
+            Box(
+                modifier = Modifier
+                    .size(60.dp)
+                    .clip(RoundedCornerShape(14.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isLiked) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                androidx.compose.ui.graphics.Brush.linearGradient(
+                                    colors = listOf(
+                                        androidx.compose.ui.graphics.Color(0xFF1DB954),
+                                        androidx.compose.ui.graphics.Color(0xFF191414),
+                                    ),
                                 ),
                             ),
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Favorite,
-                        contentDescription = null,
-                        modifier = Modifier.size(44.dp),
-                        tint = androidx.compose.ui.graphics.Color.White,
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Favorite,
+                            contentDescription = null,
+                            modifier = Modifier.size(26.dp),
+                            tint = androidx.compose.ui.graphics.Color.White,
+                        )
+                    }
+                } else if (!playlist.artworkUrl.isNullOrBlank()) {
+                    coil.compose.AsyncImage(
+                        model = playlist.artworkUrl,
+                        contentDescription = playlist.name,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
                     )
-                }
-            } else if (!playlist.artworkUrl.isNullOrBlank()) {
-                coil.compose.AsyncImage(
-                    model = playlist.artworkUrl,
-                    contentDescription = playlist.name,
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.QueueMusic,
-                        contentDescription = null,
-                        modifier = Modifier.size(40.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                            contentDescription = null,
+                            modifier = Modifier.size(26.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
+
+            Spacer(Modifier.width(14.dp))
+
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = playlist.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = if (isLiked) {
+                        "Spotify • ${stringResource(R.string.spotify_liked_songs_sub)}"
+                    } else {
+                        "Spotify • ${playlist.trackCount} tracks"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
-
-        Spacer(Modifier.height(6.dp))
-
-        Text(
-            text = playlist.name,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-
-        Text(
-            text = if (isLiked) {
-                stringResource(R.string.spotify_liked_songs_sub)
-            } else {
-                "${playlist.trackCount} tracks"
-            },
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
