@@ -23,6 +23,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
+import com.lastwave.app.data.local.musicHapticsConfig
 import com.lastwave.app.data.lyrics.LyricLine
 import com.lastwave.app.data.lyrics.LyricsResult
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -310,7 +311,11 @@ class MusicPlayer @Inject constructor(
     private val lyricsRepository: dagger.Lazy<com.lastwave.app.data.lyrics.LyricsRepository>,
     private val jamRepository: dagger.Lazy<com.lastwave.app.data.jam.JamRepository>,
     private val autoMixCoordinator: dagger.Lazy<com.lastwave.app.playback.automix.engine.DualDeckTransportCoordinator>,
+    private val musicHapticsController: com.lastwave.app.playback.haptics.MusicHapticsController,
 ) {
+
+    val hapticsController: com.lastwave.app.playback.haptics.MusicHapticsController
+        get() = musicHapticsController
 
     private val appContext = context.applicationContext
     /**
@@ -368,6 +373,7 @@ class MusicPlayer @Inject constructor(
             player.clearMediaItems()
         }
         if (snapshot.current != null) ensureForegroundService()
+        musicHapticsController.setCastingOrAutoActive(true)
         // While casting, the volume UI shows/controls the cast device.
         _state.update { it.copy(isCasting = true, appVolume = castVolume) }
         return snapshot
@@ -428,6 +434,7 @@ class MusicPlayer @Inject constructor(
     }
 
     internal fun finishCasting() {
+        musicHapticsController.setCastingOrAutoActive(false)
         // Back to local output: show/use the local in-app volume again.
         _state.update { it.copy(isCasting = false, isPlaying = false, isBuffering = false, appVolume = appVolume) }
         persistPlaybackSession()
@@ -673,6 +680,11 @@ class MusicPlayer @Inject constructor(
             android.media.AudioAttributes.Builder()
                 .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
                 .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                .apply {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        setHapticChannelsMuted(false)
+                    }
+                }
                 .build()
         }.getOrNull()
     }
@@ -691,6 +703,14 @@ class MusicPlayer @Inject constructor(
     private val playerToSink = java.util.Collections.synchronizedMap(java.util.WeakHashMap<Player, NativeProcessingAudioSink>())
     /** True while the usbdevfs exclusive session owns output. */
     @Volatile private var usbExclusiveSinkActive = false
+    val isUsbExclusiveActive: Boolean get() = usbExclusiveSinkActive || exclusiveUsbOutput.isActive()
+
+    fun updateMusicHapticsConfig(newConfig: com.lastwave.app.playback.haptics.MusicHapticsConfig) {
+        musicHapticsController.updateConfig(newConfig)
+        applicationScope.launch {
+            settingsPreferences.updateMusicHapticsConfig(newConfig)
+        }
+    }
     @Volatile private var usbExclusivePrefEnabled = false
     /** Raw "USB Exclusive Output" toggle, before the Bit-Perfect gate. */
     @Volatile private var usbExclusiveRawPref = false
@@ -997,6 +1017,7 @@ class MusicPlayer @Inject constructor(
             refresh(live)
         }
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            musicHapticsController.onIsPlayingChanged(isPlaying, player.volume)
             outgoingPlayer?.playWhenReady = isPlaying
             if (isPlaying) {
                 onMain { releaseDeferredPreload() }
@@ -1029,6 +1050,9 @@ class MusicPlayer @Inject constructor(
         }
         override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
             _state.update { it.copy(speed = playbackParameters.speed, pitch = playbackParameters.pitch) }
+        }
+        override fun onVolumeChanged(volume: Float) {
+            musicHapticsController.onIsPlayingChanged(player.isPlaying, volume)
         }
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             if (isCasting) return
@@ -1560,6 +1584,7 @@ class MusicPlayer @Inject constructor(
                     .setEnableFloatOutput(false)
                     .setEnableAudioTrackPlaybackParams(true)
                     .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
+                    .setAudioProcessors(arrayOf(musicHapticsController.audioProcessor))
                     .build()
                 val engine = runCatching(engineProvider).getOrNull()
                 val enhancedSink = try {
@@ -1567,6 +1592,7 @@ class MusicPlayer @Inject constructor(
                         .setEnableFloatOutput(true)
                         .setEnableAudioTrackPlaybackParams(true)
                         .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
+                        .setAudioProcessors(arrayOf(musicHapticsController.audioProcessor))
                         .build()
                 } catch (error: Exception) {
                     android.util.Log.w("MusicPlayer", "Enhanced audio sink unavailable; using PCM16", error)
@@ -1575,6 +1601,7 @@ class MusicPlayer @Inject constructor(
                         .setEnableFloatOutput(false)
                         .setEnableAudioTrackPlaybackParams(true)
                         .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
+                        .setAudioProcessors(arrayOf(musicHapticsController.audioProcessor))
                         .build()
                 } catch (error: LinkageError) {
                     android.util.Log.w("MusicPlayer", "Enhanced audio sink linkage failed; using PCM16", error)
@@ -1583,6 +1610,7 @@ class MusicPlayer @Inject constructor(
                         .setEnableFloatOutput(false)
                         .setEnableAudioTrackPlaybackParams(true)
                         .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
+                        .setAudioProcessors(arrayOf(musicHapticsController.audioProcessor))
                         .build()
                 }
                 if (engine?.isAvailable == true) {
@@ -1865,6 +1893,7 @@ class MusicPlayer @Inject constructor(
                     override fun onAudioSessionIdChanged(audioSessionId: Int) {
                         effects.attach(audioSessionId)
                         runCatching { systemEffectsBridge.onSessionChanged(audioSessionId) }
+                        musicHapticsController.onAudioSessionIdChanged(audioSessionId)
                     }
                 })
             }.also { playerInstance ->
@@ -1896,6 +1925,7 @@ class MusicPlayer @Inject constructor(
         createPlayer({ nativeAudioEngine.get() }, audioEffectsEngine, true)
             .also { restoredPlayer ->
                 activePlayer = restoredPlayer
+                musicHapticsController.bindToPlayer(restoredPlayer)
                 restoredPlayer.addListener(listener)
                 val restoredSession = pendingRestoredSession
                 pendingRestoredSession = null
@@ -2339,6 +2369,7 @@ class MusicPlayer @Inject constructor(
 
         applicationScope.launch {
             settingsPreferences.settings.collect { settings ->
+                musicHapticsController.updateConfig(settings.musicHapticsConfig)
                 crossfadeEnabled = settings.crossfadeEnabled
                 if (autoplaySimilarEnabled && !settings.autoplaySimilarEnabled) {
                     withContext(Dispatchers.Main.immediate) { disableRadioQueue() }
@@ -3774,6 +3805,8 @@ class MusicPlayer @Inject constructor(
         }
         outgoingPlayer = outgoing
         activePlayer = standby
+        musicHapticsController.bindToPlayer(standby)
+        musicHapticsController.onAudioSessionIdChanged(standby.audioSessionId)
         standby.addListener(listener)
         // Keep handleAudioFocus = false: LastWave manages audio focus manually via requestMediaAudioFocus().
         // Setting true here activates ExoPlayer's internal AudioFocusManager which steals focus, causing Android
@@ -4088,6 +4121,7 @@ class MusicPlayer @Inject constructor(
         }
         val exclusive = exclusiveUsbOutput.isActive()
         usbExclusiveSinkActive = exclusive
+        musicHapticsController.setUsbExclusiveModeActive(exclusive)
         // AudioFX on the player session would process nothing on either
         // exclusive path; the effects engine treats both the same way.
         val anyExclusive = exclusive || internalDirectOutput.isActive()
@@ -4270,6 +4304,7 @@ class MusicPlayer @Inject constructor(
         val srcLabel = snapshot.audioCodec
             ?: if (snapshot.isLossless) "LOSSLESS" else "Audio"
         usbExclusiveSinkActive = exclusive
+        musicHapticsController.setUsbExclusiveModeActive(exclusive)
         val sinkDirect = exclusive || audioSinks.any { sink ->
             runCatching { sink.isBitPerfectBypassActive() }.getOrDefault(false)
         }
@@ -8488,6 +8523,8 @@ class MusicPlayer @Inject constructor(
 
             live.removeListener(listener)
             activePlayer = standby
+            musicHapticsController.bindToPlayer(standby)
+            musicHapticsController.onAudioSessionIdChanged(standby.audioSessionId)
             standby.addListener(listener)
             committed = true
             standbyQueue = emptyList()

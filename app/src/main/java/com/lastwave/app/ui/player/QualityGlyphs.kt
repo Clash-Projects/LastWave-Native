@@ -156,4 +156,32 @@ internal object QualityGlyphs {
             path(fill = ink) { bars(floatArrayOf(6.6f, 10.2f, 13.8f, 17.4f)) }
         }.build()
     }
+
+    /** Music Haptics: phone silhouette with tactile acoustic vibration waves. */
+    val MusicHaptics: ImageVector by lazy {
+        ImageVector.Builder("MusicHaptics", 24.dp, 24.dp, 24f, 24f).apply {
+            path(
+                fill = null,
+                stroke = ink,
+                strokeLineWidth = 1.8f,
+                strokeLineJoin = StrokeJoin.Round,
+                strokeCap = StrokeCap.Round,
+            ) {
+                roundRect(7.5f, 3.5f, 16.5f, 20.5f, 2.2f)
+            }
+            path(
+                fill = null,
+                stroke = ink,
+                strokeLineWidth = 1.6f,
+                strokeCap = StrokeCap.Round,
+            ) {
+                // Left haptic ripple
+                moveTo(3.5f, 8.5f)
+                curveTo(2f, 10.5f, 2f, 13.5f, 3.5f, 15.5f)
+                // Right haptic ripple
+                moveTo(20.5f, 8.5f)
+                curveTo(22f, 10.5f, 22f, 13.5f, 20.5f, 15.5f)
+            }
+        }.build()
+    }
 }

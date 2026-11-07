@@ -12,6 +12,10 @@ import com.lastwave.app.data.local.AppIcon
 import com.lastwave.app.data.local.AppLanguage
 import com.lastwave.app.data.local.EqualizerSettings
 import com.lastwave.app.data.local.MiscSettings
+import com.lastwave.app.playback.haptics.MusicHapticsConfig
+import com.lastwave.app.playback.haptics.MusicHapticsEngineMode
+import com.lastwave.app.playback.haptics.MusicHapticsIntensity
+import com.lastwave.app.playback.haptics.MusicHapticsMode
 import com.lastwave.app.data.local.ScrobblerPreferences
 import com.lastwave.app.data.local.ScrobblerSettings
 import com.lastwave.app.data.local.SessionData
@@ -590,6 +594,45 @@ class SettingsViewModel @Inject constructor(
 
     fun setButtonNowPlayingEnabled(enabled: Boolean) = launchSettingsAction("update button now playing setting") {
         settingsPreferences.setButtonNowPlayingEnabled(enabled)
+    }
+
+    // ── Music Haptics (Apple Music-style rhythm synchronization) ──
+
+    val isHardwareHapticGeneratorAvailable: Boolean
+        get() = musicPlayer.hapticsController.isHardwareHapticGeneratorAvailable()
+
+    val isDeviceHapticsCapable: Boolean
+        get() = musicPlayer.hapticsController.isDeviceHapticsCapable()
+
+    val isUsbExclusiveActive: Boolean
+        get() = musicPlayer.isUsbExclusiveActive
+
+    fun setMusicHapticsEnabled(enabled: Boolean) = launchSettingsAction("update music haptics enabled") {
+        settingsPreferences.setMusicHapticsEnabled(enabled)
+        if (enabled) {
+            musicPlayer.hapticsController.triggerPreviewPulse()
+        }
+    }
+
+    fun setMusicHapticsMode(mode: MusicHapticsMode) = launchSettingsAction("update music haptics mode") {
+        settingsPreferences.setMusicHapticsMode(mode)
+    }
+
+    fun setMusicHapticsIntensity(intensity: MusicHapticsIntensity) = launchSettingsAction("update music haptics intensity") {
+        settingsPreferences.setMusicHapticsIntensity(intensity)
+        musicPlayer.hapticsController.triggerPreviewPulse(intensity)
+    }
+
+    fun setMusicHapticsEngineMode(engineMode: MusicHapticsEngineMode) = launchSettingsAction("update music haptics engine mode") {
+        settingsPreferences.setMusicHapticsEngineMode(engineMode)
+    }
+
+    fun setMusicHapticsPauseOnBatterySaver(pause: Boolean) = launchSettingsAction("update music haptics battery saver") {
+        settingsPreferences.setMusicHapticsPauseOnBatterySaver(pause)
+    }
+
+    fun triggerHapticPreview(intensity: MusicHapticsIntensity) {
+        musicPlayer.hapticsController.triggerPreviewPulse(intensity)
     }
 
     // ── USB exclusive output (direct DAC, default OFF) ──

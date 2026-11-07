@@ -20,6 +20,11 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.lastwave.app.ui.common.PredictiveBackScreen
+import com.lastwave.app.playback.haptics.MusicHapticsConfig
+import com.lastwave.app.playback.haptics.MusicHapticsEngineMode
+import com.lastwave.app.playback.haptics.MusicHapticsIntensity
+import com.lastwave.app.playback.haptics.MusicHapticsMode
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
@@ -5997,6 +6002,255 @@ private fun AudioControlsSheet(
                                 text = "Open AutoEQ / Parametric EQ",
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 6. Music Haptics Card - All adjustments in the Speaker Tray
+            val hapticsConfig by player.hapticsController.config.collectAsStateWithLifecycle()
+            val isUsbActive = player.isUsbExclusiveActive
+            val isHardwareAvailable = player.hapticsController.isHardwareHapticGeneratorAvailable()
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .animateContentSize(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = QualityGlyphs.MusicHaptics,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = "Music Haptics",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    text = if (isUsbActive && hapticsConfig.enabled) "Paused (USB DAC Exclusive active)"
+                                    else if (hapticsConfig.enabled) "${hapticsConfig.mode.label} \u2022 ${hapticsConfig.intensity.label}"
+                                    else "Physical rhythm synchronization via haptic motor",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (isUsbActive && hapticsConfig.enabled) MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = hapticsConfig.enabled,
+                            onCheckedChange = { enabled ->
+                                val next = hapticsConfig.copy(enabled = enabled)
+                                player.updateMusicHapticsConfig(next)
+                                if (enabled) {
+                                    player.hapticsController.triggerPreviewPulse()
+                                }
+                            },
+                        )
+                    }
+
+                    if (hapticsConfig.enabled) {
+                        if (isUsbActive) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Icon(Icons.Filled.Info, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Text(
+                                        text = "Haptics suspended while Bit-Perfect USB DAC bypass is active",
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                            }
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+                        // Mode Selection
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "Focus Mode",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                MusicHapticsMode.entries.forEach { mode ->
+                                    val isSelected = hapticsConfig.mode == mode
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = {
+                                            player.updateMusicHapticsConfig(hapticsConfig.copy(mode = mode))
+                                        },
+                                        label = {
+                                            Text(
+                                                mode.label,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            )
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
+                            Text(
+                                text = hapticsConfig.mode.subtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+
+                        // Intensity Selection
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "Intensity",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                MusicHapticsIntensity.entries.forEach { intensity ->
+                                    val isSelected = hapticsConfig.intensity == intensity
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = {
+                                            player.updateMusicHapticsConfig(hapticsConfig.copy(intensity = intensity))
+                                            player.hapticsController.triggerPreviewPulse(intensity)
+                                        },
+                                        label = {
+                                            Text(
+                                                intensity.label,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            )
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
+                            Text(
+                                text = when (hapticsConfig.intensity) {
+                                    MusicHapticsIntensity.LIGHT -> "Subtle 35% pulse for relaxed listening"
+                                    MusicHapticsIntensity.MEDIUM -> "Balanced 65% pulse tuned for standard rhythm"
+                                    MusicHapticsIntensity.STRONG -> "Full 100% kick for heavy bass drops & transients"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+
+                        // Engine Routing Selection
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "Engine Routing",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                MusicHapticsEngineMode.entries.forEach { engine ->
+                                    val isSelected = hapticsConfig.engineMode == engine
+                                    val isEnabled = engine != MusicHapticsEngineMode.HARDWARE_NATIVE || isHardwareAvailable
+                                    FilterChip(
+                                        selected = isSelected,
+                                        enabled = isEnabled,
+                                        onClick = {
+                                            player.updateMusicHapticsConfig(hapticsConfig.copy(engineMode = engine))
+                                        },
+                                        label = {
+                                            Text(
+                                                when (engine) {
+                                                    MusicHapticsEngineMode.AUTO -> "Auto"
+                                                    MusicHapticsEngineMode.DSP_PRECISION -> "DSP"
+                                                    MusicHapticsEngineMode.HARDWARE_NATIVE -> "Hardware"
+                                                },
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            )
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
+                            val engineDesc = when (hapticsConfig.engineMode) {
+                                MusicHapticsEngineMode.AUTO -> if (isHardwareAvailable) "Hardware HAL for Whole Song; DSP for filtered modes" else "Precision Media3 DSP engine active"
+                                MusicHapticsEngineMode.DSP_PRECISION -> "Precision Media3 transient analyzer (cross-device)"
+                                MusicHapticsEngineMode.HARDWARE_NATIVE -> if (isHardwareAvailable) "Android 12+ hardware HapticGenerator coupled to audio HAL" else "Unavailable on this device (falling back to DSP)"
+                            }
+                            Text(
+                                text = engineDesc,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+
+                        // Pause on Battery Saver
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "Pause on Battery Saver",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                                Text(
+                                    "Preserves battery when Power Saver is active",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = hapticsConfig.pauseOnBatterySaver,
+                                onCheckedChange = { pause ->
+                                    player.updateMusicHapticsConfig(hapticsConfig.copy(pauseOnBatterySaver = pause))
+                                },
                             )
                         }
                     }

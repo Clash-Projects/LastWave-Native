@@ -10,6 +10,10 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
+import com.lastwave.app.playback.haptics.MusicHapticsConfig
+import com.lastwave.app.playback.haptics.MusicHapticsEngineMode
+import com.lastwave.app.playback.haptics.MusicHapticsIntensity
+import com.lastwave.app.playback.haptics.MusicHapticsMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -242,7 +246,22 @@ data class MiscSettings(
     val jamServerUrl: String = "wss://jam.clashprojects.qd.je/ws",
     /** Jam Room Mode default: "collaborative" or "host_only". */
     val jamRoomMode: String = "collaborative",
+    /** Apple Music-style tactile rhythm synchronization. */
+    val musicHapticsEnabled: Boolean = false,
+    val musicHapticsMode: MusicHapticsMode = MusicHapticsMode.WHOLE_SONG,
+    val musicHapticsIntensity: MusicHapticsIntensity = MusicHapticsIntensity.MEDIUM,
+    val musicHapticsEngineMode: MusicHapticsEngineMode = MusicHapticsEngineMode.AUTO,
+    val musicHapticsPauseOnBatterySaver: Boolean = true,
 )
+
+val MiscSettings.musicHapticsConfig: MusicHapticsConfig
+    get() = MusicHapticsConfig(
+        enabled = musicHapticsEnabled,
+        mode = musicHapticsMode,
+        intensity = musicHapticsIntensity,
+        engineMode = musicHapticsEngineMode,
+        pauseOnBatterySaver = musicHapticsPauseOnBatterySaver,
+    )
 
 val DEFAULT_SECTION_ORDER: List<String> = listOf(
     "taste_strip",
@@ -434,6 +453,11 @@ class SettingsPreferences @Inject constructor(
         val JAM_DISPLAY_NAME = stringPreferencesKey("lw_jam_display_name")
         val JAM_SERVER_URL = stringPreferencesKey("lw_jam_server_url")
         val JAM_ROOM_MODE = stringPreferencesKey("lw_jam_room_mode")
+        val MUSIC_HAPTICS_ENABLED = booleanPreferencesKey("lw_music_haptics_enabled")
+        val MUSIC_HAPTICS_MODE = stringPreferencesKey("lw_music_haptics_mode")
+        val MUSIC_HAPTICS_INTENSITY = stringPreferencesKey("lw_music_haptics_intensity")
+        val MUSIC_HAPTICS_ENGINE_MODE = stringPreferencesKey("lw_music_haptics_engine_mode")
+        val MUSIC_HAPTICS_BATTERY_SAVER = booleanPreferencesKey("lw_music_haptics_battery_saver")
     }
 
     val settings: Flow<MiscSettings> = dataStore.data
@@ -529,6 +553,11 @@ class SettingsPreferences @Inject constructor(
                 jamDisplayName = p.readSafely(Keys.JAM_DISPLAY_NAME)?.trim().orEmpty(),
                 jamServerUrl = p.readSafely(Keys.JAM_SERVER_URL)?.trim().takeIf { !it.isNullOrBlank() } ?: "wss://jam.clashprojects.qd.je/ws",
                 jamRoomMode = p.readSafely(Keys.JAM_ROOM_MODE)?.trim().takeIf { it == "host_only" || it == "collaborative" } ?: "collaborative",
+                musicHapticsEnabled = p.readSafely(Keys.MUSIC_HAPTICS_ENABLED) ?: false,
+                musicHapticsMode = MusicHapticsMode.fromName(p.readSafely(Keys.MUSIC_HAPTICS_MODE)),
+                musicHapticsIntensity = MusicHapticsIntensity.fromName(p.readSafely(Keys.MUSIC_HAPTICS_INTENSITY)),
+                musicHapticsEngineMode = MusicHapticsEngineMode.fromName(p.readSafely(Keys.MUSIC_HAPTICS_ENGINE_MODE)),
+                musicHapticsPauseOnBatterySaver = p.readSafely(Keys.MUSIC_HAPTICS_BATTERY_SAVER) ?: true,
             )
         }
 
@@ -692,6 +721,36 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setPodcastsEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.PODCASTS_ENABLED] = enabled }
+    }
+
+    suspend fun setMusicHapticsEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.MUSIC_HAPTICS_ENABLED] = enabled }
+    }
+
+    suspend fun setMusicHapticsMode(mode: MusicHapticsMode) {
+        dataStore.edit { it[Keys.MUSIC_HAPTICS_MODE] = mode.name }
+    }
+
+    suspend fun setMusicHapticsIntensity(intensity: MusicHapticsIntensity) {
+        dataStore.edit { it[Keys.MUSIC_HAPTICS_INTENSITY] = intensity.name }
+    }
+
+    suspend fun setMusicHapticsEngineMode(engineMode: MusicHapticsEngineMode) {
+        dataStore.edit { it[Keys.MUSIC_HAPTICS_ENGINE_MODE] = engineMode.name }
+    }
+
+    suspend fun setMusicHapticsPauseOnBatterySaver(pause: Boolean) {
+        dataStore.edit { it[Keys.MUSIC_HAPTICS_BATTERY_SAVER] = pause }
+    }
+
+    suspend fun updateMusicHapticsConfig(config: MusicHapticsConfig) {
+        dataStore.edit {
+            it[Keys.MUSIC_HAPTICS_ENABLED] = config.enabled
+            it[Keys.MUSIC_HAPTICS_MODE] = config.mode.name
+            it[Keys.MUSIC_HAPTICS_INTENSITY] = config.intensity.name
+            it[Keys.MUSIC_HAPTICS_ENGINE_MODE] = config.engineMode.name
+            it[Keys.MUSIC_HAPTICS_BATTERY_SAVER] = config.pauseOnBatterySaver
+        }
     }
 
     suspend fun setStopPlaybackOnTaskRemoved(enabled: Boolean) {

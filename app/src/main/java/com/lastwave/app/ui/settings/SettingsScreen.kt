@@ -21,6 +21,13 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Vibration
+import com.lastwave.app.data.local.musicHapticsConfig
+import com.lastwave.app.playback.haptics.MusicHapticsConfig
+import com.lastwave.app.playback.haptics.MusicHapticsEngineMode
+import com.lastwave.app.playback.haptics.MusicHapticsIntensity
+import com.lastwave.app.playback.haptics.MusicHapticsMode
+import com.lastwave.app.ui.player.QualityGlyphs
 import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Search
@@ -975,6 +982,37 @@ fun SettingsScreen(
                                     onDurationModeChange = viewModel::setAutoMixDurationMode,
                                     onSecondsChange = viewModel::setAutoMixTargetSeconds,
                                     onSpectralSweepsChange = viewModel::setAutoMixSpectralSweeps,
+                                    position = position,
+                                )
+                            }
+                        }
+                        add { position ->
+                            SettingsToggleCard(
+                                icon = QualityGlyphs.MusicHaptics,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = "Music Haptics",
+                                subtitle = if (misc.musicHapticsEnabled) {
+                                    "${misc.musicHapticsMode.label} \u2022 ${misc.musicHapticsIntensity.label} intensity"
+                                } else {
+                                    "Physical rhythm synchronization via phone's haptic motor"
+                                },
+                                checked = misc.musicHapticsEnabled,
+                                onCheckedChange = viewModel::setMusicHapticsEnabled,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.music_haptics"),
+                            )
+                        }
+                        if (misc.musicHapticsEnabled) {
+                            add { position ->
+                                MusicHapticsControlsCard(
+                                    config = misc.musicHapticsConfig,
+                                    isHardwareAvailable = viewModel.isHardwareHapticGeneratorAvailable,
+                                    isUsbExclusiveActive = viewModel.isUsbExclusiveActive,
+                                    onModeChange = viewModel::setMusicHapticsMode,
+                                    onIntensityChange = viewModel::setMusicHapticsIntensity,
+                                    onEngineModeChange = viewModel::setMusicHapticsEngineMode,
+                                    onBatterySaverChange = viewModel::setMusicHapticsPauseOnBatterySaver,
                                     position = position,
                                 )
                             }
@@ -4006,6 +4044,204 @@ private fun AutoMixControlsCard(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MusicHapticsControlsCard(
+    config: MusicHapticsConfig,
+    isHardwareAvailable: Boolean,
+    isUsbExclusiveActive: Boolean,
+    onModeChange: (MusicHapticsMode) -> Unit,
+    onIntensityChange: (MusicHapticsIntensity) -> Unit,
+    onEngineModeChange: (MusicHapticsEngineMode) -> Unit,
+    onBatterySaverChange: (Boolean) -> Unit,
+    position: GroupPosition = GroupPosition.SINGLE,
+) {
+    val shape = groupShape(position)
+
+    Card(
+        shape = shape,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
+            if (isUsbExclusiveActive) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f),
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(Icons.Filled.Info, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Text(
+                            text = "Paused while Bit-Perfect USB DAC bypass is active",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+
+            // 1. Mode Selector Chips
+            Text(
+                text = "Haptic Mode",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                MusicHapticsMode.entries.forEach { mode ->
+                    val isSelected = config.mode == mode
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { onModeChange(mode) },
+                        label = {
+                            Text(
+                                mode.label,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+            Text(
+                text = config.mode.subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp, bottom = 12.dp),
+            )
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            Spacer(Modifier.height(12.dp))
+
+            // 2. Intensity Segmented Button Chips
+            Text(
+                text = "Vibration Intensity",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                MusicHapticsIntensity.entries.forEach { intensity ->
+                    val isSelected = config.intensity == intensity
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { onIntensityChange(intensity) },
+                        label = {
+                            Text(
+                                intensity.label,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+            Text(
+                text = when (config.intensity) {
+                    MusicHapticsIntensity.LIGHT -> "Subtle 35% pulse for relaxed listening"
+                    MusicHapticsIntensity.MEDIUM -> "Balanced 65% pulse tuned for standard rhythm"
+                    MusicHapticsIntensity.STRONG -> "Full 100% kick for heavy bass drops & transients"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp, bottom = 12.dp),
+            )
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            Spacer(Modifier.height(12.dp))
+
+            // 3. Engine Routing Selector
+            Text(
+                text = "Engine Routing",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                MusicHapticsEngineMode.entries.forEach { engine ->
+                    val isSelected = config.engineMode == engine
+                    val isEnabled = engine != MusicHapticsEngineMode.HARDWARE_NATIVE || isHardwareAvailable
+                    FilterChip(
+                        selected = isSelected,
+                        enabled = isEnabled,
+                        onClick = { onEngineModeChange(engine) },
+                        label = {
+                            Text(
+                                when (engine) {
+                                    MusicHapticsEngineMode.AUTO -> "Auto"
+                                    MusicHapticsEngineMode.DSP_PRECISION -> "DSP"
+                                    MusicHapticsEngineMode.HARDWARE_NATIVE -> "Hardware"
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+            val engineDesc = when (config.engineMode) {
+                MusicHapticsEngineMode.AUTO -> if (isHardwareAvailable) "Hardware HapticGenerator for Whole Song; DSP for filtered modes" else "Precision Media3 DSP engine active"
+                MusicHapticsEngineMode.DSP_PRECISION -> "Precision Media3 transient analyzer (consistent across all devices)"
+                MusicHapticsEngineMode.HARDWARE_NATIVE -> if (isHardwareAvailable) "Android 12+ hardware HapticGenerator coupled to audio HAL" else "Unavailable on this hardware (falling back to DSP)"
+            }
+            Text(
+                text = engineDesc,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp, bottom = 12.dp),
+            )
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            Spacer(Modifier.height(12.dp))
+
+            // 4. Battery Saver Toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Pause on Battery Saver",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        "Preserves battery when Android Power Saver is active",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = config.pauseOnBatterySaver,
+                    onCheckedChange = onBatterySaverChange,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun SettingsActionCard(
     icon: ImageVector,
