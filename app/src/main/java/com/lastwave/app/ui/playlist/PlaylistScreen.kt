@@ -175,10 +175,17 @@ fun PlaylistScreen(
             var sortMenuExpanded by remember { mutableStateOf(false) }
             ExpressiveHeader(
                 title = if (selectedPlaylists.isNotEmpty()) stringResource(R.string.pl_selected_count, selectedPlaylists.size) else stringResource(R.string.pl_title),
-                subtitle = if (selectedPlaylists.isNotEmpty()) stringResource(R.string.pl_select_more_hint) else if (state.playlists.any { it.isYouTubeOnly && it.remoteTrackCount == null }) {
-                    stringResource(R.string.pl_count_only, state.playlists.size)
+                subtitle = if (selectedPlaylists.isNotEmpty()) {
+                    stringResource(R.string.pl_select_more_hint)
                 } else {
-                    stringResource(R.string.pl_count_tracks, state.playlists.size, state.playlists.sumOf { it.remoteTrackCount ?: it.tracks.size })
+                    val totalPlaylistsCount = state.playlists.size + (if (state.isSpotifySyncEnabled) state.spotifyPlaylists.size else 0)
+                    if (state.playlists.any { it.isYouTubeOnly && it.remoteTrackCount == null }) {
+                        stringResource(R.string.pl_count_only, totalPlaylistsCount)
+                    } else {
+                        val totalTracks = state.playlists.sumOf { it.remoteTrackCount ?: it.tracks.size } +
+                            (if (state.isSpotifySyncEnabled) state.spotifyPlaylists.sumOf { it.trackCount } else 0)
+                        stringResource(R.string.pl_count_tracks, totalPlaylistsCount, totalTracks)
+                    }
                 },
                 actions = {
                     if (selectedPlaylists.isNotEmpty()) {
@@ -364,66 +371,22 @@ fun PlaylistScreen(
                             }
                         }
 
-                        if (state.isSpotifySyncEnabled && filteredSpotifyPlaylists.isNotEmpty()) {
-                            item(key = "spotify_section_header") {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 4.dp, bottom = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.CloudSync,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp),
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                                    Text(
-                                        text = stringResource(R.string.spotify_playlists_section_title),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                    )
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.primaryContainer,
-                                    ) {
-                                        Text(
-                                            text = "${filteredSpotifyPlaylists.size}",
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            fontWeight = FontWeight.Bold,
-                                        )
-                                    }
-                                }
-                            }
+                        val effectiveSpotify = if (state.isSpotifySyncEnabled) filteredSpotifyPlaylists else emptyList()
+                        val totalPlaylistCount = effectiveSpotify.size + filteredPlaylists.size
 
+                        if (effectiveSpotify.isNotEmpty()) {
                             itemsIndexed(
-                                items = filteredSpotifyPlaylists,
+                                items = effectiveSpotify,
                                 key = { _, pl -> "sp_${pl.id}" },
                             ) { index, pl ->
                                 Box(Modifier.animateItem()) {
                                     SpotifyPlaylistCard(
                                         playlist = pl,
-                                        position = com.lastwave.app.ui.common.groupPositionFor(index, filteredSpotifyPlaylists.size),
+                                        position = com.lastwave.app.ui.common.groupPositionFor(index, totalPlaylistCount),
                                         onClick = {
                                             val routeId = if (pl.id == "liked") "sp_liked" else "sp_${pl.id}"
                                             onOpenFeedPlaylist(routeId)
                                         },
-                                    )
-                                }
-                            }
-
-                            if (filteredPlaylists.isNotEmpty()) {
-                                item(key = "local_playlists_header") {
-                                    Text(
-                                        text = stringResource(R.string.nav_playlists),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
-                                        color = MaterialTheme.colorScheme.onSurface,
                                     )
                                 }
                             }
@@ -434,11 +397,12 @@ fun PlaylistScreen(
                             key = { _, playlist -> "pl_${playlist.id}_${playlist.remotePlaylistId ?: "local"}" },
                         ) { index, playlist ->
                             val isNewest = playlist.id == state.newestId
+                            val globalIndex = effectiveSpotify.size + index
                             Box(Modifier.animateItem()) {
                                 PlaylistCard(
                                     playlist = playlist,
                                     isNewest = isNewest,
-                                    position = com.lastwave.app.ui.common.groupPositionFor(index, filteredPlaylists.size),
+                                    position = com.lastwave.app.ui.common.groupPositionFor(globalIndex, totalPlaylistCount),
                                     isRegenerating = state.regeneratingId == playlist.id,
                                     currentTrack = playbackState.current,
                                     isPlaying = playbackState.isPlaying,
