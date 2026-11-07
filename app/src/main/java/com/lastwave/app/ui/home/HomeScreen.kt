@@ -347,7 +347,7 @@ fun HomeScreen(
                     ) {
                         itemsIndexed(
                             rows,
-                            key = { index, _ -> rowKeys[index] },
+                            key = { index, _ -> rowKeys.getOrNull(index) ?: index.toString() },
                             contentType = { _, row ->
                                 when (row) {
                                     is HomeRow.DateHeader -> "date"
@@ -366,7 +366,7 @@ fun HomeScreen(
                                         onClick = {
                                             musicPlayer.playQueue(
                                                 tracks = playbackQueue,
-                                                startIndex = playbackIndexByRow[rowIndex],
+                                                startIndex = playbackIndexByRow.getOrElse(rowIndex) { 0 },
                                                 sourceLabel = "Home",
                                             )
                                         },
@@ -421,7 +421,7 @@ fun HomeScreen(
                                     onPlay = {
                                         musicPlayer.playQueue(
                                             tracks = playbackQueue,
-                                            startIndex = playbackIndexByRow[trayIndex],
+                                            startIndex = playbackIndexByRow.getOrElse(trayIndex) { 0 },
                                             sourceLabel = "Home",
                                         )
                                     },
