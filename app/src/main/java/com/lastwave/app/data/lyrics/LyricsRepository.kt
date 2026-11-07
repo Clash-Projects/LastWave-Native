@@ -49,6 +49,18 @@ data class LyricSyllable(
     val appendToPrevious: Boolean = false,
 )
 
+/**
+ * Who sings a row, which decides where it is staged: lead on the start side,
+ * the second voice of a duet on the end side, both / group in the centre.
+ * [BACKGROUND_SUBLINE] marks harmony rows that nest under the lead row.
+ */
+enum class VocalRole {
+    LEAD_LEFT,
+    DUET_RIGHT,
+    UNISON_CENTER,
+    BACKGROUND_SUBLINE,
+}
+
 @androidx.compose.runtime.Immutable
 data class LyricLine(
     val timeMs: Long,
@@ -57,6 +69,7 @@ data class LyricLine(
     val syllables: List<LyricSyllable> = emptyList(),
     val transliteration: String? = null,
     val transliterationSyllables: List<LyricSyllable> = emptyList(),
+    val role: VocalRole = VocalRole.LEAD_LEFT,
 ) {
     val hasSyllables: Boolean get() = syllables.isNotEmpty()
     val isRtl: Boolean get() = isRtlText(text) || syllables.any { isRtlText(it.text) }
@@ -1341,6 +1354,7 @@ class LyricsRepository @Inject constructor(
                 val bothWordSync = c.hasSyllables && line.hasSyllables
                 val gapCap = if (bothWordSync) CONTINUATION_GAP_WORD_MS else CONTINUATION_GAP_LINE_MS
                 val canMerge = !c.isBackgroundLine() && !line.isBackgroundLine() &&
+                    c.role == line.role &&
                     c.text.isNotBlank() && line.text.isNotBlank() &&
                     c.text.trim() != "♪" && line.text.trim() != "♪" &&
                     gap in 0..gapCap &&
@@ -1432,20 +1446,34 @@ class LyricsRepository @Inject constructor(
             val marks = WORD_STAMP_REGEX.findAll(body).toList()
             if (marks.isEmpty()) return emptyList()
             data class Run(val startMs: Long, val text: String)
-            val runs = marks.mapIndexed { index, mark ->
+            val allRuns = mutableListOf<Run>()
+
+            val firstMark = marks.first()
+            val leadingText = body.substring(0, firstMark.range.first)
+            if (leadingText.trim().isNotEmpty()) {
+                val firstMarkMs = stampToMs(
+                    firstMark.groupValues[1].toLongOrNull() ?: 0L,
+                    firstMark.groupValues[2].toLongOrNull() ?: 0L,
+                    firstMark.groupValues[3],
+                )
+                val startMs = minOf(lineStartMs, firstMarkMs)
+                allRuns += Run(startMs, leadingText)
+            }
+
+            marks.forEachIndexed { index, mark ->
                 val until = marks.getOrNull(index + 1)?.range?.first ?: body.length
                 val startMs = stampToMs(
                     mark.groupValues[1].toLongOrNull() ?: 0L,
                     mark.groupValues[2].toLongOrNull() ?: 0L,
                     mark.groupValues[3],
                 )
-                Run(startMs, body.substring(mark.range.last + 1, until))
+                allRuns += Run(startMs, body.substring(mark.range.last + 1, until))
             }
             val words = mutableListOf<LyricSyllable>()
-            runs.forEachIndexed { index, run ->
+            allRuns.forEachIndexed { index, run ->
                 val text = decodeEntities(run.text).trim()
                 if (text.isBlank()) return@forEachIndexed
-                val endMs = runs.getOrNull(index + 1)?.startMs
+                val endMs = allRuns.getOrNull(index + 1)?.startMs
                     ?: lineEndMs
                     ?: (run.startMs + 800L)
                 words += LyricSyllable(
@@ -1500,14 +1528,9 @@ class LyricsRepository @Inject constructor(
                 val displayText = if (isBg) stripBackgroundParens(cleanText) else cleanText
                 if (words.isNotEmpty()) {
                     val lineStart = minOf(raw.timeMs, words.first().timeMs)
-                    val joined = words.joinToString(" ") { it.text }
-                    // Keep the author spacing when the plain body carries
-                    // punctuation the word join would rewrite.
-                    val text = if (!isBg && displayText.isNotBlank() && displayText.length >= joined.length) {
-                        displayText
-                    } else if (isBg) {
-                        displayText.ifBlank { joined }
-                    } else joined
+                    // Keep the authored punctuation, with whitespace runs
+                    // between stamps collapsed to single spaces.
+                    val text = LyricsSanitizer.safeLineText(displayText, words.map { it.text })
                     result += LyricLine(
                         timeMs = lineStart,
                         durationMs = ((nextStart ?: (words.maxOf { it.timeMs + it.durationMs })) - lineStart).coerceAtLeast(0L),
