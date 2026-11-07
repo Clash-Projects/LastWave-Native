@@ -58,6 +58,10 @@ class DualDeckTransportCoordinator @Inject constructor(
     private var activeTrackKey: String? = null
     private var activeSpliceJob: Job? = null
     private var currentSplicePlan: SplicePlan? = null
+    /** Outgoing duration the current plan was built for. */
+    private var planDurationMs: Long = 0L
+    /** An explicit "mix now" request: fires regardless of time left. */
+    private var immediatePlan = false
     private var currentPrimaryPlayer: ExoPlayer? = null
     private var currentSecondaryPlayer: ExoPlayer? = null
 
@@ -106,6 +110,7 @@ class DualDeckTransportCoordinator @Inject constructor(
         if (activeTrackKey != trackKey) {
             activeTrackKey = trackKey
             currentSplicePlan = null
+            immediatePlan = false
             // Only reset telemetry if no blend is active or completing —
             // the deck swap changes the current track mid-blend, which must
             // not flicker the badge back to the quality label.
@@ -114,6 +119,15 @@ class DualDeckTransportCoordinator @Inject constructor(
                 currentPhase != BlendPhase.LOOP_LOCKED &&
                 currentPhase != BlendPhase.MIX_COMPLETED) {
                 _telemetry.value = DeckBlendTelemetry.IDLE
+            }
+        }
+
+        // A plan built for a different length (the stream's real duration
+        // arrived after the plan) would open the mix at the wrong moment.
+        if (currentSplicePlan != null && !immediatePlan && kotlin.math.abs(planDurationMs - durationMs) > 1_500L) {
+            currentSplicePlan = null
+            if (_telemetry.value.phase == BlendPhase.ARMED) {
+                _telemetry.update { it.copy(phase = BlendPhase.PRE_ANALYZING) }
             }
         }
 
@@ -158,6 +172,7 @@ class DualDeckTransportCoordinator @Inject constructor(
                         incomingDurationMs = nextTrack.durationMs,
                     )
                     currentSplicePlan = plan
+                    planDurationMs = durationMs
 
                     if (!plan.isBypass) {
                         _telemetry.update {
@@ -191,6 +206,7 @@ class DualDeckTransportCoordinator @Inject constructor(
                     isBypass = false,
                 )
                 currentSplicePlan = safePlan
+                planDurationMs = durationMs
                 _telemetry.update {
                     it.copy(
                         phase = BlendPhase.ARMED,
@@ -205,7 +221,12 @@ class DualDeckTransportCoordinator @Inject constructor(
         // 3. Trigger Splice at Splice Horizon
         val plan = currentSplicePlan
         if (plan != null && !plan.isBypass && (_telemetry.value.phase == BlendPhase.ARMED || _telemetry.value.phase == BlendPhase.PRE_ANALYZING)) {
-            val shouldTrigger = positionMs >= plan.cueOutStartMs || remainingMs <= plan.durationMs
+            // Never start a mix with more of the song left than the mix
+            // itself covers: an early cue point would skip the rest of it.
+            val shouldTrigger = immediatePlan || (
+                remainingMs <= plan.durationMs + 1_000L &&
+                    (positionMs >= plan.cueOutStartMs || remainingMs <= plan.durationMs)
+                )
             if (shouldTrigger && secondaryPlayer != null) {
                 val isSecondaryReady = secondaryPlayer.playbackState == Player.STATE_READY
                 if (isSecondaryReady) {
@@ -221,6 +242,7 @@ class DualDeckTransportCoordinator @Inject constructor(
         plan: SplicePlan,
     ) {
         activeSpliceJob?.cancel()
+        immediatePlan = false
         currentPrimaryPlayer = primaryPlayer
         currentSecondaryPlayer = secondaryPlayer
         val durationMs = plan.durationMs.coerceAtLeast(1000L)
@@ -351,6 +373,7 @@ class DualDeckTransportCoordinator @Inject constructor(
             transitionStyle = TransitionStyle.HARMONIC_BEATMIX,
         )
         currentSplicePlan = plan
+        immediatePlan = true
     }
 
     override fun handleSeekEvent(targetPositionMs: Long) {

@@ -984,6 +984,22 @@ fun SettingsScreen(
                                 icon = Icons.Filled.GraphicEq,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = "Autoplay similar songs",
+                                subtitle = if (misc.autoplaySimilarEnabled) {
+                                    "When the queue ends, keep playing similar songs"
+                                } else {
+                                    "Stop when the queue ends; nothing is added automatically"
+                                },
+                                checked = misc.autoplaySimilarEnabled,
+                                onCheckedChange = viewModel::setAutoplaySimilarEnabled,
+                                position = position,
+                            )
+                        }
+                        add { position ->
+                            SettingsToggleCard(
+                                icon = Icons.Filled.GraphicEq,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                                 title = stringResource(R.string.settings_crossfade),
                                 subtitle = if (misc.crossfadeEnabled && misc.isBitPerfectEnabled) {
                                     "Paused while Bit-Perfect is enabled"

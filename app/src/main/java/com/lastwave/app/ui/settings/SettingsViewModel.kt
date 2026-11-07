@@ -723,6 +723,10 @@ class SettingsViewModel @Inject constructor(
             autoMixPreferences.setThermalProfile(profile)
         }
 
+    fun setAutoplaySimilarEnabled(enabled: Boolean) = launchSettingsAction("update autoplay") {
+        settingsPreferences.setAutoplaySimilarEnabled(enabled)
+    }
+
     fun setCrossfadeEnabled(enabled: Boolean) = launchSettingsAction("update crossfade") {
         settingsPreferences.setCrossfadeEnabled(enabled)
         if (enabled) autoMixPreferences.setAutoMixEnabled(false)

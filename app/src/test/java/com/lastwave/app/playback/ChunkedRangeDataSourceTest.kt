@@ -65,6 +65,47 @@ class ChunkedRangeDataSourceTest {
         source.close()
     }
 
+    @Test fun failedChunkMidStreamIsAnErrorNotTheEndOfTheSong() {
+        // Second chunk request fails (expired URL / dropped connection): the
+        // song must not be reported as finished, or playback skips ahead.
+        val upstream = MultiChunkUpstream(totalSize = 10, failOpenAt = 4L)
+        val source = ChunkedRangeDataSource(upstream, chunkSize = 4)
+        val spec = DataSpec.Builder().setUri("https://media.googlevideo.com/videoplayback").build()
+        source.open(spec)
+        val buffer = ByteArray(10)
+        assertEquals(4, source.read(buffer, 0, 10))
+        try {
+            source.read(buffer, 4, 6)
+            fail("Expected the chunk failure to surface")
+        } catch (expected: IOException) {
+            assertEquals("chunk failed", expected.message)
+        }
+        source.close()
+    }
+
+    @Test fun stopsAtContentRangeTotalWithoutOverRequesting() {
+        val upstream = MultiChunkUpstream(totalSize = 10, sendContentRange = true)
+        val source = ChunkedRangeDataSource(upstream, chunkSize = 4)
+        val spec = DataSpec.Builder().setUri("https://media.googlevideo.com/videoplayback").build()
+        assertEquals(10L, source.open(spec))
+        val buffer = ByteArray(16)
+        var total = 0
+        while (true) {
+            val read = source.read(buffer, total, buffer.size - total)
+            if (read == C.RESULT_END_OF_INPUT) break
+            total += read
+        }
+        assertEquals(10, total)
+        assertEquals(3, upstream.openCount)
+        source.close()
+    }
+
+    @Test fun parsesContentRangeTotal() {
+        assertEquals(3456789L, ChunkedRangeDataSource.parseContentRangeTotal(mapOf("content-range" to listOf("bytes 0-1048575/3456789"))))
+        assertEquals(C.LENGTH_UNSET.toLong(), ChunkedRangeDataSource.parseContentRangeTotal(mapOf("Content-Range" to listOf("bytes 0-10/*"))))
+        assertEquals(C.LENGTH_UNSET.toLong(), ChunkedRangeDataSource.parseContentRangeTotal(emptyMap()))
+    }
+
     private class FailingUpstream : DataSource {
         var open = false
         var closeCount = 0
@@ -84,7 +125,12 @@ class ChunkedRangeDataSourceTest {
         override fun close() { open = false; closeCount++ }
     }
 
-    private class MultiChunkUpstream(private val totalBytes: Int) : DataSource {
+    private class MultiChunkUpstream(
+        private val totalBytes: Int,
+        private val failOpenAt: Long = -1L,
+        private val sendContentRange: Boolean = false,
+    ) : DataSource {
+        var openCount = 0
         private var open = false
         private var currentPos = 0L
         private var currentLength = 0L
@@ -92,7 +138,9 @@ class ChunkedRangeDataSourceTest {
         override fun addTransferListener(transferListener: TransferListener) = Unit
         override fun open(dataSpec: DataSpec): Long {
             check(!open) { "Previous source was not closed" }
+            if (dataSpec.position == failOpenAt) throw IOException("chunk failed")
             open = true
+            openCount++
             currentPos = dataSpec.position
             currentLength = if (dataSpec.length != C.LENGTH_UNSET.toLong()) {
                 minOf(dataSpec.length, (totalBytes - currentPos).coerceAtLeast(0L))
@@ -114,6 +162,8 @@ class ChunkedRangeDataSourceTest {
             return bytesToRead
         }
         override fun getUri(): Uri? = null
+        override fun getResponseHeaders(): Map<String, List<String>> =
+            if (sendContentRange) mapOf("Content-Range" to listOf("bytes $currentPos-${currentPos + currentLength - 1}/$totalBytes")) else emptyMap()
         override fun close() { open = false }
     }
 }
