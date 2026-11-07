@@ -221,7 +221,7 @@ fun ArtistDetailScreen(
                                 .then(
                                     if (hasVideoAnimation) {
                                         Modifier.clickable {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                             showFullscreenMotion = true
                                         }
                                     } else Modifier
@@ -329,7 +329,7 @@ fun ArtistDetailScreen(
                                         ) {
                                             IconButton(
                                                 onClick = {
-                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                                     showFullscreenMotion = true
                                                 },
                                                 modifier = Modifier.fillMaxSize(),
@@ -351,7 +351,7 @@ fun ArtistDetailScreen(
                                     ) {
                                         IconButton(
                                             onClick = {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                                 showHeaderVideo = !showHeaderVideo
                                             },
                                             modifier = Modifier.fillMaxSize(),
@@ -445,7 +445,7 @@ fun ArtistDetailScreen(
                             ) {
                                 FilledTonalIconButton(
                                     onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         viewModel.playShuffle()
                                     },
                                     enabled = data.topSongs.isNotEmpty(),
@@ -465,7 +465,7 @@ fun ArtistDetailScreen(
 
                                 FilledTonalIconButton(
                                     onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         viewModel.startArtistMix()
                                     },
                                     shape = CircleShape,
@@ -486,7 +486,7 @@ fun ArtistDetailScreen(
                             // Large Floating Primary Play Button (56dp circle)
                             Surface(
                                 onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                     viewModel.playAll()
                                 },
                                 enabled = data.topSongs.isNotEmpty(),
@@ -628,7 +628,7 @@ fun ArtistDetailScreen(
                                     .adaptiveContentWidth(maxWidth = 860.dp)
                                     .padding(horizontal = 20.dp)
                                     .clickable {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         val fullIndex = data.topSongs.indexOf(track).takeIf { it >= 0 } ?: index
                                         viewModel.playAll(startIndex = fullIndex)
                                     },
@@ -686,7 +686,7 @@ fun ArtistDetailScreen(
 
                                     IconButton(
                                         onClick = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                             selectedTrackMenu = track
                                         },
                                         modifier = Modifier.size(36.dp),
@@ -713,7 +713,7 @@ fun ArtistDetailScreen(
                                 ) {
                                     Surface(
                                         onClick = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                             showAllSongs = !showAllSongs
                                         },
                                         shape = RoundedCornerShape(24.dp),
@@ -945,7 +945,7 @@ fun ArtistDetailScreen(
                 ) {
                     FilledTonalIconButton(
                         onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                             viewModel.playAll()
                         },
                         colors = IconButtonDefaults.filledTonalIconButtonColors(
@@ -1095,7 +1095,7 @@ fun ArtistDetailScreen(
                             ) {
                                 FilledTonalIconButton(
                                     onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         viewModel.playShuffle()
                                     },
                                     enabled = hasTopSongs,
@@ -1115,7 +1115,7 @@ fun ArtistDetailScreen(
 
                                 Surface(
                                     onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         viewModel.playAll()
                                     },
                                     enabled = hasTopSongs,

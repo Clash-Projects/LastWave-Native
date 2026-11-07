@@ -1,11 +1,16 @@
 package com.lastwave.app.playback.haptics
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioAttributes
 import android.media.audiofx.HapticGenerator
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.PowerManager
+import android.os.SystemClock
 import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -23,6 +28,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.lang.ref.WeakReference
+import java.util.Collections
+import java.util.WeakHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.max
@@ -50,7 +58,26 @@ class MusicHapticsController @Inject constructor(
     }
     private val hapticHandler = Handler(hapticThread.looper)
 
-    val audioProcessor = MusicHapticsAudioProcessor(this)
+    /**
+     * Every tap ever created, held weakly so released players drop out.
+     * An AudioProcessor owns per-stream filter state and output buffers, so each
+     * DefaultAudioSink needs its own instance. Sharing one between the
+     * enhanced/fallback sinks and the crossfade standby player corrupted the
+     * filters (two playback threads) and let the muted standby fire pulses.
+     */
+    private val allTaps: MutableSet<MusicHapticsAudioProcessor> =
+        Collections.synchronizedSet(
+            Collections.newSetFromMap(WeakHashMap<MusicHapticsAudioProcessor, Boolean>())
+        )
+    private val tapsByPlayer: MutableMap<Player, List<MusicHapticsAudioProcessor>> =
+        Collections.synchronizedMap(WeakHashMap())
+    @Volatile private var activeTaps: List<MusicHapticsAudioProcessor> = emptyList()
+    @Volatile private var dspActive: Boolean = false
+    private var boundPlayer: WeakReference<Player>? = null
+
+    /** Pending beat-aligned pulses carry this token so they can be dropped at once. */
+    private val pulseToken = Any()
+    @Volatile private var lastPulseUptimeMs = 0L
 
     private var hapticGenerator: HapticGenerator? = null
     private var currentAudioSessionId: Int = C.AUDIO_SESSION_ID_UNSET
@@ -61,6 +88,22 @@ class MusicHapticsController @Inject constructor(
 
     private val _config = MutableStateFlow(MusicHapticsConfig())
     val config: StateFlow<MusicHapticsConfig> = _config.asStateFlow()
+
+    /** Battery saver can toggle mid-song; re-evaluate instead of only at play/pause. */
+    private val powerSaveReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            scope.launch { reconcileEngineState() }
+        }
+    }
+
+    init {
+        runCatching {
+            context.registerReceiver(
+                powerSaveReceiver,
+                IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
+            )
+        }
+    }
 
     private val supportsPrimitiveThud: Boolean by lazy {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && vibrator != null) {
@@ -82,11 +125,34 @@ class MusicHapticsController @Inject constructor(
         }
     }
 
+    private val hasAmplitudeControl: Boolean by lazy {
+        runCatching { vibrator?.hasAmplitudeControl() == true }.getOrDefault(false)
+    }
+
     fun isDeviceHapticsCapable(): Boolean = vibrator?.hasVibrator() == true
 
     fun isHardwareHapticGeneratorAvailable(): Boolean {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             runCatching { HapticGenerator.isAvailable() }.getOrDefault(false)
+    }
+
+    /** Creates a fresh tap for one audio sink. Call once per DefaultAudioSink. */
+    fun createAudioProcessor(): MusicHapticsAudioProcessor =
+        MusicHapticsAudioProcessor(this).also { allTaps.add(it) }
+
+    /** Associates the taps installed in [player]'s sinks with that player. */
+    fun registerPlayerTaps(player: Player, taps: List<MusicHapticsAudioProcessor>) {
+        tapsByPlayer[player] = taps.toList()
+        if (boundPlayer?.get() === player) {
+            activeTaps = taps.toList()
+            reconcileEngineState()
+        }
+    }
+
+    /** Seek or other non-gapless discontinuity on the bound player. */
+    fun onPositionDiscontinuity() {
+        activeTaps.forEach { it.requestTimelineReset() }
+        clearPendingPulses()
     }
 
     fun updateConfig(newConfig: MusicHapticsConfig) {
@@ -109,6 +175,9 @@ class MusicHapticsController @Inject constructor(
     }
 
     fun bindToPlayer(player: Player) {
+        boundPlayer = WeakReference(player)
+        activeTaps = tapsByPlayer[player].orEmpty()
+        clearPendingPulses()
         currentAudioSessionId = (player as? ExoPlayer)?.audioSessionId ?: C.AUDIO_SESSION_ID_UNSET
         isPlayerPlaying = player.isPlaying && player.volume > 0f
         reconcileEngineState()
@@ -146,30 +215,43 @@ class MusicHapticsController @Inject constructor(
         return when (cfg.engineMode) {
             MusicHapticsEngineMode.HARDWARE_NATIVE -> true
             MusicHapticsEngineMode.DSP_PRECISION -> false
-            MusicHapticsEngineMode.AUTO -> {
-                // Use hardware HapticGenerator only for standard Whole Song + Medium intensity;
-                // use custom DSP whenever Bass-only, Vocals-only, or custom Light/Strong scaling is chosen.
-                cfg.mode == MusicHapticsMode.WHOLE_SONG &&
-                    cfg.intensity == MusicHapticsIntensity.MEDIUM
-            }
+            // HapticGenerator only vibrates when the AudioTrack's haptic channels
+            // are unmuted; Media3 never unmutes them (platform default is muted),
+            // so Automatic silently produced nothing on most phones. The DSP
+            // engine works everywhere and honours mode/intensity.
+            MusicHapticsEngineMode.AUTO -> false
         }
     }
 
+    private fun setDspActive(active: Boolean) {
+        dspActive = active
+        val live = activeTaps
+        synchronized(allTaps) {
+            allTaps.forEach { tap -> tap.isAnalysisActive = active && live.contains(tap) }
+        }
+        if (!active) clearPendingPulses()
+    }
+
+    private fun clearPendingPulses() {
+        hapticHandler.removeCallbacksAndMessages(pulseToken)
+    }
+
+    @Synchronized
     private fun reconcileEngineState() {
         val active = shouldRunHaptics()
         if (!active) {
-            audioProcessor.isAnalysisActive = false
+            setDspActive(false)
             disableHardwareGenerator()
-            vibrator?.cancel()
+            runCatching { vibrator?.cancel() }
             return
         }
 
         if (shouldUseHardwareGenerator()) {
-            audioProcessor.isAnalysisActive = false
+            setDspActive(false)
             enableHardwareGenerator(currentAudioSessionId)
         } else {
             disableHardwareGenerator()
-            audioProcessor.isAnalysisActive = true
+            setDspActive(true)
         }
     }
 
@@ -183,7 +265,7 @@ class MusicHapticsController @Inject constructor(
         } catch (_: Throwable) {
             // Fallback seamlessly to DSP processor if OEM HAL rejects HapticGenerator
             releaseHardwareGenerator()
-            audioProcessor.isAnalysisActive = true
+            setDspActive(true)
         }
     }
 
@@ -204,12 +286,17 @@ class MusicHapticsController @Inject constructor(
         }
     }
 
+    override fun onAnalysisFlushed() {
+        clearPendingPulses()
+    }
+
     override fun onHapticPulse(
         bassEnergy: Float,
         vocalEnergy: Float,
-        isSharpTransient: Boolean
+        isSharpTransient: Boolean,
+        leadTimeMs: Long,
     ) {
-        if (!audioProcessor.isAnalysisActive) return
+        if (!dspActive) return
         val cfg = _config.value
 
         val rawDrive: Float = when (cfg.mode) {
@@ -219,14 +306,23 @@ class MusicHapticsController @Inject constructor(
         }
         if (rawDrive < 0.08f) return
 
-        hapticHandler.post {
+        val isBassDominant = cfg.mode != MusicHapticsMode.VOCALS_ONLY && (bassEnergy >= vocalEnergy)
+        // The tap sees PCM when it is written to the AudioTrack, ~100-500 ms
+        // before it is audible. Fire when the sound actually reaches the ear.
+        val fireAt = SystemClock.uptimeMillis() + leadTimeMs.coerceAtLeast(0L)
+        hapticHandler.postAtTime({
+            if (!dspActive) return@postAtTime
+            // Keep a minimum gap between motor kicks so pulses never smear together.
+            val now = SystemClock.uptimeMillis()
+            if (now - lastPulseUptimeMs < MIN_PULSE_SPACING_MS) return@postAtTime
+            lastPulseUptimeMs = now
             dispatchVibrationPulse(
                 drive = rawDrive,
-                isBassDominant = cfg.mode != MusicHapticsMode.VOCALS_ONLY && (bassEnergy >= vocalEnergy),
+                isBassDominant = isBassDominant,
                 isSharpTransient = isSharpTransient,
                 intensity = cfg.intensity
             )
-        }
+        }, pulseToken, fireAt)
     }
 
     fun triggerPreviewPulse(intensity: MusicHapticsIntensity = _config.value.intensity) {
@@ -258,21 +354,14 @@ class MusicHapticsController @Inject constructor(
                 val effect = VibrationEffect.startComposition()
                     .addPrimitive(primitiveId, scale)
                     .compose()
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    val attrs = VibrationAttributes.Builder()
-                        .setUsage(VibrationAttributes.USAGE_MEDIA)
-                        .build()
-                    vib.vibrate(effect, attrs)
-                } else {
-                    vib.vibrate(effect)
-                }
+                vibrateAsMedia(vib, effect)
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && supportsPrimitiveTick && !isBassDominant) {
                 val scale = (drive * intensity.primitiveScale).coerceIn(0.10f, 1.0f)
                 val effect = VibrationEffect.startComposition()
                     .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, scale)
                     .compose()
-                vib.vibrate(effect)
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrateAsMedia(vib, effect)
+            } else if (hasAmplitudeControl) {
                 val amplitude = (drive * 255f * intensity.amplitudeScale)
                     .roundToInt()
                     .coerceIn(1, 255)
@@ -281,18 +370,52 @@ class MusicHapticsController @Inject constructor(
                     isBassDominant -> 24L
                     else -> 12L
                 }
-                vib.vibrate(VibrationEffect.createOneShot(durationMs, amplitude))
+                vibrateAsMedia(vib, VibrationEffect.createOneShot(durationMs, amplitude))
+            } else {
+                // No amplitude control: a one-shot always runs at full strength,
+                // which made Light identical to Strong. Use the tuned predefined
+                // effects and let drive x intensity choose softer or harder ones.
+                val strength = drive * intensity.amplitudeScale
+                if (strength < 0.22f) return
+                val effectId = when {
+                    isBassDominant && isSharpTransient && strength > 0.55f -> VibrationEffect.EFFECT_HEAVY_CLICK
+                    isBassDominant && strength > 0.35f -> VibrationEffect.EFFECT_CLICK
+                    else -> VibrationEffect.EFFECT_TICK
+                }
+                vibrateAsMedia(vib, VibrationEffect.createPredefined(effectId))
             }
         } catch (_: Throwable) {
             // Never crash audio playback on OEM Vibrator service exceptions
         }
     }
 
+    /** Tags pulses as media vibration so the system "media vibration" setting scales or mutes them. */
+    private fun vibrateAsMedia(vib: Vibrator, effect: VibrationEffect) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            vib.vibrate(
+                effect,
+                VibrationAttributes.Builder().setUsage(VibrationAttributes.USAGE_MEDIA).build()
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            vib.vibrate(effect, MEDIA_AUDIO_ATTRIBUTES)
+        }
+    }
+
     fun release() {
         sessionStabilizeJob?.cancel()
-        audioProcessor.isAnalysisActive = false
+        setDspActive(false)
         releaseHardwareGenerator()
-        vibrator?.cancel()
+        runCatching { vibrator?.cancel() }
+        runCatching { context.unregisterReceiver(powerSaveReceiver) }
         hapticThread.quitSafely()
+    }
+
+    private companion object {
+        const val MIN_PULSE_SPACING_MS = 35L
+        val MEDIA_AUDIO_ATTRIBUTES: AudioAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            .build()
     }
 }

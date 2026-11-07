@@ -127,7 +127,7 @@ fun YouTubeImportSheet(
         scope.launch {
             try {
                 val saved = importManager.importYouTubePlaylist(pl, selected)
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                haptic.performHapticFeedback(HapticFeedbackType.Confirm)
                 onImportSuccess(saved)
                 onDismiss()
             } catch (e: Exception) {

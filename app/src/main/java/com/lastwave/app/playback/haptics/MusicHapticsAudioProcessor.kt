@@ -19,11 +19,31 @@ import kotlin.math.sqrt
  * Invoked from a rate-limited analysis window (max 25 times per second).
  */
 fun interface HapticPulseListener {
+    /**
+     * @param leadTimeMs how far ahead of the audible output this pulse's audio
+     *   currently is. The tap runs when PCM is written into the AudioTrack, which
+     *   is a few hundred ms before the speaker plays it, so the listener must
+     *   delay the vibration by this amount to land on the beat.
+     */
     fun onHapticPulse(
         bassEnergy: Float,
         vocalEnergy: Float,
-        isSharpTransient: Boolean
+        isSharpTransient: Boolean,
+        leadTimeMs: Long,
     )
+
+    /** Seek / track flush: any pulse still scheduled belongs to audio that will never play. */
+    fun onAnalysisFlushed() {}
+}
+
+/**
+ * Read-only view of the owning sink's playback clock. Called on the playback
+ * thread (the same thread that drives [MusicHapticsAudioProcessor.queueInput]).
+ */
+interface HapticPlaybackClock {
+    /** Media position currently audible, in us, or [Long.MIN_VALUE] when unknown. */
+    fun currentPositionUs(): Long
+    fun playbackSpeed(): Float = 1f
 }
 
 /**
@@ -39,6 +59,36 @@ class MusicHapticsAudioProcessor(
 
     @Volatile
     var isAnalysisActive: Boolean = false
+
+    /** Clock of the sink this instance is installed in. One instance per sink. */
+    @Volatile
+    var playbackClock: HapticPlaybackClock? = null
+
+    // Media-time anchor: position of the first frame queued after a hard flush,
+    // plus every frame queued since. Lets a pulse be mapped to when it is heard.
+    // Media3 also flushes processors on gapless reconfiguration (track change)
+    // while the AudioTrack keeps playing, so only a real discontinuity (seek,
+    // stop, sink flush) may re-anchor; otherwise the timeline is continuous.
+    private var anchorPositionUs = Long.MIN_VALUE
+    private var framesSinceAnchor = 0L
+    private var sampleRateHz = 48_000
+    private var bufferFrameCursor = 0L
+
+    @Volatile
+    private var timelineResetRequested = true
+
+    /** Called on a seek / discontinuity so the next buffer re-anchors the timeline. */
+    fun requestTimelineReset() {
+        timelineResetRequested = true
+    }
+
+    /** Folds queued frames into the anchor so a sample-rate change keeps the timeline exact. */
+    private fun foldTimeline() {
+        if (anchorPositionUs != Long.MIN_VALUE && framesSinceAnchor > 0) {
+            anchorPositionUs += framesSinceAnchor * 1_000_000L / sampleRateHz
+        }
+        framesSinceAnchor = 0L
+    }
 
     // Biquad filter coefficients for Low-Pass (Bass: 95 Hz cutoff)
     private var lpB0 = 1f; private var lpB1 = 0f; private var lpB2 = 0f
@@ -76,9 +126,13 @@ class MusicHapticsAudioProcessor(
             return AudioProcessor.AudioFormat.NOT_SET
         }
         val sr = inputAudioFormat.sampleRate.toFloat().coerceAtLeast(8000f)
+        foldTimeline()
+        sampleRateHz = inputAudioFormat.sampleRate.coerceAtLeast(8000)
         minTriggerIntervalSamples = (sr * 0.042f).toInt() // 42ms cooldown (~24 Hz)
         analysisWindowSamples = (sr * 0.010f).toInt().coerceAtLeast(128)
-        computeBiquadCoefficients(sr)
+        // The filters run on the 2x-decimated stream, so design them for that
+        // rate; designing at the full rate doubled every cutoff (95->190 Hz bass).
+        computeBiquadCoefficients(sr / DECIMATION)
         resetFilterState()
         return inputAudioFormat
     }
@@ -122,9 +176,48 @@ class MusicHapticsAudioProcessor(
         outputBuffer.put(inputBuffer)
         outputBuffer.flip()
 
+        if (timelineResetRequested || anchorPositionUs == Long.MIN_VALUE) {
+            // First buffer after a hard flush: nothing queued has played yet, so
+            // the sink's position is exactly this buffer's start media time.
+            val pos = runCatching { playbackClock?.currentPositionUs() }.getOrNull() ?: Long.MIN_VALUE
+            if (pos != Long.MIN_VALUE) {
+                anchorPositionUs = pos
+                framesSinceAnchor = 0L
+                timelineResetRequested = false
+            }
+        }
+        bufferFrameCursor = framesSinceAnchor
+
         if (sliceForAnalysis != null) {
             analyzePcmWindow(sliceForAnalysis)
         }
+        framesSinceAnchor += remaining / bytesPerFrame().coerceAtLeast(1)
+    }
+
+    private fun bytesPerFrame(): Int {
+        val channels = inputAudioFormat.channelCount.coerceAtLeast(1)
+        return when (inputAudioFormat.encoding) {
+            C.ENCODING_PCM_FLOAT, C.ENCODING_PCM_32BIT -> 4 * channels
+            C.ENCODING_PCM_24BIT -> 3 * channels
+            else -> 2 * channels
+        }
+    }
+
+    /** ms between now and when the frame at [bufferFrameCursor] becomes audible. */
+    private fun currentLeadTimeMs(): Long {
+        val clock = playbackClock ?: return 0L
+        if (anchorPositionUs == Long.MIN_VALUE) return 0L
+        val nowUs = runCatching { clock.currentPositionUs() }.getOrNull() ?: return 0L
+        if (nowUs == Long.MIN_VALUE) return 0L
+        val pulseUs = anchorPositionUs + bufferFrameCursor * 1_000_000L / sampleRateHz
+        val speed = runCatching { clock.playbackSpeed() }.getOrDefault(1f).coerceIn(0.25f, 4f)
+        val leadMs = ((pulseUs - nowUs) / 1000L / speed).toLong()
+        if (leadMs > MAX_LEAD_MS || leadMs < -STALE_TOLERANCE_MS) {
+            // Timeline drifted (missed discontinuity): heal on the next buffer.
+            timelineResetRequested = true
+            return 0L
+        }
+        return leadMs.coerceIn(0L, MAX_LEAD_MS)
     }
 
     private fun analyzePcmWindow(buffer: ByteBuffer) {
@@ -138,7 +231,7 @@ class MusicHapticsAudioProcessor(
         }
 
         // Step by 2 frames (2x decimation) to keep CPU cost near zero
-        val frameStep = 2
+        val frameStep = DECIMATION
         val byteStep = bytesPerFrame * frameStep
 
         while (buffer.remaining() >= bytesPerFrame) {
@@ -198,6 +291,7 @@ class MusicHapticsAudioProcessor(
             windowVocalAccum += bpY * bpY
             currentWindowCount += frameStep
             samplesSinceLastTrigger += frameStep
+            bufferFrameCursor += frameStep
 
             if (currentWindowCount >= analysisWindowSamples) {
                 val invCount = frameStep.toFloat() / currentWindowCount.toFloat()
@@ -246,17 +340,36 @@ class MusicHapticsAudioProcessor(
             pulseListener.onHapticPulse(
                 bassEnergy = normBass,
                 vocalEnergy = normVocal,
-                isSharpTransient = isBassKick || (bassRatio > 1.55f)
+                isSharpTransient = isBassKick || (bassRatio > 1.55f),
+                leadTimeMs = currentLeadTimeMs(),
             )
         }
     }
 
     override fun onFlush() {
         resetFilterState()
+        foldTimeline()
+        // A real sink flush leaves the clock unset until the next buffer; a
+        // gapless reconfiguration keeps it running and must not re-anchor.
+        val clockPos = runCatching { playbackClock?.currentPositionUs() }.getOrNull() ?: Long.MIN_VALUE
+        if (clockPos == Long.MIN_VALUE) {
+            timelineResetRequested = true
+            pulseListener.onAnalysisFlushed()
+        }
     }
 
     override fun onReset() {
         resetFilterState()
+        anchorPositionUs = Long.MIN_VALUE
+        framesSinceAnchor = 0L
+        timelineResetRequested = true
+    }
+
+    private companion object {
+        const val DECIMATION = 2
+        /** Beyond this the clock is not trustworthy (AudioTrack buffers are < 1 s). */
+        const val MAX_LEAD_MS = 1_500L
+        const val STALE_TOLERANCE_MS = 250L
     }
 
     private fun resetFilterState() {

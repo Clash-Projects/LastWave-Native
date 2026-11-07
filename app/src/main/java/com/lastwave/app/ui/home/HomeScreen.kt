@@ -897,7 +897,7 @@ private fun MixHeader(sortMode: HomeSortMode, onSortModeChange: (HomeSortMode) -
     val pillInteractionSource = remember { MutableInteractionSource() }
     val pillPressed by pillInteractionSource.collectIsPressedAsState()
     LaunchedEffect(pillPressed) {
-        if (pillPressed) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        if (pillPressed) haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
     }
     // A more pronounced dip than the shared rememberGroupPressScale (tuned
     // for full-width group rows) — a small pill needs a bigger relative
@@ -975,27 +975,27 @@ private fun MixHeader(sortMode: HomeSortMode, onSortModeChange: (HomeSortMode) -
                 modifier = Modifier.padding(vertical = 4.dp),
             ) {
                 SortOption(Icons.Filled.Schedule, "Recent", sortMode == HomeSortMode.RECENT) {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                     onSortModeChange(HomeSortMode.RECENT); menuOpen = false
                 }
                 SortOption(Icons.Filled.BarChart, "Most Played", sortMode == HomeSortMode.MOST_PLAYED) {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                     onSortModeChange(HomeSortMode.MOST_PLAYED); menuOpen = false
                 }
                 SortOption(Icons.Filled.DateRange, "Last 7 Days", sortMode == HomeSortMode.LAST_7_DAYS) {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                     onSortModeChange(HomeSortMode.LAST_7_DAYS); menuOpen = false
                 }
                 SortOption(Icons.Filled.CalendarMonth, "Last 30 Days", sortMode == HomeSortMode.LAST_30_DAYS) {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                     onSortModeChange(HomeSortMode.LAST_30_DAYS); menuOpen = false
                 }
                 SortOption(Icons.Filled.People, "Top Artists", sortMode == HomeSortMode.TOP_ARTISTS) {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                     onSortModeChange(HomeSortMode.TOP_ARTISTS); menuOpen = false
                 }
                 SortOption(Icons.Filled.Album, "Top Albums", sortMode == HomeSortMode.TOP_ALBUMS) {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                     onSortModeChange(HomeSortMode.TOP_ALBUMS); menuOpen = false
                 }
             }

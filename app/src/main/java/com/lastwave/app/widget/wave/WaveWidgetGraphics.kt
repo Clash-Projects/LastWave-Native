@@ -102,10 +102,10 @@ internal object WaveWidgetGraphics {
         }
     }
 
-    /** Square cover for the strip whose right edge dissolves into the gradient surface. */
+    /** Square cover for the strip: rounded on the left, a clean hard cut on the right edge. */
     fun stripArtworkFaded(art: Bitmap?, tone: Int): Bitmap {
         if (art == null || art.isRecycled) return stripArtwork(null, tone)
-        return cached("stripArtFaded:${key(art)}:$tone") {
+        return cached("stripArtCut:${key(art)}:$tone") {
             val size = 384
             Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888).also { bitmap ->
                 val canvas = Canvas(bitmap)
@@ -116,11 +116,6 @@ internal object WaveWidgetGraphics {
                         Path.Direction.CW)
                 })
                 canvas.drawBitmap(art, centerCrop(art, 1f), bounds, paint(Color.WHITE))
-                canvas.drawRect(size * 0.58f, 0f, size.toFloat(), size.toFloat(), paint(Color.WHITE).apply {
-                    xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN)
-                    shader = LinearGradient(size * 0.58f, 0f, size.toFloat(), 0f,
-                        Color.WHITE, Color.TRANSPARENT, Shader.TileMode.CLAMP)
-                })
             }
         }
     }

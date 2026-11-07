@@ -140,10 +140,10 @@ fun DraggableSleepTimerOverlay(
                                 isDragging = false
                                 if (hoveringClose) {
                                     hoveringClose = false
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
                                     onCloseTimer()
                                 } else if (dragDistance < 15f) {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
                                     onCycleTimer()
                                 }
                             },

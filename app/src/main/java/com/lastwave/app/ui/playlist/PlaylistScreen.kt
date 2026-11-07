@@ -776,7 +776,7 @@ private fun PlaylistCard(
                     interactionSource = interactionSource,
                     indication = null,
                     onClick = {
-                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.ContextClick)
                         onClick()
                     },
                     onLongClick = {
@@ -1040,7 +1040,7 @@ private fun SpotifyPlaylistCard(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = {
-                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.ContextClick)
                     onClick()
                 },
             ),

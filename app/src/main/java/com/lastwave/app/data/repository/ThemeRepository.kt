@@ -49,7 +49,6 @@ data class ThemeUiState(
     /** Settings' "Use Application Font" toggle — see ui/theme/Type.kt for
      *  what turning it off falls back to. */
     val useCustomFont: Boolean = true,
-    val useBoldFont: Boolean = false,
     /** Experimental liquid-glass materials (Settings → Experimental). When
      *  true, container roles in [colorScheme] are semi-translucent and the
      *  chrome surfaces get specular glass dressing. */
@@ -265,7 +264,6 @@ class ThemeRepository @Inject constructor(
             mode = prefs.accentMode,
             accentColorHex = if (isLastWave) "#C9FB00" else prefs.accentColor,
             useCustomFont = misc.useCustomFont,
-            useBoldFont = misc.useBoldFont,
             liquidGlass = isGlass,
             md3NavBar = prefs.md3NavBar,
             hideNavTabs = prefs.hideNavTabs,
@@ -285,7 +283,6 @@ class ThemeRepository @Inject constructor(
             mode = AccentMode.MANUAL,
             accentColorHex = "#E03030",
             useCustomFont = true,
-            useBoldFont = false,
             liquidGlass = true,
             md3NavBar = false,
             hideNavTabs = false,

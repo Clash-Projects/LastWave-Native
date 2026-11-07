@@ -1016,6 +1016,18 @@ class MusicPlayer @Inject constructor(
             }
             refresh(live)
         }
+        override fun onPositionDiscontinuity(
+            oldPosition: Player.PositionInfo,
+            newPosition: Player.PositionInfo,
+            reason: Int,
+        ) {
+            // A seek flushes the sink; queued haptic pulses belong to audio that
+            // will never play and the tap's timeline must re-anchor. Gapless
+            // auto-transitions keep the timeline continuous.
+            if (reason != Player.DISCONTINUITY_REASON_AUTO_TRANSITION) {
+                musicHapticsController.onPositionDiscontinuity()
+            }
+        }
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             musicHapticsController.onIsPlayingChanged(isPlaying, player.volume)
             outgoingPlayer?.playWhenReady = isPlaying
@@ -1574,6 +1586,25 @@ class MusicPlayer @Inject constructor(
             .setBackBuffer(15_000, true)
             .build()
         var builtSink: NativeProcessingAudioSink? = null
+        // One haptics tap per DefaultAudioSink (an AudioProcessor must never be
+        // shared between sinks or players); each tap reads its own sink's clock
+        // so pulses can be delayed to the moment the audio is actually heard.
+        val hapticTaps = mutableListOf<com.lastwave.app.playback.haptics.MusicHapticsAudioProcessor>()
+        var pendingHapticTap: com.lastwave.app.playback.haptics.MusicHapticsAudioProcessor? = null
+        fun newHapticTap(): com.lastwave.app.playback.haptics.MusicHapticsAudioProcessor =
+            musicHapticsController.createAudioProcessor().also {
+                hapticTaps.add(it)
+                pendingHapticTap = it
+            }
+        fun DefaultAudioSink.withHapticClock(): DefaultAudioSink {
+            val sinkRef = this
+            pendingHapticTap?.playbackClock = object : com.lastwave.app.playback.haptics.HapticPlaybackClock {
+                override fun currentPositionUs(): Long = sinkRef.getCurrentPositionUs(false)
+                override fun playbackSpeed(): Float = sinkRef.playbackParameters.speed
+            }
+            pendingHapticTap = null
+            return sinkRef
+        }
         val renderersFactory = object : DefaultRenderersFactory(appContext) {
             override fun buildAudioSink(
                 context: Context,
@@ -1584,16 +1615,18 @@ class MusicPlayer @Inject constructor(
                     .setEnableFloatOutput(false)
                     .setEnableAudioTrackPlaybackParams(true)
                     .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
-                    .setAudioProcessors(arrayOf(musicHapticsController.audioProcessor))
+                    .setAudioProcessors(arrayOf(newHapticTap()))
                     .build()
+                    .withHapticClock()
                 val engine = runCatching(engineProvider).getOrNull()
                 val enhancedSink = try {
                     DefaultAudioSink.Builder(context)
                         .setEnableFloatOutput(true)
                         .setEnableAudioTrackPlaybackParams(true)
                         .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
-                        .setAudioProcessors(arrayOf(musicHapticsController.audioProcessor))
+                        .setAudioProcessors(arrayOf(newHapticTap()))
                         .build()
+                        .withHapticClock()
                 } catch (error: Exception) {
                     android.util.Log.w("MusicPlayer", "Enhanced audio sink unavailable; using PCM16", error)
                     effects.setFallbackRequired(true)
@@ -1601,8 +1634,9 @@ class MusicPlayer @Inject constructor(
                         .setEnableFloatOutput(false)
                         .setEnableAudioTrackPlaybackParams(true)
                         .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
-                        .setAudioProcessors(arrayOf(musicHapticsController.audioProcessor))
+                        .setAudioProcessors(arrayOf(newHapticTap()))
                         .build()
+                        .withHapticClock()
                 } catch (error: LinkageError) {
                     android.util.Log.w("MusicPlayer", "Enhanced audio sink linkage failed; using PCM16", error)
                     effects.setFallbackRequired(true)
@@ -1610,8 +1644,9 @@ class MusicPlayer @Inject constructor(
                         .setEnableFloatOutput(false)
                         .setEnableAudioTrackPlaybackParams(true)
                         .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
-                        .setAudioProcessors(arrayOf(musicHapticsController.audioProcessor))
+                        .setAudioProcessors(arrayOf(newHapticTap()))
                         .build()
+                        .withHapticClock()
                 }
                 if (engine?.isAvailable == true) {
                     effects.setFallbackRequired(false)
@@ -1773,6 +1808,7 @@ class MusicPlayer @Inject constructor(
             // Addon DASH segments are 10 s, so CLOSEST_SYNC could land seconds early.
             .setSeekParameters(SeekParameters.EXACT)
             .build().apply {
+                musicHapticsController.registerPlayerTaps(this, hapticTaps)
                 // Feed ReplayGain container tags into loudness normalization.
                 // Additive listener: never touches playback, 0 dB without tags.
                 addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {

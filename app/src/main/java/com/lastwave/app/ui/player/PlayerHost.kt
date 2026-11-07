@@ -5807,7 +5807,7 @@ private fun AudioControlsSheet(
                                     .clip(CircleShape)
                                     .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                                     .clickable {
-                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         currentSpeed = 1.0f
                                         currentPitch = 1.0f
                                         player.setPlaybackParameters(1.0f, 1.0f)
@@ -6383,7 +6383,7 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
             Spacer(Modifier.width(8.dp))
             IconButton(
                 onClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                     player.clearQueueKeepCurrent()
                 },
                 enabled = state.queue.size > 1 && !isQueueLocked,

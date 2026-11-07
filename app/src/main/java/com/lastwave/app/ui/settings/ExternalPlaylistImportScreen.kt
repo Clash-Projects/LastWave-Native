@@ -303,7 +303,7 @@ fun ExternalPlaylistImportScreen(
                             item {
                                 Card(
                                     onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         viewModel.selectLikedSongs()
                                     },
                                     shape = RoundedCornerShape(16.dp),
@@ -365,7 +365,7 @@ fun ExternalPlaylistImportScreen(
                             items(userPlaylists, key = { it.id }) { pl ->
                                 Card(
                                     onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         viewModel.selectUserPlaylist(pl)
                                     },
                                     shape = RoundedCornerShape(16.dp),
@@ -505,7 +505,7 @@ fun ExternalPlaylistImportScreen(
 
                                 Button(
                                     onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         keyboard?.hide()
                                         viewModel.loadPreview()
                                     },
@@ -597,7 +597,7 @@ fun ExternalPlaylistImportScreen(
         ) {
             Button(
                 onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     viewModel.import { saved -> onImportSuccess(saved) }
                 },
                 enabled = !state.isImporting,

@@ -129,7 +129,7 @@ fun DraggableDownloadOverlay(
                             onDragEnd = {
                                 isDragging = false
                                 if (dragDistance < 15f) {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
                                     onOpenDownloads()
                                 }
                             },

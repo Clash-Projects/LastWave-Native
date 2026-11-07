@@ -32,7 +32,7 @@ enum class MusicHapticsIntensity(val label: String, val amplitudeScale: Float, v
 }
 
 enum class MusicHapticsEngineMode(val label: String) {
-    AUTO("Automatic (Hardware + DSP)"),
+    AUTO("Automatic (Precision DSP)"),
     DSP_PRECISION("Precision DSP (Recommended)"),
     HARDWARE_NATIVE("Android Native HapticGenerator");
 

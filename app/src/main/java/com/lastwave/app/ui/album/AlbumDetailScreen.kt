@@ -268,7 +268,7 @@ fun AlbumDetailScreen(
                                 splitArtists.forEach { artName ->
                                     Surface(
                                         onClick = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                             onOpenArtist(artName, if (splitArtists.size == 1) data.artistBrowseId else null)
                                         },
                                         shape = RoundedCornerShape(12.dp),
@@ -320,7 +320,7 @@ fun AlbumDetailScreen(
                             ) {
                                 FilledTonalIconButton(
                                     onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         viewModel.playShuffle()
                                     },
                                     enabled = data.tracks.isNotEmpty(),
@@ -341,7 +341,7 @@ fun AlbumDetailScreen(
                                 // Large Floating Primary Play Button (56dp circle)
                                 Surface(
                                     onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         viewModel.playAll()
                                     },
                                     enabled = data.tracks.isNotEmpty(),
@@ -367,7 +367,7 @@ fun AlbumDetailScreen(
                             // One-tap save of the whole album (issue #79)
                             FilledTonalButton(
                                 onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                     viewModel.saveToLibrary()
                                 },
                                 enabled = !saveState.isSaving && !saveState.savedToLibrary && data.tracks.isNotEmpty(),
@@ -452,7 +452,7 @@ fun AlbumDetailScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                     viewModel.playAll(startIndex = index)
                                 },
                         ) {
@@ -516,7 +516,7 @@ fun AlbumDetailScreen(
 
                                 IconButton(
                                     onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         selectedTrackMenu = track
                                     },
                                     modifier = Modifier.size(36.dp),
@@ -652,7 +652,7 @@ fun AlbumDetailScreen(
                 ) {
                     FilledTonalIconButton(
                         onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                             viewModel.playAll()
                         },
                         colors = IconButtonDefaults.filledTonalIconButtonColors(

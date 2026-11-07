@@ -1815,7 +1815,7 @@ private fun InfiniteRadioHero(
                 ) {
                     Button(
                         onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                             onPlay()
                         },
                         enabled = quickPicks.isNotEmpty(),

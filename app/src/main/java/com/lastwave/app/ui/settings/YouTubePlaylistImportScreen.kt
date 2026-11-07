@@ -207,7 +207,7 @@ fun YouTubePlaylistImportScreen(
                         }
                         Surface(
                             onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                 viewModel.selectTab(tab)
                             },
                             shape = RoundedCornerShape(16.dp),
@@ -318,7 +318,7 @@ fun YouTubePlaylistImportScreen(
                                         isSelected = isSelected,
                                         position = groupPositionFor(index, state.libraryPlaylists.size),
                                         onToggleSelect = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            haptic.performHapticFeedback(if (isSelected) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn)
                                             viewModel.togglePlaylistSelection(playlist.id)
                                         },
                                         onPreview = {
@@ -437,7 +437,7 @@ fun YouTubePlaylistImportScreen(
                                     isSelected = isSelected,
                                     position = groupPositionFor(index, state.searchResults.size),
                                     onToggleSelect = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(if (isSelected) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn)
                                         viewModel.togglePlaylistSelection(playlist.id)
                                     },
                                     onPreview = {
@@ -503,7 +503,7 @@ fun YouTubePlaylistImportScreen(
 
                                 Button(
                                     onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         keyboard?.hide()
                                         viewModel.resolveDirectLink()
                                     },
@@ -572,7 +572,7 @@ fun YouTubePlaylistImportScreen(
 
                                 Button(
                                     onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         try {
                                             csvPickerLauncher.launch(arrayOf("text/*", "text/csv", "application/csv", "audio/x-mpegurl", "application/x-mpegurl", "application/vnd.apple.mpegurl", "*/*"))
                                         } catch (error: Exception) {
@@ -635,7 +635,7 @@ fun YouTubePlaylistImportScreen(
         ) {
             Button(
                 onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     viewModel.importSelected { savedList ->
                         onImportSuccess(savedList)
                     }
