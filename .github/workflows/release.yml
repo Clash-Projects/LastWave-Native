@@ -187,7 +187,7 @@ jobs:
           | **`LastWave-v__TAG__-vivo-origin.apk`** (~22 MB) | **vivo phones (OriginOS)** | **vivo Origin Island & music widget build.** Separate APK so vivo's Origin Island and music widget show LastWave. |
 
           > [!NOTE]
-          > **vivo users (`LastWave-v__TAG__-vivo-origin.apk`):** OriginOS only shows apps from vivo's own allowlist in Origin Island and the music widget, so this build uses an allowlisted package name. It installs as a **separate app** next to regular LastWave (data is not shared), it **cannot be installed alongside the real Spotify app**, and it updates itself from this vivo APK only.
+          > **vivo users (`LastWave-v__TAG__-vivo-origin.apk`):** OriginOS only shows apps from vivo's own allowlist in Origin Island and the music widget, so this build uses an allowlisted package name. It installs as a **separate app** next to regular LastWave (data is not shared), it **cannot be installed alongside the real QQ Music app**, and it updates itself from this vivo APK only. If you installed an older vivo build (shown as Spotify), uninstall it first.
 
           > [!WARNING]
           > **Notice for Android 7.0 – 9.0 Users (`LastWave-v__TAG__-android7.apk`):**
