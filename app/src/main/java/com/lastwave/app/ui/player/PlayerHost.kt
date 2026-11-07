@@ -2817,10 +2817,17 @@ private fun FullPlayer(
                         }
                     }
 
-                    val heroHeight = if (heroBottomPx > 0f) {
-                        with(LocalDensity.current) { heroBottomPx.toDp() }
-                    } else {
-                        with(LocalDensity.current) { (bgHeight * 0.54f).toDp() }
+                    // The hero is the cover's full width, cropped top-aligned. On a
+                    // phone the area above the title is taller than wide, so the
+                    // square cover keeps its whole height. A portrait tablet is
+                    // much wider for its height: that area came out wider than
+                    // tall and cut off the bottom of the cover. Never let the
+                    // hero be shorter than it is wide (capped at 85% of the
+                    // screen) so a square cover fits edge to edge and its lower
+                    // part fades under the title, exactly like on a phone.
+                    val heroHeight = with(LocalDensity.current) {
+                        val measured = if (heroBottomPx > 0f) heroBottomPx else bgHeight * 0.54f
+                        maxOf(measured, minOf(bgWidth, bgHeight * 0.85f)).toDp()
                     }
                     val heroAlpha by animateFloatAsState(
                         targetValue = if (currentTab == FullPlayerTab.NOW_PLAYING) 1f else 0f,
