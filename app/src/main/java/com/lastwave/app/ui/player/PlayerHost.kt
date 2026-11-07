@@ -6725,10 +6725,7 @@ private data class PlayerSheetSlideShape(val topRadiusPx: Float) : Shape {
         } else {
             Outline.Rounded(
                 androidx.compose.ui.geometry.RoundRect(
-                    left = 0f,
-                    top = 0f,
-                    right = size.width,
-                    bottom = size.height,
+                    rect = androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height),
                     topLeft = androidx.compose.ui.geometry.CornerRadius(r, r),
                     topRight = androidx.compose.ui.geometry.CornerRadius(r, r),
                     bottomLeft = androidx.compose.ui.geometry.CornerRadius.Zero,
