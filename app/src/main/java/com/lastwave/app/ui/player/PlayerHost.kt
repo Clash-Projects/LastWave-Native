@@ -2409,18 +2409,22 @@ private fun FullPlayer(
         delay(VIDEO_PRELOAD_DELAY_MS)
         syncedVideoVm.preloadVideo(track.title, track.artist, track.videoId, track.durationMs)
     }
-    val showFullBleed = canvasFullBleedEnabled && !isVideoActive && !isTablet
-    val showSleeveCanvas = isCanvasActive && (!showFullBleed || isTablet) && !isVideoActive
+    // Full bleed works wherever the player uses the single-column layout:
+    // phones and tablets in portrait. Only tablet landscape (two columns,
+    // cover beside the controls) keeps the boxed sleeve.
+    val fullBleedBlocked = isTablet && isLandscape
+    val showFullBleed = canvasFullBleedEnabled && !isVideoActive && !fullBleedBlocked
+    val showSleeveCanvas = isCanvasActive && !showFullBleed && !isVideoActive
     // activeCanvas is the single gate every render branch below keys off, so it also
     // carries the Animated Album Canvas toggle. The ViewModel nulls canvasState
     // asynchronously, so without this a disabled toggle still paints one frame of
     // motion artwork over the cover.
-    val activeCanvas = remember(canvas, showFullBleed, canvasEnabled, isTablet) {
+    val activeCanvas = remember(canvas, showFullBleed, canvasEnabled) {
         if (!canvasEnabled) {
             null
         } else {
             val tall = canvas?.tallUrl
-            if (showFullBleed && !isTablet && canvas != null && !tall.isNullOrBlank()) {
+            if (showFullBleed && canvas != null && !tall.isNullOrBlank()) {
                 canvas.copy(url = tall)
             } else {
                 canvas
@@ -2801,7 +2805,7 @@ private fun FullPlayer(
                             ),
                         ),
                 )
-                if (showFullBleed && !isTablet) {
+                if (showFullBleed) {
                     val isTallCanvas = remember(activeCanvas, canvasAspect, canvasGradientBlurEnabled) {
                         if (canvasGradientBlurEnabled || activeCanvas == null) false
                         else if (canvasAspect > 0f) {
