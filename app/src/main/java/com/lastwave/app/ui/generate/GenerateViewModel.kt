@@ -256,7 +256,7 @@ class GenerateViewModel @Inject constructor(
                         GenerateMode.SIMILAR_ARTISTS -> repository.fetchSimilarArtistTracks(state.seedArtistQuery, candidateCount)
                         GenerateMode.TAG -> repository.fetchTagTracks(state.tagInput, candidateCount)
                         GenerateMode.MIX -> repository.fetchMix(candidateCount, onProgress)
-                        GenerateMode.RECOMMENDATIONS -> repository.fetchRecommendations(targetCount, onProgress)
+                        GenerateMode.RECOMMENDATIONS -> repository.fetchRecommendations(targetCount, onProgress, seedArtist = state.seedArtistQuery.ifBlank { null })
                         GenerateMode.NEVER_HEARD -> repository.fetchNeverHeardTracks(candidateCount, onProgress)
                     }
                 }
