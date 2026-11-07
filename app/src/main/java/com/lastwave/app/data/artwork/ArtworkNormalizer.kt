@@ -71,6 +71,45 @@ object ArtworkNormalizer {
         return result
     }
 
+    private val LASTFM_SIZE_SEGMENT = Regex("""/i/u/\d+x\d+/""")
+
+    /** Last.fm serves 300x300 by default; the same image exists at 770px. */
+    fun upgradeLastFm(url: String): String =
+        if (url.contains("lastfm") || url.contains("audioscrobbler")) url.replace(LASTFM_SIZE_SEGMENT, "/i/u/770x0/") else url
+
+    private val TOPIC_SUFFIX = Regex("""(?i)\s*-\s*topic\s*$""")
+    private val VEVO_SUFFIX = Regex("""VEVO\s*$""")
+    private val VIDEO_NOISE = Regex(
+        """(?i)\s*[(\[]\s*(?:official\s*)?(?:hd\s*|4k\s*)?(?:music\s*|lyric\s*|lyrics\s*)?(?:video|audio|visuali[sz]er|lyrics?|mv|m/v)(?:\s*video)?\s*[)\]]""",
+    )
+    private val PIPE_TAIL = Regex("""\s+[|｜].*$""")
+
+    private fun lettersOnly(s: String): String = s.lowercase().filter { it.isLetterOrDigit() }
+
+    /**
+     * Search terms for the cover lookups. YouTube metadata carries upload
+     * noise ("Artist - Topic", "ArtistVEVO", "Artist - Song (Official
+     * Video)", "Song | Album") that makes the Apple Music / Tidal / Deezer
+     * searches miss, which is why so many covers stayed on the low-res
+     * YouTube thumbnail. Only noise is removed; the cache key never changes.
+     */
+    fun searchTerms(name: String, artist: String): Pair<String, String> {
+        val cleanArtist = artist.replace(TOPIC_SUFFIX, "").replace(VEVO_SUFFIX, "").trim()
+        var cleanName = name.replace(VIDEO_NOISE, "").replace(PIPE_TAIL, "").trim()
+        val dash = cleanName.indexOf(" - ")
+        if (dash > 0 && cleanArtist.isNotBlank()) {
+            val left = lettersOnly(cleanName.substring(0, dash))
+            val right = cleanName.substring(dash + 3).trim()
+            val who = lettersOnly(cleanArtist)
+            if (right.isNotEmpty() && left.isNotEmpty() && who.isNotEmpty() &&
+                (left == who || left.contains(who) || who.contains(left))
+            ) {
+                cleanName = right
+            }
+        }
+        return cleanName.ifBlank { name } to cleanArtist.ifBlank { artist }
+    }
+
     fun cleanTitle(title: String): String = title
         .replace(FEAT_REGEX, "")
         .replace(REMASTER_REGEX, "")

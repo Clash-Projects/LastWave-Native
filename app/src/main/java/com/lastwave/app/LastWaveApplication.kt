@@ -233,8 +233,10 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
     }
 
     private companion object {
-        const val IMAGE_DISK_CACHE_BYTES = 32L * 1024 * 1024
-        const val LOW_RAM_IMAGE_DISK_CACHE_BYTES = 16L * 1024 * 1024
+        // High-res covers are 150-400 KB each: 32 MB held ~100 of them, so
+        // they kept re-downloading and the low-res placeholder showed meanwhile.
+        const val IMAGE_DISK_CACHE_BYTES = 256L * 1024 * 1024
+        const val LOW_RAM_IMAGE_DISK_CACHE_BYTES = 96L * 1024 * 1024
         const val ORPHAN_TEMP_MAX_AGE_MS = 6L * 60 * 60 * 1000
         const val OPTIONAL_STARTUP_DELAY_MS = 2_500L
     }

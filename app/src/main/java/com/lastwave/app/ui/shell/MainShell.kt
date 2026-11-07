@@ -374,7 +374,10 @@ fun MainShell(
         val feedIndex = tabs.indexOf(MainTab.FEED)
         HorizontalPager(
             state = pagerState,
-            beyondViewportPageCount = 0,
+            // Keep the neighbouring tab composed: with 0, Statistics was built
+            // from scratch (list, covers, lookups) during every swipe to it,
+            // which is the stutter. It is the middle tab, so 1 keeps it ready.
+            beyondViewportPageCount = 1,
             modifier = Modifier.fillMaxSize().liquidGlassSource(if (navGlass) navigationBackdrop else null),
         ) { page ->
             val isCurrent = page == pagerState.currentPage
