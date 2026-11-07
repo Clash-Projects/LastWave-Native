@@ -166,13 +166,6 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     private var originLyricsMediaId: String? = null
     private var artworkUrl: String? = null
     private var artworkBitmap: Bitmap? = null
-    /**
-     * content:// copy of [artworkBitmap] for the session's art URI keys. System
-     * readers (the OriginOS music card / Origin Island, SystemUI) load those
-     * keys through ContentResolver, which cannot open the https cover URL, so
-     * the island showed no cover. Null until the copy is written.
-     */
-    private var artworkContentUri: android.net.Uri? = null
     private var notificationSignature = ""
     private var widgetSignature = ""
     private var waveWidgetSignature = ""
@@ -1119,7 +1112,6 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             append(state.appVolume).append('|')
             append(artworkUrl).append('|')
             append(artworkBitmap != null).append('|')
-            append(artworkContentUri).append('|')
             append(isLiked)
             if (!state.isPlaying) append("|pos=").append(state.positionMs)
         }
@@ -1139,19 +1131,9 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                     .putString(MediaMetadataCompat.METADATA_KEY_TITLE, track?.title.orEmpty())
                     .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, track?.artist.orEmpty())
                     .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, track?.album.orEmpty())
-                    .apply {
-                        // Readers try the URI keys before the bitmaps and load
-                        // them via ContentResolver: give them the content://
-                        // copy, and never an https URL next to a bitmap (the
-                        // OriginOS card then showed no cover at all).
-                        val sessionArtUri = artworkContentUri?.toString()
-                            ?: artUri.takeIf { artworkBitmap == null && it.isNotBlank() }
-                        if (sessionArtUri != null) {
-                            putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, sessionArtUri)
-                            putString(MediaMetadataCompat.METADATA_KEY_ART_URI, sessionArtUri)
-                            putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, sessionArtUri)
-                        }
-                    }
+                    .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, artUri)
+                    .putString(MediaMetadataCompat.METADATA_KEY_ART_URI, artUri)
+                    .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, artUri)
                     .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, state.durationMs)
                     .putRating(MediaMetadataCompat.METADATA_KEY_RATING, RatingCompat.newHeartRating(isLiked))
                     .putLong(OriginOsMusicCard.KEY_SUPPORT_EVENT, OriginOsMusicCard.SUPPORTED_EVENTS)
@@ -1444,7 +1426,6 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             artworkRequestKey = ""
             artworkUrl = null
             artworkBitmap = null
-            artworkContentUri = null
             artworkJob?.cancel()
             return
         }
@@ -1458,7 +1439,6 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         // Track has changed: immediately clear previous track's artwork
         // so the notification bar never displays the old song's cover art
         artworkBitmap = null
-        artworkContentUri = null
         artworkUrl = null
         artworkJob?.cancel()
 
@@ -1520,7 +1500,6 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             val cached = imageLoader.memoryCache?.get(coil.memory.MemoryCache.Key(cleanUrl))?.bitmap
             if (cached != null && !cached.isRecycled) {
                 artworkBitmap = cached
-                artworkContentUri = null
                 widgetSignature = ""
                 publishWidget(musicPlayer.state.value)
                 publishWaveWidget(musicPlayer.state.value, force = true)
@@ -1539,13 +1518,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                 )
             }
             if (expectedUrl != artworkUrl) return@launch
-            val loaded = (result as? SuccessResult)?.drawable?.toBitmap()
-            val shared = loaded?.let { bitmap ->
-                kotlinx.coroutines.withContext(Dispatchers.IO) { writeSessionArtwork(expectedUrl, bitmap) }
-            }
-            if (expectedUrl != artworkUrl) return@launch
-            artworkBitmap = loaded
-            artworkContentUri = shared
+            artworkBitmap = (result as? SuccessResult)?.drawable?.toBitmap()
             val state = musicPlayer.state.value
             publishSystemState(state)
             publishNotification(state, force = true)
@@ -1555,37 +1528,6 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         }
     }
 
-
-    /**
-     * Writes [bitmap] to cache/shared/session-art (exposed by the app's
-     * FileProvider) and grants read access to the system readers of the media
-     * session's art URI keys. One file per cover URL, so a reader that caches
-     * by URI never shows the previous cover; only the newest few are kept.
-     */
-    private fun writeSessionArtwork(url: String, bitmap: Bitmap): android.net.Uri? = runCatching {
-        val dir = java.io.File(cacheDir, "shared/session-art").apply { mkdirs() }
-        val file = java.io.File(dir, "art-${Integer.toHexString(url.hashCode())}.jpg")
-        if (!file.exists() || file.length() == 0L) {
-            val maxDim = maxOf(bitmap.width, bitmap.height)
-            val out = if (maxDim > 512) {
-                val scale = 512f / maxDim
-                Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt().coerceAtLeast(1), (bitmap.height * scale).toInt().coerceAtLeast(1), true)
-            } else bitmap
-            val tmp = java.io.File(dir, file.name + ".tmp")
-            tmp.outputStream().use { out.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-            if (!tmp.renameTo(file)) { tmp.delete(); return@runCatching null }
-        }
-        file.setLastModified(System.currentTimeMillis())
-        dir.listFiles { f -> f.name.startsWith("art-") }
-            ?.sortedByDescending { it.lastModified() }
-            ?.drop(SESSION_ART_KEEP)
-            ?.forEach { it.delete() }
-        val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.provider", file)
-        for (reader in SESSION_ART_READERS) {
-            runCatching { grantUriPermission(reader, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-        }
-        uri
-    }.getOrNull()
 
     private fun openAppPendingIntent(): PendingIntent = PendingIntent.getActivity(
         this,
@@ -1917,10 +1859,6 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
 
     private companion object {
         const val WAKELOCK_RELEASE_GRACE_MS = 10_000L
-        /** Shared cover copies kept in cache/shared/session-art. */
-        const val SESSION_ART_KEEP = 4
-        /** Processes that read the session's art URI keys: OriginOS music card / Origin Island, and SystemUI. */
-        val SESSION_ART_READERS = listOf(OriginOsMusicCard.PACKAGE, "com.android.systemui")
         // Expanded RemoteViews content needs ~117dp (brand + title + artist +
         // album + 44dp controls + margins); 128dp clipped the transport row
         // whenever the album line was visible. 152dp leaves breathing room.
