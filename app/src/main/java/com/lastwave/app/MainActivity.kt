@@ -194,9 +194,14 @@ open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
                     val hasBottomNavigation = currentRoute == Screen.MainShell.route && !themeState.hideNavTabs
                     val isJamScreen = currentRoute == Screen.Jam.route || currentRoute?.startsWith("jam") == true
 
+                    val isWebLoginScreen = currentRoute == Screen.SpotifyLogin.route ||
+                        currentRoute == Screen.SpotifyTokenImport.route ||
+                        currentRoute == Screen.YouTubeLogin.route
+
                     PlayerHost(
                         hasBottomNavigation = hasBottomNavigation,
                         hideMiniPlayer = isJamScreen,
+                        webContentScreen = isWebLoginScreen,
                     ) {
                         LastWaveNavHost(navController)
                     }

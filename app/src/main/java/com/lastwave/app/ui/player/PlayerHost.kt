@@ -892,8 +892,17 @@ fun PlayerHost(
     viewModel: PlayerViewModel = hiltViewModel(),
     hasBottomNavigation: Boolean = false,
     hideMiniPlayer: Boolean = false,
+    /**
+     * A screen built around a WebView (Spotify / YouTube sign-in). The mini player is
+     * hidden and the liquid-glass backdrop stops capturing the page: re-recording a
+     * WebView into an offscreen layer every frame (the mini player animates while
+     * music plays) makes the page stutter and jitter on some GPUs/ROMs.
+     */
+    webContentScreen: Boolean = false,
     content: @Composable () -> Unit,
 ) {
+    @Suppress("NAME_SHADOWING")
+    val hideMiniPlayer = hideMiniPlayer || webContentScreen
     val state by viewModel.chromeState.collectAsStateWithLifecycle()
     val playbackState by viewModel.player.stateWithoutProgress.collectAsStateWithLifecycle()
     val activeDownloads by viewModel.activeDownloads.collectAsStateWithLifecycle()
@@ -975,7 +984,7 @@ fun PlayerHost(
         drawRect(miniBackdropColor)
         drawContent()
     }
-    val miniGlass = LocalLiquidGlass.current && isLiquidGlassBackdropSupported()
+    val miniGlass = LocalLiquidGlass.current && isLiquidGlassBackdropSupported() && !webContentScreen
 
     // Player presentation (open / close): driven by sheet expansion progress (0..1).
     // The player slides smoothly from the bottom over the content like a native
