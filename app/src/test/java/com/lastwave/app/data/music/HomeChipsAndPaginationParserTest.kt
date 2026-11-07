@@ -22,6 +22,7 @@ class HomeChipsAndPaginationParserTest {
             innerTubeXExtractor = mockk(relaxed = true),
             ytAuth = mockk(relaxed = true),
             settingsPreferences = mockk(relaxed = true),
+            appContext = mockk(relaxed = true),
         )
     }
 

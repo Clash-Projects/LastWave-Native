@@ -147,14 +147,13 @@ private const val PREF_VIDEO_LAST_USED_MS = "video_last_used_ms"
 internal const val VIDEO_PRELOAD_DELAY_MS = 1_500L
 private const val MAX_LINK_REFRESHES_PER_SONG = 2
 
-/** IPv4-first like audio: HttpURLConnection stalls on routes with broken IPv6, such as full-tunnel VPNs. */
-private val videoMediaHttp: okhttp3.OkHttpClient by lazy {
+/** IPv4-first on ordinary networks; VPN transport detection preserves the VPN resolver's address order. */
+private fun videoMediaHttp(context: android.content.Context): okhttp3.OkHttpClient =
     okhttp3.OkHttpClient.Builder()
-        .dns(com.lastwave.app.data.network.Ipv4FirstDnsResolver())
+        .dns(com.lastwave.app.data.network.Ipv4FirstDnsResolver(context = context))
         .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
         .build()
-}
 
 /**
  * Starts Auto quality low and steps up as bandwidth is measured. The quality-up
@@ -229,7 +228,7 @@ class SyncedVideoViewModel @Inject constructor(
     private var openedAwaitingLoad = false
 
     /** Shared HTTP factory for video streams – reused across cover and fullscreen players. */
-    val httpFactory: OkHttpDataSource.Factory = OkHttpDataSource.Factory(videoMediaHttp)
+    val httpFactory: OkHttpDataSource.Factory = OkHttpDataSource.Factory(videoMediaHttp(appContext))
 
     private var _playerInitialized = false
 
@@ -1718,8 +1717,8 @@ fun SyncedVideoPlayerDialog(
         }
     }
 
-    val httpFactory = remember {
-        OkHttpDataSource.Factory(videoMediaHttp)
+    val httpFactory = remember(context) {
+        OkHttpDataSource.Factory(videoMediaHttp(context))
             .setDefaultRequestProperties(
                 mapOf(
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",

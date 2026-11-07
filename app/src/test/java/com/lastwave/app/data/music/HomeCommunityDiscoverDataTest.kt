@@ -14,6 +14,7 @@ class HomeCommunityDiscoverDataTest {
         http = mockk(relaxed = true), streamExtractor = mockk(relaxed = true),
         innerTubeXExtractor = mockk(relaxed = true), ytAuth = mockk(relaxed = true),
         settingsPreferences = mockk(relaxed = true),
+        appContext = mockk(relaxed = true),
     )
 
     private fun fixture(name: String) = Json.parseToJsonElement(
