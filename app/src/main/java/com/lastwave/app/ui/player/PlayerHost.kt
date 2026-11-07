@@ -132,7 +132,6 @@ import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headphones
-import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
@@ -147,7 +146,6 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.SurroundSound
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
@@ -5496,27 +5494,24 @@ private fun AppleMusicQualityBadge(
 
     val badgeIcon = when {
         isMixActive || isFadeActive -> Icons.Filled.GraphicEq
-        isSpatial -> Icons.Filled.SurroundSound
-        state.isLossless -> Icons.Filled.HighQuality
-        else -> Icons.Filled.GraphicEq
+        isSpatial -> QualityGlyphs.Spatial
+        isHiRes -> QualityGlyphs.HiResLossless
+        state.isLossless -> QualityGlyphs.Lossless
+        else -> QualityGlyphs.Standard
     }
 
-    // The pill carries its own fill, so it never depends on the cover-tinted
-    // background behind it (the bare label used to vanish into art of a
-    // similar colour). Over art / glass: a dark translucent capsule with a
-    // hairline edge; in the plain player: a solid surface capsule.
-    val capsuleColor = if (isTranslucent) {
-        Color.Black.copy(alpha = 0.34f)
-    } else {
-        MaterialTheme.colorScheme.surfaceContainerHighest
+    // Translucent capsule that always contrasts with its own text, whatever
+    // the cover-tinted background is (the bare label used to vanish into art
+    // of a similar colour). The tint pushes away from the text colour: dark
+    // veil under light text, light veil under dark text, plus a hairline edge.
+    val darkTheme = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val lightCapsule = !isTranslucent && !darkTheme
+    val capsuleColor = when {
+        isTranslucent -> Color.Black.copy(alpha = 0.30f)
+        darkTheme -> Color.Black.copy(alpha = 0.32f)
+        else -> Color.White.copy(alpha = 0.62f)
     }
-    val capsuleBorder = if (isTranslucent) {
-        Color.White.copy(alpha = 0.16f)
-    } else {
-        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
-    }
-    // Signal-path accents need darker cuts on a light capsule to stay legible.
-    val lightCapsule = !isTranslucent && capsuleColor.luminance() > 0.5f
+    val capsuleBorder = if (lightCapsule) Color.Black.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.14f)
     val tintColor = when {
         // Two decks are live during a transition, so the signal path report
         // flips between them; keep a neutral tint until it settles.
