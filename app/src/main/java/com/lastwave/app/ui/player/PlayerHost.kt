@@ -5518,7 +5518,6 @@ private fun AppleMusicQualityBadge(
         darkTheme -> Color.Black.copy(alpha = 0.32f)
         else -> Color.White.copy(alpha = 0.62f)
     }
-    val capsuleBorder = if (lightCapsule) Color.Black.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.14f)
     val tintColor = when {
         // Two decks are live during a transition, so the signal path report
         // flips between them; keep a neutral tint until it settles.
@@ -5542,7 +5541,6 @@ private fun AppleMusicQualityBadge(
                 .animateContentSize()
                 .clip(CircleShape)
                 .background(capsuleColor)
-                .border(0.5.dp, capsuleBorder, CircleShape)
                 .combinedClickable(
                     onClick = {
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
