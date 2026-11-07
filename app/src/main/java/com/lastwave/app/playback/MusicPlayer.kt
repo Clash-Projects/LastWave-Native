@@ -23,6 +23,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
 import com.lastwave.app.data.local.musicHapticsConfig
 import com.lastwave.app.data.lyrics.LyricLine
 import com.lastwave.app.data.lyrics.LyricsResult
@@ -48,14 +49,18 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.RendererCapabilities
+import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.audio.AudioCapabilities
 import androidx.media3.exoplayer.audio.AudioRendererEventListener
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.audio.MediaCodecAudioRenderer
 import androidx.media3.exoplayer.drm.DrmSessionManager
+import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ExtractorsFactory
@@ -1451,6 +1456,62 @@ class MusicPlayer @Inject constructor(
     // Bit-Perfect (or the USB Exclusive toggle) is on and a DAC is granted.
     // The sink graph is always NativeProcessingAudioSink so exclusive can
     // start mid-session without rebuilding ExoPlayer.
+    private fun createAudioMediaSourceFactory(dataSourceFactory: DataSource.Factory): MediaSource.Factory {
+        val drmProvider = DrmSessionManagerProvider { mediaItem ->
+            val stream = mediaItem.localConfiguration?.customCacheKey?.let(preparedStreams::get)
+            val descriptor = stream?.segmentedDrm
+            if (descriptor?.drm == null) DrmSessionManager.DRM_UNSUPPORTED
+            else moduleDrmFactory.sessionManagerFor(descriptor)
+        }
+        val defaultFactory = DefaultMediaSourceFactory(appContext, extractorsFactory)
+            .setDataSourceFactory(dataSourceFactory)
+            .setDrmSessionManagerProvider(drmProvider)
+        val dashFactory = DashMediaSource.Factory(dataSourceFactory)
+            .setManifestParser(com.lastwave.app.data.plugin.AlacDashManifestParser())
+            .setDrmSessionManagerProvider(drmProvider)
+
+        return object : MediaSource.Factory {
+            override fun createMediaSource(mediaItem: MediaItem): MediaSource {
+                val config = mediaItem.localConfiguration
+                val mimeType = config?.mimeType.orEmpty()
+                val extension = config?.uri?.lastPathSegment
+                    ?.substringBefore('?')
+                    ?.substringAfterLast('.', "")
+                    ?.lowercase()
+                    .orEmpty()
+                val prepared = config?.customCacheKey?.let(preparedStreams::get)
+                val isDash = mimeType == MimeTypes.APPLICATION_MPD ||
+                    mimeType.contains("dash", ignoreCase = true) ||
+                    extension == "mpd" ||
+                    prepared?.mimeType == MimeTypes.APPLICATION_MPD ||
+                    prepared?.segmentedDrm != null
+                return if (isDash) {
+                    dashFactory.createMediaSource(mediaItem)
+                } else {
+                    defaultFactory.createMediaSource(mediaItem)
+                }
+            }
+
+            override fun getSupportedTypes(): IntArray = defaultFactory.supportedTypes
+
+            override fun setDrmSessionManagerProvider(
+                provider: DrmSessionManagerProvider,
+            ): MediaSource.Factory {
+                defaultFactory.setDrmSessionManagerProvider(provider)
+                dashFactory.setDrmSessionManagerProvider(provider)
+                return this
+            }
+
+            override fun setLoadErrorHandlingPolicy(
+                policy: LoadErrorHandlingPolicy,
+            ): MediaSource.Factory {
+                defaultFactory.setLoadErrorHandlingPolicy(policy)
+                dashFactory.setLoadErrorHandlingPolicy(policy)
+                return this
+            }
+        }
+    }
+
     private fun createPlayer(
         engineProvider: () -> NativeAudioEngine? = { null },
         effects: AudioEffectsEngine = audioEffectsEngine,
@@ -1765,20 +1826,7 @@ class MusicPlayer @Inject constructor(
         }
 
         return ExoPlayer.Builder(appContext, renderersFactory)
-            .setMediaSourceFactory(
-                DefaultMediaSourceFactory(appContext, extractorsFactory).setDataSourceFactory(resolving)
-                    // Module-resolved items carry their Widevine session in
-                    // the prepared stream; the session manager (and license
-                    // envelope) comes from the module via ModuleDrmFactory.
-                    // Everything else plays clear as before.
-                    .setDrmSessionManagerProvider { mediaItem ->
-                        val stream = mediaItem.localConfiguration?.customCacheKey
-                            ?.let(preparedStreams::get)
-                        val descriptor = stream?.segmentedDrm
-                        if (descriptor?.drm == null) DrmSessionManager.DRM_UNSUPPORTED
-                        else moduleDrmFactory.sessionManagerFor(descriptor)
-                    },
-            )
+            .setMediaSourceFactory(createAudioMediaSourceFactory(resolving))
             .setLoadControl(baseLoadControl)
             // Decode from a sync point but discard audio before the requested time.
             // Addon DASH segments are 10 s, so CLOSEST_SYNC could land seconds early.
@@ -8377,16 +8425,7 @@ class MusicPlayer @Inject constructor(
             .build()
 
         return ExoPlayer.Builder(appContext, renderersFactory)
-            .setMediaSourceFactory(
-                DefaultMediaSourceFactory(appContext, extractorsFactory).setDataSourceFactory(resolvingFactory)
-                    .setDrmSessionManagerProvider { mediaItem ->
-                        val stream = mediaItem.localConfiguration?.customCacheKey
-                            ?.let(preparedStreams::get)
-                        val descriptor = stream?.segmentedDrm
-                        if (descriptor?.drm == null) DrmSessionManager.DRM_UNSUPPORTED
-                        else moduleDrmFactory.sessionManagerFor(descriptor)
-                    },
-            )
+            .setMediaSourceFactory(createAudioMediaSourceFactory(resolvingFactory))
             .setLoadControl(loadControl)
             .setSeekParameters(SeekParameters.EXACT)
             .build().apply {
