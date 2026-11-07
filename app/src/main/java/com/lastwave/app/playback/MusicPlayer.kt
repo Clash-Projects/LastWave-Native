@@ -1743,14 +1743,11 @@ class MusicPlayer @Inject constructor(
                 )
                 // Explicit software decoder fallback for MediaTek / ColorOS
                 try {
-                    val ffmpegClass = Class.forName("androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer")
-                    val constructor = ffmpegClass.getConstructor(
-                        Handler::class.java,
-                        AudioRendererEventListener::class.java,
-                        AudioSink::class.java,
+                    // Direct dependency (org.jellyfin.media3:media3-ffmpeg-decoder):
+                    // construct it typed instead of via reflection.
+                    out.add(
+                        androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer(eventHandler, eventListener, audioSink),
                     )
-                    val ffmpegRenderer = constructor.newInstance(eventHandler, eventListener, audioSink) as Renderer
-                    out.add(ffmpegRenderer)
                 } catch (_: Throwable) {
                 }
             }

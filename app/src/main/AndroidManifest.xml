@@ -41,6 +41,12 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- WorkManager (pulled in by Glance widgets) adds a boot receiver. LastWave
+         schedules no persistent work and must never start at boot, so drop it:
+         auto-start-at-boot is a key signal antivirus "dropper" heuristics use. -->
+    <uses-permission
+        android:name="android.permission.RECEIVE_BOOT_COMPLETED"
+        tools:node="remove" />
 
     <uses-feature
         android:name="android.hardware.usb.host"
@@ -341,6 +347,13 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- WorkManager's boot/time-change rescheduler (see RECEIVE_BOOT_COMPLETED
+             above). Disabled by default and only toggled by WorkManager, which
+             tolerates the component being absent. -->
+        <receiver
+            android:name="androidx.work.impl.background.systemalarm.RescheduleReceiver"
+            tools:node="remove" />
 
     </application>
 </manifest>
