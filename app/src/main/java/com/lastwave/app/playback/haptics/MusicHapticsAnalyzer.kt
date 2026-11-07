@@ -194,7 +194,11 @@ class MusicHapticsAnalyzer(
     ): Long {
         val nowUs = runCatching { positionUs() }.getOrDefault(Long.MIN_VALUE)
         if (nowUs == Long.MIN_VALUE || presentationTimeUs == C.TIME_UNSET) return 0L
-        val pulseUs = presentationTimeUs + frameIndex * 1_000_000L / sampleRate
+        // The onset is detected at the END of the analysis window it fell in
+        // (after the fast envelope has risen), so stamp the pulse at the start
+        // of that window: about 10 ms earlier, where the beat actually begins.
+        val onsetFrame = frameIndex - analysisWindowFrames
+        val pulseUs = presentationTimeUs + onsetFrame * 1_000_000L / sampleRate
         val speed = runCatching { playbackSpeed() }.getOrDefault(1f).coerceIn(0.25f, 4f)
         val leadMs = ((pulseUs - nowUs) / 1000f / speed).toLong()
         // Beyond this the clock is not trustworthy (AudioTrack buffers are < 1 s).

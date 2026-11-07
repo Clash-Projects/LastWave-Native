@@ -285,8 +285,10 @@ class MusicHapticsController @Inject constructor(
 
         val isBassDominant = cfg.mode != MusicHapticsMode.VOCALS_ONLY && (bassEnergy >= vocalEnergy)
         // The tap sees PCM when it is written to the AudioTrack, ~100-500 ms
-        // before it is audible. Fire when the sound actually reaches the ear.
-        val fireAt = SystemClock.uptimeMillis() + leadTimeMs.coerceAtLeast(0L)
+        // before it is audible. Fire when the sound actually reaches the ear,
+        // minus the motor's own start-up time (vibrate() call + spin-up), so the
+        // pulse is FELT on the beat instead of a few tens of ms after it.
+        val fireAt = SystemClock.uptimeMillis() + (leadTimeMs - actuatorLatencyMs).coerceAtLeast(0L)
         hapticHandler.postAtTime({
             if (!dspActive) return@postAtTime
             // Keep a minimum gap between motor kicks so pulses never smear together.
@@ -331,14 +333,16 @@ class MusicHapticsController @Inject constructor(
                 val stretch = if (isLikelyErm) 1.6f else 1f
                 fun ms(v: Long) = (v * stretch).toLong()
                 val effect = when {
+                    // Peak first: the hit is felt the instant the motor starts,
+                    // with no softer lead-in delaying it, then a short tail.
                     isBassDominant && isSharpTransient -> VibrationEffect.createWaveform(
-                        longArrayOf(0, ms(18), ms(42), ms(24)),
-                        intArrayOf(0, (peak * 0.85f).toInt(), peak, (peak * 0.35f).toInt().coerceAtLeast(1)),
+                        longArrayOf(ms(40), ms(24)),
+                        intArrayOf(peak, (peak * 0.35f).toInt().coerceAtLeast(1)),
                         -1
                     )
                     isBassDominant -> VibrationEffect.createWaveform(
-                        longArrayOf(0, ms(14), ms(30)),
-                        intArrayOf(0, (peak * 0.9f).toInt(), (peak * 0.55f).toInt().coerceAtLeast(1)),
+                        longArrayOf(ms(30), ms(14)),
+                        intArrayOf((peak * 0.9f).toInt().coerceAtLeast(1), (peak * 0.5f).toInt().coerceAtLeast(1)),
                         -1
                     )
                     else -> VibrationEffect.createOneShot(
@@ -376,6 +380,12 @@ class MusicHapticsController @Inject constructor(
             else -> 45
         }
     }
+
+    /**
+     * Time from vibrate() until the pulse is felt: binder call plus motor
+     * spin-up. LRA motors ~20-30 ms, eccentric-mass (ERM) ones roughly double.
+     */
+    private val actuatorLatencyMs: Long by lazy { if (isLikelyErm) 50L else 30L }
 
     /** Budget/eccentric-mass motors respond slowly and need longer pulses. */
     private val isLikelyErm: Boolean by lazy {
