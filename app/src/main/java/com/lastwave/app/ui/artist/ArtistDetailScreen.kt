@@ -210,7 +210,7 @@ fun ArtistDetailScreen(
                         val motionVideoUrl = artistCanvas?.motionUrlFor(containerAspect = headerWidthDp / 460f)
                         val hasVideoAnimation = artistCanvas != null && showHeaderVideo && !motionVideoUrl.isNullOrBlank()
                         val activeArtistCanvas = remember(artistCanvas, motionVideoUrl) {
-                            artistCanvas?.copy(url = motionVideoUrl ?: artistCanvas.url)
+                            artistCanvas?.let { canvas -> canvas.copy(url = motionVideoUrl ?: canvas.url) }
                         }
 
                         Box(

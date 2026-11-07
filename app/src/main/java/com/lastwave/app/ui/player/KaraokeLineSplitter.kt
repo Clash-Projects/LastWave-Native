@@ -191,6 +191,7 @@ fun LyricLine.splitKaraokeToFit(
             text = idxs.joinToString("") { rendered[it] }.trimEnd(),
             syllables = (chunkLeads + ownedBacks).sortedBy { it.timeMs },
             transliteration = if (chunkIndex == 0) transliteration else null,
+            role = role,
         )
     }
 }
@@ -451,6 +452,7 @@ fun LyricLine.splitLineSyncToFit(
                 row.joinToString("") { units[it] }
             },
             transliteration = if (chunkIndex == 0) transliteration else null,
+            role = role,
         )
     }
 }
