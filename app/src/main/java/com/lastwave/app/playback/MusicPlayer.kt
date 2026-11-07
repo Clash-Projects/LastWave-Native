@@ -552,7 +552,17 @@ class MusicPlayer @Inject constructor(
      * the first settings emission still stops playback.
      */
     @Volatile
-    private var stopPlaybackOnTaskRemovedPref = true
+    // Off by default: a music player keeps playing after it is swiped out of
+    // Recents. Users who turn the setting on get the stop behaviour.
+    private var stopPlaybackOnTaskRemovedPref = false
+
+    /**
+     * Where the song was when [stopAndClear] stopped it while keeping the
+     * session. stop() + clearMediaItems() make the player (and every later
+     * progress tick) report 0, so resume() would restart the song from the
+     * beginning; this is the position to start from instead.
+     */
+    private var resumeAfterStopPositionMs: Long? = null
     val stopPlaybackOnTaskRemoved: Boolean
         get() = stopPlaybackOnTaskRemovedPref
     private var activePlayer: ExoPlayer? = null
@@ -3060,10 +3070,13 @@ class MusicPlayer @Inject constructor(
         if (player.mediaItemCount == 0 && pendingCurrent != null) {
             val q = _state.value.queue.ifEmpty { listOf(pendingCurrent) }
             val idx = _state.value.currentIndex.coerceIn(q.indices)
+            // After a stop, continue where the song was instead of at 0:00.
+            val startAt = resumeAfterStopPositionMs ?: _state.value.positionMs
+            resumeAfterStopPositionMs = null
             startResolvedQueuePlayback(
                 tracks = q,
                 selectedIndex = idx,
-                startPositionMs = _state.value.positionMs,
+                startPositionMs = startAt,
                 sourceLabel = _state.value.sourceLabel,
                 endlessDiscover = _state.value.isEndlessQueue,
                 startShuffled = _state.value.shuffleEnabled,
@@ -5184,6 +5197,10 @@ class MusicPlayer @Inject constructor(
      *   time the app opens.
      */
     fun stopAndClear(clearSession: Boolean = true) = onMain {
+        // Captured before the player is torn down: afterwards it reports 0.
+        val stoppedAtMs = runCatching {
+            if (playerDelegate.isInitialized() && player.mediaItemCount > 0) player.currentPosition else null
+        }.getOrNull()?.takeIf { it > 0L } ?: _state.value.positionMs
         if (isCasting) castPlayback?.disconnect()
         // stop any automix blend too
         autoMixCoordinator.get().cancelTransition(revertToPrimary = true)
@@ -5215,8 +5232,13 @@ class MusicPlayer @Inject constructor(
             clearPersistedPlaybackSession()
             applicationScope.launch(Dispatchers.IO) { WidgetUpdater.clear(appContext) }
         } else {
-            _state.update { it.copy(isPlaying = false, isBuffering = false) }
+            // Keep the song where it stopped, for resume() and for the saved
+            // session that restores it after the process is gone.
+            resumeAfterStopPositionMs = stoppedAtMs.coerceAtLeast(0L)
+            _state.update { it.copy(isPlaying = false, isBuffering = false, positionMs = stoppedAtMs.coerceAtLeast(0L)) }
+            persistPlaybackSession()
         }
+        if (clearSession) resumeAfterStopPositionMs = null
         appContext.stopService(Intent(appContext, MusicPlaybackService::class.java))
     }
     fun removeQueueItem(index: Int) = onMain {
