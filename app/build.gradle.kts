@@ -71,8 +71,8 @@ android {
         buildConfigField("boolean", "VIVO_ORIGIN", vivoOrigin.toString())
         minSdk = (project.findProperty("minSdk") as? String)?.toIntOrNull() ?: 29
         targetSdk = 35
-        versionCode = 29
-        versionName = "5.1.1"
+        versionCode = 30
+        versionName = "5.1.2"
 
         (project.findProperty("targetAbis") as? String)?.let { prop ->
             ndk {
