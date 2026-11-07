@@ -98,6 +98,59 @@ internal object QualityGlyphs {
         }.build()
     }
 
+    /** Crossfade: one level fading out while the next fades in, in the frame. */
+    val Crossfade: ImageVector by lazy {
+        ImageVector.Builder("Crossfade", 24.dp, 24.dp, 24f, 24f).apply {
+            path(
+                fill = null,
+                stroke = ink,
+                strokeLineWidth = 1.8f,
+                strokeLineJoin = StrokeJoin.Round,
+            ) { roundRect(2.4f, 5.4f, 21.6f, 18.6f, 3.6f) }
+            path(
+                fill = null,
+                stroke = ink,
+                strokeLineWidth = 1.7f,
+                strokeLineCap = StrokeCap.Round,
+            ) {
+                // fade out: high on the left, easing down to the right
+                moveTo(6f, 8.8f)
+                curveTo(10f, 8.8f, 14f, 15.2f, 18f, 15.2f)
+                // fade in: low on the left, easing up to the right
+                moveTo(6f, 15.2f)
+                curveTo(10f, 15.2f, 14f, 8.8f, 18f, 8.8f)
+            }
+        }.build()
+    }
+
+    /** AutoMix: two tracks blended into one, as interlocking rings in the frame. */
+    val AutoMix: ImageVector by lazy {
+        ImageVector.Builder("AutoMix", 24.dp, 24.dp, 24f, 24f).apply {
+            path(
+                fill = null,
+                stroke = ink,
+                strokeLineWidth = 1.8f,
+                strokeLineJoin = StrokeJoin.Round,
+            ) { roundRect(2.4f, 5.4f, 21.6f, 18.6f, 3.6f) }
+            path(
+                fill = null,
+                stroke = ink,
+                strokeLineWidth = 1.6f,
+            ) {
+                // left ring, centre (9.6, 12)
+                moveTo(6.4f, 12f)
+                arcTo(3.2f, 3.2f, 0f, true, true, 12.8f, 12f)
+                arcTo(3.2f, 3.2f, 0f, true, true, 6.4f, 12f)
+                close()
+                // right ring, centre (14.4, 12)
+                moveTo(11.2f, 12f)
+                arcTo(3.2f, 3.2f, 0f, true, true, 17.6f, 12f)
+                arcTo(3.2f, 3.2f, 0f, true, true, 11.2f, 12f)
+                close()
+            }
+        }.build()
+    }
+
     val Standard: ImageVector by lazy {
         ImageVector.Builder("Standard", 24.dp, 24.dp, 24f, 24f).apply {
             path(fill = ink) { bars(floatArrayOf(6.6f, 10.2f, 13.8f, 17.4f)) }

@@ -5493,7 +5493,8 @@ private fun AppleMusicQualityBadge(
     }
 
     val badgeIcon = when {
-        isMixActive || isFadeActive -> Icons.Filled.GraphicEq
+        isMixActive -> QualityGlyphs.AutoMix
+        isFadeActive -> QualityGlyphs.Crossfade
         isSpatial -> QualityGlyphs.Spatial
         isHiRes -> QualityGlyphs.HiResLossless
         state.isLossless -> QualityGlyphs.Lossless
