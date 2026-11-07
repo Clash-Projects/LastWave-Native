@@ -302,6 +302,12 @@ class ThemeRepository @Inject constructor(
         AppIconManager.applyIcon(context, icon)
     }
 
+    /** Startup heal: leaves exactly the saved icon's launcher alias enabled. */
+    suspend fun reconcileAppIcon() {
+        val icon = themePreferences.prefs.first().appIcon
+        AppIconManager.reconcile(context, icon)
+    }
+
     /** Manual pick always leaves DYNAMIC/MONOCHROME: choosing your own accent
      *  turns Dynamic Color off itself (ThemePreferences persists MANUAL). */
     suspend fun setManualAccent(color: Color) {

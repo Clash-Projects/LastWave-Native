@@ -66,6 +66,11 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
         // First-song OPUS warmup: visitorData + NewPipe + BotGuard must be
         // ready before the first tap, not 2.5s after. Immediate and never
         // throws; the delayed block below keeps the rest lazy.
+        // Duplicate launcher icons after an update or icon change: make sure only
+        // the saved icon's alias is enabled. No-op when already correct.
+        applicationScope.launch(Dispatchers.IO) {
+            runCatching { themeRepository.get().reconcileAppIcon() }
+        }
         applicationScope.launch(Dispatchers.IO) {
             // NewPipe is optional fallback infrastructure. A broken extractor
             // install must not escape an application-scope coroutine.
