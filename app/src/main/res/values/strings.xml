@@ -148,6 +148,8 @@
     <string name="settings_md3_nav_bar_sub">Enable modern floating dock navigation instead of classic bottom tabs</string>
     <string name="settings_hide_nav_tabs">Hide Navigation Tabs</string>
     <string name="settings_hide_nav_tabs_sub">Completely hide navigation tabs and switch between screens using swipe gestures only</string>
+    <string name="settings_ui_haptics">Haptic Feedback</string>
+    <string name="settings_ui_haptics_sub">Vibrate on taps, buttons, toggles and gestures</string>
     <string name="settings_lyrics_animation">Lyrics Animation</string>
     <string name="settings_lyrics_provider">Lyrics provider</string>
     <string name="settings_lyrics_provider_desc">Tried first for every song. If it returns nothing, the app automatically falls through to the other providers.</string>

@@ -10,6 +10,10 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.hapticfeedback.HapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -26,6 +30,11 @@ import com.lastwave.app.data.local.ThemeMode
 val LocalIsDarkTheme = staticCompositionLocalOf { true }
 /** Shared composition local indicating whether bottom navigation tabs are hidden. */
 val LocalHideNavTabs = staticCompositionLocalOf { false }
+
+/** Swallows every haptic request; provided app-wide when Settings > Haptic Feedback is off. */
+private object SilentHapticFeedback : HapticFeedback {
+    override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) = Unit
+}
 
 /**
  * Wraps the whole app. Supports System Default, Light, and Dark modes.
@@ -100,7 +109,15 @@ fun LastWaveTheme(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background,
         ) {
+            // Settings > Haptic Feedback gates every LocalHapticFeedback call in
+            // the app from this single point (the system "touch feedback"
+            // setting still applies on top when it is on).
+            val systemHaptics = LocalHapticFeedback.current
+            val appHaptics = remember(systemHaptics, themeState.uiHaptics) {
+                if (themeState.uiHaptics) systemHaptics else SilentHapticFeedback
+            }
             CompositionLocalProvider(
+                LocalHapticFeedback provides appHaptics,
                 LocalLiquidGlass provides themeState.liquidGlass,
                 LocalMd3NavBar provides themeState.md3NavBar,
                 LocalHideNavTabs provides themeState.hideNavTabs,

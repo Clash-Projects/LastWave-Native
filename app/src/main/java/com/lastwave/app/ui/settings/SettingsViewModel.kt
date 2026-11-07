@@ -534,6 +534,7 @@ class SettingsViewModel @Inject constructor(
     fun setLiquidGlass(enabled: Boolean) = launchSettingsAction("update Liquid Glass") { themeRepository.setLiquidGlass(enabled) }
     fun setMd3NavBar(enabled: Boolean) = launchSettingsAction("update MD3 Navigation Bar") { themeRepository.setMd3NavBar(enabled) }
     fun setHideNavTabs(enabled: Boolean) = launchSettingsAction("update Hide Navigation Tabs") { themeRepository.setHideNavTabs(enabled) }
+    fun setUiHaptics(enabled: Boolean) = launchSettingsAction("update Haptic Feedback") { themeRepository.setUiHaptics(enabled) }
     fun setAccentMode(mode: AccentMode) = launchSettingsAction("update accent mode") { themeRepository.setMode(mode) }
     fun setManualAccent(color: Color) = launchSettingsAction("update accent color") { themeRepository.setManualAccent(color) }
     fun openColorWheel() = _uiState.update { it.copy(showColorWheel = true) }

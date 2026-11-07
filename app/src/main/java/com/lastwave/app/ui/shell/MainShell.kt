@@ -451,7 +451,9 @@ fun MainShell(
         val systemBottomInset = WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding()
 
         val currentSelectedIndex by androidx.compose.runtime.rememberUpdatedState(selectedTabIndex)
+        val navHaptic = androidx.compose.ui.platform.LocalHapticFeedback.current
         val currentOnSelect by androidx.compose.runtime.rememberUpdatedState { index: Int ->
+            navHaptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.SegmentTick)
             if (tabs[index] == MainTab.FEED) {
                 val wasOnDetail = onReturnToHome()
                 if (wasOnDetail) {

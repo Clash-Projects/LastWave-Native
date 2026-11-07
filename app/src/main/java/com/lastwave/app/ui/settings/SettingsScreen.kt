@@ -1316,7 +1316,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_appearance))
-                    SettingsGroup(rowCount = 10) { index, position ->
+                    SettingsGroup(rowCount = 11) { index, position ->
                         when (index) {
                             0 -> ThemeModeSelectorCard(
                                 currentThemeMode = theme?.themeMode ?: ThemeMode.SYSTEM,
@@ -1423,6 +1423,17 @@ fun SettingsScreen(
                                 onCheckedChange = viewModel::setUseCustomFont,
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.app_font"),
+                            )
+                            10 -> SettingsToggleCard(
+                                icon = Icons.Filled.Vibration,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.settings_ui_haptics),
+                                subtitle = stringResource(R.string.settings_ui_haptics_sub),
+                                checked = theme?.uiHaptics ?: true,
+                                onCheckedChange = viewModel::setUiHaptics,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.ui_haptics"),
                             )
                         }
                     }
@@ -3621,6 +3632,11 @@ private fun SettingsToggleCard(
     val shape = groupShape(position)
     val haptic = LocalHapticFeedback.current
     val detailViewer = LocalToggleDetailViewer.current
+    @Suppress("NAME_SHADOWING")
+    val onCheckedChange: (Boolean) -> Unit = { value ->
+        haptic.performHapticFeedback(if (value) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff)
+        onCheckedChange(value)
+    }
 
     Card(
         shape = shape,
@@ -3713,6 +3729,11 @@ private fun SettingsToggleCard(
     val shape = groupShape(position)
     val haptic = LocalHapticFeedback.current
     val detailViewer = LocalToggleDetailViewer.current
+    @Suppress("NAME_SHADOWING")
+    val onCheckedChange: (Boolean) -> Unit = { value ->
+        haptic.performHapticFeedback(if (value) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff)
+        onCheckedChange(value)
+    }
 
     Card(
         shape = shape,

@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.SwitchAccount
 import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Tune
@@ -593,6 +594,23 @@ object SettingsSearchIndex {
                     icon = Icons.Filled.TextFields,
                     iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Appearance",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "appearance.ui_haptics",
+                    title = "Haptic Feedback",
+                    subtitle = "Vibrate on taps, buttons, toggles and gestures",
+                    keywords = listOf(
+                        "haptic", "haptics", "vibration", "vibrate", "touch feedback",
+                        "tap feedback", "buzz", "tactile"
+                    ),
+                    icon = Icons.Filled.Vibration,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
                     parentTab = SettingsTab.APPEARANCE,
                     section = "Appearance",
                     type = EntryType.TOGGLE,

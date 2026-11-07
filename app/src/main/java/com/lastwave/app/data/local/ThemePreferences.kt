@@ -44,6 +44,8 @@ data class ThemePrefs(
     val md3NavBar: Boolean = false,
     /** Whether bottom navigation tabs are completely hidden. */
     val hideNavTabs: Boolean = false,
+    /** Haptic feedback on taps, buttons, toggles and gestures across the app. */
+    val uiHaptics: Boolean = true,
     /** Dedicated LastWave Signature Theme inspired by the app logo icon (#C9FB00 & #012226). */
     val lastWaveTheme: Boolean = false,
     val appIcon: AppIcon = AppIcon.DEFAULT,
@@ -62,6 +64,7 @@ class ThemePreferences @Inject constructor(
         val LIQUID_GLASS = booleanPreferencesKey("lw_liquidGlass")
         val MD3_NAV_BAR = booleanPreferencesKey("lw_md3NavBar")
         val HIDE_NAV_TABS = booleanPreferencesKey("lw_hideNavTabs")
+        val UI_HAPTICS = booleanPreferencesKey("lw_ui_haptics")
         val LASTWAVE_THEME = booleanPreferencesKey("lw_lastwave_theme")
         val APP_ICON = stringPreferencesKey("lw_app_icon")
     }
@@ -78,6 +81,7 @@ class ThemePreferences @Inject constructor(
                 liquidGlass = p.readSafely(Keys.LIQUID_GLASS) ?: true,
                 md3NavBar = p.readSafely(Keys.MD3_NAV_BAR) ?: false,
                 hideNavTabs = p.readSafely(Keys.HIDE_NAV_TABS) ?: false,
+                uiHaptics = p.readSafely(Keys.UI_HAPTICS) ?: true,
                 lastWaveTheme = p.readSafely(Keys.LASTWAVE_THEME) ?: false,
                 appIcon = AppIcon.fromId(p.readSafely(Keys.APP_ICON)),
             )
@@ -119,6 +123,10 @@ class ThemePreferences @Inject constructor(
 
     suspend fun setHideNavTabs(enabled: Boolean) {
         dataStore.edit { it[Keys.HIDE_NAV_TABS] = enabled }
+    }
+
+    suspend fun setUiHaptics(enabled: Boolean) {
+        dataStore.edit { it[Keys.UI_HAPTICS] = enabled }
     }
 
     suspend fun setLastWaveTheme(enabled: Boolean) {

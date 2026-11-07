@@ -1340,6 +1340,18 @@ private fun MiniPlayer(
 ) {
     val context = LocalContext.current
     val track = state.current ?: return
+    // Haptics for every mini-player control and swipe gesture.
+    val miniHaptic = LocalHapticFeedback.current
+    @Suppress("NAME_SHADOWING")
+    val onToggle: () -> Unit = { miniHaptic.performHapticFeedback(HapticFeedbackType.ContextClick); onToggle() }
+    @Suppress("NAME_SHADOWING")
+    val onNext: () -> Unit = { miniHaptic.performHapticFeedback(HapticFeedbackType.ContextClick); onNext() }
+    @Suppress("NAME_SHADOWING")
+    val onPrevious: () -> Unit = { miniHaptic.performHapticFeedback(HapticFeedbackType.ContextClick); onPrevious() }
+    @Suppress("NAME_SHADOWING")
+    val onExpand: () -> Unit = { miniHaptic.performHapticFeedback(HapticFeedbackType.ContextClick); onExpand() }
+    @Suppress("NAME_SHADOWING")
+    val onClose: () -> Unit = { miniHaptic.performHapticFeedback(HapticFeedbackType.GestureEnd); onClose() }
     // MiniPlayer: single glass card sampling sibling feed content.
     // Luminance loop (5x5 avg, 0.3..0.8, tween 500, 1s).
     val liquidGlass = LocalLiquidGlass.current
