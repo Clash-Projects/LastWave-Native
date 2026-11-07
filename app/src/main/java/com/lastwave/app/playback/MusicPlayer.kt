@@ -1022,6 +1022,10 @@ class MusicPlayer @Inject constructor(
             // drops the request itself on the user's own pause.
             if (playWhenReady) requestMediaAudioFocus()
             else if (!pausingForAudioFocus) abandonMediaAudioFocus()
+            // Every pause / play path (button, notification, headset, focus
+            // loss, a new song) lands here: an AutoMix blend must pause and
+            // resume with the transport instead of finishing on its own.
+            runCatching { autoMixCoordinator.get().setTransportPaused(!playWhenReady) }
         }
         override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
             _state.update { it.copy(speed = playbackParameters.speed, pitch = playbackParameters.pitch) }
@@ -1983,7 +1987,8 @@ class MusicPlayer @Inject constructor(
             outgoing.shuffleModeEnabled = false
             incoming.addListener(listener)
             incoming.setAudioAttributes(incoming.audioAttributes, false)
-            incoming.play()
+            // The swap happens mid-blend; it must never un-pause the user.
+            if (outgoing.playWhenReady) incoming.play() else incoming.pause()
             listener.onMediaItemTransition(incoming.currentMediaItem, Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
             refresh(incoming)
         }
@@ -3045,6 +3050,7 @@ class MusicPlayer @Inject constructor(
         }
         outgoingPlayer?.play()
         player.play()
+        runCatching { autoMixCoordinator.get().setTransportPaused(false) }
     }
 
     fun pause() = pauseInternal(focusInitiated = false)
@@ -3073,6 +3079,9 @@ class MusicPlayer @Inject constructor(
             // this ran on, and clear it before the state bookkeeping below.
             pausingForAudioFocus = focusInitiated
             try {
+                // Pauses the incoming AutoMix deck too (it is not the active
+                // player until the blend's hand-over point).
+                runCatching { autoMixCoordinator.get().setTransportPaused(true) }
                 outgoingPlayer?.pause()
                 if (playerDelegate.isInitialized()) player.pause()
             } finally {
@@ -3770,7 +3779,8 @@ class MusicPlayer @Inject constructor(
         // Setting true here activates ExoPlayer's internal AudioFocusManager which steals focus, causing Android
         // to send AUDIOFOCUS_LOSS (-1) to LastWave's own focus listener, immediately pausing playback.
         standby.setAudioAttributes(standby.audioAttributes, false)
-        standby.play()
+        // Hand-off never starts the next song behind a pause.
+        if (outgoing.playWhenReady) standby.play()
         // The standby is now the live player; the outgoing one is the next
         // standby. Cleared so the downloader resumes caching the new track.
         crossfadeStandbyArmed = false

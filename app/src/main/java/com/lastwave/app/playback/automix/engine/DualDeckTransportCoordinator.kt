@@ -64,6 +64,32 @@ class DualDeckTransportCoordinator @Inject constructor(
     private var immediatePlan = false
     private var currentPrimaryPlayer: ExoPlayer? = null
     private var currentSecondaryPlayer: ExoPlayer? = null
+    /** User pause / audio-focus pause. A blend must hold still while it is set. */
+    private var transportPaused = false
+
+    /** True while a blend (both decks audible) is in progress. */
+    val isBlending: Boolean get() = activeSpliceJob?.isActive == true
+
+    /**
+     * Pause / resume coming from the player transport. During a blend both
+     * decks are paused and the blend clock stops, so the old song does not
+     * keep fading out and the next song is not handed over while paused;
+     * resume picks the blend up exactly where it stopped.
+     */
+    fun setTransportPaused(paused: Boolean) {
+        if (transportPaused == paused) return
+        transportPaused = paused
+        if (activeSpliceJob?.isActive != true) return
+        runCatching {
+            if (paused) {
+                currentPrimaryPlayer?.pause()
+                currentSecondaryPlayer?.pause()
+            } else {
+                currentPrimaryPlayer?.play()
+                currentSecondaryPlayer?.play()
+            }
+        }
+    }
 
     // Track reference callbacks into MusicPlayer
     var onPerformDeckSwap: ((outgoing: ExoPlayer, incoming: ExoPlayer) -> Unit)? = null
@@ -218,9 +244,11 @@ class DualDeckTransportCoordinator @Inject constructor(
             }
         }
 
-        // 3. Trigger Splice at Splice Horizon
+        // 3. Trigger Splice at Splice Horizon (never while paused: starting
+        // the incoming deck would play the next song behind the pause)
         val plan = currentSplicePlan
-        if (plan != null && !plan.isBypass && (_telemetry.value.phase == BlendPhase.ARMED || _telemetry.value.phase == BlendPhase.PRE_ANALYZING)) {
+        if (!transportPaused && primaryPlayer.playWhenReady &&
+            plan != null && !plan.isBypass && (_telemetry.value.phase == BlendPhase.ARMED || _telemetry.value.phase == BlendPhase.PRE_ANALYZING)) {
             // Never start a mix with more of the song left than the mix
             // itself covers: an early cue point would skip the rest of it.
             val shouldTrigger = immediatePlan || (
@@ -266,11 +294,20 @@ class DualDeckTransportCoordinator @Inject constructor(
         secondaryPlayer.play()
 
         activeSpliceJob = scope.launch {
-            val startTime = System.currentTimeMillis()
+            // Blend clock that only runs while playing: a pause freezes the
+            // fade instead of letting it finish (and swap songs) unheard.
+            var elapsed = 0L
+            var lastTick = android.os.SystemClock.elapsedRealtime()
             var swapped = false
 
             while (isActive) {
-                val elapsed = System.currentTimeMillis() - startTime
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (!transportPaused) elapsed += now - lastTick
+                lastTick = now
+                if (transportPaused) {
+                    delay(20L)
+                    continue
+                }
                 val progress = (elapsed.toFloat() / durationMs.toFloat()).coerceIn(0.0f, 1.0f)
 
                 _telemetry.update { it.copy(blendProgress = progress) }
