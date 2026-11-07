@@ -92,3 +92,9 @@
 -keep class com.lastwave.app.data.podcast.** { *; }
 -keepclassmembers class com.lastwave.app.data.podcast.** { *; }
 
+
+# Shrink and optimize, but do not rename classes/members. LastWave is open
+# source, so renaming hides nothing, and the scrambled single-letter names
+# (a.b.c) are what Huorong's static TrojanDropper/Android.Agent heuristic
+# matched: the unobfuscated rawRelease build of the same code scans clean.
+-dontobfuscate
