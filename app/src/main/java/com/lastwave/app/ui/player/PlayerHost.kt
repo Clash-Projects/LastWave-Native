@@ -4,6 +4,7 @@ package com.lastwave.app.ui.player
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.combinedClickable
 import android.content.Context
 import android.content.Intent
@@ -3706,7 +3707,7 @@ private fun FullPlayer(
                                         signalPath = signalPath,
                                         isTranslucent = LocalLiquidGlass.current || showFullBleed,
                                         onClick = { showSignalPath = true },
-                                        modifier = Modifier.offset(y = (-4).dp),
+                                        modifier = Modifier.offset(y = (-2).dp),
                                     )
                                     Spacer(Modifier.height(12.dp))
                                     MainControls(state, player, isTranslucent = LocalLiquidGlass.current || showFullBleed)
@@ -4308,7 +4309,7 @@ private fun FullPlayerLandscape(
                 signalPath = signalPath,
                 isTranslucent = LocalLiquidGlass.current,
                 onClick = onOpenSignalPath,
-                modifier = Modifier.offset(y = (-4).dp),
+                modifier = Modifier.offset(y = (-2).dp),
             )
             Spacer(Modifier.height(14.dp))
 
@@ -5500,14 +5501,30 @@ private fun AppleMusicQualityBadge(
         else -> Icons.Filled.GraphicEq
     }
 
+    // The pill carries its own fill, so it never depends on the cover-tinted
+    // background behind it (the bare label used to vanish into art of a
+    // similar colour). Over art / glass: a dark translucent capsule with a
+    // hairline edge; in the plain player: a solid surface capsule.
+    val capsuleColor = if (isTranslucent) {
+        Color.Black.copy(alpha = 0.34f)
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHighest
+    }
+    val capsuleBorder = if (isTranslucent) {
+        Color.White.copy(alpha = 0.16f)
+    } else {
+        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+    }
+    // Signal-path accents need darker cuts on a light capsule to stay legible.
+    val lightCapsule = !isTranslucent && capsuleColor.luminance() > 0.5f
     val tintColor = when {
         // Two decks are live during a transition, so the signal path report
         // flips between them; keep a neutral tint until it settles.
         (isMixActive || isFadeActive) && isTranslucent -> Color.White.copy(alpha = 0.95f)
         isMixActive || isFadeActive -> MaterialTheme.colorScheme.onSurface
-        signalPath.bitPerfect -> Color(0xFFE6C15A)
-        signalPath.directToHal -> Color(0xFF7FD3C3)
-        signalPath.clockFallbackResampled -> Color(0xFFFFB74D)
+        signalPath.bitPerfect -> if (lightCapsule) Color(0xFF8A6A00) else Color(0xFFE6C15A)
+        signalPath.directToHal -> if (lightCapsule) Color(0xFF1B6E62) else Color(0xFF7FD3C3)
+        signalPath.clockFallbackResampled -> if (lightCapsule) Color(0xFFA35200) else Color(0xFFFFB74D)
         isTranslucent -> Color.White.copy(alpha = 0.95f)
         else -> MaterialTheme.colorScheme.onSurface
     }
@@ -5518,7 +5535,12 @@ private fun AppleMusicQualityBadge(
     ) {
         Row(
             modifier = Modifier
+                // Size animates first so the capsule itself glides when the
+                // label changes (Lossless -> AutoMix -> Hi-Res ...).
+                .animateContentSize()
                 .clip(CircleShape)
+                .background(capsuleColor)
+                .border(0.5.dp, capsuleBorder, CircleShape)
                 .combinedClickable(
                     onClick = {
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -5529,8 +5551,7 @@ private fun AppleMusicQualityBadge(
                         onClick()
                     },
                 )
-                .padding(horizontal = 8.dp, vertical = 2.dp)
-                .animateContentSize(),
+                .padding(start = 9.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
@@ -5538,9 +5559,9 @@ private fun AppleMusicQualityBadge(
                 imageVector = badgeIcon,
                 contentDescription = null,
                 tint = tintColor,
-                modifier = Modifier.size(15.dp),
+                modifier = Modifier.size(13.dp),
             )
-            Spacer(Modifier.width(5.dp))
+            Spacer(Modifier.width(4.dp))
             val fullText = when {
                 isMixActive || isFadeActive -> displayTitle
                 baseLabel.isNotBlank() && !baseLabel.equals(displayTitle, ignoreCase = true) && !baseLabel.equals("AUDIO", ignoreCase = true) -> "$displayTitle \u2022 $baseLabel"
@@ -5567,7 +5588,7 @@ private fun AppleMusicQualityBadge(
                 imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
                 contentDescription = null,
                 tint = tintColor.copy(alpha = 0.6f),
-                modifier = Modifier.size(10.dp),
+                modifier = Modifier.size(9.dp),
             )
         }
     }
