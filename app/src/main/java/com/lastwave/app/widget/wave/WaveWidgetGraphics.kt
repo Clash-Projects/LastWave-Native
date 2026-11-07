@@ -65,6 +65,84 @@ internal object WaveWidgetGraphics {
     fun stripArtwork(art: Bitmap?, color: Int): Bitmap =
         strip(art, color, 384f, 384f, 384f, leftCornersOnly = true)
 
+    /**
+     * Strip background painted from the cover itself: the art is shrunk to a few pixels and
+     * stretched across the widget (a soft blur of its colours), then veiled with the cover's
+     * own dark tone. The veil is made only as strong as needed so that white text and icons
+     * keep at least 4.5:1 contrast over the brightest blurred pixel. Falls back to the solid
+     * strip when there is no cover.
+     */
+    fun stripGradientSurface(art: Bitmap?, tone: Int, widthDp: Float, heightDp: Float): Bitmap {
+        if (art == null || art.isRecycled) return strip(null, tone, widthDp, heightDp, 0f)
+        val scale = minOf(3f, 1024f / widthDp.coerceAtLeast(1f), 384f / heightDp.coerceAtLeast(1f))
+        val width = (widthDp * scale).toInt().coerceIn(1, 1024)
+        val height = (heightDp * scale).toInt().coerceIn(1, 384)
+        return cached("stripGradient:${key(art)}:$tone:$width:$height") {
+            // Two-step downscale gives a smooth blur once bilinear-stretched back up.
+            val mid = Bitmap.createScaledBitmap(art, 48, 48, true)
+            val tiny = Bitmap.createScaledBitmap(mid, 8, 4, true)
+            val veil = veilStrength(tiny, tone)
+            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
+                val canvas = Canvas(bitmap)
+                val bounds = RectF(0f, 0f, width.toFloat(), height.toFloat())
+                val radius = height * 0.14f
+                canvas.clipPath(Path().apply { addRoundRect(bounds, radius, radius, Path.Direction.CW) })
+                canvas.drawBitmap(tiny, null, bounds, paint(Color.WHITE))
+                // Lighter cover tone on the left, a touch deeper on the right: a gentle gradient
+                // that only ever darkens, so contrast is never lower than the computed minimum.
+                val deep = WaveColorMath.mix(tone, Color.BLACK, 0.28f)
+                canvas.drawRect(bounds, paint(Color.WHITE).apply {
+                    shader = LinearGradient(0f, 0f, width.toFloat(), height.toFloat(),
+                        withAlpha(tone, veil), withAlpha(deep, (veil + 0.08f).coerceAtMost(1f)),
+                        Shader.TileMode.CLAMP)
+                })
+                if (tiny !== art) tiny.recycle()
+                if (mid !== art) mid.recycle()
+            }
+        }
+    }
+
+    /** Square cover for the strip whose right edge dissolves into the gradient surface. */
+    fun stripArtworkFaded(art: Bitmap?, tone: Int): Bitmap {
+        if (art == null || art.isRecycled) return stripArtwork(null, tone)
+        return cached("stripArtFaded:${key(art)}:$tone") {
+            val size = 384
+            Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888).also { bitmap ->
+                val canvas = Canvas(bitmap)
+                val bounds = RectF(0f, 0f, size.toFloat(), size.toFloat())
+                val radius = size * 0.14f
+                canvas.clipPath(Path().apply {
+                    addRoundRect(bounds, floatArrayOf(radius, radius, 0f, 0f, 0f, 0f, radius, radius),
+                        Path.Direction.CW)
+                })
+                canvas.drawBitmap(art, centerCrop(art, 1f), bounds, paint(Color.WHITE))
+                canvas.drawRect(size * 0.58f, 0f, size.toFloat(), size.toFloat(), paint(Color.WHITE).apply {
+                    xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN)
+                    shader = LinearGradient(size * 0.58f, 0f, size.toFloat(), 0f,
+                        Color.WHITE, Color.TRANSPARENT, Shader.TileMode.CLAMP)
+                })
+            }
+        }
+    }
+
+    private fun veilStrength(blurred: Bitmap, tone: Int): Float {
+        val white = Color.WHITE
+        var alpha = 0.55f
+        while (alpha < 1f) {
+            var ok = true
+            for (y in 0 until blurred.height) for (x in 0 until blurred.width) {
+                val under = WaveColorMath.mix(blurred.getPixel(x, y), tone, alpha)
+                if (WaveColorMath.contrastRatio(white, under) < 4.5) { ok = false; break }
+            }
+            if (ok) return alpha
+            alpha += 0.05f
+        }
+        return 1f
+    }
+
+    private fun withAlpha(color: Int, alpha: Float): Int =
+        ((alpha.coerceIn(0f, 1f) * 255).toInt() shl 24) or (color and 0x00FFFFFF)
+
     fun rounded(art: Bitmap): Bitmap = masked(art, circular = false)
     fun circle(art: Bitmap): Bitmap = masked(art, circular = true)
 

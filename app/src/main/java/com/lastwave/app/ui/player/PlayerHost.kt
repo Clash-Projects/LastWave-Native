@@ -992,7 +992,16 @@ fun PlayerHost(
 
     val playerLayerShown by remember { derivedStateOf { playerExpansion.value > 0f } }
     val miniPlayerAlpha by remember { derivedStateOf { (1f - playerExpansion.value * 2.2f).coerceIn(0f, 1f) } }
-    val navAlpha by remember { derivedStateOf { (1f - playerExpansion.value * 2.5f).coerceIn(0f, 1f) } }
+    val navAlpha by remember { derivedStateOf { (1f - playerExpansion.value * 1.6f).coerceIn(0f, 1f) } }
+    // Mini player rides above the growing card for the first half of the morph.
+    val miniOnTop by remember { derivedStateOf { playerExpansion.value > 0f && playerExpansion.value < 0.5f } }
+
+    // Container-transform morph: the full player grows out of the mini player card
+    // (PixelMusic-style). Bounds are captured only while the player is at rest so
+    // the mini player's own follow-the-card translation can't feed back into them.
+    var hostOrigin by remember { mutableStateOf(Offset.Zero) }
+    var miniCardBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    val morphCardColor = MaterialTheme.colorScheme.surfaceContainerHigh
 
     val bottomNavSlot = remember { mutableStateOf<@Composable () -> Unit>({}) }
     LaunchedEffect(viewModel) {
@@ -1007,16 +1016,30 @@ fun PlayerHost(
         LocalBottomNavSlot provides bottomNavSlot,
         LocalLiquidGlassBackdrop provides (if (miniGlass) miniBackdrop else null),
     ) {
-        Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .onGloballyPositioned { hostOrigin = it.boundsInRoot().topLeft },
+        ) {
             Box(
                 Modifier
                     .fillMaxSize()
+                    .graphicsLayer {
+                        val p = playerExpansion.value.coerceIn(0f, 1f)
+                        // Page behind blurs in as the player grows (API 31+; no-op below).
+                        // Skipped at rest / fully covered so it costs nothing then.
+                        renderEffect = if (p > 0.01f && p < 1f && android.os.Build.VERSION.SDK_INT >= 31) {
+                            val r = 22.dp.toPx() * p
+                            androidx.compose.ui.graphics.BlurEffect(r, r, androidx.compose.ui.graphics.TileMode.Clamp)
+                        } else {
+                            null
+                        }
+                    }
                     .drawWithContent {
                         drawContent()
                         val p = playerExpansion.value.coerceIn(0f, 1f)
                         if (p > 0f) {
-                            // Dimming scrim matching PixelMusic (clean, crisp, no blur or zoom distortion)
-                            drawRect(Color.Black.copy(alpha = 0.35f * p))
+                            drawRect(Color.Black.copy(alpha = 0.45f * p))
                         }
                     },
             ) {
@@ -1040,11 +1063,19 @@ fun PlayerHost(
                     },
                     edgeToEdge = !hasBottomNavigation,
                     backdrop = if (miniGlass) miniBackdrop else null,
+                    onCardBounds = { rootBounds ->
+                        if (playerExpansion.value == 0f) {
+                            miniCardBounds = rootBounds.translate(-hostOrigin)
+                        }
+                    },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
+                        .zIndex(if (miniOnTop) 1f else 0f)
                         .graphicsLayer {
+                            val p = playerExpansion.value.coerceIn(0f, 1f)
                             alpha = miniPlayerAlpha
-                            translationY = (1f - miniPlayerAlpha) * 16.dp.toPx()
+                            // Follow the morphing card's top edge as it rises.
+                            translationY = -(miniCardBounds?.top ?: 0f) * p
                         },
                 )
             }
@@ -1083,15 +1114,23 @@ fun PlayerHost(
                         .fillMaxSize()
                         .graphicsLayer {
                             val p = playerExpansion.value.coerceIn(0f, 1f)
-                            // Slide up from bottom: translationY goes from screen height to 0
-                            translationY = size.height * (1f - p)
-                            val topRadiusPx = androidx.compose.ui.util.lerp(
-                                with(sheetDensity) { PLAYER_SHEET_CORNER_RADIUS.toPx() },
-                                0f,
-                                p,
-                            )
-                            shape = PlayerSheetSlideShape(topRadiusPx)
+                            // Start rect = mini player card; fallback (button mode / no mini)
+                            // = zero-height strip at the bottom, i.e. a reveal from below.
+                            val start = miniCardBounds
+                                ?: androidx.compose.ui.geometry.Rect(0f, size.height, size.width, size.height)
+                            val left = androidx.compose.ui.util.lerp(start.left, 0f, p)
+                            val right = androidx.compose.ui.util.lerp(start.right, size.width, p)
+                            val top = androidx.compose.ui.util.lerp(start.top, 0f, p)
+                            val bottom = androidx.compose.ui.util.lerp(start.bottom, size.height, p)
+                            val startRadius = minOf(start.height / 2f, PLAYER_SHEET_CORNER_RADIUS.toPx() + 8.dp.toPx())
+                            // Content is anchored to the card's top edge and clipped to the card.
+                            translationY = top
+                            shape = PlayerMorphShape(left, right, bottom - top, androidx.compose.ui.util.lerp(startRadius, 0f, p))
                             clip = p < 1f
+                        }
+                        .drawBehind {
+                            // Solid card surface visible until the full player fades in.
+                            if (playerExpansion.value < 1f) drawRect(morphCardColor)
                         },
                 ) {
                     Box(
@@ -1099,8 +1138,9 @@ fun PlayerHost(
                             .fillMaxSize()
                             .graphicsLayer {
                                 val p = playerExpansion.value.coerceIn(0f, 1f)
-                                // Content fades in smoothly with a gentle 24dp upward slide-settle (PixelMusic style)
-                                val contentAlpha = ((p - 0.15f) / 0.7f).coerceIn(0f, 1f)
+                                // Full player: invisible until 25% expanded, opaque at 100%,
+                                // with a 24dp upward settle (PixelMusic FullPlayerVisualState).
+                                val contentAlpha = ((p - 0.25f) / 0.75f).coerceIn(0f, 1f)
                                 alpha = contentAlpha
                                 val settlePx = with(sheetDensity) { 24.dp.toPx() }
                                 translationY = androidx.compose.ui.util.lerp(settlePx, 0f, contentAlpha)
@@ -1133,8 +1173,10 @@ fun PlayerHost(
                         .fillMaxSize()
                         .graphicsLayer {
                             val p = if (state.current == null) 1f else navAlpha
+                            val e = if (state.current == null) 0f else playerExpansion.value.coerceIn(0f, 1f)
                             alpha = p
-                            translationY = (1f - p) * 16.dp.toPx()
+                            // Nav bar sinks off the bottom as the player card grows.
+                            translationY = e * 96.dp.toPx()
                         },
                 ) {
                     bottomNavSlot.value()
@@ -6710,28 +6752,27 @@ private val PlayerSheetCloseSpec = spring<Float>(
 private val PLAYER_SHEET_CORNER_RADIUS = 28.dp
 
 /**
- * Outline for the sliding player sheet: rounded top corners while sliding,
- * square when fully expanded at the top.
+ * Outline for the morphing player card: a rounded rect spanning [left]..[right]
+ * horizontally and 0..[height] vertically (layer is already translated to the card top).
  */
-private data class PlayerSheetSlideShape(val topRadiusPx: Float) : Shape {
+private data class PlayerMorphShape(
+    val left: Float,
+    val right: Float,
+    val height: Float,
+    val radius: Float,
+) : Shape {
     override fun createOutline(
         size: Size,
         layoutDirection: androidx.compose.ui.unit.LayoutDirection,
         density: androidx.compose.ui.unit.Density,
     ): Outline {
-        val r = topRadiusPx.coerceIn(0f, size.minDimension / 2f)
+        val rect = androidx.compose.ui.geometry.Rect(left, 0f, right, height.coerceAtLeast(0f))
+        val r = radius.coerceIn(0f, rect.minDimension / 2f)
         return if (r <= 0.5f) {
-            Outline.Rectangle(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height))
+            Outline.Rectangle(rect)
         } else {
-            Outline.Rounded(
-                androidx.compose.ui.geometry.RoundRect(
-                    rect = androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height),
-                    topLeft = androidx.compose.ui.geometry.CornerRadius(r, r),
-                    topRight = androidx.compose.ui.geometry.CornerRadius(r, r),
-                    bottomLeft = androidx.compose.ui.geometry.CornerRadius.Zero,
-                    bottomRight = androidx.compose.ui.geometry.CornerRadius.Zero,
-                ),
-            )
+            Outline.Rounded(androidx.compose.ui.geometry.RoundRect(rect, CornerRadius(r, r)))
         }
     }
 }
+

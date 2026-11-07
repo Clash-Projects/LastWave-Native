@@ -83,15 +83,18 @@ object WaveWidgetViews {
         when (kind) {
             WaveWidgetKind.STRIP -> {
                 val side = minOf(size.height, size.width)
+                // Cover-art gradient surface; the cover fades into it so there is no hard seam.
                 views.setImageViewBitmap(R.id.wave_surface_image,
-                    WaveWidgetGraphics.strip(null, stripBackground, size.width, size.height, 0f))
+                    WaveWidgetGraphics.stripGradientSurface(art.art, stripBackground, size.width, size.height))
                 // The launcher measures a real square cover beside the controls; a stretched
                 // background bitmap can no longer move the art boundary underneath them.
-                views.setImageViewBitmap(R.id.wave_art, WaveWidgetGraphics.stripArtwork(art.art, stripBackground))
+                views.setImageViewBitmap(R.id.wave_art, WaveWidgetGraphics.stripArtworkFaded(art.art, stripBackground))
                 val slotWidth = (size.width - side) / 5f
                 val controlHeight = size.height * 0.64f
-                val mainIconSide = minOf(size.height * 0.35f, slotWidth * 0.82f)
-                val edgeIconSide = minOf(size.height * 0.27f, slotWidth * 0.73f)
+                // Material icons carry built-in padding inside their 24dp box, so they are
+                // given a larger box than the old edge-to-edge glyphs to read at the same weight.
+                val mainIconSide = minOf(size.height * 0.46f, slotWidth * 0.92f)
+                val edgeIconSide = minOf(size.height * 0.38f, slotWidth * 0.84f)
                 fun fitIcon(id: Int, iconSide: Float) {
                     val horizontal = dp(context, (slotWidth - iconSide).coerceAtLeast(0f) / 2f)
                     val vertical = dp(context, (controlHeight - iconSide).coerceAtLeast(0f) / 2f)
@@ -105,8 +108,9 @@ object WaveWidgetViews {
                     if (state.isPlaying) R.drawable.ic_wave_strip_pause else R.drawable.ic_wave_strip_play)
                 views.setTextViewTextSize(R.id.wave_title, TypedValue.COMPLEX_UNIT_SP,
                     (size.height * 0.205f).coerceIn(10f, 20f))
+                // End padding clears the 18dp logo (+9dp margin) now sitting in the title row.
                 views.setViewPadding(R.id.wave_title, dp(context, side * 0.20f),
-                    0, dp(context, maxOf(20f, side * 0.20f)), 0)
+                    0, dp(context, 32f), 0)
                 views.setInt(R.id.wave_logo, "setColorFilter", foreground)
                 views.setViewVisibility(R.id.wave_play_background, View.GONE)
             }
