@@ -86,6 +86,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.ui.layout.onSizeChanged
+import com.lastwave.app.ui.theme.liquidGlassSource
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.Lifecycle
@@ -339,43 +341,58 @@ fun FeedScreen(
             )
         }
 
-        Column(
+        // Liquid glass: the feed scrolls *under* the header so the glass has
+        // real content to frost and refract. Previously the header sat above
+        // the list in a Column and sampled only its own flat background, so
+        // it read as a tinted bar. The list is the backdrop source and the
+        // header a sibling on top of it (never inside it: no self-capture).
+        // Without glass (or on the transparent Podcasts hero) the list keeps
+        // starting below the header exactly as before.
+        val feedGlass = com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported() && !isPodcastsActive
+        val feedBackgroundColor = MaterialTheme.colorScheme.background
+        val feedBackdrop = com.lastwave.app.ui.theme.rememberLayerBackdrop {
+            drawRect(feedBackgroundColor)
+            drawContent()
+        }
+        val useFeedGlass = feedGlass && feedBackdrop != null
+        var topBarHeightPx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+        val topBarHeight = with(androidx.compose.ui.platform.LocalDensity.current) { topBarHeightPx.toDp() }
+        val listTopInset = if (useFeedGlass) topBarHeight else 0.dp
+        val pullState = androidx.compose.material3.pulltorefresh.rememberPullToRefreshState()
+
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 920.dp),
         ) {
-            ExpressiveHeader(
-                title = stringResource(R.string.feed_home),
-                containerColor = if (isPodcastsActive) Color.Transparent else Color.Unspecified,
-                actions = {
-                    HeaderActionIcon(Icons.Filled.Download, "Downloads", onOpenDownloads)
-                    HeaderActionIcon(Icons.Filled.Search, "Search", onOpenSearch)
-                    IconButton(onClick = onOpenSettings) {
-                        com.lastwave.app.ui.home.ProfileAvatar(avatarUrl = state.avatarUrl, modifier = Modifier.size(38.dp))
-                    }
-                },
-            )
-
-            // Pinned YTM chip row under the app bar — stays visible while the
-            // feed scrolls beneath it. Rendered only when chips exist.
-            if (state.homeChips.isNotEmpty()) {
-                PinnedChipsBar(
-                    chips = state.homeChips,
-                    selectedChip = state.selectedChip,
-                    onChipClick = viewModel::onHomeChipSelected,
-                )
-            }
-
             PullToRefreshBox(
                 isRefreshing = state.isRefreshing,
                 onRefresh = viewModel::refresh,
+                state = pullState,
+                indicator = {
+                    androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator(
+                        state = pullState,
+                        isRefreshing = state.isRefreshing,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = listTopInset),
+                    )
+                },
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
+                    .fillMaxSize()
+                    .padding(top = if (useFeedGlass) 0.dp else topBarHeight)
+                    .then(
+                        if (useFeedGlass && feedBackdrop != null) {
+                            Modifier.liquidGlassSource(feedBackdrop)
+                        } else {
+                            Modifier
+                        },
+                    ),
             ) {
                 if (state.isLoading) {
-                FeedLoadingSkeleton()
+                Box(Modifier.padding(top = listTopInset)) { FeedLoadingSkeleton() }
             } else if (!hasFeedContent) {
+                Box(Modifier.padding(top = listTopInset)) {
                 FeedEmptyState(
                     message = if (state.error != null) {
                         "We couldn't load your recommendations. Try again, or find something in search."
@@ -385,6 +402,7 @@ fun FeedScreen(
                     onRetry = viewModel::loadFeed,
                     onOpenSearch = onOpenSearch,
                 )
+                }
             } else {
                 val individualTopArtists = remember(state.feedData.topArtists) {
                     state.feedData.topArtists.flatMap { artist ->
@@ -712,7 +730,7 @@ fun FeedScreen(
                     modifier = Modifier.fillMaxSize().safeHorizontalContentPadding(),
                     contentPadding = PaddingValues(
                         bottom = FloatingNavDefaults.contentBottomPadding(),
-                        top = 12.dp,
+                        top = 12.dp + listTopInset,
                     ),
                     verticalArrangement = Arrangement.Top,
                 ) {
@@ -1488,6 +1506,35 @@ fun FeedScreen(
                 }
             }
         }
+
+            // Header + pinned YTM chip row, one glass pane on top of the feed.
+            ExpressiveHeader(
+                title = stringResource(R.string.feed_home),
+                containerColor = if (isPodcastsActive) Color.Transparent else Color.Unspecified,
+                backdrop = if (useFeedGlass) feedBackdrop else null,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .onSizeChanged { if (it.height != topBarHeightPx) topBarHeightPx = it.height },
+                bottomContent = if (state.homeChips.isNotEmpty()) {
+                    {
+                        PinnedChipsBar(
+                            chips = state.homeChips,
+                            selectedChip = state.selectedChip,
+                            onChipClick = viewModel::onHomeChipSelected,
+                            glass = useFeedGlass,
+                        )
+                    }
+                } else {
+                    null
+                },
+                actions = {
+                    HeaderActionIcon(Icons.Filled.Download, "Downloads", onOpenDownloads)
+                    HeaderActionIcon(Icons.Filled.Search, "Search", onOpenSearch)
+                    IconButton(onClick = onOpenSettings) {
+                        com.lastwave.app.ui.home.ProfileAvatar(avatarUrl = state.avatarUrl, modifier = Modifier.size(38.dp))
+                    }
+                },
+            )
     }
         SnackbarHost(
             hostState = snackbarHostState,
@@ -1853,13 +1900,20 @@ private fun PinnedChipsBar(
     selectedChip: HomeChip?,
     onChipClick: (HomeChip?) -> Unit,
     modifier: Modifier = Modifier,
+    /** Sits inside the header glass: a light translucent tray instead of
+     *  an opaque slab, so the frosted content shows through around chips. */
+    glass: Boolean = false,
 ) {
     if (chips.isEmpty()) return
     val haptics = LocalHapticFeedback.current
 
     Surface(
         shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = if (glass) {
+            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.35f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        },
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 6.dp),
