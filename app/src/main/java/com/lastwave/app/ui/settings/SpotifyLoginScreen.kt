@@ -25,7 +25,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.imeAnimationTarget
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,13 +55,17 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -68,6 +74,7 @@ import com.lastwave.app.data.spotify.SpotifyLoginUrls
 import com.lastwave.app.ui.common.ExpressiveHeader
 import com.lastwave.app.ui.common.adaptiveContentWidth
 
+@OptIn(ExperimentalLayoutApi::class)
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun SpotifyLoginScreen(
@@ -157,18 +164,56 @@ fun SpotifyLoginScreen(
         return false
     }
 
+    // Keyboard clearance that changes once per show/hide, never per frame.
+    //
+    // `imePadding()` follows the keyboard's slide animation, so the WebView was
+    // resized on every frame and re-laid out the page each time: the form shook
+    // and the focused field could lose focus, which closed the keyboard and
+    // started the loop again. On ROMs that still honour `adjustResize` the
+    // window had already shrunk, so the keyboard was subtracted twice and the
+    // page oscillated hard enough that the sign-in could not be completed.
+    //
+    // The target inset is the keyboard's final height, and whatever the
+    // system already took off the window is not taken off again.
+    val density = LocalDensity.current
+    val imeTargetPx = WindowInsets.imeAnimationTarget.getBottom(density)
+    var restingHeightPx by remember { mutableIntStateOf(0) }
+    var restingWidthPx by remember { mutableIntStateOf(0) }
+    var currentHeightPx by remember { mutableIntStateOf(0) }
+    var keyboardClearancePx by remember { mutableIntStateOf(0) }
+    LaunchedEffect(imeTargetPx, currentHeightPx, restingHeightPx) {
+        val alreadyResizedPx = (restingHeightPx - currentHeightPx).coerceAtLeast(0)
+        val wanted = (imeTargetPx - alreadyResizedPx).coerceAtLeast(0)
+        // Let the inset settle first: a keyboard that flickers open/closed
+        // (or a ROM reporting interim values) must not resize the page each time.
+        if (wanted != keyboardClearancePx) {
+            kotlinx.coroutines.delay(if (wanted == 0) 0L else 90L)
+            keyboardClearancePx = wanted
+        }
+    }
+
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .onSizeChanged { size ->
+                // Baseline = tallest height seen at this width (i.e. no keyboard);
+                // a width change means rotation, so the baseline starts over. Not
+                // keyed on the IME inset, which some ROMs report after resizing.
+                if (size.width != restingWidthPx) {
+                    restingWidthPx = size.width
+                    restingHeightPx = size.height
+                } else if (size.height > restingHeightPx) {
+                    restingHeightPx = size.height
+                }
+                currentHeightPx = size.height
+            },
         contentAlignment = Alignment.TopCenter,
     ) {
         Column(
             Modifier
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 760.dp)
-                // The app draws edge to edge and never resizes the window for
-                // the keyboard, so without this the keyboard would cover the
-                // form the user is typing into.
-                .imePadding(),
+                .padding(bottom = with(density) { keyboardClearancePx.toDp() }),
         ) {
             ExpressiveHeader(
                 title = "Connect Spotify",
@@ -251,6 +296,10 @@ fun SpotifyLoginScreen(
                                     ViewGroup.LayoutParams.MATCH_PARENT,
                                     ViewGroup.LayoutParams.MATCH_PARENT,
                                 )
+                                // No overscroll stretch/glow: on some ROMs it fights the
+                                // page's own scroll while a field is focused and the
+                                // form visibly shakes.
+                                overScrollMode = android.view.View.OVER_SCROLL_NEVER
                                 settings.apply {
                                     javaScriptEnabled = true
                                     domStorageEnabled = true
