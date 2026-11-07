@@ -295,6 +295,30 @@ fun HomeScreen(
                         if (rows[rowIndex] is HomeRow.Track) nextPlaybackIndex++ else -1
                     }
                 }
+                // Content keys without the row index. Suffixing the index made
+                // every key shift by one whenever a scrobble or now-playing row
+                // landed on top, so the list threw away and rebuilt every
+                // visible row (covers flashed, scroll jumped). Duplicates (the
+                // same track scrobbled twice in a second) get an occurrence
+                // counter instead, which stays stable as rows are prepended.
+                val rowKeys = remember(rows) {
+                    val seen = HashMap<String, Int>(rows.size)
+                    Array(rows.size) { i ->
+                        val base = when (val row = rows[i]) {
+                            is HomeRow.DateHeader -> "date_${row.label}"
+                            is HomeRow.Track -> if (row.track.isNowPlaying) {
+                                "nowplaying_${row.track.key}"
+                            } else {
+                                "track_${row.track.key}_${row.track.timestampMillis}"
+                            }
+                            is HomeRow.Album -> "album_${row.album.artist}_${row.album.name}"
+                            is HomeRow.Artist -> "artist_${row.artist.name}"
+                        }
+                        val n = seen[base] ?: 0
+                        seen[base] = n + 1
+                        if (n == 0) base else "${base}#$n"
+                    }
+                }
                 val musicPlayer = com.lastwave.app.ui.player.LocalMusicPlayer.current
                 // Long-press (deep press) on a track row opens the mini tray;
                 // the 3-dot button keeps opening the full menu sheet.
@@ -323,19 +347,7 @@ fun HomeScreen(
                     ) {
                         itemsIndexed(
                             rows,
-                            key = { index, row ->
-                                val base = when (row) {
-                                    is HomeRow.DateHeader -> "date_${row.label}"
-                                    is HomeRow.Track -> if (row.track.isNowPlaying) {
-                                        "nowplaying_${row.track.key}"
-                                    } else {
-                                        "track_${row.track.key}_${row.track.timestampMillis}"
-                                    }
-                                    is HomeRow.Album -> "album_${row.album.artist}_${row.album.name}"
-                                    is HomeRow.Artist -> "artist_${row.artist.name}"
-                                }
-                                "${base}_$index"
-                            },
+                            key = { index, _ -> rowKeys[index] },
                             contentType = { _, row ->
                                 when (row) {
                                     is HomeRow.DateHeader -> "date"

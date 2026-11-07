@@ -89,7 +89,7 @@ fun NewReleasesScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val musicPlayer = LocalMusicPlayer.current
-    val playbackState by musicPlayer.chromeState.collectAsStateWithLifecycle()
+    val playbackState by musicPlayer.listPlaybackState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     var menuTrack by remember { mutableStateOf<YouTubeMusicTrack?>(null) }
 

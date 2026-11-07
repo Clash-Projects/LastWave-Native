@@ -822,8 +822,19 @@ private fun ModernSyncedLyricsList(
     val activeIndex = activeState.value
 
     val isDraggedState = listState.interactionSource.collectIsDraggedAsState()
-    if (isDraggedState.value) {
-        userScrolledTime = System.currentTimeMillis()
+    // [0] = a user drag or the fling it started is still moving the list.
+    // Plain array, read only from effects, so it never recomposes. The old
+    // code stamped the time only while composing at drag *start*: a drag
+    // longer than the grace period, or the fling after it, was yanked back
+    // to the sung line mid-motion by the next line change (scroll jitter).
+    val userScrollActive = remember { BooleanArray(1) }
+    LaunchedEffect(listState) {
+        snapshotFlow { isDraggedState.value to listState.isScrollInProgress }
+            .collect { (dragged, scrolling) ->
+                if (dragged) userScrollActive[0] = true
+                if (userScrollActive[0]) userScrolledTime = System.currentTimeMillis()
+                if (!dragged && !scrolling) userScrollActive[0] = false
+            }
     }
     val isPlayingState by rememberUpdatedState(isPlaying)
 
@@ -861,7 +872,7 @@ private fun ModernSyncedLyricsList(
         // clearly done browsing.
         val resumeDelayMs = if (isPlaying) 600L else 5000L
         val timeSinceUserScroll = System.currentTimeMillis() - userScrolledTime
-        if (timeSinceUserScroll > resumeDelayMs && activeIndex in items.indices) {
+        if (!userScrollActive[0] && timeSinceUserScroll > resumeDelayMs && activeIndex in items.indices) {
             runCatching {
                 val layoutInfo = listState.layoutInfo
                 val viewportHeight = layoutInfo.viewportSize.height

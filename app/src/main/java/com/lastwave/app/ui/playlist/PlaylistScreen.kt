@@ -138,7 +138,7 @@ fun PlaylistScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val musicPlayer = com.lastwave.app.ui.player.LocalMusicPlayer.current
-    val playbackState by musicPlayer.chromeState.collectAsStateWithLifecycle()
+    val playbackState by musicPlayer.listPlaybackState.collectAsStateWithLifecycle()
     val addToPlaylist = com.lastwave.app.ui.player.LocalAddToPlaylist.current
     var searchQuery by remember { mutableStateOf("") }
     var coverEditorPlaylistId by remember { mutableStateOf<Long?>(null) }

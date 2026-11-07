@@ -147,7 +147,7 @@ fun SearchScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val musicPlayer = com.lastwave.app.ui.player.LocalMusicPlayer.current
-    val playbackState by musicPlayer.chromeState.collectAsStateWithLifecycle()
+    val playbackState by musicPlayer.listPlaybackState.collectAsStateWithLifecycle()
     var menuTarget by remember { mutableStateOf<TrackMenuTarget?>(null) }
     // Long-press (deep press) on a TRACKS row opens the mini tray;
     // the overflow button keeps the full sheet.

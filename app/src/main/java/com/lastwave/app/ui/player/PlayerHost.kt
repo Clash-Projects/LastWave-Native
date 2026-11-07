@@ -268,6 +268,7 @@ import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.MusicPlayerState
 import com.lastwave.app.playback.PlaybackChromeState
 import com.lastwave.app.playback.formatSampleRateKHz
+import com.lastwave.app.playback.withoutProgress
 import com.lastwave.app.playback.isSpatialAudioCodec
 import com.lastwave.app.playback.qualityBadgeLabel
 import com.lastwave.app.playback.SignalPathReport
@@ -365,9 +366,9 @@ class PlayerViewModel @Inject constructor(
     val chromeState = player.chromeState
     val progressState = player.progressState
     val fullPlayerState = player.state
-        .map { it.copy(positionMs = 0L, bufferedPositionMs = 0L) }
+        .map { it.withoutProgress() }
         .distinctUntilChanged()
-        .stateIn(viewModelScope, SharingStarted.Eagerly, player.state.value.copy(positionMs = 0L, bufferedPositionMs = 0L))
+        .stateIn(viewModelScope, SharingStarted.Eagerly, player.state.value.withoutProgress())
     val settings: StateFlow<com.lastwave.app.data.local.MiscSettings> = settingsPreferences.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), com.lastwave.app.data.local.MiscSettings())
     val activeDownloads = downloadManager.downloads

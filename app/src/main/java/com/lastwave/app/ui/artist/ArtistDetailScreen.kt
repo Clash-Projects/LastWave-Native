@@ -133,7 +133,7 @@ fun ArtistDetailScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val artistCanvas by viewModel.artistCanvas.collectAsStateWithLifecycle()
     val musicPlayer = LocalMusicPlayer.current
-    val playbackState by musicPlayer.chromeState.collectAsStateWithLifecycle()
+    val playbackState by musicPlayer.listPlaybackState.collectAsStateWithLifecycle()
     val haptic = LocalHapticFeedback.current
 
     // System back / predictive-back gesture is owned by the wrapping

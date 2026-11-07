@@ -213,7 +213,7 @@ fun PlaylistDetailScreen(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val musicPlayer = com.lastwave.app.ui.player.LocalMusicPlayer.current
-    val playbackState by musicPlayer.chromeState.collectAsStateWithLifecycle()
+    val playbackState by musicPlayer.listPlaybackState.collectAsStateWithLifecycle()
 
     LaunchedEffect(playlistId) {
         viewModel.loadDetail(playlistId)

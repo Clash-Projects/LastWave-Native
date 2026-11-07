@@ -207,7 +207,7 @@ fun FeedScreen(
     }
     val musicPlayer = LocalMusicPlayer.current
     val context = LocalContext.current
-    val playbackState by musicPlayer.chromeState.collectAsStateWithLifecycle()
+    val playbackState by musicPlayer.listPlaybackState.collectAsStateWithLifecycle()
     var menuTrack by remember { mutableStateOf<YouTubeMusicTrack?>(null) }
     // Long-press (deep press) mini tray â€” 3-dot buttons keep the full sheet.
     var miniTrayTrack by remember { mutableStateOf<TrackMiniTrayData?>(null) }

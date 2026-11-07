@@ -75,6 +75,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -374,13 +375,17 @@ fun MainShell(
         val feedIndex = tabs.indexOf(MainTab.FEED)
         HorizontalPager(
             state = pagerState,
-            // Keep the neighbouring tab composed: with 0, Statistics was built
-            // from scratch (list, covers, lookups) during every swipe to it,
-            // which is the stutter. It is the middle tab, so 1 keeps it ready.
-            beyondViewportPageCount = 1,
+            // Keep every tab composed. With 1, jumping Playlists -> Home
+            // (dock tap = instant scrollToPage) disposed and rebuilt the whole
+            // Feed (sections, shelves, covers) on that frame, and Statistics
+            // was rebuilt the same way from the far tab. Only 3 tabs, and
+            // off-screen pages are not drawn, so this is cheap.
+            beyondViewportPageCount = tabs.size - 1,
             modifier = Modifier.fillMaxSize().liquidGlassSource(if (navGlass) navigationBackdrop else null),
         ) { page ->
-            val isCurrent = page == pagerState.currentPage
+            // derivedStateOf: reading currentPage directly recomposed every
+            // page's whole tab each time it flipped halfway through a swipe.
+            val isCurrent by remember(page) { derivedStateOf { page == pagerState.currentPage } }
             PredictiveBackScreen(
                 enabled = isCurrent && tabs[page] != MainTab.FEED,
                 onBack = { scope.launch { pagerState.animateScrollToPage(feedIndex) } },

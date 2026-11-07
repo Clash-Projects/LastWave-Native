@@ -229,10 +229,32 @@ data class PlaybackChromeState(
     val isCrossfading: Boolean = false,
 )
 
-/** Copy without the fields the progress ticker rewrites every ~60ms. */
-internal fun MusicPlayerState.withoutProgress(): MusicPlayerState =
-    if (positionMs == 0L && bufferedPositionMs == 0L) this
-    else copy(positionMs = 0L, bufferedPositionMs = 0L)
+/**
+ * The only playback fields browse screens (Home, Statistics, Playlists,
+ * album/artist pages, search) read to mark the playing row. Unlike
+ * [PlaybackChromeState] it leaves out automix telemetry (blend progress is
+ * rewritten every few ms during a mix), buffering and queue size, so those
+ * no longer recompose every visible list while the user scrolls.
+ */
+@androidx.compose.runtime.Immutable
+data class ListPlaybackState(
+    val current: PlayableTrack? = null,
+    val sourceLabel: String = "LastWave",
+    val isPlaying: Boolean = false,
+    val shuffleEnabled: Boolean = false,
+)
+
+/**
+ * Copy without the fields the progress ticker rewrites every ~60ms. The
+ * sleep-timer countdown rides on the same ticker; it is floored to whole
+ * seconds (what every timer label shows) so an armed timer no longer
+ * recomposes the full player and lyrics 16 times a second.
+ */
+internal fun MusicPlayerState.withoutProgress(): MusicPlayerState {
+    val sleep = sleepTimerRemainingMs?.let { (it / 1000L) * 1000L }
+    return if (positionMs == 0L && bufferedPositionMs == 0L && sleep == sleepTimerRemainingMs) this
+    else copy(positionMs = 0L, bufferedPositionMs = 0L, sleepTimerRemainingMs = sleep)
+}
 
 // Keep fields owned elsewhere (automix, crossfade, jam, volume, cast) when
 // rebuilding the whole state. Use inside _state.update so they come from the
@@ -570,6 +592,18 @@ class MusicPlayer @Inject constructor(
         }
         .distinctUntilChanged()
         .stateIn(applicationScope, SharingStarted.Eagerly, PlaybackChromeState())
+    /** See [ListPlaybackState]: what list rows need, nothing that ticks. */
+    val listPlaybackState: StateFlow<ListPlaybackState> = chromeState
+        .map {
+            ListPlaybackState(
+                current = it.current,
+                sourceLabel = it.sourceLabel,
+                isPlaying = it.isPlaying,
+                shuffleEnabled = it.shuffleEnabled,
+            )
+        }
+        .distinctUntilChanged()
+        .stateIn(applicationScope, SharingStarted.Eagerly, ListPlaybackState())
     val progressState: StateFlow<PlaybackProgressState> = state
         .map {
             val dur = if (it.durationMs > 0L) it.durationMs else (it.current?.durationMs ?: findKnownDuration(it.current) ?: 0L)
