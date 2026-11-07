@@ -527,20 +527,26 @@ fun ModernLyricsPanel(
                             }
                             // Shared style instances drawn by every row below.
                             val currentTextStyle = LocalTextStyle.current
-                            val karaokeNormalStyle = remember(currentTextStyle, isAppleMusic, isWordSynced, effectiveFontScale) {
+                            // App font on: dedicated heavy lyric cuts of the
+                            // variable font. App font off: the system font,
+                            // whose Bold is a real weight.
+                            val useAppFont = MaterialTheme.typography.bodyLarge.fontFamily != androidx.compose.ui.text.font.FontFamily.Default
+                            val karaokeNormalStyle = remember(currentTextStyle, isAppleMusic, isWordSynced, effectiveFontScale, useAppFont) {
                                 val baseSize = (if (isAppleMusic) 30f else if (isWordSynced) 34f else 32f) * effectiveFontScale
                                 currentTextStyle.copy(
+                                    fontFamily = if (useAppFont) com.lastwave.app.ui.theme.LyricsLeadFontFamily else androidx.compose.ui.text.font.FontFamily.Default,
                                     fontSize = baseSize.sp,
                                     lineHeight = (baseSize * 1.20f).sp,
                                     fontWeight = FontWeight.Bold,
-                                    letterSpacing = (-0.5).sp,
+                                    letterSpacing = (-0.6).sp,
                                     textMotion = TextMotion.Animated,
                                 )
                             }
-                            val karaokeAccompanimentStyle = remember(currentTextStyle, isAppleMusic, isWordSynced, effectiveFontScale) {
+                            val karaokeAccompanimentStyle = remember(currentTextStyle, isAppleMusic, isWordSynced, effectiveFontScale, useAppFont) {
                                 // Backing vocals: 0.65x of the lead row.
                                 val baseSize = (if (isAppleMusic) 30f else if (isWordSynced) 34f else 32f) * 0.65f * effectiveFontScale
                                 currentTextStyle.copy(
+                                    fontFamily = if (useAppFont) com.lastwave.app.ui.theme.LyricsBackingFontFamily else androidx.compose.ui.text.font.FontFamily.Default,
                                     fontSize = baseSize.sp,
                                     lineHeight = (baseSize * 1.22f).sp,
                                     fontWeight = FontWeight.Bold,
@@ -550,8 +556,9 @@ fun ModernLyricsPanel(
                             }
                             // Sub-lines (translation / romanization) draw
                             // smaller and lighter than the lyric they follow.
-                            val subLineStyle = remember(currentTextStyle, effectiveFontScale) {
+                            val subLineStyle = remember(currentTextStyle, effectiveFontScale, useAppFont) {
                                 currentTextStyle.copy(
+                                    fontFamily = if (useAppFont) com.lastwave.app.ui.theme.LyricsSubLineFontFamily else androidx.compose.ui.text.font.FontFamily.Default,
                                     fontSize = (16f * effectiveFontScale).sp,
                                     lineHeight = (22f * effectiveFontScale).sp,
                                     fontWeight = FontWeight.Medium,
@@ -1554,10 +1561,15 @@ private fun ModernPlainLyricsView(
             Text(
                 text = plainLyrics,
                 style = MaterialTheme.typography.bodyLarge.copy(
-                fontSize = (28f * lyricsFontScale).sp,
-lineHeight = (46f * lyricsFontScale).sp,
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = 0.1.sp,
+                    fontFamily = if (MaterialTheme.typography.bodyLarge.fontFamily != androidx.compose.ui.text.font.FontFamily.Default) {
+                        com.lastwave.app.ui.theme.LyricsBackingFontFamily
+                    } else {
+                        androidx.compose.ui.text.font.FontFamily.Default
+                    },
+                    fontSize = (28f * lyricsFontScale).sp,
+                    lineHeight = (40f * lyricsFontScale).sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-0.3).sp,
                 ),
                 textAlign = TextAlign.Start,
                 color = Color.White.copy(alpha = 0.94f),
