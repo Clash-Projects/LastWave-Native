@@ -120,6 +120,15 @@ class NativeProcessingAudioSink(
     /** Buffer already equalised: Media3 retries the same object until consumed. */
     private var directEqBuffer: ByteBuffer? = null
 
+    /**
+     * Music-haptics analyser. Fed here, before any routing, because this is the
+     * one place every decoded buffer passes through with its presentation time
+     * (DefaultAudioSink skips custom AudioProcessors on the float path).
+     */
+    var hapticsAnalyzer: com.lastwave.app.playback.haptics.MusicHapticsAnalyzer? = null
+    /** Buffer already analysed: Media3 retries the same object until consumed. */
+    private var hapticsBuffer: ByteBuffer? = null
+
     var onConfiguredFormat: ((sampleRateHz: Int, pcmEncoding: Int, channelCount: Int) -> Unit)? = null
     var bitDepthHintProvider: (() -> Int?)? = null
 
@@ -521,6 +530,20 @@ class NativeProcessingAudioSink(
     ): Boolean {
         maybeAdoptExclusiveUsb()
         maybeAdoptInternalDirect()
+        val analyzer = hapticsAnalyzer
+        if (analyzer != null && hapticsBuffer !== buffer) {
+            hapticsBuffer = buffer
+            // Read-only (works on a duplicate) and before the EQ so it sees the source signal.
+            runCatching {
+                analyzer.analyze(
+                    buffer = buffer,
+                    format = configuredFormat,
+                    presentationTimeUs = presentationTimeUs,
+                    positionUs = { getCurrentPositionUs(false) },
+                    playbackSpeed = { getPlaybackParameters().speed },
+                )
+            }
+        }
         if (directEqBuffer !== buffer && isDirectEqRoute()) {
             directEq.process(buffer)
             directEqBuffer = buffer
@@ -528,7 +551,10 @@ class NativeProcessingAudioSink(
         val consumed = handleRoutedBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
         // Decoder buffers are recycled objects: once consumed, the next
         // payload in the same object must be equalised again.
-        if (consumed) directEqBuffer = null
+        if (consumed) {
+            directEqBuffer = null
+            hapticsBuffer = null
+        }
         return consumed
     }
 
@@ -1523,6 +1549,8 @@ class NativeProcessingAudioSink(
     override fun flush() {
         directEq.reset()
         directEqBuffer = null
+        hapticsBuffer = null
+        runCatching { hapticsAnalyzer?.flush() }
         clearPending()
         clearEndOfStream()
         exclusiveEnded = false
@@ -1563,6 +1591,8 @@ class NativeProcessingAudioSink(
     override fun reset() {
         directEq.reset()
         directEqBuffer = null
+        hapticsBuffer = null
+        runCatching { hapticsAnalyzer?.reset() }
         usbOutput?.setFormat(null)
         if (usbExclusive && exclusiveWanted) {
             exclusiveUsb?.prepareForNextItem()

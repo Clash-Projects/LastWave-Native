@@ -4,14 +4,12 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.media.AudioAttributes
 import android.media.audiofx.HapticGenerator
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.PowerManager
 import android.os.SystemClock
-import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -65,13 +63,13 @@ class MusicHapticsController @Inject constructor(
      * enhanced/fallback sinks and the crossfade standby player corrupted the
      * filters (two playback threads) and let the muted standby fire pulses.
      */
-    private val allTaps: MutableSet<MusicHapticsAudioProcessor> =
+    private val allTaps: MutableSet<MusicHapticsAnalyzer> =
         Collections.synchronizedSet(
-            Collections.newSetFromMap(WeakHashMap<MusicHapticsAudioProcessor, Boolean>())
+            Collections.newSetFromMap(WeakHashMap<MusicHapticsAnalyzer, Boolean>())
         )
-    private val tapsByPlayer: MutableMap<Player, List<MusicHapticsAudioProcessor>> =
+    private val tapsByPlayer: MutableMap<Player, List<MusicHapticsAnalyzer>> =
         Collections.synchronizedMap(WeakHashMap())
-    @Volatile private var activeTaps: List<MusicHapticsAudioProcessor> = emptyList()
+    @Volatile private var activeTaps: List<MusicHapticsAnalyzer> = emptyList()
     @Volatile private var dspActive: Boolean = false
     private var boundPlayer: WeakReference<Player>? = null
 
@@ -105,26 +103,6 @@ class MusicHapticsController @Inject constructor(
         }
     }
 
-    private val supportsPrimitiveThud: Boolean by lazy {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && vibrator != null) {
-            vibrator.areAllPrimitivesSupported(
-                VibrationEffect.Composition.PRIMITIVE_THUD,
-                VibrationEffect.Composition.PRIMITIVE_LOW_TICK,
-                VibrationEffect.Composition.PRIMITIVE_TICK
-            )
-        } else {
-            false
-        }
-    }
-
-    private val supportsPrimitiveTick: Boolean by lazy {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && vibrator != null) {
-            vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_TICK)
-        } else {
-            false
-        }
-    }
-
     private val hasAmplitudeControl: Boolean by lazy {
         runCatching { vibrator?.hasAmplitudeControl() == true }.getOrDefault(false)
     }
@@ -136,12 +114,12 @@ class MusicHapticsController @Inject constructor(
             runCatching { HapticGenerator.isAvailable() }.getOrDefault(false)
     }
 
-    /** Creates a fresh tap for one audio sink. Call once per DefaultAudioSink. */
-    fun createAudioProcessor(): MusicHapticsAudioProcessor =
-        MusicHapticsAudioProcessor(this).also { allTaps.add(it) }
+    /** Creates a fresh analyser for one player audio sink. */
+    fun createAnalyzer(): MusicHapticsAnalyzer =
+        MusicHapticsAnalyzer(this).also { allTaps.add(it) }
 
     /** Associates the taps installed in [player]'s sinks with that player. */
-    fun registerPlayerTaps(player: Player, taps: List<MusicHapticsAudioProcessor>) {
+    fun registerPlayerTaps(player: Player, taps: List<MusicHapticsAnalyzer>) {
         tapsByPlayer[player] = taps.toList()
         if (boundPlayer?.get() === player) {
             activeTaps = taps.toList()
@@ -151,7 +129,6 @@ class MusicHapticsController @Inject constructor(
 
     /** Seek or other non-gapless discontinuity on the bound player. */
     fun onPositionDiscontinuity() {
-        activeTaps.forEach { it.requestTimelineReset() }
         clearPendingPulses()
     }
 
@@ -344,62 +321,69 @@ class MusicHapticsController @Inject constructor(
     ) {
         val vib = vibrator ?: return
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && supportsPrimitiveThud) {
-                val scale = (drive * intensity.primitiveScale).coerceIn(0.08f, 1.0f)
-                val primitiveId = when {
-                    isBassDominant && isSharpTransient -> VibrationEffect.Composition.PRIMITIVE_THUD
-                    isBassDominant -> VibrationEffect.Composition.PRIMITIVE_LOW_TICK
-                    else -> VibrationEffect.Composition.PRIMITIVE_TICK
+            if (hasAmplitudeControl) {
+                // Shaped, full-range pulses (SpatialFlow-style): long and strong
+                // enough to be felt in the hand. The old 10-20 ms primitives at
+                // low scale were below what most motors can render.
+                val strength = (drive * intensity.amplitudeScale).coerceIn(0f, 1f)
+                val peak = (motorFloorAmplitude + (255 - motorFloorAmplitude) * strength)
+                    .roundToInt().coerceIn(motorFloorAmplitude, 255)
+                val stretch = if (isLikelyErm) 1.6f else 1f
+                fun ms(v: Long) = (v * stretch).toLong()
+                val effect = when {
+                    isBassDominant && isSharpTransient -> VibrationEffect.createWaveform(
+                        longArrayOf(0, ms(18), ms(42), ms(24)),
+                        intArrayOf(0, (peak * 0.85f).toInt(), peak, (peak * 0.35f).toInt().coerceAtLeast(1)),
+                        -1
+                    )
+                    isBassDominant -> VibrationEffect.createWaveform(
+                        longArrayOf(0, ms(14), ms(30)),
+                        intArrayOf(0, (peak * 0.9f).toInt(), (peak * 0.55f).toInt().coerceAtLeast(1)),
+                        -1
+                    )
+                    else -> VibrationEffect.createOneShot(
+                        ms(28),
+                        (peak * 0.75f).toInt().coerceAtLeast(motorFloorAmplitude)
+                    )
                 }
-                val effect = VibrationEffect.startComposition()
-                    .addPrimitive(primitiveId, scale)
-                    .compose()
-                vibrateAsMedia(vib, effect)
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && supportsPrimitiveTick && !isBassDominant) {
-                val scale = (drive * intensity.primitiveScale).coerceIn(0.10f, 1.0f)
-                val effect = VibrationEffect.startComposition()
-                    .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, scale)
-                    .compose()
-                vibrateAsMedia(vib, effect)
-            } else if (hasAmplitudeControl) {
-                val amplitude = (drive * 255f * intensity.amplitudeScale)
-                    .roundToInt()
-                    .coerceIn(1, 255)
-                val durationMs = when {
-                    isBassDominant && isSharpTransient -> 18L
-                    isBassDominant -> 24L
-                    else -> 12L
-                }
-                vibrateAsMedia(vib, VibrationEffect.createOneShot(durationMs, amplitude))
-            } else {
-                // No amplitude control: a one-shot always runs at full strength,
-                // which made Light identical to Strong. Use the tuned predefined
-                // effects and let drive x intensity choose softer or harder ones.
+                vib.vibrate(effect)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // No amplitude control: one-shots always run at full strength,
+                // so let drive x intensity pick between the predefined effects.
                 val strength = drive * intensity.amplitudeScale
-                if (strength < 0.22f) return
+                if (strength < 0.18f) return
                 val effectId = when {
-                    isBassDominant && isSharpTransient && strength > 0.55f -> VibrationEffect.EFFECT_HEAVY_CLICK
-                    isBassDominant && strength > 0.35f -> VibrationEffect.EFFECT_CLICK
-                    else -> VibrationEffect.EFFECT_TICK
+                    isBassDominant && (isSharpTransient || strength > 0.6f) -> VibrationEffect.EFFECT_HEAVY_CLICK
+                    else -> VibrationEffect.EFFECT_CLICK
                 }
-                vibrateAsMedia(vib, VibrationEffect.createPredefined(effectId))
+                vib.vibrate(VibrationEffect.createPredefined(effectId))
+            } else {
+                @Suppress("DEPRECATION")
+                vib.vibrate(if (isBassDominant) 45L else 20L)
             }
         } catch (_: Throwable) {
             // Never crash audio playback on OEM Vibrator service exceptions
         }
     }
 
-    /** Tags pulses as media vibration so the system "media vibration" setting scales or mutes them. */
-    private fun vibrateAsMedia(vib: Vibrator, effect: VibrationEffect) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            vib.vibrate(
-                effect,
-                VibrationAttributes.Builder().setUsage(VibrationAttributes.USAGE_MEDIA).build()
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            vib.vibrate(effect, MEDIA_AUDIO_ATTRIBUTES)
+    /** Lowest amplitude the motor reliably renders; below this pulses are not felt. */
+    private val motorFloorAmplitude: Int by lazy {
+        val mfg = Build.MANUFACTURER.lowercase()
+        when {
+            isLikelyErm -> 70
+            mfg.contains("xiaomi") || mfg.contains("redmi") || mfg.contains("poco") -> 70
+            mfg.contains("samsung") -> 50
+            else -> 45
         }
+    }
+
+    /** Budget/eccentric-mass motors respond slowly and need longer pulses. */
+    private val isLikelyErm: Boolean by lazy {
+        val mfg = Build.MANUFACTURER.lowercase()
+        val model = Build.MODEL.lowercase()
+        mfg.contains("motorola") || mfg.contains("infinix") || mfg.contains("tecno") ||
+            mfg.contains("nokia") || mfg.contains("itel") ||
+            (mfg.contains("samsung") && (model.startsWith("sm-a") || model.startsWith("sm-m")))
     }
 
     fun release() {
@@ -412,10 +396,6 @@ class MusicHapticsController @Inject constructor(
     }
 
     private companion object {
-        const val MIN_PULSE_SPACING_MS = 35L
-        val MEDIA_AUDIO_ATTRIBUTES: AudioAttributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_MEDIA)
-            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-            .build()
+        const val MIN_PULSE_SPACING_MS = 90L
     }
 }

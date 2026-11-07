@@ -1586,25 +1586,11 @@ class MusicPlayer @Inject constructor(
             .setBackBuffer(15_000, true)
             .build()
         var builtSink: NativeProcessingAudioSink? = null
-        // One haptics tap per DefaultAudioSink (an AudioProcessor must never be
-        // shared between sinks or players); each tap reads its own sink's clock
-        // so pulses can be delayed to the moment the audio is actually heard.
-        val hapticTaps = mutableListOf<com.lastwave.app.playback.haptics.MusicHapticsAudioProcessor>()
-        var pendingHapticTap: com.lastwave.app.playback.haptics.MusicHapticsAudioProcessor? = null
-        fun newHapticTap(): com.lastwave.app.playback.haptics.MusicHapticsAudioProcessor =
-            musicHapticsController.createAudioProcessor().also {
-                hapticTaps.add(it)
-                pendingHapticTap = it
-            }
-        fun DefaultAudioSink.withHapticClock(): DefaultAudioSink {
-            val sinkRef = this
-            pendingHapticTap?.playbackClock = object : com.lastwave.app.playback.haptics.HapticPlaybackClock {
-                override fun currentPositionUs(): Long = sinkRef.getCurrentPositionUs(false)
-                override fun playbackSpeed(): Float = sinkRef.playbackParameters.speed
-            }
-            pendingHapticTap = null
-            return sinkRef
-        }
+        // One haptics analyser per player sink. It is fed from
+        // NativeProcessingAudioSink.handleBuffer: Media3 1.2.1 drops custom
+        // AudioProcessors on its float output path, so a DefaultAudioSink tap
+        // never receives audio here.
+        val hapticTaps = mutableListOf<com.lastwave.app.playback.haptics.MusicHapticsAnalyzer>()
         val renderersFactory = object : DefaultRenderersFactory(appContext) {
             override fun buildAudioSink(
                 context: Context,
@@ -1615,18 +1601,14 @@ class MusicPlayer @Inject constructor(
                     .setEnableFloatOutput(false)
                     .setEnableAudioTrackPlaybackParams(true)
                     .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
-                    .setAudioProcessors(arrayOf(newHapticTap()))
                     .build()
-                    .withHapticClock()
                 val engine = runCatching(engineProvider).getOrNull()
                 val enhancedSink = try {
                     DefaultAudioSink.Builder(context)
                         .setEnableFloatOutput(true)
                         .setEnableAudioTrackPlaybackParams(true)
                         .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
-                        .setAudioProcessors(arrayOf(newHapticTap()))
                         .build()
-                        .withHapticClock()
                 } catch (error: Exception) {
                     android.util.Log.w("MusicPlayer", "Enhanced audio sink unavailable; using PCM16", error)
                     effects.setFallbackRequired(true)
@@ -1634,9 +1616,7 @@ class MusicPlayer @Inject constructor(
                         .setEnableFloatOutput(false)
                         .setEnableAudioTrackPlaybackParams(true)
                         .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
-                        .setAudioProcessors(arrayOf(newHapticTap()))
                         .build()
-                        .withHapticClock()
                 } catch (error: LinkageError) {
                     android.util.Log.w("MusicPlayer", "Enhanced audio sink linkage failed; using PCM16", error)
                     effects.setFallbackRequired(true)
@@ -1644,9 +1624,7 @@ class MusicPlayer @Inject constructor(
                         .setEnableFloatOutput(false)
                         .setEnableAudioTrackPlaybackParams(true)
                         .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
-                        .setAudioProcessors(arrayOf(newHapticTap()))
                         .build()
-                        .withHapticClock()
                 }
                 if (engine?.isAvailable == true) {
                     effects.setFallbackRequired(false)
@@ -1667,6 +1645,7 @@ class MusicPlayer @Inject constructor(
                     // Same rule as USB: the crossfade standby never claims the endpoint.
                     internalDirect = if (handleAudioFocus) internalDirectOutput else null,
                 ).also { createdSink ->
+                    createdSink.hapticsAnalyzer = musicHapticsController.createAnalyzer().also(hapticTaps::add)
                     createdSink.onConfiguredFormat = { rateHz, _, _ ->
                         // The crossfade standby arms early and configures its
                         // sink while the OUTGOING track is still the live one.
