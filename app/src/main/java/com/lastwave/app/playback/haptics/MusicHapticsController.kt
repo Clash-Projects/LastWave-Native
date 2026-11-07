@@ -12,6 +12,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.media3.common.C
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -108,7 +109,7 @@ class MusicHapticsController @Inject constructor(
     }
 
     fun bindToPlayer(player: Player) {
-        currentAudioSessionId = player.audioSessionId
+        currentAudioSessionId = (player as? ExoPlayer)?.audioSessionId ?: C.AUDIO_SESSION_ID_UNSET
         isPlayerPlaying = player.isPlaying && player.volume > 0f
         reconcileEngineState()
     }

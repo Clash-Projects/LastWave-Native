@@ -25,6 +25,7 @@ import com.lastwave.app.playback.haptics.MusicHapticsEngineMode
 import com.lastwave.app.playback.haptics.MusicHapticsIntensity
 import com.lastwave.app.playback.haptics.MusicHapticsMode
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility

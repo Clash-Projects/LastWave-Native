@@ -165,7 +165,7 @@ internal object QualityGlyphs {
                 stroke = ink,
                 strokeLineWidth = 1.8f,
                 strokeLineJoin = StrokeJoin.Round,
-                strokeCap = StrokeCap.Round,
+                strokeLineCap = StrokeCap.Round,
             ) {
                 roundRect(7.5f, 3.5f, 16.5f, 20.5f, 2.2f)
             }
@@ -173,7 +173,7 @@ internal object QualityGlyphs {
                 fill = null,
                 stroke = ink,
                 strokeLineWidth = 1.6f,
-                strokeCap = StrokeCap.Round,
+                strokeLineCap = StrokeCap.Round,
             ) {
                 // Left haptic ripple
                 moveTo(3.5f, 8.5f)
