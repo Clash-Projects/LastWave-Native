@@ -8,25 +8,25 @@ class CacheStoragePolicyTest {
     @After
     fun restoreDefaultLimit() {
         CacheStoragePolicy.setLimitMb(CacheStoragePolicy.DEFAULT_LIMIT_MB)
+        CacheStoragePolicy.setArtworkCacheBytes(0L)
     }
 
     @Test
-    fun defaultImageAndStreamBudgetsAddUpToTheSelectedLimit() {
+    fun imageCacheCanUseTheWholePoolWhileAudioGetsTheRemainder() {
         val expectedBytes = CacheStoragePolicy.DEFAULT_LIMIT_MB * CacheStoragePolicy.MEGABYTE_BYTES
 
-        assertEquals(
-            expectedBytes,
-            CacheStoragePolicy.imageCacheBytes(lowRamDevice = false) + CacheStoragePolicy.STREAM_CACHE_BYTES,
-        )
+        assertEquals(expectedBytes, CacheStoragePolicy.imageCacheBytes(lowRamDevice = false))
+        assertEquals(expectedBytes, CacheStoragePolicy.streamCacheLimitBytes())
     }
 
     @Test
-    fun selectedLimitUpdatesTheCombinedBudget() {
+    fun artworkUsageReducesTheAudioShareOfThePool() {
         CacheStoragePolicy.setLimitMb(512)
+        CacheStoragePolicy.setArtworkCacheBytes(180L * CacheStoragePolicy.MEGABYTE_BYTES)
 
         assertEquals(
-            512L * CacheStoragePolicy.MEGABYTE_BYTES,
-            CacheStoragePolicy.imageCacheBytes(lowRamDevice = false) + CacheStoragePolicy.STREAM_CACHE_BYTES,
+            332L * CacheStoragePolicy.MEGABYTE_BYTES,
+            CacheStoragePolicy.streamCacheLimitBytes(),
         )
     }
 

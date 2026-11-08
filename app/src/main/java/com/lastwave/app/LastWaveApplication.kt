@@ -3,10 +3,15 @@ package com.lastwave.app
 import android.app.Application
 import android.app.ActivityManager
 import android.content.Context
+import coil.EventListener
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import coil.annotation.ExperimentalCoilApi
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import coil.request.ErrorResult
+import coil.request.ImageRequest
+import coil.request.SuccessResult
 import com.lastwave.app.data.local.CacheStoragePolicy
 import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.repository.ThemeRepository
@@ -38,6 +43,8 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
     @Inject lateinit var discordPresenceManager: dagger.Lazy<com.lastwave.app.presence.DiscordPresenceManager>
     @Inject lateinit var appLocaleManager: dagger.Lazy<com.lastwave.app.util.AppLocaleManager>
     @Inject lateinit var settingsPreferences: SettingsPreferences
+
+    @Volatile private var cacheTrackingImageLoader: ImageLoader? = null
 
     override fun attachBaseContext(base: Context) {
         // Pin the selected locale before any component (providers, services,
@@ -195,6 +202,7 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
         }
     }
 
+    @OptIn(ExperimentalCoilApi::class)
     override fun newImageLoader(): ImageLoader {
         val lowRamDevice = runCatching {
             (getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.isLowRamDevice == true
@@ -229,7 +237,7 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
             okhttp3.OkHttpClient.Builder().build()
         }
 
-        return ImageLoader.Builder(this)
+        val imageLoader = ImageLoader.Builder(this)
             .okHttpClient(imageClient)
             .memoryCache {
                 MemoryCache.Builder(this)
@@ -242,11 +250,39 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
                     .maxSizeBytes(imageCacheLimitBytes)
                     .build()
             }
+            .eventListenerFactory {
+                object : EventListener {
+                    private fun updateCacheSize() {
+                        refreshArtworkCacheUsage()
+                    }
+
+                    override fun onSuccess(request: ImageRequest, result: SuccessResult) {
+                        updateCacheSize()
+                    }
+
+                    override fun onError(request: ImageRequest, result: ErrorResult) {
+                        updateCacheSize()
+                    }
+
+                    override fun onCancel(request: ImageRequest) {
+                        updateCacheSize()
+                    }
+                }
+            }
             .respectCacheHeaders(false)
             .allowHardware(true)
             .crossfade(150)
             .build()
+        cacheTrackingImageLoader = imageLoader
+        refreshArtworkCacheUsage()
+        return imageLoader
+    }
 
+    @OptIn(ExperimentalCoilApi::class)
+    private fun refreshArtworkCacheUsage() {
+        CacheStoragePolicy.setArtworkCacheBytes(
+            runCatching { cacheTrackingImageLoader?.diskCache?.size ?: 0L }.getOrDefault(0L),
+        )
     }
 
     private companion object {

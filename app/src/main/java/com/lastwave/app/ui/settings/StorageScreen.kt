@@ -52,6 +52,8 @@ import com.lastwave.app.R
 import com.lastwave.app.data.local.CacheStoragePolicy
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import java.text.DateFormat
+import java.util.Date
 
 private val cacheLimitOptions = listOf(128, 192, 256, 320, 512, 768, 1024, 1536, 2048)
 
@@ -194,6 +196,22 @@ fun StorageScreen(
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                    Text(
+                        stringResource(
+                            R.string.storage_cache_artwork_usage,
+                            Formatter.formatShortFileSize(context, state.artworkCacheBytes),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        stringResource(
+                            R.string.storage_cache_audio_usage,
+                            Formatter.formatShortFileSize(context, state.streamedAudioCacheBytes),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     LinearProgressIndicator(
                         progress = {
                             (
@@ -234,6 +252,17 @@ fun StorageScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (state.lastCacheClearAtEpochMs > 0L) {
+                        Text(
+                            stringResource(
+                                R.string.storage_cache_last_cleared,
+                                DateFormat.getDateTimeInstance().format(Date(state.lastCacheClearAtEpochMs)),
+                                Formatter.formatShortFileSize(context, state.lastCacheClearFreedBytes),
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     FilledTonalButton(onClick = { showClearCacheDialog = true }, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Filled.DeleteSweep, contentDescription = null)
                         Text(stringResource(R.string.storage_clear_cache), modifier = Modifier.padding(start = 8.dp))

@@ -36,7 +36,6 @@ import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheWriter
-import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.database.StandaloneDatabaseProvider
 import android.media.MediaCodecList
@@ -75,6 +74,7 @@ import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.generate.youtubeVideoIdOrNull
 import com.lastwave.app.data.local.MiscSettings
 import com.lastwave.app.data.local.CacheStoragePolicy
+import com.lastwave.app.data.local.AdaptiveCacheEvictor
 import com.lastwave.app.data.local.EqualizerPreferences
 import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.local.db.DownloadedTrackEntity
@@ -823,11 +823,12 @@ class MusicPlayer @Inject constructor(
 
     private val mediaCache: Cache by lazy {
         val cacheDir = java.io.File(appContext.cacheDir, "media_stream_cache")
-        // Bounded playback buffer, not an offline library. LRU eviction keeps
-        // recent rewind/next-track data while preventing multi-GB growth.
-        val evictor = LeastRecentlyUsedCacheEvictor(MEDIA_STREAM_CACHE_BYTES)
+        // Streamed audio and artwork share the Storage screen's selected cap.
+        // The audio side receives whatever the artwork cache is not using.
+        val evictor = AdaptiveCacheEvictor(CacheStoragePolicy.streamCacheLimitBytes())
+        CacheStoragePolicy.setStreamLimitListener(evictor::setMaxBytes)
         val dbProvider = StandaloneDatabaseProvider(appContext)
-        SimpleCache(cacheDir, evictor, dbProvider)
+        SimpleCache(cacheDir, evictor, dbProvider).also(evictor::attach)
     }
 
     /** Size of the bounded streamed-audio cache. Call from an IO dispatcher. */
@@ -9809,7 +9810,6 @@ class MusicPlayer @Inject constructor(
         const val MAX_SILENT_RECOVERIES = 2
         const val PLAYBACK_RETRY_BASE_DELAY_MS = 350L
         const val PLAYBACK_RETRY_JITTER_MS = 250L
-        const val MEDIA_STREAM_CACHE_BYTES = CacheStoragePolicy.STREAM_CACHE_BYTES
         const val NEXT_TRACK_PREFETCH_BYTES = 1L * 1024 * 1024
         const val NEXT_TRACK_PREFETCH_DELAY_MS = 500L
         /** Delayed start keeps current-track caching off the startup path. */

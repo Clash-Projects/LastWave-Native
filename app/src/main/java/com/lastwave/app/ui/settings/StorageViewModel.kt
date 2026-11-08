@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import coil.Coil
 import coil.ImageLoaderFactory
+import coil.annotation.ExperimentalCoilApi
 import coil.imageLoader
 import com.lastwave.app.data.download.TrackDownloadManager
 import com.lastwave.app.data.local.CacheStoragePolicy
@@ -31,11 +32,14 @@ data class StorageScreenState(
     val downloadBytes: Long = 0L,
     val downloadCount: Int = 0,
     val cacheLimitMb: Int = CacheStoragePolicy.DEFAULT_LIMIT_MB,
+    val lastCacheClearAtEpochMs: Long = 0L,
+    val lastCacheClearFreedBytes: Long = 0L,
 ) {
     val cacheBytes: Long get() = artworkCacheBytes + streamedAudioCacheBytes
 }
 
 @HiltViewModel
+@OptIn(ExperimentalCoilApi::class)
 class StorageViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val musicPlayer: MusicPlayer,
@@ -55,20 +59,25 @@ class StorageViewModel @Inject constructor(
         downloadedTrackDao.totalBytes(),
         downloadedTrackDao.count(),
         settingsPreferences.storageCacheLimitMb,
-    ) { usage, downloadBytes, downloadCount, cacheLimitMb ->
+        settingsPreferences.storageCacheClearHistory,
+    ) { usage, downloadBytes, downloadCount, cacheLimitMb, clearHistory ->
         StorageScreenState(
             artworkCacheBytes = usage.artworkBytes,
             streamedAudioCacheBytes = usage.audioBytes,
             downloadBytes = downloadBytes ?: 0L,
             downloadCount = downloadCount,
             cacheLimitMb = cacheLimitMb,
+            lastCacheClearAtEpochMs = clearHistory.clearedAtEpochMs,
+            lastCacheClearFreedBytes = clearHistory.freedBytes,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StorageScreenState())
 
     fun refreshCacheUsage() {
         viewModelScope.launch(Dispatchers.IO) {
+            val artworkBytes = runCatching { context.imageLoader.diskCache?.size ?: 0L }.getOrDefault(0L)
+            CacheStoragePolicy.setArtworkCacheBytes(artworkBytes)
             cacheUsage.value = CacheUsage(
-                artworkBytes = runCatching { context.imageLoader.diskCache?.size ?: 0L }.getOrDefault(0L),
+                artworkBytes = artworkBytes,
                 audioBytes = musicPlayer.playbackCacheSpaceBytes(),
             )
         }
@@ -78,7 +87,6 @@ class StorageViewModel @Inject constructor(
         viewModelScope.launch {
             val safeLimit = limitMb.coerceIn(CacheStoragePolicy.MIN_LIMIT_MB, CacheStoragePolicy.MAX_LIMIT_MB)
             settingsPreferences.setStorageCacheLimitMb(safeLimit)
-            CacheStoragePolicy.setLimitMb(safeLimit)
             withContext(Dispatchers.IO) {
                 val application = context.applicationContext as? ImageLoaderFactory
                 if (application != null) {
@@ -96,8 +104,18 @@ class StorageViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
+                    val imageCache = context.imageLoader.diskCache
+                    val beforeBytes = (runCatching { imageCache?.size ?: 0L }.getOrDefault(0L) +
+                        runCatching { musicPlayer.playbackCacheSpaceBytes() }.getOrDefault(0L))
                     musicPlayer.clearPlaybackCache()
-                    context.imageLoader.diskCache?.clear()
+                    imageCache?.clear()
+                    val artworkBytes = runCatching { imageCache?.size ?: 0L }.getOrDefault(0L)
+                    CacheStoragePolicy.setArtworkCacheBytes(artworkBytes)
+                    val afterBytes = artworkBytes + runCatching { musicPlayer.playbackCacheSpaceBytes() }.getOrDefault(0L)
+                    settingsPreferences.recordStorageCacheClear(
+                        clearedAtEpochMs = System.currentTimeMillis(),
+                        freedBytes = (beforeBytes - afterBytes).coerceAtLeast(0L),
+                    )
                 }
             }.onSuccess {
                 refreshCacheUsage()
