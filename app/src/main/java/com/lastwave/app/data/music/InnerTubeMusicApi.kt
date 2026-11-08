@@ -242,10 +242,10 @@ class InnerTubeMusicApi @Inject constructor(
     @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: Context,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
-    private val connectionPool = okhttp3.ConnectionPool(10, 5, TimeUnit.MINUTES)
+    // Keep YouTube API/extraction/media on the same OkHttp transport identity.
+    // A separate pool or DNS policy can select a different route on VPNs and
+    // make the returned googlevideo URL fail when Media3 opens it.
     private val innerTubeClient: OkHttpClient = http.newBuilder()
-        .dns(com.lastwave.app.data.network.Ipv4FirstDnsResolver(http, appContext))
-        .connectionPool(connectionPool)
         .retryOnConnectionFailure(true)
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
@@ -4540,7 +4540,7 @@ class InnerTubeMusicApi @Inject constructor(
             } catch (e: Exception) {
                 lastException = e
                 if (e is java.net.SocketTimeoutException || e is IOException) {
-                    connectionPool.evictAll()
+                    innerTubeClient.connectionPool.evictAll()
                 }
                 if (attempt >= maxAttempts || !e.isTransientRequestFailure()) break
                 val exponential = REQUEST_RETRY_BASE_DELAY_MS * (1L shl (attempt - 1).coerceAtMost(3))
