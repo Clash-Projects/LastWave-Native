@@ -67,6 +67,7 @@
     <string name="settings_language_applied">Language applied</string>
 
     <string name="settings_section_youtube">YouTube Music</string>
+    <string name="playback_vpn_youtube_login_required">VPN playback requires a connected YouTube Music account. Sign in under Settings, then try again.</string>
     <string name="settings_connect_yt">Connect YouTube Music</string>
     <string name="settings_connect_yt_sub">Sign in to see and sync every playlist</string>
     <string name="settings_cookie_login">YouTube Music Cookie Login</string>

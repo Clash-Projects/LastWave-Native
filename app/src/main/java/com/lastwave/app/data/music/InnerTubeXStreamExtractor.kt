@@ -266,6 +266,12 @@ class InnerTubeXStreamExtractor @Inject constructor(
     }
 
     private fun createKtorHttpClient(): Any {
+        runCatching { createOkHttpClient() }
+            .onSuccess {
+                Log.i(TAG, "Ktor OkHttp engine ready for cipher context")
+                return it
+            }
+            .onFailure { Log.w(TAG, "Ktor OkHttp engine unavailable (${it.javaClass.simpleName})") }
         runCatching { createCioHttpClient() }
             .onSuccess { return it }
             .onFailure { Log.w(TAG, "CIO client with system trust unavailable (${it.javaClass.simpleName})") }
@@ -285,6 +291,18 @@ class InnerTubeXStreamExtractor @Inject constructor(
             }
         }
         error("Ktor JVM HttpClient factory was not found")
+    }
+
+    /** Use the same TLS implementation as the app's successful OkHttp API calls. */
+    private fun createOkHttpClient(): Any {
+        val engine = Class.forName("io.ktor.client.engine.okhttp.OkHttp")
+            .getField("INSTANCE")
+            .get(null)
+        val factory = Class.forName("io.ktor.client.HttpClientKt").methods.first {
+            it.name == "HttpClient" && it.parameterCount == 2 &&
+                it.parameterTypes[0].name == "io.ktor.client.engine.HttpClientEngineFactory"
+        }
+        return factory.invoke(null, engine, { _: Any? -> Unit })!!
     }
 
     /**

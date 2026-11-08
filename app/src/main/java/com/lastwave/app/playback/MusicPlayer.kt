@@ -66,6 +66,7 @@ import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ExtractorsFactory
 import androidx.media3.extractor.mp3.Mp3Extractor
 import androidx.media3.extractor.ts.AdtsExtractor
+import com.lastwave.app.R
 import com.lastwave.app.data.download.Fmp4IndexBuilder
 import com.lastwave.app.data.plugin.SegmentedMpdBuilder
 import coil.imageLoader
@@ -84,11 +85,13 @@ import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YOUTUBE_WEB_USER_AGENT
 import com.lastwave.app.data.lossless.LosslessAudioStream
 import com.lastwave.app.data.lossless.LosslessMusicApi
+import com.lastwave.app.data.network.NetworkMonitor
 import com.lastwave.app.data.playlist.PlaylistRepository
 import com.lastwave.app.data.plugin.ModuleDrmFactory
 import com.lastwave.app.data.plugin.SegmentedDashBridge
 import com.lastwave.app.data.plugin.stableCacheKey
 import com.lastwave.app.data.recommend.RecommendationRepository
+import com.lastwave.app.data.ytmusic.YtMusicAuthManager
 import com.lastwave.app.playback.resolve.MetadataLog
 import com.lastwave.app.playback.resolve.PlaybackStartupLog
 import com.lastwave.app.playback.resolve.StreamCache
@@ -319,7 +322,11 @@ class MusicPlayer @Inject constructor(
     private val jamRepository: dagger.Lazy<com.lastwave.app.data.jam.JamRepository>,
     private val autoMixCoordinator: dagger.Lazy<com.lastwave.app.playback.automix.engine.DualDeckTransportCoordinator>,
     private val musicHapticsController: com.lastwave.app.playback.haptics.MusicHapticsController,
+    private val networkMonitor: NetworkMonitor,
+    private val ytMusicAuthManager: YtMusicAuthManager,
 ) {
+
+    private class VpnYoutubeLoginRequiredException(message: String) : java.io.IOException(message)
 
     val hapticsController: com.lastwave.app.playback.haptics.MusicHapticsController
         get() = musicHapticsController
@@ -2881,6 +2888,20 @@ class MusicPlayer @Inject constructor(
             } catch (error: Throwable) {
                 currentCoroutineContext().ensureActive()
                 if (generation != playRequestGeneration.get()) return@launch
+                if (error is VpnYoutubeLoginRequiredException) {
+                    withContext(Dispatchers.Main.immediate) {
+                        if (generation == playRequestGeneration.get()) {
+                            _state.update {
+                                it.copy(
+                                    isPlaying = false,
+                                    isBuffering = false,
+                                    error = error.message,
+                                )
+                            }
+                        }
+                    }
+                    return@launch
+                }
                 logResolutionFailure(selectedTrack, "resolve-before-prepare", 0, error)
                 if (selectedTrack.mediaIdKey() !in losslessBypassMediaIds) {
                     losslessBypassMediaIds += selectedTrack.mediaIdKey()
@@ -7599,6 +7620,14 @@ class MusicPlayer @Inject constructor(
         PlaybackStartupLog.cacheLookupStart()
         val cached = identity?.let { streamResolver.cache.get(it) }?.takeIf { it.matches(identity) }
         PlaybackStartupLog.cacheLookupEnd(hit = cached != null)
+        vpnYoutubeLoginRequiredExceptionOrNull()?.let { loginRequired ->
+            if (allowLocalDownloads) {
+                runCatching { resolveLocalDownloadedAudioStream(track, deepScan = true) }
+                    .getOrNull()
+                    ?.let { return it }
+            }
+            throw loginRequired
+        }
         if (cached != null && identity != null) {
             if (claimPlayback) {
                 streamResolver.playback.begin(identity)
@@ -7894,6 +7923,7 @@ class MusicPlayer @Inject constructor(
         videoId: String?,
         claimPlayback: Boolean = true,
     ): ResolvedStream {
+        vpnYoutubeLoginRequiredExceptionOrNull()?.let { throw it }
         val directId = videoId?.takeIf { it.isNotBlank() } ?: track.videoId?.takeIf { it.isNotBlank() }
         if (directId != null) {
             val identity = TrackIdentity(
@@ -8005,6 +8035,14 @@ class MusicPlayer @Inject constructor(
             requestedIdOverride = matchId,
         )
         return resolved.copy(rematchedFromVideoId = deadVideoId)
+    }
+
+    private suspend fun vpnYoutubeLoginRequiredExceptionOrNull(): VpnYoutubeLoginRequiredException? {
+        if (!networkMonitor.isOnVpn()) return null
+        if (ytMusicAuthManager.awaitLoadedConnection().isConnected) return null
+        return VpnYoutubeLoginRequiredException(
+            appContext.getString(R.string.playback_vpn_youtube_login_required),
+        )
     }
 
     private fun acceptResolvedIdentity(
@@ -8865,6 +8903,7 @@ class MusicPlayer @Inject constructor(
                     ) {
                         throw error
                     }
+                    if (error is VpnYoutubeLoginRequiredException) throw error
                     val failure = if (error is kotlinx.coroutines.TimeoutCancellationException) {
                         java.io.IOException("Timed out resolving audio", error)
                     } else {

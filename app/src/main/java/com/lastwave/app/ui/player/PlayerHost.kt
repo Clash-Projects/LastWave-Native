@@ -3771,7 +3771,7 @@ private fun FullPlayer(
                                     message,
                                     style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
