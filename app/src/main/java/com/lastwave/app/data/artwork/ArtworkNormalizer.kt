@@ -71,6 +71,38 @@ object ArtworkNormalizer {
         return result
     }
 
+    /**
+     * Return a lower-data artwork URL when the source exposes a smaller variant.
+     * On cellular, try a smaller YouTube/Google thumbnail first, then the original
+     * embedded thumbnail supplied by the track metadata.
+     */
+    fun mobileDataArtwork(primaryUrl: String?, embeddedUrl: String?): String? {
+        downscaleYoutubeArtwork(primaryUrl)?.let { return it }
+        downscaleYoutubeArtwork(embeddedUrl)?.let { return it }
+        return embeddedUrl?.takeIf {
+            isRealImage(it) && it != primaryUrl && !it.startsWith("file://")
+        }
+    }
+
+    private fun downscaleYoutubeArtwork(url: String?): String? {
+        if (url.isNullOrBlank() || !isRealImage(url)) return null
+        if (url.contains("googleusercontent.com") || url.contains("ggpht.com")) {
+            return if (YT_SIZE_REGEX.containsMatchIn(url)) {
+                url.replace(YT_SIZE_REGEX, "=w320-h320-l90-rj")
+            } else if ('=' in url) {
+                url.substringBeforeLast('=') + "=w320-h320-l90-rj"
+            } else {
+                "$url=w320-h320-l90-rj"
+            }
+        }
+        if (url.contains("i.ytimg.com/vi/") || url.contains("img.youtube.com/vi/")) {
+            return url.replace("/maxresdefault.jpg", "/hqdefault.jpg")
+                .replace("/sddefault.jpg", "/hqdefault.jpg")
+                .takeIf { it != url }
+        }
+        return null
+    }
+
     private val LASTFM_SIZE_SEGMENT = Regex("""/i/u/\d+x\d+/""")
 
     /** Last.fm serves 300x300 by default; the same image exists at 770px. */

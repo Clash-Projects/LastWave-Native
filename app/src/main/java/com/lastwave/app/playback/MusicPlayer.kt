@@ -74,6 +74,7 @@ import com.lastwave.app.data.discover.DiscoverRepository
 import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.generate.youtubeVideoIdOrNull
 import com.lastwave.app.data.local.MiscSettings
+import com.lastwave.app.data.local.CacheStoragePolicy
 import com.lastwave.app.data.local.EqualizerPreferences
 import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.local.db.DownloadedTrackEntity
@@ -827,6 +828,17 @@ class MusicPlayer @Inject constructor(
         val evictor = LeastRecentlyUsedCacheEvictor(MEDIA_STREAM_CACHE_BYTES)
         val dbProvider = StandaloneDatabaseProvider(appContext)
         SimpleCache(cacheDir, evictor, dbProvider)
+    }
+
+    /** Size of the bounded streamed-audio cache. Call from an IO dispatcher. */
+    fun playbackCacheSpaceBytes(): Long = runCatching { mediaCache.cacheSpace }.getOrDefault(0L)
+
+    /** Clear streamed bytes and resolved stream URLs without touching offline downloads. */
+    fun clearPlaybackCache() {
+        runCatching {
+            mediaCache.keys.toList().forEach { key -> mediaCache.removeResource(key) }
+        }
+        streamResolver.cache.clear()
     }
 
     private val httpUpstreamFactory: OkHttpDataSource.Factory by lazy {
@@ -9797,7 +9809,7 @@ class MusicPlayer @Inject constructor(
         const val MAX_SILENT_RECOVERIES = 2
         const val PLAYBACK_RETRY_BASE_DELAY_MS = 350L
         const val PLAYBACK_RETRY_JITTER_MS = 250L
-        const val MEDIA_STREAM_CACHE_BYTES = 64L * 1024 * 1024
+        const val MEDIA_STREAM_CACHE_BYTES = CacheStoragePolicy.STREAM_CACHE_BYTES
         const val NEXT_TRACK_PREFETCH_BYTES = 1L * 1024 * 1024
         const val NEXT_TRACK_PREFETCH_DELAY_MS = 500L
         /** Delayed start keeps current-track caching off the startup path. */

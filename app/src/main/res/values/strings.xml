@@ -204,11 +204,35 @@
     <string name="settings_now_playing_sub">Show what\'s playing on your profile instantly</string>
 
     <string name="settings_section_data">Data Management</string>
+    <string name="settings_section_storage">Storage</string>
+    <string name="settings_storage_title">Storage</string>
+    <string name="settings_storage_sub">View cached media and manage offline music</string>
+    <string name="storage_back">Back</string>
     <string name="settings_excluded_songs">Excluded Songs</string>
     <string name="settings_clear_all">Clear All Saved Data</string>
     <string name="settings_clear_all_sub">Wipes all local data</string>
 
     <string name="settings_section_backup">Backup &amp; Restore</string>
+    <string name="storage_cached_media">Artwork &amp; streamed audio cache</string>
+    <string name="storage_downloaded_music">Downloaded music</string>
+    <string name="storage_cache_usage">%1$s used of %2$s</string>
+    <string name="storage_cache_limit">Cache size limit</string>
+    <string name="storage_cache_limit_summary">Maximum combined cache size: %1$s. Oldest cached items are removed as needed; downloads are excluded.</string>
+    <string name="storage_quality_note">Artwork uses smaller thumbnails on mobile data. If a high-resolution cover is already cached, LastWave reuses it without downloading it again.</string>
+    <string name="storage_clear_cache">Clear cache</string>
+    <string name="storage_clear_cache_title">Clear cached artwork and audio?</string>
+    <string name="storage_clear_cache_message">This removes cached artwork and streamed audio. Downloaded music will stay on your device.</string>
+    <string name="storage_download_usage">%1$d songs • %2$s</string>
+    <string name="storage_delete_downloads">Delete downloaded music</string>
+    <string name="storage_delete_downloads_title">Delete all downloaded music?</string>
+    <string name="storage_delete_downloads_message">Permanently delete all %1$d downloaded songs (%2$s)? This cannot be undone.</string>
+    <string name="storage_manage_downloads">Manage downloads</string>
+    <string name="storage_limit_warning_title">Reduce cache limit?</string>
+    <string name="storage_limit_warning">Some older cached artwork and audio will be removed to fit the new limit. Downloaded music will not be affected.</string>
+    <string name="storage_limit_confirm">Apply limit</string>
+    <string name="storage_cache_cleared">Cache cleared</string>
+    <string name="storage_downloads_deleted">Downloaded music deleted</string>
+    <string name="storage_operation_failed">Could not complete the storage action</string>
     <string name="settings_backup">Backup</string>
     <string name="settings_backup_sub">Save all your data to a file</string>
     <string name="settings_restore">Restore</string>

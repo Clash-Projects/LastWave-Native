@@ -421,6 +421,7 @@ class SettingsPreferences @Inject constructor(
         val DOWNLOAD_FOLDER = stringPreferencesKey("lw_download_folder")
         val DOWNLOAD_TREE_URI = stringPreferencesKey("lw_download_tree_uri")
         val DOWNLOAD_STRUCTURE = stringPreferencesKey("lw_download_structure")
+        val STORAGE_CACHE_LIMIT_MB = intPreferencesKey("lw_storage_cache_limit_mb")
         val SYSTEM_EFFECTS_MODE = booleanPreferencesKey("lw_system_effects_mode")
         val BUTTON_NOW_PLAYING_ENABLED = booleanPreferencesKey("lw_button_now_playing_enabled")
         val MUSIC_VIDEO_ENABLED = booleanPreferencesKey("lw_music_video_enabled")
@@ -556,6 +557,19 @@ class SettingsPreferences @Inject constructor(
                 musicHapticsPauseOnBatterySaver = p.readSafely(Keys.MUSIC_HAPTICS_BATTERY_SAVER) ?: true,
             )
         }
+
+    val storageCacheLimitMb: Flow<Int> = dataStore.data
+        .recoverPreferences("SettingsPreferences")
+        .map { preferences ->
+            (preferences[Keys.STORAGE_CACHE_LIMIT_MB] ?: CacheStoragePolicy.DEFAULT_LIMIT_MB)
+                .coerceIn(CacheStoragePolicy.MIN_LIMIT_MB, CacheStoragePolicy.MAX_LIMIT_MB)
+        }
+
+    suspend fun setStorageCacheLimitMb(limitMb: Int) {
+        val safeLimit = limitMb.coerceIn(CacheStoragePolicy.MIN_LIMIT_MB, CacheStoragePolicy.MAX_LIMIT_MB)
+        dataStore.edit { preferences -> preferences[Keys.STORAGE_CACHE_LIMIT_MB] = safeLimit }
+        CacheStoragePolicy.setLimitMb(safeLimit)
+    }
 
     val addonUrl: StateFlow<String?> = settings
         .map { it.addonUrl.takeIf { s -> s.isNotBlank() } }

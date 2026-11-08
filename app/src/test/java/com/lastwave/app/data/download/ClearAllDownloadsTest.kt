@@ -2,6 +2,7 @@ package com.lastwave.app.data.download
 
 import android.content.ContentResolver
 import android.content.Context
+import android.database.Cursor
 import android.net.Uri
 import com.google.common.truth.Truth.assertThat
 import com.lastwave.app.data.local.MiscSettings
@@ -74,6 +75,11 @@ class ClearAllDownloadsTest {
                 uri.contains("missing") -> throw FileNotFoundException(uri)
                 else -> 1
             }
+        }
+        val presentCursor = mockk<Cursor>(relaxed = true)
+        every { presentCursor.count } returns 1
+        every { resolver.query(any(), any(), any(), any(), any()) } answers {
+            if (denyContentUris) presentCursor else null
         }
         every { resolver.openInputStream(any()) } throws FileNotFoundException("gone")
         coEvery { dao.getAllList() } coAnswers { stored.toList() }

@@ -447,6 +447,7 @@ fun LastWaveNavHost(
                         }
                     },
                     onOpenDownloads = { navController.navigate(Screen.Downloads.route) },
+                    onOpenStorage = { navController.navigate(Screen.Storage.route) },
                     onOpenModules = { navController.navigate(Screen.ProviderModules.route) },
                     onOpenHomeSections = { navController.navigate(Screen.HomeSections.route) },
                     onOpenExcludedSongs = { navController.navigate(Screen.ExcludedSongs.route) },
@@ -539,6 +540,15 @@ fun LastWaveNavHost(
         composable(Screen.Downloads.route) { backStackEntry ->
             PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 com.lastwave.app.ui.settings.DownloadsScreen(onBack = { navController.safePopBackStack(backStackEntry) })
+            }
+        }
+
+        composable(Screen.Storage.route) { backStackEntry ->
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
+                com.lastwave.app.ui.settings.StorageScreen(
+                    onBack = { navController.safePopBackStack(backStackEntry) },
+                    onOpenDownloads = { navController.navigate(Screen.Downloads.route) },
+                )
             }
         }
 

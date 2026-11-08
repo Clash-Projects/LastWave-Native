@@ -68,7 +68,7 @@ class ChunkedRangeDataSourceTest {
     @Test fun failedChunkMidStreamIsAnErrorNotTheEndOfTheSong() {
         // Second chunk request fails (expired URL / dropped connection): the
         // song must not be reported as finished, or playback skips ahead.
-        val upstream = MultiChunkUpstream(totalSize = 10, failOpenAt = 4L)
+        val upstream = MultiChunkUpstream(totalBytes = 10, failOpenAt = 4L)
         val source = ChunkedRangeDataSource(upstream, chunkSize = 4)
         val spec = DataSpec.Builder().setUri("https://media.googlevideo.com/videoplayback").build()
         source.open(spec)
@@ -84,7 +84,7 @@ class ChunkedRangeDataSourceTest {
     }
 
     @Test fun stopsAtContentRangeTotalWithoutOverRequesting() {
-        val upstream = MultiChunkUpstream(totalSize = 10, sendContentRange = true)
+        val upstream = MultiChunkUpstream(totalBytes = 10, sendContentRange = true)
         val source = ChunkedRangeDataSource(upstream, chunkSize = 4)
         val spec = DataSpec.Builder().setUri("https://media.googlevideo.com/videoplayback").build()
         assertEquals(10L, source.open(spec))

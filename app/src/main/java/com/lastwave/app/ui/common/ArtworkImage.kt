@@ -20,12 +20,15 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.imageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.transform.Transformation
 import com.lastwave.app.data.artwork.ArtworkNormalizer
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Faithful port of home.js's art-loading behavior for a single row:
@@ -61,6 +64,7 @@ fun ArtworkImage(
     val resolvedUrl by remember(key) {
         artworkViewModel.resolved.map { it[key] }.distinctUntilChanged()
     }.collectAsStateWithLifecycle(initialValue = artworkViewModel.resolved.value[key])
+    val isCellular by artworkViewModel.isCellular.collectAsStateWithLifecycle()
     var resolvedFailed by remember(key, resolvedUrl) { mutableStateOf(false) }
     var embeddedFailed by remember(name, artist, embeddedUrl) { mutableStateOf(false) }
     var refreshRequested by remember(key) { mutableStateOf(false) }
@@ -95,12 +99,40 @@ fun ArtworkImage(
         null
     }
 
+    val mobileDataUrl = remember(displayUrl, embeddedUrl, localCover) {
+        if (localCover) null else ArtworkNormalizer.mobileDataArtwork(displayUrl, embeddedUrl)
+    }
+    var highResCacheHit by remember(displayUrl, mobileDataUrl, isCellular, decodeSizePx, transformations) {
+        mutableStateOf<Boolean?>(null)
+    }
+    val useMobileVariant = isCellular && !localCover &&
+        !displayUrl.isNullOrBlank() && !mobileDataUrl.isNullOrBlank() && mobileDataUrl != displayUrl
+    LaunchedEffect(displayUrl, mobileDataUrl, isCellular, localCover, context) {
+        val cachedUrl = displayUrl
+        if (!useMobileVariant || cachedUrl.isNullOrBlank()) {
+            highResCacheHit = null
+            return@LaunchedEffect
+        }
+        val snapshot = withContext(Dispatchers.IO) {
+            context.imageLoader.diskCache?.openSnapshot(cachedUrl)
+        }
+        highResCacheHit = snapshot != null
+        snapshot?.close()
+    }
+    val requestUrl = when {
+        useMobileVariant && highResCacheHit == null -> null
+        useMobileVariant && highResCacheHit == true -> displayUrl
+        useMobileVariant -> mobileDataUrl
+        else -> displayUrl
+    }
+
     val retainedPainter = lastSuccessfulPainter
     Box(modifier = modifier, contentAlignment = alignment) {
-        if (!displayUrl.isNullOrBlank()) {
-            val model = remember(displayUrl, decodeSizePx, transformations, context) {
+        if (!requestUrl.isNullOrBlank()) {
+            val model = remember(requestUrl, decodeSizePx, transformations, context) {
                 val builder = ImageRequest.Builder(context)
-                    .data(displayUrl)
+                    .data(requestUrl)
+                    .diskCacheKey(requestUrl)
                     .crossfade(300)
                 if (decodeSizePx != null) builder.size(decodeSizePx)
                 if (transformations.isNotEmpty()) builder.transformations(transformations)
@@ -113,12 +145,14 @@ fun ArtworkImage(
                 alignment = alignment,
                 placeholder = retainedPainter,
                 error = retainedPainter,
-                onSuccess = { lastSuccessfulPainter = it.painter },
+                onSuccess = {
+                    lastSuccessfulPainter = it.painter
+                },
                 modifier = Modifier.fillMaxSize(),
                 onError = {
                     if (localCover) {
                         embeddedFailed = true
-                    } else if (useHighRes) {
+                    } else if (requestUrl == displayUrl && useHighRes) {
                         resolvedFailed = true
                     } else {
                         embeddedFailed = true

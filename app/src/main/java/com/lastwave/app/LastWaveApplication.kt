@@ -7,6 +7,8 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.lastwave.app.data.local.CacheStoragePolicy
+import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.repository.ThemeRepository
 import com.lastwave.app.widget.WidgetUpdater
 import dagger.hilt.android.HiltAndroidApp
@@ -17,6 +19,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -33,6 +37,7 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
     @Inject lateinit var trackDownloadManager: dagger.Lazy<com.lastwave.app.data.download.TrackDownloadManager>
     @Inject lateinit var discordPresenceManager: dagger.Lazy<com.lastwave.app.presence.DiscordPresenceManager>
     @Inject lateinit var appLocaleManager: dagger.Lazy<com.lastwave.app.util.AppLocaleManager>
+    @Inject lateinit var settingsPreferences: SettingsPreferences
 
     override fun attachBaseContext(base: Context) {
         // Pin the selected locale before any component (providers, services,
@@ -194,6 +199,15 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
         val lowRamDevice = runCatching {
             (getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.isLowRamDevice == true
         }.getOrDefault(false)
+        val cacheLimitMb = runCatching {
+            if (::settingsPreferences.isInitialized) {
+                runBlocking(Dispatchers.IO) { settingsPreferences.storageCacheLimitMb.first() }
+            } else {
+                CacheStoragePolicy.DEFAULT_LIMIT_MB
+            }
+        }.getOrDefault(CacheStoragePolicy.DEFAULT_LIMIT_MB)
+        CacheStoragePolicy.setLimitMb(cacheLimitMb)
+        val imageCacheLimitBytes = CacheStoragePolicy.imageCacheBytes(lowRamDevice)
         val imageClient = try {
             okHttpClient.get().newBuilder()
             .dispatcher(okhttp3.Dispatcher().apply {
@@ -225,9 +239,7 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache"))
-                    // Enough for hundreds of compressed covers without
-                    // allowing artwork to dominate the app's storage usage.
-                    .maxSizeBytes(if (lowRamDevice) LOW_RAM_IMAGE_DISK_CACHE_BYTES else IMAGE_DISK_CACHE_BYTES)
+                    .maxSizeBytes(imageCacheLimitBytes)
                     .build()
             }
             .respectCacheHeaders(false)
@@ -238,10 +250,6 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
     }
 
     private companion object {
-        // High-res covers are 150-400 KB each: 32 MB held ~100 of them, so
-        // they kept re-downloading and the low-res placeholder showed meanwhile.
-        const val IMAGE_DISK_CACHE_BYTES = 256L * 1024 * 1024
-        const val LOW_RAM_IMAGE_DISK_CACHE_BYTES = 96L * 1024 * 1024
         const val ORPHAN_TEMP_MAX_AGE_MS = 6L * 60 * 60 * 1000
         const val OPTIONAL_STARTUP_DELAY_MS = 2_500L
     }
