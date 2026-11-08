@@ -29,7 +29,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -47,6 +46,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lastwave.app.R
 import com.lastwave.app.data.plugin.InstalledProviderModule
+import com.lastwave.app.ui.player.MiniPlayerAwareSnackbarHost
 
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Edit
@@ -147,7 +147,7 @@ fun ModulesScreen(
                 },
             )
         },
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = { MiniPlayerAwareSnackbarHost(snackbar) },
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),

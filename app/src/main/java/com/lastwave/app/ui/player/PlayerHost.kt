@@ -352,6 +352,7 @@ val LocalAddToPlaylist = staticCompositionLocalOf<(PlayableTrack) -> Unit> {
  * leaving a large empty band at the end of short lists.
  */
 val LocalMiniPlayerScrollClearance = staticCompositionLocalOf { 0.dp }
+val LocalMiniPlayerSnackbarClearance = staticCompositionLocalOf { 0.dp }
 
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
@@ -1022,6 +1023,16 @@ fun PlayerHost(
         LocalMusicPlayer provides viewModel.player,
         LocalAddToPlaylist provides requestAddToPlaylist,
         LocalMiniPlayerScrollClearance provides if (state.current != null && !settings.buttonNowPlayingEnabled && !hideMiniPlayer) 98.dp else 0.dp,
+        LocalMiniPlayerSnackbarClearance provides if (miniPlayerVisible) {
+            // Keep snackbars clear of the tray: its bottom lift plus its ~80dp card.
+            (if (hasBottomNavigation) {
+                if (LocalMd3NavBar.current) 84.dp else 80.dp
+            } else {
+                14.dp
+            }) + 80.dp
+        } else {
+            0.dp
+        },
         LocalBottomNavSlot provides bottomNavSlot,
         LocalLiquidGlassBackdrop provides (if (miniGlass) miniBackdrop else null),
     ) {

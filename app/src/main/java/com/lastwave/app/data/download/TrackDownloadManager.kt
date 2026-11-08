@@ -3193,6 +3193,17 @@ class TrackDownloadManager @Inject constructor(
         object Failed : DeleteDownloadResult
     }
 
+    sealed interface ClearAllDownloadsResult {
+        object Cleared : ClearAllDownloadsResult
+
+        data class NeedsUserConsent(
+            val request: android.content.IntentSender,
+            val tracks: List<DownloadedTrackEntity>,
+        ) : ClearAllDownloadsResult
+
+        object Failed : ClearAllDownloadsResult
+    }
+
     suspend fun deleteDownloadedTrack(track: DownloadedTrackEntity): DeleteDownloadResult = withContext(Dispatchers.IO) {
         // Only remove the row after the recorded media has been deleted. This
         // keeps failed deletes retryable and avoids sync re-importing the song.
@@ -3226,26 +3237,32 @@ class TrackDownloadManager @Inject constructor(
      * Android 10 and lower have no such prompt and the delete just fails.
      */
     private fun consentDeleteRequest(track: DownloadedTrackEntity): android.content.IntentSender? {
+        return consentDeleteRequest(listOf(track))
+    }
+
+    private fun consentDeleteRequest(tracks: List<DownloadedTrackEntity>): android.content.IntentSender? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
-        val uris = listOfNotNull(track.mediaStoreUri, track.filePath)
-            .filter { it.isNotBlank() }
-            .distinct()
-            .mapNotNull { ref ->
-                if (ref.startsWith("content://")) {
-                    Uri.parse(ref).takeIf { it.authority == MediaStore.AUTHORITY }
-                } else {
-                    ref.takeIf { File(it).exists() }?.let(::mediaStoreUriForPath)
+        val uris = tracks.flatMap { track ->
+            listOfNotNull(track.mediaStoreUri, track.filePath)
+                .filter { it.isNotBlank() }
+                .distinct()
+                .mapNotNull { ref ->
+                    if (ref.startsWith("content://")) {
+                        Uri.parse(ref).takeIf { it.authority == MediaStore.AUTHORITY }
+                    } else {
+                        ref.takeIf { File(it).exists() }?.let(::mediaStoreUriForPath)
+                    }
                 }
-            }
-            .distinct()
-            .filter { contentUriPresence(it) != false }
+                .distinct()
+                .filter { contentUriPresence(it) != false }
+        }.distinct()
         if (uris.isEmpty()) return null
         return try {
             MediaStore.createDeleteRequest(context.contentResolver, uris).intentSender
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
-            android.util.Log.w("TrackDownloadManager", "Couldn't build delete request for ${track.title}", error)
+            android.util.Log.w("TrackDownloadManager", "Couldn't build bulk download delete request", error)
             null
         }
     }
@@ -3293,6 +3310,56 @@ class TrackDownloadManager @Inject constructor(
      * New [downloadTrack] calls are refused until the guard is released.
      */
     suspend fun clearAllDownloads() {
+        val failed = clearAllDownloadsAttempt()
+        if (failed.isNotEmpty()) {
+            throw IOException("Failed to delete ${failed.size} downloaded track(s)")
+        }
+    }
+
+    /**
+     * Clears tracked downloads and, when Android blocks deleting legacy media,
+     * returns one system confirmation request for the remaining MediaStore rows.
+     */
+    suspend fun clearAllDownloadsWithConsent(): ClearAllDownloadsResult {
+        val failed = clearAllDownloadsAttempt()
+        if (failed.isEmpty()) return ClearAllDownloadsResult.Cleared
+        val request = consentDeleteRequest(failed)
+            ?: return ClearAllDownloadsResult.Failed
+        return ClearAllDownloadsResult.NeedsUserConsent(request, failed)
+    }
+
+    /** Finish deleting only the rows included in the user's system confirmation. */
+    suspend fun finishConsentedClearAllDownloads(tracks: List<DownloadedTrackEntity>): Boolean =
+        withWipingDownloads {
+            var allDeleted = true
+            for (track in tracks) {
+                currentCoroutineContext().ensureActive()
+                if (deleteRecordedDownload(track)) {
+                    forgetOfflineSidecar(track)
+                    downloadedTrackDao.delete(track)
+                } else {
+                    allDeleted = false
+                }
+            }
+            allDeleted
+        }
+
+    private suspend fun clearAllDownloadsAttempt(): List<DownloadedTrackEntity> = withWipingDownloads {
+        val tracks = downloadedTrackDao.getAllList()
+        val failed = ArrayList<DownloadedTrackEntity>(tracks.size)
+        for (track in tracks) {
+            currentCoroutineContext().ensureActive()
+            if (deleteRecordedDownload(track)) {
+                forgetOfflineSidecar(track)
+                downloadedTrackDao.delete(track)
+            } else {
+                failed += track
+            }
+        }
+        failed
+    }
+
+    private suspend fun <T> withWipingDownloads(block: suspend () -> T): T {
         val jobs = synchronized(admissionLock) {
             downloadsWiping = true
             activeJobs.values.toList()
@@ -3301,26 +3368,14 @@ class TrackDownloadManager @Inject constructor(
         // cancelled immediately after this still cannot race a new insert in.
         jobs.forEach { it.cancel() }
         try {
-            withContext(Dispatchers.IO) {
+            return withContext(Dispatchers.IO) {
                 // Existing cancellation also drops partial MediaStore rows and files.
                 cancelAllDownloads()
                 jobs.forEach { job ->
                     job.cancel()
                     job.join()
                 }
-                val tracks = downloadedTrackDao.getAllList()
-                val failed = ArrayList<DownloadedTrackEntity>(tracks.size)
-                for (track in tracks) {
-                    ensureActive()
-                    if (deleteRecordedDownload(track)) {
-                        downloadedTrackDao.delete(track)
-                    } else {
-                        failed += track
-                    }
-                }
-                if (failed.isNotEmpty()) {
-                    throw IOException("Failed to delete ${failed.size} downloaded track(s)")
-                }
+                block()
             }
         } finally {
             synchronized(admissionLock) {

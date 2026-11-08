@@ -11,9 +11,11 @@ import com.lastwave.app.data.download.TrackDownloadManager
 import com.lastwave.app.data.local.CacheStoragePolicy
 import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.local.db.DownloadedTrackDao
+import com.lastwave.app.data.local.db.DownloadedTrackEntity
 import com.lastwave.app.playback.MusicPlayer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,10 +50,19 @@ class StorageViewModel @Inject constructor(
     private val downloadManager: TrackDownloadManager,
 ) : ViewModel() {
 
+    sealed interface Event {
+        data class Message(val stringRes: Int) : Event
+
+        data class DeleteConsentRequired(
+            val request: android.content.IntentSender,
+            val tracks: List<DownloadedTrackEntity>,
+        ) : Event
+    }
+
     private data class CacheUsage(val artworkBytes: Long = 0L, val audioBytes: Long = 0L)
 
     private val cacheUsage = MutableStateFlow(CacheUsage())
-    private val _events = MutableSharedFlow<Int>(extraBufferCapacity = 1)
+    private val _events = MutableSharedFlow<Event>(extraBufferCapacity = 1)
     val events = _events.asSharedFlow()
 
     val state: StateFlow<StorageScreenState> = combine(
@@ -119,21 +130,49 @@ class StorageViewModel @Inject constructor(
                 }
             }.onSuccess {
                 refreshCacheUsage()
-                _events.emit(com.lastwave.app.R.string.storage_cache_cleared)
+                _events.emit(Event.Message(com.lastwave.app.R.string.storage_cache_cleared))
             }.onFailure {
-                _events.emit(com.lastwave.app.R.string.storage_operation_failed)
+                _events.emit(Event.Message(com.lastwave.app.R.string.storage_operation_failed))
             }
         }
     }
 
     fun deleteDownloadedMusic() {
         viewModelScope.launch {
-            runCatching {
-                withContext(Dispatchers.IO) { downloadManager.clearAllDownloads() }
-            }.onSuccess {
-                _events.emit(com.lastwave.app.R.string.storage_downloads_deleted)
-            }.onFailure {
-                _events.emit(com.lastwave.app.R.string.storage_operation_failed)
+            try {
+                when (val result = withContext(Dispatchers.IO) { downloadManager.clearAllDownloadsWithConsent() }) {
+                    TrackDownloadManager.ClearAllDownloadsResult.Cleared ->
+                        _events.emit(Event.Message(com.lastwave.app.R.string.storage_downloads_deleted))
+                    is TrackDownloadManager.ClearAllDownloadsResult.NeedsUserConsent ->
+                        _events.emit(Event.DeleteConsentRequired(result.request, result.tracks))
+                    TrackDownloadManager.ClearAllDownloadsResult.Failed ->
+                        _events.emit(Event.Message(com.lastwave.app.R.string.storage_operation_failed))
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                _events.emit(Event.Message(com.lastwave.app.R.string.storage_operation_failed))
+            }
+        }
+    }
+
+    fun onDeleteDownloadedMusicConsentResult(tracks: List<DownloadedTrackEntity>, approved: Boolean) {
+        if (!approved) return
+        viewModelScope.launch {
+            try {
+                val deleted = withContext(Dispatchers.IO) {
+                    downloadManager.finishConsentedClearAllDownloads(tracks)
+                }
+                _events.emit(
+                    Event.Message(
+                        if (deleted) com.lastwave.app.R.string.storage_downloads_deleted
+                        else com.lastwave.app.R.string.storage_operation_failed,
+                    ),
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                _events.emit(Event.Message(com.lastwave.app.R.string.storage_operation_failed))
             }
         }
     }

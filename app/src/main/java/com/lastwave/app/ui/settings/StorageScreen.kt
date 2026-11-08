@@ -1,6 +1,9 @@
 package com.lastwave.app.ui.settings
 
 import android.text.format.Formatter
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,7 +31,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -50,6 +52,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lastwave.app.R
 import com.lastwave.app.data.local.CacheStoragePolicy
+import com.lastwave.app.data.local.db.DownloadedTrackEntity
+import com.lastwave.app.ui.player.MiniPlayerAwareSnackbarHost
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import java.text.DateFormat
@@ -67,6 +71,18 @@ fun StorageScreen(
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    var tracksAwaitingDeleteConsent by remember { mutableStateOf<List<DownloadedTrackEntity>?>(null) }
+    val deleteConsentLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult(),
+    ) { result ->
+        tracksAwaitingDeleteConsent?.let { tracks ->
+            viewModel.onDeleteDownloadedMusicConsentResult(
+                tracks,
+                result.resultCode == android.app.Activity.RESULT_OK,
+            )
+        }
+        tracksAwaitingDeleteConsent = null
+    }
     var showClearCacheDialog by rememberSaveable { mutableStateOf(false) }
     var showDeleteDownloadsDialog by rememberSaveable { mutableStateOf(false) }
     var pendingCacheLimit by remember { mutableStateOf<Int?>(null) }
@@ -80,7 +96,21 @@ fun StorageScreen(
 
     LaunchedEffect(viewModel) {
         viewModel.refreshCacheUsage()
-        viewModel.events.collect { event -> snackbarHostState.showSnackbar(context.getString(event)) }
+        viewModel.events.collect { event ->
+            when (event) {
+                is StorageViewModel.Event.Message ->
+                    snackbarHostState.showSnackbar(context.getString(event.stringRes))
+                is StorageViewModel.Event.DeleteConsentRequired -> {
+                    tracksAwaitingDeleteConsent = event.tracks
+                    runCatching {
+                        deleteConsentLauncher.launch(IntentSenderRequest.Builder(event.request).build())
+                    }.onFailure {
+                        tracksAwaitingDeleteConsent = null
+                        snackbarHostState.showSnackbar(context.getString(R.string.storage_operation_failed))
+                    }
+                }
+            }
+        }
     }
     LaunchedEffect(viewModel) {
         while (isActive) {
@@ -168,7 +198,7 @@ fun StorageScreen(
                 },
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = { MiniPlayerAwareSnackbarHost(snackbarHostState) },
     ) { insets ->
         Column(
             modifier = Modifier
