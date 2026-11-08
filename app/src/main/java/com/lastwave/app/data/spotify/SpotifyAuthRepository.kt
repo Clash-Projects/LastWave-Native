@@ -119,15 +119,19 @@ class SpotifyAuthRepository @Inject constructor(
             val cached = spotifyPreferences.getPersonalToken()
             val expiresAt = spotifyPreferences.getPersonalTokenExpires()
             val now = System.currentTimeMillis()
+            val cachedFallback = cached?.takeIf { it.isNotBlank() && now < expiresAt }
 
-            if (!cached.isNullOrBlank() && now < expiresAt - EXPIRY_GRACE_MS) {
+            if (!cachedFallback.isNullOrBlank() && now < expiresAt - EXPIRY_GRACE_MS) {
                 return@withContext cached
             }
 
             try {
-                val totp = computeTotp(spdc) ?: return@withContext cached
+                val totp = computeTotp(spdc) ?: return@withContext cachedFallback
 
                 val transport = requestPersonalToken(spdc, totp, REASON_TRANSPORT)
+                // A rejected cookie clears the stored connection. Do not make the
+                // fallback exchange with that same invalid session.
+                if (spotifyPreferences.getSpdc().isNullOrBlank()) return@withContext null
                 val init = if (transport.isUsable()) {
                     null
                 } else {
@@ -138,8 +142,11 @@ class SpotifyAuthRepository @Inject constructor(
                 if (chosen == null) {
                     if (transport?.isAnonymous == true || init?.isAnonymous == true) {
                         Log.w(TAG, "Spotify session returned anonymous; stored cookie may need re-login")
+                        spotifyPreferences.clearConnection()
+                        return@withContext null
                     }
-                    return@withContext cached
+                    if (spotifyPreferences.getSpdc().isNullOrBlank()) return@withContext null
+                    return@withContext cachedFallback
                 }
 
                 val accessToken = chosen.accessToken.orEmpty()
@@ -150,7 +157,7 @@ class SpotifyAuthRepository @Inject constructor(
                 accessToken
             } catch (e: Exception) {
                 Log.w(TAG, "Failed personal token handshake: ${e.message}")
-                cached
+                cachedFallback
             }
         }
     }
@@ -303,6 +310,10 @@ class SpotifyAuthRepository @Inject constructor(
         return okHttpClient.newCall(tokenRequest).execute().use { res ->
             if (!res.isSuccessful) {
                 Log.w(TAG, "Personal token exchange ($reason) failed with HTTP ${res.code}")
+                if (res.code == 401) {
+                    Log.w(TAG, "Spotify rejected the saved session; clearing the connection")
+                    spotifyPreferences.clearConnection()
+                }
                 return@use null
             }
             runCatching {
