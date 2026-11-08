@@ -1,8 +1,12 @@
 package com.lastwave.app.data.download
 
+import android.app.PendingIntent
 import android.content.ContentResolver
 import android.content.Context
+import android.content.IntentSender
+import android.database.Cursor
 import android.net.Uri
+import android.provider.MediaStore
 import com.google.common.truth.Truth.assertThat
 import com.lastwave.app.data.local.MiscSettings
 import com.lastwave.app.data.local.SettingsPreferences
@@ -12,6 +16,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -74,6 +79,11 @@ class ClearAllDownloadsTest {
                 uri.contains("missing") -> throw FileNotFoundException(uri)
                 else -> 1
             }
+        }
+        val presentCursor = mockk<Cursor>(relaxed = true)
+        every { presentCursor.count } returns 1
+        every { resolver.query(any(), any(), any(), any(), any()) } answers {
+            if (denyContentUris) presentCursor else null
         }
         every { resolver.openInputStream(any()) } throws FileNotFoundException("gone")
         coEvery { dao.getAllList() } coAnswers { stored.toList() }
@@ -304,6 +314,33 @@ class ClearAllDownloadsTest {
 
         manager.clearAllDownloads()
         assertThat(stored).isEmpty()
+    }
+
+    @Test
+    fun clearAllDownloadsWithConsent_retriesOnlyFailedRowsAfterApproval() = runBlocking {
+        val denied = track(id = 11, title = "Legacy", filePath = "", mediaStoreUri = "content://media/audio/11")
+        stored += denied
+        denyContentUris = true
+
+        val sender = mockk<IntentSender>()
+        val pendingIntent = mockk<PendingIntent> {
+            every { intentSender } returns sender
+        }
+        mockkStatic(MediaStore::class)
+        every { MediaStore.createDeleteRequest(any(), any()) } returns pendingIntent
+
+        val result = manager.clearAllDownloadsWithConsent()
+
+        assertThat(result).isInstanceOf(TrackDownloadManager.ClearAllDownloadsResult.NeedsUserConsent::class.java)
+        val consent = result as TrackDownloadManager.ClearAllDownloadsResult.NeedsUserConsent
+        assertThat(consent.tracks).containsExactly(denied)
+        assertThat(stored).containsExactly(denied)
+        assertThat(manager.wiping()).isFalse()
+
+        denyContentUris = false
+        assertThat(manager.finishConsentedClearAllDownloads(consent.tracks)).isTrue()
+        assertThat(stored).isEmpty()
+        assertThat(manager.wiping()).isFalse()
     }
 
     @Test

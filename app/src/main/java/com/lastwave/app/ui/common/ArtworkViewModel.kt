@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lastwave.app.data.artwork.ArtworkRepository
+import com.lastwave.app.data.network.NetworkMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.CancellationException
@@ -15,10 +16,12 @@ private const val CRASH_TAG = "ArtworkCrash"
 @HiltViewModel
 class ArtworkViewModel @Inject constructor(
     private val repository: ArtworkRepository,
+    networkMonitor: NetworkMonitor,
 ) : ViewModel() {
 
     /** key -> url ("" = confirmed no art anywhere; absent = not yet resolved). */
     val resolved: StateFlow<Map<String, String>> = repository.resolved
+    val isCellular: StateFlow<Boolean> = networkMonitor.isCellular
 
     fun refresh(name: String, artist: String) {
         viewModelScope.launch { repository.forceRefresh(name, artist) }

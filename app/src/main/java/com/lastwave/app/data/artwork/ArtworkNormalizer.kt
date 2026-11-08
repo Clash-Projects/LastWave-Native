@@ -71,11 +71,68 @@ object ArtworkNormalizer {
         return result
     }
 
+    /**
+     * Return a lower-data artwork URL when the source exposes a smaller variant.
+     * On cellular, prefer a provider's smaller image, then a smaller embedded
+     * thumbnail, and finally the original embedded URL when no variant exists.
+     */
+    fun mobileDataArtwork(primaryUrl: String?, embeddedUrl: String?): String? {
+        downscaleProviderArtwork(primaryUrl)?.let { return it }
+        downscaleProviderArtwork(embeddedUrl)?.let { return it }
+        return embeddedUrl?.takeIf {
+            isRealImage(it) && it != primaryUrl && !it.startsWith("file://")
+        }
+    }
+
+    private fun downscaleYoutubeArtwork(url: String?): String? {
+        if (url.isNullOrBlank() || !isRealImage(url)) return null
+        if (url.contains("googleusercontent.com") || url.contains("ggpht.com")) {
+            return if (YT_SIZE_REGEX.containsMatchIn(url)) {
+                url.replace(YT_SIZE_REGEX, "=w320-h320-l90-rj")
+            } else if ('=' in url) {
+                url.substringBeforeLast('=') + "=w320-h320-l90-rj"
+            } else {
+                "$url=w320-h320-l90-rj"
+            }
+        }
+        if (url.contains("i.ytimg.com/vi/") || url.contains("img.youtube.com/vi/")) {
+            return url.replace("/maxresdefault.jpg", "/hqdefault.jpg")
+                .replace("/sddefault.jpg", "/hqdefault.jpg")
+                .takeIf { it != url }
+        }
+        return null
+    }
+
+    private val APPLE_SIZE_REGEX = Regex("""\d{2,4}x\d{2,4}(?=(?:bb|cc)?\.(?:jpg|jpeg|png|webp))""", RegexOption.IGNORE_CASE)
+    private val TIDAL_SIZE_REGEX = Regex("""(/images/[^/]{1,80}/)\d{2,4}x\d{2,4}(?=\.)""")
+    private val DEEZER_SIZE_REGEX = Regex("""(/images/cover/[^/]+/)\d{2,4}x\d{2,4}(?=-)""")
     private val LASTFM_SIZE_SEGMENT = Regex("""/i/u/\d+x\d+/""")
+
+    private fun isLastFmArtwork(url: String): Boolean =
+        url.contains("last.fm", ignoreCase = true) ||
+            url.contains("lastfm", ignoreCase = true) ||
+            url.contains("audioscrobbler", ignoreCase = true)
+
+    private fun downscaleProviderArtwork(url: String?): String? {
+        if (url.isNullOrBlank() || !isRealImage(url)) return null
+        downscaleYoutubeArtwork(url)?.let { return it }
+
+        return when {
+            url.contains("mzstatic.com", ignoreCase = true) && APPLE_SIZE_REGEX.containsMatchIn(url) ->
+                APPLE_SIZE_REGEX.replace(url, "300x300")
+            url.contains("resources.tidal.com/images/", ignoreCase = true) && TIDAL_SIZE_REGEX.containsMatchIn(url) ->
+                TIDAL_SIZE_REGEX.replace(url) { "${it.groupValues[1]}320x320" }
+            url.contains("dzcdn.net/images/cover/", ignoreCase = true) && DEEZER_SIZE_REGEX.containsMatchIn(url) ->
+                DEEZER_SIZE_REGEX.replace(url) { "${it.groupValues[1]}250x250" }
+            isLastFmArtwork(url) && LASTFM_SIZE_SEGMENT.containsMatchIn(url) ->
+                LASTFM_SIZE_SEGMENT.replace(url, "/i/u/300x300/")
+            else -> null
+        }
+    }
 
     /** Last.fm serves 300x300 by default; the same image exists at 770px. */
     fun upgradeLastFm(url: String): String =
-        if (url.contains("lastfm") || url.contains("audioscrobbler")) url.replace(LASTFM_SIZE_SEGMENT, "/i/u/770x0/") else url
+        if (isLastFmArtwork(url)) url.replace(LASTFM_SIZE_SEGMENT, "/i/u/770x0/") else url
 
     private val TOPIC_SUFFIX = Regex("""(?i)\s*-\s*topic\s*$""")
     private val VEVO_SUFFIX = Regex("""VEVO\s*$""")

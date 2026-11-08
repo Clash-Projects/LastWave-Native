@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
+import androidx.compose.material.icons.filled.FolderOpen
 import com.lastwave.app.ui.jam.LastWaveJamSheet
 import com.lastwave.app.ui.jam.LastWaveJamViewModel
 import androidx.compose.material3.IconButton
@@ -488,6 +489,7 @@ fun SettingsScreen(
     onBack: () -> Unit = {},
     onLoggedOut: () -> Unit = {},
     onOpenDownloads: () -> Unit = {},
+    onOpenStorage: () -> Unit = {},
     onOpenModules: () -> Unit = {},
     onOpenHomeSections: () -> Unit = {},
     onOpenExcludedSongs: () -> Unit = {},
@@ -2206,6 +2208,23 @@ fun SettingsScreen(
                     }
 
                     SettingsTab.DATA_BACKUP -> {
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                SectionLabel(stringResource(R.string.settings_section_storage))
+                                SettingsGroup(rowCount = 1) { _, position ->
+                                    SettingsActionCard(
+                                        icon = Icons.Filled.FolderOpen,
+                                        iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                        iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        title = stringResource(R.string.settings_storage_title),
+                                        subtitle = stringResource(R.string.settings_storage_sub),
+                                        onClick = onOpenStorage,
+                                        position = position,
+                                    )
+                                }
+                            }
+                        }
+
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_backup))
