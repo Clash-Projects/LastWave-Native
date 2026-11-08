@@ -39,7 +39,7 @@ import androidx.media.VolumeProviderCompat
 import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
-import com.lastwave.app.MainActivity
+import com.lastwave.app.MainShellActivity
 import com.lastwave.app.R
 import com.lastwave.app.data.local.ScrobblerPreferences
 import com.lastwave.app.data.local.ScrobblerSettings
@@ -1557,7 +1557,15 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     private fun openAppPendingIntent(): PendingIntent = PendingIntent.getActivity(
         this,
         0,
-        Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        // ColorOS opens the activity from the MediaSession's sessionActivity
+        // when the user taps the artwork in its expanded control-center
+        // player. Target the declared activity directly instead of the
+        // launcher alias, and explicitly bring the app task to the foreground.
+        Intent(this, MainShellActivity::class.java).addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP,
+        ),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
 
