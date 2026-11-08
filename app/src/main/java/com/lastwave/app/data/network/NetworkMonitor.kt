@@ -47,6 +47,14 @@ class NetworkMonitor @Inject constructor(
         capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
     }.getOrDefault(false)
 
+    /** True when Android routes the active network through a VPN transport. */
+    fun isOnVpn(): Boolean = runCatching {
+        val cm = connectivityManager ?: return@runCatching false
+        val activeNetwork = cm.activeNetwork ?: return@runCatching false
+        val capabilities = cm.getNetworkCapabilities(activeNetwork) ?: return@runCatching false
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+    }.getOrDefault(false)
+
     /**
      * Hot reactive state flow emitting true when online and false when offline.
      */
