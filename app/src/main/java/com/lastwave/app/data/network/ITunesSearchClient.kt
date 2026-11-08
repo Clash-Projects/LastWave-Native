@@ -15,6 +15,13 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
 
+private val ARTIST_CREDIT_SEPARATOR = Regex(
+    """\s*(?:,|&|;|/|\s+and\s+|\s+with\s+|\s+feat(?:uring)?\.?\s+|\s+ft\.?\s+|\s+x\s+)\s*""",
+    RegexOption.IGNORE_CASE,
+)
+private val ARTIST_PUNCTUATION = Regex("[^\\p{L}\\p{N}]+")
+private val ARTIST_WHITESPACE = Regex("\\s+")
+
 @Serializable
 data class ITunesSong(
     val trackId: Long = 0L,
@@ -148,10 +155,7 @@ class ITunesSearchClient @Inject constructor(
         if (!titleMatches) return false
 
         if (rawArtist.isNotBlank()) {
-            val cleanSongArtist = LrclibLyricsApi.cleanArtistName(songArtist)
-            val artistMatches = cleanSongArtist.equals(cleanReqArtist, ignoreCase = true) ||
-                LrclibLyricsApi.artistMatches(cleanSongArtist, cleanReqArtist)
-            if (!artistMatches) return false
+            if (!artistCreditsMatch(songArtist, rawArtist)) return false
         }
 
         if (expectedMs != null && expectedMs > 0 && song.trackTimeMillis != null && song.trackTimeMillis > 0) {
@@ -162,6 +166,45 @@ class ITunesSearchClient @Inject constructor(
 
         return true
     }
+
+    /**
+     * iTunes returns the complete credited artist line (for example,
+     * "Badshah, Shreya Ghoshal & Hiten"), while YouTube Music can return only
+     * the primary artist. Match a request against a full credit or one of its
+     * credited artists. Do not use the lyrics matcher here: its token overlap
+     * would accept "Vicky Badshah" for a request for "Badshah" and select an
+     * unrelated release's cover.
+     */
+    private fun artistCreditsMatch(candidate: String, request: String): Boolean {
+        val candidateCredits = splitArtistCredits(candidate)
+        val requestCredits = splitArtistCredits(request)
+        return candidateCredits.any { candidateCredit ->
+            requestCredits.any { requestCredit -> artistNamesMatch(candidateCredit, requestCredit) }
+        }
+    }
+
+    private fun splitArtistCredits(raw: String): List<String> =
+        LrclibLyricsApi.cleanArtistName(raw)
+            .split(ARTIST_CREDIT_SEPARATOR)
+            .map { it.normalizeArtistName() }
+            .filter(String::isNotBlank)
+
+    private fun artistNamesMatch(candidate: String, request: String): Boolean {
+        if (candidate == request) return true
+        if (candidate.contains(request) || request.contains(candidate)) {
+            return minOf(candidate.length, request.length).toDouble() /
+                maxOf(candidate.length, request.length) >= 0.6
+        }
+        // Preserve typo tolerance for equally sized names without treating an
+        // added name as a match (e.g. "Vicky Badshah" for "Badshah").
+        return candidate.split(' ').size == request.split(' ').size &&
+            LrclibLyricsApi.artistMatches(candidate, request)
+    }
+
+    private fun String.normalizeArtistName(): String = lowercase()
+        .replace(ARTIST_PUNCTUATION, " ")
+        .trim()
+        .replace(ARTIST_WHITESPACE, " ")
 
     private fun durationDiff(songMs: Long?, expectedMs: Long?): Long {
         if (songMs == null || expectedMs == null || songMs <= 0 || expectedMs <= 0) return 0L
