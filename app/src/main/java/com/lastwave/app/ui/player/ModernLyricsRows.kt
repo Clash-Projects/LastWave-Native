@@ -620,8 +620,6 @@ internal fun LyricSubLine(
 }
 
 /**
-
-/**
  * Animated pixel scroll for [LazyListState], which only ships instant
  * [LazyListState.scrollBy] and indexed [LazyListState.animateScrollToItem].
  * A cubic-bezier frame loop so the active-line follow glides rather than

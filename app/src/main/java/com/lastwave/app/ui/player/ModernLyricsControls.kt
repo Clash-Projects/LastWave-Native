@@ -730,8 +730,6 @@ internal fun ModernLyricsControls(
     }
 }
 
-/**
-
 @Composable
 internal fun LyricsOptionsMenuDialog(
     onDismiss: () -> Unit,

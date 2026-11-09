@@ -220,15 +220,6 @@ data class YtOwnedPlaylist(
     val complete: Boolean = true,
 )
 
-/**
- * Client for the same private InnerTube endpoints used by the YouTube Music
- * web/mobile clients. Search uses WEB_REMIX; playback delegates first to
- * InnerTubeX and keeps the older direct/NewPipe extractors as bounded fallbacks.
- *
- * Anonymous by default — but when a YouTube Music account is connected via
- * [YtMusicAuthManager], requests can opt in to the account's cookies +
- * SAPISIDHASH Authorization header, unlocking library browsing, playlist
-
 internal data class SharedStreamRequest(
 val deferred: Deferred<YouTubeAudioStream>,
 val waiters: AtomicInteger = AtomicInteger(0),

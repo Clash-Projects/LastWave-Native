@@ -146,8 +146,6 @@ import javax.inject.Singleton
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 
-/** What kind of media a queue entry is. Songs keep the scrobble / radio /
- *  lyrics behaviour; podcast episodes are excluded from all of it and get
 import com.lastwave.app.playback.MusicPlayer.Companion.*
 
     @MainThread

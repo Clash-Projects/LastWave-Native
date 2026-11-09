@@ -62,7 +62,14 @@ import kotlin.random.Random
 import javax.inject.Inject
 import javax.inject.Singleton
 
-@androidx.compose.runtime.Immutable
+/**
+ * Client for the same private InnerTube endpoints used by the YouTube Music
+ * web/mobile clients. Search uses WEB_REMIX; playback delegates first to
+ * InnerTubeX and keeps the older direct/NewPipe extractors as bounded fallbacks.
+ *
+ * Anonymous by default — but when a YouTube Music account is connected via
+ * [YtMusicAuthManager], requests can opt in to the account's cookies +
+ * SAPISIDHASH Authorization header, unlocking library browsing, playlist
  * creation and playlist edits (the same surfaces music.youtube.com uses).
  *
  * InnerTube is not a public/stable Google API. The web client key/version

@@ -158,6 +158,7 @@ import kotlinx.coroutines.flow.collectLatest
 import androidx.lifecycle.repeatOnLifecycle
 import java.util.Locale
 
+/**
  * One vocal run (lead or backing). Unlit rows and line-synced rows are a
  * single Text; a lit word-synced row is a dim base plus a bright copy wiped
  * by the karaoke mask.
@@ -409,7 +410,7 @@ internal class KaraokeMaskGradients {
     }
 }
 
-
+/**
  * Below API 31 Modifier.blur is a no-op, so the caller keeps the shadow there
  * and this draws nothing. An unbounded edge treatment keeps the halo from
  * being cut off at the Text's own bounds.
@@ -428,7 +429,7 @@ internal fun LyricGlowText(text: String, style: TextStyle, textAlign: TextAlign 
     )
 }
 
-
+/**
  * Lift envelope (0..1) for a syllable: rises as it starts being sung, holds
  * while sung, then settles back after it ends, so a soft wave travels across
  * the line. Purely visual; derived from the same timestamps as the wipe.
