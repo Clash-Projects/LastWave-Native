@@ -68,6 +68,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.Callback
@@ -179,6 +180,8 @@ class TrackDownloadManager @Inject constructor(
         /** Bound on each YouTube stream-resolve step so one candidate can't wedge a slot. */
         private const val YT_STREAM_RESOLVE_TIMEOUT_MS = 20_000L
         private const val MIN_PARALLEL_DOWNLOAD_BYTES = 2L * 1024 * 1024
+        /** googlevideo range limit (same as playback's ChunkedRangeDataSource). */
+        private const val YOUTUBE_RANGE_BYTES = 512L * 1024
         private const val MIN_VALID_AUDIO_BYTES = 1_024L
         private const val RECONNECT_POLL_INTERVAL_MS = 500L
         private const val RECONNECT_RETRY_BASE_DELAY_MS = 1_000L
@@ -195,6 +198,20 @@ class TrackDownloadManager @Inject constructor(
         private const val HIDDEN_PREFS_NAME = "download_history_hidden"
         private const val KEY_HIDDEN_REFS = "hidden_refs"
         private const val SCAN_MARKER_FILE = "downloads_scanned.marker"
+
+        fun isDownloadsScanned(context: Context): Boolean = runCatching {
+            val prefs = context.getSharedPreferences(SCAN_PREFS_NAME, Context.MODE_PRIVATE)
+            if (prefs.getBoolean(KEY_DOWNLOADS_SCANNED, false)) return@runCatching true
+            val marker = File(context.noBackupFilesDir, SCAN_MARKER_FILE)
+            marker.exists()
+        }.getOrDefault(false)
+
+        fun getRequiredAudioPermission(): String =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                Manifest.permission.READ_MEDIA_AUDIO
+            } else {
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            }
         private val AUDIO_EXTENSIONS = setOf("flac", "m4a", "mp3", "opus", "ogg", "webm", "wav", "aac")
         private val BRACKET_SONG_ID_REGEX = Regex("""\[([a-zA-Z0-9_-]{11})\]""")
         private val PAREN_SONG_ID_REGEX = Regex("""\(([a-zA-Z0-9_-]{11})\)""")
@@ -1328,7 +1345,13 @@ class TrackDownloadManager @Inject constructor(
                                         lastResolveError = error
                                         null
                                     }
-                                    pickedStream = opusStream?.takeIf { it.isOpusStream() } ?: playbackStream ?: opusStream
+                                    // An HLS playlist is not a file: saving it wrote the playlist
+                                    // text as the "song". Only progressive streams can be downloaded.
+                                    pickedStream = listOfNotNull(
+                                        opusStream?.takeIf { it.isOpusStream() },
+                                        playbackStream,
+                                        opusStream,
+                                    ).firstOrNull { !it.isAdaptive }
                                     if (pickedStream != null) {
                                         actualVideoId = candidateId
                                         resolvedYtVideoId = candidateId
@@ -1358,7 +1381,12 @@ class TrackDownloadManager @Inject constructor(
                             ?.takeIf { it.isNotBlank() }
                         val ytStream = resolvedStream
                         resolvedUrl = ytStream.url
-                        downloadHeaders = ytStream.requestHeaders
+                        // The URL is bound to the client that minted it: send that
+                        // client's User-Agent, as playback does, or googlevideo 403s.
+                        downloadHeaders = ytStream.requestHeaders.let { headers ->
+                            if (headers.keys.any { it.equals("User-Agent", ignoreCase = true) }) headers
+                            else headers + ("User-Agent" to ytStream.userAgent)
+                        }
                         expectedContentLength = ytStream.contentLength
                             ?: runCatching { Uri.parse(ytStream.url).getQueryParameter("clen")?.toLongOrNull() }.getOrNull()
                         if (durationMs <= 0L) {
@@ -1976,15 +2004,29 @@ class TrackDownloadManager @Inject constructor(
         onConnectionStateChanged: (Boolean) -> Unit,
         onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit,
     ): DownloadTransfer {
-        val parallelLength = expectedContentLength
-            ?.takeIf { useParallelRanges && it >= MIN_PARALLEL_DOWNLOAD_BYTES }
-        if (parallelLength != null) {
+        // googlevideo answers large or open-ended ranges for a while and then
+        // refuses them with 403 (InnerTubeX: ANDROID_VR / TVHTML5_SIMPLY need
+        // <=512 KB, IOS bounded). Playback already reads in 512 KB pieces;
+        // downloads asked for four multi-MB parts or one open-ended GET, which
+        // is why YouTube downloads failed while the same song played.
+        val isYouTubeMedia = isGoogleVideoUrl(url)
+        val knownLength = expectedContentLength?.takeIf { it > 0L }
+            ?: if (isYouTubeMedia) probeContentLength(url, requestHeaders) else null
+        val rangeSize = when {
+            knownLength == null -> null
+            isYouTubeMedia -> YOUTUBE_RANGE_BYTES
+            useParallelRanges && knownLength >= MIN_PARALLEL_DOWNLOAD_BYTES ->
+                (knownLength + PARALLEL_YOUTUBE_PARTS - 1L) / PARALLEL_YOUTUBE_PARTS
+            else -> null
+        }
+        if (knownLength != null && rangeSize != null) {
             try {
-                return downloadInParallel(
+                return downloadInRanges(
                     url = url,
                     target = target,
                     requestHeaders = requestHeaders,
-                    totalLength = parallelLength,
+                    totalLength = knownLength,
+                    rangeSize = rangeSize,
                     downloadKey = downloadKey,
                     onConnectionStateChanged = onConnectionStateChanged,
                     onProgress = onProgress,
@@ -2012,21 +2054,26 @@ class TrackDownloadManager @Inject constructor(
         )
     }
 
-    private suspend fun downloadInParallel(
+    /**
+     * Fetches [totalLength] bytes as consecutive [rangeSize] ranges, at most
+     * [PARALLEL_YOUTUBE_PARTS] in flight, each written at its own offset and
+     * retried on its own from the byte it reached.
+     */
+    private suspend fun downloadInRanges(
         url: String,
         target: File,
         requestHeaders: Map<String, String>,
         totalLength: Long,
+        rangeSize: Long,
         downloadKey: String,
         onConnectionStateChanged: (Boolean) -> Unit,
         onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit,
     ): DownloadTransfer = coroutineScope {
-        val partSize = (totalLength + PARALLEL_YOUTUBE_PARTS - 1L) / PARALLEL_YOUTUBE_PARTS
-        val ranges = (0 until PARALLEL_YOUTUBE_PARTS).mapNotNull { index ->
-            val start = index * partSize
-            if (start >= totalLength) return@mapNotNull null
-            DownloadRange(start, minOf(totalLength - 1L, start + partSize - 1L))
-        }
+        val ranges = generateSequence(0L) { it + rangeSize }
+            .takeWhile { it < totalLength }
+            .map { start -> DownloadRange(start, minOf(totalLength - 1L, start + rangeSize - 1L)) }
+            .toList()
+        val inFlight = Semaphore(PARALLEL_YOUTUBE_PARTS)
         RandomAccessFile(target, "rw").use { it.setLength(totalLength) }
 
         val downloadedBytes = AtomicLong(0L)
@@ -2040,7 +2087,7 @@ class TrackDownloadManager @Inject constructor(
             onConnectionStateChanged(waitingCount > 0)
         }
         val contentTypes = ranges.map { range ->
-            async {
+            async { inFlight.withPermit {
                 var downloadedBytesInRange = 0L
                 retryInterruptedTransfer(downloadKey, rangeConnectionStateChanged) {
                     downloadRange(
@@ -2054,12 +2101,12 @@ class TrackDownloadManager @Inject constructor(
                         onProgress(downloadedBytes.addAndGet(delta.toLong()), totalLength)
                     }
                 }
-            }
+            } }
         }.awaitAll()
 
         val finalLength = downloadedBytes.get()
         if (finalLength != totalLength || target.length() != totalLength) {
-            throw IOException("Parallel download truncated: received $finalLength of $totalLength bytes")
+            throw IOException("Range download truncated: received $finalLength of $totalLength bytes")
         }
         RandomAccessFile(target, "rw").use { it.fd.sync() }
         DownloadTransfer(
@@ -2587,6 +2634,22 @@ class TrackDownloadManager @Inject constructor(
             }
     }
 
+    private fun isGoogleVideoUrl(url: String): Boolean =
+        runCatching { Uri.parse(url).host.orEmpty() }.getOrDefault("").let { host ->
+            host == "googlevideo.com" || host.endsWith(".googlevideo.com")
+        }
+
+    /** Total size from a one-byte range request (`Content-Range: bytes 0-0/<total>`), or null. */
+    private suspend fun probeContentLength(url: String, requestHeaders: Map<String, String>): Long? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                downloadClient.newCall(buildDownloadRequest(url, requestHeaders, DownloadRange(0L, 0L))).execute().use { response ->
+                    if (response.code != 206) return@use null
+                    parseContentRange(response.header("Content-Range"))?.total?.takeIf { it > 0L }
+                }
+            }.getOrNull()
+        }
+
     private fun buildDownloadRequest(
         url: String,
         requestHeaders: Map<String, String>,
@@ -2690,7 +2753,7 @@ class TrackDownloadManager @Inject constructor(
                     type.equals("audio/ac3", ignoreCase = true)
             }
         }
-        val ffmpeg = runCatching {
+        val ffmpeg = com.lastwave.app.playback.FfmpegCompat.isUsable && runCatching {
             androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable() &&
                 androidx.media3.decoder.ffmpeg.FfmpegLibrary.supportsFormat(androidx.media3.common.MimeTypes.AUDIO_E_AC3)
         }.getOrDefault(false)
@@ -3619,12 +3682,7 @@ class TrackDownloadManager @Inject constructor(
         }
     }
 
-    fun isDownloadsScanned(): Boolean {
-        val prefs = context.getSharedPreferences(SCAN_PREFS_NAME, Context.MODE_PRIVATE)
-        if (prefs.getBoolean(KEY_DOWNLOADS_SCANNED, false)) return true
-        val marker = File(context.noBackupFilesDir, SCAN_MARKER_FILE)
-        return marker.exists()
-    }
+    fun isDownloadsScanned(): Boolean = Companion.isDownloadsScanned(context)
 
     private fun markDownloadsScanned() {
         runCatching {
@@ -3642,12 +3700,7 @@ class TrackDownloadManager @Inject constructor(
         }
     }
 
-    fun getRequiredAudioPermission(): String =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            Manifest.permission.READ_MEDIA_AUDIO
-        } else {
-            Manifest.permission.READ_EXTERNAL_STORAGE
-        }
+    fun getRequiredAudioPermission(): String = Companion.getRequiredAudioPermission()
 
     fun hasStoragePermission(): Boolean =
         ContextCompat.checkSelfPermission(context, getRequiredAudioPermission()) == PackageManager.PERMISSION_GRANTED

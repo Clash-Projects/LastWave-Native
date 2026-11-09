@@ -2,6 +2,9 @@
 
 package com.lastwave.app.ui.player
 
+import androidx.compose.material.icons.outlined.AddCircleOutline
+import androidx.compose.material.icons.filled.CheckCircle
+import com.lastwave.app.data.playlist.isLikedIn
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.luminance
@@ -392,6 +395,42 @@ class PlayerViewModel @Inject constructor(
     private var customPlaylistsLoaded = false
     val likedTrackKeys = trackLikeController.likedTrackKeys
 
+    /**
+     * The current song's like state on YouTube Music — SimpMusic's likeStatus.
+     * Null hides the button: signed out, no YouTube id, or not read yet.
+     * Re-read from YouTube on every track change and after every toggle; it is
+     * never inferred from the local heart.
+     */
+    private val _youTubeLiked = MutableStateFlow<Boolean?>(null)
+    val youTubeLiked = _youTubeLiked.asStateFlow()
+    private var youTubeLikeJob: kotlinx.coroutines.Job? = null
+
+    private fun refreshYouTubeLike(track: PlayableTrack?) {
+        youTubeLikeJob?.cancel()
+        _youTubeLiked.value = null
+        if (track == null || !trackLikeController.canUseYouTubeLike(track)) return
+        youTubeLikeJob = viewModelScope.launch {
+            val status = trackLikeController.youTubeLikeStatus(track)
+            if (player.chromeState.value.current?.videoId == track.videoId) _youTubeLiked.value = status ?: false
+        }
+    }
+
+    /** SimpMusic's addToYouTubeLiked(): toggles ONLY the YouTube Music like, then re-reads it. */
+    fun toggleYouTubeLike(track: PlayableTrack) {
+        val current = _youTubeLiked.value ?: return
+        viewModelScope.launch {
+            val ok = trackLikeController.setYouTubeLike(track, currentlyLiked = current)
+            _toastMessage.emit(
+                when {
+                    !ok -> "Couldn't update YouTube Music"
+                    current -> "Removed from YouTube Liked"
+                    else -> "Added to YouTube Liked"
+                },
+            )
+            if (ok) refreshYouTubeLike(track)
+        }
+    }
+
     private val _toastMessage = MutableSharedFlow<String>()
     val toastMessage = _toastMessage.asSharedFlow()
 
@@ -453,6 +492,11 @@ class PlayerViewModel @Inject constructor(
 
     init {
         player.restoreSessionIfNeeded()
+        viewModelScope.launch {
+            player.chromeState.map { it.current }
+                .distinctUntilChanged { old, new -> old?.videoId == new?.videoId && old?.title == new?.title }
+                .collect { refreshYouTubeLike(it) }
+        }
         viewModelScope.launch {
             playlistRepository.changes.collect {
                 if (customPlaylistsLoaded) refreshCustomPlaylists()
@@ -842,44 +886,31 @@ class PlayerViewModel @Inject constructor(
 
     fun toggleLiked(track: PlayableTrack) {
         viewModelScope.launch {
-            // The like write reads Liked Songs, replaces its tracks, then
-            // mirrors to Last.fm â€” any step can fail while a sync pass holds
-            // the database. An uncaught exception in this launch takes the
-            // process down, so report it like the other playlist mutations.
-            val change = try {
+            // Local only (SimpMusic): the heart never touches YouTube or Last.fm.
+            // The write can fail while a sync pass holds the database, and an
+            // uncaught exception here takes the process down, so report it.
+            try {
                 trackLikeController.toggle(track)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
                 android.util.Log.e("PlayerViewModel", "Like toggle failed", error)
-                _toastMessage.tryEmit("Couldn't update Liked Songs")
-                return@launch
+                // emit, not tryEmit: this flow has no buffer, so tryEmit was always dropped.
+                _toastMessage.emit("Couldn't update Liked Songs")
             }
-            reportYouTubeMirror(change)
         }
     }
 
     fun like(track: PlayableTrack) {
         viewModelScope.launch {
-            val change = try {
+            try {
                 trackLikeController.like(track)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
                 android.util.Log.e("PlayerViewModel", "Like failed", error)
-                _toastMessage.tryEmit("Couldn't update Liked Songs")
-                return@launch
+                _toastMessage.emit("Couldn't update Liked Songs")
             }
-            reportYouTubeMirror(change)
-        }
-    }
-
-    private fun reportYouTubeMirror(change: com.lastwave.app.data.playlist.LikeChange) {
-        if (!change.youTubeMirrored) {
-            _toastMessage.tryEmit(
-                if (change.liked) "Couldn't like this song on YouTube Music"
-                else "Couldn't remove the like on YouTube Music",
-            )
         }
     }
 }
@@ -1246,10 +1277,10 @@ private fun ExpandedPlayer(
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val likedTrackKeys by viewModel.likedTrackKeys.collectAsStateWithLifecycle()
     val currentTrack = state.current
-    // Normalized key: raw "title|artist".lowercase() would miss liked entries
-    // whose spacing differs (e.g. trailing space from another source).
+    // Same test Liked Songs storage uses: normalized title|artist OR YouTube id.
     val isLiked = currentTrack != null &&
-        currentTrack.toGeneratedTrack().key in likedTrackKeys
+        currentTrack.toGeneratedTrack().isLikedIn(likedTrackKeys)
+    val youTubeLiked by viewModel.youTubeLiked.collectAsStateWithLifecycle()
     val lyricsOffsetMs by viewModel.liveLyricsOffsetMs.collectAsStateWithLifecycle()
     FullPlayer(
         state = state,
@@ -1281,6 +1312,8 @@ private fun ExpandedPlayer(
         isLiked = isLiked,
         onToggleLiked = { currentTrack?.let(viewModel::toggleLiked) },
         onDoubleTapLike = { currentTrack?.let(viewModel::like) },
+        youTubeLiked = youTubeLiked,
+        onToggleYouTubeLike = { currentTrack?.let(viewModel::toggleYouTubeLike) },
         onDragStatusChange = onDragStatusChange,
         onSelectLyricsProvider = viewModel::selectLyricsProvider,
         onTryAnotherLyricsSource = viewModel::tryAnotherLyricsSource,
@@ -2399,6 +2432,8 @@ private fun FullPlayer(
     isLiked: Boolean = false,
     onToggleLiked: () -> Unit = {},
     onDoubleTapLike: () -> Unit = {},
+    youTubeLiked: Boolean? = null,
+    onToggleYouTubeLike: () -> Unit = {},
     onDragStatusChange: (Boolean) -> Unit = {},
     lyricsProviderStatuses: Map<com.lastwave.app.data.local.LyricsProvider, LyricsSyncType> = emptyMap(),
     onProbeLyricsProviders: (() -> Unit)? = null,
@@ -3242,6 +3277,8 @@ private fun FullPlayer(
                                     isLiked = isLiked,
                                     onToggleLiked = onToggleLiked,
                                     onDoubleTapLike = onDoubleTapLike,
+                                    youTubeLiked = youTubeLiked,
+                                    onToggleYouTubeLike = onToggleYouTubeLike,
                                     onOpenArtist = onOpenArtist,
                                     onTabChange = onTabChange,
                                     shownDismissY = shownDismissY,
@@ -3670,6 +3707,7 @@ private fun FullPlayer(
                                                 ),
                                                 label = "likeScale",
                                             )
+                                            YouTubeLikeButton(youTubeLiked, onToggleYouTubeLike, size = 46.dp)
                                             LiquidGlassSurface(
                                                 glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = likeInteraction),
                                                 onClick = onToggleLiked,
@@ -3882,6 +3920,8 @@ private fun FullPlayerLandscape(
     isLiked: Boolean,
     onToggleLiked: () -> Unit,
     onDoubleTapLike: () -> Unit,
+    youTubeLiked: Boolean?,
+    onToggleYouTubeLike: () -> Unit,
     onOpenArtist: (String) -> Unit,
     onTabChange: (FullPlayerTab) -> Unit,
     shownDismissY: Float,
@@ -4267,6 +4307,7 @@ private fun FullPlayerLandscape(
                         ),
                         label = "landscapeLikeScale",
                     )
+                    YouTubeLikeButton(youTubeLiked, onToggleYouTubeLike, size = 50.dp)
                     LiquidGlassSurface(
                         glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = likeInteraction),
                         onClick = onToggleLiked,
@@ -6834,3 +6875,34 @@ private data class PlayerMorphShape(
     }
 }
 
+/**
+ * SimpMusic's YouTube Music like button: a check when the song is liked on the
+ * connected account, a plus when it is not, and nothing at all when there is
+ * no account (or no YouTube id) — [liked] is null then. It toggles ONLY the
+ * YouTube Music like; the heart beside it is the local Liked Songs.
+ */
+@Composable
+private fun YouTubeLikeButton(liked: Boolean?, onClick: () -> Unit, size: androidx.compose.ui.unit.Dp) {
+    if (liked == null) return
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    LiquidGlassSurface(
+        glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = interaction),
+        onClick = onClick,
+        interactionSource = interaction,
+        shape = CircleShape,
+        color = liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
+        contentColor = Color.White.copy(alpha = if (liked) 1f else 0.85f),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        modifier = Modifier.size(size),
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Icon(
+                if (liked) androidx.compose.material.icons.Icons.Filled.CheckCircle
+                else androidx.compose.material.icons.Icons.Outlined.AddCircleOutline,
+                contentDescription = if (liked) "Remove from YouTube Liked" else "Add to YouTube Liked",
+                modifier = Modifier.size(size * 0.5f),
+            )
+        }
+    }
+}

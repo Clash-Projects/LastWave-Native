@@ -1602,6 +1602,38 @@ class InnerTubeMusicApi @Inject constructor(
     /** Clears a like (unliking in the player removes it on YouTube too). */
     suspend fun removeVideoLike(videoId: String): Boolean = setVideoLiked(videoId, liked = false)
 
+    /**
+     * Whether the connected account has liked [videoId] on YouTube Music, read
+     * the way SimpMusic's getLikedInfo does: an authenticated WEB_REMIX `next`
+     * and the player overlay's likeButtonRenderer.likeStatus ("LIKE" /
+     * "INDIFFERENT" / "DISLIKE"). Null when signed out or the read failed.
+     */
+    suspend fun getYouTubeLikeStatus(videoId: String): Boolean? = withContext(Dispatchers.IO) {
+        if (videoId.isBlank() || !ytAuth.connection.value.isConnected) return@withContext null
+        runCatching {
+            val config = getWebConfig()
+            val root = post(
+                url = "$MUSIC_API/next?key=${config.apiKey}&prettyPrint=false",
+                body = buildJsonObject {
+                    put("context", context("WEB_REMIX", config.clientVersion, config.visitorData, authenticated = true))
+                    put("videoId", videoId)
+                },
+                clientName = "WEB_REMIX",
+                clientVersion = config.clientVersion,
+                userAgent = WEB_USER_AGENT,
+                authenticated = true,
+                callTimeoutMs = RELATED_REQUEST_TIMEOUT_MS,
+            )
+            val status = root.obj("playerOverlays")
+                ?.obj("playerOverlayRenderer")
+                ?.array("actions")
+                ?.firstNotNullOfOrNull { it.obj("likeButtonRenderer")?.string("likeStatus") }
+            status == "LIKE"
+        }.onFailure {
+            android.util.Log.w(PLAYLIST_LOG_TAG, "like status read failed for $videoId", it)
+        }.getOrNull()
+    }
+
     private suspend fun setVideoLiked(videoId: String, liked: Boolean): Boolean =
         withContext(Dispatchers.IO) {
             if (videoId.isBlank()) return@withContext false
@@ -3621,12 +3653,22 @@ class InnerTubeMusicApi @Inject constructor(
         now: Long,
         startedAt: Long,
     ): YouTubeAudioStream? = kotlinx.coroutines.coroutineScope {
+        // Signed in, InnerTubeX is the only path to age-restricted songs: it
+        // detects the age gate, fetches the signed-in watch config and retries on
+        // WEB_REMIX/TVHTML5 with the account's cookies, deciphering their formats
+        // — more round trips than 7s allows. The race returns on the first
+        // success, so ordinary songs are no slower.
+        val innerTubeXBudgetMs = if (ytAuth.connection.value.isConnected) {
+            SIGNED_IN_INNERTUBEX_STAGE_TIMEOUT_MS
+        } else {
+            INNERTUBEX_STAGE_TIMEOUT_MS
+        }
         val channel = kotlinx.coroutines.channels.Channel<YouTubeAudioStream>(2)
         val jobs = listOf(
             launch(Dispatchers.IO) {
                 var failed = false
                 val candidate = try {
-                    kotlinx.coroutines.withTimeoutOrNull(INNERTUBEX_STAGE_TIMEOUT_MS) {
+                    kotlinx.coroutines.withTimeoutOrNull(innerTubeXBudgetMs) {
                         val visitorData = try {
                             getWebConfig().visitorData
                         } catch (cancellation: kotlinx.coroutines.CancellationException) {
@@ -3691,7 +3733,7 @@ class InnerTubeMusicApi @Inject constructor(
             }
         }
         try {
-            val winner = kotlinx.coroutines.withTimeoutOrNull(NEWPIPE_FALLBACK_TIMEOUT_MS) {
+            val winner = kotlinx.coroutines.withTimeoutOrNull(maxOf(NEWPIPE_FALLBACK_TIMEOUT_MS, innerTubeXBudgetMs)) {
                 channel.receiveCatching().getOrNull()
             } ?: return@coroutineScope null
             cacheResolvedStream(winner, now)
@@ -4434,14 +4476,17 @@ class InnerTubeMusicApi @Inject constructor(
         callTimeoutMs: Long? = null,
         authenticatedAccount: YtConnection? = null,
     ): JsonObject {
+        // Set after a 400: resend once with a context InnerTube always accepts.
+        var cleanContextRetry = false
         fun buildRequest(): Request {
-            val sanitizedBody = if (!authenticated && body["context"]?.jsonObject?.contains("user") == true) {
-                val origContext = body["context"]?.jsonObject
+            val requestBody = if (cleanContextRetry) body.withCleanClientContext() else body
+            val sanitizedBody = if (!authenticated && requestBody["context"]?.jsonObject?.contains("user") == true) {
+                val origContext = requestBody["context"]?.jsonObject
                 if (origContext != null) {
                     val cleanContext = JsonObject(origContext.filterKeys { it != "user" })
-                    JsonObject(body.toMutableMap().apply { put("context", cleanContext) })
-                } else body
-            } else body
+                    JsonObject(requestBody.toMutableMap().apply { put("context", cleanContext) })
+                } else requestBody
+            } else requestBody
 
             val builder = Request.Builder()
                 .url(url)
@@ -4454,11 +4499,11 @@ class InnerTubeMusicApi @Inject constructor(
                 .header("X-YouTube-Client-Name", CLIENT_IDS[clientName] ?: clientName)
                 .header("X-YouTube-Client-Version", clientVersion)
                 .apply {
-                    val (hl, gl) = getEffectiveHlGl()
+                    val (hl, gl) = if (cleanContextRetry) "en" to "US" else getEffectiveHlGl()
                     header("Accept-Language", "$hl-$gl,$hl;q=0.9,en;q=0.8")
                 }
 
-            val validVisitor = visitorData?.takeIf { isValidVisitorData(it) }
+            val validVisitor = visitorData?.takeIf { !cleanContextRetry && isValidVisitorData(it) }
             if (validVisitor != null) {
                 builder.header("X-Goog-Visitor-Id", validVisitor)
             }
@@ -4492,7 +4537,9 @@ class InnerTubeMusicApi @Inject constructor(
         }
 
         var lastException: Exception? = null
-        for (attempt in 1..maxAttempts) {
+        var attempt = 0
+        while (attempt < maxAttempts) {
+            attempt++
             currentCoroutineContext().ensureActive()
             val request = buildRequest()
             try {
@@ -4500,17 +4547,18 @@ class InnerTubeMusicApi @Inject constructor(
                 callTimeoutMs?.let { call.timeout().timeout(it, TimeUnit.MILLISECONDS) }
                 val (status, text) = call.readResponseBody()
                 if (status !in 200..299) {
-                    if (status == 400 || status == 403 || status == 429) {
-                        val currentConf = webConfig
-                        if (currentConf != null) {
-                            webConfig = WebConfig(currentConf.apiKey, currentConf.clientVersion, null)
-                        }
-                        if (attempt < maxAttempts && (status == 400 || status == 403)) {
-                            val freshVisitor = fetchFreshVisitorData()
-                            if (isValidVisitorData(freshVisitor)) {
-                                webConfig = WebConfig(FALLBACK_WEB_KEY, FALLBACK_WEB_VERSION, freshVisitor)
-                            }
-                        }
+                    // A 400 is a rejected request body, almost always the
+                    // device-derived hl/gl or a stale visitor id. The old
+                    // handler swapped the SHARED config to a months-old
+                    // fallback client version, so one 400 turned every later
+                    // search/browse into a 400 too (the Realme/Xiaomi "search
+                    // broken" storm). Retry just this request with a clean
+                    // context instead, and leave the shared config alone.
+                    if (status == 400 && !cleanContextRetry) {
+                        cleanContextRetry = true
+                        attempt-- // the clean-context resend is free, even for maxAttempts = 1
+                        android.util.Log.w(PLAYLIST_LOG_TAG, "InnerTube 400 for $clientName (hl/gl=${getEffectiveHlGl()}); retrying with a clean context")
+                        continue
                     }
                     if (authenticated && (status == 401 || status == 403)) {
                         if (attempt < maxAttempts && ytAuth.refreshCookiesFromCookieManager()) {
@@ -4524,6 +4572,11 @@ class InnerTubeMusicApi @Inject constructor(
                     json.parseToJsonElement(text).jsonObject
                 } catch (error: Exception) {
                     throw IOException("Invalid InnerTube response", error)
+                }
+                if (cleanContextRetry && isValidVisitorData(visitorData) && webConfig?.visitorData == visitorData) {
+                    // The clean retry worked: the visitor id was (part of) the
+                    // problem. Drop only it; the response below supplies a new one.
+                    webConfig = webConfig?.let { WebConfig(it.apiKey, it.clientVersion, null) }
                 }
                 val respVisitor = parsed.obj("responseContext")?.string("visitorData")
                 if (isValidVisitorData(respVisitor) && webConfig?.hasRealVisitorData() != true) {
@@ -4547,6 +4600,20 @@ class InnerTubeMusicApi @Inject constructor(
             }
         }
         throw (lastException as? IOException) ?: IOException("InnerTube call failed: ${lastException}")
+    }
+
+    /**
+     * The request with `context.client` reset to what every InnerTube client
+     * accepts: hl=en, gl=US and no visitorData. Everything else is unchanged.
+     */
+    private fun JsonObject.withCleanClientContext(): JsonObject {
+        val context = this["context"] as? JsonObject ?: return this
+        val client = context["client"] as? JsonObject ?: return this
+        val cleanClient = JsonObject(
+            client.filterKeys { it != "visitorData" } + mapOf("hl" to JsonPrimitive("en"), "gl" to JsonPrimitive("US")),
+        )
+        val cleanContext = JsonObject(context + ("client" to cleanClient))
+        return JsonObject(this + ("context" to cleanContext))
     }
 
     private suspend fun okhttp3.Call.readResponseBody(): Pair<Int, String> =
@@ -4579,7 +4646,13 @@ class InnerTubeMusicApi @Inject constructor(
         val locale = language.appLocale()
         val hl = when (language) {
             AppLanguage.SYSTEM -> {
-                val sysLang = locale.language.ifBlank { "en" }
+                // Locale.getLanguage() returns legacy ISO-639 codes on Android
+                // ("in" Indonesian, "iw" Hebrew, "ji" Yiddish) that InnerTube
+                // rejects with HTTP 400 — common on Realme/Xiaomi phones set to
+                // Indonesian. toLanguageTag() gives the modern code.
+                val sysLang = locale.toLanguageTag().substringBefore('-').lowercase()
+                    .let { LEGACY_LANGUAGE_CODES[it] ?: it }
+                    .takeIf { it.length in 2..3 && it.all { c -> c in 'a'..'z' } } ?: "en"
                 val sysCountry = locale.country
                 if (sysCountry.isNotBlank() && (sysLang.equals("zh", ignoreCase = true) || sysLang.equals("pt", ignoreCase = true))) {
                     "$sysLang-$sysCountry"
@@ -4589,9 +4662,15 @@ class InnerTubeMusicApi @Inject constructor(
             AppLanguage.PORTUGUESE_BRAZIL -> "pt-BR"
             else -> language.tag
         }
+        // Plain ASCII A-Z only: a localized or pseudo region (digits, "XA",
+        // non-Latin letters from isLetter()) is another 400 trigger.
         val gl = resolveRegionCode(language, locale)
+            .takeIf { it.length == 2 && it.all { c -> c in 'A'..'Z' } && it !in PSEUDO_REGIONS } ?: "US"
         return hl to gl
     }
+
+    private val LEGACY_LANGUAGE_CODES = mapOf("in" to "id", "iw" to "he", "ji" to "yi")
+    private val PSEUDO_REGIONS = setOf("XA", "XB", "XC", "ZZ")
 
     private val UNSUPPORTED_YT_REGIONS = setOf("CN", "RU", "IR", "KP", "CU", "SY", "BY")
 
@@ -5783,12 +5862,24 @@ class InnerTubeMusicApi @Inject constructor(
         const val STREAM_RESOLVE_TOTAL_TIMEOUT_MS = 40_000L
         /** Bound for the InnerTubeX cipher stage so a hung resolve fails fast. */
         const val INNERTUBEX_STAGE_TIMEOUT_MS = 7_000L
+        /** Signed-in budget: covers the age-gate retry on the account's clients. */
+        const val SIGNED_IN_INNERTUBEX_STAGE_TIMEOUT_MS = 16_000L
         /** Bound for the last-resort NewPipe stage. */
         const val NEWPIPE_FALLBACK_TIMEOUT_MS = 9_000L
         /** Overall budget for promoting a staged YouTube stream from MusicPlayer. */
         const val YOUTUBE_PROMOTE_BUDGET_MS = 12_000L
         /** No-cipher clients tried first, in order (mirrors limusic's fallback order). */
-        val DIRECT_FAST_CLIENT_ORDER = listOf("TVHTML5", "VISIONOS", "ANDROID_TESTSUITE", "ANDROID_VR", "IOS", "WEB_REMIX")
+        /**
+         * Audio clients for the direct fast path. IOS is deliberately absent:
+         * its googlevideo URLs require an iOS-attested GVS PO token (see
+         * InnerTubeX PlaybackClientCatalog: gvs = iosGvsRequired) which this
+         * app cannot mint, so YouTube serves ~60s of audio and then answers
+         * 403 — the "song stops at 1:00" bug. ANDROID_VR / VISIONOS need no
+         * PO token and play the whole file when fetched in bounded <=512 KB
+         * ranges (ChunkedRangeDataSource). IOS stays in VIDEO_CLIENT_ORDER,
+         * where clips are short and muted.
+         */
+        val DIRECT_FAST_CLIENT_ORDER = listOf("TVHTML5", "VISIONOS", "ANDROID_TESTSUITE", "ANDROID_VR", "WEB_REMIX")
         const val VIDEO_LOG_TAG = "InnerTubeVideo"
         /** Clients that return video formats without a signed-in session. */
         val VIDEO_CLIENT_ORDER = listOf("ANDROID_VR", "VISIONOS", "IOS", "TVHTML5")

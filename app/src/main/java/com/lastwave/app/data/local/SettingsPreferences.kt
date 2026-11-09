@@ -230,10 +230,6 @@ data class MiscSettings(
     val canvasGradientBlurEnabled: Boolean = false,
     /** When true, canvas video loops may be fetched over cellular data. */
     val canvasOverCellular: Boolean = true,
-    /** When true, a liked song is also marked as liked on YouTube Music. */
-    val likedSongsYouTubeSync: Boolean = true,
-    /** When true, a liked song is added to this app's own Liked Songs playlist. */
-    val likedSongsLocalSync: Boolean = true,
     /** When false, podcast shelves, screens and episode search stay hidden.
      *  Existing progress is preserved so re-enabling resumes where you left off. */
     val podcastsEnabled: Boolean = true,
@@ -448,8 +444,6 @@ class SettingsPreferences @Inject constructor(
         val CANVAS_FULL_BLEED = booleanPreferencesKey("lw_canvas_full_bleed")
         val CANVAS_GRADIENT_BLUR_ENABLED = booleanPreferencesKey("lw_canvas_gradient_blur_enabled")
         val CANVAS_OVER_CELLULAR = booleanPreferencesKey("lw_canvas_over_cellular")
-        val LIKED_SONGS_YOUTUBE_SYNC = booleanPreferencesKey("lw_liked_songs_youtube_sync")
-        val LIKED_SONGS_LOCAL_SYNC = booleanPreferencesKey("lw_liked_songs_local_sync")
         val LIKED_SONGS_LOCAL_ONLY = stringPreferencesKey("lw_liked_songs_local_only")
         val PODCASTS_ENABLED = booleanPreferencesKey("lw_podcasts_enabled")
         val STOP_PLAYBACK_ON_TASK_REMOVED = booleanPreferencesKey("lw_stop_playback_on_task_removed")
@@ -548,8 +542,6 @@ class SettingsPreferences @Inject constructor(
                 canvasFullBleed = p.readSafely(Keys.CANVAS_FULL_BLEED) ?: true,
                 canvasGradientBlurEnabled = p.readSafely(Keys.CANVAS_GRADIENT_BLUR_ENABLED) ?: false,
                 canvasOverCellular = p.readSafely(Keys.CANVAS_OVER_CELLULAR) ?: true,
-                likedSongsYouTubeSync = p.readSafely(Keys.LIKED_SONGS_YOUTUBE_SYNC) ?: true,
-                likedSongsLocalSync = p.readSafely(Keys.LIKED_SONGS_LOCAL_SYNC) ?: true,
                 podcastsEnabled = p.readSafely(Keys.PODCASTS_ENABLED) ?: true,
                 stopPlaybackOnTaskRemoved = p.readSafely(Keys.STOP_PLAYBACK_ON_TASK_REMOVED) ?: false,
                 suppressYouTubeLoginPrompt = p.readSafely(Keys.SUPPRESS_YOUTUBE_LOGIN_PROMPT) ?: false,
@@ -1102,25 +1094,7 @@ class SettingsPreferences @Inject constructor(
         dataStore.edit { it[Keys.CANVAS_OVER_CELLULAR] = enabled }
     }
 
-    /** Whether a liked song is added to this app's own Liked Songs playlist. */
-    val likedSongsLocalSync: Flow<Boolean> = dataStore.data
-        .recoverPreferences("SettingsPreferences")
-        .map { it.readSafely(Keys.LIKED_SONGS_LOCAL_SYNC) ?: true }
-
-    /** Whether a liked song is also marked as liked on YouTube Music. */
-    val likedSongsYouTubeSync: Flow<Boolean> = dataStore.data
-        .recoverPreferences("SettingsPreferences")
-        .map { it.readSafely(Keys.LIKED_SONGS_YOUTUBE_SYNC) ?: true }
-
-    suspend fun setLikedSongsYouTubeSync(enabled: Boolean) {
-        dataStore.edit { it[Keys.LIKED_SONGS_YOUTUBE_SYNC] = enabled }
-    }
-
-    suspend fun setLikedSongsLocalSync(enabled: Boolean) {
-        dataStore.edit { it[Keys.LIKED_SONGS_LOCAL_SYNC] = enabled }
-    }
-
-    /** The likes kept while the local Liked Songs playlist was switched off, as stored tracks. */
+    /** Likes kept by older builds while "Save to Liked Songs" was off; moved into Liked Songs once on start. */
     val localOnlyLikedTracks: Flow<String> = dataStore.data
         .recoverPreferences("SettingsPreferences")
         .map { it.readSafely(Keys.LIKED_SONGS_LOCAL_ONLY).orEmpty() }

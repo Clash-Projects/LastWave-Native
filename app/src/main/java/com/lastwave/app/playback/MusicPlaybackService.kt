@@ -1638,8 +1638,10 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                 .addAction(Notification.Action.Builder(R.drawable.ic_widget_shuffle, if (state.shuffleEnabled) "Shuffle on" else "Shuffle off", serviceAction(ACTION_SHUFFLE, 5)).build())
                 .addAction(Notification.Action.Builder(repeatIcon, repeatLabel, serviceAction(ACTION_REPEAT, 6)).build())
                 .addAction(Notification.Action.Builder(android.R.drawable.ic_menu_close_clear_cancel, "Stop", serviceAction(ACTION_STOP, 4)).build())
-                .setColorized(true)
                 .apply {
+                    // setColorized is API 26+; calling it on Android 7.x throws
+                    // NoSuchMethodError the moment playback posts its notification.
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) setColorized(true)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
                     }

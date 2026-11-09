@@ -349,13 +349,12 @@ open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
         if (hasPromptedAudioThisSession) return
         hasPromptedAudioThisSession = true
 
-        val downloadManager = trackDownloadManager.get()
-        if (downloadManager.isDownloadsScanned()) return
+        if (com.lastwave.app.data.download.TrackDownloadManager.isDownloadsScanned(this)) return
 
-        val requiredPermission = downloadManager.getRequiredAudioPermission()
+        val requiredPermission = com.lastwave.app.data.download.TrackDownloadManager.getRequiredAudioPermission()
         if (checkSelfPermission(requiredPermission) == PackageManager.PERMISSION_GRANTED) {
             lifecycleScope.launch(Dispatchers.IO) {
-                runCatching { downloadManager.restoreDownloadsAfterReinstall() }
+                runCatching { trackDownloadManager.get().restoreDownloadsAfterReinstall() }
             }
             return
         }

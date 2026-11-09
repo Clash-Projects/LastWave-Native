@@ -883,12 +883,61 @@ class MusicPlayer @Inject constructor(
     private val cacheDataSourceFactory: CacheDataSource.Factory by lazy {
         val defaultDataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(appContext, httpUpstreamFactory)
         val chunkedUpstreamFactory = androidx.media3.datasource.DataSource.Factory {
-            ChunkedRangeDataSource(defaultDataSourceFactory.createDataSource())
+            ChunkedRangeDataSource(defaultDataSourceFactory.createDataSource(), refresher = ::refreshRejectedYouTubeUrl)
         }
         CacheDataSource.Factory()
             .setCache(mediaCache)
             .setUpstreamDataSourceFactory(chunkedUpstreamFactory)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+    }
+
+    /** Refused googlevideo URL -> the same-file replacement already minted for it. */
+    private val refreshedYouTubeUrls = ConcurrentHashMap<String, ChunkedRangeDataSource.Replacement>()
+
+    /**
+     * Seamless mid-song URL swap, called on the loader thread when a chunk is
+     * refused (403/410). Re-resolves the same video on another client and
+     * accepts the result only if it is byte-identical in layout — same itag
+     * and same content length — so the read continues at the same offset with
+     * no error, no re-buffer and no gap. Anything else returns null and the
+     * normal error/retry path takes over.
+     */
+    private fun refreshRejectedYouTubeUrl(failedUri: Uri): ChunkedRangeDataSource.Replacement? {
+        val failedUrl = failedUri.toString()
+        refreshedYouTubeUrls[failedUrl]?.let { return it }
+        val candidate = preparedStreams.values.firstOrNull { it.url == failedUrl }?.youtubeCandidate
+            ?: return null
+        val itag = candidate.itag ?: return null
+        val contentLength = candidate.contentLength?.takeIf { it > 0L } ?: return null
+        val fresh = runBlocking(Dispatchers.IO) {
+            withTimeoutOrNull(SEAMLESS_URL_REFRESH_TIMEOUT_MS) {
+                runCatching {
+                    // Cools down the client that minted the refused URL, so the
+                    // re-resolve lands on a different one.
+                    innerTube.reportPlaybackFailure(candidate.videoId, candidate)
+                    innerTube.resolveAudioStream(candidate.videoId)
+                }.getOrNull()
+            }
+        } ?: return null
+        if (fresh.itag != itag || fresh.contentLength != contentLength || fresh.url == failedUrl) {
+            android.util.Log.i(
+                "MusicPlayer",
+                "[SEAMLESS] no same-file replacement for ${candidate.videoId} " +
+                    "(itag ${fresh.itag}/$itag, length ${fresh.contentLength}/$contentLength)",
+            )
+            return null
+        }
+        android.util.Log.i(
+            "MusicPlayer",
+            "[SEAMLESS] swapped refused URL for ${candidate.videoId}: ${candidate.clientProfile} -> ${fresh.clientProfile}",
+        )
+        val replacement = ChunkedRangeDataSource.Replacement(
+            uri = Uri.parse(fresh.url),
+            requestHeaders = fresh.requestHeaders + ("User-Agent" to fresh.userAgent),
+        )
+        if (refreshedYouTubeUrls.size > MAX_REFRESHED_URL_ENTRIES) refreshedYouTubeUrls.clear()
+        refreshedYouTubeUrls[failedUrl] = replacement
+        return replacement
     }
 
     private fun updateHttpDataSourceHeaders(stream: ResolvedStream?) {
@@ -1869,7 +1918,7 @@ class MusicPlayer @Inject constructor(
                     out,
                 )
                 // Explicit software decoder fallback for MediaTek / ColorOS
-                try {
+                if (FfmpegCompat.isUsable) try {
                     // Direct dependency (org.jellyfin.media3:media3-ffmpeg-decoder):
                     // construct it typed instead of via reflection.
                     out.add(
@@ -1885,7 +1934,10 @@ class MusicPlayer @Inject constructor(
             // every device, eliminating per-OEM platform codec bugs that
             // surface as noise/distortion. setEnableDecoderFallback keeps the
             // platform decoder for anything FFmpeg rejects.
-            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            setExtensionRendererMode(
+                if (FfmpegCompat.isUsable) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+                else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF,
+            )
             setEnableDecoderFallback(true)
             setEnableAudioTrackPlaybackParams(false)
             setMediaCodecSelector(accurateAudioMediaCodecSelector)
@@ -4182,7 +4234,7 @@ class MusicPlayer @Inject constructor(
             }
         }.getOrDefault(false)
         // Bundled FFmpeg decodes the E-AC-3 core of JOC streams on any device.
-        val ffmpeg = runCatching {
+        val ffmpeg = FfmpegCompat.isUsable && runCatching {
             androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable() &&
                 androidx.media3.decoder.ffmpeg.FfmpegLibrary.supportsFormat(MimeTypes.AUDIO_E_AC3)
         }.getOrDefault(false)
@@ -6819,21 +6871,26 @@ class MusicPlayer @Inject constructor(
                         waited += 250L
                     }
                 }
-                val stream = runCatching {
-                    resolveTrackAudioStream(
-                        track = track,
-                        videoId = videoId,
-                        allowLocalDownloads = false,
-                        // First attempt re-asks the addon (a lossless stream
-                        // that died mid-track usually just needs a fresh URL);
-                        // later attempts take the fast YouTube path and rely
-                        // on the quality upgrade below to return to lossless.
-                        allowLossless = attempt == 1 && failedMediaId !in losslessBypassMediaIds,
-                        excludedLosslessUrls = if (failedLosslessStream) setOfNotNull(rejectedUrl) else emptySet(),
-                        losslessBudget = if (attempt == 1) LosslessBudget.Interactive else LosslessBudget.Disabled,
-                    )
-                }.getOrElse { error ->
-                    if (error is CancellationException) throw error
+                val stream = try {
+                    boundedRecoveryResolve {
+                        resolveTrackAudioStream(
+                            track = track,
+                            videoId = videoId,
+                            allowLocalDownloads = false,
+                            // First attempt re-asks the addon (a lossless stream
+                            // that died mid-track usually just needs a fresh URL);
+                            // later attempts take the fast YouTube path and rely
+                            // on the quality upgrade below to return to lossless.
+                            allowLossless = attempt == 1 && failedMediaId !in losslessBypassMediaIds,
+                            excludedLosslessUrls = if (failedLosslessStream) setOfNotNull(rejectedUrl) else emptySet(),
+                            losslessBudget = if (attempt == 1) LosslessBudget.Interactive else LosslessBudget.Disabled,
+                        )
+                    }
+                } catch (cancellation: CancellationException) {
+                    // boundedRecoveryResolve() only lets THIS job's own
+                    // cancellation through (pause/skip/navigation).
+                    throw cancellation
+                } catch (error: Throwable) {
                     lastRecoveryError = error
                     logResolutionFailure(track, "playback-recovery", attempt, error)
                     null
@@ -6912,11 +6969,42 @@ class MusicPlayer @Inject constructor(
     }.getOrDefault(true)
 
     /** Runs a YouTube fallback resolve up to [MAX_PLAYBACK_RETRIES] times with growing delays. */
-    private suspend fun <T> withFallbackAttempts(resolve: suspend () -> T): T {
+    /**
+     * Re-resolve for a stream that died mid-track, with a deadline.
+     *
+     * The retry and recovery coroutines rethrow every CancellationException
+     * as "we were cancelled". But a 403 makes reportPlaybackFailure() cancel
+     * the shared in-flight stream requests for that video, and a hung resolve
+     * never returns at all — both ended the coroutine silently, leaving the
+     * player IDLE at ~1:00 with no error, skip or recovery. Only a
+     * cancellation of THIS job propagates; anything else is a failure the
+     * caller's retry/recovery logic handles.
+     */
+    private suspend fun <T : Any> boundedRecoveryResolve(resolve: suspend () -> T): T {
+        val result = try {
+            withTimeoutOrNull(RECOVERY_RESOLVE_TIMEOUT_MS) { resolve() }
+        } catch (error: CancellationException) {
+            currentCoroutineContext().ensureActive()
+            throw java.io.IOException("Stream re-resolve was cancelled by another request", error)
+        }
+        if (result != null) return result
+        // A hung shared request would otherwise be re-joined by the next
+        // attempt (requests are deduped for 60s): drop and cancel the ones
+        // still pending past the whole YouTube resolve budget.
+        val cutoff = SystemClock.elapsedRealtime() - YT_RESOLVE_TOTAL_TIMEOUT_MS
+        resolutionRequests.entries.removeIf { (_, request) ->
+            val stale = !request.second.isCompleted && request.first <= cutoff
+            if (stale) request.second.cancel()
+            stale
+        }
+        throw java.io.IOException("Stream re-resolve timed out after ${RECOVERY_RESOLVE_TIMEOUT_MS}ms")
+    }
+
+    private suspend fun <T : Any> withFallbackAttempts(resolve: suspend () -> T): T {
         var attempt = 1
         while (true) {
             try {
-                return resolve()
+                return boundedRecoveryResolve(resolve)
             } catch (error: Exception) {
                 if (error is CancellationException && error !is kotlinx.coroutines.TimeoutCancellationException) throw error
                 if (attempt >= MAX_PLAYBACK_RETRIES || isExplicitlyUnplayableFailure(error)) throw error
@@ -8561,7 +8649,10 @@ class MusicPlayer @Inject constructor(
                 )
             }
         }.apply {
-            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            setExtensionRendererMode(
+                if (FfmpegCompat.isUsable) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+                else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF,
+            )
             setEnableDecoderFallback(true)
             setMediaCodecSelector(accurateAudioMediaCodecSelector)
         }
@@ -9748,6 +9839,11 @@ class MusicPlayer @Inject constructor(
          *  promote wait plus every stacked re-resolve. Normal resolves take
          *  seconds; past this the track fails fast instead of spinning. */
         const val YT_RESOLVE_TOTAL_TIMEOUT_MS = 30_000L
+        /** Cap for one mid-track re-resolve (the YT budget above plus margin). */
+        const val RECOVERY_RESOLVE_TIMEOUT_MS = 35_000L
+        /** Budget for a seamless same-file URL swap; the read-ahead buffer covers it. */
+        const val SEAMLESS_URL_REFRESH_TIMEOUT_MS = 12_000L
+        const val MAX_REFRESHED_URL_ENTRIES = 64
         const val DISCOVER_QUEUE_BATCH_SIZE = 16
         const val DISCOVER_QUEUE_REFILL_THRESHOLD = 8
         const val RADIO_QUEUE_BATCH_SIZE = 35

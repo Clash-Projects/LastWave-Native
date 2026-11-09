@@ -25,6 +25,11 @@ import java.util.concurrent.TimeUnit
  *    preserves the system / VPN DNS ordering so VPN-specific routes are not reordered.
  * 3) Automatically falls back to DNS-over-HTTPS (Cloudflare and Google DoH) for both A and AAAA records
  *    if system DNS throws UnknownHostException, times out, or fails.
+ *
+ * Both the VPN check and successful answers are cached briefly. OkHttp calls
+ * lookup() for every new connection, and on MIUI / ColorOS enumerating network
+ * interfaces is slow; with flaky carrier DNS every lookup also used to re-run
+ * the sequential DoH chain (up to ~10s), which made songs take ages to start.
  */
 class Ipv4FirstDnsResolver(
     private val bootstrapClient: OkHttpClient? = null,
@@ -42,8 +47,26 @@ class Ipv4FirstDnsResolver(
             .build()
     }
 
+    private class CachedAnswer(val addresses: List<InetAddress>, val vpn: Boolean, val atMs: Long)
+
+    private val answers = java.util.concurrent.ConcurrentHashMap<String, CachedAnswer>()
+    @Volatile private var vpnCheckedAtMs = 0L
+    @Volatile private var vpnCached = false
+
     override fun lookup(hostname: String): List<InetAddress> {
-        val vpnActive = isVpnActive()
+        val vpnActive = isVpnActiveCached()
+        val now = android.os.SystemClock.elapsedRealtime()
+        answers[hostname]?.let { cached ->
+            // A VPN toggle changes routing: never reuse an answer across it.
+            if (cached.vpn == vpnActive && now - cached.atMs < ANSWER_TTL_MS) return cached.addresses
+        }
+        val resolved = resolveUncached(hostname, vpnActive)
+        if (answers.size > MAX_CACHED_HOSTS) answers.clear()
+        answers[hostname] = CachedAnswer(resolved, vpnActive, now)
+        return resolved
+    }
+
+    private fun resolveUncached(hostname: String, vpnActive: Boolean): List<InetAddress> {
         try {
             val systemAddresses = Dns.SYSTEM.lookup(hostname)
             if (systemAddresses.isNotEmpty()) {
@@ -54,12 +77,21 @@ class Ipv4FirstDnsResolver(
             Log.w(TAG, "System DNS lookup failed for $hostname (${e.message}), falling back to DoH")
         }
 
-        val dohResults = resolveDoh(hostname)
+        val dohResults = resolveDoh(hostname, wantIpv6First = vpnActive)
         if (dohResults.isNotEmpty()) {
             return if (vpnActive) dohResults else sortIpv4First(dohResults)
         }
 
         throw UnknownHostException("Unable to resolve host '$hostname' via system DNS or DoH fallback")
+    }
+
+    private fun isVpnActiveCached(): Boolean {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - vpnCheckedAtMs < VPN_CHECK_TTL_MS) return vpnCached
+        return isVpnActive().also {
+            vpnCached = it
+            vpnCheckedAtMs = now
+        }
     }
 
     private fun isVpnActive(): Boolean {
@@ -97,20 +129,21 @@ class Ipv4FirstDnsResolver(
         return addresses.sortedWith(compareBy { if (it is Inet4Address) 0 else 1 })
     }
 
-    private fun resolveDoh(hostname: String): List<InetAddress> {
-        val result = mutableListOf<InetAddress>()
-
-        // 1. Try Cloudflare DoH (1.1.1.1 direct IP, query A and AAAA)
-        queryDohEndpoint("https://1.1.1.1/dns-query?name=$hostname&type=A", result)
-        queryDohEndpoint("https://1.1.1.1/dns-query?name=$hostname&type=AAAA", result)
-
-        if (result.isNotEmpty()) return result
-
-        // 2. Try Google DoH by IP (8.8.8.8 direct IP, query A and AAAA)
-        queryDohEndpoint("https://8.8.8.8/resolve?name=$hostname&type=A", result)
-        queryDohEndpoint("https://8.8.8.8/resolve?name=$hostname&type=AAAA", result)
-
-        return result
+    /**
+     * A records first; AAAA only when there is no IPv4 answer (or on a VPN,
+     * which keeps its own ordering). Off a VPN, IPv4 is sorted first anyway,
+     * so the extra AAAA round trip only added latency.
+     */
+    private fun resolveDoh(hostname: String, wantIpv6First: Boolean): List<InetAddress> {
+        for (endpoint in DOH_ENDPOINTS) {
+            val result = mutableListOf<InetAddress>()
+            queryDohEndpoint("$endpoint?name=$hostname&type=A", result)
+            if (wantIpv6First || result.none { it is Inet4Address }) {
+                queryDohEndpoint("$endpoint?name=$hostname&type=AAAA", result)
+            }
+            if (result.isNotEmpty()) return result
+        }
+        return emptyList()
     }
 
     private fun queryDohEndpoint(url: String, out: MutableList<InetAddress>) {
@@ -151,5 +184,9 @@ class Ipv4FirstDnsResolver(
 
     private companion object {
         const val TAG = "Ipv4FirstDns"
+        const val ANSWER_TTL_MS = 60_000L
+        const val VPN_CHECK_TTL_MS = 10_000L
+        const val MAX_CACHED_HOSTS = 256
+        val DOH_ENDPOINTS = listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/resolve")
     }
 }

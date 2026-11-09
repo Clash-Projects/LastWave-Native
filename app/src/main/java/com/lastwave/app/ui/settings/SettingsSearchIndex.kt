@@ -1111,38 +1111,6 @@ object SettingsSearchIndex {
                     type = EntryType.ACTION,
                 )
             )
-            add(
-                SettingsEntry(
-                    id = "liked.local",
-                    title = "Save to Liked Songs",
-                    subtitle = "Keep a Liked Songs list in this app",
-                    keywords = listOf(
-                        "liked songs", "like", "heart", "favorite", "favourites", "local playlist"
-                    ),
-                    icon = Icons.Filled.Favorite,
-                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
-                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
-                    parentTab = SettingsTab.YOUTUBE,
-                    section = "Liked Songs",
-                    type = EntryType.TOGGLE,
-                )
-            )
-            add(
-                SettingsEntry(
-                    id = "liked.youtube",
-                    title = "Sync Liked Songs to YouTube Music",
-                    subtitle = "Also mark liked songs as liked on YouTube Music",
-                    keywords = listOf(
-                        "liked songs", "sync", "youtube music", "like", "heart", "favorite"
-                    ),
-                    icon = Icons.Filled.CloudSync,
-                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
-                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
-                    parentTab = SettingsTab.YOUTUBE,
-                    section = "Liked Songs",
-                    type = EntryType.TOGGLE,
-                )
-            )
 
             // ==========================================
             // TAB: LAST.FM

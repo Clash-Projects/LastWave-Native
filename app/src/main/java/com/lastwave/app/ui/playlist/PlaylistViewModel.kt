@@ -18,6 +18,8 @@ import com.lastwave.app.util.FileExportHelper
 import com.lastwave.app.util.PlaylistExportFormat
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -546,20 +548,8 @@ class PlaylistViewModel @Inject constructor(
     fun confirmDelete() {
         val id = _uiState.value.deleteConfirmForPlaylistId ?: return
         viewModelScope.launch {
-            val deleted = try {
-                if (id < 0L) {
-                    ytMusicLibraryManager.deleteLibraryPlaylist(id)
-                } else {
-                    playlistRepository.delete(id)
-                    localMusicLibrary.cleanupOrphansAsync()
-                    true
-                }
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (error: Exception) {
-                android.util.Log.e("PlaylistViewModel", "Couldn't delete playlist $id", error)
-                false
-            }
+            val deleted = withContext(NonCancellable) { deletePlaylist(id) }
+            if (id >= 0L) localMusicLibrary.cleanupOrphansAsync()
 
             if (deleted) {
                 _uiState.update { state ->
@@ -582,30 +572,28 @@ class PlaylistViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Local playlists are deleted from Room (their YouTube mirror follows via
+     * the sync's orphan sweep); connected-account playlists (negative ids) via
+     * the library manager. Returns whether it is gone.
+     *
+     * Callers run this under NonCancellable: the detail screen calls
+     * confirmDelete() and pops itself at once, clearing this ViewModel, while
+     * the delete still waits on the repository's startup sync and the network.
+     */
+    private suspend fun deletePlaylist(id: Long): Boolean = try {
+        if (id < 0L) ytMusicLibraryManager.deleteLibraryPlaylist(id) else playlistRepository.delete(id).let { true }
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (error: Exception) {
+        android.util.Log.e("PlaylistViewModel", "Couldn't delete playlist $id", error)
+        false
+    }
+
     fun deleteMultiple(ids: Set<Long>) {
         viewModelScope.launch {
-            val deletedIds = mutableSetOf<Long>()
-            var failed = 0
-            for (id in ids) {
-                val deleted = try {
-                    if (id < 0L) {
-                        ytMusicLibraryManager.deleteLibraryPlaylist(id)
-                    } else {
-                        playlistRepository.delete(id)
-                        true
-                    }
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (error: Exception) {
-                    android.util.Log.e("PlaylistViewModel", "Couldn't delete playlist $id", error)
-                    false
-                }
-                if (deleted) {
-                    deletedIds += id
-                } else {
-                    failed++
-                }
-            }
+            val deletedIds = withContext(NonCancellable) { ids.filterTo(mutableSetOf()) { deletePlaylist(it) } }
+            val failed = ids.size - deletedIds.size
             localMusicLibrary.cleanupOrphansAsync()
             _uiState.update { state ->
                 state.copy(

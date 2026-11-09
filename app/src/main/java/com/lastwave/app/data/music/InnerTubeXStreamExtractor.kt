@@ -1,5 +1,6 @@
 package com.lastwave.app.data.music
 
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import java.lang.reflect.InvocationTargetException
@@ -33,6 +34,7 @@ import javax.inject.Singleton
 @Singleton
 class InnerTubeXStreamExtractor @Inject constructor(
     private val ytAuth: YtMusicAuthManager,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context,
 ) {
     private val failedProfilesUntil = ConcurrentHashMap<String, Long>()
     private val runtime: RuntimeStack? by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
@@ -57,10 +59,13 @@ class InnerTubeXStreamExtractor @Inject constructor(
             val withCapabilities = hints.javaClass.methods.firstOrNull {
                 it.name == "withStreamCapabilities" && it.parameterCount == 3
             } ?: return@withContext null
-            // The existing Media3 graph consumes complete HTTP/HLS URLs. Keep
-            // SABR/segmented transports out of that graph; InnerTubeX will
-            // continue through its direct/HLS client fallbacks instead.
-            val constrainedHints = withCapabilities.invoke(hints, true, false, false)
+            // (allowHls, allowSabr, allowBoundedRange). The Media3 graph consumes
+            // HTTP/HLS URLs, so SABR stays off. Bounded ranges are ON, as in
+            // Metrolist: ChunkedRangeDataSource fetches every googlevideo URL in
+            // <=512 KB ranges, which is exactly what the token-free ANDROID_VR
+            // clients need to play a whole song. With it off, InnerTubeX
+            // skipped those clients entirely.
+            val constrainedHints = withCapabilities.invoke(hints, true, false, true)
             val audioQuality = enumValue("com.metrolist.innertubex.extraction.AudioQuality", "HIGH")
             val now = System.currentTimeMillis()
             failedProfilesUntil.entries.removeIf { it.value <= now }
@@ -202,6 +207,9 @@ class InnerTubeXStreamExtractor @Inject constructor(
             .orEmpty()
         val clientName = readString(this, "getClientName").orEmpty()
         val profileId = readString(this, "getProfileId").orEmpty()
+        // iOS-family direct URLs need an iOS-attested GVS token we cannot
+        // supply: they stop with 403 about a minute in. Never accept one.
+        if (clientName.startsWith("IOS", ignoreCase = true) || clientName.startsWith("IPADOS", ignoreCase = true)) return null
         val headers = rawHeaders.toMutableMap().apply {
             if (keys.none { it.equals("User-Agent", ignoreCase = true) }) {
                 diagnosticUserAgent(readValue(this@toAudioStream, "getStreamDiagnostics"), clientName, profileId)
@@ -233,10 +241,7 @@ class InnerTubeXStreamExtractor @Inject constructor(
 
     private fun createRuntime(): RuntimeStack {
         val httpClient = createKtorHttpClient()
-        val repository = companionCall(
-            "com.metrolist.innertubex.cipher.PlayerConfigRepository",
-            "disabled",
-        )
+        val repository = playerConfigRepository()
         val configStore = constructWithDefaults(
             "com.metrolist.innertubex.cipher.RemotePlayerConfigStore",
             arrayOf(httpClient, repository),
@@ -263,6 +268,44 @@ class InnerTubeXStreamExtractor @Inject constructor(
             defaultMask = 120,
         )
         return RuntimeStack(innerTube, extractor, parser, cipher)
+    }
+
+    /**
+     * Persistent, ENABLED player-config repository — what Metrolist ships.
+     *
+     * It was `PlayerConfigRepository.disabled()`, which turns off InnerTubeX's
+     * remote player table: getConfig() then returns null and signature/n
+     * deciphering falls back to guessing names in YouTube's script. Signed-in
+     * clients (WEB_REMIX, TVHTML5 — the only ones that serve age-restricted
+     * songs to a connected account) return CIPHERED formats, so a failed guess
+     * meant every age-restricted song failed to play and to download.
+     *
+     * The URL must sit under MetrolistGroup/faraday: RemotePlayerConfigStore
+     * rejects any other source (validatedSourceUrlOrNull) and silently stays off.
+     * Implemented as a Proxy because InnerTubeX is only reachable reflectively.
+     */
+    private fun playerConfigRepository(): Any {
+        val type = Class.forName("com.metrolist.innertubex.cipher.PlayerConfigRepository")
+        val prefs = context.getSharedPreferences(PLAYER_CONFIG_PREFS, Context.MODE_PRIVATE)
+        return java.lang.reflect.Proxy.newProxyInstance(type.classLoader, arrayOf(type)) { proxy, method, args ->
+            val value = args?.firstOrNull()
+            when (method.name) {
+                "getEnabled" -> true
+                "getSourceUrl", "getDefaultSourceUrl" -> PLAYER_CONFIG_URL
+                "getCachedJson" -> prefs.getString("json", "").orEmpty()
+                "getCachedSourceUrl" -> prefs.getString("source_url", "").orEmpty()
+                "getCachedEtag" -> prefs.getString("etag", "").orEmpty()
+                "getCachedAtMs" -> prefs.getLong("cached_at_ms", 0L)
+                "setCachedJson" -> prefs.edit().putString("json", value as String).apply().let { null }
+                "setCachedSourceUrl" -> prefs.edit().putString("source_url", value as String).apply().let { null }
+                "setCachedEtag" -> prefs.edit().putString("etag", value as String).apply().let { null }
+                "setCachedAtMs" -> prefs.edit().putLong("cached_at_ms", value as Long).apply().let { null }
+                "hashCode" -> System.identityHashCode(proxy)
+                "equals" -> proxy === value
+                "toString" -> "LastWavePlayerConfigRepository"
+                else -> null
+            }
+        }
     }
 
     private fun createKtorHttpClient(): Any {
@@ -464,5 +507,8 @@ class InnerTubeXStreamExtractor @Inject constructor(
         const val TAG = "InnerTubeXStreamExtractor"
         const val UNKNOWN_STREAM_EXPIRY_TTL_MS = 5 * 60 * 1_000L
         const val CLIENT_FAILURE_COOLDOWN_MS = 60_000L
+        const val PLAYER_CONFIG_PREFS = "innertubex_player_config"
+        const val PLAYER_CONFIG_URL =
+            "https://raw.githubusercontent.com/MetrolistGroup/faraday/master/registry/player_configs.json"
     }
 }

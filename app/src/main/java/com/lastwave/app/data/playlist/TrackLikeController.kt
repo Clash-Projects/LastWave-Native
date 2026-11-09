@@ -1,70 +1,76 @@
 package com.lastwave.app.data.playlist
 
-import com.lastwave.app.data.local.SettingsPreferences
-import com.lastwave.app.data.ytmusic.YtMusicLibraryManager
+import com.lastwave.app.data.generate.youtubeVideoIdOrNull
+import com.lastwave.app.data.music.InnerTubeMusicApi
+import com.lastwave.app.data.ytmusic.YtMusicAuthManager
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.playback.toGeneratedTrack
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 
 /**
- * The player's heart: a like lands in the local Liked Songs playlist, then is
- * mirrored to YouTube Music. Shared by the in-app player and the playback
- * service, so a heart on an external controller (the OriginOS music card)
- * does exactly what the in-app heart does.
+ * Likes work the way SimpMusic's do:
  *
- * Nothing is pushed anywhere else: a like is this app's own and YouTube Music's,
- * and nothing more.
+ * - The heart is LOCAL only: it adds the song to (or removes it from) Liked
+ *   Songs and touches nothing else — not YouTube, not Last.fm. It is shared by
+ *   the in-app player and the playback service, so a heart on an external
+ *   controller (the OriginOS music card) does exactly what the in-app heart does.
+ * - YouTube Music has its own button, shown only while an account is
+ *   connected. It reflects the account's real like state (read from YouTube,
+ *   not guessed from the local heart) and toggles only that.
  */
 @Singleton
 class TrackLikeController @Inject constructor(
     private val likedSongsManager: LikedSongsManager,
-    private val ytMusicLibraryManager: YtMusicLibraryManager,
-    private val settingsPreferences: SettingsPreferences,
+    private val innerTube: InnerTubeMusicApi,
+    private val ytAuth: YtMusicAuthManager,
 ) {
     val likedTrackKeys: StateFlow<Set<String>> get() = likedSongsManager.likedTrackKeys
 
     fun isLiked(track: PlayableTrack, likedKeys: Set<String> = likedTrackKeys.value): Boolean =
-        track.toGeneratedTrack().key in likedKeys
+        track.toGeneratedTrack().isLikedIn(likedKeys)
 
-    /** Throws when Liked Songs could not be updated; the mirrors never do. */
-    suspend fun toggle(track: PlayableTrack): LikeChange {
-        val liked = likedSongsManager.toggle(track.toGeneratedTrack())
-        return mirror(track, liked)
-    }
+    /** Flips the local heart. Returns the new state; throws when Liked Songs could not be updated. */
+    suspend fun toggle(track: PlayableTrack): Boolean =
+        likedSongsManager.toggle(track.toGeneratedTrack())
 
-    /** Idempotent like for artwork double-tap: it never unlikes. */
-    suspend fun like(track: PlayableTrack): LikeChange {
+    /** Idempotent local like for artwork double-tap: it never unlikes. */
+    suspend fun like(track: PlayableTrack): Boolean =
         likedSongsManager.like(track.toGeneratedTrack())
-        return mirror(track, liked = true)
-    }
 
-    private suspend fun mirror(track: PlayableTrack, liked: Boolean): LikeChange {
-        return LikeChange(liked = liked, youTubeMirrored = mirrorYouTubeLove(track, liked))
+    /** Whether the YouTube Music button applies: an account is connected and the song has a YouTube id. */
+    fun canUseYouTubeLike(track: PlayableTrack?): Boolean =
+        track != null && ytAuth.connection.value.isConnected && youTubeIdOf(track) != null
+
+    /** The account's like state for [track] on YouTube Music; null when unknown. */
+    suspend fun youTubeLikeStatus(track: PlayableTrack): Boolean? {
+        val videoId = youTubeIdOf(track) ?: return null
+        return guard { innerTube.getYouTubeLikeStatus(videoId) }
     }
 
     /**
-     * YouTube Music mirror of the local like. The local state is the source of
-     * truth and already saved, so a failed mirror is reported and left alone —
-     * the next toggle can retry it.
-     *
-     * With no YouTube account there is nowhere to mirror to, and the mirror is a
-     * no-op: the like stays in this app.
+     * Adds the YouTube Music like when [currentlyLiked] is false, removes it
+     * otherwise (SimpMusic's addToYouTubeLiked / removeFromYouTubeLiked).
+     * Returns whether YouTube accepted the change.
      */
-    private suspend fun mirrorYouTubeLove(track: PlayableTrack, loved: Boolean): Boolean {
-        if (!settingsPreferences.likedSongsYouTubeSync.first()) return true
-        return try {
-            ytMusicLibraryManager.mirrorLikeToYouTube(track.toGeneratedTrack(), loved)
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (error: Exception) {
-            android.util.Log.w("TrackLikeController", "YouTube like mirror failed", error)
-            false
-        }
+    suspend fun setYouTubeLike(track: PlayableTrack, currentlyLiked: Boolean): Boolean {
+        val videoId = youTubeIdOf(track) ?: return false
+        return guard {
+            if (currentlyLiked) innerTube.removeVideoLike(videoId) else innerTube.likeVideo(videoId)
+        } == true
+    }
+
+    private fun youTubeIdOf(track: PlayableTrack): String? =
+        track.videoId?.takeIf { it.isNotBlank() } ?: track.toGeneratedTrack().youtubeVideoIdOrNull()
+
+    private suspend fun <T> guard(block: suspend () -> T): T? = try {
+        block()
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (error: Exception) {
+        android.util.Log.w("TrackLikeController", "YouTube like request failed", error)
+        null
     }
 }
-
-data class LikeChange(val liked: Boolean, val youTubeMirrored: Boolean)

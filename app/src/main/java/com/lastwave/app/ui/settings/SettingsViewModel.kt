@@ -137,28 +137,6 @@ class SettingsViewModel @Inject constructor(
         .withSettingsFallback("Spotify prefer canvas preference", false)
         .stateIn(viewModelScope, SettingsSharing, false)
 
-    /** Whether a liked song is added to this app's own Liked Songs playlist. */
-    val likedSongsLocalSync: StateFlow<Boolean> = settingsPreferences.likedSongsLocalSync
-        .withSettingsFallback("Liked songs local sync preference", true)
-        .stateIn(viewModelScope, SettingsSharing, true)
-
-    /** Whether a liked song is also marked as liked on YouTube Music. */
-    val likedSongsYouTubeSync: StateFlow<Boolean> = settingsPreferences.likedSongsYouTubeSync
-        .withSettingsFallback("Liked songs YouTube sync preference", true)
-        .stateIn(viewModelScope, SettingsSharing, true)
-
-    fun setLikedSongsLocalSync(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsPreferences.setLikedSongsLocalSync(enabled)
-        }
-    }
-
-    fun setLikedSongsYouTubeSync(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsPreferences.setLikedSongsYouTubeSync(enabled)
-        }
-    }
-
     fun setSpotifyCanvasEnabled(enabled: Boolean) {
         viewModelScope.launch {
             spotifyPreferences.setCanvasEnabled(enabled)
