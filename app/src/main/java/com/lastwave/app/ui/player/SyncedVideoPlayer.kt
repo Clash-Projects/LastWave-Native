@@ -193,9 +193,9 @@ private fun videoMediaHttp(context: android.content.Context): okhttp3.OkHttpClie
         .build()
 
 /**
- * Starts near Full HD and adapts to measured bandwidth. The quality-up threshold
- * sits below the default 10s because one video player buffers only 8s and could
- * otherwise never reach it.
+ * Starts with enough estimated bandwidth to reach high-resolution renditions,
+ * then adapts to measured bandwidth. The quality-up threshold sits below the
+ * default 10s because one video player buffers only 8s and could never reach it.
  */
 @OptIn(UnstableApi::class)
 private fun adaptiveVideoPlayerBuilder(
@@ -205,7 +205,7 @@ private fun adaptiveVideoPlayerBuilder(
     .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
     .setBandwidthMeter(
         DefaultBandwidthMeter.Builder(context)
-            .setInitialBitrateEstimate(5_000_000L)
+            .setInitialBitrateEstimate(20_000_000L)
             .build(),
     )
     .setTrackSelector(
@@ -215,7 +215,7 @@ private fun adaptiveVideoPlayerBuilder(
                 /* minDurationForQualityIncreaseMs = */ 4_000,
                 /* maxDurationForQualityDecreaseMs = */ 6_000,
                 /* minDurationToRetainAfterDiscardMs = */ 6_000,
-                /* bandwidthFraction = */ 0.7f,
+                /* bandwidthFraction = */ 0.85f,
             ),
         ),
     )
