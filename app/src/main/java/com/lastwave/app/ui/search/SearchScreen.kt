@@ -582,6 +582,16 @@ fun SearchScreen(
                                                 onLongClick = {
                                                     if (state.tab == SearchTab.TRACKS) miniTrayItem = topResult
                                                 },
+                                                onMenu = {
+                                                    menuTarget = when (state.tab) {
+                                                        SearchTab.TRACKS, SearchTab.PODCASTS ->
+                                                            TrackMenuTarget.Track(topResult.name, topResult.artist.orEmpty(), topResult.url)
+                                                        SearchTab.ARTISTS -> TrackMenuTarget.Artist(topResult.name, topResult.url)
+                                                        SearchTab.ALBUMS ->
+                                                            TrackMenuTarget.Album(topResult.name, topResult.artist.orEmpty(), topResult.url)
+                                                        SearchTab.PLAYLISTS, SearchTab.USERS -> null
+                                                    }
+                                                },
                                             )
                                             Spacer(Modifier.height(8.dp))
                                         }
@@ -670,6 +680,7 @@ private fun TopResultCard(
     tab: SearchTab,
     isPlaying: Boolean = false,
     onPlay: () -> Unit,
+    onMenu: () -> Unit,
     onLongClick: (() -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(20.dp)
