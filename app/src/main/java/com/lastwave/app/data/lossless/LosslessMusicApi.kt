@@ -455,7 +455,7 @@ class LosslessMusicApi @Inject constructor(
         // (dakuten), Hangul jamo or Indic vowel signs destroys the title and
         // made non-English songs normalize to blank, so they never matched a
         // lossless candidate and fell back to the Opus stream.
-        private val DIACRITICS = Regex("(?<=\\p{IsLatin})\\p{M}+")
+        private val DIACRITICS = Regex("(?<=\\p{Script=Latin})\\p{M}+")
         private val NON_ALPHANUMERIC = Regex("[^\\p{L}\\p{N}\\p{M}]+")
         private val MULTI_SPACE = Regex("\\s+")
 
@@ -1553,14 +1553,14 @@ class LosslessMusicApi @Inject constructor(
     private fun extractLanguages(raw: String): Set<String> {
         if (raw.isBlank()) return emptySet()
         val result = mutableSetOf<String>()
-        if (Regex("""\p{IsTelugu}""").containsMatchIn(raw)) result += "telugu"
-        if (Regex("""\p{IsTamil}""").containsMatchIn(raw)) result += "tamil"
-        if (Regex("""\p{IsKannada}""").containsMatchIn(raw)) result += "kannada"
-        if (Regex("""\p{IsMalayalam}""").containsMatchIn(raw)) result += "malayalam"
-        if (Regex("""\p{IsGurmukhi}""").containsMatchIn(raw)) result += "punjabi"
-        if (Regex("""\p{IsBengali}""").containsMatchIn(raw)) result += "bengali"
-        if (Regex("""\p{IsGujarati}""").containsMatchIn(raw)) result += "gujarati"
-        if (Regex("""\p{IsDevanagari}""").containsMatchIn(raw)) result += "hindi"
+        if (Regex("""\p{Script=Telugu}""").containsMatchIn(raw)) result += "telugu"
+        if (Regex("""\p{Script=Tamil}""").containsMatchIn(raw)) result += "tamil"
+        if (Regex("""\p{Script=Kannada}""").containsMatchIn(raw)) result += "kannada"
+        if (Regex("""\p{Script=Malayalam}""").containsMatchIn(raw)) result += "malayalam"
+        if (Regex("""\p{Script=Gurmukhi}""").containsMatchIn(raw)) result += "punjabi"
+        if (Regex("""\p{Script=Bengali}""").containsMatchIn(raw)) result += "bengali"
+        if (Regex("""\p{Script=Gujarati}""").containsMatchIn(raw)) result += "gujarati"
+        if (Regex("""\p{Script=Devanagari}""").containsMatchIn(raw)) result += "hindi"
 
         val tokens = normalizeText(raw).split(' ').toSet()
         for (token in tokens) {
