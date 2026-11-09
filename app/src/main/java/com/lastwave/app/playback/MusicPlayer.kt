@@ -2144,7 +2144,7 @@ class MusicPlayer @Inject constructor(
                     restoredPlayer.repeatMode = _state.value.repeatMode
                     restoredPlayer.shuffleModeEnabled = _state.value.shuffleEnabled
                 }
-                restoredPlayer.volume = if (bitPerfectEnabled) 1f else appVolume
+                restoredPlayer.volume = appVolume
                 runCatching { nativeAudioEngine.get().setOutputVolume(if (bitPerfectEnabled) 1f else appVolume) }
                 runCatching { autoMixCoordinator.get().setBaseVolume(appVolume) }
             }
@@ -2537,7 +2537,7 @@ class MusicPlayer @Inject constructor(
                     appVolume = vol
                     _state.update { if (it.isCasting) it else it.copy(appVolume = vol) }
                     if (playerDelegate.isInitialized() && unduckedVolume == null) {
-                        runCatching { player.volume = if (bitPerfectEnabled) 1f else vol }
+                        runCatching { player.volume = vol }
                     }
                     runCatching { nativeAudioEngine.get().setOutputVolume(if (bitPerfectEnabled) 1f else vol) }
                     runCatching { autoMixCoordinator.get().setBaseVolume(vol) }
@@ -2588,14 +2588,11 @@ class MusicPlayer @Inject constructor(
                     onMain {
                         if (!crossfadeEnabled || bitPerfectEnabled) cancelCrossfade()
                         if (bitPerfectEnabled) {
-                            // Bulletproofing: tempo stretch resamples and any
-                            // leftover fade gain scales samples â€” both defeat
-                            // bit-perfect, so engaging the mode resets them.
+                            // Tempo stretch resamples, which defeats bit-perfect.
+                            // Volume is left alone: the direct sinks scale it in
+                            // software, and pinning it to 1 killed the in-app mute.
                             if (runCatching { player.playbackParameters.speed }.getOrDefault(1f) != 1f) {
                                 runCatching { player.setPlaybackSpeed(1f) }
-                            }
-                            if (runCatching { player.volume }.getOrDefault(1f) != 1f) {
-                                runCatching { player.volume = 1f }
                             }
                         }
                     }
@@ -3385,7 +3382,7 @@ class MusicPlayer @Inject constructor(
     private fun restoreAfterAudioFocus() {
         unduckedVolume?.let { level ->
             unduckedVolume = null
-            if (playerDelegate.isInitialized()) runCatching { player.volume = if (bitPerfectEnabled) 1f else level }
+            if (playerDelegate.isInitialized()) runCatching { player.volume = level }
         }
         if (!focusPauseAwaitingRecovery) return
         focusPauseAwaitingRecovery = false
@@ -3402,14 +3399,14 @@ class MusicPlayer @Inject constructor(
         if (ducked) {
             if (unduckedVolume != null) return
             val current = runCatching { player.volume }.getOrDefault(appVolume)
-            val duckTarget = if (bitPerfectEnabled) 1f else (AudioFocusPolicy.DUCK_VOLUME * appVolume).coerceIn(0f, 1f)
+            val duckTarget = (AudioFocusPolicy.DUCK_VOLUME * appVolume).coerceIn(0f, 1f)
             if (current <= duckTarget) return
             unduckedVolume = current
             runCatching { player.volume = duckTarget }
         } else {
             val level = unduckedVolume ?: appVolume
             unduckedVolume = null
-            runCatching { player.volume = if (bitPerfectEnabled) 1f else level }
+            runCatching { player.volume = level }
         }
     }
 
@@ -3426,7 +3423,7 @@ class MusicPlayer @Inject constructor(
         appVolume = clamped
         _state.update { it.copy(appVolume = clamped) }
         if (playerDelegate.isInitialized() && unduckedVolume == null) {
-            runCatching { player.volume = if (bitPerfectEnabled) 1f else clamped }
+            runCatching { player.volume = clamped }
         }
         runCatching { nativeAudioEngine.get().setOutputVolume(if (bitPerfectEnabled) 1f else clamped) }
         runCatching { autoMixCoordinator.get().setBaseVolume(clamped) }
@@ -3721,7 +3718,7 @@ class MusicPlayer @Inject constructor(
             standbyQueue = emptyList()
             standbyIndex = C.INDEX_UNSET
         }
-        player.volume = if (bitPerfectEnabled) 1f else appVolume
+        player.volume = appVolume
     }
 
     /**
@@ -4514,13 +4511,7 @@ class MusicPlayer @Inject constructor(
         val routedRequested = exclusive ||
             (routedDacDeviceId != null && routedDacDeviceId == dac?.deviceId)
         val hardwareVolume = exclusive && exclusiveUsbOutput.usesHardwareVolume()
-        val exclusiveAppVolume = if (exclusive && hardwareVolume) {
-            1f
-        } else if (exclusive) {
-            exclusiveUsbOutput.softwareGain()
-        } else {
-            appVolume
-        }
+        val exclusiveAppVolume = if (exclusive) exclusiveUsbOutput.softwareGain() else appVolume
         exclusiveUsbOutput.syncListeningGain()
         val internalSession = internalDirectOutput.session.value?.takeIf {
             audioSinks.any { sink -> runCatching { sink.isInternalDirectActive() }.getOrDefault(false) }
@@ -8833,7 +8824,7 @@ class MusicPlayer @Inject constructor(
             )
 
             applicationScope.launch(Dispatchers.Main.immediate) {
-                val targetVolume = if (bitPerfectEnabled) 1f else appVolume
+                val targetVolume = appVolume
                 try {
                     // Linear gains: both sides carry the same audio, so they sum to constant level.
                     for (step in 1..HOT_SWAP_FADE_STEPS) {
@@ -8843,7 +8834,7 @@ class MusicPlayer @Inject constructor(
                         delay(HOT_SWAP_FADE_STEP_MS)
                     }
                 } finally {
-                    if (player === standby) standby.volume = if (bitPerfectEnabled) 1f else appVolume
+                    if (player === standby) standby.volume = appVolume
                     standby.setSeekParameters(SeekParameters.EXACT)
                     live.stop()
                     live.clearMediaItems()

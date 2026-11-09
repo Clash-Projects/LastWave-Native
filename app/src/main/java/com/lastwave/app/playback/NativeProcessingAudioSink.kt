@@ -693,11 +693,10 @@ class NativeProcessingAudioSink(
                 C.ENCODING_PCM_16BIT -> {
                     var pos = startPos
                     while (pos + 1 < endPos) {
-                        val sample = buffer.getShort(pos).toInt()
-                        val rawFloat = (sample / 32768f) * gain
-                        val s = kotlin.math.tanh(rawFloat * 0.85f) * 1.12f
-                        val pcm = (s * 32767f).toInt().coerceIn(-32767, 32767).toShort()
-                        buffer.putShort(pos, pcm)
+                        // Linear like the other encodings: the old tanh "soft clip"
+                        // cost ~0.4 dB everywhere and up to 2.2 dB on peaks.
+                        val scaled = kotlin.math.round(buffer.getShort(pos) * gain).toInt()
+                        buffer.putShort(pos, scaled.coerceIn(-32768, 32767).toShort())
                         pos += 2
                     }
                 }
