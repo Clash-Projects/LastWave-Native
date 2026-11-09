@@ -66,9 +66,19 @@ android {
     // island and is almost never already installed outside China.
     val vivoOrigin = (project.findProperty("vivoOrigin") as? String)?.toBoolean() == true
 
+    // Android TV build: `-PtvApp=true` ships the same app as a separate
+    // package (com.lastwave.app.tv) so the TV APK installs alongside the
+    // phone app instead of replacing it. Still one universal APK.
+    val tvApp = (project.findProperty("tvApp") as? String)?.toBoolean() == true
+
     defaultConfig {
-        applicationId = if (vivoOrigin) "com.tencent.qqmusic" else "com.lastwave.app"
+        applicationId = when {
+            vivoOrigin -> "com.tencent.qqmusic"
+            tvApp -> "com.lastwave.app.tv"
+            else -> "com.lastwave.app"
+        }
         buildConfigField("boolean", "VIVO_ORIGIN", vivoOrigin.toString())
+        buildConfigField("boolean", "TV_APP", tvApp.toString())
         minSdk = (project.findProperty("minSdk") as? String)?.toIntOrNull() ?: 29
         targetSdk = 35
         versionCode = 30

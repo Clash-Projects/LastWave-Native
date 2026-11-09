@@ -52,6 +52,11 @@
         android:name="android.hardware.usb.host"
         android:required="false" />
 
+    <!-- TV builds ship the same APK; leanback is optional so phones still see it. -->
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="false" />
+
     <application
         android:name=".LastWaveApplication"
         android:allowBackup="true"
@@ -233,6 +238,22 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity-alias>
+
+        <!-- Android TV / Google TV / Fire TV launcher (leanback). The phone
+             activity stays leanback-free, so TV home screens list only this. -->
+        <activity
+            android:name=".ui.tv.TvHomeActivity"
+            android:exported="true"
+            android:icon="@drawable/tv_app_icon"
+            android:label="@string/app_name"
+            android:banner="@drawable/tv_banner"
+            android:theme="@style/Theme.LastWave.Splash"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
 
 
         <!-- Native background music player service -->
