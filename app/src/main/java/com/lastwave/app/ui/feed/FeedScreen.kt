@@ -348,7 +348,8 @@ fun FeedScreen(
         // header a sibling on top of it (never inside it: no self-capture).
         // Without glass (or on the transparent Podcasts hero) the list keeps
         // starting below the header exactly as before.
-        val feedGlass = com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported() && !isPodcastsActive
+        val hasChips = state.homeChips.isNotEmpty()
+        val feedGlass = com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported() && !isPodcastsActive && !hasChips
         val feedBackgroundColor = MaterialTheme.colorScheme.background
         val feedBackdrop = com.lastwave.app.ui.theme.rememberLayerBackdrop {
             drawRect(feedBackgroundColor)
@@ -381,6 +382,7 @@ fun FeedScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = if (useFeedGlass) 0.dp else topBarHeight)
+                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                     .then(
                         if (useFeedGlass && feedBackdrop != null) {
                             Modifier.liquidGlassSource(feedBackdrop)
@@ -691,36 +693,9 @@ fun FeedScreen(
 
                 val isInfiniteRadioVisible = showSynthetic && combinedQuickPicks.isNotEmpty()
                 val isQuickTilesVisible = showSynthetic && quickTiles.isNotEmpty()
-                val hasSectionsBelowQuickTiles = allContainerKeys.isNotEmpty()
-                val quickTilesShape = RoundedCornerShape(
-                    topStart = if (isInfiniteRadioVisible) 0.dp else 28.dp,
-                    topEnd = if (isInfiniteRadioVisible) 0.dp else 28.dp,
-                    bottomStart = if (hasSectionsBelowQuickTiles) 0.dp else 28.dp,
-                    bottomEnd = if (hasSectionsBelowQuickTiles) 0.dp else 28.dp,
-                )
-
-                val spotlightIndex = allContainerKeys.indexOf("spotlight_hero")
-                val hasPermanentContainerAbove = isQuickTilesVisible || isInfiniteRadioVisible
-                val getContainerShape: (String) -> RoundedCornerShape = { key ->
-                    val index = allContainerKeys.indexOf(key)
-                    if (index == -1) {
-                        RoundedCornerShape(0.dp)
-                    } else {
-                        val isFirst = index == 0
-                        val isLast = index == allContainerKeys.size - 1
-                        val isBeforeSpotlight = spotlightIndex != -1 && index == spotlightIndex - 1
-                        val isAfterSpotlight = spotlightIndex != -1 && index == spotlightIndex + 1
-
-                        val topRadius = if ((isFirst && !hasPermanentContainerAbove) || isAfterSpotlight) 28.dp else 0.dp
-                        val bottomRadius = if (isLast || isBeforeSpotlight) 28.dp else 0.dp
-
-                        RoundedCornerShape(
-                            topStart = topRadius,
-                            topEnd = topRadius,
-                            bottomStart = bottomRadius,
-                            bottomEnd = bottomRadius,
-                        )
-                    }
+                val quickTilesShape = RoundedCornerShape(28.dp)
+                val getContainerShape: (String) -> RoundedCornerShape = { _ ->
+                    RoundedCornerShape(28.dp)
                 }
 
                 val hasAnyFeedSections = showSynthetic || allContainerKeys.isNotEmpty()
@@ -761,12 +736,7 @@ fun FeedScreen(
                                 if (shelf.items.isEmpty()) continue
                                 item(key = "chip_shelf_${shelfIndex}_${shelf.title}") {
                                     HomeContainerSection(
-                                        shape = RoundedCornerShape(
-                                            topStart = if (shelfIndex == 0) 28.dp else 0.dp,
-                                            topEnd = if (shelfIndex == 0) 28.dp else 0.dp,
-                                            bottomStart = if (shelfIndex == state.chipShelves.size - 1) 28.dp else 0.dp,
-                                            bottomEnd = if (shelfIndex == state.chipShelves.size - 1) 28.dp else 0.dp,
-                                        ),
+                                        shape = RoundedCornerShape(28.dp),
                                     ) {
                                         HomeShelfCard(
                                             shelf = shelf,
@@ -1529,12 +1499,10 @@ fun FeedScreen(
                 },
             )
             if (state.homeChips.isNotEmpty()) {
-                // Page-coloured strip so the feed scrolling under the glass
-                // never shows through around the chips (looks as before).
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .then(if (useFeedGlass) Modifier.background(chipStripColor) else Modifier),
+                Surface(
+                    shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
+                    color = chipStripColor,
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
                     PinnedChipsBar(
                         chips = state.homeChips,
@@ -1716,12 +1684,7 @@ private fun InfiniteRadioHero(
 ) {
     val haptics = LocalHapticFeedback.current
     val heroArt = quickPicks.firstOrNull { !it.artworkUrl.isNullOrBlank() }?.artworkUrl
-    val heroShape = RoundedCornerShape(
-        topStart = 28.dp,
-        topEnd = 28.dp,
-        bottomStart = 0.dp,
-        bottomEnd = 0.dp,
-    )
+    val heroShape = RoundedCornerShape(28.dp)
     Surface(
         shape = heroShape,
         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
@@ -1729,7 +1692,7 @@ private fun InfiniteRadioHero(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .padding(bottom = 3.dp),
+            .padding(bottom = 6.dp),
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             if (!heroArt.isNullOrBlank()) {
@@ -3503,14 +3466,14 @@ private fun FriendAvatarCard(
 @Composable
 private fun HomeContainerSection(
     modifier: Modifier = Modifier,
-    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(0.dp),
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(28.dp),
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .padding(bottom = 3.dp),
+            .padding(bottom = 6.dp),
         shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
     ) {

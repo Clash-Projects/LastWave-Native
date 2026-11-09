@@ -4615,6 +4615,7 @@ class InnerTubeMusicApi @Inject constructor(
                 AppLanguage.JAPANESE -> "JP"
                 AppLanguage.KOREAN -> "KR"
                 AppLanguage.ARABIC -> if (sysCountry in ARABIC_COUNTRIES) sysCountry else "SA"
+                AppLanguage.VIETNAMESE -> "VN"
                 AppLanguage.ENGLISH -> if (sysCountry in ENGLISH_COUNTRIES) sysCountry else "US"
                 AppLanguage.SYSTEM -> if (sysCountry.length == 2 && sysCountry.all { it.isLetter() }) sysCountry.uppercase() else "US"
             }

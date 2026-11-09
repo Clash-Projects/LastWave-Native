@@ -2691,6 +2691,7 @@ fun SettingsScreen(
                                             AppLanguage.JAPANESE -> "🇯🇵"
                                             AppLanguage.KOREAN -> "🇰🇷"
                                             AppLanguage.ARABIC -> "🇸🇦"
+                                            AppLanguage.VIETNAMESE -> "🇻🇳"
                                             else -> "🌐"
                                         }
                                         Text(
