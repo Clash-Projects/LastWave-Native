@@ -4,6 +4,7 @@ import android.util.Log
 import com.lastwave.app.data.generate.GenerateRepository
 import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.generate.TasteProfileProvider
+import com.lastwave.app.data.local.db.SnoozeDuration
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.recommend.RecommendationRepository
@@ -369,6 +370,36 @@ class DiscoverRepository @Inject constructor(
 
     suspend fun clearRecommendationExclusions() {
         generateRepository.clearRecommendationExclusions()
+        reset()
+    }
+
+    suspend fun snoozeTrack(
+        trackName: String,
+        artistName: String,
+        duration: SnoozeDuration,
+    ): Boolean = applySnooze(generateRepository.snoozeTrack(trackName, artistName, duration))
+
+    suspend fun snoozeArtist(artistName: String, duration: SnoozeDuration): Boolean =
+        applySnooze(generateRepository.snoozeArtist(artistName, duration))
+
+    private suspend fun applySnooze(stored: Boolean): Boolean {
+        if (!stored) return false
+        mutex.withLock {
+            queue = generateRepository.filterRecommendationExclusions(queue).toMutableList()
+            _feed.value = generateRepository.filterRecommendationExclusions(_feed.value)
+            val retainedSeeds = generateRepository.filterRecommendationExclusions(explorationSeeds.toList())
+            explorationSeeds.clear()
+            explorationSeeds.addAll(retainedSeeds)
+        }
+        return true
+    }
+
+    suspend fun clearSnoozesForPlayedTrack(trackName: String, artistName: String) {
+        generateRepository.clearSnoozesForPlayedTrack(trackName, artistName)
+    }
+
+    suspend fun clearRecommendationSnoozes() {
+        generateRepository.clearRecommendationSnoozes()
         reset()
     }
 

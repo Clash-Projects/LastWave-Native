@@ -596,6 +596,13 @@
     <string name="menu_refresh_artwork">Refresh Cover Art</string>
     <string name="menu_copy_song">Copy Song</string>
     <string name="menu_details_specs">Details &amp; Audio Specs</string>
+    <string name="menu_snooze">Snooze</string>
+    <string name="menu_snooze_artist">Snooze artist</string>
+    <string name="snooze_track_message">Hide “%1$s” from recommendations for…</string>
+    <string name="snooze_artist_message">Hide tracks by “%1$s” from recommendations for…</string>
+    <string name="snooze_one_week">1 week</string>
+    <string name="snooze_one_month">1 month</string>
+    <string name="snooze_three_months">3 months</string>
     <string name="menu_dont_recommend">Don\'t recommend again</string>
     <string name="menu_remove_from_playlist">Remove from Playlist</string>
     <string name="menu_remove_from_queue">Remove from Queue</string>
@@ -1191,6 +1198,7 @@
     <string name="art_verified_cd">Verified Artist</string>
     <string name="art_shuffle_cd">Shuffle Artist</string>
     <string name="art_radio_cd">Artist Radio</string>
+    <string name="art_more_actions_cd">More artist actions</string>
     <string name="art_play_cd">Play Artist</string>
     <string name="art_about">About</string>
     <string name="art_read_more">… Read more</string>

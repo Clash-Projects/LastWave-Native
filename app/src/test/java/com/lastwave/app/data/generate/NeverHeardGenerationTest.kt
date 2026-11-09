@@ -7,6 +7,7 @@ import com.lastwave.app.data.local.db.DownloadedTrackDao
 import com.lastwave.app.data.local.db.DownloadedTrackEntity
 import com.lastwave.app.data.local.db.RecommendationExclusionDao
 import com.lastwave.app.data.local.db.RecommendationExclusionEntity
+import com.lastwave.app.data.local.db.RecommendationSnoozeDao
 import com.lastwave.app.data.local.db.SongPlayStatsDao
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YouTubeMusicTrack
@@ -45,6 +46,7 @@ class NeverHeardGenerationTest {
         val api: LastFmApiService = mockk(relaxed = true)
         val sessionPreferences: SessionPreferences = mockk(relaxed = true)
         val recommendationExclusionDao: RecommendationExclusionDao = mockk(relaxed = true)
+        val recommendationSnoozeDao: RecommendationSnoozeDao = mockk(relaxed = true)
         val tasteProfileProvider: TasteProfileProvider = mockk(relaxed = true)
         val playlistRepository: PlaylistRepository = mockk(relaxed = true)
         val viewingProfileState: ViewingProfileState = mockk(relaxed = true)
@@ -175,6 +177,7 @@ class NeverHeardGenerationTest {
             api = api,
             sessionPreferences = sessionPreferences,
             recommendationExclusionDao = recommendationExclusionDao,
+            recommendationSnoozeDao = recommendationSnoozeDao,
             tasteProfileProvider = tasteProfileProvider,
             playlistRepository = playlistRepository,
             viewingProfileState = viewingProfileState,

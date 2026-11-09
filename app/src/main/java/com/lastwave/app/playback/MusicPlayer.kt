@@ -2701,6 +2701,7 @@ class MusicPlayer @Inject constructor(
         // A podcast episode never seeds a music radio.
         val radioAllowed = startRadio && autoplaySimilarEnabled && track.mediaType == MediaType.SONG
         radioQueueActive = radioAllowed
+        clearSnoozeForManualPlay(track)
         startResolvedQueuePlayback(
             tracks = listOf(track),
             selectedIndex = 0,
@@ -2791,6 +2792,7 @@ class MusicPlayer @Inject constructor(
             tracks.getOrNull(startIndex)?.videoId?.takeIf(String::isNotBlank)?.let { radioUsedSeeds.add(it) }
         }
         val selectedIndex = startIndex.coerceIn(tracks.indices)
+        tracks.getOrNull(selectedIndex)?.let(::clearSnoozeForManualPlay)
         playRequest?.cancel()
         queueEnrichmentJob?.cancel()
         unavailableSkipJob?.cancel()
@@ -2809,6 +2811,22 @@ class MusicPlayer @Inject constructor(
             endlessDiscover = endlessDiscover || (enableRadioContinuation && autoplaySimilarEnabled),
             startShuffled = startShuffled,
         )
+    }
+
+    /** A deliberate play (search, menu, playlist start) wakes any snooze on
+     *  this track and its artists. Automatic radio/queue advances never call
+     *  the public play entry points, so they leave snoozes intact. */
+    private fun clearSnoozeForManualPlay(track: PlayableTrack) {
+        if (track.mediaType != MediaType.SONG || track.title.isBlank()) return
+        applicationScope.launch(Dispatchers.IO) {
+            try {
+                discoverRepository.clearSnoozesForPlayedTrack(track.title, track.artist)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                android.util.Log.w("MusicPlayer", "Failed to wake snoozed track", error)
+            }
+        }
     }
 
     private fun startResolvedQueuePlayback(

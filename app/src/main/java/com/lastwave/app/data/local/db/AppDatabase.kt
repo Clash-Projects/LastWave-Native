@@ -9,18 +9,20 @@ import com.lastwave.app.data.podcast.PodcastProgressEntity
     entities = [
         ArtworkCacheEntity::class,
         RecommendationExclusionEntity::class,
+        RecommendationSnoozeEntity::class,
         SavedPlaylistEntity::class,
         DownloadedTrackEntity::class,
         SongPlayStatsEntity::class,
         RelatedGraphEdgeEntity::class,
         PodcastProgressEntity::class,
     ],
-    version = 15,
+    version = 16,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun artworkCacheDao(): ArtworkCacheDao
     abstract fun recommendationExclusionDao(): RecommendationExclusionDao
+    abstract fun recommendationSnoozeDao(): RecommendationSnoozeDao
     abstract fun savedPlaylistDao(): SavedPlaylistDao
     abstract fun downloadedTrackDao(): DownloadedTrackDao
     abstract fun songPlayStatsDao(): SongPlayStatsDao
