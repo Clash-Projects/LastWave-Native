@@ -52,7 +52,7 @@ internal fun buildAdaptiveVideoManifest(streams: List<YouTubeVideoStream>): Stri
         "</AdaptationSet></Period></MPD>"
 }
 
-private const val MAX_ADAPTIVE_HEIGHT = 1080
+private const val MAX_ADAPTIVE_HEIGHT = 2160
 
 private val YouTubeVideoStream.hasDashRanges: Boolean
     get() = !initRange.isNullOrBlank() && !indexRange.isNullOrBlank()
@@ -66,20 +66,9 @@ private fun xmlEscape(value: String): String = value
     .replace(">", "&gt;")
     .replace("\"", "&quot;")
 
-/** Order for Auto quality: 720p/1080p first so playback starts without buffer stalls. */
+/** Try the highest available resolution first; lower renditions remain fallbacks. */
 internal fun rankedForAutoPlayback(streams: List<YouTubeVideoStream>): List<YouTubeVideoStream> =
-    streams.sortedByDescending { stream ->
-        // Wide films have non-standard heights (3840x1608 is labelled 2160p), so trust the label.
-        when (nominalHeight(stream)) {
-            720 -> 100
-            1080 -> 95
-            480 -> 80
-            1440 -> 75
-            2160 -> 70
-            360 -> 60
-            else -> 40
-        }
-    }
+    streams.sortedByDescending(::nominalHeight)
 
 private fun videoCodecRank(stream: YouTubeVideoStream): Int {
     val codec = stream.codec.orEmpty().lowercase()

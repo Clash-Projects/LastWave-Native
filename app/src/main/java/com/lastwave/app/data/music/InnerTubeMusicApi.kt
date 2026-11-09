@@ -2270,10 +2270,8 @@ class InnerTubeMusicApi @Inject constructor(
             )
         }.getOrNull()
         val items = root?.let { parseSongRenderers(it) }.orEmpty()
-        if (items.isNotEmpty()) {
-            return@withContext items.distinctBy { it.videoId }.filter { it.videoId.isNotBlank() }.take(limit)
-        }
-
+        // Music search can be dominated by lyric/audio uploads and reposts. Also
+        // query regular YouTube so an official channel video can still surface.
         val fallbackRoot = runCatching {
             post(
                 url = "$YOUTUBE_API/search?key=AIzaSyAO_FJ2SlqAz8GlBg1fA54p0wDE7Xk80mU&prettyPrint=false",
@@ -2288,9 +2286,10 @@ class InnerTubeMusicApi @Inject constructor(
                 referer = "$YOUTUBE_ORIGIN/",
                 callTimeoutMs = SEARCH_REQUEST_TIMEOUT_MS,
             )
-        }.getOrNull() ?: return@withContext emptyList()
+        }.getOrNull()
 
-        parseSongRenderers(fallbackRoot).distinctBy { it.videoId }.filter { it.videoId.isNotBlank() }.take(limit)
+        val webItems = fallbackRoot?.let(::parseSongRenderers).orEmpty()
+        (items + webItems).distinctBy { it.videoId }.filter { it.videoId.isNotBlank() }.take(limit * 2)
     }
 
     /**
@@ -5499,6 +5498,10 @@ class InnerTubeMusicApi @Inject constructor(
                 ?: renderer.obj("onTap")?.obj("browseEndpoint")
             val browseId = nav?.string("browseId") ?: nav?.string("playlistId") ?: return@mapNotNull null
             val playlistId = if (browseId.startsWith("VL")) browseId.removePrefix("VL") else browseId
+            // The playlist-filtered search response can still include artist,
+            // album, and podcast rows. Only PL (user playlists) and RD (YouTube
+            // Music mixes) browse IDs identify playlists here.
+            if (!playlistId.startsWith("PL") && !playlistId.startsWith("RD")) return@mapNotNull null
 
             val title = renderer.array("flexColumns")?.getOrNull(0)?.asObject()
                 ?.obj("musicResponsiveListItemFlexColumnRenderer")?.obj("text")?.array("runs")

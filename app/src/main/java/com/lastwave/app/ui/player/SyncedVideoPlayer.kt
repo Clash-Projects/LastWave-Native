@@ -36,7 +36,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -61,19 +60,23 @@ import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -89,7 +92,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -124,7 +129,10 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import com.lastwave.app.R
 import com.lastwave.app.data.music.YouTubeVideoStream
+import com.lastwave.app.data.music.TextMatch
 import com.lastwave.app.data.video.SyncedVideoRepository
+import com.lastwave.app.data.video.VideoSearchCandidate
+import com.lastwave.app.data.video.extractYoutubeVideoId
 import com.lastwave.app.data.video.shouldPreloadVideo
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.PlayableTrack
@@ -143,9 +151,38 @@ import kotlin.math.abs
 
 private const val TAG = "SyncedVideoPlayer"
 private const val VIDEO_PREFS_NAME = "synced_video"
+private const val VIDEO_OVERRIDE_PREFS_NAME = "synced_video_overrides"
 private const val PREF_VIDEO_LAST_USED_MS = "video_last_used_ms"
 internal const val VIDEO_PRELOAD_DELAY_MS = 1_500L
 private const val MAX_LINK_REFRESHES_PER_SONG = 2
+
+/** Detects taps on the video without consuming gestures already handled by overlay controls. */
+private fun Modifier.videoTapGestures(
+    onTap: () -> Unit,
+    onDoubleTap: (Offset, Float) -> Unit,
+): Modifier = pointerInput(onTap, onDoubleTap) {
+    var lastTapAtMs = 0L
+    var lastTapPosition = Offset.Zero
+    awaitPointerEventScope {
+        while (true) {
+            val up = awaitPointerEvent(PointerEventPass.Final).changes.firstOrNull {
+                it.previousPressed && !it.pressed && !it.isConsumed
+            } ?: continue
+            val now = SystemClock.uptimeMillis()
+            val dx = up.position.x - lastTapPosition.x
+            val dy = up.position.y - lastTapPosition.y
+            val isDoubleTap = now - lastTapAtMs in 1L..300L && dx * dx + dy * dy <= 80f * 80f
+            if (isDoubleTap) {
+                onDoubleTap(up.position, size.width.toFloat())
+                lastTapAtMs = 0L
+            } else {
+                onTap()
+                lastTapAtMs = now
+                lastTapPosition = up.position
+            }
+        }
+    }
+}
 
 /** IPv4-first on ordinary networks; VPN transport detection preserves the VPN resolver's address order. */
 private fun videoMediaHttp(context: android.content.Context): okhttp3.OkHttpClient =
@@ -156,9 +193,9 @@ private fun videoMediaHttp(context: android.content.Context): okhttp3.OkHttpClie
         .build()
 
 /**
- * Starts Auto quality low and steps up as bandwidth is measured. The quality-up
- * threshold sits below the default 10s because one video player buffers only 8s
- * and could otherwise never reach it.
+ * Starts with enough estimated bandwidth to reach high-resolution renditions,
+ * then adapts to measured bandwidth. The quality-up threshold sits below the
+ * default 10s because one video player buffers only 8s and could never reach it.
  */
 @OptIn(UnstableApi::class)
 private fun adaptiveVideoPlayerBuilder(
@@ -168,7 +205,7 @@ private fun adaptiveVideoPlayerBuilder(
     .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
     .setBandwidthMeter(
         DefaultBandwidthMeter.Builder(context)
-            .setInitialBitrateEstimate(500_000L)
+            .setInitialBitrateEstimate(20_000_000L)
             .build(),
     )
     .setTrackSelector(
@@ -178,7 +215,7 @@ private fun adaptiveVideoPlayerBuilder(
                 /* minDurationForQualityIncreaseMs = */ 4_000,
                 /* maxDurationForQualityDecreaseMs = */ 6_000,
                 /* minDurationToRetainAfterDiscardMs = */ 6_000,
-                /* bandwidthFraction = */ 0.7f,
+                /* bandwidthFraction = */ 0.85f,
             ),
         ),
     )
@@ -202,7 +239,14 @@ sealed interface SyncedVideoUiState {
         val currentQualityLabel: String
             get() = if (isAuto) "Auto" else activeStream.displayQuality
     }
-    data class Error(val message: String) : SyncedVideoUiState
+    data class Error(val message: String, val noMatchingVideo: Boolean = false) : SyncedVideoUiState
+}
+
+sealed interface VideoPickerUiState {
+    data object Hidden : VideoPickerUiState
+    data object Loading : VideoPickerUiState
+    data class Results(val candidates: List<VideoSearchCandidate>, val savedVideoId: String?) : VideoPickerUiState
+    data class Error(val message: String) : VideoPickerUiState
 }
 
 @HiltViewModel
@@ -217,11 +261,24 @@ class SyncedVideoViewModel @Inject constructor(
     val isVideoActive: StateFlow<Boolean> = _isVideoActive.asStateFlow()
 
     private val videoPrefs by lazy { appContext.getSharedPreferences(VIDEO_PREFS_NAME, android.content.Context.MODE_PRIVATE) }
+    private val videoOverridePrefs by lazy {
+        appContext.getSharedPreferences(VIDEO_OVERRIDE_PREFS_NAME, android.content.Context.MODE_PRIVATE)
+    }
+    private val _videoPickerState = MutableStateFlow<VideoPickerUiState>(VideoPickerUiState.Hidden)
+    val videoPickerState: StateFlow<VideoPickerUiState> = _videoPickerState.asStateFlow()
     private var linkRefreshesLeft = 0
     private var refreshLinks: ((String?) -> Unit)? = null
     private var alignJob: Job? = null
     private var alignedVideoId: String? = null
     private var currentAudioVideoId: String? = null
+    private data class VideoPickerRequest(
+        val title: String,
+        val artist: String,
+        val audioVideoId: String?,
+        val durationMs: Long?,
+    )
+    private var videoPickerRequest: VideoPickerRequest? = null
+    private var videoSearchJob: Job? = null
 
     private var currentKey: String? = null
     private var loadJob: kotlinx.coroutines.Job? = null
@@ -260,6 +317,18 @@ class SyncedVideoViewModel @Inject constructor(
         }
     }
 
+    fun isVideoUnavailableFor(
+        title: String,
+        artist: String,
+        videoId: String?,
+        durationMs: Long?,
+        state: SyncedVideoUiState,
+    ): Boolean {
+        val selectedVideoId = savedVideoOverride(title, artist)
+        val key = videoRequestKey(title, artist, videoId, durationMs, selectedVideoId)
+        return currentKey == key && (state as? SyncedVideoUiState.Error)?.noMatchingVideo == true
+    }
+
     /** Readies the video before the tap, only for people likely to want one. */
     fun preloadVideo(title: String, artist: String, videoId: String?, durationMs: Long? = null) {
         val lastUsedMs = videoPrefs.getLong(PREF_VIDEO_LAST_USED_MS, -1L).takeIf { it >= 0L }
@@ -290,7 +359,8 @@ class SyncedVideoViewModel @Inject constructor(
     }
 
     fun loadVideo(title: String, artist: String, videoId: String?, durationMs: Long? = null) {
-        val key = "$title|$artist|$videoId|$durationMs"
+        val selectedVideoId = savedVideoOverride(title, artist)
+        val key = videoRequestKey(title, artist, videoId, durationMs, selectedVideoId)
         // The video view only calls this once shown, so opening it on a new song also
         // changes the key. Only a track change under an already open video should close it.
         val justOpened = openedAwaitingLoad
@@ -312,20 +382,36 @@ class SyncedVideoViewModel @Inject constructor(
         }
         currentKey = key
         linkRefreshesLeft = MAX_LINK_REFRESHES_PER_SONG
-        refreshLinks = { avoidClientName -> resolveStream(title, artist, videoId, durationMs, avoidClientName) }
-        resolveStream(title, artist, videoId, durationMs, avoidClientName = null)
+        refreshLinks = { avoidClientName -> resolveStream(title, artist, videoId, durationMs, selectedVideoId, avoidClientName) }
+        resolveStream(title, artist, videoId, durationMs, selectedVideoId, avoidClientName = null)
     }
+
+    private fun videoRequestKey(
+        title: String,
+        artist: String,
+        videoId: String?,
+        durationMs: Long?,
+        selectedVideoId: String?,
+    ): String = "$title|$artist|$videoId|$durationMs|$selectedVideoId"
 
     private fun resolveStream(
         title: String,
         artist: String,
         videoId: String?,
         durationMs: Long?,
+        selectedVideoId: String?,
         avoidClientName: String?,
     ) {
         loadJob = viewModelScope.launch {
             _uiState.value = SyncedVideoUiState.Loading
-            videoRepository.resolveVideo(title, artist, videoId, expectedDurationMs = durationMs, avoidClientName = avoidClientName)
+            videoRepository.resolveVideo(
+                title,
+                artist,
+                videoId,
+                expectedDurationMs = durationMs,
+                avoidClientName = avoidClientName,
+                selectedVideoId = selectedVideoId,
+            )
                 .onSuccess { resolved ->
                     // A saved offset applies before the video starts, so there is no jump.
                     val savedOffset = videoRepository.savedOffsetMs(resolved, videoId)
@@ -340,7 +426,8 @@ class SyncedVideoViewModel @Inject constructor(
                 }
                 .onFailure { error ->
                     _uiState.value = SyncedVideoUiState.Error(
-                        error.message ?: "Unable to resolve video stream"
+                        message = error.message ?: "Unable to resolve video stream",
+                        noMatchingVideo = error.message?.startsWith("No verified music video found") == true,
                     )
                 }
         }
@@ -428,6 +515,67 @@ class SyncedVideoViewModel @Inject constructor(
         currentKey = null
         loadVideo(title, artist, videoId, durationMs)
     }
+
+    fun openVideoPicker(title: String, artist: String, videoId: String?, durationMs: Long?) {
+        videoSearchJob?.cancel()
+        val request = VideoPickerRequest(title, artist, videoId, durationMs)
+        videoPickerRequest = request
+        _videoPickerState.value = VideoPickerUiState.Loading
+        videoSearchJob = viewModelScope.launch {
+            val candidates = runCatching {
+                videoRepository.searchVideoCandidates(title, artist, durationMs)
+            }.getOrElse { error ->
+                if (videoPickerRequest == request) {
+                    _videoPickerState.value = VideoPickerUiState.Error(error.message ?: "Could not search videos")
+                }
+                return@launch
+            }
+            if (videoPickerRequest != request || _videoPickerState.value != VideoPickerUiState.Loading) return@launch
+            _videoPickerState.value = VideoPickerUiState.Results(
+                candidates = candidates,
+                savedVideoId = savedVideoOverride(title, artist),
+            )
+        }
+    }
+
+    fun dismissVideoPicker() {
+        videoSearchJob?.cancel()
+        videoSearchJob = null
+        _videoPickerState.value = VideoPickerUiState.Hidden
+        videoPickerRequest = null
+    }
+
+    fun selectVideo(candidate: VideoSearchCandidate) {
+        saveVideoOverride(candidate.videoId)
+    }
+
+    fun selectVideoUrl(input: String): Boolean {
+        val videoId = extractYoutubeVideoId(input) ?: return false
+        saveVideoOverride(videoId)
+        return true
+    }
+
+    private fun saveVideoOverride(videoId: String) {
+        val request = videoPickerRequest ?: return
+        videoOverridePrefs.edit().putString(videoOverrideKey(request.title, request.artist), videoId).apply()
+        dismissVideoPicker()
+        currentKey = null
+        loadVideo(request.title, request.artist, request.audioVideoId, request.durationMs)
+    }
+
+    fun clearVideoOverride() {
+        val request = videoPickerRequest ?: return
+        videoOverridePrefs.edit().remove(videoOverrideKey(request.title, request.artist)).apply()
+        dismissVideoPicker()
+        currentKey = null
+        loadVideo(request.title, request.artist, request.audioVideoId, request.durationMs)
+    }
+
+    private fun savedVideoOverride(title: String, artist: String): String? =
+        videoOverridePrefs.getString(videoOverrideKey(title, artist), null)
+
+    private fun videoOverrideKey(title: String, artist: String): String =
+        "${TextMatch.normalize(title)}|${TextMatch.normalize(artist)}"
 
     @OptIn(UnstableApi::class)
     override fun onCleared() {
@@ -726,26 +874,24 @@ fun SyncedCoverVideoPlayer(
         modifier = modifier
             .aspectRatio(16f / 9f)
             .background(Color.Black)
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { controlsVisible = !controlsVisible },
-                    onDoubleTap = { offset ->
-                        val isRightSide = offset.x > size.width / 2
-                        val delta = if (isRightSide) 10_000L else -10_000L
-                        val newPos = (musicPlayer.currentPositionMs() + delta)
-                            .coerceIn(0L, progressState.durationMs.coerceAtLeast(1L))
-                        musicPlayer.seekTo(newPos)
-                        videoPlayer.seekTo(newPos)
-                        lastHardSeekTime = SystemClock.elapsedRealtime()
-                        doubleTapSide = if (isRightSide) VideoSeekSide.FORWARD else VideoSeekSide.REWIND
-                        seekResetJob?.cancel()
-                        seekResetJob = coroutineScope.launch {
-                            delay(650L)
-                            doubleTapSide = null
-                        }
-                    },
-                )
-            },
+            .videoTapGestures(
+                onTap = { controlsVisible = !controlsVisible },
+                onDoubleTap = { offset, width ->
+                    val isRightSide = offset.x > width / 2f
+                    val delta = if (isRightSide) 10_000L else -10_000L
+                    val newPos = (musicPlayer.currentPositionMs() + delta)
+                        .coerceIn(0L, progressState.durationMs.coerceAtLeast(1L))
+                    musicPlayer.seekTo(newPos)
+                    videoPlayer.seekTo(newPos)
+                    lastHardSeekTime = SystemClock.elapsedRealtime()
+                    doubleTapSide = if (isRightSide) VideoSeekSide.FORWARD else VideoSeekSide.REWIND
+                    seekResetJob?.cancel()
+                    seekResetJob = coroutineScope.launch {
+                        delay(650L)
+                        doubleTapSide = null
+                    }
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) {
         when (uiState) {
@@ -900,6 +1046,24 @@ fun SyncedCoverVideoPlayer(
                     }
                 }
 
+                Spacer(Modifier.width(6.dp))
+                Surface(
+                    onClick = { viewModel.openVideoPicker(track.title, track.artist, track.videoId, track.durationMs) },
+                    shape = RoundedCornerShape(50),
+                    color = Color.Black.copy(alpha = 0.55f),
+                    border = BorderStroke(0.7.dp, Color.White.copy(alpha = 0.18f)),
+                    modifier = Modifier.height(32.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 9.dp),
+                    ) {
+                        Icon(Icons.Filled.Search, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("Choose video", color = Color.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    }
+                }
+
                 Spacer(Modifier.weight(1f))
 
                 // Quality Badge
@@ -979,6 +1143,33 @@ fun SyncedCoverVideoPlayer(
             enter = fadeIn(tween(150)),
             exit = fadeOut(tween(150)),
             modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(8.dp),
+        ) {
+            Surface(
+                onClick = { viewModel.openVideoPicker(track.title, track.artist, track.videoId, track.durationMs) },
+                shape = RoundedCornerShape(50),
+                color = Color.Black.copy(alpha = 0.60f),
+                border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.25f)),
+                modifier = Modifier.height(34.dp),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 10.dp),
+                ) {
+                    Icon(Icons.Filled.Search, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Choose video", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+        }
+
+        // Persistent close button in top-right when top controls are hidden.
+        AnimatedVisibility(
+            visible = !controlsVisible,
+            enter = fadeIn(tween(150)),
+            exit = fadeOut(tween(150)),
+            modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(8.dp),
         ) {
@@ -1032,6 +1223,7 @@ fun SyncedCoverVideoPlayer(
             onDismiss = { showQualityDialog = false },
         )
     }
+    VideoCandidatePickerDialog(viewModel, track)
 }
 
 /**
@@ -1224,26 +1416,24 @@ fun FullscreenLandscapeVideoStage(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { controlsVisible = !controlsVisible },
-                    onDoubleTap = { offset ->
-                        val isRightSide = offset.x > size.width / 2
-                        val delta = if (isRightSide) 10_000L else -10_000L
-                        val newPos = (musicPlayer.currentPositionMs() + delta)
-                            .coerceIn(0L, durationSafe)
-                        musicPlayer.seekTo(newPos)
-                        videoPlayer.seekTo(newPos)
-                        lastHardSeekTime = SystemClock.elapsedRealtime()
-                        doubleTapSide = if (isRightSide) VideoSeekSide.FORWARD else VideoSeekSide.REWIND
-                        seekResetJob?.cancel()
-                        seekResetJob = coroutineScope.launch {
-                            delay(650L)
-                            doubleTapSide = null
-                        }
-                    },
-                )
-            },
+            .videoTapGestures(
+                onTap = { controlsVisible = !controlsVisible },
+                onDoubleTap = { offset, width ->
+                    val isRightSide = offset.x > width / 2f
+                    val delta = if (isRightSide) 10_000L else -10_000L
+                    val newPos = (musicPlayer.currentPositionMs() + delta)
+                        .coerceIn(0L, durationSafe)
+                    musicPlayer.seekTo(newPos)
+                    videoPlayer.seekTo(newPos)
+                    lastHardSeekTime = SystemClock.elapsedRealtime()
+                    doubleTapSide = if (isRightSide) VideoSeekSide.FORWARD else VideoSeekSide.REWIND
+                    seekResetJob?.cancel()
+                    seekResetJob = coroutineScope.launch {
+                        delay(650L)
+                        doubleTapSide = null
+                    }
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) {
         when (uiState) {
@@ -1433,6 +1623,19 @@ fun FullscreenLandscapeVideoStage(
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
                         )
+                    }
+                }
+
+                Spacer(Modifier.width(8.dp))
+                Surface(
+                    onClick = { viewModel.openVideoPicker(track.title, track.artist, track.videoId, track.durationMs) },
+                    shape = CircleShape,
+                    color = Color.Black.copy(alpha = 0.55f),
+                    border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.20f)),
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.Search, contentDescription = "Choose a different video", tint = Color.White, modifier = Modifier.size(18.dp))
                     }
                 }
 
@@ -1653,6 +1856,7 @@ fun FullscreenLandscapeVideoStage(
             onDismiss = { showQualityDialog = false },
         )
     }
+    VideoCandidatePickerDialog(viewModel, track)
 }
 
 @OptIn(UnstableApi::class)
@@ -1984,6 +2188,16 @@ fun SyncedVideoPlayerDialog(
                                 }
                             }
                             IconButton(
+                                onClick = { viewModel.openVideoPicker(track.title, track.artist, track.videoId, track.durationMs) },
+                                modifier = Modifier.size(36.dp),
+                            ) {
+                                Icon(
+                                    Icons.Filled.Search,
+                                    contentDescription = "Choose a different video",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            IconButton(
                                 onClick = { showQualityDialog = true },
                                 modifier = Modifier.size(36.dp),
                             ) {
@@ -2027,22 +2241,18 @@ fun SyncedVideoPlayerDialog(
                                     .clip(RoundedCornerShape(20.dp))
                             )
                             .background(Color.Black)
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onTap = {
-                                        controlsVisible = !controlsVisible
-                                    },
-                                    onDoubleTap = { offset ->
-                                        val isRightSide = offset.x > size.width / 2
-                                        val delta = if (isRightSide) 10_000L else -10_000L
-                                        val newPos = (musicPlayer.currentPositionMs() + delta)
-                                            .coerceIn(0L, progressState.durationMs.coerceAtLeast(1L))
-                                        musicPlayer.seekTo(newPos)
-                                        videoPlayer.seekTo(newPos)
-                                        doubleTapFeedback = if (isRightSide) "+10s" else "-10s"
-                                    },
-                                )
-                            },
+                            .videoTapGestures(
+                                onTap = { controlsVisible = !controlsVisible },
+                                onDoubleTap = { offset, width ->
+                                    val isRightSide = offset.x > width / 2f
+                                    val delta = if (isRightSide) 10_000L else -10_000L
+                                    val newPos = (musicPlayer.currentPositionMs() + delta)
+                                        .coerceIn(0L, progressState.durationMs.coerceAtLeast(1L))
+                                    musicPlayer.seekTo(newPos)
+                                    videoPlayer.seekTo(newPos)
+                                    doubleTapFeedback = if (isRightSide) "+10s" else "-10s"
+                                },
+                            ),
                         contentAlignment = Alignment.Center,
                     ) {
                         // Media3 ExoPlayer SurfaceView
@@ -2200,6 +2410,12 @@ fun SyncedVideoPlayerDialog(
                                         )
                                     }
                                     Spacer(Modifier.width(8.dp))
+                                    IconButton(
+                                        onClick = { viewModel.openVideoPicker(track.title, track.artist, track.videoId, track.durationMs) },
+                                    ) {
+                                        Icon(Icons.Filled.Search, contentDescription = "Choose a different video", tint = Color.White)
+                                    }
+                                    Spacer(Modifier.width(4.dp))
                                     // Fullscreen Quality Pill
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
@@ -2392,6 +2608,138 @@ fun SyncedVideoPlayerDialog(
             },
             onDismiss = { showQualityDialog = false },
         )
+    }
+    VideoCandidatePickerDialog(viewModel, track)
+}
+
+@Composable
+private fun VideoCandidatePickerDialog(
+    viewModel: SyncedVideoViewModel,
+    track: PlayableTrack,
+) {
+    val state by viewModel.videoPickerState.collectAsStateWithLifecycle()
+    var videoLink by remember(track.title, track.artist) { mutableStateOf("") }
+    when (val picker = state) {
+        VideoPickerUiState.Hidden -> Unit
+        VideoPickerUiState.Loading -> AlertDialog(
+            onDismissRequest = viewModel::dismissVideoPicker,
+            title = { Text("Find the right video") },
+            text = {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Text("Searching YouTube for ${track.title}…")
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    VideoLinkInput(
+                        videoLink = videoLink,
+                        onVideoLinkChange = { videoLink = it },
+                        onUseLink = { viewModel.selectVideoUrl(videoLink) },
+                    )
+                }
+            },
+            confirmButton = { TextButton(onClick = viewModel::dismissVideoPicker) { Text("Cancel") } },
+        )
+        is VideoPickerUiState.Error -> AlertDialog(
+            onDismissRequest = viewModel::dismissVideoPicker,
+            title = { Text("Video search failed") },
+            text = { Text(picker.message) },
+            confirmButton = { TextButton(onClick = viewModel::dismissVideoPicker) { Text("OK") } },
+        )
+        is VideoPickerUiState.Results -> AlertDialog(
+            onDismissRequest = viewModel::dismissVideoPicker,
+            title = { Text("Choose a video") },
+            text = {
+                Column {
+                    Text(
+                        "Pick the correct upload for ${track.title}. Your choice is saved for this song.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    VideoLinkInput(
+                        videoLink = videoLink,
+                        onVideoLinkChange = { videoLink = it },
+                        onUseLink = { viewModel.selectVideoUrl(videoLink) },
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    if (picker.candidates.isEmpty()) {
+                        Text(
+                            "No likely matches found. Paste the exact YouTube link above.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    } else {
+                        LazyColumn(modifier = Modifier.height(320.dp)) {
+                            items(picker.candidates, key = { it.videoId }) { candidate ->
+                                Surface(
+                                    onClick = { viewModel.selectVideo(candidate) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (candidate.videoId == picker.savedVideoId) {
+                                        MaterialTheme.colorScheme.secondaryContainer
+                                    } else Color.Transparent,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                                        Text(
+                                            candidate.title,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Text(
+                                            buildString {
+                                                append(candidate.channel)
+                                                candidate.durationSeconds?.let { append(" • ").append(formatTime(it * 1_000L)) }
+                                                append(" • likely match")
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = viewModel::clearVideoOverride) { Text("Use automatic") }
+                    TextButton(onClick = viewModel::dismissVideoPicker) { Text("Close") }
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun VideoLinkInput(
+    videoLink: String,
+    onVideoLinkChange: (String) -> Unit,
+    onUseLink: () -> Unit,
+) {
+    val pastedVideoId = extractYoutubeVideoId(videoLink)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = videoLink,
+            onValueChange = onVideoLinkChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("YouTube video link or ID") },
+            placeholder = { Text("https://youtu.be/…") },
+            supportingText = {
+                Text(if (pastedVideoId == null) "Paste a YouTube link or 11-character video ID" else "Video ID: $pastedVideoId")
+            },
+        )
+        TextButton(
+            onClick = onUseLink,
+            enabled = pastedVideoId != null,
+            modifier = Modifier.align(Alignment.End),
+        ) { Text("Use this link") }
     }
 }
 
