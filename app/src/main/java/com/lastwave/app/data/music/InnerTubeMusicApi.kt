@@ -2270,10 +2270,8 @@ class InnerTubeMusicApi @Inject constructor(
             )
         }.getOrNull()
         val items = root?.let { parseSongRenderers(it) }.orEmpty()
-        if (items.isNotEmpty()) {
-            return@withContext items.distinctBy { it.videoId }.filter { it.videoId.isNotBlank() }.take(limit)
-        }
-
+        // Music search can be dominated by lyric/audio uploads and reposts. Also
+        // query regular YouTube so an official channel video can still surface.
         val fallbackRoot = runCatching {
             post(
                 url = "$YOUTUBE_API/search?key=AIzaSyAO_FJ2SlqAz8GlBg1fA54p0wDE7Xk80mU&prettyPrint=false",
@@ -2288,9 +2286,10 @@ class InnerTubeMusicApi @Inject constructor(
                 referer = "$YOUTUBE_ORIGIN/",
                 callTimeoutMs = SEARCH_REQUEST_TIMEOUT_MS,
             )
-        }.getOrNull() ?: return@withContext emptyList()
+        }.getOrNull()
 
-        parseSongRenderers(fallbackRoot).distinctBy { it.videoId }.filter { it.videoId.isNotBlank() }.take(limit)
+        val webItems = fallbackRoot?.let(::parseSongRenderers).orEmpty()
+        (items + webItems).distinctBy { it.videoId }.filter { it.videoId.isNotBlank() }.take(limit * 2)
     }
 
     /**

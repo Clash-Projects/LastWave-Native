@@ -2413,6 +2413,17 @@ private fun FullPlayer(
     val isCanvasActive = canvasEnabled && canvas != null
     val syncedVideoVm: SyncedVideoViewModel = hiltViewModel()
     val showSyncedVideo by syncedVideoVm.isVideoActive.collectAsStateWithLifecycle()
+    val syncedVideoState by syncedVideoVm.uiState.collectAsStateWithLifecycle()
+    val canWatchVideo = !syncedVideoVm.isVideoUnavailableFor(
+        title = track.title,
+        artist = track.artist,
+        videoId = track.videoId,
+        durationMs = track.durationMs,
+        state = syncedVideoState,
+    )
+    val onToggleSyncedVideo: (() -> Unit)? = if (canWatchVideo || showSyncedVideo) {
+        { syncedVideoVm.setVideoActive(!showSyncedVideo) }
+    } else null
     val isVideoActive = showSyncedVideo && musicVideoEnabled
     LaunchedEffect(track.videoId, track.title, track.durationMs, musicVideoEnabled) {
         if (!musicVideoEnabled || track.artworkUrl?.startsWith("file://") == true) return@LaunchedEffect
@@ -3240,7 +3251,7 @@ private fun FullPlayer(
                                     isVideoActive = isVideoActive,
                                     onCloseVideo = { syncedVideoVm.setVideoActive(false) },
                                     onEnterFullscreen = { isVideoFullscreen = true },
-                                    onToggleVideo = { syncedVideoVm.setVideoActive(!showSyncedVideo) },
+                                    onToggleVideo = onToggleSyncedVideo,
                                 )
                             } else {
                                 // â”€â”€ Standard layout (lifted and balanced) â”€â”€â”€â”€â”€â”€
@@ -3755,7 +3766,7 @@ private fun FullPlayer(
                                         onOpenAudioControls = { showAudioControls = true },
                                         isVideoActive = isVideoActive,
                                         musicVideoEnabled = musicVideoEnabled,
-                                        onToggleVideo = { syncedVideoVm.setVideoActive(!showSyncedVideo) },
+                                        onToggleVideo = onToggleSyncedVideo,
                                         modifier = Modifier.padding(top = 4.dp),
                                     )
                                 }
@@ -3813,7 +3824,8 @@ private fun FullPlayer(
             playableTrack = track,
             onDismiss = { showTrackMenu = false },
             onPlayInLastWave = { player.play(track, sourceLabel = state.sourceLabel) },
-            onWatchVideo = { syncedVideoVm.setVideoActive(true) },
+            canWatchVideo = canWatchVideo,
+            onWatchVideo = if (canWatchVideo) ({ syncedVideoVm.setVideoActive(true) }) else null,
         )
     }
 

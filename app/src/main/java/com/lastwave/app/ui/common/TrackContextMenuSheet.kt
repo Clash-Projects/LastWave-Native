@@ -394,6 +394,7 @@ fun TrackContextMenuSheet(
     onRemoveFromPlaylist: (() -> Unit)? = null,
     onRemoveFromQueue: (() -> Unit)? = null,
     onWatchVideo: (() -> Unit)? = null,
+    canWatchVideo: Boolean = true,
     genreResolverViewModel: GenreRowViewModel = hiltViewModel(),
     startMixViewModel: StartMixMenuViewModel = hiltViewModel(),
     exploreGenreViewModel: ExploreGenreMenuViewModel = hiltViewModel(),
@@ -624,7 +625,7 @@ fun TrackContextMenuSheet(
                         }
                     }
 
-                    if (musicVideoEnabled) {
+                    if (musicVideoEnabled && canWatchVideo) {
                         add { pos ->
                             MenuActionRow(
                                 icon = Icons.Filled.SmartDisplay,
