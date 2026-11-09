@@ -116,6 +116,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
@@ -155,6 +156,15 @@ private const val VIDEO_OVERRIDE_PREFS_NAME = "synced_video_overrides"
 private const val PREF_VIDEO_LAST_USED_MS = "video_last_used_ms"
 internal const val VIDEO_PRELOAD_DELAY_MS = 1_500L
 private const val MAX_LINK_REFRESHES_PER_SONG = 2
+
+private fun videoAspectRatio(videoSize: VideoSize): Float? {
+    if (videoSize.width <= 0 || videoSize.height <= 0) return null
+    val w = videoSize.width * videoSize.pixelWidthHeightRatio
+    val h = videoSize.height.toFloat()
+    val rotated = videoSize.unappliedRotationDegrees % 180 != 0
+    val aspect = if (rotated) h / w else w / h
+    return if (aspect.isFinite() && aspect > 0f) aspect else null
+}
 
 /** Detects taps on the video without consuming gestures already handled by overlay controls. */
 private fun Modifier.videoTapGestures(
@@ -737,6 +747,17 @@ fun SyncedCoverVideoPlayer(
     val httpFactory = viewModel.httpFactory
     val videoPlayer = viewModel.player
 
+    var videoAspectRatio by remember(activeStream) {
+        val initial = videoAspectRatio(videoPlayer.videoSize)
+            ?: activeStream?.let { s ->
+                val w = s.width
+                val h = s.height
+                if (w != null && h != null && w > 0 && h > 0) w.toFloat() / h.toFloat() else null
+            }
+            ?: (16f / 9f)
+        mutableFloatStateOf(initial)
+    }
+
     // Initialise isRendered from current player state so returning to a ready player
     // does not flash the loading spinner.
     var isRenderedLocal = videoPlayer.playbackState == Player.STATE_READY
@@ -745,6 +766,12 @@ fun SyncedCoverVideoPlayer(
 
     DisposableEffect(videoPlayer) {
         val listener = object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                videoAspectRatio(videoSize)?.let { aspect ->
+                    videoAspectRatio = aspect
+                }
+            }
+
             override fun onRenderedFirstFrame() {
                 isRendered = true
                 isBuffering = false
@@ -924,7 +951,7 @@ fun SyncedCoverVideoPlayer(
             }
             is SyncedVideoUiState.Ready -> {
                 AndroidView(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.aspectRatio(videoAspectRatio),
                     factory = { viewContext ->
                         SurfaceView(viewContext).apply {
                             layoutParams = FrameLayout.LayoutParams(
@@ -1283,12 +1310,29 @@ fun FullscreenLandscapeVideoStage(
     val httpFactory = viewModel.httpFactory
     val videoPlayer = viewModel.player
 
+    var videoAspectRatio by remember(activeStream) {
+        val initial = videoAspectRatio(videoPlayer.videoSize)
+            ?: activeStream?.let { s ->
+                val w = s.width
+                val h = s.height
+                if (w != null && h != null && w > 0 && h > 0) w.toFloat() / h.toFloat() else null
+            }
+            ?: (16f / 9f)
+        mutableFloatStateOf(initial)
+    }
+
     var isRenderedLocal = videoPlayer.playbackState == Player.STATE_READY
             && videoPlayer.currentMediaItem != null
     if (isRenderedLocal) isRendered = true
 
     DisposableEffect(videoPlayer) {
         val listener = object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                videoAspectRatio(videoSize)?.let { aspect ->
+                    videoAspectRatio = aspect
+                }
+            }
+
             override fun onRenderedFirstFrame() {
                 isRendered = true
                 isBuffering = false
@@ -1465,7 +1509,7 @@ fun FullscreenLandscapeVideoStage(
             }
             is SyncedVideoUiState.Ready -> {
                 AndroidView(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.aspectRatio(videoAspectRatio),
                     factory = { viewContext ->
                         SurfaceView(viewContext).apply {
                             layoutParams = FrameLayout.LayoutParams(
@@ -1961,8 +2005,26 @@ fun SyncedVideoPlayerDialog(
             }
     }
 
+    var videoAspectRatio by remember(uiState) {
+        val stream = (uiState as? SyncedVideoUiState.Ready)?.activeStream
+        val initial = videoAspectRatio(videoPlayer.videoSize)
+            ?: stream?.let { s ->
+                val w = s.width
+                val h = s.height
+                if (w != null && h != null && w > 0 && h > 0) w.toFloat() / h.toFloat() else null
+            }
+            ?: (16f / 9f)
+        mutableFloatStateOf(initial)
+    }
+
     DisposableEffect(videoPlayer) {
         val listener = object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                videoAspectRatio(videoSize)?.let { aspect ->
+                    videoAspectRatio = aspect
+                }
+            }
+
             override fun onRenderedFirstFrame() {
                 isRendered = true
             }
@@ -2257,7 +2319,7 @@ fun SyncedVideoPlayerDialog(
                     ) {
                         // Media3 ExoPlayer SurfaceView
                         AndroidView(
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier.aspectRatio(videoAspectRatio),
                             factory = { viewContext ->
                                 SurfaceView(viewContext).apply {
                                     layoutParams = FrameLayout.LayoutParams(

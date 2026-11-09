@@ -138,7 +138,7 @@ class ChunkedRangeDataSource(
                 val refreshable = error.responseCode == 403 || error.responseCode == 410
                 if (!refreshable || refresher == null || refreshesThisOpen >= MAX_REFRESHES_PER_OPEN) throw error
                 refreshesThisOpen++
-                val replacement = runCatching { refresher.refresh(spec.uri) }.getOrNull() ?: throw error
+                val replacement = runCatching { refresher?.refresh(spec.uri) }.getOrNull() ?: throw error
                 spec = spec.buildUpon()
                     .setUri(replacement.uri)
                     .setHttpRequestHeaders(spec.httpRequestHeaders + replacement.requestHeaders)
