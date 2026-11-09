@@ -221,7 +221,7 @@
     <string name="storage_cache_audio_usage">Streamed audio: %1$s</string>
     <string name="storage_cache_last_cleared">Last cleared %1$s • %2$s freed</string>
     <string name="storage_cache_limit">Cache size limit</string>
-    <string name="storage_cache_limit_summary">Maximum combined cache size: %1$s. Oldest cached items are removed as needed; downloads are excluded.</string>
+    <string name="storage_cache_limit_summary">Selected cache limit: %1$s • Maximum available: %2$s. Oldest cached items are removed as needed; downloads are excluded.</string>
     <string name="storage_quality_note">Artwork uses smaller thumbnails on mobile data. If a high-resolution cover is already cached, LastWave reuses it without downloading it again.</string>
     <string name="storage_clear_cache">Clear cache</string>
     <string name="storage_clear_cache_title">Clear cached artwork and audio?</string>
