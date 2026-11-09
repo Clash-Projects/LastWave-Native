@@ -1,7 +1,6 @@
 package com.lastwave.app.data.music
 
 import okhttp3.MediaType.Companion.toMediaType
-import java.io.IOException
 
 import android.content.Context
 import android.net.Uri

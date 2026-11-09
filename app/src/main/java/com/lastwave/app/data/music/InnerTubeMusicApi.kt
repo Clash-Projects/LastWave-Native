@@ -2900,7 +2900,7 @@ class InnerTubeMusicApi @Inject constructor(
     internal class InnerTubeHttpException(val responseCode: Int) :
         IOException("InnerTube HTTP $responseCode")
 
-    internal data class WebConfig(val apiKey: String, val clientVersion: String, val visitorData: String?)
+    internal typealias WebConfig = com.lastwave.app.data.music.WebConfig
 
     internal data class PlayerClient(
         val name: String,

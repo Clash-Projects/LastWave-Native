@@ -238,7 +238,7 @@ internal fun MusicPlaybackService.fetchArtwork(url: String) {
             val expectedUrl = cleanUrl
             val result = kotlinx.coroutines.withContext(Dispatchers.IO) {
                 imageLoader.execute(
-                    ImageRequest.Builder(this@publishNotification)
+                    ImageRequest.Builder(this@fetchArtwork)
                         .data(expectedUrl)
                         .size(512)
                         .allowHardware(false)
