@@ -300,6 +300,7 @@ import com.lastwave.app.ui.common.TrackContextMenuSheet
 import com.lastwave.app.ui.common.TrackMenuCapabilities
 import com.lastwave.app.ui.common.TrackMenuTarget
 import com.lastwave.app.ui.common.GroupGap
+import com.lastwave.app.ui.common.TopCurvedSectionClipShape
 import com.lastwave.app.ui.common.groupPositionFor
 import com.lastwave.app.ui.common.groupShape
 import com.lastwave.app.ui.theme.LocalLiquidGlass
@@ -6519,7 +6520,9 @@ private fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: M
         }
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(TopCurvedSectionClipShape(horizontalInset = 0.dp, cornerRadius = 28.dp)),
             verticalArrangement = Arrangement.spacedBy(GroupGap),
         ) {
             itemsIndexed(

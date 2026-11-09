@@ -168,6 +168,7 @@ import com.lastwave.app.ui.common.HeaderActionIcon
 import com.lastwave.app.ui.common.TrackContextMenuSheet
 import com.lastwave.app.ui.common.TrackMiniTrayData
 import com.lastwave.app.ui.common.TrackMiniTraySheet
+import com.lastwave.app.ui.common.TopCurvedSectionClipShape
 import com.lastwave.app.ui.common.WindowSizeClass
 import com.lastwave.app.ui.common.rememberWindowSizeClass
 import com.lastwave.app.ui.common.TrackMenuCapabilities
@@ -1906,74 +1907,6 @@ private fun TasteStrip(
                 }
             }
         }
-    }
-}
-
-/**
- * Custom viewport clip shape for the home feed.
- *
- * When feed sections scroll up and pass under the pinned category buttons row,
- * this shape clips the top boundary of the scrolling content to have smooth rounded corners
- * (radius [cornerRadius]) at the horizontal card margins ([horizontalInset]), matching the
- * shape of feed cards and preventing sharp 90° boxy cuts when scrolling.
- */
-private class TopCurvedSectionClipShape(
-    private val horizontalInset: Dp = 16.dp,
-    private val cornerRadius: Dp = 28.dp,
-    private val topInset: Dp = 0.dp,
-) : Shape {
-    override fun createOutline(
-        size: Size,
-        layoutDirection: LayoutDirection,
-        density: Density,
-    ): Outline {
-        val insetPx = with(density) { horizontalInset.toPx() }
-        val radiusPx = with(density) { cornerRadius.toPx() }
-        val topOffsetPx = with(density) { topInset.toPx() }
-        val left = insetPx
-        val right = size.width - insetPx
-        if (right <= left || size.height <= topOffsetPx) {
-            return Outline.Rectangle(Rect(0f, 0f, size.width, size.height))
-        }
-        val r = radiusPx.coerceAtMost((right - left) / 2f).coerceAtMost(size.height - topOffsetPx)
-
-        val path = Path().apply {
-            moveTo(0f, size.height)
-            lineTo(0f, topOffsetPx + r)
-            lineTo(left, topOffsetPx + r)
-            arcTo(
-                rect = Rect(left, topOffsetPx, left + 2f * r, topOffsetPx + 2f * r),
-                startAngleDegrees = 180f,
-                sweepAngleDegrees = 90f,
-                forceMoveTo = false,
-            )
-            lineTo(right - r, topOffsetPx)
-            arcTo(
-                rect = Rect(right - 2f * r, topOffsetPx, right, topOffsetPx + 2f * r),
-                startAngleDegrees = 270f,
-                sweepAngleDegrees = 90f,
-                forceMoveTo = false,
-            )
-            lineTo(size.width, topOffsetPx + r)
-            lineTo(size.width, size.height)
-            close()
-        }
-        return Outline.Generic(path)
-    }
-
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is TopCurvedSectionClipShape) return false
-        return horizontalInset == other.horizontalInset &&
-            cornerRadius == other.cornerRadius &&
-            topInset == other.topInset
-    }
-
-    override fun hashCode(): Int {
-        var result = horizontalInset.hashCode()
-        result = 31 * result + cornerRadius.hashCode()
-        result = 31 * result + topInset.hashCode()
-        return result
     }
 }
 
