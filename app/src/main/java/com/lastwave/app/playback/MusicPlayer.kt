@@ -6024,7 +6024,7 @@ class MusicPlayer @Inject constructor(
      * How long the lossless / provider-module branch may run before playback
      * falls back to YouTube.
      */
-    private enum class LosslessBudget {
+    internal enum class LosslessBudget {
         /**
          * Interactive playback: give up quickly so the user hears *something*.
          * The module chain is several round trips (up to four searches plus a

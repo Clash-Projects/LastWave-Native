@@ -1,5 +1,8 @@
 package com.lastwave.app.data.music
 
+import okhttp3.MediaType.Companion.toMediaType
+import java.io.IOException
+
 import android.content.Context
 import android.net.Uri
 import android.os.SystemClock
@@ -48,7 +51,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -252,7 +254,11 @@ expiresAtEpochMs = stream.expiresAtEpochMs,
 }
 
 
-import okhttp3.MediaType.Companion.toMediaType
+
+open class InnerTubeHttpException(val responseCode: Int) :
+    IOException("InnerTube HTTP $responseCode")
+
+data class WebConfig(val apiKey: String, val clientVersion: String, val visitorData: String?)
 
 data class PlayerClient(
     val name: String,
@@ -268,6 +274,24 @@ data class PlayerClient(
     val key = "$name@$version"
     val needsSignatureTimestamp: Boolean
         get() = name == "WEB_REMIX" || name == "WEB_EMBEDDED_PLAYER" || name == "MWEB" || name == "TVHTML5_SIMPLY_EMBEDDED_PLAYER"
+    val needsPoToken: Boolean
+        get() = name == "WEB_REMIX" || name == "WEB_EMBEDDED_PLAYER" || name == "MWEB" || name == "ANDROID_MUSIC" || name == "ANDROID"
+    val needsGvsPoToken: Boolean
+        get() = needsPoToken || name == "TVHTML5" || name == "TVHTML5_SIMPLY_EMBEDDED_PLAYER"
+    val origin = if (name == "WEB_REMIX") YOUTUBE_MUSIC_ORIGIN else YOUTUBE_ORIGIN
+    val referer = when (name) {
+        "WEB_REMIX" -> "$YOUTUBE_MUSIC_ORIGIN/"
+        "TVHTML5", "TVHTML5_SIMPLY_EMBEDDED_PLAYER" -> "$YOUTUBE_ORIGIN/tv"
+        "WEB_EMBEDDED_PLAYER" -> "$YOUTUBE_ORIGIN/embed"
+        else -> "$YOUTUBE_ORIGIN/"
+    }
+    val streamRequestHeaders = buildMap {
+        put("User-Agent", userAgent)
+        put("X-YouTube-Client-Name", CLIENT_IDS[name] ?: name)
+        put("X-YouTube-Client-Version", version)
+        put("Origin", origin)
+        put("Referer", referer)
+    }
 }
 
 internal const val ARTIST_RELEASE_MAX_PAGES = 10
@@ -294,7 +318,6 @@ internal val CLIENT_IDS = mapOf(
     "MWEB" to "62",
 )
 internal const val YOUTUBE_MUSIC_ORIGIN = "https://music.youtube.com"
-internal const val YOUTUBE_ORIGIN = "https://www.youtube.com"
 internal const val MUSIC_API = "https://music.youtube.com/youtubei/v1"
 internal const val YOUTUBE_API = "https://www.youtube.com/youtubei/v1"
 internal const val MUSIC_VIDEO_TYPE_OMV = "MUSIC_VIDEO_TYPE_OMV"

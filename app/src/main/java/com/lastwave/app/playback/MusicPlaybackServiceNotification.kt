@@ -93,7 +93,7 @@ internal fun MusicPlaybackService.publishWidget(state: MusicPlayerState) {
         widgetSignature = signature
         scope.launch(Dispatchers.IO) {
             WidgetUpdater.publish(
-                context = this,
+                context = this@publishWidget,
                 title = track.title,
                 artist = track.artist,
                 album = track.album,
@@ -238,7 +238,7 @@ internal fun MusicPlaybackService.fetchArtwork(url: String) {
             val expectedUrl = cleanUrl
             val result = kotlinx.coroutines.withContext(Dispatchers.IO) {
                 imageLoader.execute(
-                    ImageRequest.Builder(this)
+                    ImageRequest.Builder(this@publishNotification)
                         .data(expectedUrl)
                         .size(512)
                         .allowHardware(false)

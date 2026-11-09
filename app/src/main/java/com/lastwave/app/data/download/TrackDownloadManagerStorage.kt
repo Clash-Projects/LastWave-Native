@@ -460,7 +460,7 @@ suspend fun TrackDownloadManager.repairCorruptedDownloadMetadata() = withContext
         }
     }
 
-fun TrackDownloadManager.isDownloadsScanned(): Boolean = Companion.isDownloadsScanned(context)
+fun TrackDownloadManager.isDownloadsScanned(): Boolean = TrackDownloadManager.isDownloadsScanned(context)
 
 internal fun TrackDownloadManager.markDownloadsScanned() {
         runCatching {
@@ -478,7 +478,7 @@ internal fun TrackDownloadManager.markDownloadsScanned() {
         }
     }
 
-fun TrackDownloadManager.getRequiredAudioPermission(): String = Companion.getRequiredAudioPermission()
+fun TrackDownloadManager.getRequiredAudioPermission(): String = TrackDownloadManager.getRequiredAudioPermission()
 
 fun TrackDownloadManager.hasStoragePermission(): Boolean =
         ContextCompat.checkSelfPermission(context, getRequiredAudioPermission()) == PackageManager.PERMISSION_GRANTED

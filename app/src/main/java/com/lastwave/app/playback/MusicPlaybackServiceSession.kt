@@ -594,7 +594,7 @@ internal fun MusicPlaybackService.publishWaveWidget(state: MusicPlayerState, for
         waveWidgetSignature = signature
         scope.launch {
             WaveWidgetUpdater.publish(
-                context = this,
+                context = this@updateWaveWidget,
                 playerState = state,
                 isLiked = isLiked,
                 artworkUri = resolvedArtworkUri,

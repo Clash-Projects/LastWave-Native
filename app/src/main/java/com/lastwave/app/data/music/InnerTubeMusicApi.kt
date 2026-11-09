@@ -1117,7 +1117,7 @@ class InnerTubeMusicApi @Inject constructor(
         return root
     }
 
-    private suspend fun browseContinuation(token: String, authenticated: Boolean): JsonObject {
+    internal suspend fun browseContinuation(token: String, authenticated: Boolean): JsonObject {
         val config = getWebConfig()
         return post(
             url = "$MUSIC_API/browse?key=${config.apiKey}&prettyPrint=false",
@@ -3089,7 +3089,7 @@ class InnerTubeMusicApi @Inject constructor(
         const val PODCASTS_BROWSE_ID = "FEmusic_podcasts"
         const val PODCAST_EPISODES_SEARCH_FILTER = "EgWKAQJIAWoSEBEQAxAQEAUQChAOEAkQBBAV"
         val CODEC_PATTERN = Regex("""codecs?=[\"']([^\"']+)[\"']""", RegexOption.IGNORE_CASE)
-        val PLAYER_CLIENTS = listOf(
+        internal val PLAYER_CLIENTS = listOf(
             PlayerClient(
                 name = "ANDROID_VR",
                 version = "1.60.19",

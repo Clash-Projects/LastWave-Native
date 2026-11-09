@@ -319,3 +319,20 @@ internal const val LOSSLESS_STARTUP_WAIT_MS = 8_000L
 internal const val LOSSLESS_BACKGROUND_BUDGET_MS = 30_000L
 internal const val HOT_SWAP_PROBE_SPEED = 4f
 internal const val HOT_SWAP_PROBE_TIMEOUT_MS = 8_000L
+
+
+typealias ResolvedStream = MusicPlayer.ResolvedStream
+
+internal const val CROSSFADE_ARM_LEAD_MS = 10_000L
+internal const val CROSSFADE_PREP_REFRESH_LEAD_MS = 30_000L
+internal const val CROSSFADE_LOG_THROTTLE_MS = 5_000L
+internal const val CROSSFADE_RESOLVE_RETRY_MS = 8_000L
+internal val PERMANENT_PLAYBACK_ERROR_CODES = setOf(
+    androidx.media3.common.PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
+    androidx.media3.common.PlaybackException.ERROR_CODE_IO_NO_PERMISSION,
+    androidx.media3.common.PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+    androidx.media3.common.PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+)
+
+internal fun selectExclusiveRateFallback(sourceHz: Int?, supportedHz: List<Int>): Int? =
+    MusicPlayer.selectExclusiveRateFallback(sourceHz, supportedHz)

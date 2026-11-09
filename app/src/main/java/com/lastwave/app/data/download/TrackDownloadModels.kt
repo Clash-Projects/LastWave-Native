@@ -210,3 +210,44 @@ internal fun getRequiredAudioPermission(): String =
     } else {
         Manifest.permission.READ_EXTERNAL_STORAGE
     }
+
+
+internal val BRACKET_SONG_ID_REGEX = Regex("""\[([a-zA-Z0-9_-]{11})\]""")
+internal val PAREN_SONG_ID_REGEX = Regex("""\(([a-zA-Z0-9_-]{11})\)""")
+internal val TRAILING_SONG_ID_REGEX = Regex("""(?:^|[\s\-_])([a-zA-Z0-9_-]{11})$""")
+internal val EXACT_SONG_ID_REGEX = Regex("""^[a-zA-Z0-9_-]{11}$""")
+
+internal fun extractSongId(nameWithoutExt: String): String? {
+    BRACKET_SONG_ID_REGEX.find(nameWithoutExt)?.let { return it.groupValues[1] }
+    PAREN_SONG_ID_REGEX.find(nameWithoutExt)?.let { return it.groupValues[1] }
+    if (EXACT_SONG_ID_REGEX.matches(nameWithoutExt)) return nameWithoutExt
+    TRAILING_SONG_ID_REGEX.find(nameWithoutExt)?.let { return it.groupValues[1] }
+    return null
+}
+
+internal fun cleanSongTitle(rawTitle: String, songId: String?): String {
+    var title = rawTitle.trim()
+    if (!songId.isNullOrBlank()) {
+        title = title
+            .replace("[$songId]", "")
+            .replace("($songId)", "")
+            .replace(" - $songId", "")
+            .replace("_$songId", "")
+            .trim()
+    }
+    title = title.replace(BRACKET_SONG_ID_REGEX, "")
+        .replace(PAREN_SONG_ID_REGEX, "")
+        .trim()
+    return title.ifBlank { rawTitle.trim() }
+}
+
+internal fun parseArtistAndTitleFromFilename(nameWithoutExt: String, songId: String?): Pair<String, String> {
+    val cleanName = cleanSongTitle(nameWithoutExt, songId)
+    return if (cleanName.contains(" - ")) {
+        val artist = cleanName.substringBefore(" - ").trim().ifBlank { "Unknown Artist" }
+        val title = cleanName.substringAfter(" - ").trim().ifBlank { cleanName }
+        artist to title
+    } else {
+        "Unknown Artist" to cleanName.ifBlank { nameWithoutExt }
+    }
+}

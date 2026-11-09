@@ -1016,7 +1016,7 @@ internal fun String.isLikelyArtistDetail(): Boolean {
         return true
     }
 
-internal fun InnerTubeMusicApi.parseDuration(value: String): Int? {
+internal fun parseDuration(value: String): Int? {
         val parts = value.trim().split(':').mapNotNull(String::toIntOrNull)
         if (parts.size !in 2..3) return null
         return parts.fold(0) { total, part -> total * 60 + part }
