@@ -4,6 +4,9 @@ import android.util.Log
 import com.lastwave.app.data.local.SessionPreferences
 import com.lastwave.app.data.local.db.RecommendationExclusionDao
 import com.lastwave.app.data.local.db.RecommendationExclusionEntity
+import com.lastwave.app.data.local.db.RecommendationSnoozeDao
+import com.lastwave.app.data.local.db.RecommendationSnoozeEntity
+import com.lastwave.app.data.local.db.SnoozeDuration
 import com.lastwave.app.data.local.db.DownloadedTrackDao
 import com.lastwave.app.data.local.db.SongPlayStatsDao
 import com.lastwave.app.data.music.TextMatch
@@ -11,6 +14,7 @@ import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.network.LastFmApiService
 import com.lastwave.app.data.playlist.PlaylistRepository
 import com.lastwave.app.data.recommend.RecommendationRepository
+import com.lastwave.app.util.ArtistHelper
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
@@ -49,6 +53,7 @@ class GenerateRepository @Inject constructor(
     private val api: LastFmApiService,
     private val sessionPreferences: SessionPreferences,
     private val recommendationExclusionDao: RecommendationExclusionDao,
+    private val recommendationSnoozeDao: RecommendationSnoozeDao,
     private val tasteProfileProvider: TasteProfileProvider,
     private val playlistRepository: PlaylistRepository,
     private val viewingProfileState: com.lastwave.app.data.repository.ViewingProfileState,
@@ -64,6 +69,7 @@ class GenerateRepository @Inject constructor(
     private val exclusionMutex = Mutex()
     private val savedPlaylistKeysMutex = Mutex()
     @Volatile private var exclusionKeysCache: Set<String>? = null
+    @Volatile private var snoozeEntriesCache: List<RecommendationSnoozeEntity>? = null
     @Volatile private var savedPlaylistKeysCache: Set<String>? = null
 
     init {
@@ -436,7 +442,7 @@ class GenerateRepository @Inject constructor(
         }
         val home = innerTube.fetchHomeSongs()
         val fallback = if (home.isNotEmpty()) home else innerTube.fetchCharts()
-        fallback.take(limit).map { it.toGeneratedTrack() }
+        filterRecommendationExclusions(fallback.take(limit).map { it.toGeneratedTrack() })
     }
 
 
@@ -527,11 +533,130 @@ class GenerateRepository @Inject constructor(
         }
     }
 
-    /** Hard exclusion: these tracks never return until the list is cleared. */
+    /** Hard exclusion + active snoozes: these tracks never return until cleared or expired. */
     suspend fun filterRecommendationExclusions(tracks: List<GeneratedTrack>): List<GeneratedTrack> {
         if (tracks.isEmpty()) return emptyList()
         val exclusions = recommendationExclusionKeys()
-        return tracks.filterNot { it.key in exclusions }
+        val now = System.currentTimeMillis()
+        val snoozes = recommendationSnoozes().filter { it.expiresAtMillis > now }
+        return tracks.filterNot { track ->
+            track.key in exclusions || snoozes.any { it.matches(track) }
+        }
+    }
+
+    private fun RecommendationSnoozeEntity.matches(track: GeneratedTrack): Boolean =
+        when (targetType) {
+            RecommendationSnoozeEntity.TYPE_TRACK -> targetKey == track.key
+            RecommendationSnoozeEntity.TYPE_ARTIST ->
+                track.artist.normalizeTrackText().lowercase() == targetKey ||
+                    ArtistHelper.splitArtists(track.artist).any {
+                        it.normalizeTrackText().lowercase() == targetKey
+                    }
+            else -> false
+        }
+
+    private suspend fun recommendationSnoozes(): List<RecommendationSnoozeEntity> {
+        snoozeEntriesCache?.let { return it }
+        return exclusionMutex.withLock {
+            snoozeEntriesCache ?: try {
+                val now = System.currentTimeMillis()
+                recommendationSnoozeDao.deleteExpired(now)
+                recommendationSnoozeDao.getActive(now).also { snoozeEntriesCache = it }
+            } catch (e: Exception) {
+                Log.e(TAG, "Recommendation-snooze read failed", e)
+                emptyList()
+            }
+        }
+    }
+
+    suspend fun snoozeTrack(
+        trackName: String,
+        artistName: String,
+        duration: SnoozeDuration,
+    ): Boolean {
+        if (trackName.isBlank() || artistName.isBlank()) return false
+        val now = System.currentTimeMillis()
+        val track = GeneratedTrack(trackName, artistName, artworkUrl = null)
+        return exclusionMutex.withLock {
+            try {
+                recommendationSnoozeDao.upsert(
+                    RecommendationSnoozeEntity(
+                        targetType = RecommendationSnoozeEntity.TYPE_TRACK,
+                        targetKey = track.key,
+                        displayName = trackName.trim(),
+                        artistName = artistName.trim(),
+                        snoozedAtMillis = now,
+                        expiresAtMillis = now + duration.millis,
+                    ),
+                )
+                snoozeEntriesCache = null
+                true
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to snooze track", e)
+                false
+            }
+        }
+    }
+
+    suspend fun snoozeArtist(artistName: String, duration: SnoozeDuration): Boolean {
+        if (artistName.isBlank()) return false
+        val now = System.currentTimeMillis()
+        return exclusionMutex.withLock {
+            try {
+                recommendationSnoozeDao.upsert(
+                    RecommendationSnoozeEntity(
+                        targetType = RecommendationSnoozeEntity.TYPE_ARTIST,
+                        targetKey = artistName.normalizeTrackText().lowercase(),
+                        displayName = artistName.trim(),
+                        artistName = artistName.trim(),
+                        snoozedAtMillis = now,
+                        expiresAtMillis = now + duration.millis,
+                    ),
+                )
+                snoozeEntriesCache = null
+                true
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to snooze artist", e)
+                false
+            }
+        }
+    }
+
+    /** Playing a snoozed track on purpose wakes it (and its artists) immediately. */
+    suspend fun clearSnoozesForPlayedTrack(trackName: String, artistName: String) {
+        val trackKey = GeneratedTrack(trackName, artistName, artworkUrl = null).key
+        val artistKeys = ArtistHelper.splitArtists(artistName)
+            .mapTo(mutableSetOf()) { it.normalizeTrackText().lowercase() }
+            .apply { if (artistName.isNotBlank()) add(artistName.normalizeTrackText().lowercase()) }
+        if (trackName.isBlank() && artistKeys.isEmpty()) return
+        val removed = exclusionMutex.withLock {
+            try {
+                var count = recommendationSnoozeDao.delete(
+                    RecommendationSnoozeEntity.TYPE_TRACK,
+                    trackKey,
+                )
+                artistKeys.forEach { key ->
+                    count += recommendationSnoozeDao.delete(
+                        RecommendationSnoozeEntity.TYPE_ARTIST,
+                        key,
+                    )
+                }
+                count
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to clear snoozes for played track", e)
+                0
+            }
+        }
+        if (removed > 0) snoozeEntriesCache = null
+    }
+
+    suspend fun clearRecommendationSnoozes() = exclusionMutex.withLock {
+        try {
+            recommendationSnoozeDao.clear()
+            snoozeEntriesCache = emptyList()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to clear recommendation snoozes", e)
+        }
     }
 
     suspend fun clearRecommendationExclusions() = exclusionMutex.withLock {
@@ -1392,7 +1517,7 @@ class GenerateRepository @Inject constructor(
         }
         val result = filterPlayable(filterRecommendationExclusions(blended)).take(total)
         if (result.size < total) {
-            val pad = fetchLocalFallbackMix(total * 2)
+            val pad = filterRecommendationExclusions(fetchLocalFallbackMix(total * 2))
                 .filterNot { it.key in blacklist || result.any { r -> r.key == it.key } }
             (result + pad).take(total)
         } else result

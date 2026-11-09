@@ -19,6 +19,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -50,6 +52,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SmartDisplay
+import androidx.compose.material.icons.filled.Snooze
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
@@ -58,6 +61,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -82,6 +86,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import com.lastwave.app.R
+import com.lastwave.app.data.local.db.SnoozeDuration
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -231,6 +236,23 @@ fun downloadLabelForQuality(context: android.content.Context, quality: Int): Str
     return context.getString(R.string.menu_download_tier, tier)
 }
 
+@HiltViewModel
+class RecommendationSnoozeMenuViewModel @Inject constructor(
+    private val discoverRepository: com.lastwave.app.data.discover.DiscoverRepository,
+) : ViewModel() {
+    fun snoozeTrack(trackName: String, artistName: String, duration: SnoozeDuration) {
+        viewModelScope.launch {
+            discoverRepository.snoozeTrack(trackName, artistName, duration)
+        }
+    }
+
+    fun snoozeArtist(artistName: String, duration: SnoozeDuration) {
+        viewModelScope.launch {
+            discoverRepository.snoozeArtist(artistName, duration)
+        }
+    }
+}
+
 /** Same idea, for the Genre row — every caller (Home, Discover, Playlist,
  *  Search) gets "tap the genre to open it in Genres" for free, without
  *  each of them needing to pass onExploreGenre + a NavController down
@@ -366,7 +388,7 @@ private fun buildLastFmUrl(target: TrackMenuTarget): String {
  * [onExploreGenre] / [onDeleteScrobble] remain caller-supplied: those need
  * screen-specific navigation / API side effects this component doesn't own.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TrackContextMenuSheet(
     target: TrackMenuTarget,
@@ -389,6 +411,7 @@ fun TrackContextMenuSheet(
     downloadViewModel: DownloadMenuViewModel = hiltViewModel(),
     artistAlbumViewModel: ArtistAlbumMenuViewModel = hiltViewModel(),
     trackLinkViewModel: TrackLinkViewModel = hiltViewModel(),
+    snoozeViewModel: RecommendationSnoozeMenuViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -400,6 +423,7 @@ fun TrackContextMenuSheet(
     var showSyncedVideoDialog by remember { mutableStateOf(false) }
     val musicVideoEnabled by downloadViewModel.musicVideoEnabled.collectAsStateWithLifecycle()
     var showTimerDialog by remember { mutableStateOf(false) }
+    var showSnoozeDialog by remember { mutableStateOf(false) }
     var resolvedGenre by remember(target) { mutableStateOf<String?>(null) }
     var resolvingGenre by remember(target) { mutableStateOf(false) }
     val activeDownloads by downloadViewModel.activeDownloads.collectAsStateWithLifecycle()
@@ -542,6 +566,31 @@ fun TrackContextMenuSheet(
                 }
             }
         }
+    }
+
+    if (showSnoozeDialog) {
+        SnoozeDurationDialog(
+            title = stringResource(
+                if (target is TrackMenuTarget.Artist) R.string.menu_snooze_artist else R.string.menu_snooze,
+            ),
+            message = when (target) {
+                is TrackMenuTarget.Track -> stringResource(R.string.snooze_track_message, target.name)
+                is TrackMenuTarget.Artist -> stringResource(R.string.snooze_artist_message, target.name)
+                else -> ""
+            },
+            onDismiss = { showSnoozeDialog = false },
+            onSelect = { duration ->
+                when (target) {
+                    is TrackMenuTarget.Track ->
+                        snoozeViewModel.snoozeTrack(target.name, target.artist, duration)
+                    is TrackMenuTarget.Artist ->
+                        snoozeViewModel.snoozeArtist(target.name, duration)
+                    else -> Unit
+                }
+                showSnoozeDialog = false
+                onDismiss()
+            },
+        )
     }
 
     ModalBottomSheet(
@@ -751,6 +800,11 @@ fun TrackContextMenuSheet(
                             showDetailsSheet = true
                         }
                     }
+                    add { pos ->
+                        MenuActionRow(Icons.Filled.Snooze, stringResource(R.string.menu_snooze), position = pos) {
+                            showSnoozeDialog = true
+                        }
+                    }
                     if (onRemoveFromPlaylist != null) {
                         add { pos ->
                             MenuActionRow(Icons.Filled.Delete, stringResource(R.string.menu_remove_from_playlist), danger = true, position = pos) {
@@ -775,6 +829,11 @@ fun TrackContextMenuSheet(
                         MenuActionRow(Icons.Filled.Person, stringResource(R.string.menu_view_artist), position = pos) {
                             artistAlbumViewModel.openArtist(target.name)
                             onDismiss()
+                        }
+                    }
+                    add { pos ->
+                        MenuActionRow(Icons.Filled.Snooze, stringResource(R.string.menu_snooze_artist), position = pos) {
+                            showSnoozeDialog = true
                         }
                     }
                     add { pos ->
@@ -812,6 +871,44 @@ fun TrackContextMenuSheet(
             }
         }
     }
+}
+
+/** Preset-duration picker shared by the track/artist menus and the artist page. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun SnoozeDurationDialog(
+    title: String,
+    message: String,
+    onDismiss: () -> Unit,
+    onSelect: (SnoozeDuration) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(message, style = MaterialTheme.typography.bodyMedium)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SnoozeDuration.entries.forEach { duration ->
+                        FilterChip(
+                            selected = false,
+                            onClick = { onSelect(duration) },
+                            label = { Text(stringResource(duration.labelRes()), maxLines = 1) },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+        },
+    )
+}
+
+private fun SnoozeDuration.labelRes(): Int = when (this) {
+    SnoozeDuration.ONE_WEEK -> R.string.snooze_one_week
+    SnoozeDuration.ONE_MONTH -> R.string.snooze_one_month
+    SnoozeDuration.THREE_MONTHS -> R.string.snooze_three_months
 }
 
 /**

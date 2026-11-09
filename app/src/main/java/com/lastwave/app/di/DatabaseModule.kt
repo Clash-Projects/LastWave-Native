@@ -7,6 +7,7 @@ import com.lastwave.app.data.local.db.AppDatabase
 import com.lastwave.app.data.local.db.ArtworkCacheDao
 import com.lastwave.app.data.local.db.SavedPlaylistDao
 import com.lastwave.app.data.local.db.RecommendationExclusionDao
+import com.lastwave.app.data.local.db.RecommendationSnoozeDao
 import com.lastwave.app.data.local.db.RelatedGraphDao
 import com.lastwave.app.data.podcast.PodcastProgressDao
 import dagger.Module
@@ -314,6 +315,24 @@ object DatabaseModule {
         }
     }
 
+    private val migration15To16 = object : Migration(15, 16) {
+        override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `recommendation_snoozes` (
+                    `targetType` TEXT NOT NULL,
+                    `targetKey` TEXT NOT NULL,
+                    `displayName` TEXT NOT NULL,
+                    `artistName` TEXT NOT NULL,
+                    `snoozedAtMillis` INTEGER NOT NULL,
+                    `expiresAtMillis` INTEGER NOT NULL,
+                    PRIMARY KEY(`targetType`, `targetKey`)
+                )
+                """.trimIndent(),
+            )
+        }
+    }
+
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase =
@@ -335,6 +354,7 @@ object DatabaseModule {
                 migration12To13,
                 migration13To14,
                 migration14To15,
+                migration15To16,
             )
             .build()
 
@@ -346,6 +366,11 @@ object DatabaseModule {
     @Singleton
     fun provideRecommendationExclusionDao(database: AppDatabase): RecommendationExclusionDao =
         database.recommendationExclusionDao()
+
+    @Provides
+    @Singleton
+    fun provideRecommendationSnoozeDao(database: AppDatabase): RecommendationSnoozeDao =
+        database.recommendationSnoozeDao()
 
     @Provides
     @Singleton

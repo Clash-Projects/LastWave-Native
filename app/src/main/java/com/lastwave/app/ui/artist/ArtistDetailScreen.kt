@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SmartDisplay
+import androidx.compose.material.icons.filled.Snooze
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -67,6 +68,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -110,6 +113,8 @@ import com.lastwave.app.data.model.ArtistSummaryItem
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ExpressiveLoadingIndicator
+import com.lastwave.app.ui.common.RecommendationSnoozeMenuViewModel
+import com.lastwave.app.ui.common.SnoozeDurationDialog
 import com.lastwave.app.ui.common.TrackContextMenuSheet
 import com.lastwave.app.ui.common.TrackMenuCapabilities
 import com.lastwave.app.ui.common.TrackMenuTarget
@@ -130,6 +135,7 @@ fun ArtistDetailScreen(
     onOpenArtist: (name: String, browseId: String?) -> Unit = { _, _ -> },
     viewModel: ArtistViewModel = hiltViewModel(),
     genreBridge: ArtistDetailGenreBridge = hiltViewModel(),
+    snoozeViewModel: RecommendationSnoozeMenuViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val artistCanvas by viewModel.artistCanvas.collectAsStateWithLifecycle()
@@ -147,6 +153,7 @@ fun ArtistDetailScreen(
 
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     var selectedTrackMenu by remember { mutableStateOf<PlayableTrack?>(null) }
+    var showSnoozeDialog by remember { mutableStateOf(false) }
     var showAllSongs by rememberSaveable { mutableStateOf(false) }
     var showHeaderVideo by rememberSaveable(artistName, settings.canvasEnabled) { mutableStateOf(settings.canvasEnabled) }
     var showFullscreenMotion by rememberSaveable { mutableStateOf(false) }
@@ -370,6 +377,41 @@ fun ArtistDetailScreen(
                                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                             containerColor = Color.Transparent,
                                             waveColor = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+
+                                Box {
+                                    var showArtistMenu by remember { mutableStateOf(false) }
+                                    FilledTonalIconButton(
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                            showArtistMenu = true
+                                        },
+                                        shape = CircleShape,
+                                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                        ),
+                                        modifier = Modifier.size(48.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.MoreVert,
+                                            contentDescription = stringResource(R.string.art_more_actions_cd),
+                                            modifier = Modifier.size(22.dp),
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                    DropdownMenu(
+                                        expanded = showArtistMenu,
+                                        onDismissRequest = { showArtistMenu = false },
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.menu_snooze_artist)) },
+                                            leadingIcon = { Icon(Icons.Filled.Snooze, contentDescription = null) },
+                                            onClick = {
+                                                showArtistMenu = false
+                                                showSnoozeDialog = true
+                                            },
                                         )
                                     }
                                 }
@@ -1164,6 +1206,18 @@ fun ArtistDetailScreen(
             playableTrack = track,
             playbackSourceLabel = artistName,
             onDismiss = { selectedTrackMenu = null },
+        )
+    }
+
+    if (showSnoozeDialog) {
+        SnoozeDurationDialog(
+            title = stringResource(R.string.menu_snooze_artist),
+            message = stringResource(R.string.snooze_artist_message, artistName),
+            onDismiss = { showSnoozeDialog = false },
+            onSelect = { duration ->
+                snoozeViewModel.snoozeArtist(artistName, duration)
+                showSnoozeDialog = false
+            },
         )
     }
 }

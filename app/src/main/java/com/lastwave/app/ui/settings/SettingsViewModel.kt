@@ -855,6 +855,7 @@ class SettingsViewModel @Inject constructor(
             }
             downloadManager.clearAllDownloads()
             discoverRepository.clearRecommendationExclusions()
+            discoverRepository.clearRecommendationSnoozes()
             podcastProgressStore.clear()
             playlistRepository.clearAll()
             runCatching { ytAuthManager.signOut() }
