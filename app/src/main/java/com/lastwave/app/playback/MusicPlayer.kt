@@ -325,6 +325,7 @@ class MusicPlayer @Inject constructor(
     private val musicHapticsController: com.lastwave.app.playback.haptics.MusicHapticsController,
     private val networkMonitor: NetworkMonitor,
     private val ytMusicAuthManager: YtMusicAuthManager,
+    private val loudnessPrefs: LoudnessPrefs,
 ) {
 
     private class VpnYoutubeLoginRequiredException(message: String) : java.io.IOException(message)
@@ -609,6 +610,11 @@ class MusicPlayer @Inject constructor(
     private var lastCrossfadeLogAtMs = 0L
     private val _state = MutableStateFlow(MusicPlayerState())
     val state: StateFlow<MusicPlayerState> = _state.asStateFlow()
+    /** Album identity for ALBUM loudness mode: one measurement spans the album. */
+    private val loudnessAlbumKey: StateFlow<String?> = _state
+        .map { it.current?.album?.trim()?.lowercase()?.takeIf(String::isNotEmpty) }
+        .distinctUntilChanged()
+        .stateIn(applicationScope, SharingStarted.Eagerly, null)
     val chromeState: StateFlow<PlaybackChromeState> = state
         .map {
             PlaybackChromeState(
@@ -1820,6 +1826,7 @@ class MusicPlayer @Inject constructor(
                     exclusiveUsb = if (handleAudioFocus) exclusiveUsbOutput else null,
                     // Same rule as USB: the crossfade standby never claims the endpoint.
                     internalDirect = if (handleAudioFocus) internalDirectOutput else null,
+                    loudness = LoudnessStage(loudnessPrefs.settings, loudnessAlbumKey),
                 ).also { createdSink ->
                     createdSink.hapticsAnalyzer = musicHapticsController.createAnalyzer().also(hapticTaps::add)
                     createdSink.onConfiguredFormat = { rateHz, _, _ ->
@@ -1967,9 +1974,11 @@ class MusicPlayer @Inject constructor(
                         eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
                         format: androidx.media3.common.Format,
                     ) {
-                        runCatching { effects.setReplayGainFromFormat(format) }
                         // Crossfade standby or background players must NEVER publish format or rate to active state.
                         if (!handleAudioFocus || (activePlayer != null && this@apply !== activePlayer)) return
+                        // Only the live player feeds the process-wide AudioFX gain: the standby's
+                        // next-track tags used to replace the playing track's correction.
+                        runCatching { effects.setReplayGainFromFormat(format) }
                         // Pre-buffering of the next track in the playlist must NOT leak into the active track's quality pill.
                         if (eventTime.windowIndex != currentMediaItemIndex) return
                         val rateHz = format.sampleRate
