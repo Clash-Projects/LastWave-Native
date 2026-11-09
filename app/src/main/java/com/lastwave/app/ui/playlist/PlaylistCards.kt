@@ -127,6 +127,7 @@ import java.util.Locale
  * (CSV/M3U), Generate Similar, and delete — plus the shared track context
  * menu (§1.7) with Copy + Delete Scrobble enabled (this screen's full
  * capability set, matching the original's playlist.js menu exactly).
+ */
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
