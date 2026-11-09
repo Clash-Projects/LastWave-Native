@@ -9,7 +9,7 @@ object CacheStoragePolicy {
     const val MEGABYTE_BYTES = 1_000_000L
     const val DEFAULT_LIMIT_MB = 320
     const val MIN_LIMIT_MB = 128
-    const val MAX_LIMIT_MB = 2048
+    const val MAX_LIMIT_MB = 4000
     private val configuredLimitMb = AtomicInteger(DEFAULT_LIMIT_MB)
     private val artworkBytes = AtomicLong(0L)
     private val streamLimitListener = AtomicReference<((Long) -> Unit)?>(null)
