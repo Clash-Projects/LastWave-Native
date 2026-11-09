@@ -62,8 +62,6 @@ import kotlin.random.Random
 import javax.inject.Inject
 import javax.inject.Singleton
 
-@androidx.compose.runtime.Immutable
-import com.lastwave.app.data.music.InnerTubeMusicApi.*
 
 internal suspend fun InnerTubeMusicApi.fetchAccountInfoImpl(): YtAccountInfo? = withContext(Dispatchers.IO) {
         if (!ytAuth.connection.value.isConnected) return@withContext null

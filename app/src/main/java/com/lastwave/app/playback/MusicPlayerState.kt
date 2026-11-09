@@ -286,3 +286,36 @@ data class PlaybackProgressState(
     val durationMs: Long = 0,
 )
 
+
+
+internal const val EXCLUSIVE_DRIFT_ABORT_PPM = 20_000.0
+internal const val EXCLUSIVE_DRIFT_ABORT_TICKS = 2
+internal const val YOUTUBE_PROMOTE_BUDGET_MS = 12_000L
+internal const val MISSING_ARTIST_METADATA_TIMEOUT_MS = 1_200L
+internal const val YT_RESOLVE_TOTAL_TIMEOUT_MS = 30_000L
+internal const val RECOVERY_RESOLVE_TIMEOUT_MS = 35_000L
+internal const val SEAMLESS_URL_REFRESH_TIMEOUT_MS = 12_000L
+internal const val MAX_REFRESHED_URL_ENTRIES = 64
+internal const val DISCOVER_QUEUE_BATCH_SIZE = 16
+internal const val DISCOVER_QUEUE_REFILL_THRESHOLD = 8
+internal const val RADIO_QUEUE_BATCH_SIZE = 35
+internal const val RADIO_QUEUE_REFILL_THRESHOLD = 14
+internal const val POSITION_PERSIST_INTERVAL_MS = 5_000L
+internal const val MAX_PERSISTED_QUEUE_SIZE = 200
+internal const val RESTORED_PREVIOUS_TRACKS = 50
+internal const val PLAYBACK_PREFERENCES_NAME = "lastwave_playback_session"
+internal const val PLAYBACK_SESSION_KEY = "active_session"
+internal const val KEY_VOLUME_MANAGED = "bitperfect_volume_managed"
+internal const val KEY_VOLUME_SAVED = "bitperfect_volume_saved"
+internal const val TICKER_PERSIST_INTERVAL_MS = 2_000L
+internal const val BACKGROUND_TICKER_CADENCE_MS = 250L
+internal const val APP_VOLUME_PERSIST_DEBOUNCE_MS = 400L
+internal const val PODCAST_PROGRESS_INTERVAL_MS = 10_000L
+internal const val PODCAST_FINISHED_RATIO = 0.95
+internal const val SEEK_SETTLE_WINDOW_MS = 400L
+internal const val SIGNAL_PATH_TICK_MS = 1_000L
+internal const val MAX_PLAYBACK_RETRIES = 3
+internal const val LOSSLESS_STARTUP_WAIT_MS = 8_000L
+internal const val LOSSLESS_BACKGROUND_BUDGET_MS = 30_000L
+internal const val HOT_SWAP_PROBE_SPEED = 4f
+internal const val HOT_SWAP_PROBE_TIMEOUT_MS = 8_000L

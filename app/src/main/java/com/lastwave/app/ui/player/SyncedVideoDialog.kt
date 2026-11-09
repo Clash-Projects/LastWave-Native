@@ -150,6 +150,8 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.math.abs
 
+private const val TAG = "SyncedVideoDialog"
+
 
 @OptIn(UnstableApi::class)
 @Composable

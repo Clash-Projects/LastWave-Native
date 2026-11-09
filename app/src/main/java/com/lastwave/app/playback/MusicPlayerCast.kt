@@ -146,7 +146,6 @@ import javax.inject.Singleton
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 
-import com.lastwave.app.playback.MusicPlayer.*
 
 internal fun MusicPlayer.initializeCastImpl(): Boolean = runCatching {
         if (castPlayback == null) {

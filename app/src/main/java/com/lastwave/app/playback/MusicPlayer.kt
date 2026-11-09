@@ -164,24 +164,24 @@ class MusicPlayer @Inject constructor(
     internal val moduleManager: com.lastwave.app.data.plugin.ModuleManager,
     internal val offlineLicense: com.lastwave.app.data.plugin.ModuleOfflineLicense,
     private val segBridge: SegmentedDashBridge,
-    private val settingsPreferences: SettingsPreferences,
-    private val equalizerPreferences: EqualizerPreferences,
+    internal val settingsPreferences: SettingsPreferences,
+    internal val equalizerPreferences: EqualizerPreferences,
     private val discoverRepository: DiscoverRepository,
     private val playlistRepository: PlaylistRepository,
-    private val nativeAudioEngine: dagger.Lazy<NativeAudioEngine>,
-    private val audioEffectsEngine: AudioEffectsEngine,
+    internal val nativeAudioEngine: dagger.Lazy<NativeAudioEngine>,
+    internal val audioEffectsEngine: AudioEffectsEngine,
     internal val applicationScope: CoroutineScope,
     internal val downloadedTrackDao: dagger.Lazy<com.lastwave.app.data.local.db.DownloadedTrackDao>,
-    private val usbDacMonitor: UsbDacMonitor,
-    private val exclusiveUsbOutput: ExclusiveUsbOutput,
+    internal val usbDacMonitor: UsbDacMonitor,
+    internal val exclusiveUsbOutput: ExclusiveUsbOutput,
     private val songPlayStatsRepository: dagger.Lazy<com.lastwave.app.data.repository.SongPlayStatsRepository>,
-    private val internalDirectOutput: InternalDirectOutput,
+    internal val internalDirectOutput: InternalDirectOutput,
     private val podcastProgressStore: com.lastwave.app.data.podcast.PodcastProgressStore,
     /** AutoEQ: started with the player so the saved correction is published before playback. */
     private val autoEqController: com.lastwave.app.data.autoeq.AutoEqController,
     internal val lyricsRepository: dagger.Lazy<com.lastwave.app.data.lyrics.LyricsRepository>,
     private val jamRepository: dagger.Lazy<com.lastwave.app.data.jam.JamRepository>,
-    private val autoMixCoordinator: dagger.Lazy<com.lastwave.app.playback.automix.engine.DualDeckTransportCoordinator>,
+    internal val autoMixCoordinator: dagger.Lazy<com.lastwave.app.playback.automix.engine.DualDeckTransportCoordinator>,
     internal val musicHapticsController: com.lastwave.app.playback.haptics.MusicHapticsController,
     private val networkMonitor: NetworkMonitor,
     private val ytMusicAuthManager: YtMusicAuthManager,
@@ -199,7 +199,7 @@ class MusicPlayer @Inject constructor(
      * the selected track. Prefetch may fill the next track's cache entry and
      * must not replace a playback result.
      */
-    private val streamResolver = StreamResolveCoordinator(
+    internal val streamResolver = StreamResolveCoordinator(
         cacheDir = File(appContext.cacheDir, "playback_stream_cache"),
         scope = applicationScope,
         extract = { videoId -> innerTube.resolveAudioStream(videoId) },
@@ -239,7 +239,7 @@ class MusicPlayer @Inject constructor(
     @Volatile internal var persistenceGeneration = 0L
     internal val playbackPersistenceLock = Any()
     private var ticker: Job? = null
-    private var playRequest: Job? = null
+    internal var playRequest: Job? = null
     @Volatile private var pausedResolutionMediaId: String? = null
     /**
      * Keep-alive for a stream that died mid-track: re-resolves in place with
@@ -247,37 +247,37 @@ class MusicPlayer @Inject constructor(
      * "Unable to resolve" (mid-song stop). Cancelled by any explicit
      * navigation, pause or stop through [cancelPendingPlaybackResolution].
      */
-    private var playbackRecoveryJob: Job? = null
+    internal var playbackRecoveryJob: Job? = null
     /** Set by a play-button tap during a recovery backoff to retry immediately. */
     @Volatile private var recoveryRetryNow = false
-    private val playRequestGeneration = AtomicLong()
+    internal val playRequestGeneration = AtomicLong()
     /** Work that must not compete with the first audio buffer. Runs on READY. */
     internal var startupFollowUp: (() -> Unit)? = null
-    private var activeUpgradeJob: Job? = null
-    private var activeUpgradeMediaId: String? = null
-    private var activeUpgradeDeferred: Deferred<ResolvedStream?>? = null
+    internal var activeUpgradeJob: Job? = null
+    internal var activeUpgradeMediaId: String? = null
+    internal var activeUpgradeDeferred: Deferred<ResolvedStream?>? = null
     @Volatile private var swappingMediaId: String? = null
     /** True while the standby is preparing or fading in for a quality hot-swap. */
-    private var hotSwapActive = false
-    private var queueEnrichmentJob: Job? = null
+    internal var hotSwapActive = false
+    internal var queueEnrichmentJob: Job? = null
     private var recommendationJob: Job? = null
-    private var preloadJob: Job? = null
+    internal var preloadJob: Job? = null
     private var searchWarmJob: Job? = null
     private var searchResultWarmJob: Job? = null
-    private var currentTrackCacheJob: Job? = null
-    private val resolutionRequests = ConcurrentHashMap<List<Any?>, Pair<Long, Deferred<ResolvedStream>>>()
-    private var discoverQueueLoadJob: Job? = null
-    private var discoverQueueActive = false
-    private var radioQueueLoadJob: Job? = null
+    internal var currentTrackCacheJob: Job? = null
+    internal val resolutionRequests = ConcurrentHashMap<List<Any?>, Pair<Long, Deferred<ResolvedStream>>>()
+    internal var discoverQueueLoadJob: Job? = null
+    internal var discoverQueueActive = false
+    internal var radioQueueLoadJob: Job? = null
     private val radioQueueMutex = Mutex()
-    private var radioQueueActive = false
+    internal var radioQueueActive = false
     private val radioUsedSeeds = ConcurrentHashMap.newKeySet<String>()
     @Volatile
     private var currentRadioContinuationToken: String? = null
     @Volatile
     private var currentRadioAutomixPlaylistId: String? = null
-    private var unavailableSkipJob: Job? = null
-    private val unavailableMediaIds = mutableSetOf<String>()
+    internal var unavailableSkipJob: Job? = null
+    internal val unavailableMediaIds = mutableSetOf<String>()
     /**
      * Consecutive failure count per mediaId for auto-skip gating. First
      * transient failure (timeout, throttled OPUS URL, slow first resolve)
@@ -329,11 +329,11 @@ class MusicPlayer @Inject constructor(
     private var sleepTimerDeadlineMs: Long? = null
     private var sleepTimerStep = 0
     @Volatile
-    private var crossfadeEnabled = false
+    internal var crossfadeEnabled = false
     /** Settings -> Autoplay similar songs. Off: the queue ends where the user left it. */
-    @Volatile private var autoplaySimilarEnabled = true
+    @Volatile internal var autoplaySimilarEnabled = true
     @Volatile
-    private var crossfadeDurationMs = 5_000L
+    internal var crossfadeDurationMs = 5_000L
     /**
      * Mirror of [MiscSettings.stopPlaybackOnTaskRemoved] for the playback
      * service, which cannot block on DataStore from onTaskRemoved(). The
@@ -354,14 +354,14 @@ class MusicPlayer @Inject constructor(
     private var resumeAfterStopPositionMs: Long? = null
     val stopPlaybackOnTaskRemoved: Boolean
         get() = stopPlaybackOnTaskRemovedPref
-    private var activePlayer: ExoPlayer? = null
-    private var secondaryPlayer: ExoPlayer? = null
-    private var secondaryNativeEngine: NativeAudioEngine? = null
-    private var secondaryEffects: AudioEffectsEngine? = null
-    private var outgoingPlayer: ExoPlayer? = null
-    private var overlapDurationMs = 0L
-    private var standbyQueue: List<MediaItem> = emptyList()
-    private var standbyIndex = C.INDEX_UNSET
+    internal var activePlayer: ExoPlayer? = null
+    internal var secondaryPlayer: ExoPlayer? = null
+    internal var secondaryNativeEngine: NativeAudioEngine? = null
+    internal var secondaryEffects: AudioEffectsEngine? = null
+    internal var outgoingPlayer: ExoPlayer? = null
+    internal var overlapDurationMs = 0L
+    internal var standbyQueue: List<MediaItem> = emptyList()
+    internal var standbyIndex = C.INDEX_UNSET
     /**
      * True once the standby holds the upcoming queue and is preparing it, i.e.
      * [standbyIndex] / [standbyQueue] are live. Cleared by [cancelCrossfade]
@@ -377,11 +377,11 @@ class MusicPlayer @Inject constructor(
      */
     @Volatile internal var crossfadeStandbyPreparing = false
     /** Spacing for next-track resolve kicks, so a failing module is not hammered. */
-    private var lastCrossfadeResolveKickMs = 0L
-    private var lastCrossfadeResolveIndex = C.INDEX_UNSET
+    internal var lastCrossfadeResolveKickMs = 0L
+    internal var lastCrossfadeResolveIndex = C.INDEX_UNSET
     internal var lastCrossfadeLogKey: String? = null
-    private var lastCrossfadeLogAtMs = 0L
-    private val _state = MutableStateFlow(MusicPlayerState())
+    internal var lastCrossfadeLogAtMs = 0L
+    internal val _state = MutableStateFlow(MusicPlayerState())
     val state: StateFlow<MusicPlayerState> = _state.asStateFlow()
     /** Album identity for ALBUM loudness mode: one measurement spans the album. */
     private val loudnessAlbumKey: StateFlow<String?> = _state
@@ -438,16 +438,16 @@ class MusicPlayer @Inject constructor(
     var appVolume: Float = 1f
         private set
     /** Last volume of the cast receiver; only meaningful while casting. */
-    private var castVolume: Float = 1f
+    internal var castVolume: Float = 1f
     private var appVolumePersistJob: Job? = null
     private var retryMediaId: String? = null
-    private val losslessBypassMediaIds = ConcurrentHashMap.newKeySet<String>()
+    internal val losslessBypassMediaIds = ConcurrentHashMap.newKeySet<String>()
     // Written by the settings collector, read on the main thread.
     @Volatile
-    private var bitPerfectEnabled = false
+    internal var bitPerfectEnabled = false
     /** PCM rate reported by the decoder. Wins over a catalog tag that guessed 44.1. */
     @Volatile
-    private var decodedSampleRateHz = 0
+    internal var decodedSampleRateHz = 0
     /**
      * Whether the native layer actually honors the current Bit-Perfect
      * request (read back after every [updateBitPerfectState], not just the
@@ -455,21 +455,21 @@ class MusicPlayer @Inject constructor(
      * state so the badge can never claim Bit-Perfect on a pref alone.
      */
     @Volatile
-    private var nativeBitPerfectApplied = false
+    internal var nativeBitPerfectApplied = false
     /** Previous system level saved when DAC mode auto-maxed it; -1 = untouched. */
-    private var savedSystemVolume = -1
-    private var dacVolumeManaged = false
-    private val audioManager: AudioManager? by lazy {
+    internal var savedSystemVolume = -1
+    internal var dacVolumeManaged = false
+    internal val audioManager: AudioManager? by lazy {
         appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     }
     @Volatile
-    private var cachedSysMaxVolume: Int = -1
+    internal var cachedSysMaxVolume: Int = -1
     @Volatile
-    private var cachedSysFixedVolume: Boolean? = null
+    internal var cachedSysFixedVolume: Boolean? = null
     @Volatile
-    private var lastCachedSysVolume: Int = 0
+    internal var lastCachedSysVolume: Int = 0
     @Volatile
-    private var lastSysVolumeCheckMs: Long = 0L
+    internal var lastSysVolumeCheckMs: Long = 0L
     // ---- App-owned audio focus -------------------------------------------------
     // The player is built with handleAudioFocus=false (see createPlayer), so
     // Media3 never answers a focus change itself. Its automatic handling parks
@@ -503,10 +503,10 @@ class MusicPlayer @Inject constructor(
         handleAudioFocusChange(change)
     }
     /** Every ExoPlayer audio sink, so DAC routing/rate follow player rebuilds. */
-    private val audioSinks = CopyOnWriteArrayList<NativeProcessingAudioSink>()
+    internal val audioSinks = CopyOnWriteArrayList<NativeProcessingAudioSink>()
     private val playerToSink = java.util.Collections.synchronizedMap(java.util.WeakHashMap<Player, NativeProcessingAudioSink>())
     /** True while the usbdevfs exclusive session owns output. */
-    @Volatile private var usbExclusiveSinkActive = false
+    @Volatile internal var usbExclusiveSinkActive = false
     val isUsbExclusiveActive: Boolean get() = usbExclusiveSinkActive || exclusiveUsbOutput.isActive()
 
     fun updateMusicHapticsConfig(newConfig: com.lastwave.app.playback.haptics.MusicHapticsConfig) {
@@ -515,11 +515,11 @@ class MusicPlayer @Inject constructor(
             settingsPreferences.updateMusicHapticsConfig(newConfig)
         }
     }
-    @Volatile private var usbExclusivePrefEnabled = false
+    @Volatile internal var usbExclusivePrefEnabled = false
     /** Raw "USB Exclusive Output" toggle, before the Bit-Perfect gate. */
-    @Volatile private var usbExclusiveRawPref = false
+    @Volatile internal var usbExclusiveRawPref = false
     /** Fork: "Sortie directe interne" toggle (only effective with Bit-Perfect on). */
-    @Volatile private var internalDirectPrefEnabled = false
+    @Volatile internal var internalDirectPrefEnabled = false
     /** Availability of the internal exclusive endpoint (settings + signal path). */
     val internalDirectAvailability: StateFlow<InternalDirectAvailability> = internalDirectOutput.availability
     val internalDirectSession: StateFlow<InternalDirectSession?> = internalDirectOutput.session
@@ -531,14 +531,14 @@ class MusicPlayer @Inject constructor(
 
     val isInternalDirectPrefEnabled: Boolean get() = bitPerfectEnabled && internalDirectPrefEnabled
     /** System audio-effects mode pref (Settings -> Experimental, default OFF). */
-    @Volatile private var systemEffectsModePref = false
+    @Volatile internal var systemEffectsModePref = false
     /** Effective mode: pref ON and on a mixer route (bypass routes suspend). */
-    @Volatile private var systemEffectsEffective = false
-    private val systemEffectsBridge by lazy { SystemEffectsBridge(appContext) }
+    @Volatile internal var systemEffectsEffective = false
+    internal val systemEffectsBridge by lazy { SystemEffectsBridge(appContext) }
     /** AudioDeviceInfo id currently requested via setPreferredDevice, if any. */
-    private var routedDacDeviceId: Int? = null
-    private val healthTracker = StreamHealthTracker()
-    private var lastHealthTrackKey: String? = null
+    internal var routedDacDeviceId: Int? = null
+    internal val healthTracker = StreamHealthTracker()
+    internal var lastHealthTrackKey: String? = null
     private var lastSignalPathMs = 0L
     /**
      * Last explicit seek target + when it was issued. ExoPlayer applies seeks
@@ -549,16 +549,16 @@ class MusicPlayer @Inject constructor(
      */
     @Volatile private var lastSeekTargetMs = -1L
     @Volatile private var lastSeekAtElapsedMs = 0L
-    @Volatile private var playheadPosMs = 0L
-    @Volatile private var playheadWallMs = 0L
+    @Volatile internal var playheadPosMs = 0L
+    @Volatile internal var playheadWallMs = 0L
     @Volatile private var playheadMoving = false
     @Volatile private var playheadKey: String? = null
-    private val _signalPath = MutableStateFlow(SignalPathReport.initial())
+    internal val _signalPath = MutableStateFlow(SignalPathReport.initial())
     /** Verified signal-path report; BIT-PERFECT shows only when all checks pass. */
     val signalPath: StateFlow<SignalPathReport> = _signalPath.asStateFlow()
     val usbDacState: StateFlow<UsbDacMonitor.State> = usbDacMonitor.state
-    private val resolvingMediaIds = ConcurrentHashMap<String, Long>()
-    private val preparedStreams = ConcurrentHashMap<String, ResolvedStream>()
+    internal val resolvingMediaIds = ConcurrentHashMap<String, Long>()
+    internal val preparedStreams = ConcurrentHashMap<String, ResolvedStream>()
 
     /**
      * Stream resolved for a track we are about to hand over to ExoPlayer, plus
@@ -576,7 +576,7 @@ class MusicPlayer @Inject constructor(
      */
     private val pendingQualities = ConcurrentHashMap<String, ResolvedStream>()
 
-    private fun stagePendingQuality(mediaId: String, stream: ResolvedStream) {
+    internal fun stagePendingQuality(mediaId: String, stream: ResolvedStream) {
         pendingQualities[mediaId] = stream
     }
 
@@ -604,7 +604,7 @@ class MusicPlayer @Inject constructor(
      * timer, which handed off to the next item seconds into a full-length track.
      * Written and read on the main thread alongside the state it describes.
      */
-    private var durationOwnerMediaId: String? = null
+    internal var durationOwnerMediaId: String? = null
     private var isOverlapMixActive = false
 
     private val mediaCache: Cache by lazy {
@@ -830,7 +830,7 @@ class MusicPlayer @Inject constructor(
         }
     }
 
-    private val listener: Player.Listener = object : Player.Listener {
+    internal val listener: Player.Listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
             if (player === this@MusicPlayer.player) {
                 refresh(player)
@@ -1406,7 +1406,7 @@ class MusicPlayer @Inject constructor(
         }
     }
 
-    private fun createPlayer(
+    internal fun createPlayer(
         engineProvider: () -> NativeAudioEngine? = { null },
         effects: AudioEffectsEngine = audioEffectsEngine,
         handleAudioFocus: Boolean = true,
@@ -1932,7 +1932,7 @@ class MusicPlayer @Inject constructor(
             }
     }
 
-    private val player: ExoPlayer
+    internal val player: ExoPlayer
         get() = activePlayer ?: playerDelegate.value
 
     @MainThread
@@ -2584,7 +2584,7 @@ class MusicPlayer @Inject constructor(
         )
     }
 
-    private fun startResolvedQueuePlayback(
+    internal fun startResolvedQueuePlayback(
         tracks: List<PlayableTrack>,
         selectedIndex: Int,
         startPositionMs: Long,
@@ -3301,7 +3301,7 @@ class MusicPlayer @Inject constructor(
         checkpointPodcastProgress()
     }
 
-    private fun resetPlayhead(startPosMs: Long = 0L, key: String? = null) {
+    internal fun resetPlayhead(startPosMs: Long = 0L, key: String? = null) {
         val now = SystemClock.elapsedRealtime()
         val target = startPosMs.coerceAtLeast(0L)
         lastSeekTargetMs = target
@@ -3956,7 +3956,7 @@ class MusicPlayer @Inject constructor(
      * Does not search, and does not resolve streams. Scrolling a playlist
      * must not start resolver work.
      */
-    private fun enrichUpcomingQueue(currentIndex: Int) {
+    internal fun enrichUpcomingQueue(currentIndex: Int) {
         queueEnrichmentJob?.cancel()
         queueEnrichmentJob = null
         if (currentIndex !in 0 until player.mediaItemCount) return
@@ -3997,7 +3997,7 @@ class MusicPlayer @Inject constructor(
      * song has been playing, so they do not share the startup connection
      * with the stream extract or the next-track prefetch.
      */
-    private fun scheduleDeferredRecommendations() {
+    internal fun scheduleDeferredRecommendations() {
         val generation = playRequestGeneration.get()
         val videoId = _state.value.current?.videoId
         recommendationJob?.cancel()
@@ -4027,7 +4027,7 @@ class MusicPlayer @Inject constructor(
      * until it becomes the next selection.
      */
     @MainThread
-    private fun preloadNextQueueItem(currentIndex: Int) {
+    internal fun preloadNextQueueItem(currentIndex: Int) {
         if (player.repeatMode == Player.REPEAT_MODE_ONE || _state.value.repeatMode == Player.REPEAT_MODE_ONE) return
         val nextIndex = if (player.shuffleModeEnabled) player.nextMediaItemIndex else currentIndex + 1
         if (nextIndex == C.INDEX_UNSET || nextIndex !in 0 until player.mediaItemCount || nextIndex == currentIndex) return
@@ -4152,7 +4152,7 @@ class MusicPlayer @Inject constructor(
         searchResultWarmJob?.cancel()
     }
 
-    private fun preloadNextTrack(nextIndex: Int, nextTrack: PlayableTrack?) {
+    internal fun preloadNextTrack(nextIndex: Int, nextTrack: PlayableTrack?) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             onMain { preloadNextTrack(nextIndex, nextTrack) }
             return
@@ -4406,7 +4406,7 @@ class MusicPlayer @Inject constructor(
      * increasingly hit progressively cached ranges locally. YouTube fallback
      * resolution/playback is untouched; this job only adds cache.
      */
-    private fun cacheCurrentTrackStream(stream: ResolvedStream?) {
+    internal fun cacheCurrentTrackStream(stream: ResolvedStream?) {
         currentTrackCacheJob?.cancel()
         if (stream == null) return
         val uri = Uri.parse(stream.url)
@@ -5083,7 +5083,7 @@ class MusicPlayer @Inject constructor(
     }
 
     @MainThread
-    private fun resetRenderWatchdog() {
+    internal fun resetRenderWatchdog() {
         renderStallSinceMs = 0L
         inaudibleSinceMs = 0L
         lastRenderPositionMs = -1L
@@ -5284,7 +5284,7 @@ class MusicPlayer @Inject constructor(
      * @param resumePositionMs where the stream died, so playback resumes there
      */
     @MainThread
-    private fun startPlaybackRecoveryLoop(
+    internal fun startPlaybackRecoveryLoop(
         failedIndex: Int,
         failedMediaId: String,
         track: PlayableTrack,
@@ -5471,7 +5471,7 @@ class MusicPlayer @Inject constructor(
         }
     }
 
-    private fun scheduleUnavailableMediaSkip(
+    internal fun scheduleUnavailableMediaSkip(
         failedIndex: Int,
         failedMediaId: String?,
         expectedGeneration: Long = playRequestGeneration.get(),
@@ -5584,7 +5584,7 @@ class MusicPlayer @Inject constructor(
         }
     }
 
-    private fun onMain(action: () -> Unit) {
+    internal fun onMain(action: () -> Unit) {
         applicationScope.launch(Dispatchers.Main.immediate) { action() }
     }
 
@@ -6476,7 +6476,7 @@ class MusicPlayer @Inject constructor(
         )
     }
 
-    private suspend fun resolveYoutubeTrackAudioStream(
+    internal suspend fun resolveYoutubeTrackAudioStream(
         track: PlayableTrack,
         videoId: String?,
         claimPlayback: Boolean = true,
@@ -6638,7 +6638,7 @@ class MusicPlayer @Inject constructor(
         }
     }
 
-    private fun publishResolvedQuality(resolved: ResolvedStream, expectedMediaId: String? = null) {
+    internal fun publishResolvedQuality(resolved: ResolvedStream, expectedMediaId: String? = null) {
         if (expectedMediaId != null) {
             val current = _state.value.current
             val currentMediaId = current?.mediaIdKey()
@@ -6748,7 +6748,7 @@ class MusicPlayer @Inject constructor(
         return false
     }
 
-    private fun scheduleQualityUpgrade(
+    internal fun scheduleQualityUpgrade(
         track: PlayableTrack,
         expectedMediaId: String,
         generation: Long,
@@ -7439,7 +7439,7 @@ class MusicPlayer @Inject constructor(
         return label.isNotBlank() && label != "AUDIO" && label != "LOCAL AUDIO"
     }
 
-    private suspend fun resolveTrackAudioStreamWithRetry(
+    internal suspend fun resolveTrackAudioStreamWithRetry(
         track: PlayableTrack,
         videoId: String?,
         allowLossless: Boolean,
@@ -7517,7 +7517,7 @@ class MusicPlayer @Inject constructor(
         rememberKnownDuration("query:${track.artist.lowercase()}|${track.title.lowercase()}", ms)
     }
 
-    private fun findKnownDuration(track: PlayableTrack?): Long? {
+    internal fun findKnownDuration(track: PlayableTrack?): Long? {
         if (track == null) return null
         if (track.durationMs != null && track.durationMs > 0L) return track.durationMs
         return track.mediaIdKey().let(knownDurations::get)
@@ -7586,7 +7586,7 @@ class MusicPlayer @Inject constructor(
      * the replacement (only when [rematchedFromVideoId] names exactly the id
      * that failed). No-op when the learned id already matches.
      */
-    private fun learnQueueVideoId(
+    internal fun learnQueueVideoId(
         index: Int,
         track: PlayableTrack,
         learnedVideoId: String?,
@@ -7621,7 +7621,7 @@ class MusicPlayer @Inject constructor(
         }
     }
 
-    private fun findPreparedStreamFor(
+    internal fun findPreparedStreamFor(
         track: PlayableTrack,
         videoId: String?,
         bypassLossless: Boolean,
@@ -7651,7 +7651,7 @@ class MusicPlayer @Inject constructor(
         }
     }
 
-    private fun registerPreparedStream(stream: ResolvedStream) {
+    internal fun registerPreparedStream(stream: ResolvedStream) {
         updateHttpDataSourceHeaders(stream)
         preparedStreams.entries.removeIf { it.value.isExpired() }
         preparedStreams[stream.cacheKey] = stream
@@ -7690,7 +7690,7 @@ class MusicPlayer @Inject constructor(
             .forEach(preparedStreams::remove)
     }
 
-    private fun logStreamEvent(
+    internal fun logStreamEvent(
         stage: String,
         stream: ResolvedStream,
         retry: Int,
@@ -7713,7 +7713,7 @@ class MusicPlayer @Inject constructor(
         )
     }
 
-    private fun logResolutionFailure(
+    internal fun logResolutionFailure(
         track: PlayableTrack,
         stage: String,
         retry: Int,
@@ -7731,7 +7731,7 @@ class MusicPlayer @Inject constructor(
         )
     }
 
-    private fun ResolvedStream.isExpired(now: Long = System.currentTimeMillis()): Boolean =
+    internal fun ResolvedStream.isExpired(now: Long = System.currentTimeMillis()): Boolean =
         expiresAtEpochMs?.let { it - now <= RESOLVED_URL_EXPIRY_MARGIN_MS }
             ?: (youtubeCandidate?.expiresAtEpochMs?.let { it - now <= RESOLVED_URL_EXPIRY_MARGIN_MS } == true)
 
@@ -7966,7 +7966,7 @@ class MusicPlayer @Inject constructor(
         }
     }
 
-    private fun ensureForegroundService() {
+    internal fun ensureForegroundService() {
         val intent = Intent(appContext, MusicPlaybackService::class.java)
         // Background-start restrictions (Android 12+) can reject this when
         // playback is triggered from widget/tile paths â€” that must never take
@@ -7986,7 +7986,7 @@ class MusicPlayer @Inject constructor(
 
 
     @MainThread
-    private fun refresh(player: Player) {
+    internal fun refresh(player: Player) {
         if (isCasting) return
         val previous = _state.value
         val selectedMediaId = previous.current?.mediaIdKey()

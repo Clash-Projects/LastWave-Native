@@ -62,7 +62,6 @@ import kotlin.random.Random
 import javax.inject.Inject
 import javax.inject.Singleton
 
-@androidx.compose.runtime.Immutable
 internal fun JsonObject.obj(key: String): JsonObject? = this[key] as? JsonObject
 
 /** googlevideo tags the Stable-volume variant as `xtags=...drc=1...` (URL-encoded). */

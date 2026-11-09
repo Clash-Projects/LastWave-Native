@@ -146,7 +146,6 @@ import javax.inject.Singleton
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 
-import com.lastwave.app.playback.MusicPlayer.*
 
     /** Device key already prompted for USB access (deny = no nagging). */
     private var usbPermissionPromptedKey: String? = null
@@ -196,7 +195,7 @@ internal fun MusicPlayer.exclusiveUsbWanted(): Boolean {
     }
 
     /** Consecutive 1 Hz ticks with an implausible clock on an unconfirmed DAC. */
-    private var exclusiveBadDriftTicks = 0
+    internal var exclusiveBadDriftTicks = 0
 
     /**
      * Fork safety guard. A DAC whose clock was never confirmed and that

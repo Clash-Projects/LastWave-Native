@@ -80,7 +80,7 @@ import javax.inject.Inject
 import kotlin.math.abs
 
 
-import com.lastwave.app.playback.MusicPlaybackService.Companion.*
+import android.app.Service
 
 internal fun MusicPlaybackService.setCurrentTrackLiked(liked: Boolean) {
         val track = musicPlayer.state.value.current ?: return
@@ -193,7 +193,7 @@ internal fun MusicPlaybackService.playCarSearch(query: String) {
 internal fun MusicPlaybackService.demoteIfIdle() {
         val state = musicPlayer.state.value
         if (state.current != null || state.isPlaying || state.isBuffering || !isPlaybackForeground) return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(Service.STOP_FOREGROUND_REMOVE)
         else @Suppress("DEPRECATION") stopForeground(true)
         isPlaybackForeground = false
     }

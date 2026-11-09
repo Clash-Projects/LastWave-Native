@@ -62,8 +62,6 @@ import kotlin.random.Random
 import javax.inject.Inject
 import javax.inject.Singleton
 
-@androidx.compose.runtime.Immutable
-import com.lastwave.app.data.music.InnerTubeMusicApi.*
 
 internal fun InnerTubeMusicApi.peekCachedStreamImpl(videoId: String): YouTubeAudioStream? {
         if (videoId.isBlank()) return null

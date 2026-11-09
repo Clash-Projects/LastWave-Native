@@ -80,7 +80,7 @@ import javax.inject.Inject
 import kotlin.math.abs
 
 
-import com.lastwave.app.playback.MusicPlaybackService.Companion.*
+import android.app.Service
 
 internal fun MusicPlaybackService.publishWidget(state: MusicPlayerState) {
         val track = state.current ?: return
@@ -93,7 +93,7 @@ internal fun MusicPlaybackService.publishWidget(state: MusicPlayerState) {
         widgetSignature = signature
         scope.launch(Dispatchers.IO) {
             WidgetUpdater.publish(
-                context = this@MusicPlaybackService,
+                context = this,
                 title = track.title,
                 artist = track.artist,
                 album = track.album,
@@ -110,7 +110,7 @@ internal fun MusicPlaybackService.publishNotification(state: MusicPlayerState, f
         if (track == null) {
             notificationSignature = ""
             if (isPlaybackForeground) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(Service.STOP_FOREGROUND_REMOVE)
                 else @Suppress("DEPRECATION") stopForeground(true)
                 isPlaybackForeground = false
             }
@@ -238,7 +238,7 @@ internal fun MusicPlaybackService.fetchArtwork(url: String) {
             val expectedUrl = cleanUrl
             val result = kotlinx.coroutines.withContext(Dispatchers.IO) {
                 imageLoader.execute(
-                    ImageRequest.Builder(this@MusicPlaybackService)
+                    ImageRequest.Builder(this)
                         .data(expectedUrl)
                         .size(512)
                         .allowHardware(false)

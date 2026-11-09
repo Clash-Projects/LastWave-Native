@@ -80,7 +80,6 @@ import javax.inject.Inject
 import kotlin.math.abs
 
 
-import com.lastwave.app.playback.MusicPlaybackService.Companion.*
 
 internal fun MusicPlaybackService.handleWaveWidgetMediaButton(intent: Intent) {
         @Suppress("DEPRECATION")
@@ -595,7 +594,7 @@ internal fun MusicPlaybackService.publishWaveWidget(state: MusicPlayerState, for
         waveWidgetSignature = signature
         scope.launch {
             WaveWidgetUpdater.publish(
-                context = this@MusicPlaybackService,
+                context = this,
                 playerState = state,
                 isLiked = isLiked,
                 artworkUri = resolvedArtworkUri,

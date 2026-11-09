@@ -79,6 +79,27 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import kotlin.math.abs
 
+
+internal const val WAKELOCK_RELEASE_GRACE_MS = 10_000L
+internal const val EXPANDED_HEIGHT_DP = 152
+internal const val CONTENT_STYLE_BROWSABLE_HINT = "android.media.browse.CONTENT_STYLE_BROWSABLE_HINT"
+internal const val CONTENT_STYLE_PLAYABLE_HINT = "android.media.browse.CONTENT_STYLE_PLAYABLE_HINT"
+internal const val CONTENT_STYLE_LIST = 1
+internal const val MAX_CAR_QUEUE_ITEMS = 100
+internal const val MAX_CAR_QUEUE_BEFORE_CURRENT = 50
+internal const val MAX_WAVE_USER_PLAYLISTS = 5
+internal const val WAVE_SEEK_DISCONTINUITY_MS = 1_500L
+internal const val CHANNEL_ID = "lastwave_playback_v3"
+internal const val LEGACY_CHANNEL_ID = "lastwave_playback_v2"
+internal const val LEGACY_CHANNEL_ID_V1 = "lastwave_playback"
+internal const val NOTIFICATION_ID = 4102
+internal const val ACTION_PREVIOUS = "com.lastwave.app.playback.PREVIOUS"
+internal const val ACTION_TOGGLE = "com.lastwave.app.playback.TOGGLE"
+internal const val ACTION_NEXT = "com.lastwave.app.playback.NEXT"
+internal const val ACTION_SHUFFLE = "com.lastwave.app.playback.SHUFFLE"
+internal const val ACTION_REPEAT = "com.lastwave.app.playback.REPEAT"
+internal const val ACTION_STOP = "com.lastwave.app.playback.STOP"
+
 internal val TOPIC_SUFFIX_REGEX = Regex("""(?i)\s*-\s*topic$""")
 internal val VEVO_SUFFIX_REGEX = Regex("""(?i)\s*vevo$""")
 internal val TITLE_SUFFIX_REGEX = Regex(

@@ -97,7 +97,6 @@ import javax.inject.Singleton
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-import com.lastwave.app.data.download.TrackDownloadManager.*
 
 internal fun TrackDownloadManager.openPublicOutputStream(
         filename: String,

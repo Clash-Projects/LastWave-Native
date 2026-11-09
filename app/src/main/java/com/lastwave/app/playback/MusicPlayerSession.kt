@@ -146,7 +146,6 @@ import javax.inject.Singleton
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 
-import com.lastwave.app.playback.MusicPlayer.*
 
 internal fun MusicPlayer.restorePlaybackSession(): Boolean {
         val raw = playbackPreferences.getString(PLAYBACK_SESSION_KEY, null) ?: return false

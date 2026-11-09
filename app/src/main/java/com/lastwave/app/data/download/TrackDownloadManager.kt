@@ -303,7 +303,7 @@ class TrackDownloadManager @Inject constructor(
         "${artist.trim().lowercase()}_${title.trim().lowercase()}"
 
     /** Active download subfolder under Music/ (sanitized single segment). */
-    private suspend fun currentDownloadDirName(): String {
+    internal suspend fun currentDownloadDirName(): String {
         val folder = try {
             settingsPreferences.settings.first().downloadFolder
         } catch (cancelled: CancellationException) {
@@ -316,7 +316,7 @@ class TrackDownloadManager @Inject constructor(
 
     /** All dirs to search for existing files: active folder first, then the
      *  legacy default so tracks downloaded before a folder change still resolve. */
-    private fun downloadSearchDirs(preferred: String): List<File> {
+    internal fun downloadSearchDirs(preferred: String): List<File> {
         val dirs = mutableListOf<File>()
         dirs.add(File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), preferred))
         if (preferred != LEGACY_PUBLIC_DIR_NAME) {

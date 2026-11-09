@@ -146,7 +146,6 @@ import javax.inject.Singleton
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 
-import com.lastwave.app.playback.MusicPlayer.*
 
     @MainThread
 internal fun MusicPlayer.currentPlayOrder(target: Player = player): List<Int> {

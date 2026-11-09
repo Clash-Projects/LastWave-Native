@@ -135,7 +135,7 @@ internal class DownloadInterruptedException(message: String, cause: Throwable? =
     IOException(message, cause)
 
 
-private internal data class HiddenDownload(val key: String, val refs: Set<String>) {
+internal data class HiddenDownload(val key: String, val refs: Set<String>) {
 fun encode(): String = (listOf(key) + refs).joinToString("\n")
 companion object {
 fun of(track: DownloadedTrackEntity, extraRefs: Collection<String> = emptyList()) = HiddenDownload(
@@ -157,3 +157,56 @@ internal class HiddenHistory(val entries: List<HiddenDownload>) {
 val keys: Set<String> = entries.mapTo(mutableSetOf()) { it.key }
 val refs: Set<String> = entries.flatMapTo(mutableSetOf()) { it.refs }
 }
+
+
+internal const val CHANNEL_ID = "lastwave_downloads"
+internal const val ACTION_CANCEL_DOWNLOAD = "com.lastwave.app.ACTION_CANCEL_DOWNLOAD"
+internal const val ACTION_RECONNECT_DOWNLOAD = "com.lastwave.app.ACTION_RECONNECT_DOWNLOAD"
+internal const val ACTION_VIEW_DOWNLOADS = "com.lastwave.app.ACTION_VIEW_DOWNLOADS"
+internal const val EXTRA_DOWNLOAD_KEY = "download_key"
+internal const val EXTRA_DOWNLOAD_TITLE = "download_title"
+internal const val EXTRA_DOWNLOAD_ARTIST = "download_artist"
+internal const val EXTRA_NAVIGATE_TO = "navigate_to"
+internal const val PUBLIC_DIR_NAME = "LastWave"
+internal const val LEGACY_PUBLIC_DIR_NAME = "LastWave"
+internal const val DOWNLOAD_BUFFER_SIZE = 128 * 1024
+internal const val PARALLEL_YOUTUBE_PARTS = 4
+internal const val MAX_CONCURRENT_DOWNLOADS = 5
+internal const val MAX_CONCURRENT_YOUTUBE_RESOLVES = 2
+internal const val RESOLVE_RETRY_DELAY_MS = 3_000L
+internal const val RESOLVE_RETRY_NETWORK_WAIT_MS = 15_000L
+internal const val MAX_TRANSFER_RETRIES = 6
+internal const val YT_STREAM_RESOLVE_TIMEOUT_MS = 20_000L
+internal const val YT_DOWNLOAD_ATTEMPTS = 3
+internal const val MIN_PARALLEL_DOWNLOAD_BYTES = 2L * 1024 * 1024
+internal const val YOUTUBE_RANGE_BYTES = 512L * 1024
+internal const val MIN_VALID_AUDIO_BYTES = 1_024L
+internal const val RECONNECT_POLL_INTERVAL_MS = 500L
+internal const val RECONNECT_RETRY_BASE_DELAY_MS = 1_000L
+internal const val RECONNECT_RETRY_MAX_DELAY_MS = 30_000L
+internal const val DOWNLOAD_USER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+internal val CONTENT_RANGE_PATTERN = Regex("""bytes\s+(\d+)-(\d+)/(\d+)""", RegexOption.IGNORE_CASE)
+internal const val SCAN_PREFS_NAME = "downloads_restore_prefs"
+internal const val KEY_DOWNLOADS_SCANNED = "downloads_scanned"
+internal const val HIDDEN_PREFS_NAME = "download_history_hidden"
+internal const val KEY_HIDDEN_REFS = "hidden_refs"
+internal const val SCAN_MARKER_FILE = "downloads_scanned.marker"
+internal val AUDIO_EXTENSIONS = setOf("flac", "m4a", "mp3", "opus", "ogg", "webm", "wav", "aac")
+
+internal fun makeDownloadKey(title: String, artist: String): String =
+    "${artist.trim().lowercase()}_${title.trim().lowercase()}"
+
+internal fun isDownloadsScanned(context: Context): Boolean = runCatching {
+    val prefs = context.getSharedPreferences(SCAN_PREFS_NAME, Context.MODE_PRIVATE)
+    if (prefs.getBoolean(KEY_DOWNLOADS_SCANNED, false)) return@runCatching true
+    val marker = java.io.File(context.noBackupFilesDir, SCAN_MARKER_FILE)
+    marker.exists()
+}.getOrDefault(false)
+
+internal fun getRequiredAudioPermission(): String =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        Manifest.permission.READ_MEDIA_AUDIO
+    } else {
+        Manifest.permission.READ_EXTERNAL_STORAGE
+    }

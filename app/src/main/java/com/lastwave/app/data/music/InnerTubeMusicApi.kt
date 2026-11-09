@@ -647,7 +647,7 @@ class InnerTubeMusicApi @Inject constructor(
         }
     }
 
-    private fun playlistHeader(root: JsonElement): JsonObject? {
+    internal fun playlistHeader(root: JsonElement): JsonObject? {
         val rootObj = root as? JsonObject ?: return findFirstHeaderRenderer(root)
         val header = rootObj.obj("header")
         return header?.obj("musicDetailHeaderRenderer")
@@ -671,7 +671,7 @@ class InnerTubeMusicApi @Inject constructor(
         return renderers.firstOrNull()
     }
 
-    private fun extractTitleFromHeader(header: JsonObject?, root: JsonElement): String? {
+    internal fun extractTitleFromHeader(header: JsonObject?, root: JsonElement): String? {
         if (header != null) {
             val runsText = header.obj("title")?.array("runs")
                 ?.joinToString("") { it.asObject()?.string("text").orEmpty() }
@@ -1187,7 +1187,7 @@ class InnerTubeMusicApi @Inject constructor(
         }
     }
 
-    private fun playlistTrackContinuationToken(container: JsonElement): String? {
+    internal fun playlistTrackContinuationToken(container: JsonElement): String? {
         val contents = (container as? JsonArray) ?: container.array("contents")
         if (contents != null) {
             for (i in contents.indices.reversed()) {
@@ -1219,7 +1219,7 @@ class InnerTubeMusicApi @Inject constructor(
     }
 
     /** First continuation token anywhere in the tree (grid/list fallbacks). */
-    private fun genericContinuationToken(root: JsonElement): String? {
+    internal fun genericContinuationToken(root: JsonElement): String? {
         val commands = mutableListOf<JsonObject>()
         collectObjects(root, "continuationCommand", commands)
         commands.firstNotNullOfOrNull { cmd ->
@@ -1260,7 +1260,7 @@ class InnerTubeMusicApi @Inject constructor(
         }
     }
 
-    private fun extractSetVideoId(renderer: JsonObject): String? {
+    internal fun extractSetVideoId(renderer: JsonObject): String? {
         (renderer["setVideoId"] as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank)?.let { return it }
         renderer.obj("playlistItemData")?.let { data ->
             (data.string("playlistSetVideoId") ?: data.string("videoSetVideoId") ?: data.string("setVideoId"))
@@ -2470,7 +2470,7 @@ class InnerTubeMusicApi @Inject constructor(
     }
 
     /** Instant in-memory stream peek for 0ms playback (Desktop way). Returns null if not cached/fresh. */
-    private suspend fun getWebConfig(): WebConfig {
+    internal suspend fun getWebConfig(): WebConfig {
         // A config whose visitor data is only the synthetic placeholder is
         // usable but NOT final: the homepage scrape can miss once (network
         // not yet up at startup, consent interstitial, transient block) and
@@ -2526,7 +2526,7 @@ class InnerTubeMusicApi @Inject constructor(
         }
     }
 
-    private fun isValidVisitorData(token: String?): Boolean {
+    internal fun isValidVisitorData(token: String?): Boolean {
         if (token.isNullOrBlank()) return false
         if (token == FALLBACK_TOKEN_SESSION || token == "lastwave_session") return false
         if (token.length < 15) return false
@@ -2623,7 +2623,7 @@ class InnerTubeMusicApi @Inject constructor(
             ?.replace("\\/", "/")
     }
 
-    private suspend fun post(
+    internal suspend fun post(
         url: String,
         body: JsonObject,
         clientName: String,
@@ -2777,7 +2777,7 @@ class InnerTubeMusicApi @Inject constructor(
         return JsonObject(this + ("context" to cleanContext))
     }
 
-    private suspend fun okhttp3.Call.readResponseBody(): Pair<Int, String> =
+    internal suspend fun okhttp3.Call.readResponseBody(): Pair<Int, String> =
         suspendCancellableCoroutine { continuation ->
             continuation.invokeOnCancellation { cancel() }
             enqueue(object : okhttp3.Callback {
@@ -2863,7 +2863,7 @@ class InnerTubeMusicApi @Inject constructor(
         return if (resolved in UNSUPPORTED_YT_REGIONS || resolved.isBlank()) "US" else resolved
     }
 
-    private fun context(
+    internal fun context(
         name: String,
         version: String,
         visitorData: String?,
@@ -2940,7 +2940,7 @@ class InnerTubeMusicApi @Inject constructor(
         }
     }
 
-    private companion object {
+    companion object {
         /** Continuation pages followed for a full artist release grid. */
         const val ARTIST_RELEASE_MAX_PAGES = 10
         /** Whole-word "EP" — a bare substring would also match "Reprise". */
