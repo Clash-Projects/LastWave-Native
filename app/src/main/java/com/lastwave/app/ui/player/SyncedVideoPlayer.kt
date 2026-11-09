@@ -1060,7 +1060,7 @@ fun SyncedCoverVideoPlayer(
                     ) {
                         Icon(Icons.Filled.Search, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
                         Spacer(Modifier.width(5.dp))
-                        Text("Change", color = Color.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        Text("Choose video", color = Color.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -1159,7 +1159,7 @@ fun SyncedCoverVideoPlayer(
                 ) {
                     Icon(Icons.Filled.Search, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(5.dp))
-                    Text("Change video", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Choose video", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
         }
