@@ -179,6 +179,8 @@ class TrackDownloadManager @Inject constructor(
         private const val MAX_TRANSFER_RETRIES = 6
         /** Bound on each YouTube stream-resolve step so one candidate can't wedge a slot. */
         private const val YT_STREAM_RESOLVE_TIMEOUT_MS = 20_000L
+        /** Resolve + transfer passes before a YouTube download is given up. */
+        private const val YT_DOWNLOAD_ATTEMPTS = 3
         private const val MIN_PARALLEL_DOWNLOAD_BYTES = 2L * 1024 * 1024
         /** googlevideo range limit (same as playback's ChunkedRangeDataSource). */
         private const val YOUTUBE_RANGE_BYTES = 512L * 1024
@@ -1264,7 +1266,15 @@ class TrackDownloadManager @Inject constructor(
                 }
 
                 // 2. Fallback to YouTube Music if module was not requested or module download failed
-                if (!downloadSucceeded) {
+                // A failed YouTube transfer (URL expired, refused mid-file, bad
+                // payload) is retried on a fresh resolve: reporting the stream
+                // cools its client down, so the next pass lands on another one.
+                // It used to skip the song after the first stream failed.
+                var ytAttempt = 0
+                var failedYtStream: com.lastwave.app.data.music.YouTubeAudioStream? = null
+                while (!downloadSucceeded) {
+                    ytAttempt++
+                    failedYtStream = null
                     try {
                         updateStage("Finding YouTube stream…", notify = true)
                         val lookupArtist = safeArtist?.trim()?.takeIf { it.isNotBlank() } ?: ""
@@ -1372,6 +1382,7 @@ class TrackDownloadManager @Inject constructor(
                         }
                         val resolvedStream = pickedStream
                             ?: throw (lastResolveError ?: IOException("No playable YouTube stream for $finalTitle by $finalArtist"))
+                        failedYtStream = resolvedStream
                         if (resolvedArtworkUrl == null) {
                             resolvedArtworkUrl = (chosenTrack?.artworkUrl ?: preloadedBestMatch?.artworkUrl)
                                 ?.takeIf { ArtworkNormalizer.isRealImage(it) }
@@ -1545,6 +1556,18 @@ class TrackDownloadManager @Inject constructor(
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (ytError: Throwable) {
+                        tempDownloadFile?.let { runCatching { if (it.exists()) it.delete() } }
+                        tempDownloadFile = null
+                        val rejected = failedYtStream
+                        if (rejected != null && ytAttempt < YT_DOWNLOAD_ATTEMPTS) {
+                            android.util.Log.w(
+                                "TrackDownloadManager",
+                                "YouTube transfer failed for $title by $artist (attempt $ytAttempt, ${rejected.clientProfile}); re-resolving",
+                                ytError,
+                            )
+                            runCatching { innerTube.reportPlaybackFailure(rejected.videoId, rejected) }
+                            continue
+                        }
                         // Surface the real reason (no match vs no stream vs
                         // network) so a playable song never shows a generic skip.
                         val reason = ytError.localizedMessage?.takeIf { it.isNotBlank() }
