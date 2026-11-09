@@ -104,13 +104,13 @@ object SettingsSearchIndex {
             // ==========================================
             add(
                 SettingsEntry(
-                    id = "audio.streaming_quality",
-                    title = "Streaming Quality",
-                    subtitle = "Lossless, Hi-Res, FLAC, AAC, MP3, 24-bit / 192 kHz, bit depth & sample rate",
+                    id = "audio.wifi_streaming_quality",
+                    title = "Wi-Fi Streaming Quality",
+                    subtitle = "Choose audio quality while connected to Wi-Fi",
                     keywords = listOf(
                         "quality", "bitrate", "flac", "lossless", "hires", "hi-res", "dolby", "atmos",
                         "mp3", "aac", "opus", "streaming", "audio quality", "sound quality", "192khz",
-                        "24-bit", "stream", "format"
+                        "24-bit", "stream", "format", "wifi", "wireless"
                     ),
                     icon = Icons.Filled.HighQuality,
                     iconContainer = { MaterialTheme.colorScheme.primaryContainer },
@@ -118,6 +118,34 @@ object SettingsSearchIndex {
                     parentTab = SettingsTab.AUDIO,
                     section = "Audio & Playback",
                     type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "audio.cellular_streaming_quality",
+                    title = "Cellular Streaming Quality",
+                    subtitle = "Choose audio quality while using mobile data",
+                    keywords = listOf("quality", "bitrate", "streaming", "cellular", "mobile data", "data usage", "audio"),
+                    icon = Icons.Filled.HighQuality,
+                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Audio & Playback",
+                    type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "audio.adaptive_playback",
+                    title = "Adaptive Playback",
+                    subtitle = "Choose streaming quality from the current connection speed estimate",
+                    keywords = listOf("adaptive", "automatic", "auto", "playback", "speed", "network", "buffering", "quality"),
+                    icon = Icons.Filled.HighQuality,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Audio & Playback",
+                    type = EntryType.TOGGLE,
                 )
             )
             add(

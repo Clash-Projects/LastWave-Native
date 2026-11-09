@@ -126,6 +126,14 @@ data class YouTubeAudioStream(
         get() = "youtube:$videoId:$clientProfile:${itag ?: -1}:$authScope:${expiresAtEpochMs ?: 0L}"
 }
 
+internal fun YouTubeAudioStream.meetsBitrateLimit(maxBitrateBps: Int?): Boolean =
+    maxBitrateBps == null || (
+        bitrate in 1..maxBitrateBps &&
+            mimeType?.startsWith("audio/", ignoreCase = true) == true &&
+            codec?.equals("hls", ignoreCase = true) != true &&
+            !url.substringBefore('?').endsWith(".m3u8", ignoreCase = true)
+    )
+
 data class YtMusicTasteSignals(
     val recentTracks: List<YouTubeMusicTrack> = emptyList(),
     val likedTracks: List<YouTubeMusicTrack> = emptyList(),
@@ -293,6 +301,8 @@ class InnerTubeMusicApi @Inject constructor(
     fun reportPlaybackFailure(videoId: String, rejected: YouTubeAudioStream? = null) {
         val stream = rejected ?: lastResolvedStreams[resolutionKey(videoId, playbackAuthScope())]
         if (stream != null && stream.clientProfile != NEWPIPE_SOURCE) {
+            // A reused player script may be the cause; fetch a fresh one next time.
+            if (stream.clientProfile.startsWith("WEB_REMIX")) cachedVideoCipherContext = null
             failedClientsUntil[clientFailureKey(videoId, stream.clientProfile, stream.authScope)] =
                 System.currentTimeMillis() + CLIENT_COOLDOWN_MS
             if (stream.clientProfile.startsWith("INNERTUBEX:")) {
@@ -3165,16 +3175,11 @@ class InnerTubeMusicApi @Inject constructor(
     }
 
     /** Instant in-memory stream peek for 0ms playback (Desktop way). Returns null if not cached/fresh. */
-    fun peekCachedStream(videoId: String): YouTubeAudioStream? {
+    fun peekCachedStream(videoId: String, maxBitrateBps: Int? = null): YouTubeAudioStream? {
         if (videoId.isBlank()) return null
         val now = System.currentTimeMillis()
         val authScope = playbackAuthScope()
-        val entry = streamCache.entries
-            .asSequence()
-            .filter { it.key.videoId == videoId && it.key.authScope == authScope }
-            .sortedByDescending { it.value.cachedAtEpochMs }
-            .firstOrNull() ?: return null
-        val cached = entry.value
+        val cached = latestCachedStream(videoId, authScope, maxBitrateBps)?.value ?: return null
         return if (cached.stream.isFresh(cached.cachedAtEpochMs, now)) {
             cached.stream
         } else {
@@ -3182,47 +3187,52 @@ class InnerTubeMusicApi @Inject constructor(
         }
     }
 
-    /** Resolves and byte-probes an expiring googlevideo URL immediately before use. */
-    suspend fun resolveAudioStream(videoId: String): YouTubeAudioStream = withContext(Dispatchers.IO) {
+    private fun latestCachedStream(videoId: String, authScope: String, maxBitrateBps: Int?) =
+        streamCache.entries.asSequence()
+            .filter {
+                it.key.videoId == videoId && it.key.lookupAuthScope == authScope &&
+                    it.key.maxBitrateBps == maxBitrateBps
+            }
+            .maxByOrNull { it.value.cachedAtEpochMs }
+
+    /**
+     * Resolves and byte-probes an expiring googlevideo URL. A bitrate limit selects
+     * a known audio rendition within that limit and gets its own cache entry and request.
+     */
+    suspend fun resolveAudioStream(
+        videoId: String,
+        maxBitrateBps: Int? = null,
+    ): YouTubeAudioStream = withContext(Dispatchers.IO) {
         require(videoId.isNotBlank()) { "Missing YouTube Music video id" }
+        require(maxBitrateBps == null || maxBitrateBps > 0) { "Invalid YouTube audio bitrate limit" }
         val startedAt = SystemClock.elapsedRealtime()
         logStage(videoId, "start")
-        peekCachedStream(videoId)?.let { stream ->
-            val authScope = playbackAuthScope()
-            lastResolvedStreams[resolutionKey(videoId, authScope)] = stream
-            logStreamEvent("cache-hit", stream)
-            return@withContext stream
-        }
         val now = System.currentTimeMillis()
         val authScope = playbackAuthScope()
+        val requestKey = resolutionKey(videoId, authScope, maxBitrateBps)
 
-        streamCache.entries
-            .asSequence()
-            .filter { it.key.videoId == videoId && it.key.authScope == authScope }
-            .sortedByDescending { it.value.cachedAtEpochMs }
-            .firstOrNull()
+        latestCachedStream(videoId, authScope, maxBitrateBps)
             ?.let { entry ->
                 val cached = entry.value
                 val stream = cached.stream
                 if (stream.isFresh(cached.cachedAtEpochMs, now)) {
-                    lastResolvedStreams[resolutionKey(videoId, authScope)] = stream
+                    lastResolvedStreams[requestKey] = stream
                     logStreamEvent("cache-hit", stream)
                     return@withContext stream
                 }
                 streamCache.remove(entry.key, entry.value)
-                lastResolvedStreams.remove(resolutionKey(videoId, authScope), stream)
+                lastResolvedStreams.remove(requestKey, stream)
                 if (stream.expiresAtEpochMs == null || stream.expiresAtEpochMs - now > URL_EXPIRY_MARGIN_MS) {
                     reportPlaybackFailure(videoId, stream)
                 }
                 logStreamEvent("cache-rejected", stream)
             }
 
-        val requestKey = resolutionKey(videoId, authScope)
         val shared = activeStreamRequests.computeIfAbsent(requestKey) {
             lateinit var request: SharedStreamRequest
             val deferred = apiScope.async(start = CoroutineStart.LAZY) {
                 kotlinx.coroutines.withTimeout(STREAM_RESOLVE_TOTAL_TIMEOUT_MS) {
-                    resolveAudioStreamInternal(videoId, authScope, startedAt)
+                    resolveAudioStreamInternal(videoId, authScope, startedAt, maxBitrateBps)
                 }
             }
             request = SharedStreamRequest(deferred)
@@ -3348,6 +3358,26 @@ class InnerTubeMusicApi @Inject constructor(
         }
         null
     }
+
+    /**
+     * Fetches the player script pair before the first signed-in resolve, so
+     * the first fresh track after launch does not pay the watch-page fetch.
+     */
+    suspend fun warmPlaybackCipher(videoId: String) {
+        if (videoId.isBlank() || !ytAuth.connection.value.isConnected || hasReusableCipherContext()) return
+        try {
+            val context = videoCipherContext(videoId, allowReuse = true) ?: return
+            innerTubeXExtractor.preloadCipher(context.playerUrl)
+        } catch (cancellation: kotlinx.coroutines.CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            // The first resolve fetches it instead.
+        }
+    }
+
+    private fun hasReusableCipherContext(): Boolean =
+        cachedVideoCipherContext != null &&
+            SystemClock.elapsedRealtime() - cachedVideoCipherContextAtMs < VIDEO_CIPHER_CONTEXT_TTL_MS
 
     private suspend fun videoCipherContext(videoId: String, allowReuse: Boolean): PlaybackCipherContext? {
         val now = SystemClock.elapsedRealtime()
@@ -3515,6 +3545,7 @@ class InnerTubeMusicApi @Inject constructor(
     private suspend fun resolveDirectUrlFastPath(
         videoId: String,
         authScope: String,
+        maxBitrateBps: Int?,
     ): YouTubeAudioStream? {
         // Visitor data is mandatory, not best-effort: VISIONOS/ANDROID_VR
         // answer LOGIN_REQUIRED with zero formats when it is missing, so a
@@ -3567,13 +3598,14 @@ class InnerTubeMusicApi @Inject constructor(
                 return null
             }
             var failed = false
-            val stream = try {
-                val clientBudget = if (signedIn && client.name == "WEB_REMIX") {
-                    AUTHENTICATED_CIPHER_CLIENT_BUDGET_MS
-                } else DIRECT_FAST_CLIENT_TIMEOUT_MS
-                kotlinx.coroutines.withTimeoutOrNull(minOf(clientBudget, remaining)) {
-                    val cipherContext = if (signedIn && client.name == "WEB_REMIX") {
-                        innerTubeXExtractor.fetchCipherContext(videoId)
+            val usesCipherContext = signedIn && client.name == "WEB_REMIX"
+            // The player script and its signature timestamp are not per-video:
+            // reuse a recent pair instead of a ~1 s watch-page fetch per track.
+            // A reused pair that fails gets one retry with a fresh fetch.
+            suspend fun attempt(allowCipherReuse: Boolean, budgetMs: Long): YouTubeAudioStream? =
+                kotlinx.coroutines.withTimeoutOrNull(budgetMs) {
+                    val cipherContext = if (usesCipherContext) {
+                        videoCipherContext(videoId, allowReuse = allowCipherReuse)
                     } else null
                     val sigTimestamp = cipherContext?.signatureTimestamp ?: if (client.needsSignatureTimestamp) {
                         streamExtractor.getSignatureTimestamp(videoId)
@@ -3593,8 +3625,27 @@ class InnerTubeMusicApi @Inject constructor(
                         probeCandidates = true,
                         allowCipherFormats = client.name == "TVHTML5_SIMPLY_EMBEDDED_PLAYER" || client.name == "WEB_REMIX" || client.name == "IOS" || client.name == "TVHTML5",
                         maxAttempts = 1,
+                        maxBitrateBps = maxBitrateBps,
                     )
                 }
+            val clientBudget = if (usesCipherContext) {
+                AUTHENTICATED_CIPHER_CLIENT_BUDGET_MS
+            } else DIRECT_FAST_CLIENT_TIMEOUT_MS
+            val reusedContext = usesCipherContext && hasReusableCipherContext()
+            val stream = try {
+                try {
+                    attempt(allowCipherReuse = true, budgetMs = minOf(clientBudget, remaining))
+                } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException || !reusedContext) throw error
+                    noteAttempt("client=${client.name} reused-cipher failed ${resolutionFailureDetail(error)}")
+                    null
+                } ?: if (reusedContext) {
+                    // A rotated player script makes the reused pair produce
+                    // rejected URLs. Drop it and fetch a fresh one once.
+                    cachedVideoCipherContext = null
+                    val left = deadline - SystemClock.elapsedRealtime()
+                    if (left > 0L) attempt(allowCipherReuse = false, budgetMs = minOf(clientBudget, left)) else null
+                } else null
             } catch (cancellation: kotlinx.coroutines.CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
@@ -3617,6 +3668,7 @@ class InnerTubeMusicApi @Inject constructor(
         videoId: String,
         authScope: String,
         startedAt: Long,
+        maxBitrateBps: Int?,
     ): YouTubeAudioStream = kotlinx.coroutines.withContext(ResolutionAttemptLog()) {
         kotlinx.coroutines.coroutineScope {
         val now = System.currentTimeMillis()
@@ -3625,8 +3677,8 @@ class InnerTubeMusicApi @Inject constructor(
         // NewPipe URL must not wait for every authenticated client to miss.
         val resolved = try {
             racePlaybackCandidates(
-                first = { resolveDirectUrlFastPath(videoId, authScope) },
-                second = { racePlayableFallback(videoId, authScope, now, startedAt) },
+                first = { resolveDirectUrlFastPath(videoId, authScope, maxBitrateBps) },
+                second = { racePlayableFallback(videoId, authScope, now, startedAt, maxBitrateBps) },
             )
         } catch (error: Throwable) {
             if (error.isCooperativeCancellation()) throw error
@@ -3639,8 +3691,8 @@ class InnerTubeMusicApi @Inject constructor(
             logResolveAttempts(videoId, failed = true)
             throw IOException("Unable to resolve a playable audio stream for $videoId")
         }
-        cacheResolvedStream(resolved, now)
-        lastResolvedStreams[resolutionKey(videoId, authScope)] = resolved
+        cacheResolvedStream(resolved, now, authScope, maxBitrateBps)
+        lastResolvedStreams[resolutionKey(videoId, authScope, maxBitrateBps)] = resolved
 
         logResolveAttempts(videoId, failed = false)
         resolved
@@ -3652,6 +3704,7 @@ class InnerTubeMusicApi @Inject constructor(
         authScope: String,
         now: Long,
         startedAt: Long,
+        maxBitrateBps: Int?,
     ): YouTubeAudioStream? = kotlinx.coroutines.coroutineScope {
         // Signed in, InnerTubeX is the only path to age-restricted songs: it
         // detects the age gate, fetches the signed-in watch config and retries on
@@ -3676,7 +3729,7 @@ class InnerTubeMusicApi @Inject constructor(
                         } catch (_: Exception) {
                             null
                         }
-                        innerTubeXExtractor.resolve(videoId, visitorData, authScope)
+                        innerTubeXExtractor.resolve(videoId, visitorData, authScope, maxBitrateBps)
                     }
                 } catch (cancellation: kotlinx.coroutines.CancellationException) {
                     throw cancellation
@@ -3707,7 +3760,7 @@ class InnerTubeMusicApi @Inject constructor(
                 var failed = false
                 val stream = try {
                     kotlinx.coroutines.withTimeoutOrNull(NEWPIPE_FALLBACK_TIMEOUT_MS) {
-                        streamExtractor.resolveAudioStream(videoId)
+                        streamExtractor.resolveAudioStream(videoId, maxBitrateBps = maxBitrateBps)
                     }
                 } catch (cancellation: kotlinx.coroutines.CancellationException) {
                     throw cancellation
@@ -3736,8 +3789,8 @@ class InnerTubeMusicApi @Inject constructor(
             val winner = kotlinx.coroutines.withTimeoutOrNull(maxOf(NEWPIPE_FALLBACK_TIMEOUT_MS, innerTubeXBudgetMs)) {
                 channel.receiveCatching().getOrNull()
             } ?: return@coroutineScope null
-            cacheResolvedStream(winner, now)
-            lastResolvedStreams[resolutionKey(videoId, authScope)] = winner
+            cacheResolvedStream(winner, now, authScope, maxBitrateBps)
+            lastResolvedStreams[resolutionKey(videoId, authScope, maxBitrateBps)] = winner
             val stage = if (winner.clientProfile == NEWPIPE_SOURCE) "newpipe" else "innertubex"
             logStreamEvent("resolved", winner)
             logStage(videoId, stage, startedAt)
@@ -3811,6 +3864,7 @@ class InnerTubeMusicApi @Inject constructor(
         probeCandidates: Boolean = true,
         allowCipherFormats: Boolean = true,
         maxAttempts: Int = MAX_PLAYER_REQUEST_ATTEMPTS,
+        maxBitrateBps: Int? = null,
     ): YouTubeAudioStream {
         val playerContext = playerRequestContext(client, visitorData)
         cipherContext?.requireMatches(videoId, ytAuth.connection.value)
@@ -3873,6 +3927,8 @@ class InnerTubeMusicApi @Inject constructor(
         val formats = buildList {
             streaming?.array("formats").orEmpty().forEach { add(it to false) }
             streaming?.array("adaptiveFormats").orEmpty().forEach { add(it to true) }
+        }.filter { (element, _) ->
+            maxBitrateBps == null || (element as? JsonObject)?.int("bitrate")?.let { it in 1..maxBitrateBps } == true
         }
         val audioCiphers = if (allowCipherFormats) formats.mapNotNull { (element, _) ->
             val format = element as? JsonObject ?: return@mapNotNull null
@@ -3931,6 +3987,7 @@ class InnerTubeMusicApi @Inject constructor(
                 )
             }
             .filter(::isCompatibleAudioCandidate)
+            .filter { it.meetsBitrateLimit(maxBitrateBps) }
             .sortedWith(
                 compareBy<YouTubeAudioStream> { it.isAdaptive }
                     .thenByDescending { it.bitrate },
@@ -3948,8 +4005,14 @@ class InnerTubeMusicApi @Inject constructor(
         throw IOException("${client.key} returned no usable audio URL")
     }
 
-    private fun cacheResolvedStream(stream: YouTubeAudioStream, cachedAt: Long) {
-        streamCache[StreamCacheKey.from(stream)] = CachedStream(cachedAt, stream)
+    private fun cacheResolvedStream(
+        stream: YouTubeAudioStream,
+        cachedAt: Long,
+        authScope: String,
+        maxBitrateBps: Int?,
+    ) {
+        val lookupAuthScope = if (maxBitrateBps == null) stream.authScope else authScope
+        streamCache[StreamCacheKey.from(stream, lookupAuthScope, maxBitrateBps)] = CachedStream(cachedAt, stream)
         pruneStreamCache()
     }
 
@@ -3977,31 +4040,28 @@ class InnerTubeMusicApi @Inject constructor(
         }
         val call = innerTubeClient.newCall(request)
         call.timeout().timeout(STREAM_PROBE_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
-        val cancellationHandle = currentCoroutineContext()[kotlinx.coroutines.Job]
-            ?.invokeOnCompletion { cause ->
-                if (cause is kotlinx.coroutines.CancellationException) call.cancel()
-            }
         return try {
-            call.execute().use { response ->
+            val (status, contentType, valid) = call.readResponse { response ->
                 val contentType = response.header("Content-Type").orEmpty().lowercase()
                 val validType = !contentType.contains("text/html") &&
                     !contentType.contains("application/json") &&
                     !contentType.contains("text/plain")
                 val valid = (response.code == 200 || response.code == 206) &&
                     validType && response.body?.source()?.request(1L) == true
-                logStreamEvent(
-                    stage = stage,
-                    stream = stream,
-                    httpStatus = response.code,
-                    retry = retry,
-                    detail = "valid=$valid type=${contentType.substringBefore(';').take(40)}",
-                )
-                noteAttempt(
-                    "probe stage=$stage client=${stream.clientProfile} itag=${stream.itag ?: -1} " +
-                        "http=${response.code} valid=$valid",
-                )
-                valid
+                Triple(response.code, contentType, valid)
             }
+            logStreamEvent(
+                stage = stage,
+                stream = stream,
+                httpStatus = status,
+                retry = retry,
+                detail = "valid=$valid type=${contentType.substringBefore(';').take(40)}",
+            )
+            noteAttempt(
+                "probe stage=$stage client=${stream.clientProfile} itag=${stream.itag ?: -1} " +
+                    "http=$status valid=$valid",
+            )
+            valid
         } catch (cancellation: kotlinx.coroutines.CancellationException) {
             throw cancellation
         } catch (error: Exception) {
@@ -4011,8 +4071,6 @@ class InnerTubeMusicApi @Inject constructor(
                     resolutionFailureDetail(error),
             )
             false
-        } finally {
-            cancellationHandle?.dispose()
         }
     }
 
@@ -4043,7 +4101,8 @@ class InnerTubeMusicApi @Inject constructor(
     private fun clientFailureKey(videoId: String, clientKey: String, authScope: String): String =
         "$videoId|$clientKey|$authScope"
 
-    private fun resolutionKey(videoId: String, authScope: String): String = "$videoId|$authScope"
+    private fun resolutionKey(videoId: String, authScope: String, maxBitrateBps: Int? = null): String =
+        if (maxBitrateBps == null) "$videoId|$authScope" else "$videoId|$authScope|$maxBitrateBps"
 
     private fun playbackAuthScope(): String {
         val connection = ytAuth.connection.value
@@ -4617,18 +4676,18 @@ class InnerTubeMusicApi @Inject constructor(
     }
 
     private suspend fun okhttp3.Call.readResponseBody(): Pair<Int, String> =
+        readResponse { it.code to it.body?.string().orEmpty() }
+
+    private suspend fun <T> okhttp3.Call.readResponse(read: (okhttp3.Response) -> T): T =
         suspendCancellableCoroutine { continuation ->
             continuation.invokeOnCancellation { cancel() }
             enqueue(object : okhttp3.Callback {
-                override fun onFailure(call: okhttp3.Call, error: IOException) {
-                    continuation.resumeWithException(error)
+                override fun onFailure(call: okhttp3.Call, e: IOException) {
+                    continuation.resumeWithException(e)
                 }
 
                 override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
-                    val result = runCatching {
-                        response.use { it.code to it.body?.string().orEmpty() }
-                    }
-                    continuation.resumeWith(result)
+                    continuation.resumeWith(runCatching { response.use(read) })
                 }
             })
         }
@@ -5729,6 +5788,8 @@ class InnerTubeMusicApi @Inject constructor(
         val itag: Int?,
         val authScope: String,
         val expiresAtEpochMs: Long?,
+        val lookupAuthScope: String,
+        val maxBitrateBps: Int?,
     ) {
         fun matches(stream: YouTubeAudioStream): Boolean =
             clientProfile == stream.clientProfile &&
@@ -5737,12 +5798,14 @@ class InnerTubeMusicApi @Inject constructor(
                 expiresAtEpochMs == stream.expiresAtEpochMs
 
         companion object {
-            fun from(stream: YouTubeAudioStream) = StreamCacheKey(
+            fun from(stream: YouTubeAudioStream, lookupAuthScope: String, maxBitrateBps: Int?) = StreamCacheKey(
                 videoId = stream.videoId,
                 clientProfile = stream.clientProfile,
                 itag = stream.itag,
                 authScope = stream.authScope,
                 expiresAtEpochMs = stream.expiresAtEpochMs,
+                lookupAuthScope = lookupAuthScope,
+                maxBitrateBps = maxBitrateBps,
             )
         }
     }

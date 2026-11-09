@@ -40,6 +40,7 @@ class YouTubeStreamExtractor @Inject constructor(
         videoId: String,
         preferM4a: Boolean = false,
         preferOpus: Boolean = false,
+        maxBitrateBps: Int? = null,
     ): YouTubeAudioStream = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         initialize()
@@ -57,7 +58,10 @@ class YouTubeStreamExtractor @Inject constructor(
         if (ordered.isEmpty()) throw IOException("YouTube returned no playable audio stream for $videoId")
         val candidates = ordered.map { stream ->
             stream.toYouTubeAudioStream(videoId, info.duration, now)
+        }.filter {
+            it.meetsBitrateLimit(maxBitrateBps)
         }
+        if (candidates.isEmpty()) throw IOException("YouTube returned no audio within the requested bitrate for $videoId")
         val playable = selectProbedCandidate(
             candidates = candidates,
             urlOf = { it.url },

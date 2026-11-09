@@ -525,7 +525,9 @@ class SettingsViewModel @Inject constructor(
     fun setDynamicNowPlaying(enabled: Boolean) = launchSettingsAction("update dynamic theme") { themeRepository.setDynamicNowPlaying(enabled) }
     fun setUseCustomFont(enabled: Boolean) = launchSettingsAction("update the app font") { settingsPreferences.setUseCustomFont(enabled) }
     fun setPreferLosslessStreaming(enabled: Boolean) = launchSettingsAction("update streaming preference") { settingsPreferences.setPreferLosslessStreaming(enabled) }
-    fun setLosslessQuality(quality: Int) = launchSettingsAction("update streaming quality") { settingsPreferences.setLosslessQuality(quality) }
+    fun setWifiStreamingQuality(quality: Int) = launchSettingsAction("update Wi-Fi streaming quality") { settingsPreferences.setWifiStreamingQuality(quality) }
+    fun setCellularStreamingQuality(quality: Int) = launchSettingsAction("update cellular streaming quality") { settingsPreferences.setCellularStreamingQuality(quality) }
+    fun setAdaptivePlaybackEnabled(enabled: Boolean) = launchSettingsAction("update adaptive playback") { settingsPreferences.setAdaptivePlaybackEnabled(enabled) }
     fun setDownloadQuality(quality: Int) = launchSettingsAction("update download quality") { settingsPreferences.setDownloadQuality(quality) }
     fun setStudioMasterClarity(enabled: Boolean) {
         // Apply immediately; DataStore persists the same state for future engine instances.

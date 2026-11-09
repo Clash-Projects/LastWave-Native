@@ -88,6 +88,21 @@ class StreamResolveTest {
     }
 
     @Test
+    fun rematchDoesNotTakeOverNewSelection() {
+        val resolver = PlaybackResolver(PlaybackStreamCache(tempDir()), noopLogger)
+        val replacement = TrackIdentity("track-c", "ccccccccccc")
+        resolver.begin(idA)
+        resolver.begin(idB)
+
+        val failure = runCatching { resolver.replaceClaim(idA, replacement) }.exceptionOrNull()
+
+        assertTrue(failure is StaleResolveException)
+        assertEquals(idB, resolver.requested)
+        resolver.replaceClaim(idB, replacement)
+        assertEquals(replacement, resolver.requested)
+    }
+
+    @Test
     fun staleTokenDoesNotPublish() = runBlocking {
         val cache = PlaybackStreamCache(tempDir())
         val resolver = PlaybackResolver(cache, noopLogger)

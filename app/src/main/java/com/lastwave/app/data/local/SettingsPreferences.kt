@@ -122,9 +122,12 @@ data class MiscSettings(
     /** When true, the player also queries installed provider modules in
      *  parallel with the addon; a module hit plays instantly on miss. */
     val preferProviderModules: Boolean = true,
-    /** Preferred quality preset for lossless streaming (27: 24/192, 7: 24/96, 6: 16/44.1, 5: 320k).
-     *  If a track does not support the requested quality, the worker automatically selects the highest available. */
-    val losslessQuality: Int = 27,
+    /** Preferred streaming quality when connected over Wi-Fi or Ethernet. */
+    val wifiStreamingQuality: Int = 27,
+    /** Preferred streaming quality when connected over cellular data. */
+    val cellularStreamingQuality: Int = 5,
+    /** When enabled, choose a streaming tier from Android's current downstream bandwidth estimate. */
+    val adaptivePlaybackEnabled: Boolean = false,
     /** Preferred quality preset for downloads (27: 24/192, 7: 24/96, 6: 16/44.1, 5: 320k, -1: YouTube Music). */
     val downloadQuality: Int = 27,
     /** Optional studio-clarity curve. On by default; Bit-Perfect disables it. */
@@ -392,6 +395,9 @@ class SettingsPreferences @Inject constructor(
         val PREFER_LOSSLESS_STREAMING = booleanPreferencesKey("lw_prefer_lossless_streaming")
         val PREFER_PROVIDER_MODULES = booleanPreferencesKey("lw_prefer_provider_modules")
         val LOSSLESS_QUALITY = intPreferencesKey("lw_lossless_quality")
+        val WIFI_STREAMING_QUALITY = intPreferencesKey("lw_wifi_streaming_quality")
+        val CELLULAR_STREAMING_QUALITY = intPreferencesKey("lw_cellular_streaming_quality")
+        val ADAPTIVE_PLAYBACK_ENABLED = booleanPreferencesKey("lw_adaptive_playback_enabled")
         val DOWNLOAD_QUALITY = intPreferencesKey("lw_download_quality")
         val MUSIC_ENHANCER = booleanPreferencesKey("lw_music_enhancer")
         val CLARITY_PRESET = intPreferencesKey("lw_clarity_preset")
@@ -493,7 +499,15 @@ class SettingsPreferences @Inject constructor(
                 pinnedFriends = p.readSafely(Keys.PINNED_FRIENDS) ?: emptySet(),
                 preferLosslessStreaming = p.readSafely(Keys.PREFER_LOSSLESS_STREAMING) ?: true,
                 preferProviderModules = p.readSafely(Keys.PREFER_PROVIDER_MODULES) ?: true,
-                losslessQuality = p.readSafely(Keys.LOSSLESS_QUALITY)?.takeIf { it in LOSSLESS_QUALITIES } ?: 27,
+                wifiStreamingQuality = p.readSafely(Keys.WIFI_STREAMING_QUALITY)
+                    ?.let(::normalizeStreamingQuality)
+                    ?: p.readSafely(Keys.LOSSLESS_QUALITY)?.let(::normalizeStreamingQuality)
+                    ?: 27,
+                cellularStreamingQuality = p.readSafely(Keys.CELLULAR_STREAMING_QUALITY)
+                    ?.let(::normalizeStreamingQuality)
+                    ?: p.readSafely(Keys.LOSSLESS_QUALITY)?.let(::normalizeStreamingQuality)
+                    ?: 5,
+                adaptivePlaybackEnabled = p.readSafely(Keys.ADAPTIVE_PLAYBACK_ENABLED) ?: false,
                 downloadQuality = p.readSafely(Keys.DOWNLOAD_QUALITY)?.takeIf { it in DOWNLOAD_QUALITIES } ?: 27,
                 systemEffectsMode = p.readSafely(Keys.SYSTEM_EFFECTS_MODE) ?: false,
                 buttonNowPlayingEnabled = p.readSafely(Keys.BUTTON_NOW_PLAYING_ENABLED) ?: false,
@@ -798,11 +812,29 @@ class SettingsPreferences @Inject constructor(
         }
     }
 
-    suspend fun setLosslessQuality(quality: Int) {
+    suspend fun setWifiStreamingQuality(quality: Int) {
         dataStore.edit {
-            val q = quality.takeIf { it in LOSSLESS_QUALITIES } ?: 27
+            val q = quality.takeIf { it in STREAMING_QUALITIES } ?: 27
+            if (it[Keys.CELLULAR_STREAMING_QUALITY] == null) {
+                // Preserve an existing one-profile preference on both networks the first time
+                // the user opens the new controls; fresh installs start cellular at 320 kbps.
+                it[Keys.CELLULAR_STREAMING_QUALITY] =
+                    it[Keys.LOSSLESS_QUALITY]?.let(::normalizeStreamingQuality) ?: 5
+            }
+            it[Keys.WIFI_STREAMING_QUALITY] = q
+            // Keep the old preference in sync for downgrade compatibility.
             it[Keys.LOSSLESS_QUALITY] = q
         }
+    }
+
+    suspend fun setCellularStreamingQuality(quality: Int) {
+        dataStore.edit {
+            it[Keys.CELLULAR_STREAMING_QUALITY] = quality.takeIf { it in STREAMING_QUALITIES } ?: 5
+        }
+    }
+
+    suspend fun setAdaptivePlaybackEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.ADAPTIVE_PLAYBACK_ENABLED] = enabled }
     }
 
     suspend fun setDownloadQuality(quality: Int) {
@@ -1116,7 +1148,14 @@ class SettingsPreferences @Inject constructor(
         dataStore.edit { it[Keys.JAM_ROOM_MODE] = mode }
     }
     private companion object {
-        val LOSSLESS_QUALITIES = setOf(-1, 4, 5, 6, 7, 27, 28)
+        val STREAMING_QUALITIES = setOf(-1, 4, 5, 27, 28)
         val DOWNLOAD_QUALITIES = setOf(-1, 4, 5, 6, 7, 27, 28)
+    }
+
+    private fun normalizeStreamingQuality(quality: Int): Int? = when (quality) {
+        in STREAMING_QUALITIES -> quality
+        7 -> 27 // Fold the old 24/96 option into the single Hi-Res choice.
+        6 -> 5 // Fold the old CD-lossless option into Standard quality.
+        else -> null
     }
 }
