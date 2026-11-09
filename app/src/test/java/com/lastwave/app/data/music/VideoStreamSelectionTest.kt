@@ -101,12 +101,12 @@ class VideoStreamSelectionTest {
                 stream(536).copy(resolution = "720p"),
             ),
         )
-        assertEquals(listOf(536, 800, 1608), ranked.map { it.height })
+        assertEquals(listOf(800, 536, 1608), ranked.map { it.height })
     }
 
     @Test
-    fun autoPlaybackTries720pThen1080pFirst() {
+    fun autoPlaybackPrefers1080pThenFallsBackTo720p() {
         val ranked = rankedForAutoPlayback(listOf(stream(2160), stream(360), stream(1080), stream(720), stream(480)))
-        assertEquals(listOf(720, 1080, 480, 2160, 360), ranked.map { it.height })
+        assertEquals(listOf(1080, 720, 480, 2160, 360), ranked.map { it.height })
     }
 }

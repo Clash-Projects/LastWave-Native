@@ -66,13 +66,13 @@ private fun xmlEscape(value: String): String = value
     .replace(">", "&gt;")
     .replace("\"", "&quot;")
 
-/** Order for Auto quality: 720p/1080p first so playback starts without buffer stalls. */
+/** Prefer Full HD when available; 720p remains the first fallback for smooth playback. */
 internal fun rankedForAutoPlayback(streams: List<YouTubeVideoStream>): List<YouTubeVideoStream> =
     streams.sortedByDescending { stream ->
         // Wide films have non-standard heights (3840x1608 is labelled 2160p), so trust the label.
         when (nominalHeight(stream)) {
-            720 -> 100
-            1080 -> 95
+            1080 -> 100
+            720 -> 95
             480 -> 80
             1440 -> 75
             2160 -> 70
