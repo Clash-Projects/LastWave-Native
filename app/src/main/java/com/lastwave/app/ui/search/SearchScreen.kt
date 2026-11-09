@@ -101,7 +101,6 @@ import coil.compose.AsyncImage
 import com.lastwave.app.data.search.SearchResultItem
 import com.lastwave.app.data.search.SearchTab
 import com.lastwave.app.ui.common.ArtworkImage
-import com.lastwave.app.ui.common.ArtworkViewModel
 import com.lastwave.app.ui.common.ExpressiveMotion
 import com.lastwave.app.ui.common.HeaderActionIcon
 import com.lastwave.app.ui.common.TrackContextMenuSheet
@@ -147,7 +146,6 @@ fun SearchScreen(
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val artworkViewModel: ArtworkViewModel = hiltViewModel()
     val musicPlayer = com.lastwave.app.ui.player.LocalMusicPlayer.current
     val playbackState by musicPlayer.listPlaybackState.collectAsStateWithLifecycle()
     var menuTarget by remember { mutableStateOf<TrackMenuTarget?>(null) }
@@ -582,14 +580,6 @@ fun SearchScreen(
                                                 onLongClick = {
                                                     if (state.tab == SearchTab.TRACKS) miniTrayItem = topResult
                                                 },
-                                                onMenu = {
-                                                    menuTarget = when (state.tab) {
-                                                        SearchTab.TRACKS, SearchTab.PODCASTS -> TrackMenuTarget.Track(topResult.name, topResult.artist.orEmpty(), topResult.url)
-                                                        SearchTab.ARTISTS -> TrackMenuTarget.Artist(topResult.name, topResult.url)
-                                                        SearchTab.ALBUMS -> TrackMenuTarget.Album(topResult.name, topResult.artist.orEmpty(), topResult.url)
-                                                        SearchTab.PLAYLISTS, SearchTab.USERS -> null
-                                                    }
-                                                },
                                             )
                                             Spacer(Modifier.height(8.dp))
                                         }
@@ -647,9 +637,6 @@ fun SearchScreen(
             target = target,
             capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = state.tab != SearchTab.PODCASTS),
             playbackSourceLabel = "Search",
-            onRefreshArtwork = (target as? TrackMenuTarget.Track)?.let { trackTarget ->
-                { artworkViewModel.refresh(trackTarget.name, trackTarget.artist) }
-            },
             onDismiss = { menuTarget = null },
         )
     }
@@ -678,7 +665,6 @@ private fun TopResultCard(
     tab: SearchTab,
     isPlaying: Boolean = false,
     onPlay: () -> Unit,
-    onMenu: () -> Unit,
     onLongClick: (() -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(20.dp)
@@ -790,7 +776,6 @@ private fun TopResultCard(
                 }
             }
             Spacer(Modifier.width(8.dp))
-            com.lastwave.app.ui.common.OverflowMenuButton(onClick = onMenu)
             FilledIconButton(
                 onClick = onPlay,
                 shape = CircleShape,

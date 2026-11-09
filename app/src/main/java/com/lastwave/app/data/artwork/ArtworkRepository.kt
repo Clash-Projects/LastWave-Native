@@ -187,7 +187,7 @@ class ArtworkRepository @Inject constructor(
                         tidalJob.cancel()
                         deezerJob.cancel()
                         spotifyJob.cancel()
-                        return@withContext "itunes" to appleUrl
+                        return@withContext ArtworkNormalizer.ITUNES_ARTIST_MATCH_CACHE_PROVIDER to appleUrl
                     }
 
                     // Priority 2: Tidal (Pristine 1280x1280 Hi-Fi master art)
@@ -519,7 +519,7 @@ class ArtworkRepository @Inject constructor(
         try {
             val fromItunes = safeFetch("Apple Music (force)", name, artist) { itunes.fetchArtworkUrl(name, artist) }
             val resolved = if (!fromItunes.isNullOrBlank()) {
-                save(key, "itunes", fromItunes)
+                save(key, ArtworkNormalizer.ITUNES_ARTIST_MATCH_CACHE_PROVIDER, fromItunes)
                 fromItunes
             } else {
                 val fromTidal = safeFetch("Tidal (force)", name, artist) { fetchTidal(name, artist) }

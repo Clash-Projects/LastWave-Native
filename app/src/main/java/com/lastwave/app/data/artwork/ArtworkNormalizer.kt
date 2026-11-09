@@ -38,7 +38,14 @@ object ArtworkNormalizer {
     private val FEAT_REGEX = Regex("(?i)\\s*[(|\\[](feat|ft|with|featuring)\\.?\\s+.*?[)|\\]]")
     private val REMASTER_REGEX = Regex("(?i)\\s*[(|\\[].*?(remaster|live|version|edit|mono|stereo|deluxe|bonus).*?[)|\\]]")
 
-    val HIGH_RES_PROVIDERS: Set<String> = setOf("spotify", "apple", "itunes", "tidal", "deezer", "lastfm", "youtube_music", "ytmusic")
+    const val ITUNES_ARTIST_MATCH_CACHE_PROVIDER = "itunes_artist_credits_v2"
+
+    // Older iTunes covers may have been selected with loose artist matching.
+    // Exclude their marker so they resolve again with the stricter matcher.
+    val HIGH_RES_PROVIDERS: Set<String> = setOf(
+        "spotify", "apple", ITUNES_ARTIST_MATCH_CACHE_PROVIDER,
+        "tidal", "deezer", "lastfm", "youtube_music", "ytmusic",
+    )
 
     fun isYtMusicThumbnail(url: String?): Boolean =
         !url.isNullOrBlank() && (url.contains("googleusercontent.com") || url.contains("ggpht.com")) && !url.contains("ytimg.com")
