@@ -31,7 +31,6 @@ import java.util.Collections
 import java.util.WeakHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.max
 import kotlin.math.roundToInt
 
 @Singleton
@@ -76,6 +75,7 @@ class MusicHapticsController @Inject constructor(
     /** Pending beat-aligned pulses carry this token so they can be dropped at once. */
     private val pulseToken = Any()
     @Volatile private var lastPulseUptimeMs = 0L
+    @Volatile private var lastPulseWasKick = false
 
     private var hapticGenerator: HapticGenerator? = null
     private var currentAudioSessionId: Int = C.AUDIO_SESSION_ID_UNSET
@@ -270,20 +270,23 @@ class MusicHapticsController @Inject constructor(
     override fun onHapticPulse(
         bassEnergy: Float,
         vocalEnergy: Float,
+        isKick: Boolean,
         isSharpTransient: Boolean,
         leadTimeMs: Long,
     ) {
         if (!dspActive) return
         val cfg = _config.value
 
+        // Each mode follows only its own events. Mixing by energy let Bass &
+        // Beats tap on vocals and hi-hats, and Vocals Only tap on every kick.
         val rawDrive: Float = when (cfg.mode) {
-            MusicHapticsMode.BASS_AND_BEATS -> bassEnergy
-            MusicHapticsMode.VOCALS_ONLY -> vocalEnergy
-            MusicHapticsMode.WHOLE_SONG -> max(bassEnergy, vocalEnergy * 0.85f)
+            MusicHapticsMode.BASS_AND_BEATS -> if (isKick) bassEnergy else return
+            MusicHapticsMode.VOCALS_ONLY -> if (isKick) return else vocalEnergy
+            MusicHapticsMode.WHOLE_SONG -> if (isKick) bassEnergy else vocalEnergy * 0.85f
         }
         if (rawDrive < 0.08f) return
 
-        val isBassDominant = cfg.mode != MusicHapticsMode.VOCALS_ONLY && (bassEnergy >= vocalEnergy)
+        val isBassDominant = isKick
         // The tap sees PCM when it is written to the AudioTrack, ~100-500 ms
         // before it is audible. Fire when the sound actually reaches the ear,
         // minus the motor's own start-up time (vibrate() call + spin-up), so the
@@ -292,9 +295,13 @@ class MusicHapticsController @Inject constructor(
         hapticHandler.postAtTime({
             if (!dspActive) return@postAtTime
             // Keep a minimum gap between motor kicks so pulses never smear together.
+            // A kick may cut short a preceding accent: the beat matters more, and
+            // an accent just before it used to swallow the downbeat entirely.
             val now = SystemClock.uptimeMillis()
-            if (now - lastPulseUptimeMs < MIN_PULSE_SPACING_MS) return@postAtTime
+            val preempts = isKick && !lastPulseWasKick
+            if (!preempts && now - lastPulseUptimeMs < MIN_PULSE_SPACING_MS) return@postAtTime
             lastPulseUptimeMs = now
+            lastPulseWasKick = isKick
             dispatchVibrationPulse(
                 drive = rawDrive,
                 isBassDominant = isBassDominant,

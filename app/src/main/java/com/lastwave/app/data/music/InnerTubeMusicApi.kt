@@ -121,6 +121,8 @@ data class YouTubeAudioStream(
     val requestHeaders: Map<String, String> = emptyMap(),
     val expiresAtEpochMs: Long? = null,
     val userAgent: String = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0",
+    /** YouTube "Stable volume" variant: compressed and several dB quieter than the master. */
+    val isDrc: Boolean = false,
 ) {
     val mediaCacheKey: String
         get() = "youtube:$videoId:$clientProfile:${itag ?: -1}:$authScope:${expiresAtEpochMs ?: 0L}"
@@ -3928,11 +3930,15 @@ class InnerTubeMusicApi @Inject constructor(
                     expiresAtEpochMs = listOfNotNull(streamExpiryEpochMs(finalUrl), responseExpiry).minOrNull()
                         ?: System.currentTimeMillis() + UNKNOWN_STREAM_EXPIRY_TTL_MS,
                     userAgent = client.userAgent,
+                    isDrc = format.string("isDrc") == "true" || isDrcAudioUrl(finalUrl),
                 )
             }
             .filter(::isCompatibleAudioCandidate)
             .sortedWith(
-                compareBy<YouTubeAudioStream> { it.isAdaptive }
+                // DRC shares itag 251/140 with the full master, often at a higher
+                // bitrate, so bitrate alone kept picking the quiet variant.
+                compareBy<YouTubeAudioStream> { it.isDrc }
+                    .thenBy { it.isAdaptive }
                     .thenByDescending { it.bitrate },
             )
         noteAttempt("client=${client.name} compatibleCandidates=${candidates.size} cipherAllowed=$allowCipherFormats")
@@ -6061,6 +6067,13 @@ class InnerTubeMusicApi @Inject constructor(
 }
 
 internal fun JsonObject.obj(key: String): JsonObject? = this[key] as? JsonObject
+
+/** googlevideo tags the Stable-volume variant as `xtags=...drc=1...` (URL-encoded). */
+internal fun isDrcAudioUrl(url: String): Boolean {
+    val xtags = url.substringAfter("xtags=", "").substringBefore('&')
+    if (xtags.isEmpty()) return false
+    return runCatching { java.net.URLDecoder.decode(xtags, "UTF-8") }.getOrDefault(xtags).contains("drc=1")
+}
 internal fun JsonObject.array(key: String): JsonArray? = this[key] as? JsonArray
 internal fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
 internal fun JsonObject.int(key: String): Int? = string(key)?.toIntOrNull()
