@@ -257,8 +257,6 @@ expiresAtEpochMs = stream.expiresAtEpochMs,
 open class InnerTubeHttpException(val responseCode: Int) :
     IOException("InnerTube HTTP $responseCode")
 
-data class WebConfig(val apiKey: String, val clientVersion: String, val visitorData: String?)
-
 data class PlayerClient(
     val name: String,
     val version: String,

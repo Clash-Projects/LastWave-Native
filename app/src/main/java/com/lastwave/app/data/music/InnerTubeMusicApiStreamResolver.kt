@@ -1033,7 +1033,7 @@ internal fun InnerTubeMusicApi.logClientFailure(videoId: String, client: String,
         )
     }
 
-internal fun InnerTubeMusicApi.playerClients(config: WebConfig): List<PlayerClient> = PLAYER_CLIENTS.map { client ->
+internal fun InnerTubeMusicApi.playerClients(config: InnerTubeMusicApi.WebConfig): List<PlayerClient> = PLAYER_CLIENTS.map { client ->
         if (client.name == "WEB_REMIX") {
             client.copy(version = config.clientVersion, apiKey = config.apiKey)
         } else {

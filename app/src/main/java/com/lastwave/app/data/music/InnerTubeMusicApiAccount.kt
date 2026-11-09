@@ -182,7 +182,7 @@ internal suspend fun InnerTubeMusicApi.fetchAvailableChannelsImpl(): List<YtChan
      * `{"code":"SUCCESS","data":{...}}`. Returns the `data` subtree, or
      * throws on any failure (callers fall back to `account_menu`).
      */
-internal suspend fun InnerTubeMusicApi.fetchAccountSwitcherRoot(config: WebConfig): JsonObject = withContext(Dispatchers.IO) {
+internal suspend fun InnerTubeMusicApi.fetchAccountSwitcherRoot(config: InnerTubeMusicApi.WebConfig): JsonObject = withContext(Dispatchers.IO) {
         currentCoroutineContext().ensureActive()
         val account = ytAuth.connection.value
         if (!account.isConnected) throw IOException("YouTube Music not connected")
