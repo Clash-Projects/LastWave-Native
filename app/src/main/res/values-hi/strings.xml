@@ -1090,4 +1090,26 @@
     <string name="recommendation_source_spotify_sub">Spotify द्वारा सिफारिशें, YouTube Music पर प्लेबैक</string>
     <string name="toast_spotify_connect_first">पहले Spotify कनेक्ट करें</string>
     <string name="toast_spotify_disconnected">Spotify खाता डिस्कनेक्ट हो गया</string>
+
+    <!-- Android TV (leanback) home -->
+    <string name="tv_tab_home">होम</string>
+    <string name="tv_tab_search">खोज</string>
+    <string name="tv_greeting_morning">सुप्रभात</string>
+    <string name="tv_greeting_afternoon">नमस्कार</string>
+    <string name="tv_greeting_evening">शुभ संध्या</string>
+    <string name="tv_greeting_night">शुभ रात्रि</string>
+    <string name="tv_nothing_playing">अभी कुछ चल नहीं रहा</string>
+    <string name="tv_nothing_playing_hint">सुनना शुरू करने के लिए नीचे कोई गाना चुनें या खोजें</string>
+    <string name="tv_top_tracks">टॉप ट्रैक्स</string>
+    <string name="tv_recently_played">हाल में सुने गए</string>
+    <string name="tv_empty_history">कुछ चलाने के बाद आपका सुनने का इतिहास यहाँ दिखेगा।</string>
+    <string name="tv_play">चलाएँ</string>
+    <string name="tv_pause">रोकें</string>
+    <string name="tv_next">अगला</string>
+    <string name="tv_previous">पिछला</string>
+    <string name="tv_shuffle">शफ़ल</string>
+    <string name="tv_repeat">दोहराएँ</string>
+    <string name="tv_search_title">खोज</string>
+    <string name="tv_search_hint">गाने, कलाकार…</string>
+    <string name="tv_search_no_results">कोई परिणाम नहीं</string>
 </resources>

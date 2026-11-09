@@ -14,12 +14,18 @@ on:
       - 'Screenshot/**'
       - '**.yml'
   workflow_dispatch:
+    inputs:
+      tv_build:
+        description: 'TV build (package com.lastwave.app.tv, universal APK)'
+        type: boolean
+        default: false
 
 jobs:
   build:
     name: Build Release APK
     runs-on: ubuntu-latest
     env:
+      TV_BUILD: ${{ inputs.tv_build }}
       SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
       ADDON_CLIENT_SECRET: ${{ secrets.ADDON_CLIENT_SECRET }}
       RELEASE_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD || secrets.RELEASE_STORE_PASSWORD }}
@@ -49,7 +55,7 @@ jobs:
           RELEASE_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD || secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.ALIAS || secrets.RELEASE_KEY_ALIAS || 'release_key' }}
           RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || secrets.RELEASE_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --stacktrace
+        run: ./gradlew assembleRelease ${{ inputs.tv_build == true && '-PtvApp=true' || '' }} --stacktrace
 
       - name: Stage Final APK
         id: prep_apk
@@ -61,11 +67,18 @@ jobs:
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
-          echo "Building APK for LastWave v$VERSION"
-          if [ -f "app/build/outputs/apk/release/app-release-signed.apk" ]; then
-            cp app/build/outputs/apk/release/app-release-signed.apk final_apk/LastWave-v${VERSION}-release.apk
+          if [ "$TV_BUILD" = "true" ]; then
+            echo "Building TV APK (com.lastwave.app.tv) for LastWave v$VERSION"
+            APK_PREFIX="LastWave-TV"
           else
-            cp app/build/outputs/apk/release/app-release.apk final_apk/LastWave-v${VERSION}-release.apk
+            echo "Building APK for LastWave v$VERSION"
+            APK_PREFIX="LastWave"
+          fi
+          echo "apk_prefix=$APK_PREFIX" >> $GITHUB_OUTPUT
+          if [ -f "app/build/outputs/apk/release/app-release-signed.apk" ]; then
+            cp app/build/outputs/apk/release/app-release-signed.apk final_apk/${APK_PREFIX}-v${VERSION}-release.apk
+          else
+            cp app/build/outputs/apk/release/app-release.apk final_apk/${APK_PREFIX}-v${VERSION}-release.apk
           fi
           ls -lh final_apk/
 
@@ -88,6 +101,6 @@ jobs:
       - name: Upload Release APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: LastWave-v${{ steps.prep_apk.outputs.version }}-APK
+          name: ${{ steps.prep_apk.outputs.apk_prefix }}-v${{ steps.prep_apk.outputs.version }}-APK
           path: final_apk/*
           if-no-files-found: error

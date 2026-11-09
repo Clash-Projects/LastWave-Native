@@ -1401,4 +1401,26 @@
     <string name="spotify_playlists_section_title">Spotify</string>
     <string name="spotify_liked_songs_title">Liked Songs</string>
     <string name="spotify_liked_songs_sub">Your Spotify likes</string>
+
+    <!-- Android TV (leanback) home -->
+    <string name="tv_tab_home">Home</string>
+    <string name="tv_tab_search">Search</string>
+    <string name="tv_greeting_morning">Good morning</string>
+    <string name="tv_greeting_afternoon">Good afternoon</string>
+    <string name="tv_greeting_evening">Good evening</string>
+    <string name="tv_greeting_night">Good night</string>
+    <string name="tv_nothing_playing">Nothing playing yet</string>
+    <string name="tv_nothing_playing_hint">Pick a track below or search to start listening</string>
+    <string name="tv_top_tracks">Top tracks</string>
+    <string name="tv_recently_played">Recently played</string>
+    <string name="tv_empty_history">Your listening history will appear here once you play something.</string>
+    <string name="tv_play">Play</string>
+    <string name="tv_pause">Pause</string>
+    <string name="tv_next">Next</string>
+    <string name="tv_previous">Previous</string>
+    <string name="tv_shuffle">Shuffle</string>
+    <string name="tv_repeat">Repeat</string>
+    <string name="tv_search_title">Search</string>
+    <string name="tv_search_hint">Songs, artists…</string>
+    <string name="tv_search_no_results">No results</string>
 </resources>
