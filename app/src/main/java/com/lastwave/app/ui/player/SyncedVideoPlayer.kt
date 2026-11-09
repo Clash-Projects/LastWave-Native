@@ -150,7 +150,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.math.abs
 
-internal const val TAG = "SyncedVideoPlayer"
+private const val TAG = "SyncedVideoPlayer"
 internal const val VIDEO_PREFS_NAME = "synced_video"
 internal const val VIDEO_OVERRIDE_PREFS_NAME = "synced_video_overrides"
 internal const val PREF_VIDEO_LAST_USED_MS = "video_last_used_ms"

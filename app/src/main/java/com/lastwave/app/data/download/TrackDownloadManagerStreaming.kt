@@ -97,7 +97,7 @@ import javax.inject.Singleton
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-import com.lastwave.app.data.download.TrackDownloadManager.Companion.*
+import com.lastwave.app.data.download.TrackDownloadManager.*
 
 internal suspend fun TrackDownloadManager.downloadToTempFile(
         downloadKey: String,

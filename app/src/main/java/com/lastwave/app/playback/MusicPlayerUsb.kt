@@ -146,10 +146,7 @@ import javax.inject.Singleton
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 
-import com.lastwave.app.playback.MusicPlayer.Companion.*
-
-    /** Forwards USB-access permission requests to [UsbDacMonitor]. */
-fun MusicPlayer.requestUsbPermission() = usbDacMonitor.requestPermission()
+import com.lastwave.app.playback.MusicPlayer.*
 
     /** Device key already prompted for USB access (deny = no nagging). */
     private var usbPermissionPromptedKey: String? = null
@@ -226,9 +223,6 @@ internal fun MusicPlayer.checkExclusiveHealth(driftPpm: Double?) {
         applyDacRoutingFor(currentSourceRateHz())
         updateSignalPath()
     }
-
-    /** Diagnostic text for the signal-path page (USB driver trace + descriptors). */
-fun MusicPlayer.usbDiagnosticReport(): String = exclusiveUsbOutput.diagnosticReport()
 
     /**
      * Fork: direct output without usbdevfs (direct AudioTrack, then AAudio

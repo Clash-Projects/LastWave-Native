@@ -63,9 +63,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @androidx.compose.runtime.Immutable
-import com.lastwave.app.data.music.InnerTubeMusicApi.Companion.*
+import com.lastwave.app.data.music.InnerTubeMusicApi.*
 
-suspend fun InnerTubeMusicApi.fetchAccountInfo(): YtAccountInfo? = withContext(Dispatchers.IO) {
+internal suspend fun InnerTubeMusicApi.fetchAccountInfoImpl(): YtAccountInfo? = withContext(Dispatchers.IO) {
         if (!ytAuth.connection.value.isConnected) return@withContext null
         val config = getWebConfig()
         val root = runCatching {
@@ -107,7 +107,7 @@ suspend fun InnerTubeMusicApi.fetchAccountInfo(): YtAccountInfo? = withContext(D
      * `onBehalfOfUser`) is kept as a fallback. Cookies stay identical across
      * channels, which is why cookie-only clients are stuck on the first one.
      */
-suspend fun InnerTubeMusicApi.fetchAvailableChannels(): List<YtChannelOption> = withContext(Dispatchers.IO) {
+internal suspend fun InnerTubeMusicApi.fetchAvailableChannelsImpl(): List<YtChannelOption> = withContext(Dispatchers.IO) {
         if (!ytAuth.connection.value.isConnected) return@withContext emptyList()
         val config = getWebConfig()
         val switcherRoot = runCatching { fetchAccountSwitcherRoot(config) }.getOrNull()
@@ -364,7 +364,7 @@ internal fun String.isChannelId(): Boolean =
         startsWith("UC") && length >= 20 && all { it.isLetterOrDigit() || it == '_' || it == '-' }
 
     /** Creates a PRIVATE playlist owned by the connected account; returns its id. */
-suspend fun InnerTubeMusicApi.createRemotePlaylist(title: String): String? = withContext(Dispatchers.IO) {
+internal suspend fun InnerTubeMusicApi.createRemotePlaylistImpl(title: String): String? = withContext(Dispatchers.IO) {
         if (!ytAuth.connection.value.isConnected) return@withContext null
         val cleanTitle = title.replace("<", "(").replace(">", ")").take(150)
             .ifBlank { "LastWave Playlist" }
@@ -390,7 +390,7 @@ suspend fun InnerTubeMusicApi.createRemotePlaylist(title: String): String? = wit
     }
 
     /** Renames an owned remote playlist via ACTION_SET_PLAYLIST_NAME. */
-suspend fun InnerTubeMusicApi.renameRemotePlaylist(playlistId: String, title: String): Boolean = withContext(Dispatchers.IO) {
+internal suspend fun InnerTubeMusicApi.renameRemotePlaylistImpl(playlistId: String, title: String): Boolean = withContext(Dispatchers.IO) {
         editRemotePlaylist(
             playlistId = playlistId,
             actions = listOf(buildJsonObject {
@@ -401,7 +401,7 @@ suspend fun InnerTubeMusicApi.renameRemotePlaylist(playlistId: String, title: St
     }
 
     /** Deletes a remote playlist owned by the connected account. */
-suspend fun InnerTubeMusicApi.deleteRemotePlaylist(playlistId: String): Boolean = withContext(Dispatchers.IO) {
+internal suspend fun InnerTubeMusicApi.deleteRemotePlaylistImpl(playlistId: String): Boolean = withContext(Dispatchers.IO) {
         if (!ytAuth.connection.value.isConnected) return@withContext false
         val config = getWebConfig()
         // HTTP success is authoritative for this endpoint; some responses omit
@@ -423,7 +423,7 @@ suspend fun InnerTubeMusicApi.deleteRemotePlaylist(playlistId: String): Boolean 
     }
 
     /** Appends videos (deduped server-side); batched at InnerTube's ~50 actions/request. */
-suspend fun InnerTubeMusicApi.addVideosToRemotePlaylist(playlistId: String, videoIds: List<String>): Boolean =
+internal suspend fun InnerTubeMusicApi.addVideosToRemotePlaylistImpl(playlistId: String, videoIds: List<String>): Boolean =
         withContext(Dispatchers.IO) {
             if (videoIds.isEmpty()) return@withContext true
             videoIds.chunked(WRITE_ACTIONS_PER_REQUEST).all { chunk ->
@@ -441,7 +441,7 @@ suspend fun InnerTubeMusicApi.addVideosToRemotePlaylist(playlistId: String, vide
         }
 
     /** Removes entries by their per-entry setVideoId (from [fetchOwnedPlaylist]). */
-suspend fun InnerTubeMusicApi.removeVideosFromRemotePlaylist(
+internal suspend fun InnerTubeMusicApi.removeVideosFromRemotePlaylistImpl(
         playlistId: String,
         removals: List<Pair<String, String>>,
     ): Boolean = withContext(Dispatchers.IO) {
@@ -465,10 +465,10 @@ suspend fun InnerTubeMusicApi.removeVideosFromRemotePlaylist(
      * `like/like` the web player posts). Best effort: a failure returns
      * false for the caller to report, never throws.
      */
-suspend fun InnerTubeMusicApi.likeVideo(videoId: String): Boolean = setVideoLiked(videoId, liked = true)
+internal suspend fun InnerTubeMusicApi.likeVideoImpl(videoId: String): Boolean = setVideoLiked(videoId, liked = true)
 
     /** Clears a like (unliking in the player removes it on YouTube too). */
-suspend fun InnerTubeMusicApi.removeVideoLike(videoId: String): Boolean = setVideoLiked(videoId, liked = false)
+internal suspend fun InnerTubeMusicApi.removeVideoLikeImpl(videoId: String): Boolean = setVideoLiked(videoId, liked = false)
 
     /**
      * Whether the connected account has liked [videoId] on YouTube Music, read
@@ -476,7 +476,7 @@ suspend fun InnerTubeMusicApi.removeVideoLike(videoId: String): Boolean = setVid
      * and the player overlay's likeButtonRenderer.likeStatus ("LIKE" /
      * "INDIFFERENT" / "DISLIKE"). Null when signed out or the read failed.
      */
-suspend fun InnerTubeMusicApi.getYouTubeLikeStatus(videoId: String): Boolean? = withContext(Dispatchers.IO) {
+internal suspend fun InnerTubeMusicApi.getYouTubeLikeStatusImpl(videoId: String): Boolean? = withContext(Dispatchers.IO) {
         if (videoId.isBlank() || !ytAuth.connection.value.isConnected) return@withContext null
         runCatching {
             val config = getWebConfig()
@@ -527,7 +527,7 @@ internal suspend fun InnerTubeMusicApi.setVideoLiked(videoId: String, liked: Boo
         }
 
     /** Reads back an OWNED playlist with each item's setVideoId for diffs/removals. */
-suspend fun InnerTubeMusicApi.fetchOwnedPlaylist(
+internal suspend fun InnerTubeMusicApi.fetchOwnedPlaylistImpl(
         playlistIdOrUrl: String,
         stopAfterVideoId: String? = null,
     ): YtOwnedPlaylist? = withContext(Dispatchers.IO) {

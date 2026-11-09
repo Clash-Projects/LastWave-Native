@@ -97,18 +97,18 @@ import javax.inject.Singleton
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-import com.lastwave.app.data.download.TrackDownloadManager.Companion.*
+import com.lastwave.app.data.download.TrackDownloadManager.*
 
     /**
      * Removes the row but keeps the file. The file is remembered so the next
      * storage scan doesn't import it straight back.
      */
-suspend fun TrackDownloadManager.removeFromHistoryOnly(track: DownloadedTrackEntity) = withContext(Dispatchers.IO) {
+internal suspend fun TrackDownloadManager.removeFromHistoryOnlyImpl(track: DownloadedTrackEntity) = withContext(Dispatchers.IO) {
         hideFromHistory(listOf(track))
         downloadedTrackDao.delete(track)
     }
 
-suspend fun TrackDownloadManager.clearHistoryOnly() = withContext(Dispatchers.IO) {
+internal suspend fun TrackDownloadManager.clearHistoryOnlyImpl() = withContext(Dispatchers.IO) {
         hideFromHistory(downloadedTrackDao.getAllList())
         downloadedTrackDao.clearAll()
     }
@@ -176,20 +176,20 @@ internal fun TrackDownloadManager.unhideWhere(match: (HiddenDownload) -> Boolean
             true
         }
 
-suspend fun TrackDownloadManager.deleteDownloadedTrack(track: DownloadedTrackEntity): DeleteDownloadResult = withContext(Dispatchers.IO) {
+internal suspend fun TrackDownloadManager.deleteDownloadedTrackImpl(track: DownloadedTrackEntity): TrackDownloadManager.DeleteDownloadResult = withContext(Dispatchers.IO) {
         // Only remove the row after the recorded media has been deleted. This
         // keeps failed deletes retryable and avoids sync re-importing the song.
         if (deleteRecordedDownload(track)) {
             forgetOfflineSidecar(track)
             downloadedTrackDao.delete(track)
-            return@withContext DeleteDownloadResult.Deleted
+            return@withContext TrackDownloadManager.DeleteDownloadResult.Deleted
         }
-        consentDeleteRequest(track)?.let { return@withContext DeleteDownloadResult.NeedsUserConsent(it) }
-        DeleteDownloadResult.Failed
+        consentDeleteRequest(track)?.let { return@withContext TrackDownloadManager.DeleteDownloadResult.NeedsUserConsent(it) }
+        TrackDownloadManager.DeleteDownloadResult.Failed
     }
 
     /** Call after the user approved the system delete prompt. */
-suspend fun TrackDownloadManager.finishConsentedDelete(track: DownloadedTrackEntity): Boolean = withContext(Dispatchers.IO) {
+internal suspend fun TrackDownloadManager.finishConsentedDeleteImpl(track: DownloadedTrackEntity): Boolean = withContext(Dispatchers.IO) {
         if (!deleteRecordedDownload(track)) return@withContext false
         forgetOfflineSidecar(track)
         downloadedTrackDao.delete(track)
@@ -281,7 +281,7 @@ internal fun TrackDownloadManager.filePathForMediaStoreUri(uriString: String): S
      * the row so a later wipe can retry, and they fail this call.
      * New [downloadTrack] calls are refused until the guard is released.
      */
-suspend fun TrackDownloadManager.clearAllDownloads() {
+internal suspend fun TrackDownloadManager.clearAllDownloadsImpl() {
         val failed = clearAllDownloadsAttempt()
         if (failed.isNotEmpty()) {
             throw IOException("Failed to delete ${failed.size} downloaded track(s)")
@@ -292,16 +292,16 @@ suspend fun TrackDownloadManager.clearAllDownloads() {
      * Clears tracked downloads and, when Android blocks deleting legacy media,
      * returns one system confirmation request for the remaining MediaStore rows.
      */
-suspend fun TrackDownloadManager.clearAllDownloadsWithConsent(): ClearAllDownloadsResult {
+internal suspend fun TrackDownloadManager.clearAllDownloadsWithConsentImpl(): TrackDownloadManager.ClearAllDownloadsResult {
         val failed = clearAllDownloadsAttempt()
-        if (failed.isEmpty()) return ClearAllDownloadsResult.Cleared
+        if (failed.isEmpty()) return TrackDownloadManager.ClearAllDownloadsResult.Cleared
         val request = consentDeleteRequest(failed)
-            ?: return ClearAllDownloadsResult.Failed
-        return ClearAllDownloadsResult.NeedsUserConsent(request, failed)
+            ?: return TrackDownloadManager.ClearAllDownloadsResult.Failed
+        return TrackDownloadManager.ClearAllDownloadsResult.NeedsUserConsent(request, failed)
     }
 
     /** Finish deleting only the rows included in the user's system confirmation. */
-suspend fun TrackDownloadManager.finishConsentedClearAllDownloads(tracks: List<DownloadedTrackEntity>): Boolean =
+internal suspend fun TrackDownloadManager.finishConsentedClearAllDownloadsImpl(tracks: List<DownloadedTrackEntity>): Boolean =
         withWipingDownloads {
             var allDeleted = true
             for (track in tracks) {

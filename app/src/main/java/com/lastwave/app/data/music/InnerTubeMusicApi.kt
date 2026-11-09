@@ -111,6 +111,40 @@ class InnerTubeMusicApi @Inject constructor(
     @Volatile internal var cachedVideoCipherContext: PlaybackCipherContext? = null
     @Volatile internal var cachedVideoCipherContextAtMs = 0L
     @Volatile internal var webConfig: WebConfig? = null
+
+    // Account methods
+    suspend fun fetchAccountInfo(): YtAccountInfo? = fetchAccountInfoImpl()
+    suspend fun fetchAvailableChannels(): List<YtChannelOption> = fetchAvailableChannelsImpl()
+    suspend fun createRemotePlaylist(title: String): String? = createRemotePlaylistImpl(title)
+    suspend fun renameRemotePlaylist(playlistId: String, title: String): Boolean = renameRemotePlaylistImpl(playlistId, title)
+    suspend fun deleteRemotePlaylist(playlistId: String): Boolean = deleteRemotePlaylistImpl(playlistId)
+    suspend fun addVideosToRemotePlaylist(playlistId: String, videoIds: List<String>): Boolean = addVideosToRemotePlaylistImpl(playlistId, videoIds)
+    suspend fun removeVideosFromRemotePlaylist(playlistId: String, removals: List<Pair<String, String>>): Boolean = removeVideosFromRemotePlaylistImpl(playlistId, removals)
+    suspend fun likeVideo(videoId: String): Boolean = likeVideoImpl(videoId)
+    suspend fun removeVideoLike(videoId: String): Boolean = removeVideoLikeImpl(videoId)
+    suspend fun getYouTubeLikeStatus(videoId: String): Boolean? = getYouTubeLikeStatusImpl(videoId)
+    suspend fun fetchOwnedPlaylist(playlistIdOrUrl: String, stopAfterVideoId: String? = null): YtOwnedPlaylist? = fetchOwnedPlaylistImpl(playlistIdOrUrl, stopAfterVideoId)
+
+    // Stream resolver & search methods
+    fun peekCachedStream(videoId: String): YouTubeAudioStream? = peekCachedStreamImpl(videoId)
+    suspend fun resolveAudioStream(videoId: String): YouTubeAudioStream = resolveAudioStreamImpl(videoId)
+    suspend fun resolveDownloadStream(videoId: String): YouTubeAudioStream = resolveDownloadStreamImpl(videoId)
+    suspend fun resolveVideoStreamBundle(videoId: String, avoidClientName: String? = null): SyncedVideoStreamBundle? = resolveVideoStreamBundleImpl(videoId, avoidClientName)
+    suspend fun resolveVideoAudioForAlignment(videoId: String): YouTubeAudioStream? = resolveVideoAudioForAlignmentImpl(videoId)
+    suspend fun findBestMatch(
+        title: String,
+        artist: String,
+        prefetchStreams: Boolean = false,
+        excludedVideoId: String? = null,
+        excludedVideoIds: Set<String> = emptySet(),
+        expectedDurationMs: Long? = null,
+    ): YouTubeMusicTrack = findBestMatchImpl(title, artist, prefetchStreams, excludedVideoId, excludedVideoIds, expectedDurationMs)
+    suspend fun findBestMatchOrNull(title: String, artist: String, prefetchStreams: Boolean = false): YouTubeMusicTrack? =
+        findBestMatchOrNullImpl(title, artist, prefetchStreams)
+    suspend fun findDownloadCandidates(title: String, artist: String, excludedVideoIds: Set<String> = emptySet(), limit: Int = 6): List<YouTubeMusicTrack> =
+        findDownloadCandidatesImpl(title, artist, excludedVideoIds, limit)
+    suspend fun isPlayable(title: String, artist: String): Boolean = isPlayableImpl(title, artist)
+    suspend fun preWarmPlayback() = preWarmPlaybackImpl()
     /** Last wall-clock attempt to (re)bootstrap visitor data: the fast path
      *  must not re-fetch on every song when the config endpoint is down. */
     @Volatile internal var lastVisitorBootstrapAttemptMs = 0L

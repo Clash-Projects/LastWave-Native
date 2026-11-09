@@ -153,7 +153,7 @@ return HiddenDownload(parts.first(), parts.drop(1).filter { it.isNotBlank() }.to
 }
 }
 }
-private internal class HiddenHistory(val entries: List<HiddenDownload>) {
+internal class HiddenHistory(val entries: List<HiddenDownload>) {
 val keys: Set<String> = entries.mapTo(mutableSetOf()) { it.key }
 val refs: Set<String> = entries.flatMapTo(mutableSetOf()) { it.refs }
 }

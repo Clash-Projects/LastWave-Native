@@ -158,6 +158,7 @@ import kotlinx.coroutines.flow.collectLatest
 import androidx.lifecycle.repeatOnLifecycle
 import java.util.Locale
 
+@Composable
 internal fun SyncedLyricsProgressHost(
     lines: List<com.lastwave.app.data.lyrics.LyricLine>,
     isOverallRtl: Boolean,

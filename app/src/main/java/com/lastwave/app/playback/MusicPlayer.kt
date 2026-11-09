@@ -224,6 +224,10 @@ class MusicPlayer @Inject constructor(
     internal var castPlayback: com.lastwave.app.playback.cast.CastPlayback? = null
     internal val isCasting: Boolean get() = castPlayback?.active == true || _state.value.isCasting
 
+    fun initializeCast(): Boolean = initializeCastImpl()
+    fun requestUsbPermission() = usbDacMonitor.requestPermission()
+    fun usbDiagnosticReport(): String = exclusiveUsbOutput.diagnosticReport()
+
     internal val playbackPreferences = appContext.getSharedPreferences(
         PLAYBACK_PREFERENCES_NAME,
         Context.MODE_PRIVATE,

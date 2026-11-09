@@ -395,7 +395,7 @@ internal fun StatsCard(
 }
 
 @Composable
-internal fun rememberAnimatedCount(target: Long): Long {
+private fun rememberAnimatedCount(target: Long): Long {
     val animated = remember { Animatable(0f) }
     LaunchedEffect(target) {
         animated.animateTo(
@@ -432,4 +432,4 @@ internal fun StatPill(label: String, value: Long, modifier: Modifier = Modifier)
     }
 }
 
-internal fun formatCount(value: Long): String = if (value <= 0) "—" else "%,d".format(value)
+private fun formatCount(value: Long): String = if (value <= 0) "—" else "%,d".format(value)

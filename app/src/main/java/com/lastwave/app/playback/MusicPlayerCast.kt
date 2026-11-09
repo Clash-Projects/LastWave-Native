@@ -146,9 +146,9 @@ import javax.inject.Singleton
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 
-import com.lastwave.app.playback.MusicPlayer.Companion.*
+import com.lastwave.app.playback.MusicPlayer.*
 
-fun MusicPlayer.initializeCast(): Boolean = runCatching {
+internal fun MusicPlayer.initializeCastImpl(): Boolean = runCatching {
         if (castPlayback == null) {
             val castContext = com.google.android.gms.cast.framework.CastContext.getSharedInstance(appContext)
             castPlayback = com.lastwave.app.playback.cast.CastPlayback(appContext, this, applicationScope, castContext)

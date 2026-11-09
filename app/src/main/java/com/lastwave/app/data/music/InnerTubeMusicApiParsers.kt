@@ -63,7 +63,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @androidx.compose.runtime.Immutable
-import com.lastwave.app.data.music.InnerTubeMusicApi.Companion.*
+import com.lastwave.app.data.music.InnerTubeMusicApi.*
 
 internal fun InnerTubeMusicApi.parseSongRenderers(root: JsonElement): List<YouTubeMusicTrack> {
         val songs = mutableListOf<YouTubeMusicTrack>()

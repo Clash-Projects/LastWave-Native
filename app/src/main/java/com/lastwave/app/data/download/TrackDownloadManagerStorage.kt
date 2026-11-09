@@ -97,7 +97,7 @@ import javax.inject.Singleton
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-import com.lastwave.app.data.download.TrackDownloadManager.Companion.*
+import com.lastwave.app.data.download.TrackDownloadManager.*
 
 internal fun TrackDownloadManager.openPublicOutputStream(
         filename: String,
@@ -484,7 +484,7 @@ fun TrackDownloadManager.getRequiredAudioPermission(): String = Companion.getReq
 fun TrackDownloadManager.hasStoragePermission(): Boolean =
         ContextCompat.checkSelfPermission(context, getRequiredAudioPermission()) == PackageManager.PERMISSION_GRANTED
 
-suspend fun TrackDownloadManager.restoreDownloadsAfterReinstall(): Boolean = withContext(Dispatchers.IO) {
+internal suspend fun TrackDownloadManager.restoreDownloadsAfterReinstallImpl(): Boolean = withContext(Dispatchers.IO) {
         if (isDownloadsScanned()) return@withContext true
 
         restoreMutex.withLock {
@@ -807,7 +807,7 @@ suspend fun TrackDownloadManager.restoreDownloadsAfterReinstall(): Boolean = wit
         }
     }
 
-suspend fun TrackDownloadManager.syncDownloadsFromStorage() = withContext(Dispatchers.IO) {
+internal suspend fun TrackDownloadManager.syncDownloadsFromStorageImpl() = withContext(Dispatchers.IO) {
         runCatching { restoreDownloadsAfterReinstall() }
         runCatching { repairCorruptedDownloadMetadata() }
         val existingEntities = downloadedTrackDao.getAllList().toMutableList()

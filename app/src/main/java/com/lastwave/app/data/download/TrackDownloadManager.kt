@@ -263,11 +263,21 @@ class TrackDownloadManager @Inject constructor(
     internal val _downloads = MutableStateFlow<Map<String, DownloadProgress>>(emptyMap())
     val downloads: StateFlow<Map<String, DownloadProgress>> = _downloads.asStateFlow()
 
-    init {
     @Volatile
     internal var hiddenHistoryCache: HiddenHistory? = null
     internal val hiddenRefsLock = Any()
 
+    suspend fun restoreDownloadsAfterReinstall(): Boolean = restoreDownloadsAfterReinstallImpl()
+    suspend fun syncDownloadsFromStorage() = syncDownloadsFromStorageImpl()
+    suspend fun removeFromHistoryOnly(track: DownloadedTrackEntity) = removeFromHistoryOnlyImpl(track)
+    suspend fun clearHistoryOnly() = clearHistoryOnlyImpl()
+    suspend fun deleteDownloadedTrack(track: DownloadedTrackEntity) = deleteDownloadedTrackImpl(track)
+    suspend fun finishConsentedDelete(track: DownloadedTrackEntity): Boolean = finishConsentedDeleteImpl(track)
+    suspend fun clearAllDownloads() = clearAllDownloadsImpl()
+    suspend fun clearAllDownloadsWithConsent(): ClearAllDownloadsResult = clearAllDownloadsWithConsentImpl()
+    suspend fun finishConsentedClearAllDownloads(tracks: List<DownloadedTrackEntity>): Boolean = finishConsentedClearAllDownloadsImpl(tracks)
+
+    init {
         createNotificationChannel()
     }
 

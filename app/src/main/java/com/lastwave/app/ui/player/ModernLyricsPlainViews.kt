@@ -265,12 +265,3 @@ internal fun ModernEmptyLyricsView(
         }
     }
 }
-
-/**
- * Leaf host: collects progress ONLY for the lyrics list, so badge +
- * AnimatedContent above never recompose on ticks. Reference-client parity
- * (Metrolist/SimpMusic): the raw playhead position drives focus every tick
- * with no time quantization â€” word fills step at syllable granularity
- * (>=50ms), so throttling would visibly stall the karaoke highlight.
- */
-@Composable

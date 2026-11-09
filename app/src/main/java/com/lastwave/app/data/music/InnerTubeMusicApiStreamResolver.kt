@@ -63,9 +63,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @androidx.compose.runtime.Immutable
-import com.lastwave.app.data.music.InnerTubeMusicApi.Companion.*
+import com.lastwave.app.data.music.InnerTubeMusicApi.*
 
-fun InnerTubeMusicApi.peekCachedStream(videoId: String): YouTubeAudioStream? {
+internal fun InnerTubeMusicApi.peekCachedStreamImpl(videoId: String): YouTubeAudioStream? {
         if (videoId.isBlank()) return null
         val now = System.currentTimeMillis()
         val authScope = playbackAuthScope()
@@ -83,7 +83,7 @@ fun InnerTubeMusicApi.peekCachedStream(videoId: String): YouTubeAudioStream? {
     }
 
     /** Resolves and byte-probes an expiring googlevideo URL immediately before use. */
-suspend fun InnerTubeMusicApi.resolveAudioStream(videoId: String): YouTubeAudioStream = withContext(Dispatchers.IO) {
+internal suspend fun InnerTubeMusicApi.resolveAudioStreamImpl(videoId: String): YouTubeAudioStream = withContext(Dispatchers.IO) {
         require(videoId.isNotBlank()) { "Missing YouTube Music video id" }
         val startedAt = SystemClock.elapsedRealtime()
         logStage(videoId, "start")
@@ -156,7 +156,7 @@ suspend fun InnerTubeMusicApi.resolveAudioStream(videoId: String): YouTubeAudioS
      * the download pipeline remuxes losslessly into a fully tagged .opus file.
      * Falls back to [resolveAudioStream] if NewPipe fails (e.g. age-restricted content).
      */
-suspend fun InnerTubeMusicApi.resolveDownloadStream(videoId: String): YouTubeAudioStream = withContext(Dispatchers.IO) {
+internal suspend fun InnerTubeMusicApi.resolveDownloadStreamImpl(videoId: String): YouTubeAudioStream = withContext(Dispatchers.IO) {
         require(videoId.isNotBlank()) { "Missing YouTube Music video id" }
         try {
             streamExtractor.resolveAudioStream(videoId, preferOpus = true)
@@ -175,7 +175,7 @@ suspend fun InnerTubeMusicApi.resolveDownloadStream(videoId: String): YouTubeAud
      * slower, but it is the only client that passes YouTube's LOGIN_REQUIRED
      * bot check on flagged networks such as full-tunnel VPN exits.
      */
-suspend fun InnerTubeMusicApi.resolveVideoStreamBundle(
+internal suspend fun InnerTubeMusicApi.resolveVideoStreamBundleImpl(
         videoId: String,
         avoidClientName: String? = null,
     ): SyncedVideoStreamBundle? = withContext(Dispatchers.IO) {
@@ -221,7 +221,7 @@ suspend fun InnerTubeMusicApi.resolveVideoStreamBundle(
      * Audio of a video from a client whose links survive a multi-chunk download. IOS
      * links pass the first chunk and then get HTTP 403, which breaks offset measuring.
      */
-suspend fun InnerTubeMusicApi.resolveVideoAudioForAlignment(videoId: String): YouTubeAudioStream? = withContext(Dispatchers.IO) {
+internal suspend fun InnerTubeMusicApi.resolveVideoAudioForAlignmentImpl(videoId: String): YouTubeAudioStream? = withContext(Dispatchers.IO) {
         val visitorData = runCatching {
             kotlinx.coroutines.withTimeoutOrNull(VISITOR_BOOTSTRAP_BUDGET_MS) { getWebConfig() }?.visitorData
         }.getOrNull()?.takeIf { isValidVisitorData(it) }
@@ -1076,7 +1076,7 @@ internal fun InnerTubeMusicApi.pruneStreamCache() {
         }
     }
 
-suspend fun InnerTubeMusicApi.findBestMatch(
+internal suspend fun InnerTubeMusicApi.findBestMatchImpl(
         title: String,
         artist: String,
         prefetchStreams: Boolean = false,
@@ -1139,12 +1139,12 @@ suspend fun InnerTubeMusicApi.findBestMatch(
         }
     }
 
-suspend fun InnerTubeMusicApi.findBestMatchOrNull(
+internal suspend fun InnerTubeMusicApi.findBestMatchOrNullImpl(
         title: String,
         artist: String,
         prefetchStreams: Boolean = false,
     ): YouTubeMusicTrack? = try {
-        findBestMatch(title, artist, prefetchStreams)
+        findBestMatchImpl(title, artist, prefetchStreams)
     } catch (cancellation: kotlinx.coroutines.CancellationException) {
         throw cancellation
     } catch (_: Exception) {
@@ -1159,7 +1159,7 @@ suspend fun InnerTubeMusicApi.findBestMatchOrNull(
      * Never throws (except cancellation) — returns ranked candidates,
      * best first, possibly empty.
      */
-suspend fun InnerTubeMusicApi.findDownloadCandidates(
+internal suspend fun InnerTubeMusicApi.findDownloadCandidatesImpl(
         title: String,
         artist: String,
         excludedVideoIds: Set<String> = emptySet(),
@@ -1201,13 +1201,13 @@ suspend fun InnerTubeMusicApi.findDownloadCandidates(
         plausible.take(limit.coerceIn(1, 10))
     }
 
-suspend fun InnerTubeMusicApi.isPlayable(title: String, artist: String): Boolean =
-        findBestMatchOrNull(title, artist) != null
+internal suspend fun InnerTubeMusicApi.isPlayableImpl(title: String, artist: String): Boolean =
+        findBestMatchOrNullImpl(title, artist) != null
 
     /** Warms the cached web config (api key/version/visitor data) so the
      *  first playback's fast path can attach visitor data without an extra
      *  blocking fetch. Safe to call from a startup coroutine; never throws. */
-suspend fun InnerTubeMusicApi.preWarmPlayback() {
+internal suspend fun InnerTubeMusicApi.preWarmPlaybackImpl() {
         val config = runCatching { getWebConfig() }.getOrNull()
         val visitor = config?.visitorData?.takeIf { isValidVisitorData(it) } ?: FALLBACK_TOKEN_SESSION
         runCatching { BotGuardTokenGenerator.preWarm(visitor) }
