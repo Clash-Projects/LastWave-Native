@@ -73,6 +73,7 @@ android {
         targetSdk = 35
         versionCode = 31
         versionName = "5.1.3"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         (project.findProperty("targetAbis") as? String)?.let { prop ->
             ndk {
@@ -269,6 +270,8 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.kyant.backdrop)
     implementation(libs.kyant.shapes)
+    // Android 13+ navigation optics; Kyant remains for existing surfaces and older devices.
+    implementation(libs.fletchmckee.liquid)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
@@ -349,6 +352,11 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.12.2")
     testImplementation("io.mockk:mockk:1.13.10")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     // Bit-perfect USB exclusive output: audio_engine UsbAudioDriver.
     implementation(project(":audio:decent-usb-audio-driver"))
