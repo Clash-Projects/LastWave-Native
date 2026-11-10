@@ -442,11 +442,15 @@ class MusicPlayer @Inject constructor(
     internal var lastCrossfadeResolveIndex = C.INDEX_UNSET
     internal var lastCrossfadeLogKey: String? = null
     internal var lastCrossfadeLogAtMs = 0L
+    private var cachedTickerNextMediaItem: androidx.media3.common.MediaItem? = null
+    private var cachedTickerNextTrack: PlayableTrack? = null
     internal val _state = MutableStateFlow(MusicPlayerState())
     val state: StateFlow<MusicPlayerState> = _state.asStateFlow()
     /** Album identity for ALBUM loudness mode: one measurement spans the album. */
     private val loudnessAlbumKey: StateFlow<String?> = _state
-        .map { it.current?.album?.trim()?.lowercase()?.takeIf(String::isNotEmpty) }
+        .map { it.current?.album }
+        .distinctUntilChanged()
+        .map { it?.trim()?.lowercase()?.takeIf(String::isNotEmpty) }
         .distinctUntilChanged()
         .stateIn(applicationScope, SharingStarted.Eagerly, null)
     val chromeState: StateFlow<PlaybackChromeState> = state
@@ -2145,7 +2149,12 @@ class MusicPlayer @Inject constructor(
                             val nextItem = if (upcomingIdx != C.INDEX_UNSET && upcomingIdx in 0 until player.mediaItemCount) {
                                 player.getMediaItemAt(upcomingIdx)
                             } else null
-                            val nextTrk = nextItem?.toPlayableTrack()
+                            val nextTrk = if (nextItem === cachedTickerNextMediaItem) {
+                                cachedTickerNextTrack
+                            } else {
+                                cachedTickerNextMediaItem = nextItem
+                                nextItem?.toPlayableTrack().also { cachedTickerNextTrack = it }
+                            }
 
                             val stream = nextItem?.localConfiguration?.customCacheKey?.let(preparedStreams::get)
                                 ?: preparedStreams.values.firstOrNull { it.url == nextItem?.localConfiguration?.uri?.toString() }

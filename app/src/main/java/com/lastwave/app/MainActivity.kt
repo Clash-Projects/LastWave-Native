@@ -184,13 +184,16 @@ open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
 
             LastWaveTheme(themeState = themeState) {
                 val currentConfig = androidx.compose.ui.platform.LocalViewConfiguration.current
-                androidx.compose.runtime.CompositionLocalProvider(
-                    androidx.compose.ui.platform.LocalViewConfiguration provides object : androidx.compose.ui.platform.ViewConfiguration by currentConfig {
+                val customViewConfig = androidx.compose.runtime.remember(currentConfig) {
+                    object : androidx.compose.ui.platform.ViewConfiguration by currentConfig {
                         override val touchSlop: Float
                             get() = currentConfig.touchSlop * 1.5f
                         override val minimumTouchTargetSize: androidx.compose.ui.unit.DpSize
                             get() = androidx.compose.ui.unit.DpSize(48.dp, 48.dp)
                     }
+                }
+                androidx.compose.runtime.CompositionLocalProvider(
+                    androidx.compose.ui.platform.LocalViewConfiguration provides customViewConfig
                 ) {
                     val navController = rememberNavController()
                     val backStackEntry by navController.currentBackStackEntryAsState()
