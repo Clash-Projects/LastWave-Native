@@ -287,9 +287,21 @@ class MusicPlayer @Inject constructor(
                         kbps = (bitrateEstimate / 1_000L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
                         atMs = SystemClock.elapsedRealtime(),
                     )
-                    measuredBandwidth = sample
-                    if (previous == null || sample.atMs - previous.atMs >= 30_000L) {
-                        android.util.Log.i("MusicPlayer", "[ADAPTIVE] measured ${sample.kbps}kbps from ${bytes / 1024}KB")
+                    // Servers pace a stream to a few times its bitrate, so a
+                    // low-tier song reads as a slow link (776 kbps on 100 Mbps
+                    // Wi-Fi) and blocked every upgrade. Throughput is a lower
+                    // bound on the link: keep the route's best fresh sample.
+                    val best = previous?.takeIf {
+                        it.network == sample.network && it.kbps > sample.kbps &&
+                            sample.atMs - it.atMs <= MEASURED_BANDWIDTH_MAX_AGE_MS
+                    }
+                    measuredBandwidth = best ?: sample
+                    if (previous == null || sample.atMs - lastBandwidthLogMs >= 30_000L) {
+                        lastBandwidthLogMs = sample.atMs
+                        android.util.Log.i(
+                            "MusicPlayer",
+                            "[ADAPTIVE] measured ${sample.kbps}kbps from ${bytes / 1024}KB (route best ${(best ?: sample).kbps}kbps)",
+                        )
                     }
                 }
             }
@@ -304,6 +316,7 @@ class MusicPlayer @Inject constructor(
         return StreamingQualityPolicy.combineBandwidth(measured, route.downstreamBandwidthKbps)
     }
     private var lastQualityDeferLogMs = 0L
+    private var lastBandwidthLogMs = 0L
     @Volatile private var swappingMediaId: String? = null
     /** True while the standby is preparing or fading in for a quality hot-swap. */
     internal var hotSwapActive = false
@@ -1522,6 +1535,9 @@ class MusicPlayer @Inject constructor(
                                 track.videoId,
                                 allowLossless = !bypassLossless,
                                 losslessBudget = if (bypassLossless) LosslessBudget.Disabled else LosslessBudget.Interactive,
+                                // An upcoming item claiming playback is rejected as stale,
+                                // retried by Media3 every 5 s, and ended up marked lossless-bypass.
+                                claimPlayback = track.mediaIdKey() == _state.value.current?.mediaIdKey(),
                             ).also { resolved ->
                                 logStreamEvent("loader-prepared", resolved, retry = 0)
                                 android.util.Log.i("MusicPlayer", "[MEDIA3] loader resolved '${track.title}' key=${resolved.cacheKey} codec=${resolved.audioCodec}")
@@ -2155,7 +2171,8 @@ class MusicPlayer @Inject constructor(
                             // song and opened the blend halfway through it.
                             autoMixCoordinator.get().onTrackProgressTick(
                                 primaryPlayer = player,
-                                secondaryPlayer = currentStandby(),
+                                // A quality hot-swap is playing this same song on the standby.
+                                secondaryPlayer = currentStandby().takeUnless { hotSwapActive },
                                 currentTrack = _state.value.current,
                                 nextTrack = nextTrk,
                                 positionMs = runCatching { player.currentPosition }.getOrDefault(pos).coerceAtLeast(0L),
@@ -6287,28 +6304,20 @@ class MusicPlayer @Inject constructor(
             isStreamAllowedForQuality(it, requestedQuality, miscSnapshot) &&
                 (if (isManifest(it)) acceptManifest else isProviderReadyForStartup(it))
         }
-        // Adaptive off: the chosen tier comes first and the song never switches
-        // mid-play, so wait (bounded) for the provider and use the fallback
-        // only when it misses. Adaptive on: whichever plays first starts and
-        // the upgrade job promotes it later.
-        val providerFirst = provider != null && !miscSnapshot.adaptivePlaybackEnabled
+        // Whichever source is playable first starts. Waiting on the provider
+        // first cost 5 s per song whenever it answered slowly or with an error;
+        // the upgrade job promotes to the chosen tier once that is playable.
         try {
-            (if (providerFirst) {
-                racePlaybackCandidates(
-                    first = { localDownload() },
-                    second = { withTimeoutOrNull(PROVIDER_FIRST_WAIT_MS) { playableProvider(acceptManifest = true) } },
-                )
-            } else {
-                racePlaybackCandidates(
-                    first = { fallback.await().getOrNull() },
-                    second = {
-                        racePlaybackCandidates(
-                            first = { localDownload() },
-                            second = { playableProvider(acceptManifest = false) },
-                        )
-                    },
-                ) ?: playableProvider(acceptManifest = true)
-            } ?: fallback.await().getOrThrow()).also { winner ->
+            (racePlaybackCandidates(
+                first = { fallback.await().getOrNull() },
+                second = {
+                    racePlaybackCandidates(
+                        first = { localDownload() },
+                        second = { playableProvider(acceptManifest = false) },
+                    )
+                },
+            ) ?: playableProvider(acceptManifest = true)
+                ?: fallback.await().getOrThrow()).also { winner ->
                 if (claimPlayback) {
                     val name = when {
                         winner.cacheKey.startsWith("local:") || winner.cacheKey.startsWith("offline:") -> "local"
@@ -6360,11 +6369,11 @@ class MusicPlayer @Inject constructor(
         val settings = latestPlaybackSettings
         if (settings.adaptivePlaybackEnabled) {
             val profile = streamingProfile(settings, route)
-            val currentTarget = adaptiveTargetFor(route, profile)
-            val target = StreamingQualityPolicy.forBandwidth(profile, adaptiveBandwidthKbps(route), currentTarget)
-            // A link estimate may lower the target here. Raising it waits for
-            // a healthy buffer in maybeAdaptQualityForBuffer.
-            if (currentTarget == null || StreamingQualityPolicy.rank(target) < StreamingQualityPolicy.rank(currentTarget)) {
+            // The link estimate only picks a route's starting tier. Lowering the
+            // target on every settled estimate pulled a full buffer down a tier
+            // with no cooldown; after the start the buffer controller moves it.
+            if (adaptiveTargetFor(route, profile) == null) {
+                val target = StreamingQualityPolicy.forBandwidth(profile, adaptiveBandwidthKbps(route), currentQuality = null)
                 adaptiveTargetQuality = AdaptiveQualityTarget(network, profile, target)
             }
         }
@@ -6425,10 +6434,22 @@ class MusicPlayer @Inject constructor(
             }
             return
         }
-        // Adaptive off: only the ceiling above is enforced. A higher ceiling
-        // (cellular to Wi-Fi, a higher setting) applies from the next song.
-        if (!settings.adaptivePlaybackEnabled) return
         val currentTier = streamQualityTier(currentStream)
+        // One promotion per track and target: a track with no better source
+        // must not re-run the provider search on every tick or cooldown.
+        fun attempted(quality: Int) = activeUpgradeMediaId == item.mediaId && activeUpgradeTargetQuality == quality
+        // A lossy stream below the target (started on the fallback, or the
+        // setting or route was raised) is promoted mid-song. Adaptive off, the
+        // target is the profile. A lossless stream is already the provider's
+        // best for this track, so it is left alone.
+        if (!attempted(requestedQuality) && !currentStream.isLossless &&
+            !isSpatialAudioCodec(currentStream.audioCodec) &&
+            StreamingQualityPolicy.rank(currentTier) < StreamingQualityPolicy.rank(requestedQuality)
+        ) {
+            requestQuality(requestedQuality)
+            return
+        }
+        if (!settings.adaptivePlaybackEnabled) return
 
         val decision = adaptiveController.sample(
             AdaptiveQualityController.Sample(
@@ -6445,7 +6466,7 @@ class MusicPlayer @Inject constructor(
             ),
         )
         if (decision !is AdaptiveQualityController.Decision.Switch) return
-        if (!decision.downshift && activeUpgradeJob?.isActive == true) return
+        if (!decision.downshift && (activeUpgradeJob?.isActive == true || attempted(decision.quality))) return
         adaptiveTargetQuality = AdaptiveQualityTarget(network, profile, decision.quality)
         if (decision.downshift) enforceProfileOnUpcoming()
         requestQuality(decision.quality)
@@ -7080,6 +7101,7 @@ class MusicPlayer @Inject constructor(
             "MusicPlayer",
             "[STREAM UPGRADE] upcoming '${track.title}' tier=${streamQualityTier(stream)} exceeds profile $quality; re-resolving",
         )
+        preloadNextTrack(index, track)
     }
 
     internal fun scheduleQualityUpgrade(
@@ -7100,9 +7122,6 @@ class MusicPlayer @Inject constructor(
         if (isStreamSwapLocked(allowLateSwap = aboveLimit)) return false
         // Data Saver is the floor: an allowed stream has nothing to promote to.
         if (!explicitlyChanging && requestedQuality == LosslessMusicApi.QUALITY_DATA_SAVER) return false
-        // Adaptive off means no mid-song promotion: startup already waited for
-        // the chosen tier, and the next song asks for it again.
-        if (!explicitlyChanging && !misc.adaptivePlaybackEnabled) return false
         if (!explicitlyChanging && (!wantLossless || currentStream.isLossless ||
                 isSpatialAudioCodec(currentStream.audioCodec) || currentStream.cacheKey.startsWith("lossless:") ||
                 currentStream.cacheKey.startsWith("local:") || currentStream.cacheKey.startsWith("offline:"))
@@ -7210,7 +7229,14 @@ class MusicPlayer @Inject constructor(
                                     requestedQuality = requestedQuality,
                                 )
                             }.getOrNull() else null
-                            (pending ?: youtube ?: lossless)?.takeIf(::candidateAllowed)
+                            // No lossless for this track: a raised setting must
+                            // still lift it off a bitrate-capped stream.
+                            val uncapped = if (pending == null && youtube == null && lossless == null &&
+                                explicitlyChanging && !youtubeFirst && excluded.isEmpty()
+                            ) {
+                                withTimeoutOrNull(8_000L) { resolveYoutubeCandidate() }
+                            } else null
+                            (pending ?: youtube ?: lossless ?: uncapped)?.takeIf(::candidateAllowed)
                         }
                     }
 
@@ -7343,11 +7369,22 @@ class MusicPlayer @Inject constructor(
                         return@withContext
                     }
 
-                    if (overlapSwapToStandby(track, swapCandidate, currentIndex, generation, alignedLagMs) {
-                            candidateAllowed(swapCandidate)
-                        }
-                    ) {
+                    suspend fun overlap() = overlapSwapToStandby(track, swapCandidate, currentIndex, generation, alignedLagMs) {
+                        candidateAllowed(swapCandidate)
+                    }
+                    var outcome = overlap()
+                    // A line-up can miss (late seek, a standby that stalls). The
+                    // live player was not touched, so it is simply tried again.
+                    repeat(2) { if (outcome == OverlapSwap.Failed && player.isPlaying) outcome = overlap() }
+                    if (outcome == OverlapSwap.Swapped) {
                         cacheCurrentTrackStream(swapCandidate)
+                        return@withContext
+                    }
+                    // Replacing the item under a playing track is an audible gap.
+                    // It is only for a player that is silent anyway (paused,
+                    // stalled) or an output that cannot run two decks.
+                    if (outcome == OverlapSwap.Failed && player.isPlaying) {
+                        android.util.Log.w("MusicPlayer", "[STREAM UPGRADE] Overlap swap could not line up for '${track.title}'; keeping the playing stream")
                         return@withContext
                     }
                     if (generation != playRequestGeneration.get()) return@withContext
@@ -7566,10 +7603,12 @@ class MusicPlayer @Inject constructor(
         }
     }
 
+    private enum class OverlapSwap { Swapped, Unavailable, Failed }
+
     /**
      * Starts the upgraded stream muted on the standby, lines it up with the live
      * player, then fades across while both play the same audio. Audio never stops.
-     * Returns false with the live player untouched when overlap isn't possible.
+     * The live player is untouched unless the result is [OverlapSwap.Swapped].
      */
     @MainThread
     private suspend fun overlapSwapToStandby(
@@ -7579,14 +7618,15 @@ class MusicPlayer @Inject constructor(
         generation: Long,
         lagMs: Long,
         canCommit: () -> Boolean,
-    ): Boolean {
+    ): OverlapSwap {
         val live = player
-        if (isCasting || bitPerfectEnabled || exclusiveUsbOutput.isActive() || isOverlapMixActive ||
-            autoMixCoordinator.get().isEnabled || !live.isPlaying
-        ) {
-            return false
+        // AutoMix only needs the standby inside its blend window, which
+        // isStreamSwapLocked already keeps swaps out of. Excluding it here sent
+        // every swap with AutoMix on down the in-place path, an audible cut.
+        if (isCasting || bitPerfectEnabled || exclusiveUsbOutput.isActive() || isOverlapMixActive || !live.isPlaying) {
+            return OverlapSwap.Unavailable
         }
-        val liveMediaId = live.currentMediaItem?.mediaId ?: return false
+        val liveMediaId = live.currentMediaItem?.mediaId ?: return OverlapSwap.Unavailable
         val candidateItem = track.toMediaItem(candidate)
         val queue = (0 until live.mediaItemCount).map { i ->
             if (i == index) candidateItem else live.getMediaItemAt(i)
@@ -7616,30 +7656,58 @@ class MusicPlayer @Inject constructor(
                 true
             } == true
 
-            if (!awaitStandby(playing = false)) return false
+            if (!awaitStandby(playing = false)) return OverlapSwap.Failed
             standby.play()
 
-            var seekCompensationMs = HOT_SWAP_SEEK_LEAD_MS
+            // A seek lands anywhere within about 100 ms, an audible double hit
+            // in the fade, and pausing the deck for its lead is no finer. So a
+            // seek only gets close, and the muted deck is then run slightly
+            // fast or slow until it has made up the difference: nothing
+            // restarts, so that lands within a few ms. Every reading waits
+            // HOT_SWAP_SETTLE_MS: a deck's position is a blend for about a
+            // second after its output changes, and reading it earlier moved the
+            // deck on errors of up to 50 ms and passed swaps that were off.
+            val liveParameters = live.playbackParameters
+            var seekLeadMs = HOT_SWAP_SEEK_LEAD_MS
+            var seeked = false
             var driftMs = Long.MAX_VALUE
+            val rounds = StringBuilder()
             for (round in 1..HOT_SWAP_ALIGN_ROUNDS) {
-                if (!awaitStandby(playing = true)) return false
+                if (!awaitStandby(playing = true)) return OverlapSwap.Failed
                 delay(HOT_SWAP_SETTLE_MS)
-                if (!stillValid()) return false
+                if (!stillValid()) return OverlapSwap.Failed
                 driftMs = live.currentPosition + lagMs - standby.currentPosition
-                if (kotlin.math.abs(driftMs) <= HOT_SWAP_ALIGNED_MS) break
-                if (round > 1) seekCompensationMs = (seekCompensationMs + driftMs).coerceIn(0L, 1_000L)
-                if (round == HOT_SWAP_ALIGN_ROUNDS) break
-                standby.seekTo(live.currentPosition + lagMs + seekCompensationMs)
+                rounds.append(driftMs)
+                if (kotlin.math.abs(driftMs) <= HOT_SWAP_ALIGNED_MS || round == HOT_SWAP_ALIGN_ROUNDS) break
+                val gapMs = kotlin.math.abs(driftMs)
+                if (gapMs <= HOT_SWAP_NUDGE_MAX_MS) {
+                    // The gentlest rate is the most exact, so a wide gap is
+                    // closed quickly first and the next round trims the rest.
+                    val nudge = (gapMs / HOT_SWAP_NUDGE_SPAN_MS).coerceIn(HOT_SWAP_NUDGE_MIN, HOT_SWAP_NUDGE_MAX)
+                    rounds.append(" nudge ${"%.2f".format(nudge)}, ")
+                    val factor = if (driftMs > 0L) 1f + nudge else 1f - nudge
+                    standby.playbackParameters = PlaybackParameters(liveParameters.speed * factor, liveParameters.pitch)
+                    delay((gapMs / (nudge * liveParameters.speed)).toLong())
+                    standby.playbackParameters = liveParameters
+                } else {
+                    // Seeks take 0.3 s on one stream and 1 s on another; only a
+                    // seek's own miss says which.
+                    if (seeked) seekLeadMs = (seekLeadMs + driftMs).coerceIn(0L, HOT_SWAP_SEEK_LEAD_MAX_MS)
+                    seeked = true
+                    rounds.append(" seek +$seekLeadMs, ")
+                    standby.seekTo(live.currentPosition + lagMs + seekLeadMs)
+                }
             }
+            android.util.Log.i("MusicPlayer", "[STREAM UPGRADE] align drift per round (ms): $rounds")
             if (kotlin.math.abs(driftMs) > HOT_SWAP_MAX_DRIFT_MS) {
-                android.util.Log.w("MusicPlayer", "[STREAM UPGRADE] Could not align standby (drift ${driftMs}ms); using in-place swap")
-                return false
+                android.util.Log.w("MusicPlayer", "[STREAM UPGRADE] Could not align standby (drift ${driftMs}ms)")
+                return OverlapSwap.Failed
             }
             val sameQueue = standby.mediaItemCount == live.mediaItemCount &&
                 (0 until live.mediaItemCount).all { i ->
                     i == index || standby.getMediaItemAt(i).mediaId == live.getMediaItemAt(i).mediaId
                 }
-            if (!sameQueue || !stillValid()) return false
+            if (!sameQueue || !stillValid()) return OverlapSwap.Failed
 
             val timeline = live.currentTimeline
             val order = mutableListOf<Int>()
@@ -7691,13 +7759,15 @@ class MusicPlayer @Inject constructor(
                     hotSwapActive = false
                 }
             }
-            return true
+            return OverlapSwap.Swapped
         } finally {
             if (!committed) {
                 runCatching {
                     standby.stop()
                     standby.clearMediaItems()
                     standby.setSeekParameters(SeekParameters.EXACT)
+                    // A cancel mid-nudge must not leave the deck off-speed.
+                    standby.playbackParameters = live.playbackParameters
                 }
                 hotSwapActive = false
             }
@@ -8555,8 +8625,6 @@ class MusicPlayer @Inject constructor(
         const val STARTUP_PROBE_BYTES = 16 * 1024L
         /** Fallback resolve kept alive after a provider wins, for instant failover. */
         const val STARTUP_FALLBACK_KEEPALIVE_MS = 15_000L
-        /** With adaptive off, how long first audio waits for the chosen tier before the fallback plays. */
-        const val PROVIDER_FIRST_WAIT_MS = 5_000L
         const val MIN_BANDWIDTH_SAMPLE_BYTES = 256L * 1024
         const val MEASURED_BANDWIDTH_MAX_AGE_MS = 5 * 60_000L
         /** No quality swap this close to a planned AutoMix splice. */
@@ -8575,11 +8643,19 @@ class MusicPlayer @Inject constructor(
         /** Top search results warmed per settled result set (each also costs one server plan prep). */
         const val SEARCH_RESULT_WARM_COUNT = 2
         const val SEARCH_RESULT_WARM_DWELL_MS = 500L
-        const val HOT_SWAP_SEEK_LEAD_MS = 150L
-        const val HOT_SWAP_SETTLE_MS = 80L
+        /** A first guess at what a seek on the standby takes, so it lands near the live position. */
+        const val HOT_SWAP_SEEK_LEAD_MS = 300L
+        const val HOT_SWAP_SEEK_LEAD_MAX_MS = 3_000L
+        /** Speed offset of the muted deck while it closes a gap in about the span. */
+        const val HOT_SWAP_NUDGE_MIN = 0.1f
+        const val HOT_SWAP_NUDGE_MAX = 0.5f
+        const val HOT_SWAP_NUDGE_SPAN_MS = 1_500f
+        const val HOT_SWAP_NUDGE_MAX_MS = 750L
+        const val HOT_SWAP_SETTLE_MS = 1_000L
         const val HOT_SWAP_ALIGN_ROUNDS = 6
         const val HOT_SWAP_ALIGNED_MS = 10L
-        const val HOT_SWAP_MAX_DRIFT_MS = 40L
+        /** Beyond this the two decks are heard as a double hit during the fade. */
+        const val HOT_SWAP_MAX_DRIFT_MS = 15L
         const val HOT_SWAP_FADE_STEPS = 20
         const val HOT_SWAP_FADE_STEP_MS = 12L
         /** First keep-alive backoff after a transient stream failure. */

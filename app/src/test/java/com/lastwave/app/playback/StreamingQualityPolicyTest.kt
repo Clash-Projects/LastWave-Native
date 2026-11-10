@@ -158,6 +158,22 @@ class AdaptiveQualityControllerTest {
         assertEquals(Decision.Switch(QUALITY_MP3_320, downshift = true), c.sample(sample(4_100L, buffered = 1_000L)))
     }
 
+    @Test fun shrinkingBufferDownshiftsWhileThereIsStillTimeToSwap() {
+        val c = AdaptiveQualityController()
+        assertEquals(Decision.Hold, c.sample(sample(1_000L, buffered = 9_000L)))
+        assertEquals(Decision.Hold, c.sample(sample(2_500L, buffered = 8_200L)))
+        assertEquals(Decision.Switch(QUALITY_MP3_320, downshift = true), c.sample(sample(4_100L, buffered = 7_400L)))
+    }
+
+    @Test fun shortBufferThatKeepsFillingIsNotPressure() {
+        val c = AdaptiveQualityController()
+        var buffered = 500L
+        for (now in 1_000L..12_000L step 500L) {
+            assertEquals(Decision.Hold, c.sample(sample(now, buffered = buffered)))
+            buffered += 300L
+        }
+    }
+
     @Test fun briefDipDoesNotSwitch() {
         val c = AdaptiveQualityController()
         c.sample(sample(1_000L, buffered = 2_000L))
@@ -213,6 +229,19 @@ class AdaptiveQualityControllerTest {
         assertEquals(
             Decision.Switch(QUALITY_MAX_HI_RES, downshift = false),
             c.sample(sample(62_000L, tier = QUALITY_MP3_320)),
+        )
+    }
+
+    @Test fun drainDownshiftHoldsUpgradesLikeAStall() {
+        val c = AdaptiveQualityController()
+        c.sample(sample(1_000L, buffered = 6_000L))
+        assertEquals(Decision.Switch(QUALITY_MP3_320, downshift = true), c.sample(sample(4_100L, buffered = 5_000L)))
+        c.onSwitch(4_100L)
+        c.sample(sample(10_000L, tier = QUALITY_MP3_320))
+        assertEquals(Decision.Hold, c.sample(sample(50_000L, tier = QUALITY_MP3_320)))
+        assertEquals(
+            Decision.Switch(QUALITY_MAX_HI_RES, downshift = false),
+            c.sample(sample(65_000L, tier = QUALITY_MP3_320)),
         )
     }
 

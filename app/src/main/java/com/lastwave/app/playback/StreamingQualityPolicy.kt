@@ -141,7 +141,8 @@ internal object StreamingQualityPolicy {
 internal class AdaptiveQualityController(
     private val cooldownMs: Long = 15_000L,
     private val pressureHoldMs: Long = 3_000L,
-    private val lowBufferMs: Long = 2_500L,
+    /** A swap takes a few seconds to line up, so pressure has to show while this much is left. */
+    private val lowBufferMs: Long = 10_000L,
     private val healthyBufferMs: Long = 20_000L,
     private val healthyHoldMs: Long = 20_000L,
     private val repeatStallWindowMs: Long = 60_000L,
@@ -165,6 +166,7 @@ internal class AdaptiveQualityController(
     )
 
     private var pressureSinceMs = 0L
+    private var pressureStartBufferMs = 0L
     private var healthySinceMs = 0L
     private var lastSwitchAtMs = 0L
     private var lastStallAtMs = 0L
@@ -201,10 +203,19 @@ internal class AdaptiveQualityController(
         val underPressure = (s.isRebuffering || draining) && s.positionMs >= 1_000L
         if (underPressure) {
             healthySinceMs = 0L
-            if (pressureSinceMs == 0L) pressureSinceMs = s.nowMs
+            // A short buffer that is still filling (track start, after a seek)
+            // is the link keeping up, so the hold restarts from the new level.
+            val filling = !s.isRebuffering && s.bufferedAheadMs > pressureStartBufferMs
+            if (pressureSinceMs == 0L || filling) {
+                pressureSinceMs = s.nowMs
+                pressureStartBufferMs = s.bufferedAheadMs
+            }
             val sustained = s.nowMs - pressureSinceMs >= pressureHoldMs
             if (!(sustained || repeatedStall) || !cooldownComplete(s.nowMs)) return Decision.Hold
             val next = StreamingQualityPolicy.stepDown(s.currentTier) ?: return Decision.Hold
+            // Holds upgrades like a stall does: the link just failed to carry
+            // this tier, whatever a stale speed sample says.
+            lastStallAtMs = s.nowMs
             return Decision.Switch(StreamingQualityPolicy.capTo(next, s.profile), downshift = true)
         }
         pressureSinceMs = 0L

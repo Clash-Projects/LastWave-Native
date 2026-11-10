@@ -1,10 +1,12 @@
 package com.lastwave.app.data.music
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -16,7 +18,17 @@ class PlaybackCandidateRaceTest {
             second = { "validated-newpipe" },
         )
         assertEquals("validated-newpipe", result)
+        testScheduler.runCurrent()
         assertTrue(cancelled)
+    }
+
+    @Test fun winnerDoesNotWaitForLoserThatIgnoresCancellation() = runTest {
+        val result = racePlaybackCandidates(
+            first = { delay(600); "direct" },
+            second = { withContext(NonCancellable) { delay(2_000) }; null },
+        )
+        assertEquals("direct", result)
+        assertEquals(600L, testScheduler.currentTime)
     }
 
     @Test fun authenticatedDirectStreamCanStillWin() = runTest {
@@ -82,6 +94,7 @@ class PlaybackCandidateRaceTest {
         )
         assertEquals("provider-flac", result)
         assertEquals(400L, testScheduler.currentTime)
+        testScheduler.runCurrent()
         assertTrue(youtubeCancelled)
     }
 
