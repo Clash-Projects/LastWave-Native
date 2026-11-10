@@ -9,6 +9,7 @@ import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.unit.dp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -17,6 +18,9 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lastwave.app.ui.common.ArtworkViewModel
+import com.lastwave.app.ui.common.LocalArtworkViewModel
+import com.lastwave.app.ui.common.LocalArtworkCellular
 import com.lastwave.app.util.AppLocaleManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -198,12 +202,20 @@ open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
                         currentRoute == Screen.SpotifyTokenImport.route ||
                         currentRoute == Screen.YouTubeLogin.route
 
-                    PlayerHost(
-                        hasBottomNavigation = hasBottomNavigation,
-                        hideMiniPlayer = isJamScreen,
-                        webContentScreen = isWebLoginScreen,
+                    val artworkVm: ArtworkViewModel = hiltViewModel()
+                    val artworkCellular by artworkVm.isCellular.collectAsStateWithLifecycle()
+
+                    CompositionLocalProvider(
+                        LocalArtworkViewModel provides artworkVm,
+                        LocalArtworkCellular provides artworkCellular,
                     ) {
-                        LastWaveNavHost(navController)
+                        PlayerHost(
+                            hasBottomNavigation = hasBottomNavigation,
+                            hideMiniPlayer = isJamScreen,
+                            webContentScreen = isWebLoginScreen,
+                        ) {
+                            LastWaveNavHost(navController)
+                        }
                     }
                 }
             }

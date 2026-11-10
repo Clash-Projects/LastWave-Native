@@ -316,7 +316,7 @@ fun FluidArtworkBackground(
     extraBlur: Boolean = false,
     rotatingBackgroundEnabled: Boolean = true,
     lyricsRotatingBackgroundEnabled: Boolean = false,
-    artworkViewModel: ArtworkViewModel = hiltViewModel(),
+    artworkViewModel: ArtworkViewModel = com.lastwave.app.ui.common.LocalArtworkViewModel.current ?: hiltViewModel(),
     fallback: @Composable () -> Unit,
 ) {
     val fluidSupported = isFluidSupported()

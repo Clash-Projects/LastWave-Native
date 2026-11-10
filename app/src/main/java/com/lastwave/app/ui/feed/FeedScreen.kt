@@ -749,7 +749,7 @@ fun FeedScreen(
                 ) {
                     if (state.isChipActive) {
                         if (state.isChipLoading) {
-                            item(key = "chip_loading_skeleton") {
+                            item(key = "chip_loading_skeleton", contentType = "shelf") {
                                 HomeContainerSection(shape = RoundedCornerShape(28.dp)) {
                                     Column(verticalArrangement = Arrangement.spacedBy(CardTokens.sectionGap)) {
                                         com.lastwave.app.ui.feed.cards.ShelfSquareSkeletonRow(
@@ -762,7 +762,7 @@ fun FeedScreen(
                                 }
                             }
                         } else if (state.chipShelves.isEmpty()) {
-                            item(key = "chip_empty_state") {
+                            item(key = "chip_empty_state", contentType = "shelf") {
                                 HomeContainerSection(shape = RoundedCornerShape(28.dp)) {
                                     PodcastGuestEmptyState(
                                         onLoginClick = onOpenYouTubeLogin,
@@ -772,7 +772,7 @@ fun FeedScreen(
                         } else {
                             for ((shelfIndex, shelf) in state.chipShelves.withIndex()) {
                                 if (shelf.items.isEmpty()) continue
-                                item(key = "chip_shelf_${shelfIndex}_${shelf.title}") {
+                                item(key = "chip_shelf_${shelfIndex}_${shelf.title}", contentType = "shelf") {
                                     HomeContainerSection(
                                         shape = RoundedCornerShape(
                                             topStart = if (shelfIndex == 0) 28.dp else 0.dp,
@@ -801,7 +801,7 @@ fun FeedScreen(
                         }
                     } else {
                         if (showSynthetic) {
-                            item(key = "hero_greeting") {
+                            item(key = "hero_greeting", contentType = "hero_greeting") {
                                 ExpressiveGreetingHeader(
                                     greeting = greeting,
                                     formattedDate = formattedDate,
@@ -810,7 +810,7 @@ fun FeedScreen(
                         }
 
                         if (isInfiniteRadioVisible) {
-                            item(key = "infinite_radio") {
+                            item(key = "infinite_radio", contentType = "infinite_radio") {
                                 InfiniteRadioHero(
                                     quickPicks = combinedQuickPicks,
                                     onPlay = viewModel::playInfiniteRadio,
@@ -819,7 +819,7 @@ fun FeedScreen(
                         }
 
                         if (isQuickTilesVisible) {
-                            item(key = "quick_tiles") {
+                            item(key = "quick_tiles", contentType = "quick_tiles") {
                                 HomeContainerSection(
                                     shape = quickTilesShape,
                                 ) {
@@ -865,7 +865,7 @@ fun FeedScreen(
                         for (sectionKey in orderedFeedSections) {
                             when {
                                 sectionKey == "taste_strip" -> {
-                                    item(key = "taste_strip") {
+                                    item(key = "taste_strip", contentType = "taste_strip") {
                                         HomeContainerSection(
                                             shape = getContainerShape("taste_strip"),
                                         ) {
@@ -879,7 +879,7 @@ fun FeedScreen(
                                     }
                                 }
                                 sectionKey == "discover_new_music" -> {
-                                    item(key = "discover_new_music") {
+                                    item(key = "discover_new_music", contentType = "discover_new_music") {
                                         HomeContainerSection(
                                             shape = getContainerShape("discover_new_music"),
                                         ) {
@@ -917,7 +917,7 @@ fun FeedScreen(
                                     }
                                 }
                                 sectionKey == "quick_picks" -> {
-                                    item(key = "quick_picks") {
+                                    item(key = "quick_picks", contentType = "quick_picks") {
                                         val likelyTracks = combinedQuickPicks.take(2)
                                         LaunchedEffect(likelyTracks) {
                                             viewModel.warmQuickPicks(likelyTracks)
@@ -961,7 +961,7 @@ fun FeedScreen(
                                 }
                                 sectionKey == "because_you_listen_to" -> {
                                     state.feedData.becauseYouListenTo?.takeIf { it.items.isNotEmpty() }?.let { section ->
-                                        item(key = "because_you_listen_to") {
+                                        item(key = "because_you_listen_to", contentType = "because_you_listen_to") {
                                             HomeContainerSection(
                                                 shape = getContainerShape("because_you_listen_to"),
                                             ) {
@@ -1001,7 +1001,7 @@ fun FeedScreen(
                                     }
                                 }
                                 sectionKey == "fresh_finds" -> {
-                                    item(key = "fresh_finds") {
+                                    item(key = "fresh_finds", contentType = "fresh_finds") {
                                         HomeContainerSection(
                                             shape = getContainerShape("fresh_finds"),
                                         ) {
@@ -1041,7 +1041,7 @@ fun FeedScreen(
                                     }
                                 }
                                 sectionKey == "jump_back_in" -> {
-                                    item(key = "jump_back_in") {
+                                    item(key = "jump_back_in", contentType = "jump_back_in") {
                                         HomeContainerSection(
                                             shape = getContainerShape("jump_back_in"),
                                         ) {
@@ -1074,7 +1074,7 @@ fun FeedScreen(
                                     }
                                 }
                                 sectionKey == "mixed_for_you" || sectionKey == "mixes" -> {
-                                    item(key = "mixed_for_you") {
+                                    item(key = "mixed_for_you", contentType = "mixed_for_you") {
                                         HomeContainerSection(
                                             shape = getContainerShape("mixed_for_you"),
                                         ) {
@@ -1108,7 +1108,7 @@ fun FeedScreen(
                                 }
                                 sectionKey == "spotlight_hero" || sectionKey == "spotlight" -> {
                                     state.feedData.spotlight?.let { spotlight ->
-                                        item(key = "spotlight_hero") {
+                                        item(key = "spotlight_hero", contentType = "spotlight_hero") {
                                             Box(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
@@ -1129,7 +1129,7 @@ fun FeedScreen(
                                     }
                                 }
                                 sectionKey == "top_artists" -> {
-                                    item(key = "top_artists") {
+                                    item(key = "top_artists", contentType = "top_artists") {
                                         HomeContainerSection(
                                             shape = getContainerShape("top_artists"),
                                         ) {
@@ -1160,7 +1160,7 @@ fun FeedScreen(
                                     }
                                 }
                                 sectionKey == "heavy_rotation" -> {
-                                    item(key = "heavy_rotation") {
+                                    item(key = "heavy_rotation", contentType = "heavy_rotation") {
                                         HomeContainerSection(
                                             shape = getContainerShape("heavy_rotation"),
                                         ) {
@@ -1197,7 +1197,7 @@ fun FeedScreen(
                                     }
                                 }
                                 sectionKey == "albums_in_rotation" || sectionKey == "albums" -> {
-                                    item(key = "albums_in_rotation") {
+                                    item(key = "albums_in_rotation", contentType = "albums_in_rotation") {
                                         HomeContainerSection(
                                             shape = getContainerShape("albums_in_rotation"),
                                         ) {
@@ -1233,7 +1233,7 @@ fun FeedScreen(
                                     }
                                 }
                                 sectionKey == "trending_charts" || sectionKey == "charts" -> {
-                                    item(key = "trending_charts") {
+                                    item(key = "trending_charts", contentType = "trending_charts") {
                                         HomeContainerSection(
                                             shape = getContainerShape("trending_charts"),
                                         ) {
@@ -1271,7 +1271,7 @@ fun FeedScreen(
                                     }
                                 }
                                 sectionKey == "new_releases" -> {
-                                    item(key = "new_releases") {
+                                    item(key = "new_releases", contentType = "new_releases") {
                                         HomeContainerSection(
                                             shape = getContainerShape("new_releases"),
                                         ) {
@@ -1311,7 +1311,7 @@ fun FeedScreen(
                                     }
                                 }
                                 sectionKey == "friends_activity" || sectionKey == "friends" -> {
-                                    item(key = "friends_activity") {
+                                    item(key = "friends_activity", contentType = "friends_activity") {
                                         HomeContainerSection(
                                             shape = getContainerShape("friends_activity"),
                                         ) {
@@ -1345,7 +1345,7 @@ fun FeedScreen(
                                     }
                                 }
                                 sectionKey == "podcast_shelf" || sectionKey == "podcasts" -> {
-                                    item(key = "podcast_shelf") {
+                                    item(key = "podcast_shelf", contentType = "podcast_shelf") {
                                         HomeContainerSection(
                                             shape = getContainerShape("podcast_shelf"),
                                         ) {
@@ -1390,7 +1390,7 @@ fun FeedScreen(
                                     val shelf = ytShelfBySectionKey[sectionKey]
                                     if (shelf != null && shelf.items.isNotEmpty()) {
                                         // unique, orderedFeedSections has one key per shelf
-                                        item(key = "yt_shelf_${shelf.title.trim().lowercase()}") {
+                                        item(key = "yt_shelf_${shelf.title.trim().lowercase()}", contentType = "shelf") {
                                             HomeContainerSection(
                                                 shape = getContainerShape(sectionKey),
                                             ) {
@@ -1414,7 +1414,7 @@ fun FeedScreen(
                                 }
                             }
                             if (sectionKey == orderedFeedSections.firstOrNull { it == "podcast_shelf" || it == "podcasts" }) {
-                                item(key = "moods_and_genres") {
+                                item(key = "moods_and_genres", contentType = "moods_and_genres") {
                                     HomeContainerSection {
                                         com.lastwave.app.ui.moods.HomeMoodsSection()
                                     }
@@ -1423,7 +1423,7 @@ fun FeedScreen(
                         }
 
                         if (orderedFeedSections.none { it == "podcast_shelf" || it == "podcasts" }) {
-                            item(key = "moods_and_genres") {
+                            item(key = "moods_and_genres", contentType = "moods_and_genres") {
                                 HomeContainerSection {
                                     com.lastwave.app.ui.moods.HomeMoodsSection()
                                 }
@@ -1431,7 +1431,7 @@ fun FeedScreen(
                         }
 
                         if (!hasAnyFeedSections && !state.isChipActive) {
-                            item(key = "all_sections_hidden") {
+                            item(key = "all_sections_hidden", contentType = "all_sections_hidden") {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -1479,7 +1479,7 @@ fun FeedScreen(
                             val shelfItemKey = "paged_shelf_${shelfIndex}_${shelf.title}"
                             val pagedKey = "yt:${shelf.title}"
                             if (shelf.items.isEmpty() || isSectionIdHidden(pagedKey) || isShelfTitleHidden(shelf.title)) continue
-                            item(key = shelfItemKey) {
+                            item(key = shelfItemKey, contentType = "shelf") {
                                 HomeContainerSection(
                                     shape = getContainerShape(shelfItemKey),
                                 ) {
@@ -1516,7 +1516,7 @@ fun FeedScreen(
                     }
 
                     if (showSynthetic && hasAnyFeedSections) {
-                        item(key = "feed_footer") {
+                        item(key = "feed_footer", contentType = "feed_footer") {
                             FeedFooter(lastUpdatedMillis = state.feedData.lastUpdatedMillis)
                         }
                     }

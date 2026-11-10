@@ -53,7 +53,7 @@ fun ArtworkImage(
     decodeSizePx: Int? = null,
     alignment: Alignment = Alignment.Center,
     transformations: List<Transformation> = emptyList(),
-    artworkViewModel: ArtworkViewModel = hiltViewModel(),
+    artworkViewModel: ArtworkViewModel = LocalArtworkViewModel.current ?: hiltViewModel(),
 ) {
     val context = LocalContext.current
     val key = remember(name, artist) { ArtworkNormalizer.cacheKey(name, artist) }
@@ -64,7 +64,7 @@ fun ArtworkImage(
     val resolvedUrl by remember(key) {
         artworkViewModel.resolved.map { it[key] }.distinctUntilChanged()
     }.collectAsStateWithLifecycle(initialValue = artworkViewModel.resolved.value[key])
-    val isCellular by artworkViewModel.isCellular.collectAsStateWithLifecycle()
+    val isCellular = LocalArtworkCellular.current ?: artworkViewModel.isCellular.collectAsStateWithLifecycle().value
     var resolvedFailed by remember(key, resolvedUrl) { mutableStateOf(false) }
     var embeddedFailed by remember(name, artist, embeddedUrl) { mutableStateOf(false) }
     var refreshRequested by remember(key) { mutableStateOf(false) }
