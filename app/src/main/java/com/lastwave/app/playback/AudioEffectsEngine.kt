@@ -361,7 +361,7 @@ class AudioEffectsEngine @Inject constructor(
         const val MAX_PRE_LIMITER_BOOST_DB = 1.0f
         /** Lifts ~-18 LKFS Atmos music toward the level of stereo masters. */
         const val SPATIAL_MAKEUP_GAIN_DB = 6f
-        val SPATIAL_MIME_MARKERS = listOf("eac3", "ec-3", "ac-3", "ac3", "ac4", "mha1", "mhm1")
+        val SPATIAL_MIME_MARKERS = listOf("eac3", "ec-3", "ac-3", "ac3", "ac4", "mha1", "mhm1", "atmos", "dolby")
 
         fun calculateHeadroomDb(gainsDb: FloatArray): Float {
             val maximumBoost = (gainsDb.maxOrNull() ?: 0f).coerceAtLeast(0f)

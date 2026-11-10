@@ -69,7 +69,7 @@ fun qualityBadgeLabel(state: MusicPlayerState): String {
 fun spatialIndicatorLabel(codec: String?): String? {
     val c = codec?.uppercase().orEmpty()
     if (c.contains("ATMOS")) return "ATMOS"
-    if (c.contains("SPATIAL") || c.contains("360")) return "SPATIAL"
+    if (c.contains("SPATIAL") || c.contains("360") || c.contains("EAC3") || c.contains("EC-3") || c.contains("AC-3") || c.contains("AC3") || c.contains("AC4")) return "SPATIAL"
     return null
 }
 

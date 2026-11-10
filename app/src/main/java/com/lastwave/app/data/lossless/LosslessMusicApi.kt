@@ -295,7 +295,7 @@ class LosslessMusicApi @Inject constructor(
         /** True for E-AC-3 spatial codec labels. Pure; safe to unit-test on JVM. */
         fun isAtmosCodec(codec: String?): Boolean {
             val c = codec?.trim()?.lowercase().orEmpty()
-            return c.startsWith("ec-3") || c.startsWith("eac3") || c.startsWith("ac-3")
+            return c.startsWith("ec-3") || c.startsWith("eac3") || c.startsWith("ac-3") || c.contains("atmos") || c.contains("dolby")
         }
 
         /** True when the stream bytes are E-AC-3 spatial. Fail-open (false) when unreadable. */

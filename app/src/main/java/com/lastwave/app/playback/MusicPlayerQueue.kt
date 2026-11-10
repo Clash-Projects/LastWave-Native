@@ -440,7 +440,7 @@ internal fun MusicPlayer.resolveAndPlayQueueItem(index: Int) {
                     stagePendingQuality(track.mediaIdKey(), resolved)
                     track.videoId?.let { stagePendingQuality(it, resolved) }
                     publishResolvedQuality(resolved, expectedMediaId = expectedMediaId)
-                    applyDacRoutingFor(dacRateFor(resolved))
+                    applyDacRoutingFor(resolved)
                     logStreamEvent("queue-prepare", resolved, retry = 0)
                     cacheCurrentTrackStream(resolved)
                     learnQueueVideoId(index, track, resolved.youtubeCandidate?.videoId, resolved.rematchedFromVideoId)
@@ -486,7 +486,7 @@ internal fun MusicPlayer.resolveAndPlayQueueItem(index: Int) {
                             stagePendingQuality(track.mediaIdKey(), ytFallback)
                             track.videoId?.let { stagePendingQuality(it, ytFallback) }
                             publishResolvedQuality(ytFallback, expectedMediaId = expectedMediaId)
-                            applyDacRoutingFor(dacRateFor(ytFallback))
+                            applyDacRoutingFor(ytFallback)
                             logStreamEvent("queue-prepare-yt-fallback", ytFallback, retry = 0)
                             cacheCurrentTrackStream(ytFallback)
                             replaceMediaItemPreservingShuffle(index, track.toMediaItem(ytFallback))

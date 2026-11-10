@@ -1702,7 +1702,7 @@ class MusicPlayer @Inject constructor(
                     }
                     val isSpatial = isSpatialAudioCodec(_state.value.audioCodec)
                     createdSink.setBitPerfectRequested(!isSpatial && bitPerfectEnabled)
-                    createdSink.syncExclusiveUsb(handleAudioFocus && exclusiveUsbWanted())
+                    createdSink.syncExclusiveUsb(handleAudioFocus && !isSpatial && exclusiveUsbWanted())
                     createdSink.syncInternalDirect(handleAudioFocus && !isSpatial && internalDirectWanted())
                     audioSinks.add(createdSink)
                     runCatching {
@@ -1909,7 +1909,7 @@ class MusicPlayer @Inject constructor(
                             updated
                         }
                         if (isSpatialAudioCodec(detectedCodec)) {
-                            onMain { applyDacRoutingFor(48000) }
+                            onMain { applyDacRoutingFor(48000, detectedCodec) }
                         }
                     }
                 })
