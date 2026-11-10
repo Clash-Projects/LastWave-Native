@@ -1809,6 +1809,18 @@ class MusicPlayer @Inject constructor(
                         PlaybackStartupLog.audioAdvancing(playoutStartSystemTimeMs)
                     }
 
+                    override fun onLoadError(
+                        eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                        loadEventInfo: androidx.media3.exoplayer.source.LoadEventInfo,
+                        mediaLoadData: androidx.media3.exoplayer.source.MediaLoadData,
+                        error: java.io.IOException,
+                        wasCanceled: Boolean,
+                    ) {
+                        if (wasCanceled || this@apply !== activePlayer) return
+                        if (eventTime.windowIndex != currentMediaItemIndex) return
+                        rescueFailingProviderStream(this@apply, error)
+                    }
+
                     override fun onAudioInputFormatChanged(
                         eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
                         format: androidx.media3.common.Format,
@@ -2408,8 +2420,7 @@ class MusicPlayer @Inject constructor(
                 autoplaySimilarEnabled = settings.autoplaySimilarEnabled
                 crossfadeDurationMs = settings.crossfadeSeconds.coerceIn(1, 12) * 1000L
                 stopPlaybackOnTaskRemovedPref = settings.stopPlaybackOnTaskRemoved
-                if (settings.adaptivePlaybackEnabled != previousPlaybackSettings.adaptivePlaybackEnabled ||
-                    settings.wifiStreamingQuality != previousPlaybackSettings.wifiStreamingQuality ||
+                if (settings.wifiStreamingQuality != previousPlaybackSettings.wifiStreamingQuality ||
                     settings.cellularStreamingQuality != previousPlaybackSettings.cellularStreamingQuality
                 ) {
                     onMain {
@@ -6345,10 +6356,14 @@ class MusicPlayer @Inject constructor(
             StreamingQualityPolicy.profileFor(misc.wifiStreamingQuality, misc.cellularStreamingQuality, route.isCellular),
         )
 
+    /** Adaptive streaming is the cellular "Auto" choice; every other choice is played as picked. */
+    private fun isAdaptive(misc: MiscSettings, route: NetworkMonitor.ActiveRoute): Boolean =
+        StreamingQualityPolicy.isAdaptive(misc.cellularStreamingQuality, route.isCellular)
+
     internal fun selectedStreamingQuality(misc: MiscSettings): Int {
         val route = networkMonitor.activeRoute.value
         val profile = streamingProfile(misc, route)
-        if (!misc.adaptivePlaybackEnabled) return profile
+        if (!isAdaptive(misc, route)) return profile
         return adaptiveTargetFor(route, profile)
             ?: StreamingQualityPolicy.forBandwidth(profile, adaptiveBandwidthKbps(route), currentQuality = null)
     }
@@ -6367,7 +6382,7 @@ class MusicPlayer @Inject constructor(
         if (routeChanged) enforceProfileOnUpcoming()
         val network = route.network ?: return
         val settings = latestPlaybackSettings
-        if (settings.adaptivePlaybackEnabled) {
+        if (isAdaptive(settings, route)) {
             val profile = streamingProfile(settings, route)
             // The link estimate only picks a route's starting tier. Lowering the
             // target on every settled estimate pulled a full buffer down a tier
@@ -6443,13 +6458,14 @@ class MusicPlayer @Inject constructor(
         // target is the profile. A lossless stream is already the provider's
         // best for this track, so it is left alone.
         if (!attempted(requestedQuality) && !currentStream.isLossless &&
+            track.mediaIdKey() !in losslessBypassMediaIds &&
             !isSpatialAudioCodec(currentStream.audioCodec) &&
             StreamingQualityPolicy.rank(currentTier) < StreamingQualityPolicy.rank(requestedQuality)
         ) {
             requestQuality(requestedQuality)
             return
         }
-        if (!settings.adaptivePlaybackEnabled) return
+        if (!isAdaptive(settings, route)) return
 
         val decision = adaptiveController.sample(
             AdaptiveQualityController.Sample(
@@ -7137,7 +7153,7 @@ class MusicPlayer @Inject constructor(
         activeUpgradeJob = applicationScope.launch(Dispatchers.IO) {
             android.util.Log.i(
                 "MusicPlayer",
-                "[STREAM UPGRADE] starting for '${track.title}' quality=$requestedQuality adaptive=${misc.adaptivePlaybackEnabled}",
+                "[STREAM UPGRADE] starting for '${track.title}' quality=$requestedQuality",
             )
             try {
                 // A promotion can wait until the active audio starts. A
@@ -7348,7 +7364,17 @@ class MusicPlayer @Inject constructor(
                 currentCoroutineContext().ensureActive()
                 if (generation != playRequestGeneration.get()) return@launch
 
-                val lagMs = measureSwapLagMs(track, currentStream, swapCandidate, currentPos, generation)
+                // A stream that just died leaves only its buffer to play. The
+                // offset probe takes about 3 s of it, and that made the swap
+                // miss; with this little left, line up on positions alone.
+                val runwayMs = withContext(Dispatchers.Main.immediate) {
+                    if (playerDelegate.isInitialized()) player.bufferedPosition - player.currentPosition else 0L
+                }
+                val lagMs = if (aboveLimit && runwayMs < HOT_SWAP_PROBE_MIN_RUNWAY_MS) {
+                    null
+                } else {
+                    measureSwapLagMs(track, currentStream, swapCandidate, currentPos, generation)
+                }
                 android.util.Log.i("MusicPlayer", "[STREAM UPGRADE] Measured source offset for '${track.title}': ${lagMs?.let { "${it}ms" } ?: "unknown"}")
                 val alignedLagMs = lagMs ?: 0L
 
@@ -7603,6 +7629,42 @@ class MusicPlayer @Inject constructor(
         }
     }
 
+    /**
+     * A provider stream can stop serving mid-song: community addons expire or
+     * drop a stream without saying when. The refused chunk is known while the
+     * buffered audio is still playing, so the track crosses to YouTube now
+     * instead of cutting when the buffer runs dry. The track then stays off the
+     * provider until it is played again, or it would be promoted straight back.
+     */
+    @MainThread
+    private fun rescueFailingProviderStream(live: ExoPlayer, error: java.io.IOException) {
+        val item = live.currentMediaItem ?: return
+        val stream = item.localConfiguration?.customCacheKey?.let(preparedStreams::get) ?: return
+        if (stream.youtubeCandidate != null || stream.cacheKey.startsWith("local:") || stream.cacheKey.startsWith("offline:")) return
+        val track = item.toPlayableTrack()
+        if (!live.isPlaying || track.mediaIdKey() in losslessBypassMediaIds) return
+        // Only a server's refusal: with the network down YouTube fails too.
+        val refused = generateSequence<Throwable>(error) { it.cause }.take(8).any {
+            it is HttpDataSource.InvalidResponseCodeException || it is java.io.FileNotFoundException
+        }
+        if (!refused) return
+        val scheduled = scheduleQualityUpgrade(
+            track = track,
+            expectedMediaId = item.mediaId,
+            generation = playRequestGeneration.get(),
+            currentStream = stream,
+            requestedQualityOverride = LosslessMusicApi.QUALITY_YOUTUBE,
+        )
+        if (!scheduled) return
+        losslessBypassMediaIds += track.mediaIdKey()
+        losslessBypassMediaIds += item.mediaId
+        android.util.Log.w(
+            "MusicPlayer",
+            "[STREAM UPGRADE] provider stream refused a chunk for '${track.title}' with " +
+                "${(live.bufferedPosition - live.currentPosition).coerceAtLeast(0L)}ms buffered; crossing to YouTube",
+        )
+    }
+
     private enum class OverlapSwap { Swapped, Unavailable, Failed }
 
     /**
@@ -7796,7 +7858,7 @@ class MusicPlayer @Inject constructor(
             // when the candidate proves playable (ready + buffered past the
             // live edge), proves unplayable (error/ended/duration mismatch),
             // or becomes irrelevant (new generation / track changed).
-            val deadlineMs = SystemClock.elapsedRealtime() + 5_000L
+            val deadlineMs = SystemClock.elapsedRealtime() + AUDITION_TIMEOUT_MS
             while (currentCoroutineContext().isActive && SystemClock.elapsedRealtime() < deadlineMs) {
                 if (generation != playRequestGeneration.get()) return@withContext false
                 if (auditionPlayer.playerError != null) {
@@ -7854,7 +7916,10 @@ class MusicPlayer @Inject constructor(
                         }
                     }
                     if (generation != playRequestGeneration.get()) return@withContext false
-                    val minBufferedMs = targetPositionMs + 1_500L
+                    // Past one segment: some provider streams serve their first
+                    // 10 s and refuse the next request, which passed a 1.5 s check
+                    // and then cut the song right after the swap.
+                    val minBufferedMs = targetPositionMs + AUDITION_MIN_BUFFER_MS
                     if (auditionPlayer.bufferedPosition >= minBufferedMs ||
                         auditionPlayer.bufferedPercentage >= 100 ||
                         (candidateDur > 0L && auditionPlayer.bufferedPosition >= candidateDur - 500L)
@@ -8652,6 +8717,9 @@ class MusicPlayer @Inject constructor(
         const val HOT_SWAP_NUDGE_SPAN_MS = 1_500f
         const val HOT_SWAP_NUDGE_MAX_MS = 750L
         const val HOT_SWAP_SETTLE_MS = 1_000L
+        const val HOT_SWAP_PROBE_MIN_RUNWAY_MS = 12_000L
+        const val AUDITION_MIN_BUFFER_MS = 12_000L
+        const val AUDITION_TIMEOUT_MS = 10_000L
         const val HOT_SWAP_ALIGN_ROUNDS = 6
         const val HOT_SWAP_ALIGNED_MS = 10L
         /** Beyond this the two decks are heard as a double hit during the fade. */

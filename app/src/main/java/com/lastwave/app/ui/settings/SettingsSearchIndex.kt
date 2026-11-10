@@ -125,27 +125,13 @@ object SettingsSearchIndex {
                     id = "audio.cellular_streaming_quality",
                     title = "Cellular Streaming Quality",
                     subtitle = "Choose audio quality while using mobile data",
-                    keywords = listOf("quality", "bitrate", "streaming", "cellular", "mobile data", "data usage", "audio"),
+                    keywords = listOf("quality", "bitrate", "streaming", "cellular", "mobile data", "data usage", "audio", "auto", "adaptive"),
                     icon = Icons.Filled.HighQuality,
                     iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
                     parentTab = SettingsTab.AUDIO,
                     section = "Audio & Playback",
                     type = EntryType.ACTION,
-                )
-            )
-            add(
-                SettingsEntry(
-                    id = "audio.adaptive_playback",
-                    title = "Adaptive Playback",
-                    subtitle = "Choose streaming quality from the current connection speed estimate",
-                    keywords = listOf("adaptive", "automatic", "auto", "playback", "speed", "network", "buffering", "quality"),
-                    icon = Icons.Filled.HighQuality,
-                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
-                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
-                    parentTab = SettingsTab.AUDIO,
-                    section = "Audio & Playback",
-                    type = EntryType.TOGGLE,
                 )
             )
             add(

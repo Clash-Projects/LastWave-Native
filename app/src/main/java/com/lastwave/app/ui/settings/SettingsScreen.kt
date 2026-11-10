@@ -22,6 +22,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Vibration
+import com.lastwave.app.data.local.CELLULAR_QUALITY_AUTO
 import com.lastwave.app.data.local.musicHapticsConfig
 import com.lastwave.app.playback.haptics.MusicHapticsConfig
 import com.lastwave.app.playback.haptics.MusicHapticsEngineMode
@@ -102,7 +103,6 @@ import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.SignalCellularAlt
-import androidx.compose.material.icons.filled.Speed
 import com.lastwave.app.util.BatteryOptimizationHelper
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ChevronRight
@@ -347,6 +347,7 @@ enum class SettingsTab(
 }
 
 private fun streamingQualityLabel(quality: Int): String = when (quality) {
+    CELLULAR_QUALITY_AUTO -> "Auto"
     28 -> "Dolby Atmos"
     27, 7 -> "Hi-Res Lossless"
     6, 5 -> "Standard (320 kbps)"
@@ -808,23 +809,6 @@ fun SettingsScreen(
                                 },
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.cellular_streaming_quality"),
-                            )
-                        }
-                        add { position ->
-                            SettingsToggleCard(
-                                icon = Icons.Filled.Speed,
-                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                title = "Adaptive playback",
-                                subtitle = if (misc.adaptivePlaybackEnabled) {
-                                    "On • Adapts to speed and buffering within each connection's quality limit"
-                                } else {
-                                    "Off • Uses your separate Wi-Fi and cellular quality choices"
-                                },
-                                checked = misc.adaptivePlaybackEnabled,
-                                onCheckedChange = viewModel::setAdaptivePlaybackEnabled,
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "audio.adaptive_playback"),
                             )
                         }
                         add { position ->
@@ -2813,7 +2797,12 @@ fun SettingsScreen(
     }
 
     if (showQualityDialog) {
-        val tiers = listOf(
+        val tiers = listOfNotNull(
+            Triple(
+                CELLULAR_QUALITY_AUTO,
+                "Auto",
+                "Adapts to your connection • Up to your Wi-Fi quality" to "AUTO",
+            ).takeIf { editingCellularQuality },
             Triple(28, "Dolby Atmos", "Spatial Immersive Audio • Master Audio" to "ATMOS"),
             Triple(27, "Hi-Res Lossless", "Up to 24-bit / 192 kHz • Lossless FLAC" to "HI-RES"),
             Triple(5, "Standard Quality", "Up to 320 kbps • MP3 / AAC" to "320 kbps"),

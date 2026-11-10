@@ -100,6 +100,9 @@ enum class RecommendationSource(val id: String, val titleRes: Int, val subtitleR
     }
 }
 
+/** Cellular-only streaming choice: adapt to the link and buffer, never above the Wi-Fi choice. */
+const val CELLULAR_QUALITY_AUTO = 0
+
 data class MiscSettings(
     /** When on, the app's accent color follows the dominant color of the
      *  currently-scrobbling track's artwork (Home's "now playing" track),
@@ -124,10 +127,8 @@ data class MiscSettings(
     val preferProviderModules: Boolean = true,
     /** Preferred streaming quality when connected over Wi-Fi or Ethernet. */
     val wifiStreamingQuality: Int = 27,
-    /** Preferred streaming quality when connected over cellular data. */
+    /** Streaming quality over cellular data; [CELLULAR_QUALITY_AUTO] adapts to the link. */
     val cellularStreamingQuality: Int = 5,
-    /** When enabled, choose a streaming tier from Android's current downstream bandwidth estimate. */
-    val adaptivePlaybackEnabled: Boolean = false,
     /** Preferred quality preset for downloads (27: 24/192, 7: 24/96, 6: 16/44.1, 5: 320k, -1: YouTube Music). */
     val downloadQuality: Int = 27,
     /** Optional studio-clarity curve. On by default; Bit-Perfect disables it. */
@@ -397,7 +398,6 @@ class SettingsPreferences @Inject constructor(
         val LOSSLESS_QUALITY = intPreferencesKey("lw_lossless_quality")
         val WIFI_STREAMING_QUALITY = intPreferencesKey("lw_wifi_streaming_quality")
         val CELLULAR_STREAMING_QUALITY = intPreferencesKey("lw_cellular_streaming_quality")
-        val ADAPTIVE_PLAYBACK_ENABLED = booleanPreferencesKey("lw_adaptive_playback_enabled")
         val DOWNLOAD_QUALITY = intPreferencesKey("lw_download_quality")
         val MUSIC_ENHANCER = booleanPreferencesKey("lw_music_enhancer")
         val CLARITY_PRESET = intPreferencesKey("lw_clarity_preset")
@@ -504,10 +504,9 @@ class SettingsPreferences @Inject constructor(
                     ?: p.readSafely(Keys.LOSSLESS_QUALITY)?.let(::normalizeStreamingQuality)
                     ?: 27,
                 cellularStreamingQuality = p.readSafely(Keys.CELLULAR_STREAMING_QUALITY)
-                    ?.let(::normalizeStreamingQuality)
+                    ?.let { it.takeIf { q -> q == CELLULAR_QUALITY_AUTO } ?: normalizeStreamingQuality(it) }
                     ?: p.readSafely(Keys.LOSSLESS_QUALITY)?.let(::normalizeStreamingQuality)
                     ?: 5,
-                adaptivePlaybackEnabled = p.readSafely(Keys.ADAPTIVE_PLAYBACK_ENABLED) ?: false,
                 downloadQuality = p.readSafely(Keys.DOWNLOAD_QUALITY)?.takeIf { it in DOWNLOAD_QUALITIES } ?: 27,
                 systemEffectsMode = p.readSafely(Keys.SYSTEM_EFFECTS_MODE) ?: false,
                 buttonNowPlayingEnabled = p.readSafely(Keys.BUTTON_NOW_PLAYING_ENABLED) ?: false,
@@ -829,12 +828,9 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setCellularStreamingQuality(quality: Int) {
         dataStore.edit {
-            it[Keys.CELLULAR_STREAMING_QUALITY] = quality.takeIf { it in STREAMING_QUALITIES } ?: 5
+            it[Keys.CELLULAR_STREAMING_QUALITY] =
+                quality.takeIf { it == CELLULAR_QUALITY_AUTO || it in STREAMING_QUALITIES } ?: 5
         }
-    }
-
-    suspend fun setAdaptivePlaybackEnabled(enabled: Boolean) {
-        dataStore.edit { it[Keys.ADAPTIVE_PLAYBACK_ENABLED] = enabled }
     }
 
     suspend fun setDownloadQuality(quality: Int) {

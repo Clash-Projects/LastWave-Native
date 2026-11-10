@@ -33,6 +33,15 @@ class StreamingQualityPolicyTest {
         assertEquals(QUALITY_YOUTUBE, StreamingQualityPolicy.profileFor(QUALITY_YOUTUBE, QUALITY_MP3_320, isCellular = false))
     }
 
+    @Test fun cellularAutoAdaptsUnderTheWifiChoiceAndOnlyOnCellular() {
+        val auto = com.lastwave.app.data.local.CELLULAR_QUALITY_AUTO
+        assertEquals(QUALITY_MAX_HI_RES, StreamingQualityPolicy.profileFor(QUALITY_MAX_HI_RES, auto, isCellular = true))
+        assertEquals(QUALITY_MP3_320, StreamingQualityPolicy.profileFor(QUALITY_MP3_320, auto, isCellular = true))
+        assertTrue(StreamingQualityPolicy.isAdaptive(auto, isCellular = true))
+        assertFalse(StreamingQualityPolicy.isAdaptive(auto, isCellular = false))
+        assertFalse(StreamingQualityPolicy.isAdaptive(QUALITY_MP3_320, isCellular = true))
+    }
+
     @Test fun atmosNeedsToggleAndDeviceSupport() {
         assertEquals(QUALITY_DOLBY_ATMOS, StreamingQualityPolicy.effective(QUALITY_DOLBY_ATMOS, atmosSupported = true))
         assertEquals(QUALITY_MAX_HI_RES, StreamingQualityPolicy.effective(QUALITY_DOLBY_ATMOS, atmosSupported = false))

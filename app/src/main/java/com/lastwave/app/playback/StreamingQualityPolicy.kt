@@ -1,5 +1,6 @@
 package com.lastwave.app.playback
 
+import com.lastwave.app.data.local.CELLULAR_QUALITY_AUTO
 import com.lastwave.app.data.lossless.LosslessMusicApi
 
 /** What the quality policy needs to know about a resolved stream. */
@@ -37,9 +38,12 @@ internal object StreamingQualityPolicy {
         else -> -1
     }
 
-    /** The user's choice for the current default route. */
+    /** The ceiling for the current default route. Auto on cellular is capped by the Wi-Fi choice. */
     fun profileFor(wifiQuality: Int, cellularQuality: Int, isCellular: Boolean): Int =
-        if (isCellular) cellularQuality else wifiQuality
+        if (isCellular && cellularQuality != CELLULAR_QUALITY_AUTO) cellularQuality else wifiQuality
+
+    fun isAdaptive(cellularQuality: Int, isCellular: Boolean): Boolean =
+        isCellular && cellularQuality == CELLULAR_QUALITY_AUTO
 
     /** Atmos falls back to Hi-Res stereo when this device cannot render it. */
     fun effective(selected: Int, atmosSupported: Boolean): Int =
