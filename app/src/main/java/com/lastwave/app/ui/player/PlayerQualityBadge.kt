@@ -281,6 +281,9 @@ import com.lastwave.app.playback.formatSampleRateKHz
 import com.lastwave.app.playback.withoutProgress
 import com.lastwave.app.playback.isSpatialAudioCodec
 import com.lastwave.app.playback.qualityBadgeLabel
+import com.lastwave.app.playback.qualityTitle
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import com.lastwave.app.playback.SignalPathReport
 import com.lastwave.app.playback.PlaybackProgressState
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -377,6 +380,7 @@ internal fun AppleMusicQualityBadge(
     val haptics = LocalHapticFeedback.current
     val isSpatial = remember(state.audioCodec) { isSpatialAudioCodec(state.audioCodec) }
     val isHiRes = state.isLossless && ((state.samplingRateKHz ?: 44.1) > 48.0 || (state.bitDepth ?: 16) > 16)
+    val switch = state.qualitySwitch
     val baseLabel = remember(state.audioCodec, state.bitrateKbps, state.samplingRateKHz, state.bitDepth, state.isLossless, state.isCrossfading, state.deckBlendTelemetry.phase, state.deckBlendTelemetry.isBlendingActive) {
         qualityBadgeLabel(state)
     }
@@ -414,18 +418,14 @@ internal fun AppleMusicQualityBadge(
     val displayTitle = when {
         isMixActive -> "AutoMix"
         isFadeActive -> "Crossfade"
-        isSpatial -> "Dolby Atmos"
-        isHiRes -> "Hi-Res Lossless"
-        state.isLossless -> "Lossless"
-        state.audioCodec?.contains("AAC", ignoreCase = true) == true -> "AAC"
-        state.audioCodec?.contains("MP3", ignoreCase = true) == true -> "MP3"
-        state.audioCodec?.contains("OPUS", ignoreCase = true) == true -> "Opus"
-        else -> "Audio"
+        switch != null -> (if (switch.upgrade) "Upgrading to " else "Switching to ") + switch.title
+        else -> qualityTitle(state.audioCodec, state.isLossless, state.samplingRateKHz, state.bitDepth)
     }
 
     val badgeIcon = when {
         isMixActive -> QualityGlyphs.AutoMix
         isFadeActive -> QualityGlyphs.Crossfade
+        switch != null -> if (switch.upgrade) Icons.Filled.ArrowUpward else Icons.Filled.ArrowDownward
         isSpatial -> QualityGlyphs.Spatial
         isHiRes -> QualityGlyphs.HiResLossless
         state.isLossless -> QualityGlyphs.Lossless
@@ -488,7 +488,7 @@ internal fun AppleMusicQualityBadge(
             )
             Spacer(Modifier.width(4.dp))
             val fullText = when {
-                isMixActive || isFadeActive -> displayTitle
+                isMixActive || isFadeActive || switch != null -> displayTitle
                 baseLabel.isNotBlank() && !baseLabel.equals(displayTitle, ignoreCase = true) && !baseLabel.equals("AUDIO", ignoreCase = true) -> "$displayTitle \u2022 $baseLabel"
                 else -> displayTitle
             }

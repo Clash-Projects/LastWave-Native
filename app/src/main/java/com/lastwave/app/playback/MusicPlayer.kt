@@ -7155,6 +7155,7 @@ class MusicPlayer @Inject constructor(
                 "MusicPlayer",
                 "[STREAM UPGRADE] starting for '${track.title}' quality=$requestedQuality",
             )
+            var announced: QualitySwitch? = null
             try {
                 // A promotion can wait until the active audio starts. A
                 // downgrade may be needed to recover a stalled track.
@@ -7277,6 +7278,15 @@ class MusicPlayer @Inject constructor(
 
                 currentCoroutineContext().ensureActive()
                 if (generation != playRequestGeneration.get()) return@launch
+                // YouTube's standard stream (-1) sits between Data Saver and the provider tiers.
+                fun rank(stream: ResolvedStream) = streamQualityTier(stream).let {
+                    if (it == LosslessMusicApi.QUALITY_YOUTUBE) LosslessMusicApi.QUALITY_DATA_SAVER * 2 + 1 else it * 2
+                }
+                announced = QualitySwitch(
+                    upgrade = rank(upgraded) > rank(currentStream),
+                    title = qualityTitle(upgraded.audioCodec, upgraded.isLossless, upgraded.samplingRateKHz, upgraded.bitDepth),
+                )
+                _state.update { it.copy(qualitySwitch = announced) }
 
                 val knownDur = upgraded.durationMs
                     ?: track.durationMs
@@ -7474,6 +7484,9 @@ class MusicPlayer @Inject constructor(
             } catch (_: CancellationException) {
             } catch (e: Throwable) {
                 android.util.Log.w("MusicPlayer", "[STREAM UPGRADE] Exception upgrading '${track.title}': ${e.message}")
+            } finally {
+                // Only its own: a newer switch may already be showing.
+                _state.update { if (it.qualitySwitch === announced) it.copy(qualitySwitch = null) else it }
             }
         }
         return true
@@ -7703,6 +7716,10 @@ class MusicPlayer @Inject constructor(
             standby.playbackParameters = live.playbackParameters
             standby.setSeekParameters(SeekParameters.EXACT)
             standby.pause()
+            // The sink still holds the rate routed for the playing stream, and
+            // opened a 24/96 upgrade at 48 kHz. Null opens at the stream's own rate.
+            val standbySink = playerToSink[standby]
+            standbySink?.setOutputSampleRateOverride(null)
             standby.setMediaItems(queue, index, (live.currentPosition + lagMs + HOT_SWAP_SEEK_LEAD_MS).coerceAtLeast(0L))
             standby.prepare()
 
@@ -7722,42 +7739,45 @@ class MusicPlayer @Inject constructor(
             standby.play()
 
             // A seek lands anywhere within about 100 ms, an audible double hit
-            // in the fade, and pausing the deck for its lead is no finer. So a
-            // seek only gets close, and the muted deck is then run slightly
-            // fast or slow until it has made up the difference: nothing
-            // restarts, so that lands within a few ms. Every reading waits
-            // HOT_SWAP_SETTLE_MS: a deck's position is a blend for about a
-            // second after its output changes, and reading it earlier moved the
-            // deck on errors of up to 50 ms and passed swaps that were off.
-            val liveParameters = live.playbackParameters
+            // in the fade. So a seek only has to land the muted deck behind,
+            // and the deck then drops exactly the audio it is short of. Its
+            // position is a blend for about 1.5 s after its output starts
+            // (read at 1 s it was 10-25 ms off), and one read is only as fine
+            // as each player's 10 ms work tick, so a drift is the mean of many
+            // reads taken after HOT_SWAP_SETTLE_MS.
+            suspend fun readDriftMs(): Long? {
+                var sum = 0L
+                repeat(HOT_SWAP_DRIFT_READS) {
+                    if (!stillValid()) return null
+                    sum += live.currentPosition + lagMs - standby.currentPosition
+                    delay(HOT_SWAP_DRIFT_READ_GAP_MS)
+                }
+                return sum / HOT_SWAP_DRIFT_READS
+            }
+
             var seekLeadMs = HOT_SWAP_SEEK_LEAD_MS
-            var seeked = false
+            var waitMs = HOT_SWAP_SETTLE_MS
             var driftMs = Long.MAX_VALUE
             val rounds = StringBuilder()
             for (round in 1..HOT_SWAP_ALIGN_ROUNDS) {
                 if (!awaitStandby(playing = true)) return OverlapSwap.Failed
-                delay(HOT_SWAP_SETTLE_MS)
-                if (!stillValid()) return OverlapSwap.Failed
-                driftMs = live.currentPosition + lagMs - standby.currentPosition
+                delay(waitMs)
+                driftMs = readDriftMs() ?: return OverlapSwap.Failed
                 rounds.append(driftMs)
                 if (kotlin.math.abs(driftMs) <= HOT_SWAP_ALIGNED_MS || round == HOT_SWAP_ALIGN_ROUNDS) break
-                val gapMs = kotlin.math.abs(driftMs)
-                if (gapMs <= HOT_SWAP_NUDGE_MAX_MS) {
-                    // The gentlest rate is the most exact, so a wide gap is
-                    // closed quickly first and the next round trims the rest.
-                    val nudge = (gapMs / HOT_SWAP_NUDGE_SPAN_MS).coerceIn(HOT_SWAP_NUDGE_MIN, HOT_SWAP_NUDGE_MAX)
-                    rounds.append(" nudge ${"%.2f".format(nudge)}, ")
-                    val factor = if (driftMs > 0L) 1f + nudge else 1f - nudge
-                    standby.playbackParameters = PlaybackParameters(liveParameters.speed * factor, liveParameters.pitch)
-                    delay((gapMs / (nudge * liveParameters.speed)).toLong())
-                    standby.playbackParameters = liveParameters
+                if (driftMs in 1..HOT_SWAP_SKIP_MAX_MS && standbySink != null) {
+                    rounds.append(" skip, ")
+                    standbySink.skipAhead(driftMs * 1_000L)
+                    // The audio written before the skip plays out first.
+                    waitMs = HOT_SWAP_SKIP_DRAIN_MS
                 } else {
                     // Seeks take 0.3 s on one stream and 1 s on another; only a
-                    // seek's own miss says which.
-                    if (seeked) seekLeadMs = (seekLeadMs + driftMs).coerceIn(0L, HOT_SWAP_SEEK_LEAD_MAX_MS)
-                    seeked = true
+                    // seek's own miss says which. Aim behind: a deck can skip
+                    // forward but not back.
+                    seekLeadMs = (seekLeadMs + driftMs - HOT_SWAP_LAND_BEHIND_MS).coerceIn(0L, HOT_SWAP_SEEK_LEAD_MAX_MS)
                     rounds.append(" seek +$seekLeadMs, ")
                     standby.seekTo(live.currentPosition + lagMs + seekLeadMs)
+                    waitMs = HOT_SWAP_SETTLE_MS
                 }
             }
             android.util.Log.i("MusicPlayer", "[STREAM UPGRADE] align drift per round (ms): $rounds")
@@ -7828,8 +7848,7 @@ class MusicPlayer @Inject constructor(
                     standby.stop()
                     standby.clearMediaItems()
                     standby.setSeekParameters(SeekParameters.EXACT)
-                    // A cancel mid-nudge must not leave the deck off-speed.
-                    standby.playbackParameters = live.playbackParameters
+                    playerToSink[standby]?.skipAhead(0L)
                 }
                 hotSwapActive = false
             }
@@ -8708,22 +8727,23 @@ class MusicPlayer @Inject constructor(
         /** Top search results warmed per settled result set (each also costs one server plan prep). */
         const val SEARCH_RESULT_WARM_COUNT = 2
         const val SEARCH_RESULT_WARM_DWELL_MS = 500L
-        /** A first guess at what a seek on the standby takes, so it lands near the live position. */
-        const val HOT_SWAP_SEEK_LEAD_MS = 300L
+        /** A first guess at what a seek on the standby takes, so it lands just behind the live position. */
+        const val HOT_SWAP_SEEK_LEAD_MS = 200L
         const val HOT_SWAP_SEEK_LEAD_MAX_MS = 3_000L
-        /** Speed offset of the muted deck while it closes a gap in about the span. */
-        const val HOT_SWAP_NUDGE_MIN = 0.1f
-        const val HOT_SWAP_NUDGE_MAX = 0.5f
-        const val HOT_SWAP_NUDGE_SPAN_MS = 1_500f
-        const val HOT_SWAP_NUDGE_MAX_MS = 750L
-        const val HOT_SWAP_SETTLE_MS = 1_000L
+        const val HOT_SWAP_LAND_BEHIND_MS = 100L
+        const val HOT_SWAP_SKIP_MAX_MS = 2_000L
+        /** Longer than the audio an output holds (about 2.6 s). */
+        const val HOT_SWAP_SKIP_DRAIN_MS = 3_000L
+        const val HOT_SWAP_SETTLE_MS = 1_500L
         const val HOT_SWAP_PROBE_MIN_RUNWAY_MS = 12_000L
         const val AUDITION_MIN_BUFFER_MS = 12_000L
         const val AUDITION_TIMEOUT_MS = 10_000L
         const val HOT_SWAP_ALIGN_ROUNDS = 6
-        const val HOT_SWAP_ALIGNED_MS = 10L
+        const val HOT_SWAP_DRIFT_READS = 40
+        const val HOT_SWAP_DRIFT_READ_GAP_MS = 7L
+        const val HOT_SWAP_ALIGNED_MS = 4L
         /** Beyond this the two decks are heard as a double hit during the fade. */
-        const val HOT_SWAP_MAX_DRIFT_MS = 15L
+        const val HOT_SWAP_MAX_DRIFT_MS = 8L
         const val HOT_SWAP_FADE_STEPS = 20
         const val HOT_SWAP_FADE_STEP_MS = 12L
         /** First keep-alive backoff after a transient stream failure. */

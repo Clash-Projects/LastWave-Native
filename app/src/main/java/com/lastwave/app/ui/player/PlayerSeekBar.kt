@@ -246,6 +246,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
@@ -502,6 +503,29 @@ internal fun PlayerProgressSlider(
     }
 }
 
+/** Scrub detents: a tick as the thumb is picked up, one per 2 % travelled, a thud on release. */
+internal class ScrubHaptics(private val haptics: HapticFeedback) {
+    private var step = -1
+
+    fun onScrub(fraction: Float) {
+        val now = (fraction * 50).toInt()
+        if (step == -1) haptics.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+        else if (now != step) haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
+        step = now
+    }
+
+    fun onRelease() {
+        if (step != -1) haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
+        step = -1
+    }
+}
+
+@Composable
+internal fun rememberScrubHaptics(): ScrubHaptics {
+    val haptics = LocalHapticFeedback.current
+    return remember(haptics) { ScrubHaptics(haptics) }
+}
+
 @Composable
 internal fun SeekBar(
     progressState: StateFlow<PlaybackProgressState>,
@@ -681,13 +705,16 @@ internal fun SeekBar(
             }
 
             // Invisible Material interaction layer: custom visuals, reliable seeking semantics.
+            val scrubHaptics = rememberScrubHaptics()
             Slider(
                 value = fraction,
                 onValueChange = {
+                    scrubHaptics.onScrub(it)
                     dragFraction = it
                     lastSeekFraction = it
                 },
                 onValueChangeFinished = {
+                    scrubHaptics.onRelease()
                     // Commit only this gesture's value; no value = no seek.
                     val target = (lastSeekFraction ?: dragFraction)?.let {
                         (it * boundedDurationMs).toLong().coerceIn(0L, boundedDurationMs)

@@ -997,7 +997,7 @@ internal fun FullPlayer(
                             // dark mode, so foreground must use the white overlay palette â€”
                             // never MaterialTheme onSurface (near-black in light mode).
                             LiquidGlassSurface(
-                                onClick = {
+                                onClick = hapticClick {
                                     if (currentTab != FullPlayerTab.NOW_PLAYING) {
                                         onTabChange(FullPlayerTab.NOW_PLAYING)
                                     } else {
@@ -1076,7 +1076,7 @@ internal fun FullPlayer(
                                     }
                                 }
                                 LiquidGlassSurface(
-                                    onClick = { showTrackMenu = true },
+                                    onClick = hapticClick { showTrackMenu = true },
                                     shape = CircleShape,
                                     color = liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
                                     contentColor = Color.White.copy(alpha = 0.94f),
@@ -1645,7 +1645,7 @@ internal fun FullPlayer(
                                             )
                                             LiquidGlassSurface(
                                                 glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = likeInteraction),
-                                                onClick = onToggleLiked,
+                                                onClick = hapticClick(if (isLiked) HapticFeedbackType.ToggleOff else HapticFeedbackType.Confirm, onToggleLiked),
                                                 interactionSource = likeInteraction,
                                                 shape = CircleShape,
                                                 color = liquidGlassContainerColor(if (isLiked) {
@@ -1684,7 +1684,7 @@ internal fun FullPlayer(
                                             )
                                             LiquidGlassSurface(
                                                 glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = lyricsInteraction),
-                                                onClick = { onTabChange(FullPlayerTab.LYRICS) },
+                                                onClick = hapticClick { onTabChange(FullPlayerTab.LYRICS) },
                                                 interactionSource = lyricsInteraction,
                                                 shape = CircleShape,
                                                 color = liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
