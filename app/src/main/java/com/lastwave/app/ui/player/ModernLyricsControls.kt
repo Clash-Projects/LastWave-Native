@@ -118,6 +118,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.BlurEffect
@@ -486,7 +487,7 @@ internal fun ModernLyricsControls(
                     label = "playerTabScale",
                 )
                 IconButton(
-                    onClick = onToggleFullscreen,
+                    onClick = hapticClick(action = onToggleFullscreen),
                     enabled = controlsVisible,
                     interactionSource = playerInteraction,
                     modifier = Modifier
@@ -521,7 +522,7 @@ internal fun ModernLyricsControls(
                 label = "moreBtnScale",
             )
             IconButton(
-                onClick = { showLyricsOptions = true },
+                onClick = hapticClick { showLyricsOptions = true },
                 enabled = controlsVisible,
                 interactionSource = moreInteraction,
                 modifier = Modifier
@@ -666,7 +667,7 @@ internal fun ModernLyricsControls(
             ) {
                 val prevInteraction = remember { MutableInteractionSource() }
                 IconButton(
-                    onClick = player::previous,
+                    onClick = hapticClick(action = player::previous),
                     interactionSource = prevInteraction,
                     modifier = Modifier
                         .size(46.dp)
@@ -684,7 +685,7 @@ internal fun ModernLyricsControls(
 
                 val playInteraction = remember { MutableInteractionSource() }
                 IconButton(
-                    onClick = player::togglePlayPause,
+                    onClick = hapticClick(if (state.isPlaying) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn, player::togglePlayPause),
                     interactionSource = playInteraction,
                     modifier = Modifier
                         .size(56.dp)
@@ -705,7 +706,7 @@ internal fun ModernLyricsControls(
 
                 val nextInteraction = remember { MutableInteractionSource() }
                 IconButton(
-                    onClick = player::next,
+                    onClick = hapticClick(action = player::next),
                     interactionSource = nextInteraction,
                     modifier = Modifier
                         .size(46.dp)
@@ -747,6 +748,17 @@ internal fun LyricsOptionsMenuDialog(
     lyricsOffsetMs: Long,
     onOpenLyricsOffset: (() -> Unit)?,
 ) {
+    val onOpenLyricsSource = onOpenLyricsSource?.let { hapticClick(action = it) }
+    val onShareLyrics = hapticClick(action = onShareLyrics)
+    val onToggleTranslation = hapticClick(
+        if (displayMode == LyricsDisplayMode.Translated) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn,
+        onToggleTranslation,
+    )
+    val onToggleRomanization = hapticClick(
+        if (displayMode == LyricsDisplayMode.Romanized) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn,
+        onToggleRomanization,
+    )
+    val onOpenLyricsOffset = onOpenLyricsOffset?.let { hapticClick(action = it) }
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
