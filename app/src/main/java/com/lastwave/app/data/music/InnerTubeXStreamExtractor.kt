@@ -264,6 +264,7 @@ class InnerTubeXStreamExtractor @Inject constructor(
             authScope = authScope,
             requestHeaders = headers,
             expiresAtEpochMs = expiresAt ?: (System.currentTimeMillis() + UNKNOWN_STREAM_EXPIRY_TTL_MS),
+            isDrc = isDrcAudioUrl(url),
         )
     }
 

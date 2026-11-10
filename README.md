@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="LastWave_banner_v2_1440p.png" alt="LastWave Banner" width="100%" style="border-radius: 16px;" />
+<img src="assets/LastWave_banner_v2_1440p.png" alt="LastWave Banner" width="100%" style="border-radius: 16px;" />
 
 <h1>LastWave</h1>
 

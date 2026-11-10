@@ -1,6 +1,9 @@
 package com.lastwave.app.ui.album
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -66,7 +69,6 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Brush
@@ -122,17 +124,68 @@ fun AlbumDetailScreen(
     var selectedTrackMenu by remember { mutableStateOf<PlayableTrack?>(null) }
     val listState = rememberLazyListState()
 
+    val scrollOffset by remember {
+        derivedStateOf {
+            if (listState.firstVisibleItemIndex == 0) {
+                listState.firstVisibleItemScrollOffset.toFloat()
+            } else 600f
+        }
+    }
+
     val showScrolledHeader by remember {
         derivedStateOf {
             listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 240
         }
     }
 
+    val albumData = (uiState as? AlbumUiState.Success)?.data
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
+        // 1. Full-Bleed Cover Art Background at Top with smooth parallax physics
+        if (albumData != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(440.dp)
+                    .graphicsLayer {
+                        translationY = -scrollOffset * 0.45f
+                        alpha = (1f - (scrollOffset / 520f)).coerceIn(0.1f, 1f)
+                        val zoom = 1f + (-scrollOffset.coerceAtMost(0f) / 600f)
+                        scaleX = zoom
+                        scaleY = zoom
+                    },
+            ) {
+                ArtworkImage(
+                    name = albumData.title,
+                    artist = albumData.artist,
+                    embeddedUrl = albumData.artworkUrl,
+                    fallbackIcon = Icons.Filled.Album,
+                    alignment = Alignment.TopCenter,
+                    modifier = Modifier.fillMaxSize(),
+                )
+
+                // Multi-stop cinematic dark gradient overlay
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0.0f to Color.Black.copy(alpha = 0.55f),
+                                    0.30f to Color.Black.copy(alpha = 0.20f),
+                                    0.60f to Color.Black.copy(alpha = 0.55f),
+                                    0.85f to MaterialTheme.colorScheme.background.copy(alpha = 0.90f),
+                                    1.0f to MaterialTheme.colorScheme.background,
+                                ),
+                            ),
+                        ),
+                )
+            }
+        }
         when (val state = uiState) {
             is AlbumUiState.Loading -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -161,35 +214,12 @@ fun AlbumDetailScreen(
                 val isAlbumPlaying = playbackState.isPlaying &&
                     (playbackState.sourceLabel.contains(data.title, ignoreCase = true) || playbackState.current?.album.equals(data.title, ignoreCase = true))
 
-                // Ambient Mesh Backdrop Gradient
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(380.dp),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
-                                        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.08f),
-                                        Color.Transparent,
-                                    ),
-                                    startY = 0f,
-                                    endY = 1000f,
-                                ),
-                            ),
-                    )
-                }
-
                 LazyColumn(
                     state = listState,
                     contentPadding = PaddingValues(
                         start = 16.dp,
                         end = 16.dp,
-                        top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 56.dp,
+                        top = 0.dp,
                         bottom = 32.dp + LocalMiniPlayerScrollClearance.current + safeDrawingBottomPadding(),
                     ),
                     modifier = Modifier
@@ -198,44 +228,84 @@ fun AlbumDetailScreen(
                         .align(Alignment.TopCenter)
                         .safeHorizontalContentPadding(),
                 ) {
-                    // 1. Album Hero Header
+                    // 1. Album Hero Header (Edge-to-Edge Full Bleed Overlaid Header)
                     item(key = "album_hero") {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
+                                .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 150.dp)
+                                .padding(horizontal = 4.dp),
                         ) {
-                            // Elevated Cover Artwork with dynamic shadow
-                            Box(
-                                modifier = Modifier
-                                    .size(208.dp)
-                                    .shadow(
-                                        elevation = 20.dp,
-                                        shape = RoundedCornerShape(26.dp),
-                                        ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
-                                        spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                    ),
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.Bottom,
                             ) {
-                                ArtworkImage(
-                                    name = data.title,
-                                    artist = data.artist,
-                                    embeddedUrl = data.artworkUrl,
-                                    fallbackIcon = Icons.Filled.Album,
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(26.dp)),
-                                )
+                                Column(modifier = Modifier.weight(1f, fill = false)) {
+                                    Text(
+                                        text = data.title,
+                                        style = MaterialTheme.typography.headlineLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onBackground,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+
+                                    Spacer(Modifier.height(8.dp))
+
+                                    // Clickable Artist Link(s)
+                                    val splitArtists = remember(data.artist) {
+                                        com.lastwave.app.util.ArtistHelper.splitArtists(data.artist)
+                                    }
+                                    androidx.compose.foundation.layout.FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        splitArtists.forEach { artName ->
+                                            Surface(
+                                                onClick = {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                                    onOpenArtist(artName, if (splitArtists.size == 1) data.artistBrowseId else null)
+                                                },
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                                            ) {
+                                                Text(
+                                                    text = artName,
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // Metadata line (Year, Duration)
+                                    val metaText = listOfNotNull(
+                                        data.releaseYear,
+                                        data.durationText,
+                                    ).joinToString(" • ")
+
+                                    if (metaText.isNotBlank()) {
+                                        Spacer(Modifier.height(8.dp))
+                                        Text(
+                                            text = metaText,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
 
                                 if (isAlbumPlaying) {
                                     Surface(
-                                        shape = RoundedCornerShape(topStart = 14.dp, bottomEnd = 26.dp),
-                                        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.92f),
-                                        tonalElevation = 4.dp,
-                                        modifier = Modifier.align(Alignment.BottomEnd),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f),
+                                        modifier = Modifier.padding(start = 12.dp, bottom = 4.dp),
                                     ) {
                                         PlayingWaveBars(
-                                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                             containerColor = Color.Transparent,
                                             waveColor = MaterialTheme.colorScheme.primary,
                                         )
@@ -245,97 +315,55 @@ fun AlbumDetailScreen(
 
                             Spacer(Modifier.height(18.dp))
 
-                            // Album Title
-                            Text(
-                                text = data.title,
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-
-                            Spacer(Modifier.height(6.dp))
-
-                            // Clickable Artist Link(s)
-                            val splitArtists = remember(data.artist) {
-                                com.lastwave.app.util.ArtistHelper.splitArtists(data.artist)
-                            }
-                            androidx.compose.foundation.layout.FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
-                                splitArtists.forEach { artName ->
-                                    Surface(
-                                        onClick = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                            onOpenArtist(artName, if (splitArtists.size == 1) data.artistBrowseId else null)
-                                        },
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
-                                    ) {
-                                        Text(
-                                            text = artName,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            fontWeight = FontWeight.Bold,
-                                            textAlign = TextAlign.Center,
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Metadata Pill (Year, Duration) — track count is in the Tracks header
-                            val metaText = listOfNotNull(
-                                data.releaseYear,
-                                data.durationText,
-                            ).joinToString(" \u2022 ")
-
-                            if (metaText.isNotBlank()) {
-                                Spacer(Modifier.height(8.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f),
-                                ) {
-                                    Text(
-                                        text = metaText,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
-                                    )
-                                }
-                            }
-
-                            Spacer(Modifier.height(18.dp))
-
-                            // Native Music App Action Bar (Shuffle, Download, Primary Play FAB)
+                            // Hero Action Buttons (Shuffle • Save to Library • Large Play FAB)
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 4.dp),
+                                modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                FilledTonalIconButton(
-                                    onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                        viewModel.playShuffle()
-                                    },
-                                    enabled = data.tracks.isNotEmpty(),
-                                    shape = CircleShape,
-                                    colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                    ),
-                                    modifier = Modifier.size(48.dp),
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Icon(
-                                        Icons.Filled.Shuffle,
-                                        contentDescription = stringResource(R.string.alb_shuffle_cd),
-                                        modifier = Modifier.size(22.dp),
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
+                                    FilledTonalIconButton(
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                            viewModel.playShuffle()
+                                        },
+                                        enabled = data.tracks.isNotEmpty(),
+                                        shape = CircleShape,
+                                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                        ),
+                                        modifier = Modifier.size(50.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Shuffle,
+                                            contentDescription = stringResource(R.string.alb_shuffle_cd),
+                                            modifier = Modifier.size(22.dp),
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+
+                                    FilledTonalIconButton(
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                            viewModel.saveToLibrary()
+                                        },
+                                        enabled = !saveState.isSaving && !saveState.savedToLibrary && data.tracks.isNotEmpty(),
+                                        shape = CircleShape,
+                                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                            containerColor = if (saveState.savedToLibrary) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                                        ),
+                                        modifier = Modifier.size(50.dp),
+                                    ) {
+                                        Icon(
+                                            if (saveState.savedToLibrary) Icons.Filled.Check else Icons.Filled.BookmarkAdd,
+                                            contentDescription = if (saveState.savedToLibrary) "Saved to library" else "Save album to library",
+                                            modifier = Modifier.size(22.dp),
+                                            tint = if (saveState.savedToLibrary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSecondaryContainer,
+                                        )
+                                    }
                                 }
 
                                 // Large Floating Primary Play Button (56dp circle)
@@ -362,44 +390,17 @@ fun AlbumDetailScreen(
                                 }
                             }
 
-                            Spacer(Modifier.height(12.dp))
-
-                            // One-tap save of the whole album (issue #79)
-                            FilledTonalButton(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                    viewModel.saveToLibrary()
-                                },
-                                enabled = !saveState.isSaving && !saveState.savedToLibrary && data.tracks.isNotEmpty(),
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Icon(
-                                    if (saveState.savedToLibrary) Icons.Filled.Check else Icons.Filled.BookmarkAdd,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    when {
-                                        saveState.isSaving -> "Saving…"
-                                        saveState.savedToLibrary -> "Saved to library"
-                                        else -> "Save album to library"
-                                    },
-                                )
-                            }
                             saveState.saveError?.let { message ->
-                                Spacer(Modifier.height(6.dp))
+                                Spacer(Modifier.height(8.dp))
                                 Text(
                                     text = message,
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.error,
-                                    textAlign = TextAlign.Center,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
                         }
                     }
-
 
                     // 2. Tracklist Header
                     item(key = "tracklist_header") {
@@ -595,10 +596,21 @@ fun AlbumDetailScreen(
             }
         }
 
+        val topBarBg by animateColorAsState(
+            targetValue = if (showScrolledHeader) MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.98f) else Color.Transparent,
+            animationSpec = tween(260),
+            label = "topBarBg",
+        )
+        val topBarElevation by animateDpAsState(
+            targetValue = if (showScrolledHeader) 6.dp else 0.dp,
+            animationSpec = tween(260),
+            label = "topBarElevation",
+        )
+
         Surface(
-            color = if (showScrolledHeader) MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.98f) else Color.Transparent,
-            tonalElevation = if (showScrolledHeader) 4.dp else 0.dp,
-            shadowElevation = if (showScrolledHeader) 6.dp else 0.dp,
+            color = topBarBg,
+            tonalElevation = topBarElevation,
+            shadowElevation = topBarElevation,
             modifier = Modifier
                 .fillMaxWidth()
                 .zIndex(10f)
@@ -609,17 +621,27 @@ fun AlbumDetailScreen(
                     .fillMaxWidth()
                     .adaptiveContentWidth(maxWidth = 860.dp)
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(
-                    onClick = onBack,
-                    modifier = Modifier.size(44.dp),
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onBack()
+                    },
+                    modifier = Modifier
+                        .size(42.dp)
+                        .background(
+                            if (showScrolledHeader || uiState !is AlbumUiState.Success) Color.Transparent else Color.Black.copy(alpha = 0.38f),
+                            CircleShape,
+                        ),
                 ) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = stringResource(R.string.pd_back_cd),
-                        tint = MaterialTheme.colorScheme.onSurface,
+                        tint = if (showScrolledHeader || uiState !is AlbumUiState.Success) MaterialTheme.colorScheme.onSurface else Color.White,
+                        modifier = Modifier.size(22.dp),
                     )
                 }
 
@@ -634,19 +656,31 @@ fun AlbumDetailScreen(
                         enter = fadeIn() + scaleIn(initialScale = 0.9f),
                         exit = fadeOut() + scaleOut(targetScale = 0.9f),
                     ) {
-                        Text(
-                            text = (uiState as? AlbumUiState.Success)?.data?.title ?: albumTitle,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))) {
+                                ArtworkImage(
+                                    name = albumData?.title ?: albumTitle,
+                                    artist = albumData?.artist ?: artistName,
+                                    embeddedUrl = albumData?.artworkUrl,
+                                    fallbackIcon = Icons.Filled.Album,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = albumData?.title ?: albumTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
 
                 // Quick Play Button on Scroll
                 AnimatedVisibility(
-                    visible = showScrolledHeader && (uiState as? AlbumUiState.Success)?.data?.tracks?.isNotEmpty() == true,
+                    visible = showScrolledHeader && albumData?.tracks?.isNotEmpty() == true,
                     enter = fadeIn() + scaleIn(),
                     exit = fadeOut() + scaleOut(),
                 ) {
