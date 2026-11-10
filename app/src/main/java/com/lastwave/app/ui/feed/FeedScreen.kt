@@ -168,6 +168,7 @@ import com.lastwave.app.ui.common.HeaderActionIcon
 import com.lastwave.app.ui.common.TrackContextMenuSheet
 import com.lastwave.app.ui.common.TrackMiniTrayData
 import com.lastwave.app.ui.common.TrackMiniTraySheet
+import com.lastwave.app.ui.common.TopCurvedSectionClipShape
 import com.lastwave.app.ui.common.WindowSizeClass
 import com.lastwave.app.ui.common.rememberWindowSizeClass
 import com.lastwave.app.ui.common.TrackMenuCapabilities
@@ -736,10 +737,13 @@ fun FeedScreen(
 
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize().safeHorizontalContentPadding(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .safeHorizontalContentPadding()
+                        .clip(TopCurvedSectionClipShape(horizontalInset = 16.dp, cornerRadius = 28.dp, topInset = listTopInset)),
                     contentPadding = PaddingValues(
                         bottom = FloatingNavDefaults.contentBottomPadding(),
-                        top = 12.dp + listTopInset,
+                        top = 16.dp + listTopInset,
                     ),
                     verticalArrangement = Arrangement.Top,
                 ) {
