@@ -367,6 +367,7 @@ internal fun FullPlayerLandscape(
     onEnterFullscreen: () -> Unit = {},
     onToggleVideo: (() -> Unit)? = null,
 ) {
+    val haptics = LocalHapticFeedback.current
     var isArtworkDragging by remember { mutableStateOf(false) }
     var artworkDragX by remember { mutableFloatStateOf(0f) }
     val shownArtworkX by animateFloatAsState(
@@ -497,6 +498,7 @@ internal fun FullPlayerLandscape(
                                                 lastTapTimestamp = now
                                                 val deltaMs = if (side == SeekDirection.FORWARD) 5_000L else -5_000L
                                                 val newPos = (player.state.value.positionMs + deltaMs).coerceIn(0L, player.state.value.durationMs.coerceAtLeast(0L))
+                                                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                                                 player.seekTo(newPos)
 
                                                 seekResetJob?.cancel()
@@ -706,7 +708,8 @@ internal fun FullPlayerLandscape(
                                     .clickable(
                                         interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                                         indication = null,
-                                    ) { onOpenArtist(artName) },
+                                        onClick = hapticClick { onOpenArtist(artName) },
+                                    ),
                             )
                             if (index < splitArtists.lastIndex) {
                                 Text(

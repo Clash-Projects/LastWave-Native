@@ -73,6 +73,7 @@ fun VolumeSlider(
     var isInteracting by remember { mutableStateOf(false) }
     var dragFraction by remember { mutableStateOf<Float?>(null) }
     val displayFraction = (dragFraction ?: volume).coerceIn(0f, 1f)
+    val scrubHaptics = rememberScrubHaptics()
 
     // Visual style arbitration: Liquid Glass vs Frost Glass vs Compose M3
     val isGlassActive = LocalLiquidGlass.current &&
@@ -139,15 +140,17 @@ fun VolumeSlider(
                 modifier = Modifier
                     .size(34.dp)
                     .clip(CircleShape)
-                    .clickable {
-                        if (volume > 0.001f) {
-                            savedMuteVolume = volume
-                            onVolumeChange(0f)
-                        } else {
-                            val target = savedMuteVolume.coerceIn(0.15f, 1f)
-                            onVolumeChange(target)
-                        }
-                    },
+                    .clickable(
+                        onClick = hapticClick {
+                            if (volume > 0.001f) {
+                                savedMuteVolume = volume
+                                onVolumeChange(0f)
+                            } else {
+                                val target = savedMuteVolume.coerceIn(0.15f, 1f)
+                                onVolumeChange(target)
+                            }
+                        },
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -230,9 +233,11 @@ fun VolumeSlider(
                         isInteracting = true
                         val clamped = fraction.coerceIn(0f, 1f)
                         dragFraction = clamped
+                        scrubHaptics.onScrub(clamped)
                         onVolumeChange(clamped)
                     },
                     onValueChangeFinished = {
+                        scrubHaptics.onRelease()
                         isInteracting = false
                         dragFraction = null
                     },
@@ -259,9 +264,7 @@ fun VolumeSlider(
                 modifier = Modifier
                     .size(34.dp)
                     .clip(CircleShape)
-                    .clickable {
-                        onVolumeChange(1f)
-                    },
+                    .clickable(onClick = hapticClick { onVolumeChange(1f) }),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(

@@ -211,6 +211,9 @@ internal fun MusicPlayer.armCrossfadeStandby(nextIndex: Int, nextItem: MediaItem
             standby.playbackState != Player.STATE_IDLE
         if (!isAlreadySet) {
             standby.pause()
+            // The sink still holds the rate routed for the playing track, and
+            // opened a 48 kHz next track at 44.1 kHz. Null opens at its own rate.
+            playerToSink[standby]?.setOutputSampleRateOverride(null)
             standby.setMediaItems(standbyQueue, nextIndex, 0L)
             standby.prepare()
         }

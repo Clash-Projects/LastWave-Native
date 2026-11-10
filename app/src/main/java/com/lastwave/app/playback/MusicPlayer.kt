@@ -569,7 +569,7 @@ class MusicPlayer @Inject constructor(
     }
     /** Every ExoPlayer audio sink, so DAC routing/rate follow player rebuilds. */
     internal val audioSinks = CopyOnWriteArrayList<NativeProcessingAudioSink>()
-    private val playerToSink = java.util.Collections.synchronizedMap(java.util.WeakHashMap<Player, NativeProcessingAudioSink>())
+    internal val playerToSink = java.util.Collections.synchronizedMap(java.util.WeakHashMap<Player, NativeProcessingAudioSink>())
     /** True while the usbdevfs exclusive session owns output. */
     @Volatile internal var usbExclusiveSinkActive = false
     val isUsbExclusiveActive: Boolean get() = usbExclusiveSinkActive || exclusiveUsbOutput.isActive()
@@ -7777,8 +7777,19 @@ class MusicPlayer @Inject constructor(
                 if (driftMs in 1..HOT_SWAP_SKIP_MAX_MS && standbySink != null) {
                     rounds.append(" skip, ")
                     standbySink.skipAhead(driftMs * 1_000L)
-                    // The audio written before the skip plays out first.
-                    waitMs = HOT_SWAP_SKIP_DRAIN_MS
+                    // The skip is heard, and the position steps, only once the
+                    // audio already written has played out: 0.75 s on one
+                    // output, 6 s over Bluetooth. A fixed 3 s wait read the old
+                    // drift there, skipped again, and the second skip landed
+                    // on the deck after it had gone live.
+                    val unskippedMs = driftMs
+                    val landed = withTimeoutOrNull(HOT_SWAP_SKIP_LAND_TIMEOUT_MS) {
+                        var nowMs = unskippedMs
+                        while (nowMs > unskippedMs / 2) nowMs = readDriftMs() ?: return@withTimeoutOrNull false
+                        true
+                    }
+                    if (landed != true) return OverlapSwap.Failed
+                    waitMs = 0L
                 } else {
                     // Seeks take 0.3 s on one stream and 1 s on another; only a
                     // seek's own miss says which. Aim behind: a deck can skip
@@ -8741,8 +8752,8 @@ class MusicPlayer @Inject constructor(
         const val HOT_SWAP_SEEK_LEAD_MAX_MS = 3_000L
         const val HOT_SWAP_LAND_BEHIND_MS = 100L
         const val HOT_SWAP_SKIP_MAX_MS = 2_000L
-        /** Longer than the audio an output holds (about 2.6 s). */
-        const val HOT_SWAP_SKIP_DRAIN_MS = 3_000L
+        /** Longer than the audio any output holds (6.6 s over Bluetooth). */
+        const val HOT_SWAP_SKIP_LAND_TIMEOUT_MS = 10_000L
         const val HOT_SWAP_SETTLE_MS = 1_500L
         const val HOT_SWAP_PROBE_MIN_RUNWAY_MS = 12_000L
         const val AUDITION_MIN_BUFFER_MS = 12_000L

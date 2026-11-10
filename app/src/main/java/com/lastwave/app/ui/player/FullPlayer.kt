@@ -377,6 +377,8 @@ internal fun FullPlayer(
     onTryAnotherLyricsSource: (() -> Unit)? = null,
 ) {
     val track = state.current ?: return
+    val haptics = LocalHapticFeedback.current
+    val onDoubleTapLike = hapticClick(HapticFeedbackType.Confirm, onDoubleTapLike)
     var showLyricsOffsetDialog by remember { mutableStateOf(false) }
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
@@ -1056,7 +1058,7 @@ internal fun FullPlayer(
                             ) {
                                 if (currentTab == FullPlayerTab.LYRICS && onSetLyricsOffsetMs != null) {
                                     LiquidGlassSurface(
-                                        onClick = { showLyricsOffsetDialog = true },
+                                        onClick = hapticClick { showLyricsOffsetDialog = true },
                                         shape = CircleShape,
                                         color = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
                                         else liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
@@ -1310,6 +1312,7 @@ internal fun FullPlayer(
                                                                         lastTapTimestamp = now
                                                                         val deltaMs = if (side == SeekDirection.FORWARD) 5_000L else -5_000L
                                                                         val newPos = (player.state.value.positionMs + deltaMs).coerceIn(0L, player.state.value.durationMs.coerceAtLeast(0L))
+                                                                        haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                                                                         player.seekTo(newPos)
 
                                                                         seekResetJob?.cancel()
@@ -1610,7 +1613,8 @@ internal fun FullPlayer(
                                                             .clickable(
                                                                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                                                                 indication = null,
-                                                            ) { onOpenArtist(artName) },
+                                                                onClick = hapticClick { onOpenArtist(artName) },
+                                                            ),
                                                     )
                                                     if (index < splitArtists.lastIndex) {
                                                         Text(
@@ -1751,7 +1755,7 @@ internal fun FullPlayer(
                 }
                 state.error?.takeUnless { lyricsFullscreen }?.let { message ->
                     Surface(
-                        onClick = player::retry,
+                        onClick = hapticClick(action = player::retry),
                         shape = RoundedCornerShape(20.dp),
                         color = MaterialTheme.colorScheme.errorContainer,
                         contentColor = MaterialTheme.colorScheme.onErrorContainer,
@@ -1777,7 +1781,7 @@ internal fun FullPlayer(
                                 )
                             }
                             IconButton(
-                                onClick = player::clearError,
+                                onClick = hapticClick(action = player::clearError),
                                 modifier = Modifier.size(28.dp),
                             ) {
                                 Icon(Icons.Filled.Close, "Dismiss error", modifier = Modifier.size(18.dp))

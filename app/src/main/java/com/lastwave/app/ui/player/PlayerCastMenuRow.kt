@@ -38,10 +38,12 @@ internal fun PlayerCastMenuRow(player: MusicPlayer) {
     val available = remember(player) { player.initializeCast() }
     var routeButton by remember { mutableStateOf<MediaRouteButton?>(null) }
     Row(
-        Modifier.fillMaxWidth().clickable {
-            if (available) routeButton?.performClick()
-            else Toast.makeText(context, context.getString(R.string.cast_unavailable), Toast.LENGTH_SHORT).show()
-        }.padding(horizontal = 12.dp, vertical = 12.dp),
+        Modifier.fillMaxWidth().clickable(
+            onClick = hapticClick {
+                if (available) routeButton?.performClick()
+                else Toast.makeText(context, context.getString(R.string.cast_unavailable), Toast.LENGTH_SHORT).show()
+            },
+        ).padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val badge = Modifier.size(40.dp).clip(RoundedCornerShape(13.dp))
