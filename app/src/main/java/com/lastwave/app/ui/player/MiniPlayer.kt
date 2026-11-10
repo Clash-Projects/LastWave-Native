@@ -323,7 +323,6 @@ import android.graphics.Bitmap
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.graphics.scale
 import kotlinx.coroutines.delay
@@ -392,7 +391,6 @@ internal fun MiniPlayer(
     // Luminance loop (5x5 avg, 0.3..0.8, tween 500, 1s).
     val liquidGlass = LocalLiquidGlass.current
     val isGlass = liquidGlass && isLiquidGlassBackdropSupported() && backdrop != null
-    val layer = rememberGraphicsLayer()
     val luminance = 0.5f // Fixed luminance to avoid heavy GPU readback which causes stuttering
     val barInteraction = remember { MutableInteractionSource() }
     var isMiniDragging by remember(track.videoId, track.title) { mutableStateOf(false) }
@@ -473,7 +471,7 @@ internal fun MiniPlayer(
                 shadowElevation = 0.dp,
                 modifier = Modifier.fillMaxWidth().then(
                     if (backdrop != null) {
-                        Modifier.liquidGlass(backdrop, layer, luminance, shape)
+                        Modifier.liquidGlass(backdrop, luminance, shape)
                     } else Modifier
                 )
                 .clickable(interactionSource = barInteraction, indication = null, onClick = onExpand),
