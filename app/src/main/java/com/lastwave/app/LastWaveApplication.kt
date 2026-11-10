@@ -207,15 +207,6 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
         val lowRamDevice = runCatching {
             (getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.isLowRamDevice == true
         }.getOrDefault(false)
-        val cacheLimitMb = runCatching {
-            if (::settingsPreferences.isInitialized) {
-                runBlocking(Dispatchers.IO) { settingsPreferences.storageCacheLimitMb.first() }
-            } else {
-                CacheStoragePolicy.DEFAULT_LIMIT_MB
-            }
-        }.getOrDefault(CacheStoragePolicy.DEFAULT_LIMIT_MB)
-        CacheStoragePolicy.setLimitMb(cacheLimitMb)
-        val imageCacheLimitBytes = CacheStoragePolicy.imageCacheBytes(lowRamDevice)
         val imageClient = try {
             okHttpClient.get().newBuilder()
             .dispatcher(okhttp3.Dispatcher().apply {
@@ -245,6 +236,15 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
                     .build()
             }
             .diskCache {
+                val cacheLimitMb = runCatching {
+                    if (::settingsPreferences.isInitialized) {
+                        runBlocking(Dispatchers.IO) { settingsPreferences.storageCacheLimitMb.first() }
+                    } else {
+                        CacheStoragePolicy.DEFAULT_LIMIT_MB
+                    }
+                }.getOrDefault(CacheStoragePolicy.DEFAULT_LIMIT_MB)
+                CacheStoragePolicy.setLimitMb(cacheLimitMb)
+                val imageCacheLimitBytes = CacheStoragePolicy.imageCacheBytes(lowRamDevice)
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache"))
                     .maxSizeBytes(imageCacheLimitBytes)
@@ -274,7 +274,7 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
             .crossfade(150)
             .build()
         cacheTrackingImageLoader = imageLoader
-        refreshArtworkCacheUsage()
+        applicationScope.launch(Dispatchers.IO) { refreshArtworkCacheUsage() }
         return imageLoader
     }
 
