@@ -566,7 +566,7 @@ object SettingsSearchIndex {
                 SettingsEntry(
                     id = "appearance.md3_nav_bar",
                     title = "Material 3 Navigation Bar",
-                    subtitle = "Classic full-width bottom navigation bar instead of the floating dock",
+                    subtitle = "Compact floating dock with a label beside the selected icon",
                     keywords = listOf(
                         "md3", "material 3", "navigation bar", "bottom bar", "nav bar",
                         "dock", "floating dock", "full width nav"

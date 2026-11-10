@@ -114,7 +114,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.common.isTabletOrWideScreen
-import com.lastwave.app.ui.theme.LocalMd3NavBar
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -307,6 +306,7 @@ import com.lastwave.app.ui.common.TopCurvedSectionClipShape
 import com.lastwave.app.ui.common.groupPositionFor
 import com.lastwave.app.ui.common.groupShape
 import com.lastwave.app.ui.theme.LocalLiquidGlass
+import com.lastwave.app.ui.theme.LocalMd3NavBar
 import com.lastwave.app.ui.theme.LocalIsDarkTheme
 import com.lastwave.app.ui.theme.LiquidGlassSurface
 import com.lastwave.app.ui.theme.liquidGlass
@@ -359,7 +359,7 @@ val LocalMiniPlayerScrollClearance = staticCompositionLocalOf { 0.dp }
 val LocalMiniPlayerSnackbarClearance = staticCompositionLocalOf { 0.dp }
 
 
-val LocalBottomNavSlot = androidx.compose.runtime.staticCompositionLocalOf<androidx.compose.runtime.MutableState<@androidx.compose.runtime.Composable () -> Unit>> {
+val LocalBottomNavSlot = androidx.compose.runtime.staticCompositionLocalOf<androidx.compose.runtime.MutableState<BottomNavigationContent>> {
     error("LocalBottomNavSlot not provided")
 }
 
@@ -368,6 +368,7 @@ val LocalBottomNavSlot = androidx.compose.runtime.staticCompositionLocalOf<andro
 fun PlayerHost(
     viewModel: PlayerViewModel = hiltViewModel(),
     hasBottomNavigation: Boolean = false,
+    material3NavigationEnabled: Boolean = false,
     hideMiniPlayer: Boolean = false,
     /**
      * A screen built around a WebView (Spotify / YouTube sign-in). The mini player is
@@ -491,7 +492,7 @@ fun PlayerHost(
     var miniCardBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     val morphCardColor = MaterialTheme.colorScheme.surfaceContainerHigh
 
-    val bottomNavSlot = remember { mutableStateOf<@Composable () -> Unit>({}) }
+    val bottomNavSlot = remember { mutableStateOf<BottomNavigationContent>({ _ -> }) }
     LaunchedEffect(viewModel) {
         viewModel.toastMessage.collect { msg ->
             android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
@@ -504,7 +505,7 @@ fun PlayerHost(
         LocalMiniPlayerSnackbarClearance provides if (miniPlayerVisible) {
             // Keep snackbars clear of the tray: its bottom lift plus its ~80dp card.
             (if (hasBottomNavigation) {
-                if (LocalMd3NavBar.current) 84.dp else 80.dp
+                if (material3NavigationEnabled) 84.dp else 80.dp
             } else {
                 14.dp
             }) + 80.dp
@@ -546,7 +547,7 @@ fun PlayerHost(
                     onNext = viewModel.player::next,
                     onClose = viewModel.player::stopAndClear,
                     bottomPadding = if (hasBottomNavigation) {
-                        if (LocalMd3NavBar.current) 84.dp else 80.dp
+                        if (material3NavigationEnabled) 84.dp else 80.dp
                     } else {
                         14.dp
                     },
@@ -655,7 +656,7 @@ fun PlayerHost(
                 }
             }
 
-            if (showBottomNav) {
+            if (hasBottomNavigation && showBottomNav) {
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -667,7 +668,9 @@ fun PlayerHost(
                             translationY = e * 96.dp.toPx()
                         },
                 ) {
-                    bottomNavSlot.value()
+                    CompositionLocalProvider(LocalMd3NavBar provides material3NavigationEnabled) {
+                        bottomNavSlot.value(material3NavigationEnabled)
+                    }
                 }
             }
             
