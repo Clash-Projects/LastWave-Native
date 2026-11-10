@@ -437,7 +437,7 @@ internal fun PinnedChipsBar(
     val haptics = LocalHapticFeedback.current
 
     Surface(
-        shape = RoundedCornerShape(26.dp),
+        shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = modifier
             .fillMaxWidth()

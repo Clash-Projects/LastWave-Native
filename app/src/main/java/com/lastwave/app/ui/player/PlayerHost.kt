@@ -477,8 +477,8 @@ fun PlayerHost(
     }
 
     val playerLayerShown by remember { derivedStateOf { playerExpansion.value > 0f } }
-    val miniPlayerAlpha by remember { derivedStateOf { (1f - playerExpansion.value * 2.2f).coerceIn(0f, 1f) } }
-    val navAlpha by remember { derivedStateOf { (1f - playerExpansion.value * 1.6f).coerceIn(0f, 1f) } }
+    val showMiniPlayer by remember { derivedStateOf { playerExpansion.value < 0.45f } }
+    val showBottomNav by remember { derivedStateOf { state.current == null || playerExpansion.value < 0.625f } }
     // Mini player rides above the growing card for the first half of the morph.
     val miniOnTop by remember { derivedStateOf { playerExpansion.value > 0f && playerExpansion.value < 0.5f } }
 
@@ -520,17 +520,6 @@ fun PlayerHost(
             Box(
                 Modifier
                     .fillMaxSize()
-                    .graphicsLayer {
-                        val p = playerExpansion.value.coerceIn(0f, 1f)
-                        // Page behind blurs in as the player grows (API 31+; no-op below).
-                        // Skipped at rest / fully covered so it costs nothing then.
-                        renderEffect = if (p > 0.01f && p < 1f && android.os.Build.VERSION.SDK_INT >= 31) {
-                            val r = 22.dp.toPx() * p
-                            androidx.compose.ui.graphics.BlurEffect(r, r, androidx.compose.ui.graphics.TileMode.Clamp)
-                        } else {
-                            null
-                        }
-                    }
                     .drawWithContent {
                         drawContent()
                         val p = playerExpansion.value.coerceIn(0f, 1f)
@@ -543,7 +532,7 @@ fun PlayerHost(
                     content()
                 }
             }
-            if (state.current != null && !settings.buttonNowPlayingEnabled && !hideMiniPlayer && miniPlayerAlpha > 0f) {
+            if (state.current != null && !settings.buttonNowPlayingEnabled && !hideMiniPlayer && showMiniPlayer) {
                 MiniPlayer(
                     state = state,
                     progressState = viewModel.progressState,
@@ -569,7 +558,7 @@ fun PlayerHost(
                         .zIndex(if (miniOnTop) 1f else 0f)
                         .graphicsLayer {
                             val p = playerExpansion.value.coerceIn(0f, 1f)
-                            alpha = miniPlayerAlpha
+                            alpha = (1f - p * 2.2f).coerceIn(0f, 1f)
                             // Follow the morphing card's top edge as it rises.
                             translationY = -(miniCardBounds?.top ?: 0f) * p
                         },
@@ -663,12 +652,12 @@ fun PlayerHost(
                 }
             }
 
-            if (state.current == null || navAlpha > 0f) {
+            if (showBottomNav) {
                 Box(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            val p = if (state.current == null) 1f else navAlpha
+                            val p = if (state.current == null) 1f else (1f - playerExpansion.value * 1.6f).coerceIn(0f, 1f)
                             val e = if (state.current == null) 0f else playerExpansion.value.coerceIn(0f, 1f)
                             alpha = p
                             // Nav bar sinks off the bottom as the player card grows.
@@ -819,12 +808,12 @@ internal fun PlayableTrack.isImportedLocalFile(): Boolean =
 
 internal val PlayerSheetOpenSpec = spring<Float>(
     dampingRatio = 0.88f,
-    stiffness = 380f,
+    stiffness = 110f,
     visibilityThreshold = 0.001f,
 )
 internal val PlayerSheetCloseSpec = spring<Float>(
     dampingRatio = 0.92f,
-    stiffness = 320f,
+    stiffness = 95f,
     visibilityThreshold = 0.001f,
 )
 

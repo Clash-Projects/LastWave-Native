@@ -168,7 +168,6 @@ import com.lastwave.app.ui.common.HeaderActionIcon
 import com.lastwave.app.ui.common.TrackContextMenuSheet
 import com.lastwave.app.ui.common.TrackMiniTrayData
 import com.lastwave.app.ui.common.TrackMiniTraySheet
-import com.lastwave.app.ui.common.TopCurvedSectionClipShape
 import com.lastwave.app.ui.common.WindowSizeClass
 import com.lastwave.app.ui.common.rememberWindowSizeClass
 import com.lastwave.app.ui.common.TrackMenuCapabilities
@@ -358,8 +357,7 @@ fun FeedScreen(
         // header a sibling on top of it (never inside it: no self-capture).
         // Without glass (or on the transparent Podcasts hero) the list keeps
         // starting below the header exactly as before.
-        val hasChips = state.homeChips.isNotEmpty()
-        val feedGlass = com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported() && !isPodcastsActive && !hasChips
+        val feedGlass = com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported() && !isPodcastsActive
         val feedBackgroundColor = MaterialTheme.colorScheme.background
         val feedBackdrop = com.lastwave.app.ui.theme.rememberLayerBackdrop {
             drawRect(feedBackgroundColor)
@@ -738,13 +736,10 @@ fun FeedScreen(
 
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .safeHorizontalContentPadding()
-                        .clip(TopCurvedSectionClipShape(horizontalInset = 16.dp, cornerRadius = 28.dp, topInset = listTopInset)),
+                    modifier = Modifier.fillMaxSize().safeHorizontalContentPadding(),
                     contentPadding = PaddingValues(
                         bottom = FloatingNavDefaults.contentBottomPadding(),
-                        top = 16.dp + listTopInset,
+                        top = 12.dp + listTopInset,
                     ),
                     verticalArrangement = Arrangement.Top,
                 ) {
@@ -1547,10 +1542,12 @@ fun FeedScreen(
                 },
             )
             if (state.homeChips.isNotEmpty()) {
-                Surface(
-                    shape = RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp),
-                    color = chipStripColor,
-                    modifier = Modifier.fillMaxWidth(),
+                // Page-coloured strip so the feed scrolling under the glass
+                // never shows through around the chips (looks as before).
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .then(if (useFeedGlass) Modifier.background(chipStripColor) else Modifier),
                 ) {
                     PinnedChipsBar(
                         chips = state.homeChips,
