@@ -739,7 +739,6 @@ internal fun FullPlayerLandscape(
                         ),
                         label = "landscapeLikeScale",
                     )
-                    YouTubeLikeButton(youTubeLiked, onToggleYouTubeLike, size = 50.dp)
                     LiquidGlassSurface(
                         glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = likeInteraction),
                         onClick = onToggleLiked,

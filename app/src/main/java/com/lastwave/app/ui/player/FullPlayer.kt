@@ -1643,7 +1643,6 @@ internal fun FullPlayer(
                                                 ),
                                                 label = "likeScale",
                                             )
-                                            YouTubeLikeButton(youTubeLiked, onToggleYouTubeLike, size = 46.dp)
                                             LiquidGlassSurface(
                                                 glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = likeInteraction),
                                                 onClick = onToggleLiked,
