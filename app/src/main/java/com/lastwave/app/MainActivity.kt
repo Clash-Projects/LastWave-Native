@@ -214,6 +214,7 @@ open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
                     ) {
                         PlayerHost(
                             hasBottomNavigation = hasBottomNavigation,
+                            material3NavigationEnabled = themeState.md3NavBar,
                             hideMiniPlayer = isJamScreen,
                             webContentScreen = isWebLoginScreen,
                         ) {
