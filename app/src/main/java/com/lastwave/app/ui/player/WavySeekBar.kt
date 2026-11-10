@@ -485,6 +485,7 @@ fun WavySeekBar(
                 }
             }
 
+            val scrubHaptics = rememberScrubHaptics()
             Slider(
                 // When duration is unknown the bar is indeterminate (fraction 0):
                 // pin the invisible touch layer to 0 so a real elapsed time
@@ -492,10 +493,12 @@ fun WavySeekBar(
                 // Once the late duration arrives, value/range recover together.
                 value = if (boundedDurationMs > 0L) shownMs.toFloat().coerceIn(0f, boundedDurationMs.toFloat()) else 0f,
                 onValueChange = {
+                    if (boundedDurationMs > 0L) scrubHaptics.onScrub(it / boundedDurationMs)
                     dragPositionMs = it
                     lastSeekValue = it
                 },
                 onValueChangeFinished = {
+                    scrubHaptics.onRelease()
                     // Commit only this gesture's value; a finished callback
                     // with no value (press without movement) seeks nowhere.
                     // Guarded by enabled above, but re-check: no duration = no seek.

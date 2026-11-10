@@ -218,10 +218,14 @@ data class MusicPlayerState(
     val isJamActive: Boolean = false,
     val deckBlendTelemetry: com.lastwave.app.playback.automix.api.DeckBlendTelemetry = com.lastwave.app.playback.automix.api.DeckBlendTelemetry.IDLE,
     val isCrossfading: Boolean = false,
+    /** Set while a better or lighter stream of the playing song is being lined up. */
+    val qualitySwitch: QualitySwitch? = null,
     val appVolume: Float = 1f,
     val isCasting: Boolean = false,
 )
 
+
+class QualitySwitch(val upgrade: Boolean, val title: String)
 
 /**
  * Playback fields used by list rows and collapsed player chrome. Unlike

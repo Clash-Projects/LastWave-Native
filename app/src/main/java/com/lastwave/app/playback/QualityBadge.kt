@@ -75,6 +75,17 @@ fun spatialIndicatorLabel(codec: String?): String? {
 
 fun isSpatialAudioCodec(codec: String?): Boolean = spatialIndicatorLabel(codec) != null
 
+/** The tier name on the quality pill, for the playing stream or one being switched to. */
+fun qualityTitle(codec: String?, isLossless: Boolean, samplingRateKHz: Double?, bitDepth: Int?): String = when {
+    isSpatialAudioCodec(codec) -> "Dolby Atmos"
+    isLossless && ((samplingRateKHz ?: 44.1) > 48.0 || (bitDepth ?: 16) > 16) -> "Hi-Res Lossless"
+    isLossless -> "Lossless"
+    codec?.contains("AAC", ignoreCase = true) == true -> "AAC"
+    codec?.contains("MP3", ignoreCase = true) == true -> "MP3"
+    codec?.contains("OPUS", ignoreCase = true) == true -> "Opus"
+    else -> "Audio"
+}
+
 fun isFlacLikeCodec(codec: String?): Boolean {
     val c = codec?.uppercase().orEmpty()
     if (c.isBlank()) return false
