@@ -129,6 +129,14 @@ data class YouTubeAudioStream(
         get() = "youtube:$videoId:$clientProfile:${itag ?: -1}:$authScope:${expiresAtEpochMs ?: 0L}"
 }
 
+internal fun YouTubeAudioStream.meetsBitrateLimit(maxBitrateBps: Int?): Boolean =
+    maxBitrateBps == null || (
+        bitrate in 1..maxBitrateBps &&
+            mimeType?.startsWith("audio/", ignoreCase = true) == true &&
+            codec?.equals("hls", ignoreCase = true) != true &&
+            !url.substringBefore('?').endsWith(".m3u8", ignoreCase = true)
+    )
+
 data class YtMusicTasteSignals(
     val recentTracks: List<YouTubeMusicTrack> = emptyList(),
     val likedTracks: List<YouTubeMusicTrack> = emptyList(),
@@ -235,6 +243,8 @@ val clientProfile: String,
 val itag: Int?,
 val authScope: String,
 val expiresAtEpochMs: Long?,
+val lookupAuthScope: String,
+val maxBitrateBps: Int?,
 ) {
 fun matches(stream: YouTubeAudioStream): Boolean =
 clientProfile == stream.clientProfile &&
@@ -242,12 +252,14 @@ itag == stream.itag &&
 authScope == stream.authScope &&
 expiresAtEpochMs == stream.expiresAtEpochMs
 companion object {
-fun from(stream: YouTubeAudioStream) = StreamCacheKey(
+fun from(stream: YouTubeAudioStream, lookupAuthScope: String, maxBitrateBps: Int?) = StreamCacheKey(
 videoId = stream.videoId,
 clientProfile = stream.clientProfile,
 itag = stream.itag,
 authScope = stream.authScope,
 expiresAtEpochMs = stream.expiresAtEpochMs,
+lookupAuthScope = lookupAuthScope,
+maxBitrateBps = maxBitrateBps,
 )
 }
 }

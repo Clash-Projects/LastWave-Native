@@ -126,8 +126,11 @@ class InnerTubeMusicApi @Inject constructor(
     suspend fun fetchOwnedPlaylist(playlistIdOrUrl: String, stopAfterVideoId: String? = null): YtOwnedPlaylist? = fetchOwnedPlaylistImpl(playlistIdOrUrl, stopAfterVideoId)
 
     // Stream resolver & search methods
-    fun peekCachedStream(videoId: String): YouTubeAudioStream? = peekCachedStreamImpl(videoId)
-    suspend fun resolveAudioStream(videoId: String): YouTubeAudioStream = resolveAudioStreamImpl(videoId)
+    fun peekCachedStream(videoId: String, maxBitrateBps: Int? = null): YouTubeAudioStream? =
+        peekCachedStreamImpl(videoId, maxBitrateBps)
+    suspend fun resolveAudioStream(videoId: String, maxBitrateBps: Int? = null): YouTubeAudioStream =
+        resolveAudioStreamImpl(videoId, maxBitrateBps)
+    suspend fun warmPlaybackCipher(videoId: String) = warmPlaybackCipherImpl(videoId)
     suspend fun resolveDownloadStream(videoId: String): YouTubeAudioStream = resolveDownloadStreamImpl(videoId)
     suspend fun resolveVideoStreamBundle(videoId: String, avoidClientName: String? = null): SyncedVideoStreamBundle? = resolveVideoStreamBundleImpl(videoId, avoidClientName)
     suspend fun resolveVideoAudioForAlignment(videoId: String): YouTubeAudioStream? = resolveVideoAudioForAlignmentImpl(videoId)
@@ -171,6 +174,8 @@ class InnerTubeMusicApi @Inject constructor(
     fun reportPlaybackFailure(videoId: String, rejected: YouTubeAudioStream? = null) {
         val stream = rejected ?: lastResolvedStreams[resolutionKey(videoId, playbackAuthScope())]
         if (stream != null && stream.clientProfile != NEWPIPE_SOURCE) {
+            // A reused player script may be the cause; fetch a fresh one next time.
+            if (stream.clientProfile.startsWith("WEB_REMIX")) cachedVideoCipherContext = null
             failedClientsUntil[clientFailureKey(videoId, stream.clientProfile, stream.authScope)] =
                 System.currentTimeMillis() + CLIENT_COOLDOWN_MS
             if (stream.clientProfile.startsWith("INNERTUBEX:")) {
@@ -2778,18 +2783,18 @@ class InnerTubeMusicApi @Inject constructor(
     }
 
     internal suspend fun okhttp3.Call.readResponseBody(): Pair<Int, String> =
+        readResponse { it.code to it.body?.string().orEmpty() }
+
+    internal suspend fun <T> okhttp3.Call.readResponse(read: (okhttp3.Response) -> T): T =
         suspendCancellableCoroutine { continuation ->
             continuation.invokeOnCancellation { cancel() }
             enqueue(object : okhttp3.Callback {
-                override fun onFailure(call: okhttp3.Call, error: IOException) {
-                    continuation.resumeWithException(error)
+                override fun onFailure(call: okhttp3.Call, e: IOException) {
+                    continuation.resumeWithException(e)
                 }
 
                 override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
-                    val result = runCatching {
-                        response.use { it.code to it.body?.string().orEmpty() }
-                    }
-                    continuation.resumeWith(result)
+                    continuation.resumeWith(runCatching { response.use(read) })
                 }
             })
         }

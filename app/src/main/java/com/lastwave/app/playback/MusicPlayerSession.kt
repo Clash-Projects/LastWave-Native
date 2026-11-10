@@ -192,6 +192,9 @@ internal fun MusicPlayer.restorePlaybackSession(): Boolean {
             queue = restoredQueue,
             currentIndex = restoredIndex,
         )
+        restoredQueue[restoredIndex].videoId?.takeIf(String::isNotBlank)?.let { videoId ->
+            applicationScope.launch(Dispatchers.IO) { innerTube.warmPlaybackCipher(videoId) }
+        }
         return true
     }
 

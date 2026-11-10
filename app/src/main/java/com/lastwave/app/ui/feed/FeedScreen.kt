@@ -919,6 +919,10 @@ fun FeedScreen(
                                 }
                                 sectionKey == "quick_picks" -> {
                                     item(key = "quick_picks") {
+                                        val likelyTracks = combinedQuickPicks.take(2)
+                                        LaunchedEffect(likelyTracks) {
+                                            viewModel.warmQuickPicks(likelyTracks)
+                                        }
                                         HomeContainerSection(
                                             shape = getContainerShape("quick_picks"),
                                         ) {

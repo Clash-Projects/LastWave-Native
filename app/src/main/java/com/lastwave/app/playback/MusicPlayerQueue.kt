@@ -334,8 +334,12 @@ internal fun MusicPlayer.resolveAndPlayQueueItem(index: Int) {
             youtubeVideoId = track.videoId,
         )
         track.playbackIdentity()?.let { streamResolver.playback.begin(it) }
-        val prepared = mediaItem.localConfiguration?.customCacheKey?.let(preparedStreams::get)
+        val requestedQuality = selectedStreamingQuality(latestPlaybackSettings)
+        val rawPrepared = mediaItem.localConfiguration?.customCacheKey?.let(preparedStreams::get)
             ?: preparedStreams.values.firstOrNull { it.url == mediaItem.localConfiguration?.uri?.toString() }
+        val profileMismatch = rawPrepared != null &&
+            !isStreamAllowedForQuality(rawPrepared, requestedQuality, latestPlaybackSettings)
+        val prepared = rawPrepared?.takeUnless { profileMismatch }
             ?: findPreparedStreamFor(track, track.videoId, track.mediaIdKey() in losslessBypassMediaIds)
         val preparedMatches = prepared?.youtubeCandidate?.videoId?.let { resolvedId ->
             track.videoId.isNullOrBlank() || resolvedId == track.videoId
@@ -349,7 +353,7 @@ internal fun MusicPlayer.resolveAndPlayQueueItem(index: Int) {
         val isAlreadyResolved = if (isLocal) {
             hasNonPlaceholderUri
         } else {
-            hasNonPlaceholderUri && (prepared == null || !prepared.isExpired())
+            hasNonPlaceholderUri && !profileMismatch && (prepared == null || !prepared.isExpired())
         }
         if (preparedMatches && isAlreadyResolved) {
             // Already resolved: publish quality synchronously so the badge is
@@ -543,6 +547,7 @@ internal fun MusicPlayer.cancelActiveUpgrade() {
         activeUpgradeJob?.cancel()
         activeUpgradeJob = null
         activeUpgradeMediaId = null
+        activeUpgradeTargetQuality = null
         activeUpgradeDeferred?.cancel()
         activeUpgradeDeferred = null
     }
@@ -569,6 +574,8 @@ internal fun MusicPlayer.cancelPendingPlaybackResolution() {
      * so cancelling [playRequest] alone used to let them finish and publish.
      */
 internal fun MusicPlayer.cancelStaleResolverWork(reason: String) {
+        startupFallbackJob?.cancel()
+        startupFallbackJob = null
         streamResolver.cancelAll(reason)
         resolutionRequests.values.forEach { it.second.cancel() }
         resolutionRequests.clear()

@@ -47,6 +47,7 @@ class InnerTubeXStreamExtractor @Inject constructor(
         videoId: String,
         visitorData: String?,
         authScope: String,
+        maxBitrateBps: Int? = null,
     ): YouTubeAudioStream? = withContext(Dispatchers.IO) {
         val stack = runtime ?: return@withContext null
         try {
@@ -66,7 +67,8 @@ class InnerTubeXStreamExtractor @Inject constructor(
             // clients need to play a whole song. With it off, InnerTubeX
             // skipped those clients entirely.
             val constrainedHints = withCapabilities.invoke(hints, true, false, true)
-            val audioQuality = enumValue("com.metrolist.innertubex.extraction.AudioQuality", "HIGH")
+            val quality = if (maxBitrateBps == null) "HIGH" else "LOW"
+            val audioQuality = enumValue("com.metrolist.innertubex.extraction.AudioQuality", quality)
             val now = System.currentTimeMillis()
             failedProfilesUntil.entries.removeIf { it.value <= now }
             val excludedProfiles = failedProfilesUntil
@@ -86,7 +88,7 @@ class InnerTubeXStreamExtractor @Inject constructor(
                     UUID.randomUUID().toString().replace("-", ""),
                 ),
             ) ?: return@withContext null
-            extracted.toAudioStream(videoId, authScope)
+            extracted.toAudioStream(videoId, authScope)?.takeIf { it.meetsBitrateLimit(maxBitrateBps) }
         } catch (error: kotlinx.coroutines.CancellationException) {
             throw error
         } catch (error: LinkageError) {
@@ -102,7 +104,9 @@ class InnerTubeXStreamExtractor @Inject constructor(
 
     /** Keep the request timestamp and the decoding script from the same watch-page config. */
     internal suspend fun fetchCipherContext(videoId: String): PlaybackCipherContext? = withContext(Dispatchers.IO) {
+        val startedAt = android.os.SystemClock.elapsedRealtime()
         val stack = runtime ?: return@withContext null
+        val runtimeMs = android.os.SystemClock.elapsedRealtime() - startedAt
         val account = ytAuth.connection.value
         try {
             setProperty(stack.innerTube, "Cookie", ytAuth.cookieHeaderValue(account))
@@ -116,12 +120,34 @@ class InnerTubeXStreamExtractor @Inject constructor(
             val timestamp = readInt(config, "getSignatureTimestamp") ?: return@withContext null
             PlaybackCipherContext(videoId, playerUrl, timestamp, account).also {
                 it.requireMatches(videoId, ytAuth.connection.value)
+                Log.i(TAG, "stage=cipher-context ready runtimeMs=$runtimeMs totalMs=${android.os.SystemClock.elapsedRealtime() - startedAt}")
             }
         } catch (error: kotlinx.coroutines.CancellationException) {
             throw error
         } catch (error: Exception) {
             Log.w(TAG, "stage=cipher-context error=${error.javaClass.simpleName} cause=${error.cause?.javaClass?.simpleName}")
             null
+        }
+    }
+
+    /**
+     * Boots the script engine and downloads/compiles the player script ahead
+     * of the first decipher, which otherwise pays seconds on the first tap.
+     */
+    internal suspend fun preloadCipher(playerUrl: String) = withContext(Dispatchers.IO) {
+        val stack = runtime ?: return@withContext
+        val startedAt = android.os.SystemClock.elapsedRealtime()
+        try {
+            val methods = stack.cipher.javaClass.methods
+            methods.firstOrNull { it.name == "prewarmEjs" && it.parameterCount == 1 }
+                ?.let { invokeSuspend(stack.cipher, it, emptyArray()) }
+            methods.firstOrNull { it.name == "preloadPlayerCode" && it.parameterCount == 2 }
+                ?.let { invokeSuspend(stack.cipher, it, arrayOf(playerUrl)) }
+            Log.i(TAG, "stage=cipher-preload ms=${android.os.SystemClock.elapsedRealtime() - startedAt}")
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.w(TAG, "stage=cipher-preload error=${error.javaClass.simpleName}")
         }
     }
 
@@ -156,8 +182,10 @@ class InnerTubeXStreamExtractor @Inject constructor(
                     it.name == "processFormats" && it.parameterCount == 3
                 }
                 Log.i(TAG, "stage=local-cipher batch-start count=${formats.size}")
+                val batchStartedAt = android.os.SystemClock.elapsedRealtime()
                 val decoded = invokeSuspend(stack.cipher, process, arrayOf(playerUrl, formats)) as? List<*>
                     ?: return@withContext emptyMap()
+                Log.i(TAG, "stage=local-cipher batch-ms=${android.os.SystemClock.elapsedRealtime() - batchStartedAt}")
                 bound.requireMatches(videoId, ytAuth.connection.value)
                 val result = mutableMapOf<String, String>()
                 for ((input, format) in inputs.zip(decoded)) {

@@ -724,6 +724,10 @@ class FeedViewModel @Inject constructor(
         )
     }
 
+    fun warmQuickPicks(tracks: List<YouTubeMusicTrack>) {
+        musicPlayer.warmLikelyPlays(tracks.map { it.toPlayableTrack() })
+    }
+
     private fun YouTubeMusicTrack.toPlayableTrack(): PlayableTrack = PlayableTrack(
         title = title,
         artist = artist,

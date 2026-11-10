@@ -22,6 +22,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Vibration
+import com.lastwave.app.data.local.CELLULAR_QUALITY_AUTO
 import com.lastwave.app.data.local.musicHapticsConfig
 import com.lastwave.app.playback.haptics.MusicHapticsConfig
 import com.lastwave.app.playback.haptics.MusicHapticsEngineMode
@@ -100,6 +101,8 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.SignalCellularAlt
 import com.lastwave.app.util.BatteryOptimizationHelper
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ChevronRight
@@ -343,6 +346,16 @@ enum class SettingsTab(
     ),
 }
 
+private fun streamingQualityLabel(quality: Int): String = when (quality) {
+    CELLULAR_QUALITY_AUTO -> "Auto"
+    28 -> "Dolby Atmos"
+    27, 7 -> "Hi-Res Lossless"
+    6, 5 -> "Standard (320 kbps)"
+    4 -> "Data Saver"
+    -1 -> "YouTube Music"
+    else -> "Hi-Res Lossless"
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -410,6 +423,7 @@ fun SettingsScreen(
         }
     }
     var showQualityDialog by remember { mutableStateOf(false) }
+    var editingCellularQuality by remember { mutableStateOf(false) }
     var showDownloadQualityDialog by remember { mutableStateOf(false) }
     var showEqSheet by remember { mutableStateOf(false) }
     var showAutoEq by remember { mutableStateOf(false) }
@@ -752,16 +766,8 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_audio))
-                    val qualitySubtitle = when (misc.losslessQuality) {
-                        28 -> "Dolby Atmos (Spatial Immersive Audio)"
-                        27 -> "Max (Up to 24-bit / 192 kHz)"
-                        7 -> "Hi-Res (24-bit / 96 kHz)"
-                        6 -> "CD Lossless (16-bit / 44.1 kHz FLAC)"
-                        5 -> "Standard (320 kbps MP3)"
-                        4 -> "Data Saver (96 kbps HE-AAC)"
-                        -1 -> "YouTube Music (AAC / Opus)"
-                        else -> "Max (Up to 24-bit / 192 kHz)"
-                    }
+                    val wifiQualitySubtitle = streamingQualityLabel(misc.wifiStreamingQuality)
+                    val cellularQualitySubtitle = streamingQualityLabel(misc.cellularStreamingQuality)
                     val downloadQualitySubtitle = when (misc.downloadQuality) {
                         28 -> "Dolby Atmos (Spatial Immersive Audio)"
                         27 -> "Hi-Res (24-bit / 192 kHz FLAC)"
@@ -777,14 +783,32 @@ fun SettingsScreen(
                     val audioRows = buildList<@Composable (GroupPosition) -> Unit> {
                         add { position ->
                             SettingsActionCard(
-                                icon = Icons.Filled.HighQuality,
+                                icon = Icons.Filled.Wifi,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = stringResource(R.string.settings_streaming_quality),
-                                subtitle = if (misc.losslessQuality == -1) "YouTube Music • Native stream" else "$qualitySubtitle • YouTube Music fallback",
-                                onClick = { showQualityDialog = true },
+                                title = "Wi-Fi streaming quality",
+                                subtitle = wifiQualitySubtitle,
+                                onClick = {
+                                    editingCellularQuality = false
+                                    showQualityDialog = true
+                                },
                                 position = position,
-                                isHighlighted = (highlightedSettingId == "audio.streaming_quality"),
+                                isHighlighted = (highlightedSettingId == "audio.streaming_quality" || highlightedSettingId == "audio.wifi_streaming_quality"),
+                            )
+                        }
+                        add { position ->
+                            SettingsActionCard(
+                                icon = Icons.Filled.SignalCellularAlt,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = "Cellular streaming quality",
+                                subtitle = cellularQualitySubtitle,
+                                onClick = {
+                                    editingCellularQuality = true
+                                    showQualityDialog = true
+                                },
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.cellular_streaming_quality"),
                             )
                         }
                         add { position ->
@@ -2773,15 +2797,19 @@ fun SettingsScreen(
     }
 
     if (showQualityDialog) {
-        val tiers = listOf(
+        val tiers = listOfNotNull(
+            Triple(
+                CELLULAR_QUALITY_AUTO,
+                "Auto",
+                "Adapts to your connection • Up to your Wi-Fi quality" to "AUTO",
+            ).takeIf { editingCellularQuality },
             Triple(28, "Dolby Atmos", "Spatial Immersive Audio • Master Audio" to "ATMOS"),
-            Triple(27, "Hi-Res Audio (Max)", "Up to 24-bit / 192 kHz • Lossless Studio FLAC" to "24-BIT / 192k"),
-            Triple(7, "Hi-Res Audio", "24-bit / 96 kHz • Lossless Studio FLAC" to "24-BIT / 96k"),
-            Triple(6, "CD Lossless", "16-bit / 44.1 kHz • Lossless CD FLAC" to "16-BIT / 44.1k"),
-            Triple(5, "Standard Quality", "320 kbps • MP3 / AAC" to "320 kbps"),
-            Triple(4, "Data Saver", "96 kbps • High Efficiency AAC" to "96 kbps"),
+            Triple(27, "Hi-Res Lossless", "Up to 24-bit / 192 kHz • Lossless FLAC" to "HI-RES"),
+            Triple(5, "Standard Quality", "Up to 320 kbps • MP3 / AAC" to "320 kbps"),
             Triple(-1, "YouTube Music", "128-256 kbps • YouTube Music AAC / Opus stream" to "YOUTUBE"),
+            Triple(4, "Data Saver", "Low-bitrate audio to reduce mobile data use" to "DATA SAVER"),
         )
+        val selectedQuality = if (editingCellularQuality) misc.cellularStreamingQuality else misc.wifiStreamingQuality
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
 
@@ -2831,12 +2859,12 @@ fun SettingsScreen(
                     Spacer(Modifier.width(14.dp))
                     Column {
                         Text(
-                            "Streaming Quality",
+                            if (editingCellularQuality) "Cellular streaming quality" else "Wi-Fi streaming quality",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
-                            "Select preferred audio resolution & bit depth",
+                            "Choose the preferred quality for this connection",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -2852,11 +2880,15 @@ fun SettingsScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     tiers.forEach { (qualityId, title, meta) ->
                         val (subtitle, badge) = meta
-                        val isSelected = misc.losslessQuality == qualityId
+                        val isSelected = selectedQuality == qualityId
                         Surface(
                             onClick = {
                                 haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.ContextClick)
-                                viewModel.setLosslessQuality(qualityId)
+                                if (editingCellularQuality) {
+                                    viewModel.setCellularStreamingQuality(qualityId)
+                                } else {
+                                    viewModel.setWifiStreamingQuality(qualityId)
+                                }
                                 showQualityDialog = false
                             },
                             shape = RoundedCornerShape(20.dp),
