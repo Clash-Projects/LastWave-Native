@@ -38,6 +38,7 @@ class TasteProfileProvider @Inject constructor(
     private var cached: TasteProfile? = null
     private var cachedForUsername: String? = null
     private var cachedForYtAccount: String? = null
+    private var cachedForSeedArtist: String? = null
 
     private fun YouTubeMusicTrack.toGeneratedTrack() = GeneratedTrack(
         name = title,
@@ -62,7 +63,7 @@ class TasteProfileProvider @Inject constructor(
         }
     }
 
-    suspend fun get(forceRefresh: Boolean = false): TasteProfile = mutex.withLock {
+    suspend fun get(forceRefresh: Boolean = false, seedArtist: String? = null): TasteProfile = mutex.withLock {
         val session = sessionPreferences.session.first()
         val username = session.username
         val isGuest = username.isBlank() || username.equals("Guest User", ignoreCase = true)
@@ -70,9 +71,13 @@ class TasteProfileProvider @Inject constructor(
             .takeIf { it.isConnected }
             ?.let { "${it.accountName}|${it.connectedAtMillis}|${it.onBehalfOfUser}|${it.authUserIndex}|${it.pageId}" }
             .orEmpty()
+        // Normalize seed artist for cache keying: lowercase + trim so "Radiohead"
+        // and "radiohead" don't generate two separate profiles.
+        val normalizedSeed = seedArtist?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
 
         cached?.let {
             if (!forceRefresh && cachedForUsername == username && cachedForYtAccount == ytAccountKey &&
+                cachedForSeedArtist == normalizedSeed &&
                 System.currentTimeMillis() - it.builtAtMillis < TASTE_PROFILE_TTL_MILLIS
             ) {
                 return@withLock it
@@ -221,6 +226,16 @@ class TasteProfileProvider @Inject constructor(
         ytAffinity.forEach { (artist, value) ->
             addAffinity(artist, value.coerceAtMost(1.4))
         }
+        // When a contextual seed artist is provided (e.g. "Inspired by Artist"
+        // or SIMILAR_ARTISTS mode), boost that artist to the top of the affinity
+        // map so the recommendation engine's srcSimilarArtists source naturally
+        // pivots around it. A pre-normalization boost of 3.5 reliably lifts the
+        // seed to rank #1 even when the user has listened to other artists far
+        // more — the clamped post-normalization value stays 1.0 for the seed
+        // and the rest of the map re-scales proportionally around it.
+        if (normalizedSeed != null) {
+            affinity[normalizedSeed] = (affinity[normalizedSeed] ?: 0.0) + 3.5
+        }
         val maxAffinity = affinity.values.maxOrNull()?.takeIf { it > 0.0 } ?: 1.0
         val normalizedAffinity = affinity.mapValues { (_, value) -> (value / maxAffinity).coerceIn(0.0, 1.0) }
 
@@ -246,10 +261,12 @@ class TasteProfileProvider @Inject constructor(
             ytMusicLikedRaw = ytMusicLikedRaw,
             ytMusicFeedRaw = ytMusicFeedRaw,
             hasPersonalSignals = hasPersonalSignals,
+            seedArtist = normalizedSeed,
         )
         cached = profile
         cachedForUsername = username
         cachedForYtAccount = ytAccountKey
+        cachedForSeedArtist = normalizedSeed
         profile
     }
 }
