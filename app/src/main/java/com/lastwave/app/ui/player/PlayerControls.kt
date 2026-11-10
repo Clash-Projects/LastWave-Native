@@ -337,6 +337,19 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 
+/** [action] behind a haptic tick, so a player control is felt as it is pressed. */
+@Composable
+internal fun hapticClick(
+    type: HapticFeedbackType = HapticFeedbackType.ContextClick,
+    action: () -> Unit,
+): () -> Unit {
+    val haptics = LocalHapticFeedback.current
+    return {
+        haptics.performHapticFeedback(type)
+        action()
+    }
+}
+
 @Composable
 internal fun MainControls(state: MusicPlayerState, player: MusicPlayer, isTranslucent: Boolean = false) {
     val prevInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
@@ -377,7 +390,7 @@ internal fun MainControls(state: MusicPlayerState, player: MusicPlayer, isTransl
         ) {
         LiquidGlassSurface(
             glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = prevInteraction),
-            onClick = player::previous,
+            onClick = hapticClick(action = player::previous),
             interactionSource = prevInteraction,
             shape = CircleShape,
             color = liquidGlassContainerColor(if (isTranslucent) Color.White.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.40f)),
@@ -408,7 +421,7 @@ internal fun MainControls(state: MusicPlayerState, player: MusicPlayer, isTransl
             LocalLiquidGlassBackdrop.current != null
         LiquidGlassSurface(
             glassModifier = Modifier.liquidGlassChrome(pillShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = playInteraction),
-            onClick = player::togglePlayPause,
+            onClick = hapticClick(if (state.isPlaying) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn, player::togglePlayPause),
             interactionSource = playInteraction,
             shape = pillShape,
             // Fallback matches the sibling prev/next buttons (14% white veil,
@@ -453,7 +466,7 @@ internal fun MainControls(state: MusicPlayerState, player: MusicPlayer, isTransl
         }
         LiquidGlassSurface(
             glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = nextInteraction),
-            onClick = player::next,
+            onClick = hapticClick(action = player::next),
             interactionSource = nextInteraction,
             shape = CircleShape,
             color = liquidGlassContainerColor(if (isTranslucent) Color.White.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.40f)),
@@ -485,6 +498,7 @@ internal fun PlayerModeButton(
     foreground: Color,
     iconSize: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
+    haptic: HapticFeedbackType = if (active) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -500,7 +514,7 @@ internal fun PlayerModeButton(
     )
     LiquidGlassSurface(
 glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = interaction),
-        onClick = onClick,
+        onClick = hapticClick(haptic, onClick),
         shape = CircleShape,
         color = container,
         contentColor = content,
@@ -588,6 +602,7 @@ internal fun PlayerUtilityControls(
                 foreground = edgeButtonContent,
                 iconSize = if (isTranslucent) 19.dp else 20.dp,
                 modifier = Modifier.weight(1f).height(if (isTranslucent) 44.dp else 48.dp),
+                haptic = HapticFeedbackType.ContextClick,
             )
         }
         PlayerModeButton(
@@ -603,6 +618,8 @@ internal fun PlayerUtilityControls(
             foreground = edgeButtonContent,
             iconSize = if (isTranslucent) 19.dp else 20.dp,
             modifier = Modifier.weight(1f).height(if (isTranslucent) 44.dp else 48.dp),
+            // Repeat one is the last stop before off.
+            haptic = if (state.repeatMode == Player.REPEAT_MODE_ONE) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn,
         )
     }
 }
@@ -661,7 +678,7 @@ internal fun DividedUtilityPill(
                     .clickable(
                         interactionSource = speakerInteraction,
                         indication = null,
-                        onClick = onOpenAudioControls,
+                        onClick = hapticClick(action = onOpenAudioControls),
                     ),
                 contentAlignment = Alignment.Center,
             ) {
@@ -703,7 +720,7 @@ internal fun DividedUtilityPill(
                     .clickable(
                         interactionSource = videoInteraction,
                         indication = null,
-                        onClick = { onToggleVideo?.invoke() },
+                        onClick = hapticClick(if (isVideoActive) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn) { onToggleVideo?.invoke() },
                     ),
                 contentAlignment = Alignment.Center,
             ) {
@@ -1020,7 +1037,7 @@ internal fun YouTubeLikeButton(liked: Boolean?, onClick: () -> Unit, size: andro
     val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     LiquidGlassSurface(
         glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = interaction),
-        onClick = onClick,
+        onClick = hapticClick(if (liked) HapticFeedbackType.ToggleOff else HapticFeedbackType.Confirm, onClick),
         interactionSource = interaction,
         shape = CircleShape,
         color = liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),

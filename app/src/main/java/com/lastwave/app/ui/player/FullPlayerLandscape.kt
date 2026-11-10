@@ -742,7 +742,7 @@ internal fun FullPlayerLandscape(
                     YouTubeLikeButton(youTubeLiked, onToggleYouTubeLike, size = 50.dp)
                     LiquidGlassSurface(
                         glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = likeInteraction),
-                        onClick = onToggleLiked,
+                        onClick = hapticClick(if (isLiked) HapticFeedbackType.ToggleOff else HapticFeedbackType.Confirm, onToggleLiked),
                         interactionSource = likeInteraction,
                         shape = CircleShape,
                         color = liquidGlassContainerColor(if (isLiked) {
@@ -782,7 +782,7 @@ internal fun FullPlayerLandscape(
                     )
                     LiquidGlassSurface(
                         glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = lyricsInteraction),
-                        onClick = { onTabChange(FullPlayerTab.LYRICS) },
+                        onClick = hapticClick { onTabChange(FullPlayerTab.LYRICS) },
                         interactionSource = lyricsInteraction,
                         shape = CircleShape,
                         color = liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),

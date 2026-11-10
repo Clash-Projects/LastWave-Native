@@ -97,6 +97,8 @@ class NativeProcessingAudioSink(
     private var pendingAccessUnitCount = 0
     private var pendingOutputFrameCount = 0
     private var nextOutputPresentationTimeUs = 0L
+    private val pendingSkipUs = java.util.concurrent.atomic.AtomicLong()
+    private var skipCheckedBuffer: ByteBuffer? = null
 
     private var endOfStreamQueued = false
     private var endOfStreamOutput: ByteBuffer? = null
@@ -526,13 +528,48 @@ class NativeProcessingAudioSink(
         }
     }
 
+    /**
+     * Drops the next [durationUs] of decoded PCM, so a muted deck jumps ahead
+     * by exactly that much. A speed change goes through the system
+     * time-stretcher, which landed up to 30 ms off. Zero cancels.
+     */
+    fun skipAhead(durationUs: Long) = pendingSkipUs.set(durationUs.coerceAtLeast(0L))
+
+    /** Trims the front of a fresh [buffer] by the pending skip; returns the time dropped. */
+    private fun dropPendingSkip(buffer: ByteBuffer): Long {
+        val skipUs = pendingSkipUs.get()
+        val format = configuredFormat
+        if (skipUs <= 0L || format == null || format.sampleMimeType != MimeTypes.AUDIO_RAW || format.sampleRate <= 0) {
+            return 0L
+        }
+        val frameBytes = androidx.media3.common.util.Util.getPcmFrameSize(format.pcmEncoding, format.channelCount)
+        val wanted = skipUs * format.sampleRate / MICROS_PER_SECOND
+        val frames = minOf(wanted, (buffer.remaining() / frameBytes).toLong()).toInt()
+        val droppedUs = frames * MICROS_PER_SECOND / format.sampleRate
+        pendingSkipUs.set(if (frames.toLong() == wanted) 0L else skipUs - droppedUs)
+        if (frames <= 0) return 0L
+        buffer.position(buffer.position() + frames * frameBytes)
+        // Lets the output re-anchor its clock, so the position reports the jump.
+        handleDiscontinuity()
+        return droppedUs
+    }
+
     override fun handleBuffer(
         buffer: ByteBuffer,
-        presentationTimeUs: Long,
+        bufferPresentationTimeUs: Long,
         encodedAccessUnitCount: Int,
     ): Boolean {
         maybeAdoptExclusiveUsb()
         maybeAdoptInternalDirect()
+        var presentationTimeUs = bufferPresentationTimeUs
+        if (skipCheckedBuffer !== buffer) {
+            skipCheckedBuffer = buffer
+            presentationTimeUs += dropPendingSkip(buffer)
+            if (!buffer.hasRemaining()) {
+                skipCheckedBuffer = null
+                return true
+            }
+        }
         val analyzer = hapticsAnalyzer
         if (analyzer != null && hapticsBuffer !== buffer) {
             hapticsBuffer = buffer
@@ -557,6 +594,7 @@ class NativeProcessingAudioSink(
         if (consumed) {
             directEqBuffer = null
             hapticsBuffer = null
+            skipCheckedBuffer = null
         }
         return consumed
     }
