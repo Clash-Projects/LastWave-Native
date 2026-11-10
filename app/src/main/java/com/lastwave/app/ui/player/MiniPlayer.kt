@@ -727,34 +727,44 @@ fun PlayingWaveBars(
     containerColor: Color = MaterialTheme.colorScheme.primaryContainer,
     shape: Shape = CircleShape,
 ) {
-    val transition = rememberInfiniteTransition(label = "miniArtworkWave")
-    val first = transition.animateFloat(
-        initialValue = 0.25f,
-        targetValue = 0.95f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 480, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "miniWaveFirst",
-    )
-    val second = transition.animateFloat(
-        initialValue = 0.95f,
-        targetValue = 0.30f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 640, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "miniWaveSecond",
-    )
-    val third = transition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 530, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "miniWaveThird",
-    )
+    val active = com.lastwave.app.ui.common.LocalAmbientAnimationsActive.current
+    val first: androidx.compose.runtime.State<Float>
+    val second: androidx.compose.runtime.State<Float>
+    val third: androidx.compose.runtime.State<Float>
+    if (active) {
+        val transition = rememberInfiniteTransition(label = "miniArtworkWave")
+        first = transition.animateFloat(
+            initialValue = 0.25f,
+            targetValue = 0.95f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 480, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "miniWaveFirst",
+        )
+        second = transition.animateFloat(
+            initialValue = 0.95f,
+            targetValue = 0.30f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 640, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "miniWaveSecond",
+        )
+        third = transition.animateFloat(
+            initialValue = 0.35f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 530, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "miniWaveThird",
+        )
+    } else {
+        first = remember { mutableFloatStateOf(0.25f) }
+        second = remember { mutableFloatStateOf(0.95f) }
+        third = remember { mutableFloatStateOf(0.35f) }
+    }
 
     val content: @Composable () -> Unit = {
         // Fixed small badge content so it can never expand to fill the cover.

@@ -127,6 +127,7 @@ import kotlin.time.Duration.Companion.seconds
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lastwave.app.ui.common.AmbientAnimationsGate
 import com.lastwave.app.ui.common.ExpressiveMotion
 import com.lastwave.app.ui.common.PredictiveBackScreen
 import com.lastwave.app.ui.common.adaptiveContentWidth
@@ -386,40 +387,45 @@ fun MainShell(
             // derivedStateOf: reading currentPage directly recomposed every
             // page's whole tab each time it flipped halfway through a swipe.
             val isCurrent by remember(page) { derivedStateOf { page == pagerState.currentPage } }
-            PredictiveBackScreen(
-                enabled = isCurrent && tabs[page] != MainTab.FEED,
-                onBack = { scope.launch { pagerState.animateScrollToPage(feedIndex) } },
-            ) {
-                when (tabs[page]) {
-                    MainTab.FEED -> FeedScreen(
-                        onOpenSettings = onOpenSettings,
-                        onOpenSearch = onOpenSearch,
-                        onOpenDiscover = onOpenDiscover,
-                        onOpenPlaylist = onOpenPlaylist,
-                        onOpenFeedPlaylist = onOpenFeedPlaylist,
-                        onOpenGenerator = onOpenGenerator,
-                        onOpenFriends = onOpenFriends,
-                        onOpenFriendProfile = onOpenFriendProfile,
-                        onOpenNewReleases = onOpenNewReleases,
-                        onOpenDownloads = onOpenDownloads,
-                        onOpenPodcasts = onOpenPodcasts,
-                        onOpenPodcastShow = onOpenPodcastShow,
-                        onOpenYouTubeLogin = onOpenYouTubeLogin,
-                        feedTapEvents = feedTapEvents,
-                    )
-                    MainTab.STATS -> HomeScreen(
-                        onOpenSettings = onOpenSettings,
-                        onOpenSearch = onOpenSearch,
-                        onOpenDiscover = onOpenDiscover,
-                        onOpenGenres = onOpenGenres,
-                        onOpenFriends = onOpenFriends,
-                        onOpenDownloads = onOpenDownloads,
-                    )
-                    MainTab.PLAYLISTS -> PlaylistScreen(
-                        onOpenPlaylist = onOpenPlaylist,
-                        onOpenFeedPlaylist = onOpenFeedPlaylist,
-                        onOpenGenerator = onOpenGenerator,
-                    )
+            val pageShown by remember(page) {
+                derivedStateOf { page == pagerState.currentPage || pagerState.isScrollInProgress }
+            }
+            AmbientAnimationsGate(visible = { pageShown }) {
+                PredictiveBackScreen(
+                    enabled = isCurrent && tabs[page] != MainTab.FEED,
+                    onBack = { scope.launch { pagerState.animateScrollToPage(feedIndex) } },
+                ) {
+                    when (tabs[page]) {
+                        MainTab.FEED -> FeedScreen(
+                            onOpenSettings = onOpenSettings,
+                            onOpenSearch = onOpenSearch,
+                            onOpenDiscover = onOpenDiscover,
+                            onOpenPlaylist = onOpenPlaylist,
+                            onOpenFeedPlaylist = onOpenFeedPlaylist,
+                            onOpenGenerator = onOpenGenerator,
+                            onOpenFriends = onOpenFriends,
+                            onOpenFriendProfile = onOpenFriendProfile,
+                            onOpenNewReleases = onOpenNewReleases,
+                            onOpenDownloads = onOpenDownloads,
+                            onOpenPodcasts = onOpenPodcasts,
+                            onOpenPodcastShow = onOpenPodcastShow,
+                            onOpenYouTubeLogin = onOpenYouTubeLogin,
+                            feedTapEvents = feedTapEvents,
+                        )
+                        MainTab.STATS -> HomeScreen(
+                            onOpenSettings = onOpenSettings,
+                            onOpenSearch = onOpenSearch,
+                            onOpenDiscover = onOpenDiscover,
+                            onOpenGenres = onOpenGenres,
+                            onOpenFriends = onOpenFriends,
+                            onOpenDownloads = onOpenDownloads,
+                        )
+                        MainTab.PLAYLISTS -> PlaylistScreen(
+                            onOpenPlaylist = onOpenPlaylist,
+                            onOpenFeedPlaylist = onOpenFeedPlaylist,
+                            onOpenGenerator = onOpenGenerator,
+                        )
+                    }
                 }
             }
         }

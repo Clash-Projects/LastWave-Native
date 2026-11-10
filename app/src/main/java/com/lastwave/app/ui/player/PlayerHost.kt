@@ -476,7 +476,9 @@ fun PlayerHost(
         )
     }
 
+    var isPlayerDragging by remember { mutableStateOf(false) }
     val playerLayerShown by remember { derivedStateOf { playerExpansion.value > 0f } }
+    val contentCovered by remember { derivedStateOf { playerExpansion.value >= 1f && !isPlayerDragging } }
     val showMiniPlayer by remember { derivedStateOf { playerExpansion.value < 0.45f } }
     val showBottomNav by remember { derivedStateOf { state.current == null || playerExpansion.value < 0.625f } }
     // Mini player rides above the growing card for the first half of the morph.
@@ -529,7 +531,9 @@ fun PlayerHost(
                     },
             ) {
                 Box(Modifier.fillMaxSize().liquidGlassSource(if (miniGlass) miniBackdrop else null)) {
-                    content()
+                    com.lastwave.app.ui.common.AmbientAnimationsGate(visible = { !contentCovered }) {
+                        content()
+                    }
                 }
             }
             if (state.current != null && !settings.buttonNowPlayingEnabled && !hideMiniPlayer && showMiniPlayer) {
@@ -591,7 +595,6 @@ fun PlayerHost(
                     onOpenDownloads = { viewModel.navigateToDownloads() },
                 )
             }
-            var isPlayerDragging by remember { mutableStateOf(false) }
             if (playerLayerShown && state.current != null) {
                 val sheetDensity = LocalDensity.current
                 Box(

@@ -112,12 +112,15 @@ import androidx.compose.animation.core.spring
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import com.lastwave.app.ui.common.LocalAmbientAnimationsActive
 import androidx.compose.ui.Alignment
 
 import androidx.compose.ui.Modifier
@@ -234,33 +237,41 @@ internal fun TrackRow(
             }
             Spacer(Modifier.width(8.dp))
             if (isNowPlaying) {
-                val infiniteTransition = rememberInfiniteTransition(label = "nowPlayingPulse")
-                val pulseScale by infiniteTransition.animateFloat(
-                    initialValue = 1.0f,
-                    targetValue = 1.06f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(1200, easing = LinearEasing),
-                        repeatMode = RepeatMode.Reverse,
-                    ),
-                    label = "pulseScale",
-                )
-                val dotAlpha by infiniteTransition.animateFloat(
-                    initialValue = 0.45f,
-                    targetValue = 1f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(800, easing = LinearEasing),
-                        repeatMode = RepeatMode.Reverse,
-                    ),
-                    label = "dotAlpha",
-                )
+                val active = LocalAmbientAnimationsActive.current
+                val pulseScale: State<Float>
+                val dotAlpha: State<Float>
+                if (active) {
+                    val infiniteTransition = rememberInfiniteTransition(label = "nowPlayingPulse")
+                    pulseScale = infiniteTransition.animateFloat(
+                        initialValue = 1.0f,
+                        targetValue = 1.06f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(1200, easing = LinearEasing),
+                            repeatMode = RepeatMode.Reverse,
+                        ),
+                        label = "pulseScale",
+                    )
+                    dotAlpha = infiniteTransition.animateFloat(
+                        initialValue = 0.45f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(800, easing = LinearEasing),
+                            repeatMode = RepeatMode.Reverse,
+                        ),
+                        label = "dotAlpha",
+                    )
+                } else {
+                    pulseScale = remember { mutableFloatStateOf(1f) }
+                    dotAlpha = remember { mutableFloatStateOf(1f) }
+                }
                 Surface(
                     shape = BadgePillShape,
                     color = MaterialTheme.colorScheme.primary,
                     tonalElevation = 4.dp,
                     shadowElevation = 2.dp,
                     modifier = Modifier.graphicsLayer {
-                        scaleX = pulseScale
-                        scaleY = pulseScale
+                        scaleX = pulseScale.value
+                        scaleY = pulseScale.value
                     },
                 ) {
                     Row(
@@ -270,7 +281,7 @@ internal fun TrackRow(
                         Box(
                             modifier = Modifier
                                 .size(6.dp)
-                                .graphicsLayer { alpha = dotAlpha }
+                                .graphicsLayer { alpha = dotAlpha.value }
                                 .background(MaterialTheme.colorScheme.onPrimary, CircleShape),
                         )
                         Spacer(Modifier.width(6.dp))
