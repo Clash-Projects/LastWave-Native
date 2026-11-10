@@ -5537,7 +5537,8 @@ class MusicPlayer @Inject constructor(
         val attempts = (unavailableAttemptCounts[failedMediaId] ?: 0) + 1
         unavailableAttemptCounts[failedMediaId] = attempts
         val alreadyRetriedExhaustively = errorRetryCount >= MAX_PLAYBACK_RETRIES
-        if (!exhausted && !provenDead && !alreadyRetriedExhaustively && attempts < MIN_UNAVAILABLE_ATTEMPTS_BEFORE_SKIP) {
+        val isQueuePlay = player.mediaItemCount > 1
+        if (!isQueuePlay && !exhausted && !provenDead && !alreadyRetriedExhaustively && attempts < MIN_UNAVAILABLE_ATTEMPTS_BEFORE_SKIP) {
             player.pause()
             _state.update {
                 it.copy(
@@ -5549,7 +5550,7 @@ class MusicPlayer @Inject constructor(
             }
             return
         }
-        player.pause()
+        if (!isQueuePlay) player.pause()
         unavailableSkipJob?.cancel()
         unavailableSkipJob = applicationScope.launch(Dispatchers.Main.immediate) {
             yield()

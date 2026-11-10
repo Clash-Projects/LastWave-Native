@@ -131,6 +131,7 @@ class ChunkedRangeDataSource(
      */
     private fun openChunkRefreshingOnRejection(chunkSpec: DataSpec): Long {
         var spec = chunkSpec
+        var ioRetries = 0
         while (true) {
             try {
                 return openUpstream(spec)
@@ -149,6 +150,16 @@ class ChunkedRangeDataSource(
                     ?.setUri(replacement.uri)
                     ?.setHttpRequestHeaders(spec.httpRequestHeaders)
                     ?.build()
+            } catch (ioe: IOException) {
+                // Stale connection / idle socket timeout from Google Video CDN.
+                // Retry opening the chunk up to 2 times before propagating error.
+                if (++ioRetries > 2) throw ioe
+                try {
+                    Thread.sleep(150L * ioRetries)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw ioe
+                }
             }
         }
     }
@@ -204,12 +215,24 @@ class ChunkedRangeDataSource(
                 if (!openNextChunkOrEnd()) return C.RESULT_END_OF_INPUT
             }
             val bytesToRead = minOf(length.toLong(), currentChunkRemaining).toInt()
-            val bytesRead = upstream.read(buffer, offset, bytesToRead)
+            var bytesRead: Int
+            try {
+                bytesRead = upstream.read(buffer, offset, bytesToRead)
+            } catch (ioe: Exception) {
+                // Connection was reset or socket timed out during an idle stretch.
+                runCatching { upstream.close() }
+                isCurrentChunkOpen = false
+                currentChunkRemaining = 0L
+                if (++emptyChunks >= 3) {
+                    throw if (ioe is IOException) ioe else IOException("Chunk read failed at byte $currentPosition", ioe)
+                }
+                continue
+            }
             if (bytesRead == C.RESULT_END_OF_INPUT) {
                 // This chunk closed early (connection dropped) or exactly at
                 // its end. Either way continue from the byte we actually have.
                 currentChunkRemaining = 0L
-                if (++emptyChunks >= 2) {
+                if (++emptyChunks >= 3) {
                     if (requestedLength == C.LENGTH_UNSET.toLong() && totalLength == C.LENGTH_UNSET.toLong()) {
                         return C.RESULT_END_OF_INPUT
                     }
@@ -217,6 +240,7 @@ class ChunkedRangeDataSource(
                 }
                 continue
             }
+            emptyChunks = 0
             currentPosition += bytesRead
             bytesReadTotal += bytesRead
             currentChunkRemaining -= bytesRead
