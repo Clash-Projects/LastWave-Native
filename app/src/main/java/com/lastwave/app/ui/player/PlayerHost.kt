@@ -543,7 +543,7 @@ fun PlayerHost(
             if (state.current != null && !settings.buttonNowPlayingEnabled && !hideMiniPlayer && showMiniPlayer) {
                 MiniPlayer(
                     state = state,
-                    progressState = viewModel.progressState,
+                    progressState = viewModel.miniProgressState,
                     onExpand = { expanded = true },
                     onToggle = viewModel.player::togglePlayPause,
                     onPrevious = viewModel.player::previous,
@@ -585,7 +585,7 @@ fun PlayerHost(
             if (currentTrack != null && !expanded && settings.buttonNowPlayingEnabled) {
                 DraggableNowPlayingButton(
                     track = currentTrack,
-                    progressState = viewModel.progressState,
+                    progressState = viewModel.miniProgressState,
                     isPlaying = state.isPlaying,
                     onExpand = { expanded = true },
                     onClose = viewModel.player::stopAndClear,
