@@ -3,6 +3,7 @@ package com.lastwave.app
 import android.app.Application
 import android.app.ActivityManager
 import android.content.Context
+import android.os.SystemClock
 import coil.EventListener
 import coil.ImageLoader
 import coil.ImageLoaderFactory
@@ -26,6 +27,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -45,6 +47,7 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
     @Inject lateinit var settingsPreferences: SettingsPreferences
 
     @Volatile private var cacheTrackingImageLoader: ImageLoader? = null
+    private val artworkCacheRefreshAt = AtomicLong(0L)
 
     override fun attachBaseContext(base: Context) {
         // Pin the selected locale before any component (providers, services,
@@ -280,9 +283,18 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
 
     @OptIn(ExperimentalCoilApi::class)
     private fun refreshArtworkCacheUsage() {
-        CacheStoragePolicy.setArtworkCacheBytes(
-            runCatching { cacheTrackingImageLoader?.diskCache?.size ?: 0L }.getOrDefault(0L),
-        )
+        // DiskLruCache.size() takes its journal lock and has blocked main for
+        // >150 ms during startup. Coil reports every image completion on main,
+        // so scan off-main and coalesce bursts instead of stalling per image.
+        val now = SystemClock.elapsedRealtime()
+        val last = artworkCacheRefreshAt.get()
+        if (now - last < 2_000L) return
+        if (!artworkCacheRefreshAt.compareAndSet(last, now)) return
+        applicationScope.launch(Dispatchers.IO) {
+            CacheStoragePolicy.setArtworkCacheBytes(
+                runCatching { cacheTrackingImageLoader?.diskCache?.size ?: 0L }.getOrDefault(0L),
+            )
+        }
     }
 
     private companion object {
