@@ -6,7 +6,7 @@ For any UI or visual work, also read [DESIGN.md](DESIGN.md).
 ## 0. App overview
 
 LastWave is a native Android YouTube Music client written in Kotlin and Jetpack
-Compose (`com.lastwave.app`, version `5.1.3` / code `31`). Alongside YouTube
+Compose (`com.lastwave.app`, version `5.2.0` / code `32`). Alongside YouTube
 Music browsing and streaming, it includes offline downloads, local device audio,
 Spotify imports/Canvas, Last.fm scrobbling and stats, podcasts, Listen Together
 (`jam`), Discord Rich Presence, Google Cast, Android Auto, Glance home-screen
