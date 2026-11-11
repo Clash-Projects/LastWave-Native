@@ -603,8 +603,11 @@ internal fun ModernLyricsControls(
             }
         }
         val end = totalDurationMs.coerceAtLeast(1).toFloat()
-        val shown = (dragValue ?: currentPositionMs.coerceIn(0, totalDurationMs.coerceAtLeast(0)).toFloat())
-            .coerceIn(0f, end)
+        val shown = dragValue ?: if (totalDurationMs > 0L) {
+            currentPositionMs.coerceIn(0L, totalDurationMs).toFloat()
+        } else {
+            currentPositionMs.coerceAtLeast(0L).toFloat()
+        }
 
         if (wavySeekbarEnabled) {
             WavySeekBar(
@@ -622,7 +625,7 @@ internal fun ModernLyricsControls(
             )
         } else {
             PlayerProgressSlider(
-                value = shown,
+                value = shown.coerceIn(0f, end),
                 onValueChange = {
                     dragValue = it
                     lastSeekValue = it
@@ -646,7 +649,9 @@ internal fun ModernLyricsControls(
         val currentSecond = shown.toLong() / 1000L
         val remainingSecond = (totalDurationMs - shown.toLong()).coerceAtLeast(0) / 1000L
         val formattedElapsed = remember(currentSecond) { formatTime(currentSecond * 1000L) }
-        val formattedRemaining = remember(remainingSecond) { "\u2212${formatTime(remainingSecond * 1000L)}" }
+        val formattedRemaining = remember(remainingSecond, totalDurationMs) {
+            if (totalDurationMs > 0L) "\u2212${formatTime(remainingSecond * 1000L)}" else "--:--"
+        }
 
         Row(
             modifier = Modifier
