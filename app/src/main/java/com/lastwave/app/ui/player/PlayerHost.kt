@@ -524,6 +524,9 @@ fun PlayerHost(
                 Modifier
                     .fillMaxSize()
                     .drawWithContent {
+                        // Under the opaque full player the shell is invisible, but drawing it anyway
+                        // re-rendered the whole feed (and its path clip, masked on the CPU) every frame.
+                        if (contentCovered) return@drawWithContent
                         drawContent()
                         val p = playerExpansion.value.coerceIn(0f, 1f)
                         if (p > 0f) {
