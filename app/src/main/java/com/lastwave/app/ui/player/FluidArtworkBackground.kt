@@ -397,9 +397,12 @@ fun FluidArtworkBackground(
     var seconds by remember { mutableFloatStateOf(0f) }
     var cachedSigma by remember { mutableFloatStateOf(0f) }
     var cachedRenderEffect by remember { mutableStateOf<androidx.compose.ui.graphics.RenderEffect?>(null) }
-    // Paused: hold the current pose. Animating the full-screen shader + blur while paused cost ~60% CPU.
-    LaunchedEffect(isPlaying) {
-        if (!isPlaying) return@LaunchedEffect
+    val windowActive = rememberPlayerWindowActive()
+    val motionActive = isPlaying && windowActive
+    // Paused or obscured: hold the current pose. Animating the full-screen shader
+    // + blur while paused or under the shade used most of a CPU core.
+    LaunchedEffect(motionActive) {
+        if (!motionActive) return@LaunchedEffect
         var last = 0L
         var pending = 0f
         while (true) {

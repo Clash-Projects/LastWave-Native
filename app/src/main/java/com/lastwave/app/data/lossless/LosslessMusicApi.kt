@@ -997,14 +997,32 @@ class LosslessMusicApi @Inject constructor(
         hybridServer.prewarm()
         val plan = addonSearchPlan(title, artist, expectedAlbum, preferredQuality)
         val query = plan.queries.firstOrNull() ?: return@withContext
+        val targetSeconds = expectedDurationSeconds?.takeIf { it in 1..86400 }
+        val warmTarget = targetSeconds
+            ?.takeIf { title.trim().length <= 512 && artist.trim().length <= 512 }
+            ?.let { seconds ->
+                android.util.Base64.encodeToString(
+                    JSONObject()
+                        .put("title", title.trim())
+                        .put("artist", artist.trim())
+                        .put("durationSeconds", seconds)
+                        .toString()
+                        .toByteArray(Charsets.UTF_8),
+                    android.util.Base64.URL_SAFE or
+                        android.util.Base64.NO_WRAP or
+                        android.util.Base64.NO_PADDING,
+                )
+            }
         for (creds in getAllEnabledCredentials()) {
-            val key = "${creds.baseUrl}|${plan.qualityParam}|${plan.isAtmosPreferred}|$query"
+            // Include the target duration so two versions with the same query
+            // are warmed separately instead of the second being skipped.
+            val key = "${creds.baseUrl}|${plan.qualityParam}|${plan.isAtmosPreferred}|${targetSeconds ?: 0}|$query"
             val fresh = synchronized(warmedSearchKeys) { warmedSearchKeys.put(key, Unit) == null }
             if (!fresh) continue
             val client = AddonClient(creds.baseUrl, resolutionClient, nativeSecrets = nativeSecrets)
             val result = try {
                 currentCoroutineContext().ensureActive()
-                client.search(query, plan.qualityParam, plan.isAtmosPreferred)
+                client.search(query, plan.qualityParam, plan.isAtmosPreferred, warmTarget)
             } catch (cancelled: CancellationException) {
                 // An abandoned warm-up did not populate the server cache.
                 synchronized(warmedSearchKeys) { warmedSearchKeys.remove(key) }

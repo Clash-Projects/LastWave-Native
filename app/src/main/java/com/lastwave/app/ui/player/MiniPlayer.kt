@@ -375,6 +375,7 @@ internal fun MiniPlayer(
 ) {
     val context = LocalContext.current
     val track = state.current ?: return
+    val windowActive = rememberPlayerWindowActive()
     // Haptics for every mini-player control and swipe gesture.
     val miniHaptic = LocalHapticFeedback.current
     @Suppress("NAME_SHADOWING")
@@ -514,7 +515,7 @@ internal fun MiniPlayer(
                                 color = miniTitleColor,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.fillMaxWidth().playingMarquee(state.isPlaying),
+                                modifier = Modifier.fillMaxWidth().playingMarquee(state.isPlaying && windowActive),
                             )
                             Text(
                                 track.artist,
@@ -522,7 +523,7 @@ internal fun MiniPlayer(
                                 color = miniArtistColor,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.fillMaxWidth().playingMarquee(state.isPlaying),
+                                modifier = Modifier.fillMaxWidth().playingMarquee(state.isPlaying && windowActive),
                             )
                         }
                         // Inner controls sit plain on the glass card (no nested glass).
@@ -624,7 +625,7 @@ internal fun MiniPlayer(
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth().playingMarquee(state.isPlaying),
+                            modifier = Modifier.fillMaxWidth().playingMarquee(state.isPlaying && windowActive),
                         )
                         Spacer(Modifier.height(1.dp))
                         Text(
@@ -634,7 +635,7 @@ internal fun MiniPlayer(
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth().playingMarquee(state.isPlaying),
+                            modifier = Modifier.fillMaxWidth().playingMarquee(state.isPlaying && windowActive),
                         )
                     }
 
