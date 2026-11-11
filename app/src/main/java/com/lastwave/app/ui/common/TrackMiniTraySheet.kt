@@ -76,6 +76,7 @@ data class TrackMiniTrayData(
     val videoId: String? = null,
     val sourceLabel: String = "LastWave",
     val onPlay: (() -> Unit)? = null,
+    val durationMs: Long? = null,
 ) {
     fun toPlayable(): PlayableTrack = PlayableTrack(
         title = title,
@@ -83,6 +84,7 @@ data class TrackMiniTrayData(
         album = album,
         artworkUrl = artworkUrl,
         videoId = videoId?.takeIf(String::isNotBlank),
+        durationMs = durationMs,
     )
 }
 
@@ -232,7 +234,10 @@ fun TrackMiniTraySheet(
                         }
                         else -> {
                             MiniTrayRow(Icons.Filled.Download, downloadLabel, position = pos) {
-                                downloadViewModel.download(data.title, data.artist, data.album, data.artworkUrl)
+                                downloadViewModel.download(
+                                    playable.title, playable.artist, playable.album, playable.artworkUrl,
+                                    videoId = playable.videoId, durationMs = playable.durationMs,
+                                )
                                 onDismiss()
                             }
                         }

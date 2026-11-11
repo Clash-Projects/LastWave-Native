@@ -11,6 +11,9 @@ import com.lastwave.app.data.ytmusic.YtMusicAuthManager
 import com.lastwave.app.data.ytmusic.YtMusicLibraryManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -61,6 +64,23 @@ class YouTubePlaylistImportViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(YouTubeImportUiState())
     val uiState: StateFlow<YouTubeImportUiState> = _uiState.asStateFlow()
 
+    private var searchJob: Job? = null
+    private var searchGeneration = 0L
+    private var previewJob: Job? = null
+    private var previewGeneration = 0L
+
+    private fun cancelSearch() {
+        searchGeneration++
+        searchJob?.cancel()
+        searchJob = null
+    }
+
+    private fun cancelPreview() {
+        previewGeneration++
+        previewJob?.cancel()
+        previewJob = null
+    }
+
     init {
         viewModelScope.launch {
             ytMusicLibraryManager.accountPlaylists.collect { playlists ->
@@ -93,7 +113,12 @@ class YouTubePlaylistImportViewModel @Inject constructor(
     }
 
     fun selectTab(tab: ImportTab) {
-        _uiState.update { it.copy(selectedTab = tab, errorMessage = null) }
+        if (_uiState.value.selectedTab == tab) return
+        cancelSearch()
+        cancelPreview()
+        _uiState.update {
+            it.copy(selectedTab = tab, errorMessage = null, isSearching = false, isPreviewLoading = false, previewPlaylist = null)
+        }
         if (tab == ImportTab.LIBRARY && _uiState.value.libraryPlaylists.isEmpty() &&
             !_uiState.value.isLoadingLibrary
         ) {
@@ -102,11 +127,15 @@ class YouTubePlaylistImportViewModel @Inject constructor(
     }
 
     fun onQueryChange(query: String) {
-        _uiState.update { it.copy(query = query, errorMessage = null) }
+        if (_uiState.value.query == query) return
+        cancelSearch()
+        _uiState.update { it.copy(query = query, errorMessage = null, isSearching = false, searchResults = emptyList()) }
     }
 
     fun onDirectLinkChange(link: String) {
-        _uiState.update { it.copy(directLink = link, errorMessage = null) }
+        if (_uiState.value.directLink == link) return
+        cancelPreview()
+        _uiState.update { it.copy(directLink = link, errorMessage = null, isPreviewLoading = false, previewPlaylist = null) }
     }
 
     fun showError(message: String) {
@@ -136,6 +165,9 @@ class YouTubePlaylistImportViewModel @Inject constructor(
     }
 
     fun search(query: String = _uiState.value.query) {
+        cancelSearch()
+        val generation = searchGeneration
+        _uiState.update { it.copy(isSearching = false, errorMessage = null) }
         if (query.isBlank()) return
         val clean = query.trim()
 
@@ -148,10 +180,11 @@ class YouTubePlaylistImportViewModel @Inject constructor(
             return
         }
 
-        viewModelScope.launch {
-            _uiState.update { it.copy(isSearching = true, errorMessage = null) }
+        _uiState.update { it.copy(isSearching = true) }
+        searchJob = viewModelScope.launch {
             try {
                 val results = innerTube.searchPlaylists(clean)
+                if (generation != searchGeneration) return@launch
                 _uiState.update {
                     it.copy(
                         searchResults = results,
@@ -160,6 +193,8 @@ class YouTubePlaylistImportViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                currentCoroutineContext().ensureActive()
+                if (generation != searchGeneration) return@launch
                 _uiState.update {
                     it.copy(
                         isSearching = false,
@@ -178,16 +213,18 @@ class YouTubePlaylistImportViewModel @Inject constructor(
     }
 
     fun loadPreview(playlistIdOrUrl: String) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isPreviewLoading = true, errorMessage = null) }
+        cancelPreview()
+        val generation = previewGeneration
+        _uiState.update { it.copy(isPreviewLoading = true, previewPlaylist = null, errorMessage = null) }
+        previewJob = viewModelScope.launch {
             try {
                 val result = innerTube.fetchPlaylist(playlistIdOrUrl)
+                if (generation != previewGeneration) return@launch
                 if (result != null && result.tracks.isNotEmpty()) {
                     _uiState.update {
                         it.copy(
                             previewPlaylist = result,
                             isPreviewLoading = false,
-                            selectedPlaylistIds = it.selectedPlaylistIds + result.id,
                         )
                     }
                 } else {
@@ -203,6 +240,8 @@ class YouTubePlaylistImportViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                currentCoroutineContext().ensureActive()
+                if (generation != previewGeneration) return@launch
                 _uiState.update {
                     it.copy(
                         isPreviewLoading = false,
@@ -214,7 +253,8 @@ class YouTubePlaylistImportViewModel @Inject constructor(
     }
 
     fun dismissPreview() {
-        _uiState.update { it.copy(previewPlaylist = null) }
+        cancelPreview()
+        _uiState.update { it.copy(previewPlaylist = null, isPreviewLoading = false) }
     }
 
     fun togglePlaylistSelection(playlistId: String) {
@@ -241,17 +281,29 @@ class YouTubePlaylistImportViewModel @Inject constructor(
     }
 
     fun importSelected(onSuccess: (List<SavedPlaylist>) -> Unit) {
-        val selectedIds = _uiState.value.selectedPlaylistIds
-        if (selectedIds.isEmpty()) return
+        importPlaylists(_uiState.value.selectedPlaylistIds, _uiState.value.previewPlaylist, onSuccess)
+    }
+
+    /** The preview's action imports only the playlist the user is reviewing. */
+    fun importPreview(onSuccess: (List<SavedPlaylist>) -> Unit) {
+        val preview = _uiState.value.previewPlaylist ?: return
+        importPlaylists(setOf(preview.id), preview, onSuccess)
+    }
+
+    private fun importPlaylists(
+        selectedIds: Set<String>,
+        preview: YouTubePlaylistResult?,
+        onSuccess: (List<SavedPlaylist>) -> Unit,
+    ) {
+        if (selectedIds.isEmpty() || _uiState.value.isImporting) return
+        _uiState.update { it.copy(isImporting = true, importProgress = "Starting import...") }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isImporting = true, importProgress = "Starting import...") }
             val savedList = mutableListOf<SavedPlaylist>()
             val ownedIds = _uiState.value.libraryPlaylists.mapTo(mutableSetOf()) { it.id }
                 .filterNotTo(mutableSetOf()) { PlaylistImportManager.isYtLikedId(it) }
 
             try {
-                val preview = _uiState.value.previewPlaylist
                 if (preview != null && selectedIds.contains(preview.id) && selectedIds.size == 1) {
                     val saved = if (PlaylistImportManager.isYtLikedId(preview.id)) {
                         importManager.importYtLikedIntoLikedSongs(preview)

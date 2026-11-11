@@ -7,6 +7,7 @@ import com.lastwave.app.data.search.SearchHistoryRepository
 import com.lastwave.app.data.search.SearchRepository
 import com.lastwave.app.data.search.SearchResultItem
 import com.lastwave.app.data.search.SearchTab
+import com.lastwave.app.playback.MediaType
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.PlayableTrack
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -163,7 +164,7 @@ class SearchViewModel @Inject constructor(
         val tab = _uiState.value.tab
         when (tab) {
             SearchTab.TRACKS -> {
-                val selected = trackResultToPlayable(item)
+                val selected = item.toPlayableTrack()
                 // Start immediately. Similar song radio queue loads and extends infinitely.
                 musicPlayer.play(selected, sourceLabel = "Search", startRadio = true)
             }
@@ -183,15 +184,7 @@ class SearchViewModel @Inject constructor(
                 }
             }
             SearchTab.PODCASTS -> {
-                val selected = PlayableTrack(
-                    title = item.name,
-                    artist = item.artist.orEmpty().ifBlank { "Podcast" },
-                    album = item.subtitle,
-                    artworkUrl = item.artworkUrl,
-                    videoId = item.videoId,
-                    mediaType = com.lastwave.app.playback.MediaType.PODCAST_EPISODE,
-                    showId = item.entityId,
-                )
+                val selected = item.toPlayableTrack(podcast = true)
                 musicPlayer.playPodcastQueue(listOf(selected), startIndex = 0, sourceLabel = "Search")
             }
             SearchTab.PLAYLISTS, SearchTab.USERS -> Unit
@@ -218,7 +211,7 @@ class SearchViewModel @Inject constructor(
                 )
             }
             if (tab == SearchTab.TRACKS) {
-                musicPlayer.warmLikelyPlays(results.map(::trackResultToPlayable))
+                musicPlayer.warmLikelyPlays(results.map { it.toPlayableTrack() })
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -226,15 +219,6 @@ class SearchViewModel @Inject constructor(
             _uiState.update { it.copy(status = SearchStatus.EMPTY, results = emptyList()) }
         }
     }
-
-    /** One construction for taps and warm-ups so the warmed addon query matches the played one. */
-    private fun trackResultToPlayable(item: SearchResultItem) = PlayableTrack(
-        title = item.name,
-        artist = item.artist.orEmpty(),
-        album = item.subtitle,
-        artworkUrl = item.artworkUrl,
-        videoId = item.videoId,
-    )
 
     fun clearQuery() {
         musicPlayer.cancelSearchResultWarm()
@@ -253,3 +237,15 @@ class SearchViewModel @Inject constructor(
         }
     }
 }
+
+/** Taps, menus and warm-ups keep the same recording rather than resolving its title again. */
+internal fun SearchResultItem.toPlayableTrack(podcast: Boolean = false) = PlayableTrack(
+    title = name,
+    artist = artist.orEmpty().ifBlank { if (podcast) "Podcast" else "" },
+    album = if (podcast) null else subtitle,
+    artworkUrl = artworkUrl,
+    videoId = videoId,
+    durationMs = durationMs,
+    mediaType = if (podcast) MediaType.PODCAST_EPISODE else MediaType.SONG,
+    showId = if (podcast) showId else null,
+)

@@ -142,7 +142,7 @@ fun GenresScreen(
             onLoadMore = { viewModel.loadDetailPage() },
             onStartMix = { viewModel.startMix(genre) },
             onDiscoverMore = { viewModel.discoverMore(genre) },
-            onShowYourTracks = { viewModel.showYourTracks(genre) },
+            onShowYourTracks = viewModel::showYourTracks,
             onExploreGenre = { viewModel.exploreGenre(it) },
         )
     }
@@ -213,13 +213,13 @@ private fun GenreDetailSheet(
     var menuTrack by remember { mutableStateOf<GeneratedTrack?>(null) }
     val listState = rememberLazyListState()
 
-    val shouldLoadMore by remember {
+    val shouldLoadMore by remember(listState, state.detailTracks.size) {
         derivedStateOf {
             val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             last >= state.detailTracks.size - 5
         }
     }
-    LaunchedEffect(shouldLoadMore, state.detailTracks.size) {
+    LaunchedEffect(shouldLoadMore, state.detailTracks.size, state.detailLoading, state.detailHasMore, state.isDiscoverMode) {
         if (shouldLoadMore && !state.detailLoading && state.detailHasMore && !state.isDiscoverMode) onLoadMore()
     }
 

@@ -225,7 +225,7 @@ fun ExternalPlaylistImportScreen(
                         }
                     } else {
                         // When a playlist preview is loaded from the account
-                        if (preview != null && (state.link.contains("collection/tracks") || userPlaylists.any { state.link.contains(it.id) })) {
+                        if (preview != null) {
                             item {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -469,13 +469,14 @@ fun ExternalPlaylistImportScreen(
                                 OutlinedTextField(
                                     value = state.link,
                                     onValueChange = viewModel::onLinkChange,
+                                    enabled = !state.isImporting,
                                     placeholder = { Text("https://open.spotify.com/playlist/...") },
                                     leadingIcon = {
                                         Icon(Icons.Filled.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                     },
                                     trailingIcon = {
                                         if (state.link.isNotBlank()) {
-                                            IconButton(onClick = { viewModel.onLinkChange("") }) {
+                                            IconButton(onClick = { viewModel.onLinkChange("") }, enabled = !state.isImporting) {
                                                 Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.imp_clear_cd))
                                             }
                                         } else {
@@ -532,7 +533,7 @@ fun ExternalPlaylistImportScreen(
                     }
 
                     // Link Preview summary & tracks
-                    if (preview != null && !state.link.contains("collection/tracks") && !userPlaylists.any { state.link.contains(it.id) }) {
+                    if (preview != null) {
                         item {
                             PreviewSummaryCard(preview = preview, rows = rows, state = state)
                         }
@@ -600,7 +601,7 @@ fun ExternalPlaylistImportScreen(
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     viewModel.import { saved -> onImportSuccess(saved) }
                 },
-                enabled = !state.isImporting,
+                enabled = !state.isImporting && !state.isLoading,
                 shape = CircleShape,
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp),

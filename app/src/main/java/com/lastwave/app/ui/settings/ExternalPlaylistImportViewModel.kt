@@ -14,6 +14,7 @@ import com.lastwave.app.data.playlist.SpotifyUserPlaylist
 import com.lastwave.app.data.spotify.SpotifyPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -56,6 +57,16 @@ class ExternalPlaylistImportViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ExternalImportUiState())
     val uiState: StateFlow<ExternalImportUiState> = _uiState.asStateFlow()
 
+    // A late response must never attach the previous playlist to a new link.
+    private var previewJob: Job? = null
+    private var previewGeneration = 0L
+
+    private fun cancelPreview() {
+        previewGeneration++
+        previewJob?.cancel()
+        previewJob = null
+    }
+
     val spotifyConnected: StateFlow<Boolean> = spotifyPreferences.isConnected
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
@@ -95,17 +106,24 @@ class ExternalPlaylistImportViewModel @Inject constructor(
      * Loads the user's Spotify Liked Songs collection into preview.
      */
     fun selectLikedSongs() {
+        if (_uiState.value.isImporting) return
+        cancelPreview()
+        val generation = previewGeneration
         _uiState.update {
             it.copy(
                 link = "https://open.spotify.com/collection/tracks",
                 errorMessage = null,
                 preview = null,
                 isLoading = true,
+                lastResult = null,
+                importedCount = 0,
+                progress = null,
             )
         }
-        viewModelScope.launch {
+        previewJob = viewModelScope.launch {
             try {
                 val result = spotifyPlaylistImporter.fetchLikedSongs()
+                if (generation != previewGeneration) return@launch
                 val rows = result.rows
                 if (rows.isEmpty()) {
                     _uiState.update {
@@ -128,6 +146,7 @@ class ExternalPlaylistImportViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                if (generation != previewGeneration) return@launch
                 _uiState.update {
                     it.copy(
                         isLoading = false,
@@ -139,11 +158,17 @@ class ExternalPlaylistImportViewModel @Inject constructor(
     }
 
     fun onLinkChange(value: String) {
+        if (_uiState.value.isImporting || value == _uiState.value.link) return
+        cancelPreview()
         _uiState.update {
             it.copy(
                 link = value,
                 errorMessage = null,
-                preview = if (value.isBlank()) null else it.preview,
+                preview = null,
+                isLoading = false,
+                lastResult = null,
+                importedCount = 0,
+                progress = null,
             )
         }
     }
@@ -157,8 +182,10 @@ class ExternalPlaylistImportViewModel @Inject constructor(
 
     /** Clears a loaded preview so the user can paste a different link. */
     fun clearPreview() {
+        if (_uiState.value.isImporting) return
+        cancelPreview()
         _uiState.update {
-            it.copy(preview = null, lastResult = null, importedCount = 0, progress = null, errorMessage = null)
+            it.copy(preview = null, isLoading = false, lastResult = null, importedCount = 0, progress = null, errorMessage = null)
         }
     }
 
@@ -167,6 +194,7 @@ class ExternalPlaylistImportViewModel @Inject constructor(
      * saving anything — the user confirms with the Import CTA afterwards.
      */
     fun loadPreview() {
+        if (_uiState.value.isImporting) return
         val raw = _uiState.value.link
         if (raw.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Paste a Spotify or Apple Music playlist link.") }
@@ -182,13 +210,16 @@ class ExternalPlaylistImportViewModel @Inject constructor(
             return
         }
 
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        cancelPreview()
+        val generation = previewGeneration
+        _uiState.update { it.copy(isLoading = true, preview = null, errorMessage = null, lastResult = null) }
+        previewJob = viewModelScope.launch {
             try {
                 val result: ExternalPlaylistResult? = when (source) {
                     ExternalPlaylistSource.SPOTIFY -> spotifyPlaylistImporter.fetchPlaylist(raw.trim())
                     ExternalPlaylistSource.APPLE_MUSIC -> appleMusicPlaylistImporter.fetchPlaylist(raw.trim())
                 }
+                if (generation != previewGeneration) return@launch
                 val rows = result?.rows.orEmpty()
                 if (rows.isEmpty()) {
                     _uiState.update {
@@ -214,6 +245,7 @@ class ExternalPlaylistImportViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                if (generation != previewGeneration) return@launch
                 _uiState.update {
                     it.copy(
                         isLoading = false,
@@ -229,7 +261,7 @@ class ExternalPlaylistImportViewModel @Inject constructor(
      * matches every row to a playable track and saves the playlist.
      */
     fun import(onSuccess: (SavedPlaylist) -> Unit) {
-        if (_uiState.value.isImporting) return
+        if (_uiState.value.isImporting || _uiState.value.isLoading || _uiState.value.preview == null) return
         val raw = _uiState.value.link
         if (raw.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Paste a Spotify or Apple Music playlist link.") }

@@ -606,7 +606,11 @@ internal fun SeekBar(
     val fraction = (dragFraction ?: currentFraction).coerceIn(0f, 1f)
     val shownMs = dragFraction?.let {
         (it * boundedDurationMs).toLong().coerceIn(0L, boundedDurationMs)
-    } ?: progress.positionMs.coerceIn(0L, boundedDurationMs)
+    } ?: if (boundedDurationMs > 0L) {
+        progress.positionMs.coerceIn(0L, boundedDurationMs)
+    } else {
+        progress.positionMs.coerceAtLeast(0L)
+    }
 
     val isGlassActive = LocalLiquidGlass.current &&
         isLiquidGlassBackdropSupported() &&
@@ -750,7 +754,9 @@ internal fun SeekBar(
         val currentSecond = shownMs / 1000L
         val remainingSecond = (boundedDurationMs - shownMs).coerceAtLeast(0) / 1000L
         val formattedElapsed = remember(currentSecond) { formatTime(currentSecond * 1000L) }
-        val formattedRemaining = remember(remainingSecond) { "\u2212${formatTime(remainingSecond * 1000L)}" }
+        val formattedRemaining = remember(remainingSecond, boundedDurationMs) {
+            if (boundedDurationMs > 0L) "\u2212${formatTime(remainingSecond * 1000L)}" else "--:--"
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
