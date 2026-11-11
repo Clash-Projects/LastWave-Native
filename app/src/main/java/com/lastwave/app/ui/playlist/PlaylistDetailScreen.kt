@@ -335,7 +335,7 @@ fun PlaylistDetailScreen(
         coverPickerPending = false
     }
 
-    var menuTarget by remember { mutableStateOf<GeneratedTrack?>(null) }
+    var menuTarget by remember { mutableStateOf<Pair<Int, GeneratedTrack>?>(null) }
     var overflowMenuOpen by remember { mutableStateOf(false) }
     val syncedPlaylistIds by viewModel.syncedPlaylistIds.collectAsStateWithLifecycle()
     var sortMenuOpen by remember { mutableStateOf(false) }
@@ -346,32 +346,11 @@ fun PlaylistDetailScreen(
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
 
-    val displayTracks = remember(currentFolderTracks, currentSort, sortAscending, searchQuery) {
-        val sorted = when (currentSort) {
-            PlaylistTrackSort.CUSTOM -> if (sortAscending) currentFolderTracks else currentFolderTracks.reversed()
-            PlaylistTrackSort.DATE_ADDED -> if (sortAscending) currentFolderTracks else currentFolderTracks.reversed()
-            PlaylistTrackSort.NAME -> if (sortAscending) {
-                currentFolderTracks.sortedBy { it.name.lowercase() }
-            } else {
-                currentFolderTracks.sortedByDescending { it.name.lowercase() }
-            }
-            PlaylistTrackSort.ARTIST -> if (sortAscending) {
-                currentFolderTracks.sortedBy { it.artist.lowercase() }
-            } else {
-                currentFolderTracks.sortedByDescending { it.artist.lowercase() }
-            }
-            PlaylistTrackSort.PLAY_TIME -> if (sortAscending) {
-                currentFolderTracks.sortedBy { it.playcount ?: it.listeners ?: 0L }
-            } else {
-                currentFolderTracks.sortedByDescending { it.playcount ?: it.listeners ?: 0L }
-            }
-        }
-        if (searchQuery.isNotBlank()) {
-            val q = searchQuery.lowercase()
-            sorted.filter { it.name.lowercase().contains(q) || it.artist.lowercase().contains(q) }
-        } else {
-            sorted
-        }
+    val displayTrackIndices = remember(playlist.tracks, currentFolderTracks, currentSort, sortAscending, searchQuery) {
+        playlistTrackDisplayIndices(playlist.tracks, currentFolderTracks, currentSort, sortAscending, searchQuery)
+    }
+    val displayTracks = remember(playlist.tracks, displayTrackIndices) {
+        displayTrackIndices.map { playlist.tracks[it] }
     }
 
     val listState = rememberLazyListState()
@@ -1116,7 +1095,7 @@ fun PlaylistDetailScreen(
                             },
                             onMenu = {
                                 haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                menuTarget = track
+                                menuTarget = displayTrackIndices[index] to track
                             },
                             dragHandle = if (!reorderEnabled) {
                                 null
@@ -1688,7 +1667,7 @@ fun PlaylistDetailScreen(
     }
 
     // Track Context Menu
-    menuTarget?.let { track ->
+    menuTarget?.let { (sourceIndex, track) ->
         TrackContextMenuSheet(
             target = TrackMenuTarget.Track(track.name, track.artist, track.url),
             capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = true),
@@ -1697,11 +1676,7 @@ fun PlaylistDetailScreen(
             playbackSourceLabel = playlist.title,
             onDismiss = { menuTarget = null },
             onRemoveFromPlaylist = {
-                val realIndex = playlist.tracks.indexOfFirst {
-                    (it.url.isNotBlank() && it.url == track.url) ||
-                        (it.name.equals(track.name, ignoreCase = true) && it.artist.equals(track.artist, ignoreCase = true))
-                }
-                if (realIndex >= 0) {
+                selectedPlaylistTrackIndex(playlist.tracks, sourceIndex, track)?.let { realIndex ->
                     viewModel.removeTrack(playlistId, realIndex)
                 }
             },
