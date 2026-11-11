@@ -51,6 +51,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -147,6 +149,19 @@ private fun LiquidNavigationBarContent(
     val railHeight = if (compact) 60.dp else 64.dp
     val pressedScale = railHeight.value / (railHeight.value - 8f)
     val captionIndex = if (pressed) captionAtPress else selectedIndex
+    val railMaxWidth = if (compact) {
+        val caption = rememberTextMeasurer().measure(
+            text = items[captionIndex.coerceIn(items.indices)].label,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            softWrap = false,
+            maxLines = 1,
+        )
+        val captionSlotWidth = with(density) {
+            // Match glyph padding and reserve a pixel for equal-slot rounding.
+            (caption.size.width + 24.dp.roundToPx() + 6.dp.roundToPx() + 2 * 4.dp.roundToPx() + 1).toDp()
+        }
+        maxOf(280.dp, captionSlotWidth * count + 8.dp)
+    } else 360.dp
 
     Box(
         modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
@@ -154,7 +169,7 @@ private fun LiquidNavigationBarContent(
         contentAlignment = Alignment.Center,
     ) {
         BoxWithConstraints(
-            Modifier.widthIn(max = if (compact) 280.dp else 360.dp)
+            Modifier.widthIn(max = railMaxWidth)
                 .fillMaxWidth().height(railHeight)
                 .testTag("liquid_navigation_bar")
                 .shadow(8.dp, CircleShape, clip = false,
