@@ -53,6 +53,7 @@ class GenresViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(GenresUiState())
     val uiState: StateFlow<GenresUiState> = _uiState.asStateFlow()
     private var detailJob: Job? = null
+    private var statsJob: Job? = null
 
     init {
         loadGenres()
@@ -73,12 +74,16 @@ class GenresViewModel @Inject constructor(
     }
 
     private fun loadGenres() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+        statsJob?.cancel()
+        val period = _uiState.value.period
+        _uiState.update { it.copy(isLoading = true, error = null) }
+        statsJob = viewModelScope.launch {
             try {
-                val stats = genresRepository.fetchGenreStats(_uiState.value.period)
+                val stats = genresRepository.fetchGenreStats(period)
+                coroutineContext.ensureActive()
                 _uiState.update { it.copy(isLoading = false, stats = stats) }
             } catch (e: Exception) {
+                coroutineContext.ensureActive()
                 _uiState.update { it.copy(isLoading = false, error = e.message ?: "Couldn't load genres") }
             }
         }
