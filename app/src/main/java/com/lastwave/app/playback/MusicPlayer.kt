@@ -1688,8 +1688,9 @@ class MusicPlayer @Inject constructor(
                     // volume is 0, and a second configure() retunes the clock
                     // to the next track (44.1 PCM written into a 96 kHz alt).
                     exclusiveUsb = if (handleAudioFocus) exclusiveUsbOutput else null,
-                    // Same rule as USB: the crossfade standby never claims the endpoint.
-                    internalDirect = if (handleAudioFocus) internalDirectOutput else null,
+                    // Both decks: after an overlap swap the standby is the one
+                    // playing. applyDacRoutingFor lets only the live deck claim it.
+                    internalDirect = internalDirectOutput,
                     loudness = LoudnessStage(loudnessPrefs.settings, loudnessAlbumKey),
                 ).also { createdSink ->
                     createdSink.hapticsAnalyzer = musicHapticsController.createAnalyzer().also(hapticTaps::add)
@@ -7583,7 +7584,16 @@ class MusicPlayer @Inject constructor(
                     stagePendingQuality(track.mediaIdKey(), swapCandidate)
                     track.videoId?.let { stagePendingQuality(it, swapCandidate) }
                     val prevVolume = runCatching { player.volume }.getOrDefault(1f)
-                    player.volume = 0f
+                    // The output reopens for the new stream; a ramp makes that a dip, not a click.
+                    for (i in HOT_SWAP_INPLACE_FADE_STEPS - 1 downTo 0) {
+                        player.volume = prevVolume * i / HOT_SWAP_INPLACE_FADE_STEPS
+                        delay(HOT_SWAP_INPLACE_FADE_STEP_MS)
+                    }
+                    if (generation != playRequestGeneration.get() || player.currentMediaItemIndex != currentIndex) {
+                        player.volume = prevVolume
+                        switchOutcome = "aborted"
+                        return@withContext
+                    }
                     replaceMediaItemPreservingShuffle(currentIndex, updatedMediaItem)
                     lastSeekTargetMs = swapTargetMs
                     lastSeekAtElapsedMs = SystemClock.elapsedRealtime()
@@ -7598,11 +7608,10 @@ class MusicPlayer @Inject constructor(
                         }
                         runCatching { swappedPlayer.setSeekParameters(SeekParameters.EXACT) }
                         delay(30L)
-                        val steps = 5
-                        for (i in 1..steps) {
+                        for (i in 1..HOT_SWAP_INPLACE_FADE_STEPS) {
                             if (generation != playRequestGeneration.get()) break
-                            runCatching { player.volume = prevVolume * (i.toFloat() / steps) }
-                            delay(10L)
+                            runCatching { player.volume = prevVolume * i / HOT_SWAP_INPLACE_FADE_STEPS }
+                            delay(HOT_SWAP_INPLACE_FADE_STEP_MS)
                         }
                         if (generation == playRequestGeneration.get()) {
                             runCatching { player.volume = prevVolume }
@@ -7755,7 +7764,7 @@ class MusicPlayer @Inject constructor(
         positionMs: Long,
         generation: Long,
     ): SwapLagMeasurement? {
-        if (bitPerfectEnabled || exclusiveUsbOutput.isActive() || current.isExpired()) return null
+        if (outputIsSingleClient() || current.isExpired()) return null
         val captures = withContext(Dispatchers.Main) {
             preparedStreams[current.cacheKey] = current
             val currentProbe = SwapPcmProbe()
@@ -7832,6 +7841,15 @@ class MusicPlayer @Inject constructor(
         )
     }
 
+    /**
+     * USB exclusive, the internal direct endpoint and a granted BIT_PERFECT
+     * mixer each serve one client, so no second deck can play beside them.
+     * Bit-Perfect over a shared mixer (Bluetooth, a refused direct open) can.
+     */
+    private fun outputIsSingleClient(): Boolean =
+        exclusiveUsbOutput.isActive() || internalDirectOutput.isActive() ||
+            audioSinks.any { runCatching { it.isPlatformBitPerfectConfigured() }.getOrDefault(false) }
+
     private sealed interface OverlapSwap {
         data class Swapped(val rounds: Int, val driftMs: Long) : OverlapSwap
         data object Unavailable : OverlapSwap
@@ -7856,7 +7874,7 @@ class MusicPlayer @Inject constructor(
         // AutoMix only needs the standby inside its blend window, which
         // isStreamSwapLocked already keeps swaps out of. Excluding it here sent
         // every swap with AutoMix on down the in-place path, an audible cut.
-        if (isCasting || bitPerfectEnabled || exclusiveUsbOutput.isActive() || isOverlapMixActive || !live.isPlaying) {
+        if (isCasting || outputIsSingleClient() || isOverlapMixActive || !live.isPlaying) {
             return OverlapSwap.Unavailable
         }
         val liveMediaId = live.currentMediaItem?.mediaId ?: return OverlapSwap.Unavailable
@@ -8856,6 +8874,8 @@ class MusicPlayer @Inject constructor(
          * moving.
          */
         const val HOT_SWAP_SETTLE_MIN_MS = 1_000L
+        const val HOT_SWAP_INPLACE_FADE_STEPS = 6
+        const val HOT_SWAP_INPLACE_FADE_STEP_MS = 25L
         const val HOT_SWAP_SETTLE_POLL_MS = 100L
         /** Short averaging window used only to decide that the drift is stable. */
         const val HOT_SWAP_SETTLE_READS = 12
