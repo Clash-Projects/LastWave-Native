@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -95,7 +96,6 @@ fun DraggableSleepTimerOverlay(
             var offsetX by remember { mutableFloatStateOf(maxMarginX) }
             var offsetY by remember { mutableFloatStateOf(screenHeightPx / 2f) }
             var isDragging by remember { mutableStateOf(false) }
-            var dragDistance by remember { mutableFloatStateOf(0f) }
             var hoveringClose by remember { mutableStateOf(false) }
 
             // Drag-to-close target: bottom-center above mini-player/nav.
@@ -130,11 +130,15 @@ fun DraggableSleepTimerOverlay(
                 modifier = Modifier
                     .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
                     .size(diameterDp)
+                    .clip(CircleShape)
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                        onCycleTimer()
+                    }
                     .pointerInput(Unit) {
                         detectDragGestures(
                             onDragStart = {
                                 isDragging = true
-                                dragDistance = 0f
                             },
                             onDragEnd = {
                                 isDragging = false
@@ -142,9 +146,6 @@ fun DraggableSleepTimerOverlay(
                                     hoveringClose = false
                                     haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
                                     onCloseTimer()
-                                } else if (dragDistance < 15f) {
-                                    haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
-                                    onCycleTimer()
                                 }
                             },
                             onDragCancel = {
@@ -153,7 +154,6 @@ fun DraggableSleepTimerOverlay(
                             },
                             onDrag = { change, dragAmount ->
                                 change.consume()
-                                dragDistance += kotlin.math.hypot(dragAmount.x, dragAmount.y)
                                 offsetX = (offsetX + dragAmount.x).coerceIn(minMarginX, maxMarginX)
                                 offsetY = (offsetY + dragAmount.y).coerceIn(minMarginY, maxMarginY)
                                 val pillCx = offsetX + diameterPx / 2f
