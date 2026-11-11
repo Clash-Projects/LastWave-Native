@@ -3,6 +3,8 @@ package com.lastwave.app.ui.search
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lastwave.app.data.generate.LocalAudioFormats
+import com.lastwave.app.data.generate.isLocalAudioPath
 import com.lastwave.app.data.search.SearchHistoryRepository
 import com.lastwave.app.data.search.SearchRepository
 import com.lastwave.app.data.search.SearchResultItem
@@ -168,6 +170,44 @@ class SearchViewModel @Inject constructor(
                 // Start immediately. Similar song radio queue loads and extends infinitely.
                 musicPlayer.play(selected, sourceLabel = "Search", startRadio = true)
             }
+            SearchTab.LOCAL -> {
+                val id = item.entityId
+                if (id != null && id.startsWith("offline_playlist:")) {
+                    val plId = id.removePrefix("offline_playlist:")
+                    viewModelScope.launch {
+                        val tracks = repository.localTracksForOfflinePlaylist(plId)
+                        if (tracks.isNotEmpty()) {
+                            musicPlayer.playQueue(
+                                tracks = tracks.map { t ->
+                                    PlayableTrack(
+                                        title = t.name,
+                                        artist = t.artist,
+                                        album = t.album,
+                                        artworkUrl = t.artworkUrl,
+                                        playbackUrl = t.url,
+                                        playbackMimeType = LocalAudioFormats.mimeFor(t.url),
+                                        durationMs = t.durationMs,
+                                        trackNumber = t.trackNumber,
+                                    )
+                                },
+                                startIndex = 0,
+                                sourceLabel = item.name,
+                                enableRadioContinuation = false,
+                            )
+                        }
+                    }
+                } else {
+                    val localItems = _uiState.value.results.filter { isLocalAudioPath(it.url) }
+                    val targetIdx = localItems.indexOfFirst { it.url == item.url }.coerceAtLeast(0)
+                    val queue = if (localItems.isNotEmpty()) localItems else listOf(item)
+                    musicPlayer.playQueue(
+                        tracks = queue.map { it.toPlayableTrack() },
+                        startIndex = targetIdx,
+                        sourceLabel = "Local Search",
+                        enableRadioContinuation = false,
+                    )
+                }
+            }
             SearchTab.ARTISTS, SearchTab.ALBUMS -> viewModelScope.launch {
                 val tracks = runCatching { repository.songsFor(item) }.getOrDefault(emptyList())
                 if (tracks.isNotEmpty()) {
@@ -239,13 +279,19 @@ class SearchViewModel @Inject constructor(
 }
 
 /** Taps, menus and warm-ups keep the same recording rather than resolving its title again. */
-internal fun SearchResultItem.toPlayableTrack(podcast: Boolean = false) = PlayableTrack(
-    title = name,
-    artist = artist.orEmpty().ifBlank { if (podcast) "Podcast" else "" },
-    album = if (podcast) null else subtitle,
-    artworkUrl = artworkUrl,
-    videoId = videoId,
-    durationMs = durationMs,
-    mediaType = if (podcast) MediaType.PODCAST_EPISODE else MediaType.SONG,
-    showId = if (podcast) showId else null,
-)
+internal fun SearchResultItem.toPlayableTrack(podcast: Boolean = false): PlayableTrack {
+    val isLocal = isLocalAudioPath(url)
+    return PlayableTrack(
+        title = name,
+        artist = artist.orEmpty().ifBlank { if (podcast) "Podcast" else "" },
+        album = if (podcast) null else subtitle,
+        artworkUrl = artworkUrl,
+        videoId = videoId,
+        playbackUrl = if (isLocal) url else null,
+        playbackMimeType = if (isLocal) LocalAudioFormats.mimeFor(url) else null,
+        durationMs = durationMs,
+        trackNumber = trackNumber,
+        mediaType = if (podcast) MediaType.PODCAST_EPISODE else MediaType.SONG,
+        showId = if (podcast) showId else null,
+    )
+}

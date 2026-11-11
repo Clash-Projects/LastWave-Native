@@ -316,13 +316,17 @@ open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
             return
         }
         val uri = intent?.data
+        val scheme = uri?.scheme.orEmpty().lowercase()
         val host = uri?.host.orEmpty().lowercase()
         val isSupportedMusicLink = intent?.action == Intent.ACTION_VIEW &&
-            (uri?.scheme == "http" || uri?.scheme == "https") &&
+            (scheme == "http" || scheme == "https") &&
             (host == "youtube.com" || host == "www.youtube.com" ||
                 host == "m.youtube.com" || host == "music.youtube.com" || host == "youtu.be" ||
                 host == "open.spotify.com" || host == "spotify.link")
-        val hasPlaybackTarget = isSupportedMusicLink || intent?.action == Intent.ACTION_SEND
+        val isLocalAudioIntent = intent?.action == Intent.ACTION_VIEW &&
+            (scheme == "content" || scheme == "file") &&
+            uri != null
+        val hasPlaybackTarget = isSupportedMusicLink || isLocalAudioIntent || intent?.action == Intent.ACTION_SEND
         if (hasPlaybackTarget) {
             runCatching { linkPlaybackResolver.get().handleIntent(intent) }
         }

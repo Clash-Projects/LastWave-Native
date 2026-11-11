@@ -8,6 +8,16 @@ import java.io.File
 import java.io.InputStream
 import kotlin.math.pow
 
+data class LocalAudioInspection(
+    val mimeType: String,
+    val badge: String,
+    val isLossless: Boolean,
+    val bitDepth: Int? = null,
+    val samplingRateKHz: Double? = null,
+    val bitrateKbps: Int? = null,
+    val durationMs: Long? = null,
+)
+
 /**
  * Container-level audio stream properties parsed straight from file headers.
  * Works uniformly across Android API levels and OEMs without depending on
@@ -48,6 +58,144 @@ object AudioHeaderInspector {
                 inspectStream(stream, mimeHint ?: lower)
             }
         }.getOrNull()
+    }
+
+    /**
+     * Unified local audio probe used by both stream resolution and notification/UI
+     * badge publishing. Combines container-header facts with `MediaMetadataRetriever`
+     * without assuming bit depths on unknown containers.
+     */
+    fun inspectLocalTrackQuality(
+        context: Context,
+        targetUrl: String,
+        fallbackMime: String? = null,
+        knownBitrate: Int? = null,
+        knownDurationMs: Long? = null,
+    ): LocalAudioInspection {
+        val uri = if (targetUrl.startsWith("/") && !targetUrl.startsWith("file://")) {
+            Uri.fromFile(File(targetUrl))
+        } else {
+            Uri.parse(targetUrl)
+        }
+        val decodedLower = (runCatching { Uri.decode(uri.path ?: targetUrl) }.getOrNull() ?: targetUrl).lowercase()
+        val extMime = com.lastwave.app.data.generate.LocalAudioFormats.mimeFor(targetUrl)
+        var effectiveMime = fallbackMime?.takeIf(String::isNotBlank)
+            ?: extMime
+            ?: if (targetUrl.startsWith("content://")) {
+                runCatching { context.contentResolver.getType(uri) }.getOrNull()
+            } else {
+                null
+            }
+            ?: "audio/flac"
+
+        var bitrateKbps: Int? = knownBitrate?.takeIf { it > 0 }
+        var bitDepth: Int? = null
+        var samplingRateKHz: Double? = null
+        var fileDurationMs: Long? = null
+
+        val header = inspect(context, targetUrl, effectiveMime)
+
+        if (header?.isDsd != true) {
+            val retriever = android.media.MediaMetadataRetriever()
+            try {
+                if (targetUrl.startsWith("content://")) {
+                    retriever.setDataSource(context, uri)
+                } else {
+                    retriever.setDataSource(uri.path ?: targetUrl.removePrefix("file://"))
+                }
+                retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
+                    ?.lowercase()?.takeIf { it.isNotBlank() }?.let { rMime ->
+                        if (fallbackMime.isNullOrBlank() && extMime == null) {
+                            effectiveMime = rMime
+                        }
+                    }
+                fileDurationMs = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                    ?.toLongOrNull()?.takeIf { it > 0L }
+                if (bitrateKbps == null) {
+                    bitrateKbps = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_BITRATE)
+                        ?.toIntOrNull()?.let { it / 1000 }?.takeIf { it > 0 }
+                }
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    samplingRateKHz = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)
+                        ?.toDoubleOrNull()?.let { it / 1000.0 }?.takeIf { it > 0.0 }
+                    bitDepth = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_BITS_PER_SAMPLE)
+                        ?.toIntOrNull()?.takeIf { it > 0 }
+                }
+            } catch (_: Exception) {
+                // Header probe below still identifies DSD, AIFF, WAV, FLAC, ALAC cleanly.
+            } finally {
+                runCatching { retriever.release() }
+            }
+        }
+
+        if (header != null) {
+            if (header.isDsd) {
+                val outRateKHz = (header.dsdOutputRateHz ?: 176_400) / 1000.0
+                return LocalAudioInspection(
+                    mimeType = effectiveMime,
+                    badge = header.dsdBadge ?: "DSD64",
+                    isLossless = true,
+                    bitDepth = 1,
+                    samplingRateKHz = outRateKHz,
+                    bitrateKbps = bitrateKbps,
+                    durationMs = header.durationMs ?: fileDurationMs ?: knownDurationMs?.takeIf { it > 0L },
+                )
+            }
+            if (bitDepth == null) bitDepth = header.bitDepth?.takeIf { it > 0 }
+            if (samplingRateKHz == null) {
+                samplingRateKHz = header.sampleRateHz?.takeIf { it > 0 }?.div(1000.0)
+            }
+            if (bitrateKbps == null) bitrateKbps = header.bitrateKbps?.takeIf { it > 0 }
+            if (fileDurationMs == null) fileDurationMs = header.durationMs?.takeIf { it > 0L }
+        }
+
+        val m = effectiveMime.lowercase()
+        val isAlac = header?.containerLabel == "ALAC" || decodedLower.endsWith(".alac")
+        val isAiff = header?.containerLabel == "AIFF" || m.contains("aiff") ||
+            decodedLower.endsWith(".aiff") || decodedLower.endsWith(".aif") || decodedLower.endsWith(".aifc")
+        val isWav = header?.containerLabel == "WAV" || m.contains("wav") ||
+            decodedLower.endsWith(".wav") || decodedLower.endsWith(".wave")
+        val isFlac = header?.containerLabel == "FLAC" || m.contains("flac") || decodedLower.endsWith(".flac")
+        val isLossless = (header?.isLossless == true) || isFlac || isWav || isAiff || isAlac
+
+        val containerName = when {
+            isAiff -> "AIFF"
+            isWav -> "WAV"
+            isAlac -> "ALAC"
+            else -> "FLAC"
+        }
+        val resolvedBadge = when {
+            m.contains("eac3") || m.contains("ec-3") || m.contains("ac3") || m.contains("ac-3") ||
+                decodedLower.endsWith(".ac3") || decodedLower.endsWith(".ec3") || decodedLower.endsWith(".eac3") -> "DOLBY"
+            m.contains("ac4") || decodedLower.endsWith(".ac4") -> "DOLBY AC-4"
+            isLossless -> {
+                val d = bitDepth?.takeIf { it > 0 }
+                val r = samplingRateKHz?.takeIf { it > 0.0 }
+                when {
+                    d != null && r != null -> "$d/${formatSampleRateKHz(r)}kHz"
+                    r != null -> "${formatSampleRateKHz(r)}kHz $containerName"
+                    (d ?: 0) > 16 -> "HI-RES $containerName"
+                    else -> containerName
+                }
+            }
+            m.contains("opus") -> "OPUS"
+            m.contains("ogg") || decodedLower.endsWith(".ogg") || decodedLower.endsWith(".oga") -> "OGG"
+            m.contains("mp4") || m.contains("m4a") || m.contains("aac") ||
+                decodedLower.endsWith(".m4a") || decodedLower.endsWith(".aac") -> "AAC"
+            m.contains("mp3") || m.contains("mpeg") || decodedLower.endsWith(".mp3") || decodedLower.endsWith(".mp2") -> "MP3"
+            m.contains("matroska") || decodedLower.endsWith(".mka") || decodedLower.endsWith(".webm") -> "MKA"
+            else -> "AUDIO"
+        }
+
+        return LocalAudioInspection(
+            mimeType = effectiveMime,
+            badge = resolvedBadge,
+            isLossless = isLossless,
+            bitDepth = if (isLossless) bitDepth?.takeIf { it > 0 } else null,
+            samplingRateKHz = samplingRateKHz?.takeIf { it > 0.0 },
+            bitrateKbps = bitrateKbps,
+            durationMs = fileDurationMs ?: knownDurationMs?.takeIf { it > 0L },
+        )
     }
 
     fun inspectStream(input: InputStream, hint: String = ""): AudioHeaderInfo? {

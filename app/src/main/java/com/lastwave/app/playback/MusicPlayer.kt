@@ -63,6 +63,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.Extractor
 import androidx.media3.extractor.ExtractorsFactory
 import androidx.media3.extractor.mp3.Mp3Extractor
 import androidx.media3.extractor.ts.AdtsExtractor
@@ -218,7 +219,7 @@ class MusicPlayer @Inject constructor(
         )?.apply { setReferenceCounted(false) }
     }
     private val extractorsFactory: ExtractorsFactory by lazy {
-        DefaultExtractorsFactory()
+        val defaults = DefaultExtractorsFactory()
             .setConstantBitrateSeekingEnabled(true)
             .setMp3ExtractorFlags(
                 Mp3Extractor.FLAG_ENABLE_CONSTANT_BITRATE_SEEKING or
@@ -227,6 +228,22 @@ class MusicPlayer @Inject constructor(
             .setAdtsExtractorFlags(
                 AdtsExtractor.FLAG_ENABLE_CONSTANT_BITRATE_SEEKING
             )
+        object : ExtractorsFactory {
+            override fun createExtractors(): Array<Extractor> = arrayOf(
+                com.lastwave.app.playback.dsd.DsdMedia3Extractor(),
+                AiffMedia3Extractor(),
+                *defaults.createExtractors(),
+            )
+
+            override fun createExtractors(
+                uri: Uri,
+                responseHeaders: Map<String, List<String>>,
+            ): Array<Extractor> = arrayOf(
+                com.lastwave.app.playback.dsd.DsdMedia3Extractor(),
+                AiffMedia3Extractor(),
+                *defaults.createExtractors(uri, responseHeaders),
+            )
+        }
     }
     internal var castPlayback: com.lastwave.app.playback.cast.CastPlayback? = null
     internal val isCasting: Boolean get() = castPlayback?.active == true || _state.value.isCasting
@@ -5738,115 +5755,46 @@ class MusicPlayer @Inject constructor(
         )?.let { return it }
 
         val pathLower = (uri.path ?: targetUrl).lowercase()
-        val mime = fallbackMime?.takeIf(String::isNotBlank) ?: when {
-            pathLower.endsWith(".flac") -> "audio/flac"
-            pathLower.endsWith(".m4a") || pathLower.endsWith(".mp4") || pathLower.endsWith(".aac") -> "audio/mp4"
-            pathLower.endsWith(".opus") || pathLower.endsWith(".ogg") -> "audio/ogg"
-            pathLower.endsWith(".mp3") -> "audio/mpeg"
-            pathLower.endsWith(".webm") -> "audio/webm"
-            pathLower.endsWith(".wav") -> "audio/x-wav"
-            targetUrl.startsWith("content://") -> runCatching { appContext.contentResolver.getType(uri) }.getOrNull() ?: "audio/flac"
-            else -> "audio/flac"
-        }
-
-        var bitrateKbps: Int? = knownBitrate
-        var bitDepth: Int? = null
-        var samplingRateKHz: Double? = null
-        var fileDurationMs: Long? = null
-
-        runCatching {
-            val retriever = android.media.MediaMetadataRetriever()
-            try {
-                if (targetUrl.startsWith("content://")) {
-                    retriever.setDataSource(appContext, uri)
-                } else {
-                    retriever.setDataSource(uri.path ?: targetUrl.removePrefix("file://"))
-                }
-                fileDurationMs = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
-                    ?.toLongOrNull()?.takeIf { it > 0 }
-                if (bitrateKbps == null || bitrateKbps == 0) {
-                    bitrateKbps = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_BITRATE)
-                        ?.toIntOrNull()?.let { it / 1000 }
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    samplingRateKHz = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)
-                        ?.toDoubleOrNull()?.let { it / 1000.0 }
-                    bitDepth = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_BITS_PER_SAMPLE)
-                        ?.toIntOrNull()
-                }
-            } finally {
-                retriever.release()
-            }
-        }
+        val initialInspection = AudioHeaderInspector.inspectLocalTrackQuality(
+            context = appContext,
+            targetUrl = targetUrl,
+            fallbackMime = fallbackMime,
+            knownBitrate = knownBitrate,
+            knownDurationMs = knownDurationMs,
+        )
 
         // Heal unindexed fragmented MP4s (Atmos / AAC DASH downloads):
         // If file is local and writable, build mfra seek index and patch duration in-place.
+        var healedDurationMs: Long? = initialInspection.durationMs
         if (pathLower.endsWith(".m4a") || pathLower.endsWith(".mp4")) {
             runCatching {
                 val candidatePath = uri.path ?: targetUrl.removePrefix("file://")
                 val localFile = File(candidatePath)
                 if (localFile.isFile && localFile.canWrite()) {
-                    val finalDurationHint = fileDurationMs ?: knownDurationMs ?: 0L
+                    val finalDurationHint = healedDurationMs ?: knownDurationMs ?: 0L
                     if (Fmp4IndexBuilder.finalizeFmp4(localFile, finalDurationHint)) {
-                        if (fileDurationMs == null || fileDurationMs <= 0L) {
-                            fileDurationMs = knownDurationMs?.takeIf { it > 0 }
+                        if (healedDurationMs == null || healedDurationMs <= 0L) {
+                            healedDurationMs = knownDurationMs?.takeIf { it > 0 }
                         }
                     }
                 }
             }
         }
 
-        // FLAC STREAMINFO fallback: device- and API-independent ground truth.
-        // The retriever keys above need API 31+ and still return null on
-        // several OEMs/files, which left bitDepth null and the pill stuck at
-        // rate-only ("44.1kHz FLAC"). The header parse works on every device.
-        if ((mime.contains("flac") || (uri.path ?: targetUrl).endsWith(".flac", ignoreCase = true)) &&
-            (bitDepth == null || samplingRateKHz == null)
-        ) {
-            runCatching {
-                val header: FlacStreamInfo? = if (targetUrl.startsWith("content://")) {
-                    appContext.contentResolver.openInputStream(uri)?.use { readFlacStreamInfo(it) }
-                } else {
-                    val path = uri.path ?: targetUrl.removePrefix("file://")
-                    java.io.File(path).takeIf { it.isFile && it.canRead() }?.inputStream()?.use { readFlacStreamInfo(it) }
-                }
-                if (header != null) {
-                    if (bitDepth == null) bitDepth = header.bitDepth?.takeIf { it > 0 }
-                    if (samplingRateKHz == null) header.sampleRateHz?.takeIf { it > 0 }?.let { samplingRateKHz = it / 1000.0 }
-                }
-            }
-        }
-
-        val resolvedBadge = badge ?: when {
-            mime.contains("flac") -> {
-                // Retriever facts only: present depth is trusted (even
-                // 16/96), absent depth is unknown â€” the rate alone never
-                // asserts 16 or 24 here.
-                val d = bitDepth?.takeIf { it > 0 }
-                if (samplingRateKHz != null && samplingRateKHz > 0.0) {
-                    if (d != null) "$d/${formatSampleRateKHz(samplingRateKHz)}kHz"
-                    else "${formatSampleRateKHz(samplingRateKHz)}kHz FLAC"
-                } else if ((d ?: 0) > 16) "HI-RES FLAC" else "FLAC"
-            }
-            mime.contains("mp4") || mime.contains("m4a") || mime.contains("aac") -> "M4A AAC"
-            mime.contains("opus") || mime.contains("ogg") -> "OPUS"
-            mime.contains("mp3") || mime.contains("mpeg") -> "320k MP3"
-            else -> "AUDIO"
-        }
-
-        val isLossless = isLosslessTrack ?: mime.contains("flac")
+        val resolvedBadge = badge ?: initialInspection.badge
+        val isLossless = isLosslessTrack ?: initialInspection.isLossless
         val trackKey = "${displayArtist.lowercase()}_${displayTitle.lowercase()}"
-        val effectiveDurationMs = fileDurationMs ?: knownDurationMs?.takeIf { it > 0 }
+        val effectiveDurationMs = healedDurationMs ?: knownDurationMs?.takeIf { it > 0 }
 
         return ResolvedStream(
             url = uri.toString(),
-            mimeType = mime,
-            bitrateKbps = bitrateKbps,
+            mimeType = initialInspection.mimeType,
+            bitrateKbps = initialInspection.bitrateKbps ?: knownBitrate,
             audioCodec = resolvedBadge,
             cacheKey = "local:$trackKey",
             isLossless = isLossless,
-            bitDepth = if (isLossless) bitDepth?.takeIf { it > 0 } else null,
-            samplingRateKHz = samplingRateKHz?.takeIf { it > 0.0 },
+            bitDepth = if (isLossless) initialInspection.bitDepth?.takeIf { it > 0 } else null,
+            samplingRateKHz = initialInspection.samplingRateKHz?.takeIf { it > 0.0 },
             durationMs = effectiveDurationMs,
         )
     }
@@ -8430,113 +8378,25 @@ class MusicPlayer @Inject constructor(
 
     private fun publishLocalTrackQuality(track: PlayableTrack) {
         val url = track.playbackUrl ?: return
-        val retriever = android.media.MediaMetadataRetriever()
-        try {
-            if (url.startsWith("content://")) {
-                retriever.setDataSource(appContext, Uri.parse(url))
-            } else {
-                retriever.setDataSource(url.removePrefix("file://"))
-            }
-            val mime = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_MIMETYPE)?.lowercase().orEmpty()
-            val bitrateStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_BITRATE)
-            val bitrateKbps = bitrateStr?.toIntOrNull()?.let { it / 1000 }
-            val sampleRateStr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)
-            } else null
-            val sampleRateKHz = sampleRateStr?.toDoubleOrNull()?.let { it / 1000.0 }
-            val bitDepthStr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_BITS_PER_SAMPLE)
-            } else null
-            val bitDepth = bitDepthStr?.toIntOrNull()
-
-            val isFlac = mime.contains("flac") || url.endsWith(".flac", ignoreCase = true)
-            val isM4a = mime.contains("mp4") || mime.contains("m4a") || mime.contains("aac") || url.endsWith(".m4a", ignoreCase = true)
-            val isOpus = mime.contains("opus") || mime.contains("ogg") || url.endsWith(".opus", ignoreCase = true)
-            val isMp3 = mime.contains("mp3") || mime.contains("mpeg") || url.endsWith(".mp3", ignoreCase = true)
-
-            // Retriever values are measured container facts (STREAMINFO),
-            // not backend hearsay: a present 16 beside 96kHz is a genuine
-            // 16/96 file â€” trust it. When the retriever omits depth/rate
-            // (pre-S APIs, several OEMs/files), the FLAC header itself is
-            // read instead â€” same STREAMINFO facts, working on every device.
-            // Only a truly unreadable header stays unknown, never a guessed
-            // 16 or 44.1.
-            var effectiveBitDepth = bitDepth?.takeIf { it > 0 }
-            var effectiveRateKHz = sampleRateKHz
-            if (isFlac && (effectiveBitDepth == null || effectiveRateKHz == null)) {
-                runCatching {
-                    val header: FlacStreamInfo? = if (url.startsWith("content://")) {
-                        appContext.contentResolver.openInputStream(Uri.parse(url))?.use { readFlacStreamInfo(it) }
-                    } else {
-                        java.io.File(url.removePrefix("file://")).takeIf { it.isFile && it.canRead() }
-                            ?.inputStream()?.use { readFlacStreamInfo(it) }
-                    }
-                    if (header != null) {
-                        if (effectiveBitDepth == null) effectiveBitDepth = header.bitDepth?.takeIf { it > 0 }
-                        if (effectiveRateKHz == null) header.sampleRateHz?.takeIf { it > 0 }?.let { effectiveRateKHz = it / 1000.0 }
-                    }
-                }
-            }
-
-            val codec = when {
-                isFlac && effectiveBitDepth != null && effectiveRateKHz != null && effectiveRateKHz > 0.0 ->
-                    "$effectiveBitDepth/${formatSampleRateKHz(effectiveRateKHz)}kHz"
-                isFlac && ((effectiveBitDepth ?: 0) > 16 || (effectiveRateKHz ?: 0.0) > 48.0) -> "HI-RES FLAC"
-                isFlac -> "FLAC"
-                isM4a -> "AAC"
-                isOpus -> "OPUS"
-                isMp3 -> "MP3"
-                else -> "LOCAL AUDIO"
-            }
-
-            _state.update {
-                it.copy(
-                    audioCodec = codec,
-                    bitrateKbps = bitrateKbps,
-                    bitDepth = effectiveBitDepth,
-                    samplingRateKHz = effectiveRateKHz,
-                    // FLAC is lossless at every bit depth. Requiring >16 here
-                    // marked CD-quality (16/44.1) FLAC â€” and any FLAC whose
-                    // container omits BITS_PER_SAMPLE â€” as lossy, which pushed
-                    // qualityLabel onto the kbps branch ("FLAC 1324 kbps")
-                    // instead of showing the bit depth / sample rate.
-                    isLossless = isFlac,
-                )
-            }
-            onMain {
-                applyDacRoutingFor(currentSourceRateHz())
-            }
-            updateBitPerfectState()
-        } catch (_: Exception) {
-            // Retriever unreadable (scoped-storage race, odd container):
-            // badge from the file extension so the pill never falls back
-            // to a bare "AUDIO" with no provenance.
-            val lower = url.lowercase()
-            val fallbackCodec = when {
-                lower.endsWith(".flac") -> "FLAC"
-                lower.endsWith(".m4a") || lower.endsWith(".mp4") || lower.endsWith(".aac") -> "AAC"
-                lower.endsWith(".opus") || lower.endsWith(".ogg") -> "OPUS"
-                lower.endsWith(".mp3") -> "MP3"
-                lower.endsWith(".wav") -> "WAV"
-                else -> "AUDIO"
-            }
-            _state.update {
-                it.copy(
-                    audioCodec = fallbackCodec,
-                    // Unknown, not 16/44.1: asserting depths/rates for an
-                    // unreadable file is exactly the false-tag bug.
-                    bitDepth = null,
-                    samplingRateKHz = null,
-                    isLossless = fallbackCodec == "FLAC",
-                )
-            }
-            onMain {
-                applyDacRoutingFor(currentSourceRateHz())
-            }
-            updateBitPerfectState()
-        } finally {
-            runCatching { retriever.release() }
+        val inspected = AudioHeaderInspector.inspectLocalTrackQuality(
+            context = appContext,
+            targetUrl = url,
+            fallbackMime = track.playbackMimeType,
+            knownDurationMs = track.durationMs,
+        )
+        _state.update {
+            it.copy(
+                audioCodec = inspected.badge,
+                bitrateKbps = inspected.bitrateKbps,
+                bitDepth = inspected.bitDepth,
+                samplingRateKHz = inspected.samplingRateKHz,
+                isLossless = inspected.isLossless,
+            )
         }
+        onMain {
+            applyDacRoutingFor(currentSourceRateHz())
+        }
+        updateBitPerfectState()
     }
 
     internal fun ensureForegroundService() {
@@ -9021,6 +8881,8 @@ fun GeneratedTrack.toPlayableTrack(): PlayableTrack {
             artworkUrl = artworkUrl,
             playbackUrl = url,
             playbackMimeType = com.lastwave.app.data.generate.LocalAudioFormats.mimeFor(url),
+            durationMs = durationMs,
+            trackNumber = trackNumber,
         )
     }
     val videoId = youtubeVideoIdOrNull()
