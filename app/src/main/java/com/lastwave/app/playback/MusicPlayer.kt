@@ -200,6 +200,7 @@ class MusicPlayer @Inject constructor(
         get() = musicHapticsController
 
     internal val appContext = context.applicationContext
+    private val powerManager = appContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
     /**
      * Playback resolver is the only path allowed to publish a YouTube URL for
      * the selected track. Prefetch may fill the next track's cache entry and
@@ -2380,9 +2381,12 @@ class MusicPlayer @Inject constructor(
                             // positions accurate while waking the CPU ~4x less.
                             // Transitions keep full precision near the tail.
                             val nearTransition = transitionActive && dur > 0L && dur - pos < 90_000L
+                            val screenOn = powerManager?.isInteractive == true
                             cadenceMs = when {
                                 !_state.value.isPlaying -> 500L
-                                com.lastwave.app.util.AppVisibility.isVisible || nearTransition -> 60L
+                                nearTransition -> 60L
+                                screenOn && com.lastwave.app.util.AppVisibility.isVisible ->
+                                    if (PlaybackUiDemand.needsHighFrequency) 60L else VISIBLE_TICKER_CADENCE_MS
                                 else -> BACKGROUND_TICKER_CADENCE_MS
                             }
                             }
@@ -8720,8 +8724,10 @@ class MusicPlayer @Inject constructor(
         const val KEY_VOLUME_SAVED = "bitperfect_volume_saved"
         /** Ticker-driven session persistence cadence (explicit state changes persist immediately). */
         const val TICKER_PERSIST_INTERVAL_MS = 2_000L
+        /** Collapsed-player cadence: the mini bar updates at 4 fps. */
+        const val VISIBLE_TICKER_CADENCE_MS = 250L
         /** Steady-state progress ticker cadence while no LastWave screen is visible. */
-        const val BACKGROUND_TICKER_CADENCE_MS = 250L
+        const val BACKGROUND_TICKER_CADENCE_MS = 1_000L
         /** In-app volume is saved this long after the slider stops moving. */
         const val APP_VOLUME_PERSIST_DEBOUNCE_MS = 400L
         /** Podcast resume-position checkpoint cadence. */

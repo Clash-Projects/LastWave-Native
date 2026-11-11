@@ -385,6 +385,10 @@ fun PlayerHost(
     val playbackState by viewModel.player.stateWithoutProgress.collectAsStateWithLifecycle()
     val activeDownloads by viewModel.activeDownloads.collectAsStateWithLifecycle()
     var expanded by rememberSaveable { mutableStateOf(false) }
+    DisposableEffect(expanded) {
+        com.lastwave.app.playback.PlaybackUiDemand.needsHighFrequency = expanded
+        onDispose { com.lastwave.app.playback.PlaybackUiDemand.needsHighFrequency = false }
+    }
     var currentTab by rememberSaveable { mutableStateOf(FullPlayerTab.NOW_PLAYING) }
     var playlistTrack by remember { mutableStateOf<PlayableTrack?>(null) }
     val settings by viewModel.settings.collectAsStateWithLifecycle()
