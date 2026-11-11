@@ -1,6 +1,11 @@
 import java.io.File
+import java.security.KeyStore
+import java.security.MessageDigest
+import java.security.SecureRandom
 import java.util.Base64
 import java.util.Properties
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 plugins {
     alias(libs.plugins.android.application)
@@ -9,6 +14,153 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+}
+
+var nativeVaultCertPrefix = "PLACEHOLDER_REPLACE_WITH_YOUR_CERT_SHA256"
+var nativeVaultSecret = ""
+
+fun readCertSha256Hex(keystoreBytes: ByteArray?, storePassword: String, keyAlias: String): String? {
+    if (keystoreBytes == null || keystoreBytes.isEmpty()) return null
+    val digest = MessageDigest.getInstance("SHA-256")
+    val types = listOf("PKCS12", "JKS", KeyStore.getDefaultType()).distinct()
+    val pwCandidates: List<CharArray?> = if (storePassword.isEmpty()) {
+        listOf(charArrayOf(), null)
+    } else {
+        listOf(storePassword.toCharArray(), null)
+    }
+    for (ksType in types) {
+        for (pw in pwCandidates) {
+            try {
+                val ks = KeyStore.getInstance(ksType)
+                ks.load(keystoreBytes.inputStream(), pw)
+                val aliases = java.util.Collections.list(ks.aliases())
+                val cert = ks.getCertificate(keyAlias)
+                    ?: aliases.firstOrNull { it.equals(keyAlias, ignoreCase = true) }?.let { ks.getCertificate(it) }
+                    ?: aliases.mapNotNull { ks.getCertificate(it) }.firstOrNull()
+                if (cert != null) {
+                    return digest.digest(cert.encoded).joinToString("") { "%02x".format(it) }
+                }
+            } catch (_: Exception) {
+            }
+        }
+    }
+    return null
+}
+
+fun writeSecretsBridgeHeader(
+    headerFile: File,
+    bridgeCppFile: File,
+    certPrefix: String,
+    plainSecret: String,
+) {
+    val sha256 = MessageDigest.getInstance("SHA-256")
+    val stateFp = sha256.digest("$certPrefix:$plainSecret".toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
+
+    if (headerFile.isFile) {
+        val firstLine = headerFile.useLines { it.firstOrNull()?.trim() }
+        if (firstLine == "// fp:$stateFp") return
+    }
+
+    val existedBefore = headerFile.exists()
+    val secretBytes = plainSecret.toByteArray(Charsets.UTF_8)
+    if (secretBytes.size > 128) {
+        throw GradleException("ADDON_CLIENT_SECRET exceeds 128-byte native buffer")
+    }
+
+    val sb = StringBuilder()
+    sb.append("// fp:").append(stateFp).append('\n')
+    sb.append("#pragma once\n#include <cstddef>\n#include <cstdint>\n\n")
+    sb.append("constexpr char EXPECTED_CERT_PREFIX[] = \"").append(certPrefix).append("\";\n\n")
+
+    if (secretBytes.isEmpty()) {
+        sb.append("static const uint8_t CLIENT_SECRET_SALT[16] = {0};\n")
+        sb.append("static constexpr size_t CLIENT_SECRET_TOTAL_LEN = 0;\n")
+        sb.append("static constexpr int CLIENT_SECRET_FRAGMENT_COUNT = 0;\n")
+        sb.append("struct Fragment { const uint8_t* data; uint8_t len; uint8_t mask; };\n")
+        sb.append("static const Fragment CLIENT_SECRET_FRAGMENTS[] = { {nullptr, 0, 0} };\n")
+    } else {
+        val rng = SecureRandom()
+        val salt = ByteArray(16).also { rng.nextBytes(it) }
+        val keyBytes = if (certPrefix.startsWith("PLACEHOLDER")) {
+            MessageDigest.getInstance("SHA-256")
+                .digest("LASTWAVE_DEV_FALLBACK_KEY".toByteArray(Charsets.UTF_8))
+        } else {
+            certPrefix.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        }
+
+        val keystream = ByteArray(secretBytes.size)
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(keyBytes, "HmacSHA256"))
+        var generated = 0
+        var counter = 0
+        while (generated < secretBytes.size) {
+            val msg = ByteArray(salt.size + 4)
+            System.arraycopy(salt, 0, msg, 0, salt.size)
+            msg[salt.size] = ((counter ushr 24) and 0xFF).toByte()
+            msg[salt.size + 1] = ((counter ushr 16) and 0xFF).toByte()
+            msg[salt.size + 2] = ((counter ushr 8) and 0xFF).toByte()
+            msg[salt.size + 3] = (counter and 0xFF).toByte()
+            val block = mac.doFinal(msg)
+            val n = minOf(block.size, secretBytes.size - generated)
+            System.arraycopy(block, 0, keystream, generated, n)
+            generated += n
+            counter++
+        }
+
+        val ciphertext = ByteArray(secretBytes.size) { i ->
+            (secretBytes[i].toInt() xor keystream[i].toInt()).toByte()
+        }
+
+        val chunkSize = maxOf(1, ciphertext.size / 8)
+        val fragments = mutableListOf<Pair<ByteArray, Int>>()
+        var off = 0
+        while (off < ciphertext.size) {
+            val end = minOf(off + chunkSize, ciphertext.size)
+            val mask = 0x10 + rng.nextInt(0xEF)
+            val xored = ByteArray(end - off) { i ->
+                ((ciphertext[off + i].toInt() and 0xFF) xor mask).toByte()
+            }
+            fragments += (xored to mask)
+            off = end
+        }
+
+        val reconCipher = ByteArray(secretBytes.size)
+        var rOff = 0
+        for ((xored, mask) in fragments) {
+            for (b in xored) {
+                reconCipher[rOff++] = ((b.toInt() and 0xFF) xor mask).toByte()
+            }
+        }
+        val reconSecret = ByteArray(secretBytes.size) { i ->
+            (reconCipher[i].toInt() xor keystream[i].toInt()).toByte()
+        }
+        if (!reconSecret.contentEquals(secretBytes)) {
+            throw GradleException("Native bridge header verification failed")
+        }
+
+        val saltHex = salt.joinToString(",") { "0x%02X".format(it.toInt() and 0xFF) }
+        sb.append("static const uint8_t CLIENT_SECRET_SALT[16] = {$saltHex};\n")
+        sb.append("static constexpr size_t CLIENT_SECRET_TOTAL_LEN = ${secretBytes.size};\n")
+        sb.append("static constexpr int CLIENT_SECRET_FRAGMENT_COUNT = ${fragments.size};\n\n")
+        fragments.forEachIndexed { idx, (xored, _) ->
+            val hex = xored.joinToString(",") { "0x%02X".format(it.toInt() and 0xFF) }
+            sb.append("static const uint8_t CS$idx[] = {$hex};\n")
+        }
+        sb.append("\nstruct Fragment {\n    const uint8_t* data;\n    uint8_t len;\n    uint8_t mask;\n};\n\n")
+        sb.append("static const Fragment CLIENT_SECRET_FRAGMENTS[] = {\n")
+        fragments.forEachIndexed { idx, (xored, mask) ->
+            sb.append("    {CS$idx, ${xored.size}, 0x%02X},\n".format(mask))
+        }
+        sb.append("};\n")
+    }
+
+    headerFile.parentFile?.mkdirs()
+    headerFile.writeText(sb.toString(), Charsets.UTF_8)
+    // Refresh mtime on initial creation so Ninja adds the header to its depfile.
+    if (!existedBefore && bridgeCppFile.exists()) {
+        bridgeCppFile.setLastModified(System.currentTimeMillis())
+    }
 }
 
 android {
@@ -86,20 +238,6 @@ android {
         buildConfigField("String", "LASTWAVE_LYRICS_TOKEN", "\"$lastWaveLyricsToken\"")
         buildConfigField("String", "LASTWAVE_LYRICS_URL", "\"$lastWaveLyricsUrl\"")
 
-        // Desktop-style secret obfuscation: XOR-masked byte arrays in BuildConfig
-        val secretMask = listOf(0x5A, 0x3F, 0x7E, 0x1B, 0x92, 0x4C, 0xA1, 0x6D)
-        fun obfuscateSecret(plainText: String): String {
-            if (plainText.isEmpty()) return "new byte[] {}"
-            val bytes = plainText.toByteArray(Charsets.UTF_8)
-            val obfuscated = bytes.mapIndexed { idx, b -> (b.toInt() xor secretMask[idx % secretMask.size]).toByte() }
-            return "new byte[] { " + obfuscated.joinToString(", ") { "(byte) $it" } + " }"
-        }
-        val maskLiteral = "new byte[] { " + secretMask.joinToString(", ") { "(byte) $it" } + " }"
-
-        val addonClientSecret = resolveSecret("ADDON_CLIENT_SECRET")
-        buildConfigField("byte[]", "ADDON_CLIENT_SECRET_BYTES", obfuscateSecret(addonClientSecret))
-        buildConfigField("byte[]", "SECRET_MASK_BYTES", maskLiteral)
-
         externalNativeBuild {
             cmake {
                 arguments += listOf(
@@ -122,32 +260,35 @@ android {
         }
     }
 
+    val requestsRelease =
+        gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
+    val base64Key = resolveSecret("SIGNING_KEY")
+    val storeFilePath = resolveSecret("RELEASE_STORE_FILE")
+    val storePasswordProp = resolveSecret("RELEASE_STORE_PASSWORD", "KEY_STORE_PASSWORD")
+    val keyAliasProp = resolveSecret("RELEASE_KEY_ALIAS", "ALIAS").ifBlank { "release_key" }
+    val keyPasswordProp = resolveSecret("RELEASE_KEY_PASSWORD", "KEY_PASSWORD").ifBlank { storePasswordProp }
+
+    val decodedReleaseKeystoreBytes: ByteArray? = if (base64Key.isNotBlank()) {
+        runCatching { Base64.getDecoder().decode(base64Key.trim()) }.getOrNull()
+    } else {
+        null
+    }
+
+    val releaseKeystoreFile: File? = when {
+        decodedReleaseKeystoreBytes != null -> {
+            val tempKeystore = layout.buildDirectory.file("signing/release.keystore").get().asFile
+            tempKeystore.parentFile.mkdirs()
+            tempKeystore.writeBytes(decodedReleaseKeystoreBytes)
+            tempKeystore
+        }
+        storeFilePath.isNotBlank() -> file(storeFilePath)
+        else -> null
+    }
+
     signingConfigs {
         create("release_config") {
-            val base64Key = resolveSecret("SIGNING_KEY")
-            val storeFilePath = resolveSecret("RELEASE_STORE_FILE")
-            val storePasswordProp = resolveSecret("RELEASE_STORE_PASSWORD", "KEY_STORE_PASSWORD")
-            val keyAliasProp = resolveSecret("RELEASE_KEY_ALIAS", "ALIAS").ifBlank { "release_key" }
-            val keyPasswordProp = resolveSecret("RELEASE_KEY_PASSWORD", "KEY_PASSWORD").ifBlank { storePasswordProp }
-
-            val keystoreFile: File? = when {
-                base64Key.isNotBlank() -> {
-                    try {
-                        val decodedBytes = Base64.getDecoder().decode(base64Key.trim())
-                        val tempKeystore = layout.buildDirectory.file("signing/release.keystore").get().asFile
-                        tempKeystore.parentFile.mkdirs()
-                        tempKeystore.writeBytes(decodedBytes)
-                        tempKeystore
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
-                storeFilePath.isNotBlank() -> file(storeFilePath)
-                else -> null
-            }
-
-            if (keystoreFile != null && keystoreFile.exists() && storePasswordProp.isNotBlank()) {
-                storeFile = keystoreFile
+            if (releaseKeystoreFile != null && releaseKeystoreFile.exists() && storePasswordProp.isNotBlank()) {
+                storeFile = releaseKeystoreFile
                 storePassword = storePasswordProp
                 keyAlias = keyAliasProp
                 keyPassword = keyPasswordProp
@@ -166,8 +307,6 @@ android {
                 // Only fail when a release variant is actually being requested,
                 // so debug builds and unit tests keep working with no signing
                 // secrets present on a dev machine.
-                val requestsRelease =
-                    gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
                 if (requestsRelease) {
                     throw GradleException(
                         "No release signing key found. Provide SIGNING_KEY (base64 " +
@@ -180,6 +319,32 @@ android {
             }
         }
     }
+
+    val addonClientSecret = resolveSecret("ADDON_CLIENT_SECRET")
+    val explicitCertSha = resolveSecret("RELEASE_CERT_SHA256")
+        .takeIf { it.matches(Regex("^[0-9a-fA-F]{64}$")) }
+        ?.lowercase()
+    val releaseCertBytes = decodedReleaseKeystoreBytes
+        ?: releaseKeystoreFile?.takeIf { it.isFile }?.readBytes()
+    val debugKeystoreBytes = signingConfigs.findByName("debug")?.storeFile
+        ?.takeIf { it.isFile }?.readBytes()
+
+    val effectiveCertPrefix = when {
+        requestsRelease -> {
+            val resolved = explicitCertSha ?: readCertSha256Hex(releaseCertBytes, storePasswordProp, keyAliasProp)
+            if (addonClientSecret.isNotBlank() && resolved == null) {
+                throw GradleException("Cannot resolve release certificate SHA-256 for native vault.")
+            }
+            resolved ?: "PLACEHOLDER_REPLACE_WITH_YOUR_CERT_SHA256"
+        }
+        addonClientSecret.isNotBlank() -> {
+            readCertSha256Hex(debugKeystoreBytes, "android", "androiddebugkey")
+                ?: "PLACEHOLDER_REPLACE_WITH_YOUR_CERT_SHA256"
+        }
+        else -> "PLACEHOLDER_REPLACE_WITH_YOUR_CERT_SHA256"
+    }
+    nativeVaultCertPrefix = effectiveCertPrefix
+    nativeVaultSecret = addonClientSecret
 
     buildTypes {
         release {
@@ -383,6 +548,32 @@ configurations.all {
 
 tasks.withType<Test> {
     maxHeapSize = "2048m"
+}
+
+val generatedHeaderFile = layout.projectDirectory.file("src/main/cpp/SecretsBridge_generated.h").asFile
+val bridgeCppFile = layout.projectDirectory.file("src/main/cpp/SecretsBridge.cpp").asFile
+val capturedCertPrefix = nativeVaultCertPrefix
+val capturedSecret = nativeVaultSecret
+
+val prepareNativeBridge by tasks.registering {
+    outputs.upToDateWhen { false }
+    doLast {
+        writeSecretsBridgeHeader(
+            headerFile = generatedHeaderFile,
+            bridgeCppFile = bridgeCppFile,
+            certPrefix = capturedCertPrefix,
+            plainSecret = capturedSecret,
+        )
+    }
+}
+
+tasks.matching {
+    it.name == "preBuild" ||
+        it.name.startsWith("configureCMake") ||
+        it.name.startsWith("buildCMake") ||
+        it.name.startsWith("externalNativeBuild")
+}.configureEach {
+    dependsOn(prepareNativeBridge)
 }
 
 
