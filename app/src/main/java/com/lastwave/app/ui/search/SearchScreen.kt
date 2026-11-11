@@ -151,6 +151,7 @@ fun SearchScreen(
     val musicPlayer = com.lastwave.app.ui.player.LocalMusicPlayer.current
     val playbackState by musicPlayer.listPlaybackState.collectAsStateWithLifecycle()
     var menuTarget by remember { mutableStateOf<TrackMenuTarget?>(null) }
+    var menuPlayableTrack by remember { mutableStateOf<com.lastwave.app.playback.PlayableTrack?>(null) }
     // Long-press (deep press) on a TRACKS row opens the mini tray;
     // the overflow button keeps the full sheet.
     var miniTrayItem by remember { mutableStateOf<SearchResultItem?>(null) }
@@ -615,6 +616,9 @@ fun SearchScreen(
                                                 }
                                             },
                                             onMenu = {
+                                                menuPlayableTrack = if (state.tab == SearchTab.TRACKS || state.tab == SearchTab.PODCASTS) {
+                                                    item.toPlayableTrack(podcast = state.tab == SearchTab.PODCASTS)
+                                                } else null
                                                 menuTarget = when (state.tab) {
                                                     SearchTab.TRACKS, SearchTab.PODCASTS -> TrackMenuTarget.Track(item.name, item.artist.orEmpty(), item.url)
                                                     SearchTab.ARTISTS -> TrackMenuTarget.Artist(item.name, item.url)
@@ -637,6 +641,7 @@ fun SearchScreen(
     menuTarget?.let { target ->
         TrackContextMenuSheet(
             target = target,
+            playableTrack = menuPlayableTrack,
             capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = state.tab != SearchTab.PODCASTS),
             playbackSourceLabel = "Search",
             onRefreshArtwork = (target as? TrackMenuTarget.Track)?.let { trackTarget ->
@@ -654,6 +659,7 @@ fun SearchScreen(
                 album = item.subtitle,
                 artworkUrl = item.artworkUrl,
                 videoId = item.videoId,
+                durationMs = item.durationMs,
                 sourceLabel = "Search",
                 onPlay = { viewModel.playResult(item) },
             ),

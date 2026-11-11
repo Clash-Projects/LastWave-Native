@@ -35,6 +35,8 @@ data class SearchResultItem(
     val subtitle: String? = null,
     val videoId: String? = null,
     val entityId: String? = null,
+    val durationMs: Long? = null,
+    val showId: String? = null,
 )
 
 /**
@@ -103,6 +105,7 @@ class SearchRepository @Inject constructor(
                     subtitle = track.album,
                     videoId = track.videoId,
                     entityId = track.videoId,
+                    durationMs = track.durationSeconds?.takeIf { it > 0 }?.times(1_000L),
                 )
             }
             SearchTab.ARTISTS -> innerTube.searchArtists(trimmed).map { artist ->
@@ -148,6 +151,8 @@ class SearchRepository @Inject constructor(
                         .ifBlank { "Podcast" },
                     videoId = episode.videoId,
                     entityId = episode.videoId,
+                    durationMs = episode.durationMs,
+                    showId = episode.showId,
                 )
             }
             // No shared key: user search needs a personal key, otherwise empty.
