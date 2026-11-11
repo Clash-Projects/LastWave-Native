@@ -367,6 +367,7 @@ internal fun FullPlayerLandscape(
     onToggleVideo: (() -> Unit)? = null,
 ) {
     val haptics = LocalHapticFeedback.current
+    val windowActive = rememberPlayerWindowActive()
     var isArtworkDragging by remember { mutableStateOf(false) }
     var artworkDragX by remember { mutableFloatStateOf(0f) }
     val shownArtworkX by animateFloatAsState(
@@ -682,7 +683,7 @@ internal fun FullPlayerLandscape(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .playingMarquee(state.isPlaying),
+                            .playingMarquee(state.isPlaying && windowActive),
                     )
                     Spacer(Modifier.height(4.dp))
                     val splitArtists = remember(track.artist) {
@@ -691,7 +692,7 @@ internal fun FullPlayerLandscape(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .playingMarquee(state.isPlaying),
+                            .playingMarquee(state.isPlaying && windowActive),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         splitArtists.forEachIndexed { index, artName ->

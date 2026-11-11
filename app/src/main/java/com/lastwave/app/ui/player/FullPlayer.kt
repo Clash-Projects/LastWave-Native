@@ -377,6 +377,7 @@ internal fun FullPlayer(
 ) {
     val track = state.current ?: return
     val haptics = LocalHapticFeedback.current
+    val windowActive = rememberPlayerWindowActive()
     val onDoubleTapLike = hapticClick(HapticFeedbackType.Confirm, onDoubleTapLike)
     var showLyricsOffsetDialog by remember { mutableStateOf(false) }
     val configuration = LocalConfiguration.current
@@ -1585,7 +1586,7 @@ internal fun FullPlayer(
                                                 overflow = TextOverflow.Ellipsis,
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .playingMarquee(state.isPlaying),
+                                                    .playingMarquee(state.isPlaying && windowActive),
                                             )
                                             Spacer(Modifier.height(4.dp))
                                             val splitArtists = remember(track.artist) {
@@ -1594,7 +1595,7 @@ internal fun FullPlayer(
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .playingMarquee(state.isPlaying),
+                                                    .playingMarquee(state.isPlaying && windowActive),
                                                 verticalAlignment = Alignment.CenterVertically,
                                             ) {
                                                 splitArtists.forEachIndexed { index, artName ->

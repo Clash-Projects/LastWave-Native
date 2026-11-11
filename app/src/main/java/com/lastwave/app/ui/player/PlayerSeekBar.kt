@@ -585,7 +585,10 @@ internal fun SeekBar(
     val progressDurationMs = remember { mutableLongStateOf(0L) }
     val elapsedSeconds = remember { mutableLongStateOf(0L) }
     val currentFallbackDurationMs by rememberUpdatedState(fallbackDurationMs)
-    LaunchedEffect(progressState) {
+    // Keep collecting while obscured (tracking must not stop), but do not publish
+    // state that invalidates the full-player window behind the shade/dialog.
+    val windowActive = rememberPlayerWindowActive()
+    LaunchedEffect(progressState, windowActive) {
         var lastSliderSecond = -1L
         progressState.collect { s ->
             val duration = if (s.durationMs > 0L) {
@@ -598,9 +601,10 @@ internal fun SeekBar(
             } else {
                 0f
             }
+            val second = s.positionMs / 1000L
+            if (!windowActive) return@collect
             progressFraction.floatValue = fraction
             progressDurationMs.longValue = duration
-            val second = s.positionMs / 1000L
             if (second != elapsedSeconds.longValue) elapsedSeconds.longValue = second
             // The Material slider is visually transparent and only feeds
             // accessibility/gesture semantics; second precision is enough and
