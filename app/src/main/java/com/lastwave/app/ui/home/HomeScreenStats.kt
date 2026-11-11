@@ -148,21 +148,26 @@ import kotlinx.coroutines.flow.map
 
 @Composable
 internal fun LocalStatsBanner(
-    onOpenSettings: () -> Unit,
+    isOfflineFallback: Boolean = false,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.secondaryContainer,
         modifier = modifier.fillMaxWidth(),
-        onClick = onOpenSettings,
+        onClick = onClick,
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "Connect Last.fm in Settings to sync global scrobbles",
+                if (isOfflineFallback) {
+                    "Last.fm unreachable \u2014 showing local plays \u00b7 Tap to retry"
+                } else {
+                    "Connect Last.fm in Settings to sync global scrobbles"
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                 modifier = Modifier.weight(1f),

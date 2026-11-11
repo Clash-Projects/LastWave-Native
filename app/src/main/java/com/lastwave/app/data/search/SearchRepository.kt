@@ -4,12 +4,12 @@ import androidx.compose.runtime.Immutable
 import com.lastwave.app.data.generate.GenerateJson
 import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.local.SessionPreferences
+import com.lastwave.app.data.local.awaitLoadedSession
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.network.LastFmApiService
 import com.lastwave.app.data.repository.RelatedGraphRepository
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
@@ -157,7 +157,7 @@ class SearchRepository @Inject constructor(
             }
             // No shared key: user search needs a personal key, otherwise empty.
             SearchTab.USERS -> {
-                val key = sessionPreferences.session.first().apiKey
+                val key = sessionPreferences.awaitLoadedSession().apiKey
                 if (key.isBlank()) emptyList() else lookupUser(key, trimmed)
             }
         }.filter { it.name.isNotBlank() }
@@ -211,7 +211,7 @@ class SearchRepository @Inject constructor(
             } else {
                 // No shared key: without a personal key there is no Last.fm
                 // fallback — the YT radio above (empty here) is the result.
-                val apiKey = sessionPreferences.session.first().apiKey
+                val apiKey = sessionPreferences.awaitLoadedSession().apiKey
                 if (apiKey.isBlank()) {
                     emptyList()
                 } else try {

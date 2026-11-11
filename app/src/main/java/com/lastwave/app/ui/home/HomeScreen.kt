@@ -244,7 +244,8 @@ fun HomeScreen(
 
             if (uiState.isLocalStatsMode && !uiState.isViewingFriend) {
                 LocalStatsBanner(
-                    onOpenSettings = onOpenSettings,
+                    isOfflineFallback = uiState.isLastFmConnected,
+                    onClick = if (uiState.isLastFmConnected) viewModel::refresh else onOpenSettings,
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 8.dp),
                 )
             }

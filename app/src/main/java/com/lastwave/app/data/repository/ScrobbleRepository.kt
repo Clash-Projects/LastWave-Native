@@ -1,6 +1,7 @@
 package com.lastwave.app.data.repository
 
 import com.lastwave.app.data.local.SessionPreferences
+import com.lastwave.app.data.local.awaitLoadedSession
 import com.lastwave.app.data.network.LastFmApiService
 import com.lastwave.app.data.network.LastFmRateGuard
 import com.lastwave.app.data.network.LastFmSigner
@@ -12,7 +13,6 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -152,7 +152,7 @@ class ScrobbleRepository @Inject constructor(
 
     private suspend fun signedCall(method: String, extra: Map<String, String>): Result = withContext(Dispatchers.IO) {
         callMutex.withLock {
-            val session = sessionPreferences.session.first()
+            val session = sessionPreferences.awaitLoadedSession()
             if (session.apiKey.isBlank() || session.apiSecret.isBlank()) {
                 return@withLock Result.Failed("API credentials missing")
             }

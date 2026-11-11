@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
@@ -174,3 +175,10 @@ class SessionPreferences @Inject constructor(
         dataStore.edit { it.clear() }
     }
 }
+
+/**
+ * Suspends until the underlying DataStore has completed its first emission so
+ * callers never mistake the pre-load empty [SessionData] (`isLoaded == false`)
+ * for a signed-out session during cold starts or process restoration.
+ */
+suspend fun SessionPreferences.awaitLoadedSession(): SessionData = session.first { it.isLoaded }

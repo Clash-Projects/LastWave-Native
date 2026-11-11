@@ -3,6 +3,7 @@ package com.lastwave.app.data.generate
 import android.util.Log
 import androidx.compose.runtime.Immutable
 import com.lastwave.app.data.local.SessionPreferences
+import com.lastwave.app.data.local.awaitLoadedSession
 import com.lastwave.app.data.network.LastFmApiService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -10,7 +11,6 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
@@ -45,7 +45,7 @@ class GenresRepository @Inject constructor(
      *  into Genres while viewing a friend shows THEIR genre breakdown, not
      *  always your own regardless of whose profile you're actually on. */
     private suspend fun username(): String =
-        viewingProfileState.viewingUsername.value ?: sessionPreferences.session.first().username
+        viewingProfileState.viewingUsername.value ?: sessionPreferences.awaitLoadedSession().username
 
     private suspend fun call(params: Map<String, String>): JsonObject = generateRepository.call(params)
 

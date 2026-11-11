@@ -1,6 +1,7 @@
 package com.lastwave.app.data.repository
 
 import com.lastwave.app.data.local.SessionPreferences
+import com.lastwave.app.data.local.awaitLoadedSession
 import com.lastwave.app.data.model.FriendEntry
 import com.lastwave.app.data.model.FriendsEnvelope
 import com.lastwave.app.data.model.RecentTrack
@@ -15,12 +16,14 @@ import com.lastwave.app.data.network.LastFmApiService
 import com.lastwave.app.data.network.LastFmErrors
 import com.lastwave.app.data.network.LastFmException
 import androidx.compose.runtime.Immutable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.withPermit
-import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -111,7 +114,31 @@ class HomeRepository @Inject constructor(
     }
 
     private suspend fun requireSession(): com.lastwave.app.data.local.SessionData =
-        sessionPreferences.session.first()
+        sessionPreferences.awaitLoadedSession()
+
+    private suspend fun fetchStatsBody(params: Map<String, String>): Result<String> = try {
+        val response = api.get(params)
+        val body = response.body()?.string()
+        if (body.isNullOrBlank()) {
+            Result.failure(LastFmException("Last.fm HTTP ${response.code()}"))
+        } else {
+            Result.success(body)
+        }
+    } catch (e: CancellationException) {
+        currentCoroutineContext().ensureActive()
+        Result.failure(e)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+
+    private fun parseLastFmError(body: String): LastFmException? {
+        if (body.isBlank()) return null
+        val root = runCatching { json.parseToJsonElement(body) as? JsonObject }.getOrNull() ?: return null
+        if (!root.containsKey("error")) return null
+        val errCode = root["error"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+        val errMsg = root["message"]?.jsonPrimitive?.contentOrNull
+        return LastFmException(LastFmErrors.friendlyMessage(errCode, errMsg), errCode)
+    }
 
     /** Every fetch below takes an optional [username] override for viewing
      *  a friend's profile (see fetchFriends/§ Home friend-switching). */
@@ -241,29 +268,27 @@ class HomeRepository @Inject constructor(
             val base = mapOf("user" to targetUser, "api_key" to session.apiKey, "format" to "json")
 
             coroutineScope {
-                val infoDeferred = async(Dispatchers.IO) {
-                    try { api.get(base + ("method" to "user.getinfo")).body()?.string().orEmpty() } catch (_: Exception) { "" }
-                }
-                val tracksDeferred = async(Dispatchers.IO) {
-                    try { api.get(base + ("method" to "user.gettoptracks") + ("limit" to "1") + ("period" to "overall")).body()?.string().orEmpty() } catch (_: Exception) { "" }
-                }
-                val artistsDeferred = async(Dispatchers.IO) {
-                    try { api.get(base + ("method" to "user.gettopartists") + ("limit" to "1") + ("period" to "overall")).body()?.string().orEmpty() } catch (_: Exception) { "" }
-                }
-                val albumsDeferred = async(Dispatchers.IO) {
-                    try { api.get(base + ("method" to "user.gettopalbums") + ("limit" to "1") + ("period" to "overall")).body()?.string().orEmpty() } catch (_: Exception) { "" }
-                }
+                val infoDeferred = async(Dispatchers.IO) { fetchStatsBody(base + ("method" to "user.getinfo")) }
+                val tracksDeferred = async(Dispatchers.IO) { fetchStatsBody(base + ("method" to "user.gettoptracks") + ("limit" to "1") + ("period" to "overall")) }
+                val artistsDeferred = async(Dispatchers.IO) { fetchStatsBody(base + ("method" to "user.gettopartists") + ("limit" to "1") + ("period" to "overall")) }
+                val albumsDeferred = async(Dispatchers.IO) { fetchStatsBody(base + ("method" to "user.gettopalbums") + ("limit" to "1") + ("period" to "overall")) }
 
-                val infoBody = infoDeferred.await()
-                val tracksBody = tracksDeferred.await()
-                val artistsBody = artistsDeferred.await()
-                val albumsBody = albumsDeferred.await()
+                val infoResult = infoDeferred.await()
+                val tracksResult = tracksDeferred.await()
+                val artistsResult = artistsDeferred.await()
+                val albumsResult = albumsDeferred.await()
+
+                val infoBody = infoResult.getOrNull().orEmpty()
+                val tracksBody = tracksResult.getOrNull().orEmpty()
+                val artistsBody = artistsResult.getOrNull().orEmpty()
+                val albumsBody = albumsResult.getOrNull().orEmpty()
 
                 val info = runCatching { json.decodeFromString<UserInfoEnvelope>(infoBody) }.getOrNull()
                 val tracks = runCatching { json.decodeFromString<TopTracksEnvelope>(tracksBody) }.getOrNull()
                 val artists = runCatching { json.decodeFromString<TopArtistsEnvelope>(artistsBody) }.getOrNull()
                 val albums = runCatching { json.decodeFromString<TopAlbumsEnvelope>(albumsBody) }.getOrNull()
 
+                var parsedUserObj: JsonObject? = null
                 var parsedPlaycount: Long? = null
                 var parsedTrackCount: Long? = null
                 var parsedArtistCount: Long? = null
@@ -274,6 +299,7 @@ class HomeRepository @Inject constructor(
                     runCatching {
                         val root = json.parseToJsonElement(infoBody) as? JsonObject
                         val user = root?.get("user") as? JsonObject
+                        parsedUserObj = user
                         if (user != null) {
                             parsedPlaycount = user["playcount"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
                             parsedTrackCount = user["track_count"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
@@ -295,6 +321,26 @@ class HomeRepository @Inject constructor(
                             }
                         }
                     }
+                }
+
+                // Do not treat total network/API failures as a valid 0-scrobble profile,
+                // otherwise fetchInitialData caches empty zeros and hides offline errors.
+                val hasValidStats = parsedUserObj != null ||
+                    info?.user != null ||
+                    tracks?.toptracks != null ||
+                    artists?.topartists != null ||
+                    albums?.topalbums != null
+                if (!hasValidStats) {
+                    val failure = parseLastFmError(infoBody)
+                        ?: parseLastFmError(tracksBody)
+                        ?: parseLastFmError(artistsBody)
+                        ?: parseLastFmError(albumsBody)
+                        ?: infoResult.exceptionOrNull()
+                        ?: tracksResult.exceptionOrNull()
+                        ?: artistsResult.exceptionOrNull()
+                        ?: albumsResult.exceptionOrNull()
+                        ?: LastFmException("Last.fm stats unavailable")
+                    return@coroutineScope Result.failure(failure)
                 }
 
                 Result.success(
@@ -493,7 +539,7 @@ class HomeRepository @Inject constructor(
     suspend fun fetchInitialData(username: String? = null, forceRefresh: Boolean = false): Result<HomeInitialData> {
         val session = requireSession()
         val targetUser = username ?: session.username
-        val cacheKey = targetUser.ifBlank { "guest" }
+        val cacheKey = "${targetUser.ifBlank { "guest" }}|${session.apiKey.hashCode()}"
 
         val now = System.currentTimeMillis()
         if (forceRefresh) {
