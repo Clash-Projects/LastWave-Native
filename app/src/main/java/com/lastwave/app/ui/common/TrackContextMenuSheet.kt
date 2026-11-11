@@ -415,8 +415,8 @@ fun TrackContextMenuSheet(
         }
     }
 
-    LaunchedEffect(target) {
-        if (target is TrackMenuTarget.Track) {
+    LaunchedEffect(target, playableTrack?.mediaType) {
+        if (target is TrackMenuTarget.Track && playableTrack?.mediaType != com.lastwave.app.playback.MediaType.PODCAST_EPISODE) {
             resolvingGenre = true
             resolvedGenre = runCatching { genreResolverViewModel.resolve(target.name, target.artist) }.getOrNull()
             resolvingGenre = false
@@ -577,13 +577,13 @@ fun TrackContextMenuSheet(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (target is TrackMenuTarget.Track) {
-                StartMixCard {
+                val playable = playableTrack ?: PlayableTrack(title = target.name, artist = target.artist)
+                val isSong = playable.mediaType == com.lastwave.app.playback.MediaType.SONG
+                if (isSong) StartMixCard {
                     if (onStartMix != null) onStartMix(target.name, target.artist)
-                    else startMixViewModel.startMix(target.name, target.artist, playableTrack?.videoId)
+                    else startMixViewModel.startMix(target.name, target.artist, playable.videoId)
                     onDismiss()
                 }
-
-                val playable = playableTrack ?: PlayableTrack(title = target.name, artist = target.artist)
                 QuickActionsRow(
                     onJam = { showJamSheet = true },
                     onPlayNext = { musicPlayer.playNext(playable); onDismiss() },
@@ -612,7 +612,7 @@ fun TrackContextMenuSheet(
                         }
                     }
 
-                    if (musicVideoEnabled && canWatchVideo) {
+                    if (isSong && musicVideoEnabled && canWatchVideo) {
                         add { pos ->
                             MenuActionRow(
                                 icon = Icons.Filled.SmartDisplay,
@@ -643,7 +643,7 @@ fun TrackContextMenuSheet(
                     }
                     add { pos -> MenuActionRow(Icons.Filled.Timer, stringResource(R.string.menu_sleep_timer), position = pos) { showTimerDialog = true } }
                     val splitArtists = com.lastwave.app.util.ArtistHelper.splitArtists(t.artist)
-                    for (art in splitArtists) {
+                    for (art in if (isSong) splitArtists else emptyList()) {
                         add { pos ->
                             MenuActionRow(Icons.Filled.Person, stringResource(R.string.menu_go_artist, art), position = pos) {
                                 artistAlbumViewModel.openArtist(art)
@@ -651,7 +651,7 @@ fun TrackContextMenuSheet(
                             }
                         }
                     }
-                    if (!playable.album.isNullOrBlank()) {
+                    if (isSong && !playable.album.isNullOrBlank()) {
                         add { pos ->
                             val albumArtist = playable.artist.ifBlank { t.artist }
                             val album = playable.album
