@@ -1,12 +1,12 @@
 # Changelog
 
-## [5.2.0] - 2026-11-11
+## [5.2.0] - 2026-11-12
 
 ### ✨ What's New
 
 * **Signature Liquid Glass Navigation Bar:** A new refractive glass selector lets you tap or drag between Feed, Stats and Library, with fluid motion and support for both navigation layouts. Available on **Android 13+** with **Settings → Appearance & Visuals → Liquid Glass** enabled.
 * **Local Music Hub & Library:** The Playlists tab is now **Library**, with a dedicated Local Songs hub for browsing songs, albums, artists and folders. Create offline playlists, keep local likes, search your device music, and view embedded or `.lrc` lyrics. Local playback now also supports **DSD (DSF / DFF) and AIFF** files.
-* **Wi-Fi & Mobile Data Quality Controls:** Choose separate streaming quality settings for Wi-Fi and mobile data. **Auto** on mobile data adjusts quality to your connection and buffer health, up to your Wi-Fi selection. The new **Settings → Audio & Playback → Auto upgrade to Hi-Res** toggle lets you control automatic lossless upgrades.
+* **Adaptive Streaming & Per-Network Quality:** Keep listening on slower mobile connections with **Auto** streaming quality, which adjusts to your connection speed and buffer health to help reduce buffering. Choose separate quality settings for Wi-Fi and mobile data; mobile Auto stays within your Wi-Fi selection. The new **Settings → Audio & Playback → Auto upgrade to Hi-Res** toggle lets you control automatic lossless upgrades.
 * **Vietnamese Language Support:** Added Vietnamese to the app's language options.
 
 ---
