@@ -225,7 +225,7 @@ fun ExternalPlaylistImportScreen(
                         }
                     } else {
                         // When a playlist preview is loaded from the account
-                        if (preview != null && (state.link.contains("collection/tracks") || userPlaylists.any { state.link.contains(it.id) })) {
+                        if (preview != null) {
                             item {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -533,7 +533,7 @@ fun ExternalPlaylistImportScreen(
                     }
 
                     // Link Preview summary & tracks
-                    if (preview != null && !state.link.contains("collection/tracks") && !userPlaylists.any { state.link.contains(it.id) }) {
+                    if (preview != null) {
                         item {
                             PreviewSummaryCard(preview = preview, rows = rows, state = state)
                         }
