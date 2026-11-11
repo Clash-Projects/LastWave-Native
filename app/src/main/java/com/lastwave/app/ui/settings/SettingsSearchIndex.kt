@@ -153,6 +153,23 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "audio.auto_upgrade_hi_res",
+                    title = "Auto upgrade to Hi-Res",
+                    subtitle = "Start fast on Opus, then switch to lossless when available",
+                    keywords = listOf(
+                        "auto upgrade", "hi-res", "hires", "lossless", "flac", "opus",
+                        "upgrade", "streaming", "quality", "background upgrade"
+                    ),
+                    icon = Icons.Filled.HighQuality,
+                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Audio & Playback",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "audio.bit_perfect",
                     title = "Bit-Perfect Mode",
                     subtitle = "Bypass Android mixer & DSP; stream bit-exact audio to USB DAC",
@@ -679,23 +696,6 @@ object SettingsSearchIndex {
                     parentTab = SettingsTab.APPEARANCE,
                     section = "Experimental & Features",
                     type = EntryType.ACTION,
-                )
-            )
-            add(
-                SettingsEntry(
-                    id = "appearance.wavy_seekbar",
-                    title = "Fluid Wavy Seekbar",
-                    subtitle = "Multi-layer fluid wavy progress slider for track playback",
-                    keywords = listOf(
-                        "wavy seekbar", "wave slider", "progress bar", "fluid seekbar", "waveform",
-                        "scrubber", "timeline", "squiggly line"
-                    ),
-                    icon = Icons.Filled.Waves,
-                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
-                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
-                    parentTab = SettingsTab.APPEARANCE,
-                    section = "Experimental & Features",
-                    type = EntryType.TOGGLE,
                 )
             )
             add(

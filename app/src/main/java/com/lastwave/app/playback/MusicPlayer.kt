@@ -2421,6 +2421,9 @@ class MusicPlayer @Inject constructor(
             settingsPreferences.settings.collect { settings ->
                 val previousPlaybackSettings = latestPlaybackSettings
                 latestPlaybackSettings = settings
+                if (previousPlaybackSettings.autoUpgradeHiResEnabled && !settings.autoUpgradeHiResEnabled) {
+                    cancelActiveUpgrade()
+                }
                 musicHapticsController.updateConfig(settings.musicHapticsConfig)
                 crossfadeEnabled = settings.crossfadeEnabled
                 if (autoplaySimilarEnabled && !settings.autoplaySimilarEnabled) {
@@ -7139,6 +7142,12 @@ class MusicPlayer @Inject constructor(
         val misc = latestPlaybackSettings
         val requestedQuality = requestedQualityOverride ?: selectedStreamingQuality(misc)
         val explicitlyChanging = requestedQualityOverride != null
+        // "Auto upgrade to Hi-Res" only blocks lossless promotions; a 96k stream
+        // recovering to 320k or a downgrade must still go through.
+        if (!misc.autoUpgradeHiResEnabled &&
+            requestedQuality >= LosslessMusicApi.QUALITY_CD_LOSSLESS &&
+            streamQualityTier(currentStream) < requestedQuality
+        ) return false
         val aboveLimit = !isStreamAllowedForQuality(currentStream, requestedQuality, misc)
         val wantLossless = misc.preferLosslessStreaming && requestedQuality != LosslessMusicApi.QUALITY_YOUTUBE
         if (expectedMediaId == activeUpgradeMediaId && requestedQuality == activeUpgradeTargetQuality &&

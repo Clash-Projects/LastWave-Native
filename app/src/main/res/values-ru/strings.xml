@@ -51,9 +51,6 @@
     <string name="settings_lyrics_animation">Анимация текстов песен</string>
     <string name="settings_equalizer">Эквалайзер</string>
     <string name="settings_equalizer_sub">Настройте звук в 15 полосах</string>
-    <string name="settings_wavy_seekbar">Волнистый ползунок</string>
-    <string name="settings_wavy_seekbar_on">Многослойный плавный волнистый ползунок</string>
-    <string name="settings_wavy_seekbar_off">Классический стандартный ползунок</string>
     <string name="settings_studio_clarity">Студийная чистота Master</string>
     <string name="settings_studio_clarity_on">Кристально чистый открытый звук • воздушная детализация • глубокое разделение</string>
     <string name="settings_studio_clarity_off">Оригинальный необработанный звук</string>

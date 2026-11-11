@@ -525,6 +525,7 @@ class SettingsViewModel @Inject constructor(
     fun setDynamicNowPlaying(enabled: Boolean) = launchSettingsAction("update dynamic theme") { themeRepository.setDynamicNowPlaying(enabled) }
     fun setUseCustomFont(enabled: Boolean) = launchSettingsAction("update the app font") { settingsPreferences.setUseCustomFont(enabled) }
     fun setPreferLosslessStreaming(enabled: Boolean) = launchSettingsAction("update streaming preference") { settingsPreferences.setPreferLosslessStreaming(enabled) }
+    fun setAutoUpgradeHiResEnabled(enabled: Boolean) = launchSettingsAction("update auto upgrade") { settingsPreferences.setAutoUpgradeHiResEnabled(enabled) }
     fun setWifiStreamingQuality(quality: Int) = launchSettingsAction("update Wi-Fi streaming quality") { settingsPreferences.setWifiStreamingQuality(quality) }
     fun setCellularStreamingQuality(quality: Int) = launchSettingsAction("update cellular streaming quality") { settingsPreferences.setCellularStreamingQuality(quality) }
     fun setDownloadQuality(quality: Int) = launchSettingsAction("update download quality") { settingsPreferences.setDownloadQuality(quality) }
@@ -755,9 +756,6 @@ class SettingsViewModel @Inject constructor(
     }
     fun setCrossfadeSeconds(seconds: Int) = launchSettingsAction("update crossfade duration") {
         settingsPreferences.setCrossfadeSeconds(seconds.coerceIn(1, 12))
-    }
-    fun setWavySeekbarEnabled(enabled: Boolean) = launchSettingsAction("update seekbar style") {
-        settingsPreferences.setWavySeekbarEnabled(enabled)
     }
     fun setRotatingBackgroundEnabled(enabled: Boolean) = launchSettingsAction("update rotating background") {
         settingsPreferences.setRotatingBackgroundEnabled(enabled)

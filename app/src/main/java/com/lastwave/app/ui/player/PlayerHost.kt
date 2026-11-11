@@ -524,6 +524,9 @@ fun PlayerHost(
                 Modifier
                     .fillMaxSize()
                     .drawWithContent {
+                        // Under the opaque full player the shell is invisible, but drawing it anyway
+                        // re-rendered the whole feed (and its path clip, masked on the CPU) every frame.
+                        if (contentCovered) return@drawWithContent
                         drawContent()
                         val p = playerExpansion.value.coerceIn(0f, 1f)
                         if (p > 0f) {
@@ -540,7 +543,7 @@ fun PlayerHost(
             if (state.current != null && !settings.buttonNowPlayingEnabled && !hideMiniPlayer && showMiniPlayer) {
                 MiniPlayer(
                     state = state,
-                    progressState = viewModel.progressState,
+                    progressState = viewModel.miniProgressState,
                     onExpand = { expanded = true },
                     onToggle = viewModel.player::togglePlayPause,
                     onPrevious = viewModel.player::previous,
@@ -582,7 +585,7 @@ fun PlayerHost(
             if (currentTrack != null && !expanded && settings.buttonNowPlayingEnabled) {
                 DraggableNowPlayingButton(
                     track = currentTrack,
-                    progressState = viewModel.progressState,
+                    progressState = viewModel.miniProgressState,
                     isPlaying = state.isPlaying,
                     onExpand = { expanded = true },
                     onClose = viewModel.player::stopAndClear,
@@ -728,7 +731,6 @@ internal fun ExpandedPlayer(
         lyricsState = lyricsState,
         lyricsProviderStatuses = lyricsProviderStatuses,
         onProbeLyricsProviders = viewModel::probeLyricsProviders,
-        wavySeekbarEnabled = settings.wavySeekbarEnabled,
         rotatingBackgroundEnabled = settings.rotatingBackgroundEnabled,
         lyricsRotatingBackgroundEnabled = settings.lyricsRotatingBackgroundEnabled,
         lyricsOffsetMs = lyricsOffsetMs,

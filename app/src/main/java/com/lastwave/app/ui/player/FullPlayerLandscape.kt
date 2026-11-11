@@ -70,7 +70,7 @@ import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
+import com.lastwave.app.ui.common.playingMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -343,7 +343,6 @@ internal fun FullPlayerLandscape(
     state: MusicPlayerState,
     player: MusicPlayer,
     progressState: StateFlow<PlaybackProgressState>?,
-    wavySeekbarEnabled: Boolean,
     showSleeveCanvas: Boolean,
     canvas: com.lastwave.app.data.canvas.CanvasArtwork?,
     ambientColor: Color,
@@ -683,7 +682,7 @@ internal fun FullPlayerLandscape(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .basicMarquee(iterations = Int.MAX_VALUE),
+                            .playingMarquee(state.isPlaying),
                     )
                     Spacer(Modifier.height(4.dp))
                     val splitArtists = remember(track.artist) {
@@ -692,7 +691,7 @@ internal fun FullPlayerLandscape(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .basicMarquee(iterations = Int.MAX_VALUE),
+                            .playingMarquee(state.isPlaying),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         splitArtists.forEachIndexed { index, artName ->
@@ -815,12 +814,10 @@ internal fun FullPlayerLandscape(
                 progressState = progressState ?: player.progressState,
                 isPlaying = state.isPlaying,
                 trackKey = track.videoId ?: "${track.artist}|${track.title}",
-                wavyEnabled = wavySeekbarEnabled,
                 onSeek = player::seekTo,
                 isTranslucent = LocalLiquidGlass.current,
                 fallbackDurationMs = track.durationMs ?: state.durationMs,
                 primaryColor = ambientColor,
-                secondaryColor = ambientCompanion,
                 tertiaryColor = ambientDeep,
                 telemetry = state.deckBlendTelemetry,
             )

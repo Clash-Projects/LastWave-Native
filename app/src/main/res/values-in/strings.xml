@@ -51,9 +51,6 @@
     <string name="settings_lyrics_animation">Animasi lirik</string>
     <string name="settings_equalizer">Equalizer</string>
     <string name="settings_equalizer_sub">Bentuk suara dalam 15 pita</string>
-    <string name="settings_wavy_seekbar">Bilah gelombang</string>
-    <string name="settings_wavy_seekbar_on">Penggeser gelombang berlapis yang halus</string>
-    <string name="settings_wavy_seekbar_off">Penggeser standar klasik</string>
     <string name="settings_studio_clarity">Kejernihan Master Studio</string>
     <string name="settings_studio_clarity_on">Suara terbuka jernih • detail lapang • pemisahan dalam yang bersih</string>
     <string name="settings_studio_clarity_off">Output asli tanpa proses</string>
