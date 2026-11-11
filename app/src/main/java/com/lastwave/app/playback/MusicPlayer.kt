@@ -373,7 +373,7 @@ class MusicPlayer @Inject constructor(
      * Keys (not indices) survive queue insertions/removals; stale keys are
      * skipped on pop. Main-thread only.
      */
-    private val playHistory = ArrayDeque<String>()
+    internal val playHistory = ArrayDeque<String>()
     /** Guards the near-end late-preload so it fires once per upcoming item. */
     private var latePreloadKey: String? = null
     /** Last steady-state preload retry (elapsedRealtime); throttles the 30s ensure. */
@@ -3840,7 +3840,7 @@ class MusicPlayer @Inject constructor(
         cancelCrossfade()
         if (enabled && player.mediaItemCount > 1) {
             val current = player.currentMediaItemIndex.takeIf { it in 0 until player.mediaItemCount } ?: 0
-            val rest = (0 until player.mediaItemCount).filter { it != current }.shuffled()
+            val rest = shuffledUnplayedFirst((0 until player.mediaItemCount).filter { it != current }) { player.getMediaItemAt(it).mediaId }
             val order = (listOf(current) + rest).toIntArray()
             player.setShuffleOrder(DefaultShuffleOrder(order, Random.nextLong()))
         }
@@ -5631,7 +5631,7 @@ class MusicPlayer @Inject constructor(
             if (visited >= player.mediaItemCount) nextIndex = C.INDEX_UNSET
             if (nextIndex == C.INDEX_UNSET && player.mediaItemCount > 1) {
                 val candidateIndices = if (player.shuffleModeEnabled) {
-                    (0 until player.mediaItemCount).shuffled()
+                    shuffledUnplayedFirst((0 until player.mediaItemCount).toList()) { player.getMediaItemAt(it).mediaId }
                 } else {
                     ((failedIndex + 1 until player.mediaItemCount) + (0 until failedIndex)).toList()
                 }
@@ -8708,7 +8708,7 @@ class MusicPlayer @Inject constructor(
         const val MAX_PREPARED_STREAMS = 256
         const val MAX_KNOWN_DURATIONS = 512
         /** Cap for the explicit shuffle-Previous listening history. */
-        const val MAX_PLAY_HISTORY = 100
+        const val MAX_PLAY_HISTORY = 1_000 // shuffle reads it as "already played"; cover big playlists
         const val RESOLVED_URL_EXPIRY_MARGIN_MS = 2 * 60 * 1000L
         /** Offline license renewal attempt before giving up to streaming. */
         const val OFFLINE_LICENSE_RENEW_TIMEOUT_MS = 8_000L

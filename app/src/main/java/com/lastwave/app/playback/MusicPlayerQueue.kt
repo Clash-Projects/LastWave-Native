@@ -246,12 +246,22 @@ internal fun MusicPlayer.replaceMediaItemPreservingShuffle(index: Int, mediaItem
         }
     }
 
+/**
+ * Shuffled [indices] with songs not yet played this queue session first.
+ * A plain random pick ignored history, so users heard the same songs again
+ * and never reached the rest of the playlist.
+ */
+internal fun MusicPlayer.shuffledUnplayedFirst(indices: List<Int>, keyAt: (Int) -> String?): List<Int> {
+        val played = synchronized(playHistory) { playHistory.toHashSet() }
+        return indices.shuffled().sortedBy { keyAt(it) in played }
+    }
+
 internal fun MusicPlayer.nextQueueIndex(state: MusicPlayerState): Int {
         val queue = state.queue
         if (queue.isEmpty()) return C.INDEX_UNSET
         val start = (state.currentIndex + 1).coerceAtLeast(0)
         val ordered = if (state.shuffleEnabled) {
-            queue.indices.filter { it != state.currentIndex && queue[it].mediaIdKey() !in unavailableMediaIds }.shuffled()
+            shuffledUnplayedFirst(queue.indices.toList()) { queue[it].mediaIdKey() }
         } else {
             (start until queue.size) + (0 until start)
         }
