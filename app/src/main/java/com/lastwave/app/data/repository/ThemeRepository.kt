@@ -276,8 +276,11 @@ class ThemeRepository @Inject constructor(
         }
         // Artwork complements the wallpaper/accent theme instead of replacing it.
         val (darkScheme, lightScheme) = if (nowPlayingActive) {
-            Md3SchemeBuilder.blendNowPlaying(baseDark, Md3SchemeBuilder.buildDarkScheme(nowPlaying!!, isAmoled, isGlass)) to
-                Md3SchemeBuilder.blendNowPlaying(baseLight, Md3SchemeBuilder.buildLightScheme(nowPlaying, isGlass))
+            // Black-and-white covers blend in grey, not a made-up hue.
+            val mono = Md3SchemeBuilder.isAchromatic(nowPlaying!!)
+            val artDark = if (mono) Md3SchemeBuilder.buildMonochromeDarkScheme(isAmoled, isGlass) else Md3SchemeBuilder.buildDarkScheme(nowPlaying, isAmoled, isGlass)
+            val artLight = if (mono) Md3SchemeBuilder.buildMonochromeLightScheme(isGlass) else Md3SchemeBuilder.buildLightScheme(nowPlaying, isGlass)
+            Md3SchemeBuilder.blendNowPlaying(baseDark, artDark) to Md3SchemeBuilder.blendNowPlaying(baseLight, artLight)
         } else {
             baseDark to baseLight
         }

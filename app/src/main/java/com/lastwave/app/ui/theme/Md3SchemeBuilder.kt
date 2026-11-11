@@ -47,6 +47,14 @@ object Md3SchemeBuilder {
         return (h * 360f).roundToInt().let { ((it % 360) + 360) % 360 }
     }
 
+    /** True for grey/black/white seeds: their hue is meaningless ([hueOf] gives 0, red). */
+    fun isAchromatic(hex: String): Boolean {
+        val rgb = hex.removePrefix("#").take(6).toIntOrNull(16) ?: return true
+        val hsl = FloatArray(3)
+        androidx.core.graphics.ColorUtils.colorToHSL(rgb or 0xFF000000.toInt(), hsl)
+        return hsl[1] < 0.1f
+    }
+
     /** Full dynamic dark scheme, seeded from [hex]'s hue. Matches _applyMaterialYouScheme(). */
     @Suppress("UNUSED_PARAMETER")
     fun buildScheme(hex: String, amoled: Boolean, liquidGlass: Boolean = false): ColorScheme =
