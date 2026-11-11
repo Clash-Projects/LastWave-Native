@@ -70,7 +70,7 @@ import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
+import com.lastwave.app.ui.common.playingMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -670,6 +670,7 @@ internal fun FullPlayer(
             Box(Modifier.matchParentSize().liquidGlassSource(if (fullGlass) playerBackdrop else null)) {
                 FluidArtworkBackground(
                     track = track,
+                    isPlaying = state.isPlaying,
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer { alpha = (1f - lyricsVeil).coerceIn(0f, 1f) },
@@ -1588,7 +1589,7 @@ internal fun FullPlayer(
                                                 overflow = TextOverflow.Ellipsis,
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .basicMarquee(iterations = Int.MAX_VALUE),
+                                                    .playingMarquee(state.isPlaying),
                                             )
                                             Spacer(Modifier.height(4.dp))
                                             val splitArtists = remember(track.artist) {
@@ -1597,7 +1598,7 @@ internal fun FullPlayer(
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .basicMarquee(iterations = Int.MAX_VALUE),
+                                                    .playingMarquee(state.isPlaying),
                                                 verticalAlignment = Alignment.CenterVertically,
                                             ) {
                                                 splitArtists.forEachIndexed { index, artName ->

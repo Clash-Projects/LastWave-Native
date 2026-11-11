@@ -70,7 +70,7 @@ import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
+import com.lastwave.app.ui.common.playingMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -514,7 +514,7 @@ internal fun MiniPlayer(
                                 color = miniTitleColor,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
+                                modifier = Modifier.fillMaxWidth().playingMarquee(state.isPlaying),
                             )
                             Text(
                                 track.artist,
@@ -522,7 +522,7 @@ internal fun MiniPlayer(
                                 color = miniArtistColor,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
+                                modifier = Modifier.fillMaxWidth().playingMarquee(state.isPlaying),
                             )
                         }
                         // Inner controls sit plain on the glass card (no nested glass).
@@ -624,7 +624,7 @@ internal fun MiniPlayer(
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
+                            modifier = Modifier.fillMaxWidth().playingMarquee(state.isPlaying),
                         )
                         Spacer(Modifier.height(1.dp))
                         Text(
@@ -634,7 +634,7 @@ internal fun MiniPlayer(
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
+                            modifier = Modifier.fillMaxWidth().playingMarquee(state.isPlaying),
                         )
                     }
 
