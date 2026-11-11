@@ -559,8 +559,7 @@ class DownloadsViewModel @Inject constructor(
                 val label = describeCustomLocation() ?: tree
                 val intent = Intent(Intent.ACTION_VIEW).apply {
                     setDataAndType(treeUri, android.provider.DocumentsContract.Document.MIME_TYPE_DIR)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(
                     Intent.createChooser(intent, context.getString(com.lastwave.app.R.string.dl_open_location, label))
