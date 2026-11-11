@@ -499,6 +499,10 @@ class MusicPlayer @Inject constructor(
         .stateIn(applicationScope, SharingStarted.WhileSubscribed(5_000), _state.value.withoutProgress())
 
     private var errorRetryCount = 0
+
+    /** True when the player is actively retrying, reconnecting, or advancing unavailable items. */
+    fun isRecoveringPlayback(): Boolean =
+        (playRequest?.isActive == true) || (unavailableSkipJob?.isActive == true) || errorRetryCount > 0
     /** Local in-app playback volume (persisted). Never holds the cast level. */
     var appVolume: Float = 1f
         private set
@@ -694,20 +698,21 @@ class MusicPlayer @Inject constructor(
     }
 
     private val mediaHttpClient: OkHttpClient by lazy {
-        // Share the resolver's dispatcher, DNS policy and connection pool with
-        // YouTube extraction. YouTube may bind a googlevideo URL to the network
-        // context that minted it; an independent media client can choose a
-        // different route/address family, which often fails on full-tunnel VPNs.
-        // Strip API-only interceptors and the metadata cache while retaining
-        // the shared transport state.
+        // Strip API-only interceptors and the metadata cache while configuring
+        // an isolated connection pool with aggressive idle eviction and tuned timeouts.
+        // YouTube / Google Video CDN drops idle sockets after ~60-90s; an isolated
+        // pool with a 15s keep-alive prevents ExoPlayer from reusing dead CDN connections.
         http.newBuilder()
             .cache(null)
             .apply {
                 interceptors().clear()
                 networkInterceptors().clear()
             }
-            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .connectionPool(okhttp3.ConnectionPool(5, 15, java.util.concurrent.TimeUnit.SECONDS))
+            .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .pingInterval(10, java.util.concurrent.TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
             .followRedirects(true)
             .followSslRedirects(true)
             .build()
@@ -751,8 +756,12 @@ class MusicPlayer @Inject constructor(
      */
     private fun refreshRejectedYouTubeUrl(failedUri: Uri): ChunkedRangeDataSource.Replacement? {
         val failedUrl = failedUri.toString()
-        refreshedYouTubeUrls[failedUrl]?.let { return it }
-        val candidate = preparedStreams.values.firstOrNull { it.url == failedUrl }?.youtubeCandidate
+        refreshedYouTubeUrls[failedUrl]?.let { cached ->
+            if (cached.uri.toString() != failedUrl) return cached
+        }
+        val streamEntry = preparedStreams.entries.firstOrNull { it.value.url == failedUrl }
+        val candidate = streamEntry?.value?.youtubeCandidate
+            ?: preparedStreams.values.firstOrNull { it.url == failedUrl }?.youtubeCandidate
             ?: return null
         val itag = candidate.itag ?: return null
         val contentLength = candidate.contentLength?.takeIf { it > 0L } ?: return null
@@ -784,6 +793,16 @@ class MusicPlayer @Inject constructor(
         )
         if (refreshedYouTubeUrls.size > MAX_REFRESHED_URL_ENTRIES) refreshedYouTubeUrls.clear()
         refreshedYouTubeUrls[failedUrl] = replacement
+        refreshedYouTubeUrls[fresh.url] = replacement
+        if (streamEntry != null) {
+            val updatedStream = streamEntry.value.copy(
+                url = fresh.url,
+                requestHeaders = fresh.requestHeaders + ("User-Agent" to fresh.userAgent),
+                userAgent = fresh.userAgent,
+                youtubeCandidate = fresh,
+            )
+            preparedStreams[streamEntry.key] = updatedStream
+        }
         return replacement
     }
 
@@ -1259,6 +1278,7 @@ class MusicPlayer @Inject constructor(
                 val generation = playRequestGeneration.incrementAndGet()
                 playRequest?.cancel()
                 cancelActiveUpgrade()
+                _state.update { it.copy(isBuffering = true) }
                 playRequest = applicationScope.launch(Dispatchers.IO) {
                     var retryResolutionFailure: Throwable? = null
                     try {
@@ -1602,9 +1622,9 @@ class MusicPlayer @Inject constructor(
         // dry on any network dip and stalled songs mid-way.
         val baseLoadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                /* minBufferMs = */ 45_000,
-                /* maxBufferMs = */ 120_000,
-                /* bufferForPlaybackMs = */ 250,
+                /* minBufferMs = */ 30_000,
+                /* maxBufferMs = */ 60_000,
+                /* bufferForPlaybackMs = */ 500,
                 /* bufferForPlaybackAfterRebufferMs = */ 1_500,
             )
             .setPrioritizeTimeOverSizeThresholds(true)
@@ -5546,7 +5566,8 @@ class MusicPlayer @Inject constructor(
         val attempts = (unavailableAttemptCounts[failedMediaId] ?: 0) + 1
         unavailableAttemptCounts[failedMediaId] = attempts
         val alreadyRetriedExhaustively = errorRetryCount >= MAX_PLAYBACK_RETRIES
-        if (!exhausted && !provenDead && !alreadyRetriedExhaustively && attempts < MIN_UNAVAILABLE_ATTEMPTS_BEFORE_SKIP) {
+        val isQueuePlay = player.mediaItemCount > 1
+        if (!isQueuePlay && !exhausted && !provenDead && !alreadyRetriedExhaustively && attempts < MIN_UNAVAILABLE_ATTEMPTS_BEFORE_SKIP) {
             player.pause()
             _state.update {
                 it.copy(
@@ -5558,7 +5579,7 @@ class MusicPlayer @Inject constructor(
             }
             return
         }
-        player.pause()
+        if (!isQueuePlay) player.pause()
         unavailableSkipJob?.cancel()
         unavailableSkipJob = applicationScope.launch(Dispatchers.Main.immediate) {
             yield()

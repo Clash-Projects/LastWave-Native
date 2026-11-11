@@ -563,7 +563,8 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
     }
 
     internal fun updateWakeLocks(state: MusicPlayerState) {
-        val shouldHold = state.isPlaying || state.isBuffering
+        val isRecovering = runCatching { musicPlayer.isRecoveringPlayback() }.getOrDefault(false)
+        val shouldHold = state.isPlaying || state.isBuffering || isRecovering
         if (shouldHold) {
             wakeLockReleaseJob?.cancel()
             wakeLockReleaseJob = null

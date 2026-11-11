@@ -101,16 +101,18 @@ class ChunkedRangeDataSource(
             currentChunkRemaining = 0L
         }
         val spec = currentDataSpec ?: return
+        val offsetInChunk = currentPosition % chunkSize
+        val bytesToBoundary = if (offsetInChunk > 0L) chunkSize - offsetInChunk else chunkSize
         val chunkLength = if (requestedLength != C.LENGTH_UNSET.toLong()) {
             val remaining = requestedLength - bytesReadTotal
             if (remaining <= 0) return
-            minOf(chunkSize, remaining)
+            minOf(bytesToBoundary, remaining)
         } else if (totalLength != C.LENGTH_UNSET.toLong()) {
             val remaining = totalLength - currentPosition
             if (remaining <= 0) return
-            minOf(chunkSize, remaining)
+            minOf(bytesToBoundary, remaining)
         } else {
-            chunkSize
+            bytesToBoundary
         }
 
         val chunkSpec = spec.buildUpon()
@@ -195,7 +197,7 @@ class ChunkedRangeDataSource(
         currentDataSpec ?: return C.RESULT_END_OF_INPUT
         if (!chunked) return upstream.read(buffer, offset, length)
 
-        // Bounded: a chunk that opens but yields nothing twice in a row is
+        // Bounded: a chunk that opens but yields nothing three times in a row is
         // either the end (no size known) or a broken server response.
         var emptyChunks = 0
         while (true) {
@@ -204,12 +206,26 @@ class ChunkedRangeDataSource(
                 if (!openNextChunkOrEnd()) return C.RESULT_END_OF_INPUT
             }
             val bytesToRead = minOf(length.toLong(), currentChunkRemaining).toInt()
-            val bytesRead = upstream.read(buffer, offset, bytesToRead)
+            var bytesRead: Int
+            try {
+                bytesRead = upstream.read(buffer, offset, bytesToRead)
+            } catch (ioe: Exception) {
+                // Connection was reset or socket timed out during an idle stretch.
+                runCatching { upstream.close() }
+                isCurrentChunkOpen = false
+                currentChunkRemaining = 0L
+                if (++emptyChunks >= 3) {
+                    throw if (ioe is IOException) ioe else IOException("Chunk read failed at byte $currentPosition", ioe)
+                }
+                continue
+            }
             if (bytesRead == C.RESULT_END_OF_INPUT) {
                 // This chunk closed early (connection dropped) or exactly at
-                // its end. Either way continue from the byte we actually have.
+                // its end. Either way cleanly close upstream and continue from the byte we actually have.
+                runCatching { upstream.close() }
+                isCurrentChunkOpen = false
                 currentChunkRemaining = 0L
-                if (++emptyChunks >= 2) {
+                if (++emptyChunks >= 3) {
                     if (requestedLength == C.LENGTH_UNSET.toLong() && totalLength == C.LENGTH_UNSET.toLong()) {
                         return C.RESULT_END_OF_INPUT
                     }
@@ -217,6 +233,7 @@ class ChunkedRangeDataSource(
                 }
                 continue
             }
+            emptyChunks = 0
             currentPosition += bytesRead
             bytesReadTotal += bytesRead
             currentChunkRemaining -= bytesRead
