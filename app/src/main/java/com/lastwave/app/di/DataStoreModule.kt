@@ -1,6 +1,7 @@
 package com.lastwave.app.di
 
 import android.content.Context
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.Preferences
@@ -18,12 +19,24 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
     // Recover from a torn/corrupt preferences file instead of entering a
     // permanent startup crash loop. User playlists/downloads live in Room and
     // public storage, so they are not touched by this settings-only reset.
-    corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+    // This file also holds login, so the reset used to log users out silently;
+    // flag it so Login can say why and point at Restore backup.
+    corruptionHandler = ReplaceFileCorruptionHandler { error ->
+        Log.e("DataStoreModule", "lastwave_prefs corrupt; reset to defaults", error)
+        prefsReset = true
+        emptyPreferences()
+    },
 )
+
+@Volatile
+private var prefsReset = false
 
 @Module
 @InstallIn(SingletonComponent::class)
 object DataStoreModule {
+
+    /** True once after a corruption reset; Login shows the notice. */
+    fun consumePrefsReset(): Boolean = prefsReset.also { prefsReset = false }
 
     @Provides
     @Singleton
