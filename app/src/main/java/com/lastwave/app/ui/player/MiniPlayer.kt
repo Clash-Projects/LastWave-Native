@@ -726,7 +726,8 @@ fun PlayingWaveBars(
     containerColor: Color = MaterialTheme.colorScheme.primaryContainer,
     shape: Shape = CircleShape,
 ) {
-    val active = com.lastwave.app.ui.common.LocalAmbientAnimationsActive.current
+    val active = com.lastwave.app.ui.common.LocalAmbientAnimationsActive.current &&
+        rememberPlayerWindowActive()
     val first: androidx.compose.runtime.State<Float>
     val second: androidx.compose.runtime.State<Float>
     val third: androidx.compose.runtime.State<Float>
