@@ -308,18 +308,8 @@ class PlaylistRepository @Inject constructor(
         syncPublicMirrorInBackground()
         _changes.tryEmit(Unit)
 
-        // Best-effort copy to the public Downloads folder. Room is already
-        // the source of truth the app reads from, so this never blocks the
-        // caller — and a failure here doesn't mean the playlist was lost.
-        if (mode != "custom" && tracks.isNotEmpty()) {
-            exportScope.launch {
-                fileExportHelper.savePlaylistToPublicDownloads(saved.title, saved.tracks)
-                    .onFailure { e ->
-                        Log.e(TAG, "Public Downloads export failed for \"${saved.title}\"", e)
-                    }
-            }
-        }
-
+        // No automatic copy to public Downloads: files there are only
+        // created by an explicit export (see exportPublicMirror).
         saved
     }
 
@@ -620,10 +610,15 @@ class PlaylistRepository @Inject constructor(
         return updated.toDomain()
     }
 
-    private suspend fun notifyChanged() {
-        syncPublicMirror()
+    private fun notifyChanged() {
+        // Emit first so the UI refreshes at once (remove/delete used to wait on
+        // the mirror file write); the private mirror is refreshed in background.
         _changes.tryEmit(Unit)
+        syncPublicMirrorInBackground()
     }
+
+    /** Explicit export only: writes the playlist JSON to Download/LastWave. */
+    suspend fun exportPublicMirror(): Result<Unit> = publicMirror.exportToDownloads()
 
     private fun SavedPlaylistEntity.withTracks(tracks: List<GeneratedTrack>): SavedPlaylistEntity =
         copy(tracksJson = json.encodeToString(tracks.map { it.toStored() }))
