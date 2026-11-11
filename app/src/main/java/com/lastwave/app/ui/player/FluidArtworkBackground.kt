@@ -312,6 +312,7 @@ fun isFluidSupported(): Boolean {
 @Composable
 fun FluidArtworkBackground(
     track: PlayableTrack,
+    isPlaying: Boolean,
     modifier: Modifier = Modifier,
     extraBlur: Boolean = false,
     rotatingBackgroundEnabled: Boolean = true,
@@ -396,9 +397,9 @@ fun FluidArtworkBackground(
     var seconds by remember { mutableFloatStateOf(0f) }
     var cachedSigma by remember { mutableFloatStateOf(0f) }
     var cachedRenderEffect by remember { mutableStateOf<androidx.compose.ui.graphics.RenderEffect?>(null) }
-    val shouldPauseLoop = extraBlur && !lyricsRotatingBackgroundEnabled
-    LaunchedEffect(!shouldPauseLoop) {
-        if (shouldPauseLoop) return@LaunchedEffect
+    // Paused: hold the current pose. Animating the full-screen shader + blur while paused cost ~60% CPU.
+    LaunchedEffect(isPlaying) {
+        if (!isPlaying) return@LaunchedEffect
         var last = 0L
         var pending = 0f
         while (true) {
