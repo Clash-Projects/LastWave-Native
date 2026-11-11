@@ -19,6 +19,8 @@ fun qualityBadgeLabel(state: MusicPlayerState): String {
     if (state.isCrossfading) return "CROSSFADING"
     val spatial = spatialIndicatorLabel(state.audioCodec)
     if (spatial != null) return spatial
+    val dsd = dsdIndicatorLabel(state.audioCodec)
+    if (dsd != null) return dsd
 
     val codec = state.audioCodec
     val isLossy = !state.isLossless && (codec?.contains("kbps", ignoreCase = true) == true ||
@@ -36,19 +38,20 @@ fun qualityBadgeLabel(state: MusicPlayerState): String {
         ?: inferBitDepth(state.copy(bitDepth = null), allowRateGuess = false)
         ?: parseQualityFromCodec(codec)?.substringBefore('/')?.toIntOrNull())
 
+    val containerName = losslessContainerName(codec)
     if (flacLike && depth != null && rate != null && rate > 0.0) {
         return "$depth/${formatSampleRateKHz(rate)}kHz"
     }
     if (flacLike && rate != null && rate > 0.0) {
-        return "${formatSampleRateKHz(rate)}kHz FLAC"
+        return "${formatSampleRateKHz(rate)}kHz $containerName"
     }
     if (flacLike && depth != null) {
-        return "$depth-BIT FLAC"
+        return "$depth-BIT $containerName"
     }
     if (flacLike) {
         val parsed = parseQualityFromCodec(codec)
         if (parsed != null) return parsed
-        return codec?.takeIf { it.isNotBlank() && !it.equals("AUDIO", true) } ?: "FLAC"
+        return codec?.takeIf { it.isNotBlank() && !it.equals("AUDIO", true) } ?: containerName
     }
 
     if (codec?.equals("MP3 320k", ignoreCase = true) == true) return "MP3 320 kbps"
@@ -75,9 +78,31 @@ fun spatialIndicatorLabel(codec: String?): String? {
 
 fun isSpatialAudioCodec(codec: String?): Boolean = spatialIndicatorLabel(codec) != null
 
+fun dsdIndicatorLabel(codec: String?): String? {
+    val c = codec?.trim()?.uppercase().orEmpty()
+    return when {
+        c.startsWith("DSD512") -> "DSD512"
+        c.startsWith("DSD256") -> "DSD256"
+        c.startsWith("DSD128") -> "DSD128"
+        c.startsWith("DSD64") || c == "DSD" || c == "DSF" || c == "DFF" -> "DSD64"
+        else -> null
+    }
+}
+
+private fun losslessContainerName(codec: String?): String {
+    val c = codec?.uppercase().orEmpty()
+    return when {
+        c.contains("AIFF") || c.contains("AIFC") -> "AIFF"
+        c.contains("WAV") -> "WAV"
+        c.contains("ALAC") -> "ALAC"
+        else -> "FLAC"
+    }
+}
+
 /** The tier name on the quality pill, for the playing stream or one being switched to. */
 fun qualityTitle(codec: String?, isLossless: Boolean, samplingRateKHz: Double?, bitDepth: Int?): String = when {
     isSpatialAudioCodec(codec) -> "Dolby Atmos"
+    dsdIndicatorLabel(codec) != null -> "Hi-Res DSD"
     isLossless && ((samplingRateKHz ?: 44.1) > 48.0 || (bitDepth ?: 16) > 16) -> "Hi-Res Lossless"
     isLossless -> "Lossless"
     codec?.contains("AAC", ignoreCase = true) == true -> "AAC"
@@ -89,8 +114,9 @@ fun qualityTitle(codec: String?, isLossless: Boolean, samplingRateKHz: Double?, 
 fun isFlacLikeCodec(codec: String?): Boolean {
     val c = codec?.uppercase().orEmpty()
     if (c.isBlank()) return false
-    if (isSpatialAudioCodec(codec)) return false
-    return c.contains("FLAC") || c == "LOSSLESS" || c.contains("HI-RES") || c.contains("HI_RES") ||
+    if (isSpatialAudioCodec(codec) || dsdIndicatorLabel(codec) != null) return false
+    return c.contains("FLAC") || c.contains("WAV") || c.contains("AIFF") || c.contains("ALAC") ||
+        c == "LOSSLESS" || c.contains("HI-RES") || c.contains("HI_RES") ||
         Regex("""(?:^|[^\d])(16|24|32)\s*(?:[-_]bit)?\s*[/]\s*(\d{2,6}(?:\.\d+)?)\s*k?""", RegexOption.IGNORE_CASE).containsMatchIn(c)
 }
 
