@@ -153,6 +153,20 @@
                 <data android:host="spotify.link" />
             </intent-filter>
 
+            <!-- Local audio files ("Open With" from Files / file managers) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="application/ogg" />
+                <data android:mimeType="application/x-ogg" />
+                <data android:mimeType="application/flac" />
+                <data android:mimeType="application/x-flac" />
+            </intent-filter>
+
             <!-- Share target for music links & song titles -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

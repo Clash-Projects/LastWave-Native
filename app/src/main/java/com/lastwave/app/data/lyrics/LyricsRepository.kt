@@ -1,5 +1,9 @@
 package com.lastwave.app.data.lyrics
 
+import android.content.Context
+import android.net.Uri
+import com.lastwave.app.data.localmusic.LocalContainerLyricsReader
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -128,6 +132,7 @@ fun providerForSource(source: String?): com.lastwave.app.data.local.LyricsProvid
 
 @Singleton
 class LyricsRepository @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: Context,
     private val betterLyricsApi: BetterLyricsApi,
     private val kugouApi: KugouLyricsApi,
     private val lrclibApi: LrclibLyricsApi,
@@ -268,6 +273,8 @@ class LyricsRepository @Inject constructor(
         isrc: String? = null,
         /** Local songs: `.lrc` imported next to the audio file; wins over every provider. */
         localLrcPath: String? = null,
+        /** Local audio path or `content://` URI to inspect container-embedded lyrics (USLT/SYLT/FLAC/M4A/MKA). */
+        localAudioUrl: String? = null,
         overrideProvider: com.lastwave.app.data.local.LyricsProvider? = null,
         excludedProviders: Set<com.lastwave.app.data.local.LyricsProvider> = emptySet(),
         onPartialResult: suspend (LyricsResult.Success) -> Unit = {},
@@ -276,7 +283,11 @@ class LyricsRepository @Inject constructor(
             excludedProviders.isNotEmpty()
         if (!skipLocal && !localLrcPath.isNullOrBlank()) {
             val lrc = runCatching {
-                java.io.File(localLrcPath).takeIf { it.isFile && it.length() > 0 }?.readText()
+                if (localLrcPath.startsWith("content://")) {
+                    appContext.contentResolver.openInputStream(Uri.parse(localLrcPath))?.bufferedReader()?.use { it.readText() }
+                } else {
+                    java.io.File(localLrcPath.removePrefix("file://")).takeIf { it.isFile && it.length() > 0 }?.readText()
+                }
             }.getOrNull()
             if (!lrc.isNullOrBlank()) {
                 val lines = parseLrc(lrc)
@@ -291,6 +302,33 @@ class LyricsRepository @Inject constructor(
                     LyricsResult.Success(lines = emptyList(), isSynced = false, plainLyrics = lrc.trim(), source = "Local LRC")
                 }
                 return@withContext result
+            }
+        }
+        if (!skipLocal && !localAudioUrl.isNullOrBlank()) {
+            val embedded = withContext(Dispatchers.IO) {
+                LocalContainerLyricsReader.extract(appContext, localAudioUrl)
+            }
+            if (embedded != null && embedded.text.isNotBlank()) {
+                val lines = if (embedded.isLrcFormatted) parseLrc(embedded.text) else emptyList()
+                val embeddedResult = if (lines.isNotEmpty()) {
+                    LyricsResult.Success(
+                        lines = lines,
+                        isSynced = true,
+                        isWordSynced = lines.any { it.hasSyllables },
+                        source = embedded.sourceLabel,
+                    )
+                } else {
+                    LyricsResult.Success(
+                        lines = emptyList(),
+                        isSynced = false,
+                        plainLyrics = embedded.text,
+                        source = embedded.sourceLabel,
+                    )
+                }
+                // If synced lines exist (or no word-by-word upgrade requested), return immediately.
+                if (embeddedResult.isSynced || !wordByWord) {
+                    return@withContext embeddedResult
+                }
             }
         }
 

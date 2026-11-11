@@ -201,6 +201,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -474,11 +475,23 @@ fun PlayerHost(
     // receives a clean dimming scrim without blur or zoom distortions.
     val playerExpansion = remember { Animatable(if (expanded && state.current != null) 1f else 0f) }
     val expansionTarget = if (expanded && state.current != null) 1f else 0f
+    // The full player is heavy to compose. Mount it (invisible, expansion still 0) and let it
+    // finish its first composition/measure before the spring starts, so that cost lands before
+    // the animation instead of inside its first frames (the open stutter/freeze).
+    var playerMounted by remember { mutableStateOf(expanded && state.current != null) }
     LaunchedEffect(expansionTarget) {
+        if (expansionTarget == 1f) {
+            if (!playerMounted) {
+                playerMounted = true
+                withFrameNanos { }
+                withFrameNanos { }
+            }
+        }
         playerExpansion.animateTo(
             targetValue = expansionTarget,
             animationSpec = if (expansionTarget == 1f) PlayerSheetOpenSpec else PlayerSheetCloseSpec,
         )
+        if (expansionTarget == 0f) playerMounted = false
     }
 
     var isPlayerDragging by remember { mutableStateOf(false) }
@@ -603,7 +616,7 @@ fun PlayerHost(
                     onOpenDownloads = { viewModel.navigateToDownloads() },
                 )
             }
-            if (playerLayerShown && state.current != null) {
+            if ((playerLayerShown || playerMounted) && state.current != null) {
                 val sheetDensity = LocalDensity.current
                 Box(
                     Modifier
@@ -621,6 +634,8 @@ fun PlayerHost(
                             val startRadius = minOf(start.height / 2f, PLAYER_SHEET_CORNER_RADIUS.toPx() + 8.dp.toPx())
                             // Content is anchored to the card's top edge and clipped to the card.
                             translationY = top
+                            // Pre-mount frames (p == 0): composed and measured, but not drawn over the mini player.
+                            alpha = if (p == 0f) 0f else 1f
                             shape = PlayerMorphShape(left, right, bottom - top, androidx.compose.ui.util.lerp(startRadius, 0f, p))
                             clip = p < 1f
                         }

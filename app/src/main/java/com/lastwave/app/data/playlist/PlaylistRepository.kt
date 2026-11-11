@@ -461,12 +461,14 @@ class PlaylistRepository @Inject constructor(
     suspend fun mergeLocalSongs(
         updates: Map<String, GeneratedTrack>,
         additions: List<GeneratedTrack>,
+        removals: Set<String> = emptySet(),
     ): SavedPlaylist? {
         val target = ensureLocalSongs()
         return saveMutex.withLock {
             val entity = dao.getById(target.id) ?: return@withLock null
             val current = entity.toDomain().tracks
-            val rawMerged = current.map { updates[it.url] ?: it } + additions
+            val keptExisting = if (removals.isEmpty()) current else current.filterNot { it.url in removals }
+            val rawMerged = keptExisting.map { updates[it.url] ?: it } + additions
 
             val seenUrls = mutableSetOf<String>()
             val seenKeys = mutableSetOf<String>()

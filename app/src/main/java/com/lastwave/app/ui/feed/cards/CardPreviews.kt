@@ -270,7 +270,7 @@ fun PodcastHeroPreview() {
     Box(modifier = Modifier.fillMaxWidth().height(320.dp)) {
         PodcastHeroBackground(
             backgroundUrl = null,
-            scrollOffsetY = 0f,
+            scrollOffsetY = { 0f },
         )
     }
 }

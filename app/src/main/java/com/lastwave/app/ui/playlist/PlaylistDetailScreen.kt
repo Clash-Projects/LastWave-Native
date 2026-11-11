@@ -1,8 +1,6 @@
 package com.lastwave.app.ui.playlist
 
 import android.content.Intent
-import android.net.Uri
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -55,8 +53,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
-import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CloudSync
@@ -64,10 +60,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
@@ -94,9 +88,7 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -134,7 +126,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lastwave.app.data.generate.GeneratedTrack
-import com.lastwave.app.data.localmusic.LocalMusicLibrary
 import com.lastwave.app.data.playlist.LIKED_SONGS_MODE
 import com.lastwave.app.data.playlist.LOCAL_SONGS_MODE
 import com.lastwave.app.data.generate.isLocalFile
@@ -265,64 +256,19 @@ fun PlaylistDetailScreen(
         return
     }
 
-    val isLocalSongs = playlist.mode == LOCAL_SONGS_MODE
-    val localSongsViewModel: LocalSongsViewModel = hiltViewModel()
-    val localFolders by localSongsViewModel.folders.collectAsStateWithLifecycle()
-    val trackFolders by localSongsViewModel.trackFolders.collectAsStateWithLifecycle()
-    val localImportState by localSongsViewModel.importState.collectAsStateWithLifecycle()
-    val hasManyFolders = isLocalSongs && localFolders.size > 1
-    var selectedFolderUri by rememberSaveable(playlistId) { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(localFolders) {
-        if (selectedFolderUri != null && selectedFolderUri != "__all__" && localFolders.none { it.toString() == selectedFolderUri }) {
-            selectedFolderUri = null
-        }
+    if (playlist.mode == LOCAL_SONGS_MODE) {
+        LocalMusicHub(
+            playlist = playlist,
+            onBack = onBack,
+        )
+        return
     }
 
-    val selectedFolderLabel = remember(selectedFolderUri, localFolders) {
-        when (selectedFolderUri) {
-            null -> playlist.title
-            "__all__" -> "All local songs"
-            else -> {
-                val uri = runCatching { Uri.parse(selectedFolderUri) }.getOrNull()
-                if (uri != null) localSongsViewModel.label(uri) else playlist.title
-            }
-        }
-    }
-
-    val inFolderStep = hasManyFolders && selectedFolderUri == null
-
-    BackHandler(enabled = isLocalSongs && selectedFolderUri != null) {
-        selectedFolderUri = null
-    }
-
-    val currentFolderTracks = remember(playlist.tracks, selectedFolderUri, trackFolders, localFolders, hasManyFolders) {
-        if (!hasManyFolders || selectedFolderUri == null || selectedFolderUri == "__all__") {
-            playlist.tracks
-        } else {
-            val folderUri = runCatching { Uri.parse(selectedFolderUri) }.getOrNull()
-            if (folderUri != null) {
-                localSongsViewModel.tracksForFolder(folderUri, playlist.tracks)
-            } else {
-                playlist.tracks
-            }
-        }
-    }
-
-    val currentSourceLabel = if (hasManyFolders && selectedFolderUri != null) {
-        "${playlist.title} • $selectedFolderLabel"
-    } else {
-        playlist.title
-    }
+    val currentSourceLabel = playlist.title
 
     val isThisPlaylistPlaying = playbackState.isPlaying &&
-        (playbackState.sourceLabel == playlist.title ||
-         playbackState.sourceLabel == currentSourceLabel ||
-         playbackState.sourceLabel?.startsWith("${playlist.title} •") == true)
+        playbackState.sourceLabel == playlist.title
 
-    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) localSongsViewModel.addFolder(uri)
-    }
     var coverEditorOpen by remember { mutableStateOf(false) }
     var coverPickerPending by remember { mutableStateOf(false) }
     val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -346,18 +292,14 @@ fun PlaylistDetailScreen(
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
 
-    val displayTrackIndices = remember(playlist.tracks, currentFolderTracks, currentSort, sortAscending, searchQuery) {
-        playlistTrackDisplayIndices(playlist.tracks, currentFolderTracks, currentSort, sortAscending, searchQuery)
+    val displayTrackIndices = remember(playlist.tracks, currentSort, sortAscending, searchQuery) {
+        playlistTrackDisplayIndices(playlist.tracks, playlist.tracks, currentSort, sortAscending, searchQuery)
     }
     val displayTracks = remember(playlist.tracks, displayTrackIndices) {
         displayTrackIndices.map { playlist.tracks[it] }
     }
 
     val listState = rememberLazyListState()
-
-    LaunchedEffect(selectedFolderUri) {
-        listState.scrollToItem(0)
-    }
 
     val dragScope = rememberCoroutineScope()
     var draggingIndex by remember(playlistId) { mutableIntStateOf(-1) }
@@ -375,7 +317,6 @@ fun PlaylistDetailScreen(
     // on a local playlist with the lock opened.
     val reorderEnabled = !isReorderLocked &&
         !playlist.isYouTubeOnly &&
-        (!hasManyFolders || selectedFolderUri == null || selectedFolderUri == "__all__") &&
         currentSort == PlaylistTrackSort.CUSTOM &&
         sortAscending &&
         searchQuery.isBlank()
@@ -490,7 +431,7 @@ fun PlaylistDetailScreen(
                 ) {
                     // Big Bold Playlist Title (overlaid in hero)
                     Text(
-                        text = if (hasManyFolders && selectedFolderUri != null) selectedFolderLabel else playlist.title,
+                        text = playlist.title,
                         style = MaterialTheme.typography.headlineLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,
@@ -504,10 +445,6 @@ fun PlaylistDetailScreen(
                     Text(
                         text = if (playlist.isYouTubeOnly) {
                             playlist.remoteTrackCount?.let { stringResource(com.lastwave.app.R.string.pd_yt_subtitle, "$it") } ?: stringResource(com.lastwave.app.R.string.pd_yt_only)
-                        } else if (hasManyFolders && selectedFolderUri == null) {
-                            "${localFolders.size} folders • ${playlist.tracks.size} songs"
-                        } else if (hasManyFolders && selectedFolderUri != null) {
-                            "${currentFolderTracks.size} songs"
                         } else {
                             stringResource(com.lastwave.app.R.string.pd_subtitle_local, playlist.tracks.size, formatDate(playlist.createdAtMillis))
                         },
@@ -627,74 +564,7 @@ fun PlaylistDetailScreen(
                         }
                     }
 
-                    if (playlist.mode == LOCAL_SONGS_MODE && localFolders.isEmpty() && playlist.tracks.isEmpty()) {
-                        Spacer(Modifier.height(14.dp))
-                        LocalSongsPanel(trackCount = playlist.tracks.size, viewModel = localSongsViewModel)
-                    }
-
-                    if (inFolderStep) {
-                        when (val s = localImportState) {
-                            is LocalMusicLibrary.ImportState.Scanning -> {
-                                Spacer(Modifier.height(12.dp))
-                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    stringResource(com.lastwave.app.R.string.local_scanning, s.filesFound),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            is LocalMusicLibrary.ImportState.Copying -> {
-                                Spacer(Modifier.height(12.dp))
-                                val fraction = if (s.total > 0) s.done.toFloat() / s.total else 0f
-                                LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    stringResource(com.lastwave.app.R.string.local_copying, s.done, s.total, s.currentName),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            else -> Unit
-                        }
-
-                        val running = localImportState is LocalMusicLibrary.ImportState.Scanning ||
-                            localImportState is LocalMusicLibrary.ImportState.Copying
-                        Spacer(Modifier.height(12.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                            Button(
-                                onClick = { folderPicker.launch(null) },
-                                enabled = !running,
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                Icon(Icons.Filled.CreateNewFolder, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(stringResource(com.lastwave.app.R.string.local_choose_folder), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                            OutlinedButton(
-                                onClick = localSongsViewModel::rescan,
-                                enabled = !running && localFolders.isNotEmpty(),
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(stringResource(com.lastwave.app.R.string.local_rescan), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
-
-                        Spacer(Modifier.height(14.dp))
-                        Text(
-                            text = "Folders (${localFolders.size})",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground,
-                        )
-                    }
-
-                    if (!inFolderStep) {
-                        Spacer(Modifier.height(18.dp))
+                    Spacer(Modifier.height(18.dp))
 
                         // Sort Filter Pill & Lock Icon Row (Custom order, Date added, Name, Artist, Play time)
                     Row(
@@ -854,166 +724,10 @@ fun PlaylistDetailScreen(
 
                     Spacer(Modifier.height(6.dp))
                 }
-                }
             }
 
-            if (inFolderStep) {
-                val running = localImportState is LocalMusicLibrary.ImportState.Scanning ||
-                    localImportState is LocalMusicLibrary.ImportState.Copying
-
-                // Step 2: "All local songs" item
-                item(key = "all_local_songs_folder", contentType = "folder_card") {
-                    Surface(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            selectedFolderUri = "__all__"
-                        },
-                        shape = RoundedCornerShape(18.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.size(44.dp),
-                            ) {
-                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.QueueMusic,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.size(24.dp),
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.width(14.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "All local songs",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Spacer(Modifier.height(2.dp))
-                                Text(
-                                    text = "${playlist.tracks.size} songs",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                    }
-                }
-
-                items(
-                    items = localFolders,
-                    key = { "folder_${it}" },
-                    contentType = { "folder_card" },
-                ) { folder ->
-                    val folderTracks = remember(folder, playlist.tracks, trackFolders) {
-                        localSongsViewModel.tracksForFolder(folder, playlist.tracks)
-                    }
-                    val folderLabel = localSongsViewModel.label(folder)
-                    val shortName = folderLabel.substringAfterLast('/').ifBlank { folderLabel }
-
-                    Surface(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            selectedFolderUri = folder.toString()
-                        },
-                        shape = RoundedCornerShape(18.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                modifier = Modifier.size(44.dp),
-                            ) {
-                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Folder,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        modifier = Modifier.size(24.dp),
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.width(14.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = shortName,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Spacer(Modifier.height(2.dp))
-                                Text(
-                                    text = if (folderLabel != shortName) {
-                                        "$folderLabel • ${folderTracks.size} songs"
-                                    } else {
-                                        "${folderTracks.size} songs"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            IconButton(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                    localSongsViewModel.forget(folder)
-                                },
-                                enabled = !running,
-                                modifier = Modifier.size(36.dp),
-                            ) {
-                                Icon(
-                                    Icons.Filled.Close,
-                                    contentDescription = stringResource(com.lastwave.app.R.string.local_forget_folder),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                            Spacer(Modifier.width(4.dp))
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                    }
-                }
-            } else {
-                // Track items
-                if (displayTracks.isEmpty()) {
+            // Track items
+            if (displayTracks.isEmpty()) {
                 item(key = "empty_tracks", contentType = "empty") {
                     Box(
                         modifier = Modifier
@@ -1199,7 +913,6 @@ fun PlaylistDetailScreen(
                     }
                 }
             }
-            }
         }
 
         // 2. Floating Top Bar with Frosted Glass styling & Smooth Scrolled Header
@@ -1235,11 +948,7 @@ fun PlaylistDetailScreen(
                 IconButton(
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        if (isLocalSongs && selectedFolderUri != null) {
-                            selectedFolderUri = null
-                        } else {
-                            onBack()
-                        }
+                        onBack()
                     },
                     modifier = Modifier
                         .size(42.dp)
@@ -1279,7 +988,7 @@ fun PlaylistDetailScreen(
                             // Removed LocationOn icon
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                text = if (hasManyFolders && selectedFolderUri != null) selectedFolderLabel else playlist.title,
+                                text = playlist.title,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
@@ -1360,9 +1069,7 @@ fun PlaylistDetailScreen(
                             tonalElevation = 6.dp,
                             shadowElevation = 12.dp,
                         ) {
-                            if (!playlist.isYouTubeOnly && !inFolderStep &&
-                                (!hasManyFolders || selectedFolderUri == "__all__")
-                            ) {
+                            if (!playlist.isYouTubeOnly) {
                                 DropdownMenuItem(
                                     text = { Text(stringResource(com.lastwave.app.R.string.playlist_rearrange_songs)) },
                                     leadingIcon = { Icon(Icons.Filled.DragHandle, contentDescription = null) },
@@ -1387,17 +1094,7 @@ fun PlaylistDetailScreen(
                                     overflowMenuOpen = false
                                 },
                             )
-                            val isLocalSongs = playlist.mode == LOCAL_SONGS_MODE
-                            if (isLocalSongs) DropdownMenuItem(
-                                text = { Text(stringResource(com.lastwave.app.R.string.local_choose_folder)) },
-                                leadingIcon = { Icon(Icons.Filled.CreateNewFolder, contentDescription = null) },
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                    folderPicker.launch(null)
-                                    overflowMenuOpen = false
-                                },
-                            )
-                            if (!isLocalSongs) DropdownMenuItem(
+                            DropdownMenuItem(
                                 text = { Text(stringResource(com.lastwave.app.R.string.pl_download_all)) },
                                 leadingIcon = { Icon(Icons.Filled.Download, contentDescription = null) },
                                 onClick = {
@@ -1406,7 +1103,7 @@ fun PlaylistDetailScreen(
                                     overflowMenuOpen = false
                                 },
                             )
-                            if (!isLocalSongs) DropdownMenuItem(
+                            DropdownMenuItem(
                                 text = { Text(stringResource(com.lastwave.app.R.string.pd_cancel_downloads)) },
                                 leadingIcon = { Icon(Icons.Filled.Close, contentDescription = null) },
                                 onClick = {
@@ -1425,7 +1122,7 @@ fun PlaylistDetailScreen(
                                     },
                                 )
                             } else {
-                                if (playlist.mode != LIKED_SONGS_MODE && !isLocalSongs) {
+                                if (playlist.mode != LIKED_SONGS_MODE) {
                                     DropdownMenuItem(
                                         text = {
                                             Text(
@@ -1477,7 +1174,7 @@ fun PlaylistDetailScreen(
                                     overflowMenuOpen = false
                                 },
                             )
-                            if (!playlist.isYouTubeOnly && !isLocalSongs) {
+                            if (!playlist.isYouTubeOnly) {
                                 val isSyncedToYt = syncedPlaylistIds == null || playlistId in (syncedPlaylistIds ?: emptySet())
                                 DropdownMenuItem(
                                     text = { Text(if (isSyncedToYt) stringResource(com.lastwave.app.R.string.pd_syncing_yt) else stringResource(com.lastwave.app.R.string.pd_sync_yt)) },
@@ -1495,14 +1192,14 @@ fun PlaylistDetailScreen(
                                     },
                                 )
                             }
-                                if (!isLocalSongs) DropdownMenuItem(
-                                    text = { Text(stringResource(com.lastwave.app.R.string.pd_delete_item), color = MaterialTheme.colorScheme.error) },
-                                    leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-                                    onClick = {
-                                        viewModel.requestDelete(playlistId)
-                                        overflowMenuOpen = false
-                                    },
-                                )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(com.lastwave.app.R.string.pd_delete_item), color = MaterialTheme.colorScheme.error) },
+                                leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                                onClick = {
+                                    viewModel.requestDelete(playlistId)
+                                    overflowMenuOpen = false
+                                },
+                            )
                         }
                     }
                     }

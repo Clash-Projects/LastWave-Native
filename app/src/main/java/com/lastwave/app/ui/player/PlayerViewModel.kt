@@ -289,6 +289,7 @@ import com.lastwave.app.playback.PlaybackProgressState
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lastwave.app.data.artwork.ArtworkNormalizer
 import com.lastwave.app.playback.PlayableTrack
+import com.lastwave.app.playback.isLocalTrack
 import com.lastwave.app.playback.toGeneratedTrack
 import com.lastwave.app.playback.resolve.MetadataLog
 import com.lastwave.app.ui.common.ArtworkImage
@@ -354,6 +355,8 @@ class PlayerViewModel @Inject constructor(
     private val trackLikeController: com.lastwave.app.data.playlist.TrackLikeController,
     private val downloadManager: com.lastwave.app.data.download.TrackDownloadManager,
     private val routeNavigator: com.lastwave.app.ui.navigation.AppRouteNavigator,
+    private val localMusicLibrary: com.lastwave.app.data.localmusic.LocalMusicLibrary,
+    private val localOfflineRepository: com.lastwave.app.data.localmusic.LocalOfflineRepository,
 ) : ViewModel() {
     val navEvents = navigator.events
     val state = player.state
@@ -384,6 +387,7 @@ class PlayerViewModel @Inject constructor(
     }
     private val _customPlaylists = MutableStateFlow<List<SavedPlaylist>>(emptyList())
     val customPlaylists = _customPlaylists.asStateFlow()
+    val offlinePlaylists = localOfflineRepository.playlists
     private var customPlaylistsLoaded = false
     val likedTrackKeys = trackLikeController.likedTrackKeys
 
@@ -701,6 +705,10 @@ class PlayerViewModel @Inject constructor(
                 } else null
 
                 val result = try {
+                    val resolvedLocalUrl = com.lastwave.app.data.generate.LocalAudioFormats
+                        .importedPathOrNull(track.playbackUrl)
+                    val resolvedLrc = resolvedLocalUrl?.let { localMusicLibrary.lrcUriFor(it) }
+                        ?: resolvedLocalUrl?.let(com.lastwave.app.data.generate.LocalAudioFormats::lrcPathFor)
                     lyricsRepository.getLyrics(
                         title = track.title,
                         artist = track.artist,
@@ -710,9 +718,8 @@ class PlayerViewModel @Inject constructor(
                         forceRefresh = forceRefresh,
                         wordByWord = settingsPreferences.settings.first().wordByWordLyrics,
                         videoId = track.videoId,
-                        localLrcPath = com.lastwave.app.data.generate.LocalAudioFormats
-                            .importedPathOrNull(track.playbackUrl)
-                            ?.let(com.lastwave.app.data.generate.LocalAudioFormats::lrcPathFor),
+                        localLrcPath = resolvedLrc,
+                        localAudioUrl = track.playbackUrl.takeIf { track.isLocalTrack() },
                         overrideProvider = overrideProvider,
                         excludedProviders = excludedProviders,
                         onPartialResult = { partial ->
@@ -872,6 +879,34 @@ class PlayerViewModel @Inject constructor(
                 val playlist = playlistRepository.createCustom(title)
                 playlistRepository.addTrack(playlist.id, track.toGeneratedTrack())
                 _toastMessage.emit("Added to playlist")
+            }
+        }
+    }
+
+    fun addToOfflinePlaylists(playlistIds: Set<String>, track: PlayableTrack) {
+        val url = track.playbackUrl?.takeIf { it.isNotBlank() } ?: return
+        if (playlistIds.isEmpty()) return
+        viewModelScope.launch {
+            runCatching {
+                var added = false
+                playlistIds.forEach { playlistId ->
+                    if (localOfflineRepository.addTracksToPlaylist(playlistId, listOf(url)) > 0) {
+                        added = true
+                    }
+                }
+                _toastMessage.emit(if (added) "Added to offline playlist" else "Already in offline playlist")
+            }
+        }
+    }
+
+    fun createOfflinePlaylistAndAdd(title: String, track: PlayableTrack) {
+        val clean = title.trim()
+        val url = track.playbackUrl?.takeIf { it.isNotBlank() } ?: return
+        if (clean.isBlank()) return
+        viewModelScope.launch {
+            runCatching {
+                localOfflineRepository.createPlaylist(clean, listOf(url))
+                _toastMessage.emit("Added to offline playlist")
             }
         }
     }

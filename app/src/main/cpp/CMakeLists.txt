@@ -52,6 +52,8 @@ add_library(
     ParametricEqBridge.cpp
     NativeBridge.cpp
     SecretsBridge.cpp
+    dsd/DsdDecimator.cpp
+    dsd/DsdJniBridge.cpp
     automix/AutoMixJniBridge.cpp
     automix/LinkwitzRileyCrossover.cpp
     automix/TransientPreservingStretcher.cpp

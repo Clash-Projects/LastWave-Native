@@ -5,6 +5,7 @@ import android.os.Build
 import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.generate.StoredTrack
 import com.lastwave.app.data.generate.distinctSongs
+import com.lastwave.app.data.generate.isLocalFile
 import com.lastwave.app.data.generate.sameSongAs
 import com.lastwave.app.data.generate.toGenerated
 import com.lastwave.app.data.generate.toStored
@@ -37,7 +38,12 @@ import kotlinx.serialization.json.Json
  * "(Official Video)" etc.) showed as not liked, and liking it wrote nothing.
  */
 internal fun GeneratedTrack.likedMarkers(): List<String> =
-    listOfNotNull(key, youtubeVideoIdOrNull()?.let { "vid:$it" })
+    if (isLocalFile()) {
+        val normalizedUrl = url.trim().removePrefix("file://")
+        listOfNotNull(normalizedUrl.takeIf { it.isNotBlank() }?.let { "local:$it" })
+    } else {
+        listOfNotNull(key, youtubeVideoIdOrNull()?.let { "vid:$it" })
+    }
 
 /** Whether this track is liked according to a heart-state set. */
 fun GeneratedTrack.isLikedIn(likedKeys: Set<String>): Boolean =

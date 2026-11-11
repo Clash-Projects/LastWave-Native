@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -186,6 +187,7 @@ private const val TEXTURE_CACHE = 3
 private const val CROSSFADE_MS = 1400
 private const val APPEAR_MS = 800
 private const val FRAME_SECONDS = 1f / 30f
+private const val FRAME_SLEEP_MS = 20L
 
 private val textureCache = LinkedHashMap<String, Bitmap>()
 
@@ -413,6 +415,8 @@ fun FluidArtworkBackground(
             if (pending >= FRAME_SECONDS) {
                 seconds += pending
                 pending = 0f
+                // Effect advances at 30 Hz: sleep through ~2 vsyncs instead of requesting every frame (keeps 120 Hz panels idle).
+                delay(FRAME_SLEEP_MS)
             }
         }
     }

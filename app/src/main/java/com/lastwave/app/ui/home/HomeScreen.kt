@@ -179,7 +179,6 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val jamViewModel: com.lastwave.app.ui.jam.LastWaveJamViewModel = hiltViewModel()
-    val jamUiState by jamViewModel.uiState.collectAsStateWithLifecycle()
     var showJamSheet by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
 

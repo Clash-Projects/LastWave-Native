@@ -34,6 +34,11 @@ data class GeneratedTrack(
     val playcount: Long? = null,
     val match: Double? = null,
     val album: String? = null,
+    val trackNumber: Int? = null,
+    val discNumber: Int? = null,
+    val albumArtist: String? = null,
+    val durationMs: Long? = null,
+    val lrcUri: String? = null,
 ) {
     /**
      * Normalized identity: trimmed, inner whitespace collapsed, lowercased.
@@ -227,10 +232,38 @@ data class StoredTrack(
     val url: String? = "",
     val image: String? = null,
     val album: String? = null,
+    val trackNumber: Int? = null,
+    val discNumber: Int? = null,
+    val albumArtist: String? = null,
+    val durationMs: Long? = null,
+    val lrcUri: String? = null,
 )
 
-fun GeneratedTrack.toStored() = StoredTrack(name = name, artist = artist, url = url, image = artworkUrl, album = album)
-fun StoredTrack.toGenerated() = GeneratedTrack(name = name.orEmpty(), artist = artist.orEmpty(), artworkUrl = image, url = url.orEmpty(), album = album)
+fun GeneratedTrack.toStored() = StoredTrack(
+    name = name,
+    artist = artist,
+    url = url,
+    image = artworkUrl,
+    album = album,
+    trackNumber = trackNumber,
+    discNumber = discNumber,
+    albumArtist = albumArtist,
+    durationMs = durationMs,
+    lrcUri = lrcUri,
+)
+
+fun StoredTrack.toGenerated() = GeneratedTrack(
+    name = name.orEmpty(),
+    artist = artist.orEmpty(),
+    artworkUrl = image,
+    url = url.orEmpty(),
+    album = album,
+    trackNumber = trackNumber,
+    discNumber = discNumber,
+    albumArtist = albumArtist,
+    durationMs = durationMs,
+    lrcUri = lrcUri,
+)
 
 fun GeneratedTrack.youtubeVideoIdOrNull(): String? {
     val value = url.trim()
@@ -262,17 +295,23 @@ fun isLocalAudioPath(url: String?): Boolean =
     url != null && (url.startsWith("/") || url.startsWith("content://") || url.startsWith("file://"))
 
 /**
- * Formats Media3 1.2.1 (+ the bundled FFmpeg audio decoder) can open from a
- * plain file. AIFF, APE, WMA, DSD and WavPack have no extractor in this
- * version, so the importer skips and reports them instead of storing files
- * that would fail at play time.
+ * Formats Media3 1.2.1 (+ bundled FFmpeg audio decoder, custom AIFF/AIFC PCM
+ * extractor, and native C++ DSD64..DSD512 FIR decimator) can open from storage.
+ * Proprietary or unbundled codecs (APE, WMA, WavPack, Musepack, TTA) stay listed
+ * in [UNSUPPORTED_AUDIO] so the scanner skips and reports them clearly.
  */
 object LocalAudioFormats {
     private val MIME_BY_EXTENSION = mapOf(
         "mp3" to "audio/mpeg",
+        "mp2" to "audio/mpeg",
         "flac" to "audio/flac",
         "wav" to "audio/wav",
         "wave" to "audio/wav",
+        "aif" to "audio/aiff",
+        "aiff" to "audio/aiff",
+        "aifc" to "audio/aiff",
+        "dsf" to "audio/x-dsf",
+        "dff" to "audio/x-dff",
         "ogg" to "audio/ogg",
         "oga" to "audio/ogg",
         "opus" to "audio/ogg",
@@ -285,10 +324,13 @@ object LocalAudioFormats {
         "webm" to "audio/webm",
         "amr" to "audio/amr",
         "ac3" to "audio/ac3",
+        "ec3" to "audio/eac3",
+        "eac3" to "audio/eac3",
+        "ac4" to "audio/ac4",
     )
 
     /** Audio-looking extensions we recognise but cannot play (reported as skipped). */
-    val UNSUPPORTED_AUDIO = setOf("aif", "aiff", "aifc", "ape", "wma", "dsf", "dff", "wv", "mpc", "tta", "mid", "midi")
+    val UNSUPPORTED_AUDIO = setOf("ape", "wma", "wv", "mpc", "tta", "mid", "midi")
 
     val supportedExtensions: Set<String> get() = MIME_BY_EXTENSION.keys
 
