@@ -825,6 +825,23 @@ fun SettingsScreen(
                         }
                         add { position ->
                             SettingsToggleCard(
+                                icon = Icons.Filled.HighQuality,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = "Auto upgrade to Hi-Res",
+                                subtitle = if (misc.autoUpgradeHiResEnabled) {
+                                    "Start fast on Opus, then switch to lossless when available"
+                                } else {
+                                    "Never upgrade mid-song; keep the stream it starts with"
+                                },
+                                checked = misc.autoUpgradeHiResEnabled,
+                                onCheckedChange = viewModel::setAutoUpgradeHiResEnabled,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.auto_upgrade_hi_res"),
+                            )
+                        }
+                        add { position ->
+                            SettingsToggleCard(
                                 icon = Icons.Filled.Tune,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,

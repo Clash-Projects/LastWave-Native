@@ -153,6 +153,23 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "audio.auto_upgrade_hi_res",
+                    title = "Auto upgrade to Hi-Res",
+                    subtitle = "Start fast on Opus, then switch to lossless when available",
+                    keywords = listOf(
+                        "auto upgrade", "hi-res", "hires", "lossless", "flac", "opus",
+                        "upgrade", "streaming", "quality", "background upgrade"
+                    ),
+                    icon = Icons.Filled.HighQuality,
+                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Audio & Playback",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "audio.bit_perfect",
                     title = "Bit-Perfect Mode",
                     subtitle = "Bypass Android mixer & DSP; stream bit-exact audio to USB DAC",
