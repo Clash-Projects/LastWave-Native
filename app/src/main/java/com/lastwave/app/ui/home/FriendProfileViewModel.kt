@@ -63,10 +63,12 @@ class FriendProfileViewModel @Inject constructor(
 
     private var pollJob: Job? = null
     private var currentUsername: String = ""
+    private var pinnedFriends: Set<String> = emptySet()
 
     init {
         viewModelScope.launch {
             settingsPreferences.settings.collect { settings ->
+                pinnedFriends = settings.pinnedFriends
                 val pinned = currentUsername.isNotBlank() && currentUsername in settings.pinnedFriends
                 _uiState.update { it.copy(isPinned = pinned) }
             }
@@ -83,6 +85,7 @@ class FriendProfileViewModel @Inject constructor(
                 isLoading = true,
                 error = null,
                 username = username,
+                isPinned = username in pinnedFriends,
                 displayName = initialDisplayName?.takeIf(String::isNotBlank) ?: username,
                 avatarUrl = initialAvatarUrl,
             )
@@ -208,8 +211,6 @@ class FriendProfileViewModel @Inject constructor(
         if (username.isNotBlank()) {
             viewModelScope.launch {
                 settingsPreferences.toggleFriendPinned(username)
-                val isNowPinned = !_uiState.value.isPinned
-                _uiState.update { it.copy(isPinned = isNowPinned) }
             }
         }
     }
