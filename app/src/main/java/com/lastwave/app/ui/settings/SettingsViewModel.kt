@@ -875,6 +875,7 @@ class SettingsViewModel @Inject constructor(
                     return@launch
                 }
                 val bytesWritten = fileExportHelper.writeTextToUri(uri, json)
+                runCatching { playlistRepository.exportPublicMirror() }
                 _uiState.update { it.copy(toastMessage = appContext.getString(com.lastwave.app.R.string.toast_backup_ok, bytesWritten / 1024)) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(toastMessage = appContext.getString(com.lastwave.app.R.string.toast_backup_fail, e.localizedMessage ?: e.message)) }

@@ -42,6 +42,7 @@ class FileExportHelper @Inject constructor(
         private const val PLAYLIST_MIRROR_FILENAME = "lastwave-playlists.json"
         private const val PLAYLIST_RECOVERY_FILENAME = "lastwave-playlists-recovery.json"
         private const val MIRROR_PREFS = "playlist_file_mirror"
+        private const val PRIVATE_MIRROR_DIR = "playlist-mirror"
         private const val MIRROR_URI_KEY = "persisted_uri"
     }
 
@@ -331,7 +332,27 @@ class FileExportHelper @Inject constructor(
 
     /** Writes the complete playlist library to a user-visible JSON file
      * that lives outside app-private/cache storage and survives uninstall. */
+    /** Automatic mirror: written ONLY to app-private storage (no files visible
+     * in Downloads). The public copy is made on demand by [writePublicPlaylistMirrorToDownloads]. */
     suspend fun writePublicPlaylistMirror(content: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val dir = File(context.filesDir, PRIVATE_MIRROR_DIR).apply { mkdirs() }
+            for (name in listOf(PLAYLIST_RECOVERY_FILENAME, PLAYLIST_MIRROR_FILENAME)) {
+                val tmp = File(dir, "$name.tmp")
+                tmp.writeText(content)
+                if (!tmp.renameTo(File(dir, name))) {
+                    File(dir, name).writeText(content)
+                    tmp.delete()
+                }
+            }
+        }
+    }
+
+    private fun readPrivateMirror(filename: String): String? =
+        File(File(context.filesDir, PRIVATE_MIRROR_DIR), filename).takeIf { it.isFile }?.readText()
+
+    /** Explicit user action only (Export backup): copies the playlist library to Download/LastWave. */
+    suspend fun writePublicPlaylistMirrorToDownloads(content: String): Result<Unit> = withContext(Dispatchers.IO) {
         // Write a complete recovery generation first. If the process or
         // device stops while the primary is being replaced, startup can
         // still recover the same snapshot from this companion file.
@@ -358,6 +379,8 @@ class FileExportHelper @Inject constructor(
     /** Reads the public mirror automatically when Android still grants
      * access. A clean reinstall can require selecting the file once. */
     suspend fun readPublicPlaylistMirror(): Result<String?> = withContext(Dispatchers.IO) {
+        runCatching { readPrivateMirror(PLAYLIST_MIRROR_FILENAME) }.getOrNull()
+            ?.let { return@withContext Result.success(it) }
         persistedPlaylistMirrorUri()?.let { uri ->
             runCatching {
                 context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
@@ -370,6 +393,8 @@ class FileExportHelper @Inject constructor(
     }
 
     suspend fun readPublicPlaylistRecovery(): Result<String?> = withContext(Dispatchers.IO) {
+        runCatching { readPrivateMirror(PLAYLIST_RECOVERY_FILENAME) }.getOrNull()
+            ?.let { return@withContext Result.success(it) }
         runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) readMirrorViaMediaStore(PLAYLIST_RECOVERY_FILENAME)
             else readMirrorViaLegacyFile(PLAYLIST_RECOVERY_FILENAME)
