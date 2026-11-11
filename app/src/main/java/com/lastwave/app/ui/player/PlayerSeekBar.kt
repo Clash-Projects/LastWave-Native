@@ -260,7 +260,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.palette.graphics.Palette
 import coil.imageLoader
@@ -578,8 +577,45 @@ internal fun SeekBar(
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
     telemetry: com.lastwave.app.playback.automix.api.DeckBlendTelemetry = com.lastwave.app.playback.automix.api.DeckBlendTelemetry(),
 ) {
-    val progress by progressState.collectAsStateWithLifecycle()
-    val effectiveDurationMs = if (progress.durationMs > 0L) progress.durationMs else fallbackDurationMs.coerceAtLeast(0L)
+    // The 60 ms ticker is read in the draw phase (bar) and at 1 s (labels +
+    // invisible slider semantics). Collecting it from composition recomposed
+    // this whole subtree and re-recorded the full player on every tick.
+    val progressFraction = remember { mutableFloatStateOf(0f) }
+    val sliderFraction = remember { mutableFloatStateOf(0f) }
+    val progressDurationMs = remember { mutableLongStateOf(0L) }
+    val elapsedSeconds = remember { mutableLongStateOf(0L) }
+    val currentFallbackDurationMs by rememberUpdatedState(fallbackDurationMs)
+    LaunchedEffect(progressState) {
+        var lastSliderSecond = -1L
+        progressState.collect { s ->
+            val duration = if (s.durationMs > 0L) {
+                s.durationMs
+            } else {
+                currentFallbackDurationMs.coerceAtLeast(0L)
+            }
+            val fraction = if (duration > 0L) {
+                (s.positionMs.toDouble() / duration.toDouble()).toFloat().coerceIn(0f, 1f)
+            } else {
+                0f
+            }
+            progressFraction.floatValue = fraction
+            progressDurationMs.longValue = duration
+            val second = s.positionMs / 1000L
+            if (second != elapsedSeconds.longValue) elapsedSeconds.longValue = second
+            // The Material slider is visually transparent and only feeds
+            // accessibility/gesture semantics; second precision is enough and
+            // avoids a composition pass on every 60 ms tick.
+            if (second != lastSliderSecond) {
+                lastSliderSecond = second
+                sliderFraction.floatValue = fraction
+            }
+        }
+    }
+    val boundedDurationMs = (if (progressDurationMs.longValue > 0L) {
+        progressDurationMs.longValue
+    } else {
+        fallbackDurationMs
+    }).coerceAtLeast(0L)
 
     // Current-gesture fraction only; null = finger off, show live position.
     // Nullable (never a stale 0f) so a press without movement seeks nowhere
@@ -620,20 +656,9 @@ internal fun SeekBar(
         }
     }
 
-    val boundedDurationMs = effectiveDurationMs.coerceAtLeast(0L)
-    val currentFraction = if (boundedDurationMs > 0L) {
-        (progress.positionMs.toDouble() / boundedDurationMs.toDouble()).toFloat().coerceIn(0f, 1f)
-    } else {
-        0f
-    }
-    val fraction = (dragFraction ?: currentFraction).coerceIn(0f, 1f)
-    val shownMs = dragFraction?.let {
-        (it * boundedDurationMs).toLong().coerceIn(0L, boundedDurationMs)
-    } ?: if (boundedDurationMs > 0L) {
-        progress.positionMs.coerceIn(0L, boundedDurationMs)
-    } else {
-        progress.positionMs.coerceAtLeast(0L)
-    }
+    // Second precision for the invisible slider: only changes once per second
+    // (or while dragging), so SeekBar composition stays off the 60 ms ticker.
+    val sliderValue = (dragFraction ?: sliderFraction.floatValue).coerceIn(0f, 1f)
 
     val isGlassActive = LocalLiquidGlass.current &&
         isLiquidGlassBackdropSupported() &&
@@ -664,6 +689,8 @@ internal fun SeekBar(
             contentAlignment = Alignment.Center,
         ) {
             Canvas(modifier = Modifier.fillMaxWidth().height(44.dp)) {
+                // Draw-phase read: the 60 ms tick invalidates draw without a recomposition.
+                val fraction = (dragFraction ?: progressFraction.floatValue).coerceIn(0f, 1f)
                 val width = size.width
                 val height = size.height
                 val centerY = height / 2f
@@ -734,7 +761,7 @@ internal fun SeekBar(
             // Invisible Material interaction layer: custom visuals, reliable seeking semantics.
             val scrubHaptics = rememberScrubHaptics()
             Slider(
-                value = fraction,
+                value = sliderValue,
                 onValueChange = {
                     scrubHaptics.onScrub(it)
                     dragFraction = it
@@ -773,9 +800,12 @@ internal fun SeekBar(
 
         Spacer(Modifier.height(2.dp))
 
-        // Time labels
-        val currentSecond = shownMs / 1000L
-        val remainingSecond = (boundedDurationMs - shownMs).coerceAtLeast(0) / 1000L
+        // Time labels: update once per second (or live while dragging).
+        val durationSecond = boundedDurationMs / 1000L
+        val currentSecond = dragFraction?.let {
+            (it * durationSecond).toLong().coerceIn(0L, durationSecond)
+        } ?: elapsedSeconds.longValue
+        val remainingSecond = (durationSecond - currentSecond).coerceAtLeast(0L)
         val formattedElapsed = remember(currentSecond) { formatTime(currentSecond * 1000L) }
         val formattedRemaining = remember(remainingSecond, boundedDurationMs) {
             if (boundedDurationMs > 0L) "\u2212${formatTime(remainingSecond * 1000L)}" else "--:--"
