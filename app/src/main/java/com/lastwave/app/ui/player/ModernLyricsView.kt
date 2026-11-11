@@ -645,34 +645,29 @@ fun ModernLyricsPanel(
     }
 
     if (showShareDialog) {
-        val currentTrack = state.current
-        if (currentTrack != null) {
-            val trackInfo = remember(currentTrack, resolvedArtworkUrl) {
-                TrackInfo(
-                    title = currentTrack.title,
-                    artist = currentTrack.artist,
-                    artworkUrl = currentTrack.artworkUrl,
-                    resolvedArtworkUrl = resolvedArtworkUrl,
-                )
+        // A share session owns the song and lyrics it opened with, even when playback advances.
+        val snapshot = remember {
+            val currentTrack = state.current ?: return@remember null
+            val trackInfo = TrackInfo(
+                title = currentTrack.title,
+                artist = currentTrack.artist,
+                artworkUrl = currentTrack.artworkUrl,
+                resolvedArtworkUrl = resolvedArtworkUrl,
+            )
+            val lines = (lyricsState as? LyricsUiState.Success)?.lines.orEmpty()
+            val activeIndex = if (lines.isNotEmpty()) {
+                activeLineIndex(lines, progressFlow.value.positionMs + lyricsOffsetMs)
+            } else {
+                -1
             }
-            val activeIndex = remember(lyricsState, lyricsOffsetMs) {
-                val lines = (lyricsState as? LyricsUiState.Success)?.lines.orEmpty()
-                if (lines.isNotEmpty()) {
-                    activeLineIndex(lines, progressFlow.value.positionMs + lyricsOffsetMs)
-                } else {
-                    -1
-                }
-            }
-            val snapshot = remember(lyricsState, trackInfo) {
-                buildLyricsSnapshot(lyricsState, trackInfo, activeIndex)
-            }
-            if (snapshot != null) {
-                ShareLyricsDialog(
-                    snapshot = snapshot,
-                    onDismiss = { showShareDialog = false },
-                    primaryColor = primaryColor,
-                )
-            }
+            buildLyricsSnapshot(lyricsState, trackInfo, activeIndex)
+        }
+        if (snapshot != null) {
+            ShareLyricsDialog(
+                snapshot = snapshot,
+                onDismiss = { showShareDialog = false },
+                primaryColor = primaryColor,
+            )
         }
     }
 }
