@@ -33,7 +33,9 @@ fun readCertSha256Hex(keystoreBytes: ByteArray?, storePassword: String, keyAlias
             try {
                 val ks = KeyStore.getInstance(ksType)
                 ks.load(keystoreBytes.inputStream(), pw)
-                val aliases = java.util.Collections.list(ks.aliases())
+                val aliases = mutableListOf<String>()
+                val aliasEnum = ks.aliases()
+                while (aliasEnum.hasMoreElements()) aliases += aliasEnum.nextElement()
                 val cert = ks.getCertificate(keyAlias)
                     ?: aliases.firstOrNull { it.equals(keyAlias, ignoreCase = true) }?.let { ks.getCertificate(it) }
                     ?: aliases.mapNotNull { ks.getCertificate(it) }.firstOrNull()
