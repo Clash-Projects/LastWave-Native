@@ -475,11 +475,12 @@ internal fun SpotifyPlaylistCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(2.dp))
+                val trackCount = playlist.trackCount
                 Text(
-                    text = if (isLiked) {
-                        "Spotify • ${stringResource(R.string.spotify_liked_songs_sub)}"
-                    } else {
-                        "Spotify • ${playlist.trackCount} tracks"
+                    text = when {
+                        isLiked -> "Spotify • ${trackCount?.let { stringResource(R.string.pl_yt_tracks, it) } ?: stringResource(R.string.spotify_liked_songs_sub)}"
+                        trackCount != null -> "Spotify • ${stringResource(R.string.pl_yt_tracks, trackCount)}"
+                        else -> "Spotify"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

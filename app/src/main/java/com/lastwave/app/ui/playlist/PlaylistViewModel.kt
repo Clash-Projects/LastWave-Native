@@ -19,6 +19,8 @@ import com.lastwave.app.util.PlaylistExportFormat
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -205,13 +207,31 @@ class PlaylistViewModel @Inject constructor(
     fun loadSpotifyPlaylists() {
         viewModelScope.launch {
             _uiState.update { it.copy(isSpotifyLoading = true) }
-            val raw = runCatching { spotifyPlaylistImporter.fetchUserPlaylists() }.getOrDefault(emptyList())
+            val (raw, likedCount) = coroutineScope {
+                val playlistsDeferred = async {
+                    try {
+                        spotifyPlaylistImporter.fetchUserPlaylists()
+                    } catch (e: Exception) {
+                        currentCoroutineContext().ensureActive()
+                        emptyList()
+                    }
+                }
+                val likedCountDeferred = async {
+                    try {
+                        spotifyPlaylistImporter.fetchLikedSongsCount()
+                    } catch (e: Exception) {
+                        currentCoroutineContext().ensureActive()
+                        null
+                    }
+                }
+                playlistsDeferred.await() to likedCountDeferred.await()
+            }
             val likedSummary = SpotifyUserPlaylist(
                 id = "liked",
                 name = "Liked Songs",
                 description = "Your Spotify likes",
                 artworkUrl = null,
-                trackCount = 0,
+                trackCount = likedCount,
             )
             val fullList = listOf(likedSummary) + raw
             _uiState.update { it.copy(spotifyPlaylists = fullList, isSpotifyLoading = false) }

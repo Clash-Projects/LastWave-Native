@@ -14,6 +14,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -269,6 +271,10 @@ class SpotifyPlaylistImporter @Inject constructor(
 
     /**
      * Fetches playlists from the connected Spotify account library via Pathfinder.
+     *
+     * Spotify's `libraryV3` list query omits per-playlist track counts (`content.totalCount`),
+     * so any playlist missing a summary count is resolved via a lightweight `fetchPlaylist`
+     * (`limit=1`) query instead of defaulting to 0.
      */
     suspend fun fetchUserPlaylists(): List<SpotifyUserPlaylist> = withContext(Dispatchers.IO) {
         val token = spotifyAuthRepository.getPersonalToken() ?: return@withContext emptyList()
@@ -277,44 +283,108 @@ class SpotifyPlaylistImporter @Inject constructor(
             val variables = """{"filters":["Playlists"],"order":null,"textFilter":null,"features":[],"limit":50,"offset":0,"flatten":false,"expandedFolders":[],"folderUri":null,"includeFoldersWhenFlattening":true}"""
             val body = pathfinderGet("libraryV3", variables, HASH_LIBRARY_V3, token, clientToken)
                 ?: return@withContext emptyList()
-            run {
-                val root = json.parseToJsonElement(body).jsonObject
-                val libraryItems = root["data"]?.jsonObject?.get("me")?.jsonObject
-                    ?.get("libraryV3")?.jsonObject?.get("items")?.jsonArray.orEmpty()
+            val playlists = parseUserPlaylists(body)
+            if (playlists.none { it.trackCount == null }) return@withContext playlists
 
-                libraryItems.mapNotNull { itemElement ->
-                    val obj = itemElement as? JsonObject ?: return@mapNotNull null
-                    val itemWrapper = obj["item"] as? JsonObject ?: return@mapNotNull null
-                    val typename = itemWrapper["__typename"]?.jsonPrimitive?.contentOrNull
-                    if (typename != "PlaylistResponseWrapper") return@mapNotNull null
-
-                    val plData = itemWrapper["data"] as? JsonObject ?: return@mapNotNull null
-                    val uri = plData["uri"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-                    val id = uri.removePrefix("spotify:playlist:")
-                    if (id.isBlank()) return@mapNotNull null
-
-                    val name = plData["name"]?.jsonPrimitive?.contentOrNull ?: "Spotify Playlist"
-                    val desc = plData["description"]?.jsonPrimitive?.contentOrNull
-                    val img = plData["images"]?.jsonObject?.get("items")?.jsonArray?.firstOrNull()
-                        ?.jsonObject?.get("sources")?.jsonArray?.firstOrNull()
-                        ?.jsonObject?.get("url")?.jsonPrimitive?.contentOrNull
-                    val count = plData["content"]?.jsonObject?.get("totalCount")?.jsonPrimitive?.intOrNull
-                        ?: plData["tracks"]?.jsonObject?.get("total")?.jsonPrimitive?.intOrNull
-                        ?: 0
-
-                    SpotifyUserPlaylist(
-                        id = id,
-                        name = name,
-                        description = desc,
-                        artworkUrl = img,
-                        trackCount = count,
-                    )
-                }
+            val semaphore = Semaphore(USER_PLAYLIST_COUNT_CONCURRENCY)
+            coroutineScope {
+                playlists.map { pl ->
+                    if (pl.trackCount != null) {
+                        async { pl }
+                    } else {
+                        async {
+                            val count = semaphore.withPermit {
+                                fetchPlaylistTrackCount(pl.id, token, clientToken)
+                            }
+                            if (count != null) pl.copy(trackCount = count) else pl
+                        }
+                    }
+                }.awaitAll()
             }
         } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
             Log.w(TAG, "Failed to fetch user Spotify playlists: ${e.message}")
             emptyList()
         }
+    }
+
+    /**
+     * Fetches only the total count of the user's Spotify Liked Songs collection.
+     */
+    suspend fun fetchLikedSongsCount(): Int? = withContext(Dispatchers.IO) {
+        val token = spotifyAuthRepository.getPersonalToken() ?: return@withContext null
+        val clientToken = spotifyAuthRepository.getClientToken()
+        try {
+            val variables = """{"offset":0,"limit":1}"""
+            val body = pathfinderGet("fetchLibraryTracks", variables, HASH_FETCH_LIBRARY_TRACKS, token, clientToken)
+                ?: return@withContext null
+            parseLikedSongsTotalCount(body)
+        } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
+            Log.w(TAG, "Failed to fetch Spotify Liked Songs count: ${e.message}")
+            null
+        }
+    }
+
+    private fun fetchPlaylistTrackCount(id: String, token: String, clientToken: String?): Int? {
+        val variables = """{"uri":"spotify:playlist:$id","offset":0,"limit":1,"enableWatchFeedEntrypoint":false}"""
+        val body = pathfinderGet("fetchPlaylist", variables, HASH_FETCH_PLAYLIST, token, clientToken) ?: return null
+        return parsePlaylistTotalCount(body)
+    }
+
+    internal fun parseUserPlaylists(body: String): List<SpotifyUserPlaylist> {
+        if (body.isBlank()) return emptyList()
+        val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return emptyList()
+        val libraryItems = root["data"]?.jsonObject?.get("me")?.jsonObject
+            ?.get("libraryV3")?.jsonObject?.get("items")?.jsonArray.orEmpty()
+
+        return libraryItems.mapNotNull { itemElement ->
+            val obj = itemElement as? JsonObject ?: return@mapNotNull null
+            val itemWrapper = obj["item"] as? JsonObject ?: return@mapNotNull null
+            val plData = itemWrapper["data"] as? JsonObject ?: return@mapNotNull null
+            val typename = itemWrapper["__typename"]?.jsonPrimitive?.contentOrNull
+                ?: plData["__typename"]?.jsonPrimitive?.contentOrNull
+            if (typename != "PlaylistResponseWrapper") return@mapNotNull null
+
+            val uri = plData["uri"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val id = uri.removePrefix("spotify:playlist:")
+            if (id.isBlank()) return@mapNotNull null
+
+            val name = plData["name"]?.jsonPrimitive?.contentOrNull ?: "Spotify Playlist"
+            val desc = plData["description"]?.jsonPrimitive?.contentOrNull
+            val img = plData["images"]?.jsonObject?.get("items")?.jsonArray?.firstOrNull()
+                ?.jsonObject?.get("sources")?.jsonArray?.firstOrNull()
+                ?.jsonObject?.get("url")?.jsonPrimitive?.contentOrNull
+
+            SpotifyUserPlaylist(
+                id = id,
+                name = name,
+                description = desc,
+                artworkUrl = img,
+                trackCount = extractLibraryPlaylistCount(plData),
+            )
+        }
+    }
+
+    private fun extractLibraryPlaylistCount(plData: JsonObject): Int? =
+        plData["content"]?.jsonObject?.get("totalCount")?.jsonPrimitive?.intOrNull
+            ?: plData["tracks"]?.jsonObject?.get("totalCount")?.jsonPrimitive?.intOrNull
+            ?: plData["tracks"]?.jsonObject?.get("total")?.jsonPrimitive?.intOrNull
+            ?: plData["totalCount"]?.jsonPrimitive?.intOrNull
+
+    internal fun parsePlaylistTotalCount(body: String): Int? {
+        if (body.isBlank()) return null
+        val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return null
+        return root["data"]?.jsonObject?.get("playlistV2")?.jsonObject
+            ?.get("content")?.jsonObject?.get("totalCount")?.jsonPrimitive?.intOrNull
+    }
+
+    internal fun parseLikedSongsTotalCount(body: String): Int? {
+        if (body.isBlank()) return null
+        val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return null
+        return root["data"]?.jsonObject?.get("me")?.jsonObject
+            ?.get("library")?.jsonObject?.get("tracks")?.jsonObject
+            ?.get("totalCount")?.jsonPrimitive?.intOrNull
     }
 
     /**
@@ -472,6 +542,7 @@ class SpotifyPlaylistImporter @Inject constructor(
         const val HASH_FETCH_LIBRARY_TRACKS = "087278b20b743578a6262c2b0b4bcd20d879c503cc359a2285baf083ef944240"
 
         const val PATHFINDER_ATTEMPTS = 3
+        const val USER_PLAYLIST_COUNT_CONCURRENCY = 6
         const val EMBED_BASE = "https://open.spotify.com/embed/playlist/"
         const val SPOTIFY_TRACK_URI = "spotify:track:"
         const val SPOTIFY_PLAYLIST_URI = "spotify:playlist:"

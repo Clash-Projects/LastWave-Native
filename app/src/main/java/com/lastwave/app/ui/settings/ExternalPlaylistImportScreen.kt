@@ -407,7 +407,7 @@ fun ExternalPlaylistImportScreen(
                                                     overflow = TextOverflow.Ellipsis,
                                                 )
                                                 Spacer(Modifier.height(2.dp))
-                                                val trackLabel = if (pl.trackCount > 0) "${pl.trackCount} tracks" else "Spotify Playlist"
+                                                val trackLabel = pl.trackCount?.let { "$it tracks" } ?: "Spotify Playlist"
                                                 Text(
                                                     text = trackLabel,
                                                     style = MaterialTheme.typography.bodySmall,

@@ -48,7 +48,7 @@ data class SpotifyUserPlaylist(
     val name: String,
     val description: String? = null,
     val artworkUrl: String? = null,
-    val trackCount: Int = 0,
+    val trackCount: Int? = null,
 )
 
 /**
