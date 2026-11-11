@@ -6,6 +6,14 @@ import java.util.Base64
 import java.util.Properties
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
+import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.TaskAction
 
 plugins {
     alias(libs.plugins.android.application)
@@ -49,119 +57,133 @@ fun readCertSha256Hex(keystoreBytes: ByteArray?, storePassword: String, keyAlias
     return null
 }
 
-fun writeSecretsBridgeHeader(
-    headerFile: File,
-    bridgeCppFile: File,
-    certPrefix: String,
-    plainSecret: String,
-) {
-    val sha256 = MessageDigest.getInstance("SHA-256")
-    val stateFp = sha256.digest("$certPrefix:$plainSecret".toByteArray(Charsets.UTF_8))
-        .joinToString("") { "%02x".format(it) }
+abstract class PrepareNativeBridgeTask : DefaultTask() {
+    @get:OutputFile
+    abstract val headerFile: RegularFileProperty
 
-    if (headerFile.isFile) {
-        val firstLine = headerFile.useLines { it.firstOrNull()?.trim() }
-        if (firstLine == "// fp:$stateFp") return
-    }
+    @get:Internal
+    abstract val bridgeCppFile: RegularFileProperty
 
-    val existedBefore = headerFile.exists()
-    val secretBytes = plainSecret.toByteArray(Charsets.UTF_8)
-    if (secretBytes.size > 128) {
-        throw GradleException("ADDON_CLIENT_SECRET exceeds 128-byte native buffer")
-    }
+    @get:Input
+    abstract val certPrefix: Property<String>
 
-    val sb = StringBuilder()
-    sb.append("// fp:").append(stateFp).append('\n')
-    sb.append("#pragma once\n#include <cstddef>\n#include <cstdint>\n\n")
-    sb.append("constexpr char EXPECTED_CERT_PREFIX[] = \"").append(certPrefix).append("\";\n\n")
+    @get:Input
+    abstract val stateFingerprint: Property<String>
 
-    if (secretBytes.isEmpty()) {
-        sb.append("static const uint8_t CLIENT_SECRET_SALT[16] = {0};\n")
-        sb.append("static constexpr size_t CLIENT_SECRET_TOTAL_LEN = 0;\n")
-        sb.append("static constexpr int CLIENT_SECRET_FRAGMENT_COUNT = 0;\n")
-        sb.append("struct Fragment { const uint8_t* data; uint8_t len; uint8_t mask; };\n")
-        sb.append("static const Fragment CLIENT_SECRET_FRAGMENTS[] = { {nullptr, 0, 0} };\n")
-    } else {
-        val rng = SecureRandom()
-        val salt = ByteArray(16).also { rng.nextBytes(it) }
-        val keyBytes = if (certPrefix.startsWith("PLACEHOLDER")) {
-            MessageDigest.getInstance("SHA-256")
-                .digest("LASTWAVE_DEV_FALLBACK_KEY".toByteArray(Charsets.UTF_8))
+    @get:Internal
+    abstract val plainSecret: Property<String>
+
+    @TaskAction
+    fun generate() {
+        val outHeader = headerFile.get().asFile
+        val cppFile = bridgeCppFile.get().asFile
+        val cert = certPrefix.get()
+        val fp = stateFingerprint.get()
+        val secret = plainSecret.get()
+
+        if (outHeader.isFile && outHeader.useLines { it.firstOrNull()?.trim() } == "// fp:$fp") {
+            return
+        }
+
+        val existedBefore = outHeader.exists()
+        val secretBytes = secret.toByteArray(Charsets.UTF_8)
+        if (secretBytes.size > 128) {
+            throw GradleException("ADDON_CLIENT_SECRET exceeds 128-byte native buffer")
+        }
+
+        val sb = StringBuilder()
+        sb.append("// fp:").append(fp).append('\n')
+        sb.append("#pragma once\n#include <cstddef>\n#include <cstdint>\n\n")
+        sb.append("constexpr char EXPECTED_CERT_PREFIX[] = \"").append(cert).append("\";\n\n")
+
+        if (secretBytes.isEmpty()) {
+            sb.append("static const uint8_t CLIENT_SECRET_SALT[16] = {0};\n")
+            sb.append("static constexpr size_t CLIENT_SECRET_TOTAL_LEN = 0;\n")
+            sb.append("static constexpr int CLIENT_SECRET_FRAGMENT_COUNT = 0;\n")
+            sb.append("struct Fragment { const uint8_t* data; uint8_t len; uint8_t mask; };\n")
+            sb.append("static const Fragment CLIENT_SECRET_FRAGMENTS[] = { {nullptr, 0, 0} };\n")
         } else {
-            certPrefix.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-        }
-
-        val keystream = ByteArray(secretBytes.size)
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(keyBytes, "HmacSHA256"))
-        var generated = 0
-        var counter = 0
-        while (generated < secretBytes.size) {
-            val msg = ByteArray(salt.size + 4)
-            System.arraycopy(salt, 0, msg, 0, salt.size)
-            msg[salt.size] = ((counter ushr 24) and 0xFF).toByte()
-            msg[salt.size + 1] = ((counter ushr 16) and 0xFF).toByte()
-            msg[salt.size + 2] = ((counter ushr 8) and 0xFF).toByte()
-            msg[salt.size + 3] = (counter and 0xFF).toByte()
-            val block = mac.doFinal(msg)
-            val n = minOf(block.size, secretBytes.size - generated)
-            System.arraycopy(block, 0, keystream, generated, n)
-            generated += n
-            counter++
-        }
-
-        val ciphertext = ByteArray(secretBytes.size) { i ->
-            (secretBytes[i].toInt() xor keystream[i].toInt()).toByte()
-        }
-
-        val chunkSize = maxOf(1, ciphertext.size / 8)
-        val fragments = mutableListOf<Pair<ByteArray, Int>>()
-        var off = 0
-        while (off < ciphertext.size) {
-            val end = minOf(off + chunkSize, ciphertext.size)
-            val mask = 0x10 + rng.nextInt(0xEF)
-            val xored = ByteArray(end - off) { i ->
-                ((ciphertext[off + i].toInt() and 0xFF) xor mask).toByte()
+            val rng = SecureRandom()
+            val salt = ByteArray(16).also { rng.nextBytes(it) }
+            val keyBytes = if (cert.startsWith("PLACEHOLDER")) {
+                MessageDigest.getInstance("SHA-256")
+                    .digest("LASTWAVE_DEV_FALLBACK_KEY".toByteArray(Charsets.UTF_8))
+            } else {
+                cert.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
             }
-            fragments += (xored to mask)
-            off = end
-        }
 
-        val reconCipher = ByteArray(secretBytes.size)
-        var rOff = 0
-        for ((xored, mask) in fragments) {
-            for (b in xored) {
-                reconCipher[rOff++] = ((b.toInt() and 0xFF) xor mask).toByte()
+            val keystream = ByteArray(secretBytes.size)
+            val mac = Mac.getInstance("HmacSHA256")
+            mac.init(SecretKeySpec(keyBytes, "HmacSHA256"))
+            var generated = 0
+            var counter = 0
+            while (generated < secretBytes.size) {
+                val msg = ByteArray(salt.size + 4)
+                System.arraycopy(salt, 0, msg, 0, salt.size)
+                msg[salt.size] = ((counter ushr 24) and 0xFF).toByte()
+                msg[salt.size + 1] = ((counter ushr 16) and 0xFF).toByte()
+                msg[salt.size + 2] = ((counter ushr 8) and 0xFF).toByte()
+                msg[salt.size + 3] = (counter and 0xFF).toByte()
+                val block = mac.doFinal(msg)
+                val n = minOf(block.size, secretBytes.size - generated)
+                System.arraycopy(block, 0, keystream, generated, n)
+                generated += n
+                counter++
             }
-        }
-        val reconSecret = ByteArray(secretBytes.size) { i ->
-            (reconCipher[i].toInt() xor keystream[i].toInt()).toByte()
-        }
-        if (!reconSecret.contentEquals(secretBytes)) {
-            throw GradleException("Native bridge header verification failed")
+
+            val ciphertext = ByteArray(secretBytes.size) { i ->
+                (secretBytes[i].toInt() xor keystream[i].toInt()).toByte()
+            }
+
+            val chunkSize = maxOf(1, ciphertext.size / 8)
+            val fragments = mutableListOf<Pair<ByteArray, Int>>()
+            var off = 0
+            while (off < ciphertext.size) {
+                val end = minOf(off + chunkSize, ciphertext.size)
+                val mask = 0x10 + rng.nextInt(0xEF)
+                val xored = ByteArray(end - off) { i ->
+                    ((ciphertext[off + i].toInt() and 0xFF) xor mask).toByte()
+                }
+                fragments += (xored to mask)
+                off = end
+            }
+
+            val reconCipher = ByteArray(secretBytes.size)
+            var rOff = 0
+            for ((xored, mask) in fragments) {
+                for (b in xored) {
+                    reconCipher[rOff++] = ((b.toInt() and 0xFF) xor mask).toByte()
+                }
+            }
+            val reconSecret = ByteArray(secretBytes.size) { i ->
+                (reconCipher[i].toInt() xor keystream[i].toInt()).toByte()
+            }
+            if (!reconSecret.contentEquals(secretBytes)) {
+                throw GradleException("Native bridge header verification failed")
+            }
+
+            val saltHex = salt.joinToString(",") { "0x%02X".format(it.toInt() and 0xFF) }
+            sb.append("static const uint8_t CLIENT_SECRET_SALT[16] = {$saltHex};\n")
+            sb.append("static constexpr size_t CLIENT_SECRET_TOTAL_LEN = ${secretBytes.size};\n")
+            sb.append("static constexpr int CLIENT_SECRET_FRAGMENT_COUNT = ${fragments.size};\n\n")
+            fragments.forEachIndexed { idx, (xored, _) ->
+                val hex = xored.joinToString(",") { "0x%02X".format(it.toInt() and 0xFF) }
+                sb.append("static const uint8_t CS$idx[] = {$hex};\n")
+            }
+            sb.append("\nstruct Fragment {\n    const uint8_t* data;\n    uint8_t len;\n    uint8_t mask;\n};\n\n")
+            sb.append("static const Fragment CLIENT_SECRET_FRAGMENTS[] = {\n")
+            fragments.forEachIndexed { idx, (xored, mask) ->
+                sb.append("    {CS$idx, ${xored.size}, 0x%02X},\n".format(mask))
+            }
+            sb.append("};\n")
         }
 
-        val saltHex = salt.joinToString(",") { "0x%02X".format(it.toInt() and 0xFF) }
-        sb.append("static const uint8_t CLIENT_SECRET_SALT[16] = {$saltHex};\n")
-        sb.append("static constexpr size_t CLIENT_SECRET_TOTAL_LEN = ${secretBytes.size};\n")
-        sb.append("static constexpr int CLIENT_SECRET_FRAGMENT_COUNT = ${fragments.size};\n\n")
-        fragments.forEachIndexed { idx, (xored, _) ->
-            val hex = xored.joinToString(",") { "0x%02X".format(it.toInt() and 0xFF) }
-            sb.append("static const uint8_t CS$idx[] = {$hex};\n")
+        outHeader.parentFile?.mkdirs()
+        outHeader.writeText(sb.toString(), Charsets.UTF_8)
+        // Refresh mtime on initial creation so Ninja adds the header to its depfile.
+        if (!existedBefore && cppFile.exists()) {
+            cppFile.setLastModified(System.currentTimeMillis())
         }
-        sb.append("\nstruct Fragment {\n    const uint8_t* data;\n    uint8_t len;\n    uint8_t mask;\n};\n\n")
-        sb.append("static const Fragment CLIENT_SECRET_FRAGMENTS[] = {\n")
-        fragments.forEachIndexed { idx, (xored, mask) ->
-            sb.append("    {CS$idx, ${xored.size}, 0x%02X},\n".format(mask))
-        }
-        sb.append("};\n")
-    }
-
-    headerFile.parentFile?.mkdirs()
-    headerFile.writeText(sb.toString(), Charsets.UTF_8)
-    // Refresh mtime on initial creation so Ninja adds the header to its depfile.
-    if (!existedBefore && bridgeCppFile.exists()) {
-        bridgeCppFile.setLastModified(System.currentTimeMillis())
     }
 }
 
@@ -552,21 +574,16 @@ tasks.withType<Test> {
     maxHeapSize = "2048m"
 }
 
-val generatedHeaderFile = layout.projectDirectory.file("src/main/cpp/SecretsBridge_generated.h").asFile
-val bridgeCppFile = layout.projectDirectory.file("src/main/cpp/SecretsBridge.cpp").asFile
-val capturedCertPrefix = nativeVaultCertPrefix
-val capturedSecret = nativeVaultSecret
+val nativeVaultFp = MessageDigest.getInstance("SHA-256")
+    .digest("$nativeVaultCertPrefix:$nativeVaultSecret".toByteArray(Charsets.UTF_8))
+    .joinToString("") { "%02x".format(it) }
 
-val prepareNativeBridge by tasks.registering {
-    outputs.upToDateWhen { false }
-    doLast {
-        writeSecretsBridgeHeader(
-            headerFile = generatedHeaderFile,
-            bridgeCppFile = bridgeCppFile,
-            certPrefix = capturedCertPrefix,
-            plainSecret = capturedSecret,
-        )
-    }
+val prepareNativeBridge = tasks.register<PrepareNativeBridgeTask>("prepareNativeBridge") {
+    headerFile.set(layout.projectDirectory.file("src/main/cpp/SecretsBridge_generated.h"))
+    bridgeCppFile.set(layout.projectDirectory.file("src/main/cpp/SecretsBridge.cpp"))
+    certPrefix.set(nativeVaultCertPrefix)
+    stateFingerprint.set(nativeVaultFp)
+    plainSecret.set(nativeVaultSecret)
 }
 
 tasks.matching {
