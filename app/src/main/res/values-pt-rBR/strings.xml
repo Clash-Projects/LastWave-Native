@@ -51,9 +51,6 @@
     <string name="settings_lyrics_animation">Animação das letras</string>
     <string name="settings_equalizer">Equalizador</string>
     <string name="settings_equalizer_sub">Modele o som em 15 faixas</string>
-    <string name="settings_wavy_seekbar">Barra ondulada</string>
-    <string name="settings_wavy_seekbar_on">Controle deslizante ondulado fluido em camadas</string>
-    <string name="settings_wavy_seekbar_off">Controle deslizante padrão clássico</string>
     <string name="settings_studio_clarity">Clareza Master de estúdio</string>
     <string name="settings_studio_clarity_on">Som aberto cristalino • detalhes arejados • separação profunda e limpa</string>
     <string name="settings_studio_clarity_off">Saída original sem processamento</string>

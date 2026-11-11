@@ -85,9 +85,6 @@
     <string name="settings_lyrics_provider_desc">Viene provato per primo su ogni brano. Se non restituisce nulla, l\'app passa automaticamente agli altri provider.</string>
     <string name="settings_equalizer">Equalizzatore</string>
     <string name="settings_equalizer_sub">Modella il suono su 15 frequenze</string>
-    <string name="settings_wavy_seekbar">Barra di avanzamento ondulata</string>
-    <string name="settings_wavy_seekbar_on">Cursore fluido a più livelli</string>
-    <string name="settings_wavy_seekbar_off">Cursore di avanzamento classico</string>
     <string name="settings_rotating_background">Sfondo rotante</string>
     <string name="settings_rotating_background_on">Anima la copertina in rotazione nel lettore e nella vista testi</string>
     <string name="settings_rotating_background_off">Sfondo sfocato statico (consigliato per Android 11 e precedenti)</string>

@@ -51,9 +51,6 @@
     <string name="settings_lyrics_animation">歌詞アニメーション</string>
     <string name="settings_equalizer">イコライザー</string>
     <string name="settings_equalizer_sub">15 バンドで音を調整</string>
-    <string name="settings_wavy_seekbar">波形シークバー</string>
-    <string name="settings_wavy_seekbar_on">多層の流体ウェーブスライダー</string>
-    <string name="settings_wavy_seekbar_off">クラシックな標準スライダー</string>
     <string name="settings_studio_clarity">スタジオマスター・クラリティ</string>
     <string name="settings_studio_clarity_on">クリスタルクリアで開放的なサウンド • エアリーなディテール • 深くクリーンな分離</string>
     <string name="settings_studio_clarity_off">無加工のオリジナル出力</string>

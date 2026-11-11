@@ -326,6 +326,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.scale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -526,37 +527,59 @@ internal fun rememberScrubHaptics(): ScrubHaptics {
     return remember(haptics) { ScrubHaptics(haptics) }
 }
 
+/**
+ * Ensures a color has sufficient perceived luminance and saturation to stand out
+ * vibrantly on dark scrims and backgrounds without washing out or disappearing.
+ * Uses WCAG 2.1 relative luminance and HSL space to preserve the original hue.
+ */
+internal fun Color.ensureLuminousForDarkBackground(minLuminance: Float = 0.38f): Color {
+    val argb = this.toArgb()
+    val currentLuminance = ColorUtils.calculateLuminance(argb).toFloat()
+    if (currentLuminance >= minLuminance) {
+        return this
+    }
+
+    val hsl = FloatArray(3)
+    ColorUtils.colorToHSL(argb, hsl)
+
+    // If nearly achromatic (dark gray/black cover art), bring to a clean, crisp off-white/silver
+    if (hsl[1] < 0.12f) {
+        hsl[2] = hsl[2].coerceAtLeast(0.82f)
+        return Color(ColorUtils.HSLToColor(hsl))
+    }
+
+    // Elevate lightness iteratively until target relative luminance is met
+    var step = 0
+    while (step < 20) {
+        hsl[2] = (hsl[2] + 0.04f).coerceAtMost(0.92f)
+        // Prevent high-saturation low-luminance hues (like deep blue) from staying too dark
+        if (hsl[1] > 0.85f && hsl[2] < 0.65f) {
+            hsl[1] = (hsl[1] * 0.96f).coerceAtLeast(0.60f)
+        }
+        val candidate = ColorUtils.HSLToColor(hsl)
+        if (ColorUtils.calculateLuminance(candidate).toFloat() >= minLuminance) {
+            return Color(candidate)
+        }
+        step++
+    }
+
+    return Color(ColorUtils.HSLToColor(hsl))
+}
+
 @Composable
 internal fun SeekBar(
     progressState: StateFlow<PlaybackProgressState>,
     isPlaying: Boolean,
     trackKey: String?,
-    wavyEnabled: Boolean = true,
     onSeek: (Long) -> Unit,
     isTranslucent: Boolean = false,
     fallbackDurationMs: Long = 0L,
     primaryColor: Color = MaterialTheme.colorScheme.primary,
-    secondaryColor: Color = MaterialTheme.colorScheme.secondary,
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
     telemetry: com.lastwave.app.playback.automix.api.DeckBlendTelemetry = com.lastwave.app.playback.automix.api.DeckBlendTelemetry(),
 ) {
     val progress by progressState.collectAsStateWithLifecycle()
     val effectiveDurationMs = if (progress.durationMs > 0L) progress.durationMs else fallbackDurationMs.coerceAtLeast(0L)
-
-    if (wavyEnabled) {
-        WavySeekBar(
-            positionMs = progress.positionMs,
-            durationMs = effectiveDurationMs,
-            isPlaying = isPlaying,
-            onSeek = onSeek,
-            isTranslucent = isTranslucent,
-            trackKey = trackKey,
-            primaryColor = primaryColor,
-            secondaryColor = secondaryColor,
-            tertiaryColor = tertiaryColor,
-        )
-        return
-    }
 
     // Current-gesture fraction only; null = finger off, show live position.
     // Nullable (never a stale 0f) so a press without movement seeks nowhere

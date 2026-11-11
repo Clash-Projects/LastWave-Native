@@ -51,9 +51,6 @@
     <string name="settings_lyrics_animation">Animation des paroles</string>
     <string name="settings_equalizer">Égaliseur</string>
     <string name="settings_equalizer_sub">Façonnez le son sur 15 bandes</string>
-    <string name="settings_wavy_seekbar">Barre de progression ondulée</string>
-    <string name="settings_wavy_seekbar_on">Curseur ondulé multicouche fluide</string>
-    <string name="settings_wavy_seekbar_off">Curseur standard classique</string>
     <string name="settings_studio_clarity">Clarté Studio Master</string>
     <string name="settings_studio_clarity_on">Son ouvert cristallin • détails aériens • séparation profonde et nette</string>
     <string name="settings_studio_clarity_off">Sortie originale non traitée</string>

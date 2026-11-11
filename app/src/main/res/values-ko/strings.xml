@@ -51,9 +51,6 @@
     <string name="settings_lyrics_animation">가사 애니메이션</string>
     <string name="settings_equalizer">이퀄라이저</string>
     <string name="settings_equalizer_sub">15개 밴드로 사운드 조절</string>
-    <string name="settings_wavy_seekbar">물결 시크바</string>
-    <string name="settings_wavy_seekbar_on">다층 유체 웨이브 슬라이더</string>
-    <string name="settings_wavy_seekbar_off">클래식 표준 슬라이더</string>
     <string name="settings_studio_clarity">스튜디오 마스터 선명도</string>
     <string name="settings_studio_clarity_on">크리스털처럼 맑고 개방적인 사운드 • 풍부한 디테일 • 깊고 깨끗한 분리</string>
     <string name="settings_studio_clarity_off">원본 무처리 출력</string>
