@@ -683,23 +683,6 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
-                    id = "appearance.wavy_seekbar",
-                    title = "Fluid Wavy Seekbar",
-                    subtitle = "Multi-layer fluid wavy progress slider for track playback",
-                    keywords = listOf(
-                        "wavy seekbar", "wave slider", "progress bar", "fluid seekbar", "waveform",
-                        "scrubber", "timeline", "squiggly line"
-                    ),
-                    icon = Icons.Filled.Waves,
-                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
-                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
-                    parentTab = SettingsTab.APPEARANCE,
-                    section = "Experimental & Features",
-                    type = EntryType.TOGGLE,
-                )
-            )
-            add(
-                SettingsEntry(
                     id = "appearance.music_video",
                     title = "Music Video",
                     subtitle = "Watch exact-sync music video of currently playing song in player menu",

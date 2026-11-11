@@ -51,9 +51,6 @@
     <string name="settings_lyrics_animation">Lyrics-Animation</string>
     <string name="settings_equalizer">Equalizer</string>
     <string name="settings_equalizer_sub">Klang in 15 Bändern formen</string>
-    <string name="settings_wavy_seekbar">Wellen-Suchleiste</string>
-    <string name="settings_wavy_seekbar_on">Mehrschichtiger flüssiger Wellenregler</string>
-    <string name="settings_wavy_seekbar_off">Klassischer Standardregler</string>
     <string name="settings_studio_clarity">Studio-Master-Klarheit</string>
     <string name="settings_studio_clarity_on">Kristallklarer offener Klang • luftige Details • tiefe saubere Trennung</string>
     <string name="settings_studio_clarity_off">Originaler unverarbeiteter Klang</string>

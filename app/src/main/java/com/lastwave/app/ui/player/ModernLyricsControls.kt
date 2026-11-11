@@ -281,7 +281,6 @@ internal fun ModernLyricsControlsHost(
     progressFlow: StateFlow<PlaybackProgressState>,
     progressInitial: PlaybackProgressState,
     player: MusicPlayer,
-    wavySeekbarEnabled: Boolean = true,
     onToggleFullscreen: (() -> Unit)? = null,
     isFullscreen: Boolean = false,
     lyricsOffsetMs: Long = 0L,
@@ -300,7 +299,6 @@ internal fun ModernLyricsControlsHost(
     onLyricsFontScaleChange: (Float) -> Unit = {},
     onLyricsFontScalePreview: (Float) -> Unit = {},
     primaryColor: Color = MaterialTheme.colorScheme.primary,
-    secondaryColor: Color = MaterialTheme.colorScheme.secondary,
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
     canShareLyrics: Boolean = false,
     onShareLyrics: () -> Unit = {},
@@ -312,7 +310,6 @@ internal fun ModernLyricsControlsHost(
         currentPositionMs = progress.positionMs,
         totalDurationMs = if (progress.durationMs > 0) progress.durationMs else state.durationMs,
         player = player,
-        wavySeekbarEnabled = wavySeekbarEnabled,
         onToggleFullscreen = onToggleFullscreen,
         isFullscreen = isFullscreen,
         lyricsOffsetMs = lyricsOffsetMs,
@@ -331,7 +328,6 @@ internal fun ModernLyricsControlsHost(
         onLyricsFontScaleChange = onLyricsFontScaleChange,
         onLyricsFontScalePreview = onLyricsFontScalePreview,
         primaryColor = primaryColor,
-        secondaryColor = secondaryColor,
         tertiaryColor = tertiaryColor,
         canShareLyrics = canShareLyrics,
         onShareLyrics = onShareLyrics,
@@ -346,7 +342,6 @@ internal fun ModernLyricsControls(
     currentPositionMs: Long,
     totalDurationMs: Long,
     player: MusicPlayer,
-    wavySeekbarEnabled: Boolean = true,
     onToggleFullscreen: (() -> Unit)? = null,
     isFullscreen: Boolean = false,
     lyricsOffsetMs: Long = 0L,
@@ -365,7 +360,6 @@ internal fun ModernLyricsControls(
     onLyricsFontScaleChange: (Float) -> Unit = {},
     onLyricsFontScalePreview: (Float) -> Unit = {},
     primaryColor: Color = MaterialTheme.colorScheme.primary,
-    secondaryColor: Color = MaterialTheme.colorScheme.secondary,
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
     canShareLyrics: Boolean = false,
     onShareLyrics: () -> Unit = {},
@@ -609,42 +603,26 @@ internal fun ModernLyricsControls(
             currentPositionMs.coerceAtLeast(0L).toFloat()
         }
 
-        if (wavySeekbarEnabled) {
-            WavySeekBar(
-                positionMs = currentPositionMs,
-                durationMs = totalDurationMs,
-                isPlaying = state.isPlaying,
-                onSeek = player::seekTo,
-                isTranslucent = true,
-                trackKey = state.current?.let { it.videoId ?: "${it.artist}|${it.title}" },
-                showTimeLabels = false,
-                modifier = Modifier.fillMaxWidth(),
-                primaryColor = primaryColor,
-                secondaryColor = secondaryColor,
-                tertiaryColor = tertiaryColor,
-            )
-        } else {
-            PlayerProgressSlider(
-                value = shown.coerceIn(0f, end),
-                onValueChange = {
-                    dragValue = it
-                    lastSeekValue = it
-                },
-                onValueChangeFinished = {
-                    // Commit only this gesture's value; no value = no seek.
-                    val target = (lastSeekValue ?: dragValue)?.toLong()
-                    dragValue = null
-                    lastSeekValue = null
-                    if (target != null) player.seekTo(target)
-                },
-                valueRange = 0f..end,
-                enabled = totalDurationMs > 0,
-                modifier = Modifier.fillMaxWidth(),
-                interactionSource = seekInteraction,
-                primaryColor = primaryColor,
-                tertiaryColor = tertiaryColor,
-            )
-        }
+        PlayerProgressSlider(
+            value = shown.coerceIn(0f, end),
+            onValueChange = {
+                dragValue = it
+                lastSeekValue = it
+            },
+            onValueChangeFinished = {
+                // Commit only this gesture's value; no value = no seek.
+                val target = (lastSeekValue ?: dragValue)?.toLong()
+                dragValue = null
+                lastSeekValue = null
+                if (target != null) player.seekTo(target)
+            },
+            valueRange = 0f..end,
+            enabled = totalDurationMs > 0,
+            modifier = Modifier.fillMaxWidth(),
+            interactionSource = seekInteraction,
+            primaryColor = primaryColor,
+            tertiaryColor = tertiaryColor,
+        )
 
         val currentSecond = shown.toLong() / 1000L
         val remainingSecond = (totalDurationMs - shown.toLong()).coerceAtLeast(0) / 1000L
