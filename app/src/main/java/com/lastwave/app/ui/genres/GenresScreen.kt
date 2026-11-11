@@ -142,7 +142,7 @@ fun GenresScreen(
             onLoadMore = { viewModel.loadDetailPage() },
             onStartMix = { viewModel.startMix(genre) },
             onDiscoverMore = { viewModel.discoverMore(genre) },
-            onShowYourTracks = { viewModel.showYourTracks(genre) },
+            onShowYourTracks = viewModel::showYourTracks,
             onExploreGenre = { viewModel.exploreGenre(it) },
         )
     }
