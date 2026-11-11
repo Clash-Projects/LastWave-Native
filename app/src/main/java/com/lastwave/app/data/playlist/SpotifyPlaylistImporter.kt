@@ -115,10 +115,20 @@ class SpotifyPlaylistImporter @Inject constructor(
         val token = spotifyAuthRepository.getPersonalToken()
         val clientToken = spotifyAuthRepository.getClientToken()
         if (!token.isNullOrBlank()) {
-            val apiResult = runCatching { fetchViaPathfinder(id, token, clientToken) }.getOrNull()
+            val apiResult = try {
+                fetchViaPathfinder(id, token, clientToken)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Pathfinder playlist fetch failed, falling back to embed: ${e.message}")
+                null
+            }
             if (apiResult != null && apiResult.rows.isNotEmpty()) {
                 return@withContext apiResult
             }
+            Log.w(TAG, "Authenticated fetch returned no tracks for $id; using public embed fallback")
+        } else {
+            Log.w(TAG, "No Spotify personal token; using public embed fallback (max ~100 tracks)")
         }
 
         // Fallback to public embed page scraping
@@ -149,22 +159,8 @@ class SpotifyPlaylistImporter @Inject constructor(
         while (offset < totalCount && pages < 10) {
             pages++
             val variables = """{"uri":"spotify:playlist:$id","offset":$offset,"limit":100,"enableWatchFeedEntrypoint":false}"""
-            val extensions = """{"persistedQuery":{"version":1,"sha256Hash":"$HASH_FETCH_PLAYLIST"}}"""
-            val url = "$PATHFINDER_ENDPOINT?operationName=fetchPlaylist&variables=${Uri.encode(variables)}&extensions=${Uri.encode(extensions)}"
-
-            val reqBuilder = Request.Builder()
-                .url(url)
-                .header("Authorization", "Bearer $token")
-                .header("User-Agent", DESKTOP_USER_AGENT)
-                .header("Accept", "application/json")
-            if (!clientToken.isNullOrBlank()) {
-                reqBuilder.header("Client-Token", clientToken)
-            }
-
-            val body = client.newCall(reqBuilder.build()).execute().use { response ->
-                if (!response.isSuccessful) return null
-                response.body?.string().orEmpty()
-            }
+            val body = pathfinderGet("fetchPlaylist", variables, HASH_FETCH_PLAYLIST, token, clientToken)
+                ?: return if (rows.isEmpty()) null else buildResult(title, author, artworkUrl, rows)
             if (body.isBlank()) break
 
             val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: break
@@ -207,13 +203,68 @@ class SpotifyPlaylistImporter @Inject constructor(
         }
 
         if (rows.isEmpty()) return null
-        return ExternalPlaylistResult(
-            source = ExternalPlaylistSource.SPOTIFY,
-            title = title,
-            author = author,
-            artworkUrl = artworkUrl,
-            rows = rows,
-        )
+        return buildResult(title, author, artworkUrl, rows)
+    }
+
+    private fun buildResult(
+        title: String,
+        author: String?,
+        artworkUrl: String?,
+        rows: List<ExternalTrackRow>,
+    ) = ExternalPlaylistResult(
+        source = ExternalPlaylistSource.SPOTIFY,
+        title = title,
+        author = author,
+        artworkUrl = artworkUrl,
+        rows = rows,
+    )
+
+    /**
+     * Single hardened Pathfinder GET: retries transient failures (IO errors, 429, 5xx)
+     * with backoff, logs every non-success status and GraphQL-level error (stale
+     * persisted-query hash, expired token) instead of silently yielding "empty",
+     * and returns null only after all attempts fail.
+     */
+    private fun pathfinderGet(
+        operation: String,
+        variables: String,
+        hash: String,
+        token: String,
+        clientToken: String?,
+    ): String? {
+        val extensions = """{"persistedQuery":{"version":1,"sha256Hash":"$hash"}}"""
+        val url = "$PATHFINDER_ENDPOINT?operationName=$operation&variables=${Uri.encode(variables)}&extensions=${Uri.encode(extensions)}"
+        repeat(PATHFINDER_ATTEMPTS) { attempt ->
+            val builder = Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer $token")
+                .header("User-Agent", DESKTOP_USER_AGENT)
+                .header("Accept", "application/json")
+            if (!clientToken.isNullOrBlank()) builder.header("Client-Token", clientToken)
+            var retry = false
+            try {
+                client.newCall(builder.build()).execute().use { response ->
+                    val code = response.code
+                    if (response.isSuccessful) {
+                        val body = response.body?.string().orEmpty()
+                        if (body.contains("PersistedQueryNotFound") || body.contains("\"errors\"")) {
+                            Log.w(TAG, "$operation returned GraphQL errors: ${body.take(200)}")
+                        }
+                        return body
+                    }
+                    Log.w(TAG, "$operation failed HTTP $code (attempt ${attempt + 1})")
+                    retry = code == 429 || code >= 500
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: IOException) {
+                Log.w(TAG, "$operation I/O error (attempt ${attempt + 1}): ${e.message}")
+                retry = true
+            }
+            if (!retry) return null
+            if (attempt < PATHFINDER_ATTEMPTS - 1) Thread.sleep(600L * (attempt + 1))
+        }
+        return null
     }
 
     /**
@@ -224,21 +275,9 @@ class SpotifyPlaylistImporter @Inject constructor(
         val clientToken = spotifyAuthRepository.getClientToken()
         try {
             val variables = """{"filters":["Playlists"],"order":null,"textFilter":null,"features":[],"limit":50,"offset":0,"flatten":false,"expandedFolders":[],"folderUri":null,"includeFoldersWhenFlattening":true}"""
-            val extensions = """{"persistedQuery":{"version":1,"sha256Hash":"$HASH_LIBRARY_V3"}}"""
-            val url = "$PATHFINDER_ENDPOINT?operationName=libraryV3&variables=${Uri.encode(variables)}&extensions=${Uri.encode(extensions)}"
-
-            val reqBuilder = Request.Builder()
-                .url(url)
-                .header("Authorization", "Bearer $token")
-                .header("User-Agent", DESKTOP_USER_AGENT)
-                .header("Accept", "application/json")
-            if (!clientToken.isNullOrBlank()) {
-                reqBuilder.header("Client-Token", clientToken)
-            }
-
-            client.newCall(reqBuilder.build()).execute().use { response ->
-                if (!response.isSuccessful) return@use emptyList()
-                val body = response.body?.string().orEmpty()
+            val body = pathfinderGet("libraryV3", variables, HASH_LIBRARY_V3, token, clientToken)
+                ?: return@withContext emptyList()
+            run {
                 val root = json.parseToJsonElement(body).jsonObject
                 val libraryItems = root["data"]?.jsonObject?.get("me")?.jsonObject
                     ?.get("libraryV3")?.jsonObject?.get("items")?.jsonArray.orEmpty()
@@ -294,21 +333,8 @@ class SpotifyPlaylistImporter @Inject constructor(
         while (offset < totalCount && pages < 20) {
             pages++
             val variables = """{"offset":$offset,"limit":50}"""
-            val extensions = """{"persistedQuery":{"version":1,"sha256Hash":"$HASH_FETCH_LIBRARY_TRACKS"}}"""
-            val url = "$PATHFINDER_ENDPOINT?operationName=fetchLibraryTracks&variables=${Uri.encode(variables)}&extensions=${Uri.encode(extensions)}"
-
-            val reqBuilder = Request.Builder()
-                .url(url)
-                .header("Authorization", "Bearer $token")
-                .header("User-Agent", DESKTOP_USER_AGENT)
-                .header("Accept", "application/json")
-            if (!clientToken.isNullOrBlank()) {
-                reqBuilder.header("Client-Token", clientToken)
-            }
-
-            val body = client.newCall(reqBuilder.build()).execute().use { response ->
-                if (!response.isSuccessful) null else response.body?.string()
-            } ?: break
+            val body = pathfinderGet("fetchLibraryTracks", variables, HASH_FETCH_LIBRARY_TRACKS, token, clientToken)
+                ?: break
 
             val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: break
             val tracksObj = root["data"]?.jsonObject?.get("me")?.jsonObject
@@ -445,6 +471,7 @@ class SpotifyPlaylistImporter @Inject constructor(
         const val HASH_LIBRARY_V3 = "390c78e5b951029bad359785e69b07b536a509c581cbcd0aded5e5067f187455"
         const val HASH_FETCH_LIBRARY_TRACKS = "087278b20b743578a6262c2b0b4bcd20d879c503cc359a2285baf083ef944240"
 
+        const val PATHFINDER_ATTEMPTS = 3
         const val EMBED_BASE = "https://open.spotify.com/embed/playlist/"
         const val SPOTIFY_TRACK_URI = "spotify:track:"
         const val SPOTIFY_PLAYLIST_URI = "spotify:playlist:"
