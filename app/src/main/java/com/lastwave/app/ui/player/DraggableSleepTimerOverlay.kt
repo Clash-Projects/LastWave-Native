@@ -96,6 +96,10 @@ fun DraggableSleepTimerOverlay(
             var offsetX by remember { mutableFloatStateOf(maxMarginX) }
             var offsetY by remember { mutableFloatStateOf(screenHeightPx / 2f) }
             var isDragging by remember { mutableStateOf(false) }
+            LaunchedEffect(minMarginX, maxMarginX, minMarginY, maxMarginY) {
+                offsetX = offsetX.coerceIn(minMarginX, maxMarginX)
+                offsetY = offsetY.coerceIn(minMarginY, maxMarginY)
+            }
             var hoveringClose by remember { mutableStateOf(false) }
 
             // Drag-to-close target: bottom-center above mini-player/nav.
@@ -135,7 +139,7 @@ fun DraggableSleepTimerOverlay(
                         haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
                         onCycleTimer()
                     }
-                    .pointerInput(Unit) {
+                    .pointerInput(minMarginX, maxMarginX, minMarginY, maxMarginY, diameterPx, closeCenterX, closeCenterY) {
                         detectDragGestures(
                             onDragStart = {
                                 isDragging = true
