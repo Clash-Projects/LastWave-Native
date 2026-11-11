@@ -6,7 +6,7 @@
 
     <string name="nav_feed">Beranda</string>
     <string name="nav_stats">Statistik</string>
-    <string name="nav_playlists">Playlist</string>
+    <string name="nav_playlists">Perpustakaan</string>
     <string name="nav_create_playlist">Buat / Hasilkan playlist</string>
     <string name="update_available">Pembaruan tersedia</string>
     <string name="update">Perbarui</string>
@@ -496,7 +496,7 @@
     <string name="pl_export_title">Ekspor Daftar Putar</string>
     <string name="pl_choose_image">Pilih gambar</string>
     <string name="pl_change_image">Ubah gambar</string>
-    <string name="pl_title">Daftar putar</string>
+    <string name="pl_title">Perpustakaan</string>
     <string name="pl_selected_count">%1$d dipilih</string>
     <string name="pl_select_more_hint">Tekan lama untuk memilih lebih banyak</string>
     <string name="pl_count_only">%1$d Daftar Putar</string>

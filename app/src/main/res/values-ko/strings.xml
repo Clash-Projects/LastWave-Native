@@ -6,7 +6,7 @@
 
     <string name="nav_feed">피드</string>
     <string name="nav_stats">통계</string>
-    <string name="nav_playlists">플레이리스트</string>
+    <string name="nav_playlists">라이브러리</string>
     <string name="nav_create_playlist">플레이리스트 만들기 / 생성</string>
     <string name="update_available">업데이트 있음</string>
     <string name="update">업데이트</string>
@@ -496,7 +496,7 @@
     <string name="pl_export_title">재생목록 내보내기</string>
     <string name="pl_choose_image">이미지 선택</string>
     <string name="pl_change_image">이미지 변경</string>
-    <string name="pl_title">재생목록</string>
+    <string name="pl_title">라이브러리</string>
     <string name="pl_selected_count">%1$d 선택됨</string>
     <string name="pl_select_more_hint">더 선택하려면 길게 누르세요.</string>
     <string name="pl_count_only">%1$d 재생목록</string>

@@ -6,7 +6,7 @@
 
     <string name="nav_feed">フィード</string>
     <string name="nav_stats">統計</string>
-    <string name="nav_playlists">プレイリスト</string>
+    <string name="nav_playlists">ライブラリ</string>
     <string name="nav_create_playlist">プレイリストを作成 / 生成</string>
     <string name="update_available">アップデートあり</string>
     <string name="update">更新</string>
@@ -496,7 +496,7 @@
     <string name="pl_export_title">プレイリストのエクスポート</string>
     <string name="pl_choose_image">画像を選択してください</string>
     <string name="pl_change_image">イメージを変更する</string>
-    <string name="pl_title">プレイリスト</string>
+    <string name="pl_title">ライブラリ</string>
     <string name="pl_selected_count">%1$d が選択されました</string>
     <string name="pl_select_more_hint">長押ししてさらに選択します</string>
     <string name="pl_count_only">%1$d プレイリスト</string>

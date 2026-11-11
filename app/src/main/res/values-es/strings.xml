@@ -6,7 +6,7 @@
 
     <string name="nav_feed">Inicio</string>
     <string name="nav_stats">Estadísticas</string>
-    <string name="nav_playlists">Listas</string>
+    <string name="nav_playlists">Biblioteca</string>
     <string name="nav_create_playlist">Crear / Generar lista</string>
     <string name="update_available">Actualización disponible</string>
     <string name="update">Actualizar</string>
@@ -496,7 +496,7 @@
     <string name="pl_export_title">Exportar lista de reproducción</string>
     <string name="pl_choose_image">Elige imagen</string>
     <string name="pl_change_image">Cambiar imagen</string>
-    <string name="pl_title">Lista de reproducción</string>
+    <string name="pl_title">Biblioteca</string>
     <string name="pl_selected_count">%1$d seleccionado</string>
     <string name="pl_select_more_hint">Mantenga presionado para seleccionar más</string>
     <string name="pl_count_only">%1$d Listas de reproducción</string>

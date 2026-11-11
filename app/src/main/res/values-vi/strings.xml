@@ -48,7 +48,7 @@
     <!-- Bottom navigation -->
     <string name="nav_feed">Bảng tin</string>
     <string name="nav_stats">Thống kê</string>
-    <string name="nav_playlists">Danh sách phát</string>
+    <string name="nav_playlists">Thư viện</string>
     <string name="nav_create_playlist">Tạo / Tạo tự động danh sách phát</string>
     <string name="nav_generator">Trình tạo</string>
     <string name="update_available">Có bản cập nhật</string>
@@ -648,7 +648,7 @@
     <string name="pl_export_title">Xuất danh sách phát</string>
     <string name="pl_choose_image">Chọn ảnh</string>
     <string name="pl_change_image">Đổi ảnh</string>
-    <string name="pl_title">Danh sách phát</string>
+    <string name="pl_title">Thư viện</string>
     <string name="pl_selected_count">Đã chọn %1$d</string>
     <string name="pl_select_more_hint">Nhấn giữ để chọn thêm</string>
     <string name="pl_count_only">%1$d danh sách phát</string>

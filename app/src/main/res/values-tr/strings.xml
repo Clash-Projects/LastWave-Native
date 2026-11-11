@@ -9,7 +9,7 @@
     <!-- Alt gezinti -->
     <string name="nav_feed">Akış</string>
     <string name="nav_stats">İstatistik</string>
-    <string name="nav_playlists">Listeler</string>
+    <string name="nav_playlists">Kitaplık</string>
     <string name="nav_create_playlist">Liste Oluştur / Üret</string>
     <string name="update_available">Güncelleme Mevcut</string>
     <string name="update">Güncelle</string>
@@ -508,7 +508,7 @@
     <string name="pl_export_title">Listeyi Dışa Aktar</string>
     <string name="pl_choose_image">Resim seç</string>
     <string name="pl_change_image">Resmi değiştir</string>
-    <string name="pl_title">Liste</string>
+    <string name="pl_title">Kitaplık</string>
     <string name="pl_selected_count">%1$d seçildi</string>
     <string name="pl_select_more_hint">Daha fazla seçmek için uzun basın</string>
     <string name="pl_count_only">%1$d Liste</string>

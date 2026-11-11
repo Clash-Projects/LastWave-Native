@@ -104,6 +104,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.playlist.SavedPlaylist
 import com.lastwave.app.data.playlist.LIKED_SONGS_MODE
+import com.lastwave.app.data.playlist.LOCAL_SONGS_MODE
 import com.lastwave.app.data.playlist.isYouTubeOnly
 import com.lastwave.app.playback.toPlayableTrack
 import com.lastwave.app.ui.common.ArtworkImage
@@ -320,11 +321,15 @@ fun PlaylistScreen(
                 }
             }
 
+            val localSongsPlaylist = remember(state.playlists, searchQuery) {
+                state.playlists.firstOrNull {
+                    it.mode == LOCAL_SONGS_MODE && it.matchesPlaylistSearch(searchQuery)
+                }
+            }
+
             val filteredPlaylists = remember(state.playlists, searchQuery) {
-                if (searchQuery.isBlank()) state.playlists
-                else state.playlists.filter {
-                    it.title.contains(searchQuery, ignoreCase = true) ||
-                        it.tracks.any { t -> t.name.contains(searchQuery, ignoreCase = true) || t.artist.contains(searchQuery, ignoreCase = true) }
+                state.playlists.filter {
+                    it.mode != LOCAL_SONGS_MODE && it.matchesPlaylistSearch(searchQuery)
                 }
             }
 
@@ -335,6 +340,8 @@ fun PlaylistScreen(
                 }
             }
 
+            val effectiveSpotify = if (state.isSpotifySyncEnabled) filteredSpotifyPlaylists else emptyList()
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -342,7 +349,7 @@ fun PlaylistScreen(
             ) {
                 when {
                     state.isLoading && state.playlists.isEmpty() && !state.isGenerating -> LoadingState()
-                    filteredPlaylists.isEmpty() && !state.isGenerating && (!state.isSpotifySyncEnabled || filteredSpotifyPlaylists.isEmpty()) -> EmptyState()
+                    localSongsPlaylist == null && filteredPlaylists.isEmpty() && !state.isGenerating && effectiveSpotify.isEmpty() -> EmptyState()
                     else -> LazyColumn(
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = FloatingNavDefaults.contentBottomPadding()),
                         verticalArrangement = Arrangement.spacedBy(com.lastwave.app.ui.common.GroupGap),
@@ -350,6 +357,36 @@ fun PlaylistScreen(
                             .fillMaxWidth()
                             .clip(TopCurvedSectionClipShape(horizontalInset = 16.dp, cornerRadius = 28.dp)),
                     ) {
+                        if (localSongsPlaylist != null) {
+                            val hasPlaylistsBelow = state.isGenerating ||
+                                state.justSavedBannerVisible ||
+                                effectiveSpotify.isNotEmpty() ||
+                                filteredPlaylists.isNotEmpty()
+                            item(key = "local_songs_hero", contentType = "local_songs_hero") {
+                                Box(
+                                    modifier = Modifier
+                                        .animateItem()
+                                        .then(if (hasPlaylistsBelow) Modifier.padding(bottom = 13.dp) else Modifier),
+                                ) {
+                                    LocalSongsHeroCard(
+                                        playlist = localSongsPlaylist,
+                                        isPlaying = playbackState.isPlaying,
+                                        playbackSource = playbackState.sourceLabel,
+                                        onClick = { onOpenPlaylist(localSongsPlaylist.id) },
+                                        onEditCover = { coverEditorPlaylistId = localSongsPlaylist.id },
+                                        onPlay = {
+                                            musicPlayer.playQueue(
+                                                localSongsPlaylist.tracks.map(GeneratedTrack::toPlayableTrack),
+                                                startIndex = 0,
+                                                sourceLabel = localSongsPlaylist.title,
+                                                enableRadioContinuation = false,
+                                            )
+                                        },
+                                    )
+                                }
+                            }
+                        }
+
                         if (state.isGenerating) {
                             item(key = "generationProgress", contentType = "generationProgress") {
                                 com.lastwave.app.ui.common.GenerationProgressCard(message = state.generatingMessage)
@@ -377,8 +414,7 @@ fun PlaylistScreen(
                             }
                         }
 
-                        val effectiveSpotify = if (state.isSpotifySyncEnabled) filteredSpotifyPlaylists else emptyList()
-                        val totalPlaylistCount = effectiveSpotify.size + filteredPlaylists.size
+                        val groupedPlaylistCount = effectiveSpotify.size + filteredPlaylists.size
 
                         if (effectiveSpotify.isNotEmpty()) {
                             itemsIndexed(
@@ -388,7 +424,7 @@ fun PlaylistScreen(
                                 Box(Modifier.animateItem()) {
                                     SpotifyPlaylistCard(
                                         playlist = pl,
-                                        position = com.lastwave.app.ui.common.groupPositionFor(index, totalPlaylistCount),
+                                        position = com.lastwave.app.ui.common.groupPositionFor(index, groupedPlaylistCount),
                                         onClick = {
                                             val routeId = if (pl.id == "liked") "sp_liked" else "sp_${pl.id}"
                                             onOpenFeedPlaylist(routeId)
@@ -408,7 +444,7 @@ fun PlaylistScreen(
                                 PlaylistCard(
                                     playlist = playlist,
                                     isNewest = isNewest,
-                                    position = com.lastwave.app.ui.common.groupPositionFor(globalIndex, totalPlaylistCount),
+                                    position = com.lastwave.app.ui.common.groupPositionFor(globalIndex, groupedPlaylistCount),
                                     isRegenerating = state.regeneratingId == playlist.id,
                                     currentTrack = playbackState.current,
                                     isPlaying = playbackState.isPlaying,
@@ -626,3 +662,11 @@ fun PlaylistScreen(
         )
     }
 }
+
+private fun SavedPlaylist.matchesPlaylistSearch(query: String): Boolean =
+    query.isBlank() ||
+        title.contains(query, ignoreCase = true) ||
+        tracks.any { t ->
+            t.name.contains(query, ignoreCase = true) ||
+                t.artist.contains(query, ignoreCase = true)
+        }

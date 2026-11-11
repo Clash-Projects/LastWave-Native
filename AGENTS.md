@@ -3,6 +3,76 @@
 Rules for every agent working in this repo. Read this before touching code.
 For any UI or visual work, also read [DESIGN.md](DESIGN.md).
 
+## 0. App overview
+
+LastWave is a native Android YouTube Music client written in Kotlin and Jetpack
+Compose (`com.lastwave.app`, version `5.1.3` / code `31`). Alongside YouTube
+Music browsing and streaming, it includes offline downloads, local device audio,
+Spotify imports/Canvas, Last.fm scrobbling and stats, podcasts, Listen Together
+(`jam`), Discord Rich Presence, Google Cast, Android Auto, Glance home-screen
+widgets, and a C++/Oboe audiophile audio pipeline (parametric EQ, AutoEQ,
+Automix transitions, lossless addons, and Bit-Perfect USB DAC output).
+
+### Modules and build
+
+- **`:app`** — main Android application (`compileSdk 37`, default `minSdk 29` or
+  `-PminSdk=24`, `targetSdk 35`, JVM 17). Build types: `debug`, `release`
+  (R8 + resource shrinking), `rawRelease` (release-signed without shrinking).
+  `-PvivoOrigin=true` switches `applicationId` to `com.tencent.qqmusic`.
+- **`:audio:decent-usb-audio-driver`** — C++/CMake USB audio driver library
+  (`com.decent.usbaudio`) used for bit-perfect USB DAC exclusive output.
+
+### Tech stack
+
+- **UI:** Jetpack Compose + Material 3, Liquid Glass (`kyant-backdrop`,
+  `kyant-shapes`, `fletchmckee-liquid`), Navigation Compose, Coil Compose,
+  Glance (`glance-appwidget` / `glance-material3`).
+- **DI, async & storage:** Hilt + KSP, Kotlin Coroutines,
+  `kotlinx.serialization` (JSON & Protobuf), Retrofit + OkHttp, Jsoup, Room
+  (`AppDatabase` v15), DataStore Preferences.
+- **Stream resolution:** NewPipe Extractor + local InnerTube API, with
+  `innertubex` (`runtimeOnly`, Ktor OkHttp/CIO) invoked via reflection for
+  playback resolution.
+- **Playback & native audio:** Media3 ExoPlayer `1.2.1` (OkHttp, HLS, DASH) +
+  Jellyfin `media3-ffmpeg-decoder:1.2.1+1`, `androidx.media:media:1.7.0`
+  (`MediaBrowserServiceCompat` / `MediaSessionCompat`), Google Oboe `1.10.0`,
+  and C++20 JNI (`app/src/main/cpp/`, 16 KB page-aligned) bundling `libsoxr`
+  `0.1.3`, `DspProcessor`, `ParametricEq`, `DirectOutputStream`, and `automix/`.
+- **Tests:** JUnit 4, Truth, MockK, Robolectric, `kotlinx-coroutines-test` under
+  `app/src/test/java/com/lastwave/app/`.
+
+### Architecture & package map (`app/src/main/java/com/lastwave/app/`)
+
+- **Entry points & navigation:**
+  - `LastWaveApplication` (`@HiltAndroidApp`, `ImageLoaderFactory`, installs
+    `Diagnostics`, locale wrapping, BotGuard/stream prewarm, background sync).
+  - `MainShellActivity` in `MainActivity.kt` (targeted by `.MainActivity` and
+    dynamic-icon `<activity-alias>` launcher entries; `MainActivity` class is a
+    legacy alias) wraps `LastWaveNavHost` (`ui/navigation/NavGraph.kt`, routes in
+    `ui/navigation/Screen.kt`) inside the mini/full player overlay `PlayerHost`.
+  - `MainShell` (`ui/shell/MainShell.kt`) hosts a 3-tab `HorizontalPager`
+    (`FEED` -> `FeedScreen`, `STATS` -> `HomeScreen`, `PLAYLISTS` ->
+    `PlaylistScreen`); detail/search/settings/auth screens push on top.
+- **`data/`** — Room (`local/db/AppDatabase.kt`), DataStore prefs, repositories,
+  and domain packages: `music/`, `ytmusic/`, `playlist/`, `spotify/`,
+  `download/`, `localmusic/`, `lyrics/`, `canvas/`, `lossless/`, `addon/`,
+  `autoeq/`, `generate/`, `discover/`, `genre/`, `newreleases/`, `podcast/`,
+  `jam/`, `recommend/`, `search/`, `network/`, `repository/`, `backup/`, `update/`.
+- **`playback/` & `app/src/main/cpp/`** — `MusicPlaybackService`
+  (`MediaBrowserServiceCompat`, notification, Android Auto), `MusicPlayer` and
+  companions (`MusicPlayerQueue`, `MusicPlayerCast`, `MusicPlayerAutomix`,
+  `MusicPlayerUsb`, `MusicPlayerSession`), `resolve/`, `ChunkedRangeDataSource`,
+  `NativeAudioEngine`, `UsbBitPerfectOutput` / `ExclusiveUsbOutput`,
+  `FfmpegCompat`, `automix/`, `eq/`, `cast/`, `haptics/`, `usb/`,
+  `AndroidAutoMediaLibrary`, `OriginOsMusicCard`.
+- **`ui/`** — Compose screens/components by feature (`feed/`, `home/`,
+  `playlist/`, `player/`, `search/`, `settings/`, `shell/`, `theme/`, `common/`,
+  plus detail, import, auth, discover, genres, generate, podcast, jam).
+- **`di/`** (`AppModule`, `DatabaseModule`, `DataStoreModule`, `NetworkModule`),
+  **`presence/`** (`DiscordPresenceManager`), **`widget/`** (Glance widgets +
+  `widget/wave/`), **`diagnostics/`** (`Diagnostics`, `CrashRecorder`,
+  `TombstoneSummary`, `AppLog`).
+
 ## 1. First, classify the prompt
 
 Decide what kind of request it is and answer in that shape. Do not mix them.

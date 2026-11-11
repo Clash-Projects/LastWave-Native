@@ -6,7 +6,7 @@
 
     <string name="nav_feed">Fil</string>
     <string name="nav_stats">Statistiques</string>
-    <string name="nav_playlists">Playlists</string>
+    <string name="nav_playlists">Bibliothèque</string>
     <string name="nav_create_playlist">Créer / Générer une playlist</string>
     <string name="update_available">Mise à jour disponible</string>
     <string name="update">Mettre à jour</string>
@@ -503,7 +503,7 @@
     <string name="pl_export_title">Exporter la liste de lecture</string>
     <string name="pl_choose_image">Choisir une image</string>
     <string name="pl_change_image">Changer l\'image</string>
-    <string name="pl_title">Liste de lecture</string>
+    <string name="pl_title">Bibliothèque</string>
     <string name="pl_selected_count">%1$d sélectionné</string>
     <string name="pl_select_more_hint">Appuyez longuement pour en sélectionner plus</string>
     <string name="pl_count_only">%1$d Listes de lecture</string>

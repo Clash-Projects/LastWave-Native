@@ -6,7 +6,7 @@
 
     <string name="nav_feed">फ़ीड</string>
     <string name="nav_stats">आँकड़े</string>
-    <string name="nav_playlists">प्लेलिस्ट</string>
+    <string name="nav_playlists">लाइब्रेरी</string>
     <string name="nav_create_playlist">प्लेलिस्ट बनाएँ / जनरेट करें</string>
     <string name="update_available">अपडेट उपलब्ध</string>
     <string name="update">अपडेट करें</string>
@@ -500,7 +500,7 @@
     <string name="pl_export_title">प्लेलिस्ट निर्यात करें</string>
     <string name="pl_choose_image">छवि चुनें</string>
     <string name="pl_change_image">छवि बदलें</string>
-    <string name="pl_title">प्लेलिस्ट</string>
+    <string name="pl_title">लाइब्रेरी</string>
     <string name="pl_selected_count">%1$d चयनित</string>
     <string name="pl_select_more_hint">अधिक चुनने के लिए देर तक दबाएँ</string>
     <string name="pl_count_only">%1$d प्लेलिस्ट</string>

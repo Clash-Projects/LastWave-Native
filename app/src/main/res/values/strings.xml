@@ -48,7 +48,7 @@
     <!-- Bottom navigation -->
     <string name="nav_feed">Feed</string>
     <string name="nav_stats">Stats</string>
-    <string name="nav_playlists">Playlists</string>
+    <string name="nav_playlists">Library</string>
     <string name="nav_create_playlist">Create / Generate Playlist</string>
     <string name="nav_generator">Generator</string>
     <string name="update_available">Update Available</string>
@@ -692,7 +692,7 @@
     <string name="pl_export_title">Export Playlist</string>
     <string name="pl_choose_image">Choose image</string>
     <string name="pl_change_image">Change image</string>
-    <string name="pl_title">Playlist</string>
+    <string name="pl_title">Library</string>
     <string name="pl_selected_count">%1$d selected</string>
     <string name="pl_select_more_hint">Long press to select more</string>
     <string name="pl_count_only">%1$d Playlists</string>

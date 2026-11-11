@@ -41,6 +41,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
@@ -49,6 +50,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -108,6 +110,8 @@ import com.lastwave.app.data.playlist.isYouTubeOnly
 import com.lastwave.app.playback.toPlayableTrack
 import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.ExpressiveMotion
+import com.lastwave.app.ui.common.GroupOuterRadius
 import com.lastwave.app.ui.common.PlaylistCover
 import com.lastwave.app.ui.common.TopCurvedSectionClipShape
 import com.lastwave.app.ui.common.TrackContextMenuSheet
@@ -366,6 +370,198 @@ internal fun PlaylistCard(
                         onClick = { onDelete(); menuExpanded = false },
                     )
                 }
+            }
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+internal fun LocalSongsHeroCard(
+    playlist: SavedPlaylist,
+    isPlaying: Boolean,
+    playbackSource: String,
+    onClick: () -> Unit,
+    onEditCover: () -> Unit,
+    onPlay: () -> Unit,
+) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val isThisPlaylistPlaying = isPlaying && playbackSource == playlist.title
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val playInteractionSource = remember { MutableInteractionSource() }
+    val isPlayPressed by playInteractionSource.collectIsPressedAsState()
+
+    val cardScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.98f else 1f,
+        animationSpec = ExpressiveMotion.spatialFast(),
+        label = "localHeroScale",
+    )
+    val playScale by animateFloatAsState(
+        targetValue = if (isPlayPressed) 0.88f else 1f,
+        animationSpec = ExpressiveMotion.spatialFast(),
+        label = "localHeroPlayScale",
+    )
+    val containerColor by animateColorAsState(
+        targetValue = if (isThisPlaylistPlaying) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.secondaryContainer
+        },
+        animationSpec = ExpressiveMotion.effectsDefault(),
+        label = "localHeroBg",
+    )
+    val contentColor = if (isThisPlaylistPlaying) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    }
+
+    Card(
+        shape = RoundedCornerShape(GroupOuterRadius),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = cardScale
+                scaleY = cardScale
+            },
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = {
+                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.ContextClick)
+                        onClick()
+                    },
+                )
+                .padding(horizontal = 18.dp, vertical = 18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(68.dp)) {
+                if (!playlist.customCoverUri.isNullOrBlank() || playlist.tracks.isNotEmpty()) {
+                    PlaylistCover(playlist = playlist, modifier = Modifier.fillMaxSize(), cornerRadius = 18.dp)
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Filled.FolderOpen,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(30.dp),
+                            )
+                        }
+                    }
+                }
+                if (isThisPlaylistPlaying) {
+                    com.lastwave.app.ui.player.PlayingWaveBars(
+                        Modifier.align(Alignment.BottomEnd).padding(4.dp).size(24.dp, 18.dp),
+                    )
+                }
+            }
+
+            Spacer(Modifier.width(16.dp))
+
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.local_panel_title),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = contentColor.copy(alpha = 0.78f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = playlist.title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = contentColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = if (playlist.tracks.isNotEmpty()) {
+                        stringResource(R.string.pd_track_count, playlist.tracks.size)
+                    } else {
+                        stringResource(R.string.local_choose_folder)
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = contentColor.copy(alpha = 0.82f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            if (playlist.tracks.isNotEmpty()) {
+                Spacer(Modifier.width(8.dp))
+                Surface(
+                    onClick = {
+                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.ContextClick)
+                        onPlay()
+                    },
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    interactionSource = playInteractionSource,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .graphicsLayer {
+                            scaleX = playScale
+                            scaleY = playScale
+                        },
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = stringResource(R.string.pl_play_cd),
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
+                Box {
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = stringResource(R.string.pl_options_cd),
+                            tint = contentColor.copy(alpha = 0.78f),
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false },
+                        shape = RoundedCornerShape(22.dp),
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        tonalElevation = 4.dp,
+                        shadowElevation = 10.dp,
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.pl_change_cover)) },
+                            leadingIcon = { Icon(Icons.Filled.PhotoLibrary, contentDescription = null) },
+                            onClick = { onEditCover(); menuExpanded = false },
+                        )
+                    }
+                }
+            } else {
+                Spacer(Modifier.width(8.dp))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                    contentDescription = null,
+                    tint = contentColor.copy(alpha = 0.7f),
+                    modifier = Modifier.size(16.dp),
+                )
             }
         }
     }

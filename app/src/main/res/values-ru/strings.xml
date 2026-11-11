@@ -6,7 +6,7 @@
 
     <string name="nav_feed">Лента</string>
     <string name="nav_stats">Статистика</string>
-    <string name="nav_playlists">Плейлисты</string>
+    <string name="nav_playlists">Библиотека</string>
     <string name="nav_create_playlist">Создать / Сгенерировать плейлист</string>
     <string name="update_available">Доступно обновление</string>
     <string name="update">Обновить</string>
@@ -496,7 +496,7 @@
     <string name="pl_export_title">Экспортировать плейлист</string>
     <string name="pl_choose_image">Выбрать изображение</string>
     <string name="pl_change_image">Изменить изображение</string>
-    <string name="pl_title">Плейлист</string>
+    <string name="pl_title">Библиотека</string>
     <string name="pl_selected_count">%1$d выбрано</string>
     <string name="pl_select_more_hint">Длительное нажатие, чтобы выбрать больше</string>
     <string name="pl_count_only">%1$d Плейлисты</string>

@@ -9,7 +9,7 @@
     <!-- Bottom navigation -->
     <string name="nav_feed">Home</string>
     <string name="nav_stats">Statistiche</string>
-    <string name="nav_playlists">Playlist</string>
+    <string name="nav_playlists">Libreria</string>
     <string name="nav_create_playlist">Crea / Genera playlist</string>
     <string name="nav_generator">Generatore</string>
     <string name="update_available">Aggiornamento disponibile</string>
@@ -529,7 +529,7 @@
     <string name="pl_export_title">Esporta playlist</string>
     <string name="pl_choose_image">Scegli immagine</string>
     <string name="pl_change_image">Cambia immagine</string>
-    <string name="pl_title">Playlist</string>
+    <string name="pl_title">Libreria</string>
     <string name="pl_selected_count">%1$d selezionati</string>
     <string name="pl_select_more_hint">Tieni premuto per selezionarne altri</string>
     <string name="pl_count_only">%1$d playlist</string>

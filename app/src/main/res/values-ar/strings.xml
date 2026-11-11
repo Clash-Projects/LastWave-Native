@@ -6,7 +6,7 @@
 
     <string name="nav_feed">الموجز</string>
     <string name="nav_stats">الإحصائيات</string>
-    <string name="nav_playlists">القوائم</string>
+    <string name="nav_playlists">المكتبة</string>
     <string name="nav_create_playlist">إنشاء / توليد قائمة</string>
     <string name="update_available">يتوفر تحديث</string>
     <string name="update">تحديث</string>
@@ -496,7 +496,7 @@
     <string name="pl_export_title">تصدير قائمة التشغيل</string>
     <string name="pl_choose_image">اختر الصورة</string>
     <string name="pl_change_image">تغيير الصورة</string>
-    <string name="pl_title">قائمة التشغيل</string>
+    <string name="pl_title">المكتبة</string>
     <string name="pl_selected_count">%1$d تم التحديد</string>
     <string name="pl_select_more_hint">اضغط لفترة طويلة لتحديد المزيد</string>
     <string name="pl_count_only">%1$d قوائم التشغيل</string>
