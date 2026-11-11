@@ -243,9 +243,9 @@ object AudioHeaderInspector {
             val combined = java.io.SequenceInputStream(ByteArrayInputStream(head), input)
             val info = readFlacStreamInfo(combined)
             if (info != null) {
-                val durMs = if ((info.sampleRateHz ?: 0) > 0 && (info.totalSamples ?: 0L) > 0L) {
-                    (info.totalSamples!! * 1000L) / info.sampleRateHz!!
-                } else null
+                val sr = info.sampleRateHz ?: 0
+                val ts = info.totalSamples ?: 0L
+                val durMs = if (sr > 0 && ts > 0L) (ts * 1000L) / sr else null
                 return AudioHeaderInfo(
                     containerLabel = "FLAC",
                     sampleRateHz = info.sampleRateHz,

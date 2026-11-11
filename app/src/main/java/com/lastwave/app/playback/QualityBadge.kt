@@ -262,9 +262,14 @@ private val GENERIC_AUDIO_LABELS = setOf("AUDIO", "LOCAL AUDIO")
  * FLAC encoder, is identical on every device, and carries both the sample
  * rate (20 bits) and the bits-per-sample (5 bits, stored value + 1).
  */
-data class FlacStreamInfo(val bitDepth: Int?, val sampleRateHz: Int?)
+data class FlacStreamInfo(
+    val bitDepth: Int?,
+    val sampleRateHz: Int?,
+    val channels: Int? = null,
+    val totalSamples: Long? = null,
+)
 
-/** Parse one 34-byte STREAMINFO body into depth + rate. Null when invalid. */
+/** Parse one 34-byte STREAMINFO body into depth, rate, channels, and total sample count. Null when invalid. */
 fun parseFlacStreamInfoBody(body: ByteArray, offset: Int = 0): FlacStreamInfo? {
     if (body.size - offset < 34) return null
     val b10 = body[offset + 10].toInt() and 0xFF
@@ -272,11 +277,23 @@ fun parseFlacStreamInfoBody(body: ByteArray, offset: Int = 0): FlacStreamInfo? {
     val b12 = body[offset + 12].toInt() and 0xFF
     val b13 = body[offset + 13].toInt() and 0xFF
     val sampleRateHz = (b10 shl 12) or (b11 shl 4) or ((b12 shr 4) and 0x0F)
+    val channels = ((b12 ushr 1) and 0x07) + 1
     val bpsMinusOne = ((b12 and 0x01) shl 4) or ((b13 shr 4) and 0x0F)
     val bitDepth = bpsMinusOne + 1
+    val b14 = body[offset + 14].toLong() and 0xFFL
+    val b15 = body[offset + 15].toLong() and 0xFFL
+    val b16 = body[offset + 16].toLong() and 0xFFL
+    val b17 = body[offset + 17].toLong() and 0xFFL
+    val totalSamples = ((b13.toLong() and 0x0FL) shl 32) or
+        (b14 shl 24) or (b15 shl 16) or (b16 shl 8) or b17
     if (sampleRateHz < 8000 || sampleRateHz > 768000) return null
     if (bitDepth < 4 || bitDepth > 32) return null
-    return FlacStreamInfo(bitDepth = bitDepth, sampleRateHz = sampleRateHz)
+    return FlacStreamInfo(
+        bitDepth = bitDepth,
+        sampleRateHz = sampleRateHz,
+        channels = channels,
+        totalSamples = totalSamples.takeIf { it > 0L },
+    )
 }
 
 /**

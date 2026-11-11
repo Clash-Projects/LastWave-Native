@@ -289,6 +289,7 @@ import com.lastwave.app.playback.PlaybackProgressState
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lastwave.app.data.artwork.ArtworkNormalizer
 import com.lastwave.app.playback.PlayableTrack
+import com.lastwave.app.playback.isLocalTrack
 import com.lastwave.app.playback.toGeneratedTrack
 import com.lastwave.app.playback.resolve.MetadataLog
 import com.lastwave.app.ui.common.ArtworkImage
