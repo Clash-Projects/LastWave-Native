@@ -187,7 +187,6 @@ class YouTubePlaylistImportViewModel @Inject constructor(
                         it.copy(
                             previewPlaylist = result,
                             isPreviewLoading = false,
-                            selectedPlaylistIds = it.selectedPlaylistIds + result.id,
                         )
                     }
                 } else {
@@ -241,17 +240,29 @@ class YouTubePlaylistImportViewModel @Inject constructor(
     }
 
     fun importSelected(onSuccess: (List<SavedPlaylist>) -> Unit) {
-        val selectedIds = _uiState.value.selectedPlaylistIds
-        if (selectedIds.isEmpty()) return
+        importPlaylists(_uiState.value.selectedPlaylistIds, _uiState.value.previewPlaylist, onSuccess)
+    }
+
+    /** The preview's action imports only the playlist the user is reviewing. */
+    fun importPreview(onSuccess: (List<SavedPlaylist>) -> Unit) {
+        val preview = _uiState.value.previewPlaylist ?: return
+        importPlaylists(setOf(preview.id), preview, onSuccess)
+    }
+
+    private fun importPlaylists(
+        selectedIds: Set<String>,
+        preview: YouTubePlaylistResult?,
+        onSuccess: (List<SavedPlaylist>) -> Unit,
+    ) {
+        if (selectedIds.isEmpty() || _uiState.value.isImporting) return
+        _uiState.update { it.copy(isImporting = true, importProgress = "Starting import...") }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isImporting = true, importProgress = "Starting import...") }
             val savedList = mutableListOf<SavedPlaylist>()
             val ownedIds = _uiState.value.libraryPlaylists.mapTo(mutableSetOf()) { it.id }
                 .filterNotTo(mutableSetOf()) { PlaylistImportManager.isYtLikedId(it) }
 
             try {
-                val preview = _uiState.value.previewPlaylist
                 if (preview != null && selectedIds.contains(preview.id) && selectedIds.size == 1) {
                     val saved = if (PlaylistImportManager.isYtLikedId(preview.id)) {
                         importManager.importYtLikedIntoLikedSongs(preview)

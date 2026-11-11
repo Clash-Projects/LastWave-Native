@@ -677,9 +677,10 @@ fun YouTubePlaylistImportScreen(
     state.previewPlaylist?.let { preview ->
         PlaylistPreviewModal(
             preview = preview,
+            isImporting = state.isImporting,
             onDismiss = { viewModel.dismissPreview() },
             onImportThis = {
-                viewModel.importSelected { savedList ->
+                viewModel.importPreview { savedList ->
                     viewModel.dismissPreview()
                     onImportSuccess(savedList)
                 }
@@ -764,6 +765,7 @@ private fun YouTubePlaylistCard(
 @Composable
 private fun PlaylistPreviewModal(
     preview: YouTubePlaylistResult,
+    isImporting: Boolean,
     onDismiss: () -> Unit,
     onImportThis: () -> Unit,
 ) {
@@ -860,6 +862,7 @@ private fun PlaylistPreviewModal(
 
             Button(
                 onClick = onImportThis,
+                enabled = !isImporting,
                 shape = CircleShape,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -867,7 +870,11 @@ private fun PlaylistPreviewModal(
             ) {
                 Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.ytimp_import_btn, preview.title), fontWeight = FontWeight.Bold)
+                Text(
+                    if (isImporting) stringResource(R.string.ytimp_importing)
+                    else stringResource(R.string.ytimp_import_btn, preview.title),
+                    fontWeight = FontWeight.Bold,
+                )
             }
         }
     }
