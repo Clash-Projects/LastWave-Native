@@ -221,6 +221,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
@@ -231,7 +232,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
@@ -356,6 +359,16 @@ class PlayerViewModel @Inject constructor(
     val state = player.state
     val chromeState = player.chromeState
     val progressState = player.progressState
+    /**
+     * Sampled copy for the collapsed player's 3 dp bar / ring. Collecting the
+     * 60 ms [progressState] from composition scheduled a Compose frame 15x/s
+     * even when the sampled value had not changed.
+     */
+    @OptIn(FlowPreview::class)
+    val miniProgressState: StateFlow<PlaybackProgressState> = player.progressState
+        .sample(250)
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), player.progressState.value)
     val fullPlayerState = player.state
         .map { it.withoutProgress() }
         .distinctUntilChanged()
