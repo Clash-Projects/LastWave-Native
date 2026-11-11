@@ -79,6 +79,7 @@ import com.lastwave.app.R
 import com.lastwave.app.data.playlist.ExternalTrackRow
 import com.lastwave.app.data.playlist.SavedPlaylist
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.common.groupPositionFor
 import com.lastwave.app.ui.common.groupShape
@@ -116,17 +117,22 @@ fun ExternalPlaylistImportScreen(
     var selectedTab by remember { mutableIntStateOf(0) }
 
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        Column(
+        GlassHeaderLayout(
             modifier = Modifier
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 860.dp)
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
-        ) {
+            header = { headerModifier, headerBackdrop ->
             ExpressiveHeader(
+                modifier = headerModifier,
+                backdrop = headerBackdrop,
                 title = "Import Playlist",
                 subtitle = if (selectedTab == 0) "Spotify Account Library" else "Spotify & Apple Music link",
                 onBack = onBack,
             )
+            },
+        ) { headerInset ->
+        Column(Modifier.fillMaxSize().padding(top = headerInset)) {
 
             // Segmented Tab Row: Spotify Account vs Link Import (Completely separate)
             Row(
@@ -582,6 +588,7 @@ fun ExternalPlaylistImportScreen(
                     }
                 }
             }
+        }
         }
 
         // Floating bottom Import CTA (Shown whenever rows are present from either tab)

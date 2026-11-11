@@ -92,6 +92,7 @@ import androidx.lifecycle.viewModelScope
 import com.lastwave.app.R
 import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.common.safeDrawingBottomPadding
 import com.lastwave.app.ui.common.safeHorizontalContentPadding
@@ -340,13 +341,15 @@ fun HomeSectionsScreen(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
-        Column(
+        GlassHeaderLayout(
             modifier = Modifier
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 860.dp)
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
-        ) {
+            header = { headerModifier, headerBackdrop ->
             ExpressiveHeader(
+                modifier = headerModifier,
+                backdrop = headerBackdrop,
                 title = stringResource(R.string.settings_home_sections),
                 subtitle = if (uiState.isLoaded) stringResource(
                     R.string.home_sections_visible,
@@ -371,6 +374,9 @@ fun HomeSectionsScreen(
                     }
                 },
             )
+            },
+        ) { headerInset ->
+        Column(Modifier.fillMaxSize().padding(top = headerInset)) {
 
             if (!uiState.isLoaded) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -578,6 +584,7 @@ fun HomeSectionsScreen(
                     }
                 }
             }
+        }
         }
     }
 }

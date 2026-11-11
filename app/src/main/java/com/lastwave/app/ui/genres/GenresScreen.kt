@@ -54,6 +54,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import com.lastwave.app.ui.common.TrackContextMenuSheet
 import com.lastwave.app.ui.common.TrackMenuCapabilities
 import com.lastwave.app.ui.common.TrackMenuTarget
@@ -88,17 +89,22 @@ fun GenresScreen(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
-        Column(
+        GlassHeaderLayout(
             Modifier
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 860.dp),
-        ) {
+            header = { headerModifier, headerBackdrop ->
             ExpressiveHeader(
+                modifier = headerModifier,
+                backdrop = headerBackdrop,
                 title = stringResource(R.string.ge_title),
                 subtitle = stringResource(R.string.ge_sub),
                 onBack = onBack,
                 actions = { PeriodDropdown(state.period, viewModel::setPeriod) },
             )
+            },
+        ) { headerInset ->
+        Column(Modifier.fillMaxSize()) {
 
             when {
                 state.isLoading -> Box(
@@ -115,7 +121,7 @@ fun GenresScreen(
                     contentPadding = PaddingValues(
                         start = 16.dp,
                         end = 16.dp,
-                        top = 8.dp,
+                        top = 8.dp + headerInset,
                         bottom = 24.dp + LocalMiniPlayerScrollClearance.current + safeDrawingBottomPadding(),
                     ),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -131,6 +137,7 @@ fun GenresScreen(
                     }
                 }
             }
+        }
         }
     }
 

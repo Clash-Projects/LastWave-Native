@@ -67,6 +67,7 @@ import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ExpressiveGroupTrackRow
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import com.lastwave.app.ui.common.ExpressiveInlineLoadingIndicator
 import com.lastwave.app.ui.common.GroupGap
 import com.lastwave.app.ui.common.GroupPosition
@@ -116,12 +117,14 @@ fun NewReleasesScreen(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
-        Column(
+        GlassHeaderLayout(
             Modifier
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 860.dp),
-        ) {
+            header = { headerModifier, headerBackdrop ->
             ExpressiveHeader(
+                modifier = headerModifier,
+                backdrop = headerBackdrop,
                 title = stringResource(R.string.nr_title),
                 subtitle = stringResource(R.string.nr_sub),
                 onBack = onBack,
@@ -130,6 +133,9 @@ fun NewReleasesScreen(
                     HeaderActionIcon(Icons.Filled.Shuffle, "Shuffle all", viewModel::shuffle)
                 },
             )
+            },
+        ) { headerInset ->
+        Column(Modifier.fillMaxSize()) {
 
             Box(Modifier.fillMaxSize().safeHorizontalContentPadding()) {
                 Crossfade(
@@ -143,7 +149,7 @@ fun NewReleasesScreen(
                             contentPadding = PaddingValues(
                                 start = 16.dp,
                                 end = 16.dp,
-                                top = 16.dp,
+                                top = 16.dp + headerInset,
                                 bottom = 24.dp + LocalMiniPlayerScrollClearance.current + safeDrawingBottomPadding(),
                             ),
                             verticalArrangement = Arrangement.spacedBy(GroupGap),
@@ -211,7 +217,7 @@ fun NewReleasesScreen(
                             LazyColumn(
                                 state = listState,
                                 contentPadding = PaddingValues(
-                                    top = 10.dp,
+                                    top = 10.dp + headerInset,
                                     bottom = 24.dp + LocalMiniPlayerScrollClearance.current + safeDrawingBottomPadding(),
                                 ),
                                 verticalArrangement = Arrangement.spacedBy(GroupGap),
@@ -362,6 +368,7 @@ fun NewReleasesScreen(
                     }
                 }
             }
+        }
         }
     }
 

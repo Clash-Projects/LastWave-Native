@@ -32,6 +32,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lastwave.app.R
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.common.groupPositionFor
 import com.lastwave.app.ui.common.safeDrawingBottomPadding
@@ -53,21 +54,26 @@ fun PodcastShowScreen(
         viewModel.load(showId)
     }
 
-    Column(
+    GlassHeaderLayout(
         Modifier
             .fillMaxSize()
             .adaptiveContentWidth(maxWidth = 860.dp),
-    ) {
+        header = { headerModifier, headerBackdrop ->
         ExpressiveHeader(
+            modifier = headerModifier,
+            backdrop = headerBackdrop,
             title = state.show?.title?.takeIf { it.isNotBlank() } ?: stringResource(R.string.podcasts_title),
             subtitle = state.show?.publisher?.takeIf { it.isNotBlank() },
             onBack = onBack,
         )
+        },
+    ) { headerInset ->
+    Column(Modifier.fillMaxSize()) {
 
         LazyColumn(
             modifier = Modifier.fillMaxSize().safeHorizontalContentPadding(),
             contentPadding = PaddingValues(
-                top = 10.dp,
+                top = 10.dp + headerInset,
                 bottom = 24.dp + LocalMiniPlayerScrollClearance.current + safeDrawingBottomPadding(),
             ),
             verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -192,5 +198,6 @@ fun PodcastShowScreen(
                 }
             }
         }
+    }
     }
 }

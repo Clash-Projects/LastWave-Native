@@ -104,6 +104,7 @@ import com.lastwave.app.data.jam.JamRepository
 import com.lastwave.app.data.jam.ParticipantPayload
 import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import com.lastwave.app.ui.common.HeaderActionIcon
 import com.lastwave.app.ui.common.PredictiveBackScreen
 import com.lastwave.app.ui.common.adaptiveContentWidth
@@ -170,13 +171,15 @@ fun JamScreen(
                 .navigationBarsPadding(),
             contentAlignment = Alignment.TopCenter,
         ) {
-            Column(
+            GlassHeaderLayout(
                 modifier = Modifier
                     .fillMaxSize()
                     .adaptiveContentWidth(maxWidth = 860.dp),
-            ) {
+                header = { headerModifier, headerBackdrop ->
                 // Top Header with live status badge
                 ExpressiveHeader(
+                    modifier = headerModifier,
+                    backdrop = headerBackdrop,
                     title = "Jam",
                     subtitle = if (uiState.isConnected) (uiState.roomName.ifEmpty { "Room ${uiState.roomCode}" }) else "Listen together in real time",
                     onBack = onBack,
@@ -223,6 +226,9 @@ fun JamScreen(
                         }
                     },
                 )
+                },
+            ) { headerInset ->
+            Column(Modifier.fillMaxSize()) {
 
                 // ==========================================
                 // DISCONNECTED / SETUP VIEW (Simple & Minimal)
@@ -233,6 +239,7 @@ fun JamScreen(
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState())
                             .imePadding()
+                            .padding(top = headerInset)
                             .padding(horizontal = 20.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
@@ -507,7 +514,7 @@ fun JamScreen(
                     // ==========================================
                     // ACTIVE JAM ROOM VIEW (Simple & Minimal)
                     // ==========================================
-                    Column(modifier = Modifier.fillMaxSize()) {
+                    Column(modifier = Modifier.fillMaxSize().padding(top = headerInset)) {
                         // Sleek Segmented Pill Tab Selector
                         Row(
                             modifier = Modifier
@@ -1148,6 +1155,7 @@ fun JamScreen(
                         }
                     }
                 }
+            }
             }
         }
     }

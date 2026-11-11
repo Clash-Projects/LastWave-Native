@@ -66,6 +66,7 @@ import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.playback.toPlayableTrack
 import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import com.lastwave.app.ui.common.ExpressiveMotion
 import com.lastwave.app.ui.common.GroupGap
 import com.lastwave.app.ui.common.GroupPosition
@@ -144,12 +145,14 @@ fun DiscoverScreen(onBack: () -> Unit = {}, viewModel: DiscoverViewModel = hiltV
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
-        Column(
+        GlassHeaderLayout(
             Modifier
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 860.dp),
-        ) {
+            header = { headerModifier, headerBackdrop ->
             ExpressiveHeader(
+                modifier = headerModifier,
+                backdrop = headerBackdrop,
             title = "Discover",
             subtitle = "Discover fresh tracks",
             onBack = onBack,
@@ -158,6 +161,9 @@ fun DiscoverScreen(onBack: () -> Unit = {}, viewModel: DiscoverViewModel = hiltV
                 HeaderActionIcon(Icons.Filled.Shuffle, "Shuffle Recommendations", viewModel::surpriseMe)
             },
         )
+            },
+        ) { headerInset ->
+        Column(Modifier.fillMaxSize()) {
 
         Box(Modifier.fillMaxSize().safeHorizontalContentPadding()) {
             Crossfade(
@@ -171,7 +177,7 @@ fun DiscoverScreen(onBack: () -> Unit = {}, viewModel: DiscoverViewModel = hiltV
                         contentPadding = PaddingValues(
                             start = 16.dp,
                             end = 16.dp,
-                            top = 16.dp,
+                            top = 16.dp + headerInset,
                             bottom = 24.dp + LocalMiniPlayerScrollClearance.current + safeDrawingBottomPadding(),
                         ),
                         verticalArrangement = Arrangement.spacedBy(GroupGap),
@@ -208,7 +214,7 @@ fun DiscoverScreen(onBack: () -> Unit = {}, viewModel: DiscoverViewModel = hiltV
                         contentPadding = PaddingValues(
                             start = 16.dp,
                             end = 16.dp,
-                            top = 12.dp,
+                            top = 12.dp + headerInset,
                             bottom = 24.dp + LocalMiniPlayerScrollClearance.current + safeDrawingBottomPadding()
                         ),
                         verticalArrangement = Arrangement.spacedBy(GroupGap),
@@ -255,6 +261,7 @@ fun DiscoverScreen(onBack: () -> Unit = {}, viewModel: DiscoverViewModel = hiltV
             }
         }
     }
+        }
     }
 
     menuTrack?.let { track ->

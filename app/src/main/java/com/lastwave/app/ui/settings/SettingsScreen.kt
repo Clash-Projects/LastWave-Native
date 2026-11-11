@@ -200,6 +200,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -291,21 +292,21 @@ enum class SettingsTab(
     AUDIO(
         titleRes = R.string.set_cat_audio,
         subtitleRes = R.string.set_cat_audio_sub,
-        title = "Audio & Playback",
+        title = "Audio",
         subtitle = "Streaming quality, Audio engine, Equalizer, Output & Loudness",
         icon = Icons.Filled.GraphicEq,
     ),
     APPEARANCE(
         titleRes = R.string.set_cat_appear,
         subtitleRes = R.string.set_cat_appear_sub,
-        title = "Appearance & Visuals",
+        title = "Appearance",
         subtitle = "Themes, Colors, Artwork, Lyrics",
         icon = Icons.Filled.Palette,
     ),
     YOUTUBE(
         titleRes = R.string.set_cat_yt,
         subtitleRes = R.string.set_cat_yt_sub,
-        title = "YouTube & Sync",
+        title = "YouTube",
         subtitle = "Account connection, 24/7 Library sync, Channels, History",
         icon = Icons.Filled.CloudSync,
     ),
@@ -326,21 +327,21 @@ enum class SettingsTab(
     LIBRARY(
         titleRes = R.string.set_cat_lib,
         subtitleRes = R.string.set_cat_lib_sub,
-        title = "Library & Content",
+        title = "Library",
         subtitle = "Home layout, Playlist imports, Downloads, Exclusions",
         icon = Icons.Filled.QueueMusic,
     ),
     DATA_BACKUP(
         titleRes = R.string.set_cat_data,
         subtitleRes = R.string.set_cat_data_sub,
-        title = "Data Management",
+        title = "Data",
         subtitle = "Cache cleanup, Export & Import settings, Database tools",
         icon = Icons.Filled.Backup,
     ),
     ABOUT(
         titleRes = R.string.set_cat_about,
         subtitleRes = R.string.set_cat_about_sub,
-        title = "About & Community",
+        title = "About",
         subtitle = "Version info, Telegram community, GitHub repository",
         icon = Icons.Filled.Info,
     ),
@@ -479,11 +480,6 @@ fun SettingsScreen(
     CompositionLocalProvider(
         LocalToggleDetailViewer provides { activeToggleDetail = it },
     ) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .adaptiveContentWidth(maxWidth = 760.dp),
-        ) {
         var activeTab by remember { mutableStateOf<SettingsTab?>(null) }
         var isSearchBarVisible by rememberSaveable { mutableStateOf(false) }
         var highlightedSettingId by remember { mutableStateOf<String?>(null) }
@@ -508,7 +504,14 @@ fun SettingsScreen(
             }
         }
 
+        GlassHeaderLayout(
+            Modifier
+                .fillMaxSize()
+                .adaptiveContentWidth(maxWidth = 760.dp),
+            header = { headerModifier, headerBackdrop ->
         ExpressiveHeader(
+            modifier = headerModifier,
+            backdrop = headerBackdrop,
             title = if (searchQuery.isNotBlank()) stringResource(R.string.settings_search_title) else (activeTab?.title ?: stringResource(R.string.settings)),
             onBack = {
                 if (searchQuery.isNotBlank() || isSearchBarVisible) {
@@ -535,7 +538,12 @@ fun SettingsScreen(
                 )
             },
         )
-
+            },
+        ) { headerInset ->
+        // While searching, the search bar and results start below the header.
+        val searching = isSearchBarVisible || searchQuery.isNotBlank()
+        val listTopInset = if (searching) 0.dp else headerInset
+        Column(Modifier.fillMaxSize().padding(top = headerInset - listTopInset)) {
         AnimatedVisibility(
             visible = isSearchBarVisible,
             enter = expandVertically() + fadeIn(),
@@ -609,7 +617,7 @@ fun SettingsScreen(
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
-                    top = 16.dp,
+                    top = 16.dp + listTopInset,
                     bottom = 32.dp + LocalMiniPlayerScrollClearance.current + safeDrawingBottomPadding(),
                 ),
                 verticalArrangement = Arrangement.spacedBy(24.dp),
@@ -2349,6 +2357,7 @@ fun SettingsScreen(
                     }
                 }
             }
+        }
         }
         }
     }

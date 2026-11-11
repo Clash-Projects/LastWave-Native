@@ -30,6 +30,7 @@ import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.common.ExpressiveGroup
 import com.lastwave.app.ui.common.ExpressiveGroupTrackRow
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance
 import com.lastwave.app.ui.common.safeDrawingBottomPadding
 import com.lastwave.app.ui.common.safeHorizontalContentPadding
@@ -73,18 +74,23 @@ fun FriendsScreen(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
-        Column(
+        GlassHeaderLayout(
             Modifier
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 760.dp),
-        ) {
+            header = { headerModifier, headerBackdrop ->
         ExpressiveHeader(
+            modifier = headerModifier,
+            backdrop = headerBackdrop,
             title = "Friends",
             subtitle = if (friends.isNotEmpty()) "Long-press a friend to pin" else null,
             onBack = onBack,
         )
+            },
+        ) { headerInset ->
+        Column(Modifier.fillMaxSize()) {
 
-        androidx.compose.foundation.layout.Spacer(Modifier.height(10.dp))
+        androidx.compose.foundation.layout.Spacer(Modifier.height(10.dp + headerInset))
 
         // Wrapped in the app's own rounded "list container" surface, same
         // idea as Home's own track list — but using a shape rounded ONLY
@@ -192,5 +198,6 @@ fun FriendsScreen(
         }
         }
     }
+        }
 }
 }

@@ -765,9 +765,8 @@ fun FeedScreen(
                             val mask = feedBackgroundColor
                             drawRect(mask, Offset.Zero, Size(left, top + radius))
                             drawRect(mask, Offset(right, 0f), Size(size.width - right, top + radius))
-                            if (top > 0f) {
-                                drawRect(mask, Offset(left, 0f), Size(right - left, top))
-                            }
+                            // No band above `top`: the content there is what the glass
+                            // header refracts. Masking it left the glass a flat bar.
                             val topLeft = Path().apply {
                                 moveTo(left, top)
                                 lineTo(left, top + radius)

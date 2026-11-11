@@ -22,6 +22,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lastwave.app.R
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.common.safeDrawingBottomPadding
 import com.lastwave.app.ui.common.safeHorizontalContentPadding
@@ -34,14 +35,19 @@ import com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance
 internal fun MoodsScreen(onBack: () -> Unit, viewModel: MoodsViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        Column(Modifier.adaptiveContentWidth(maxWidth = 1000.dp).fillMaxSize()) {
-            ExpressiveHeader(title = stringResource(R.string.moods_title), onBack = onBack)
+        GlassHeaderLayout(
+            Modifier.adaptiveContentWidth(maxWidth = 1000.dp).fillMaxSize(),
+            header = { headerModifier, headerBackdrop ->
+                ExpressiveHeader(modifier = headerModifier, backdrop = headerBackdrop, title = stringResource(R.string.moods_title), onBack = onBack)
+            },
+        ) { headerInset ->
+        Column(Modifier.fillMaxSize()) {
             when {
-                state.isLoading -> MoodsPageLoading()
-                state.groups.none { it.tiles.isNotEmpty() } -> MoodsLoadMessage(state.failed, viewModel::refresh)
+                state.isLoading -> Box(Modifier.padding(top = headerInset)) { MoodsPageLoading() }
+                state.groups.none { it.tiles.isNotEmpty() } -> Box(Modifier.padding(top = headerInset)) { MoodsLoadMessage(state.failed, viewModel::refresh) }
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxSize().safeHorizontalContentPadding(),
-                    contentPadding = moodsPagePadding(),
+                    contentPadding = moodsPagePadding(headerInset),
                     verticalArrangement = Arrangement.spacedBy(CardTokens.sectionGap),
                 ) {
                     itemsIndexed(state.groups, key = { index, group -> "$index:${group.title}" }) { _, group ->
@@ -57,6 +63,7 @@ internal fun MoodsScreen(onBack: () -> Unit, viewModel: MoodsViewModel = hiltVie
                     }
                 }
             }
+        }
         }
     }
 }
@@ -74,14 +81,19 @@ internal fun MoodsCategoryScreen(
         ?: viewModel.fallbackTitle.takeIf { it.isNotBlank() }
         ?: stringResource(R.string.moods_title)
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        Column(Modifier.adaptiveContentWidth(maxWidth = 1000.dp).fillMaxSize()) {
-            ExpressiveHeader(title = title, onBack = onBack)
+        GlassHeaderLayout(
+            Modifier.adaptiveContentWidth(maxWidth = 1000.dp).fillMaxSize(),
+            header = { headerModifier, headerBackdrop ->
+                ExpressiveHeader(modifier = headerModifier, backdrop = headerBackdrop, title = title, onBack = onBack)
+            },
+        ) { headerInset ->
+        Column(Modifier.fillMaxSize()) {
             when {
-                state.isLoading -> MoodsPageLoading()
-                category == null || category.shelves.isEmpty() -> MoodsLoadMessage(state.failed, viewModel::refresh)
+                state.isLoading -> Box(Modifier.padding(top = headerInset)) { MoodsPageLoading() }
+                category == null || category.shelves.isEmpty() -> Box(Modifier.padding(top = headerInset)) { MoodsLoadMessage(state.failed, viewModel::refresh) }
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxSize().safeHorizontalContentPadding(),
-                    contentPadding = moodsPagePadding(),
+                    contentPadding = moodsPagePadding(headerInset),
                     verticalArrangement = Arrangement.spacedBy(CardTokens.sectionGap),
                 ) {
                     itemsIndexed(category.shelves, key = { index, shelf -> "$index:${shelf.title}" }) { _, shelf ->
@@ -101,12 +113,13 @@ internal fun MoodsCategoryScreen(
                 }
             }
         }
+        }
     }
 }
 
 @Composable
-private fun moodsPagePadding() = PaddingValues(
-    top = 16.dp,
+private fun moodsPagePadding(topInset: androidx.compose.ui.unit.Dp) = PaddingValues(
+    top = 16.dp + topInset,
     bottom = 24.dp + LocalMiniPlayerScrollClearance.current + safeDrawingBottomPadding(),
 )
 
