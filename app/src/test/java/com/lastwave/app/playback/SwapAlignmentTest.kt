@@ -1,7 +1,9 @@
 package com.lastwave.app.playback
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.random.Random
 
@@ -35,6 +37,17 @@ class SwapAlignmentTest {
         val lag = SwapAlignment.measureLagMs(SwapCapture(source, 0L), SwapCapture(source, 20_000L))
 
         assertEquals(20L, lag)
+    }
+
+    @Test
+    fun `a real match reports its confidence for the offset cache`() {
+        val source = music(SwapAlignment.CAPTURE_BINS, seed = 5)
+
+        val match = SwapAlignment.measure(SwapCapture(source, 0L), SwapCapture(source, 0L))
+
+        assertNotNull(match)
+        assertEquals(0L, match!!.lagMs)
+        assertTrue(match.confidence >= SwapOffsetCache.MIN_CACHE_CONFIDENCE)
     }
 
     @Test

@@ -281,6 +281,17 @@ class MusicPlayer @Inject constructor(
     internal var activeUpgradeMediaId: String? = null
     internal var activeUpgradeTargetQuality: Int? = null
     internal var activeUpgradeDeferred: Deferred<ResolvedStream?>? = null
+    /** Verified source-master offsets, so a repeat upgrade skips the silent probe. */
+    private val swapOffsetCache = SwapOffsetCache()
+    /**
+     * Audition and offset probe hold three decoders at once. On a low-RAM
+     * device they run sequentially instead; the probe then starts after the
+     * audition has released its player.
+     */
+    private val swapProbesConcurrent: Boolean by lazy {
+        val activityManager = appContext.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+        activityManager?.isLowRamDevice != true
+    }
     /** Selected track's fallback resolve, kept briefly after a provider win. */
     @Volatile internal var startupFallbackJob: Job? = null
     @Volatile internal var latestPlaybackSettings = MiscSettings()
@@ -1640,34 +1651,25 @@ class MusicPlayer @Inject constructor(
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean,
             ): androidx.media3.exoplayer.audio.AudioSink {
-                val fallbackSink = DefaultAudioSink.Builder(context)
-                    .setEnableFloatOutput(false)
+                val bufferSizing = OutputBufferSizing()
+                fun pcmSink(floatOutput: Boolean) = DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(floatOutput)
                     .setEnableAudioTrackPlaybackParams(true)
                     .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
+                    .setAudioTrackBufferSizeProvider(bufferSizing)
                     .build()
+                val fallbackSink = pcmSink(floatOutput = false)
                 val engine = runCatching(engineProvider).getOrNull()
                 val enhancedSink = try {
-                    DefaultAudioSink.Builder(context)
-                        .setEnableFloatOutput(true)
-                        .setEnableAudioTrackPlaybackParams(true)
-                        .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
-                        .build()
+                    pcmSink(floatOutput = true)
                 } catch (error: Exception) {
                     android.util.Log.w("MusicPlayer", "Enhanced audio sink unavailable; using PCM16", error)
                     effects.setFallbackRequired(true)
-                    DefaultAudioSink.Builder(context)
-                        .setEnableFloatOutput(false)
-                        .setEnableAudioTrackPlaybackParams(true)
-                        .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
-                        .build()
+                    pcmSink(floatOutput = false)
                 } catch (error: LinkageError) {
                     android.util.Log.w("MusicPlayer", "Enhanced audio sink linkage failed; using PCM16", error)
                     effects.setFallbackRequired(true)
-                    DefaultAudioSink.Builder(context)
-                        .setEnableFloatOutput(false)
-                        .setEnableAudioTrackPlaybackParams(true)
-                        .setAudioCapabilities(AudioCapabilities.getCapabilities(context))
-                        .build()
+                    pcmSink(floatOutput = false)
                 }
                 if (engine?.isAvailable == true) {
                     effects.setFallbackRequired(false)
@@ -1679,6 +1681,7 @@ class MusicPlayer @Inject constructor(
                     enhancedDelegate = enhancedSink,
                     fallbackDelegate = fallbackSink,
                     processor = NativePcmAudioProcessor(processorEngine),
+                    outputBufferSizing = bufferSizing,
                     onPlatformEffectsRequired = effects::setFallbackRequired,
                     usbOutput = if (handleAudioFocus) UsbBitPerfectOutput(audioManager) else null,
                     // The crossfade standby must not share the DAC. Its
@@ -7084,6 +7087,44 @@ class MusicPlayer @Inject constructor(
         preloadNextTrack(index, track)
     }
 
+    /**
+     * Stable identity of the two masters, not of their signed URLs. The cache
+     * key already names the provider track/format; the codec/depth/rate guard
+     * against reusing an offset across a different rendition of the same row.
+     */
+    private fun swapOffsetKey(
+        track: PlayableTrack,
+        current: ResolvedStream,
+        candidate: ResolvedStream,
+        durationMs: Long?,
+    ): SwapOffsetKey = SwapOffsetKey(
+        trackKey = listOfNotNull(
+            track.mediaIdKey(),
+            track.videoId?.takeIf { it.isNotBlank() },
+            track.internalTrackId?.takeIf { it.isNotBlank() },
+        ).joinToString("|"),
+        currentSource = swapSourceKey(current),
+        candidateSource = swapSourceKey(candidate),
+        durationBucketSec = durationMs?.takeIf { it > 0L }?.div(5_000L)?.toInt(),
+    )
+
+    private fun swapSourceKey(stream: ResolvedStream): String {
+        // YouTube's mediaCacheKey carries the signed URL's expiry, so it
+        // changes on every refresh even though the master is identical. Use
+        // the video/format identity instead; provider and local keys are
+        // already stable.
+        val identity = stream.youtubeCandidate?.let {
+            "youtube:${it.videoId}:${it.itag ?: -1}:${it.isDrc}"
+        } ?: stream.cacheKey
+        return listOf(
+            identity,
+            stream.qualityTier ?: -1,
+            stream.audioCodec.orEmpty(),
+            stream.bitDepth ?: -1,
+            stream.samplingRateKHz ?: -1.0,
+        ).joinToString("|")
+    }
+
     internal fun scheduleQualityUpgrade(
         track: PlayableTrack,
         expectedMediaId: String,
@@ -7120,6 +7161,8 @@ class MusicPlayer @Inject constructor(
         activeUpgradeJob?.cancel()
         activeUpgradeMediaId = expectedMediaId
         activeUpgradeTargetQuality = requestedQuality
+        val trace = QualitySwitchTrace(track.title, requestedQuality)
+        var switchOutcome = "canceled"
         activeUpgradeJob = applicationScope.launch(Dispatchers.IO) {
             android.util.Log.i(
                 "MusicPlayer",
@@ -7141,8 +7184,12 @@ class MusicPlayer @Inject constructor(
                             false
                         }
                     }
-                    if (started != true) return@launch
+                    if (started != true) {
+                        switchOutcome = "not-playing"
+                        return@launch
+                    }
                 }
+                trace.markResolveStart()
                 fun candidateAllowed(candidate: ResolvedStream): Boolean {
                     val liveSettings = latestPlaybackSettings
                     return !candidate.isExpired() &&
@@ -7233,6 +7280,7 @@ class MusicPlayer @Inject constructor(
                 }
 
                 if (upgraded == null) {
+                    switchOutcome = "no-candidate"
                     android.util.Log.i("MusicPlayer", "[STREAM UPGRADE] No upgrade stream found for '${track.title}' after retries")
                     return@launch
                 }
@@ -7242,9 +7290,11 @@ class MusicPlayer @Inject constructor(
                     if (explicitlyChanging) shouldAdaptStreamQuality(currentStream, upgraded, requestedQuality, misc)
                     else isWorthSwapping(currentStream, upgraded)
                 if (!candidateAccepted) {
+                    switchOutcome = "not-worth-swapping"
                     android.util.Log.i("MusicPlayer", "[STREAM UPGRADE] Stream for '${track.title}' not worth swapping (codec=${upgraded.audioCodec})")
                     return@launch
                 }
+                trace.markResolveEnd()
 
                 currentCoroutineContext().ensureActive()
                 if (generation != playRequestGeneration.get()) return@launch
@@ -7285,17 +7335,118 @@ class MusicPlayer @Inject constructor(
                     }
                     pos
                 }
-                if (currentPos < 0L) return@launch
+                if (currentPos < 0L) {
+                    switchOutcome = "swap-locked"
+                    return@launch
+                }
+
+                // A stream that just died leaves only its buffer to play. The
+                // offset probe takes about 3 s of it, and that made the swap
+                // miss; with this little left, line up on positions alone.
+                val runwayMs = withContext(Dispatchers.Main.immediate) {
+                    if (playerDelegate.isInitialized()) player.bufferedPosition - player.currentPosition else 0L
+                }
+                val probeWanted = !(aboveLimit && runwayMs < HOT_SWAP_PROBE_MIN_RUNWAY_MS)
+
+                // Validation (12 s buffered past the live edge) and the source
+                // offset probe are independent. On a normal-memory device they
+                // run together; on a low-RAM device they stay sequential so the
+                // extra decoders cannot starve the live player.
+                suspend fun validateAndMeasure(
+                    candidate: ResolvedStream,
+                    candidateDurationMs: Long?,
+                ): Pair<Boolean, SwapLagChoice?> {
+                    val key = swapOffsetKey(track, currentStream, candidate, candidateDurationMs)
+                    val cached = swapOffsetCache.get(key)
+                    if (cached != null || !probeWanted) {
+                        trace.markValidationStart()
+                        val ok = auditionStream(
+                            track = track,
+                            upgraded = candidate,
+                            targetPositionMs = currentPos,
+                            expectedDurationMs = candidateDurationMs,
+                            generation = generation,
+                        )
+                        trace.markValidationEnd()
+                        if (cached != null) {
+                            trace.markProbeStart()
+                            trace.markProbeEnd(cached, null, cacheHit = true)
+                            android.util.Log.i(
+                                "MusicPlayer",
+                                "[STREAM UPGRADE] offset cache hit for '${track.title}': ${cached}ms",
+                            )
+                            return ok to SwapLagChoice(cached, null, cacheHit = true)
+                        }
+                        return ok to null
+                    }
+                    if (!swapProbesConcurrent || aboveLimit) {
+                        trace.markValidationStart()
+                        val ok = auditionStream(
+                            track = track,
+                            upgraded = candidate,
+                            targetPositionMs = currentPos,
+                            expectedDurationMs = candidateDurationMs,
+                            generation = generation,
+                        )
+                        trace.markValidationEnd()
+                        if (!ok) return false to null
+                        if (aboveLimit) {
+                            // A downgrade can be rescuing a track whose buffer is
+                            // nearly gone; re-check after the audition because
+                            // the probe now costs the remaining runway.
+                            val runwayNow = withContext(Dispatchers.Main.immediate) {
+                                if (playerDelegate.isInitialized()) {
+                                    player.bufferedPosition - player.currentPosition
+                                } else {
+                                    0L
+                                }
+                            }
+                            if (runwayNow < HOT_SWAP_PROBE_MIN_RUNWAY_MS) return true to null
+                        }
+                        trace.markProbeStart()
+                        val measured = measureSwapLagMs(track, currentStream, candidate, currentPos, generation)
+                        trace.markProbeEnd(measured?.lagMs, measured?.confidence, cacheHit = false)
+                        measured?.let {
+                            swapOffsetCache.put(key, it.lagMs, it.confidence)
+                        }
+                        return true to measured?.let { SwapLagChoice(it.lagMs, it.confidence, cacheHit = false) }
+                    }
+                    return coroutineScope {
+                        trace.markValidationStart()
+                        trace.markProbeStart()
+                        val audition = async {
+                            auditionStream(
+                                track = track,
+                                upgraded = candidate,
+                                targetPositionMs = currentPos,
+                                expectedDurationMs = candidateDurationMs,
+                                generation = generation,
+                            )
+                        }
+                        val probe = async {
+                            measureSwapLagMs(track, currentStream, candidate, currentPos, generation)
+                        }
+                        val ok = audition.await()
+                        trace.markValidationEnd()
+                        val measured = if (ok) {
+                            probe.await()
+                        } else {
+                            probe.cancel()
+                            null
+                        }
+                        trace.markProbeEnd(measured?.lagMs, measured?.confidence, cacheHit = false)
+                        measured?.let {
+                            swapOffsetCache.put(key, it.lagMs, it.confidence)
+                        }
+                        ok to measured?.let { SwapLagChoice(it.lagMs, it.confidence, cacheHit = false) }
+                    }
+                }
 
                 // Pre-audition on silent background player before touching active playback
                 var swapCandidate = upgraded
-                var auditionSuccess = auditionStream(
-                    track = track,
-                    upgraded = swapCandidate,
-                    targetPositionMs = currentPos,
-                    expectedDurationMs = knownDur,
-                    generation = generation,
-                )
+                val firstAttempt = validateAndMeasure(swapCandidate, knownDur)
+                var auditionSuccess = firstAttempt.first
+                var lagChoice = firstAttempt.second
                 if (!auditionSuccess && upgraded.audioCodec == "DOLBY ATMOS") {
                     // Immersive mix proved unplayable here: fall back to
                     // stereo lossless via the same hot-swap path so the track
@@ -7319,20 +7470,16 @@ class MusicPlayer @Inject constructor(
                     ) {
                         val stereoKnownDur = stereoCandidate.durationMs ?: knownDur
                         registerPreparedStream(stereoCandidate)
-                        val stereoAudition = auditionStream(
-                            track = track,
-                            upgraded = stereoCandidate,
-                            targetPositionMs = currentPos,
-                            expectedDurationMs = stereoKnownDur,
-                            generation = generation,
-                        )
-                        if (stereoAudition) {
+                        val stereoAttempt = validateAndMeasure(stereoCandidate, stereoKnownDur)
+                        if (stereoAttempt.first) {
                             swapCandidate = stereoCandidate
                             auditionSuccess = true
+                            lagChoice = stereoAttempt.second
                         }
                     }
                 }
                 if (!auditionSuccess) {
+                    switchOutcome = "validation-failed"
                     android.util.Log.w("MusicPlayer", "[STREAM UPGRADE] Audition failed for '${track.title}'; retaining active stream without interruption")
                     // Never cut audio for a failed probe: drop the bad
                     // rendition so a later retry doesn't reuse it.
@@ -7344,33 +7491,44 @@ class MusicPlayer @Inject constructor(
                 currentCoroutineContext().ensureActive()
                 if (generation != playRequestGeneration.get()) return@launch
 
-                // A stream that just died leaves only its buffer to play. The
-                // offset probe takes about 3 s of it, and that made the swap
-                // miss; with this little left, line up on positions alone.
-                val runwayMs = withContext(Dispatchers.Main.immediate) {
-                    if (playerDelegate.isInitialized()) player.bufferedPosition - player.currentPosition else 0L
-                }
-                val lagMs = if (aboveLimit && runwayMs < HOT_SWAP_PROBE_MIN_RUNWAY_MS) {
-                    null
-                } else {
-                    measureSwapLagMs(track, currentStream, swapCandidate, currentPos, generation)
-                }
-                android.util.Log.i("MusicPlayer", "[STREAM UPGRADE] Measured source offset for '${track.title}': ${lagMs?.let { "${it}ms" } ?: "unknown"}")
-                val alignedLagMs = lagMs ?: 0L
+                val alignedLagMs = lagChoice?.lagMs ?: 0L
+                android.util.Log.i(
+                    "MusicPlayer",
+                    "[STREAM UPGRADE] source offset ${alignedLagMs}ms" +
+                        (lagChoice?.confidence?.let { " confidence=${"%.2f".format(it)}" } ?: "") +
+                        (if (lagChoice?.cacheHit == true) " (cached)" else ""),
+                )
 
+                trace.markAlignmentStart()
                 // Perform seamless swap on Main thread with cached bytes ready
                 withContext(Dispatchers.Main.immediate) {
-                    if (generation != playRequestGeneration.get()) return@withContext
-                    if (!candidateAllowed(swapCandidate)) return@withContext
-                    if (!playerDelegate.isInitialized()) return@withContext
+                    if (generation != playRequestGeneration.get()) {
+                        switchOutcome = "aborted"
+                        return@withContext
+                    }
+                    if (!candidateAllowed(swapCandidate)) {
+                        switchOutcome = "candidate-changed"
+                        return@withContext
+                    }
+                    if (!playerDelegate.isInitialized()) {
+                        switchOutcome = "player-released"
+                        return@withContext
+                    }
                     val currentIndex = player.currentMediaItemIndex
-                    if (currentIndex !in 0 until player.mediaItemCount) return@withContext
+                    if (currentIndex !in 0 until player.mediaItemCount) {
+                        switchOutcome = "queue-changed"
+                        return@withContext
+                    }
                     val currentItem = player.getMediaItemAt(currentIndex)
-                    if (currentItem.mediaId != expectedMediaId && currentItem.mediaId != track.mediaIdKey()) return@withContext
+                    if (currentItem.mediaId != expectedMediaId && currentItem.mediaId != track.mediaIdKey()) {
+                        switchOutcome = "track-changed"
+                        return@withContext
+                    }
 
                     if (isStreamSwapLocked(allowLateSwap = aboveLimit) ||
                         !releaseIdleStandby("swap to ${swapCandidate.audioCodec}")
                     ) {
+                        switchOutcome = "swap-locked"
                         android.util.Log.d("MusicPlayer", "[STREAM UPGRADE] Stream swap locked near track end or during a transition, omitting swap")
                         return@withContext
                     }
@@ -7381,18 +7539,30 @@ class MusicPlayer @Inject constructor(
                     var outcome = overlap()
                     // A line-up can miss (late seek, a standby that stalls). The
                     // live player was not touched, so it is simply tried again.
-                    repeat(2) { if (outcome == OverlapSwap.Failed && player.isPlaying) outcome = overlap() }
-                    if (outcome == OverlapSwap.Swapped) {
+                    repeat(2) {
+                        if (outcome is OverlapSwap.Failed && player.isPlaying) outcome = overlap()
+                    }
+                    if (outcome is OverlapSwap.Swapped) {
+                        trace.markAlignmentEnd(outcome.rounds, outcome.driftMs)
+                        trace.markFadeStart()
+                        switchOutcome = "swapped"
                         cacheCurrentTrackStream(swapCandidate)
                         return@withContext
                     }
                     // Replacing the item under a playing track is an audible gap.
                     // It is only for a player that is silent anyway (paused,
                     // stalled) or an output that cannot run two decks.
-                    if (outcome == OverlapSwap.Failed && player.isPlaying) {
-                        android.util.Log.w("MusicPlayer", "[STREAM UPGRADE] Overlap swap could not line up for '${track.title}'; keeping the playing stream")
+                    if (outcome is OverlapSwap.Failed && player.isPlaying) {
+                        switchOutcome = "alignment-failed:${outcome.reason}"
+                        android.util.Log.w(
+                            "MusicPlayer",
+                            "[STREAM UPGRADE] Overlap swap could not line up for '${track.title}' " +
+                                "(${outcome.reason}); keeping the playing stream",
+                        )
                         return@withContext
                     }
+                    trace.markAlignmentEnd(0, 0L)
+                    trace.markFadeStart()
                     if (generation != playRequestGeneration.get()) return@withContext
                     if (player.currentMediaItemIndex != currentIndex || !candidateAllowed(swapCandidate) ||
                         isStreamSwapLocked(allowLateSwap = aboveLimit)
@@ -7450,11 +7620,20 @@ class MusicPlayer @Inject constructor(
                         "MusicPlayer",
                         "[STREAM UPGRADE] Seamlessly hot-swapped '${track.title}' to ${swapCandidate.audioCodec} (${swapCandidate.bitrateKbps}kbps, ${swapCandidate.samplingRateKHz}kHz) at ${swapTargetMs}ms",
                     )
+                    switchOutcome = "in-place"
                 }
-            } catch (_: CancellationException) {
+            } catch (cancellation: CancellationException) {
+                switchOutcome = "canceled"
+                currentCoroutineContext().ensureActive()
             } catch (e: Throwable) {
+                switchOutcome = "error:${e.javaClass.simpleName}"
                 android.util.Log.w("MusicPlayer", "[STREAM UPGRADE] Exception upgrading '${track.title}': ${e.message}")
             } finally {
+                trace.finish(switchOutcome)?.let { report ->
+                    val line = report.logLine()
+                    android.util.Log.i("LastWaveSwitch", line)
+                    PlaybackDiagnostics.event("QualitySwitch", line)
+                }
                 // Only its own: a newer switch may already be showing.
                 _state.update { if (it.qualitySwitch === announced) it.copy(qualitySwitch = null) else it }
             }
@@ -7561,6 +7740,9 @@ class MusicPlayer @Inject constructor(
             }
     }
 
+    private data class SwapLagMeasurement(val lagMs: Long, val confidence: Double)
+    private data class SwapLagChoice(val lagMs: Long, val confidence: Double?, val cacheHit: Boolean)
+
     /**
      * Measures how far apart the two masters are by decoding the same stretch of
      * both on silent players at high speed. Null when it can't be measured
@@ -7572,7 +7754,7 @@ class MusicPlayer @Inject constructor(
         candidate: ResolvedStream,
         positionMs: Long,
         generation: Long,
-    ): Long? {
+    ): SwapLagMeasurement? {
         if (bitPerfectEnabled || exclusiveUsbOutput.isActive() || current.isExpired()) return null
         val captures = withContext(Dispatchers.Main) {
             preparedStreams[current.cacheKey] = current
@@ -7608,7 +7790,9 @@ class MusicPlayer @Inject constructor(
             }
         } ?: return null
         return withContext(Dispatchers.Default) {
-            SwapAlignment.measureLagMs(captures.first, captures.second)
+            SwapAlignment.measure(captures.first, captures.second)?.let {
+                SwapLagMeasurement(it.lagMs, it.confidence)
+            }
         }
     }
 
@@ -7648,7 +7832,11 @@ class MusicPlayer @Inject constructor(
         )
     }
 
-    private enum class OverlapSwap { Swapped, Unavailable, Failed }
+    private sealed interface OverlapSwap {
+        data class Swapped(val rounds: Int, val driftMs: Long) : OverlapSwap
+        data object Unavailable : OverlapSwap
+        data class Failed(val reason: String) : OverlapSwap
+    }
 
     /**
      * Starts the upgraded stream muted on the standby, lines it up with the live
@@ -7680,6 +7868,8 @@ class MusicPlayer @Inject constructor(
         registerPreparedStream(candidate)
         val standby = standbyOrCreate()
         var committed = false
+        val alignStartedAtMs = SystemClock.elapsedRealtime()
+        val rounds = StringBuilder()
         try {
             standby.volume = 0f
             standby.setAudioAttributes(live.audioAttributes, false)
@@ -7690,6 +7880,12 @@ class MusicPlayer @Inject constructor(
             // opened a 24/96 upgrade at 48 kHz. Null opens at the stream's own rate.
             val standbySink = playerToSink[standby]
             standbySink?.setOutputSampleRateOverride(null)
+            // Media3 sizes the AudioTrack for 8x speed (2.7 s here, 6 s over
+            // Bluetooth), and a skip only shows once that much has played out:
+            // two skips were 6.5 s of an 8.5 s line-up. Sized for the speed in
+            // use, the muted deck starts sooner and a skip lands in well under
+            // a second. The deck keeps this track's buffer after it goes live.
+            standbySink?.outputBufferSizing?.speedHeadroom = live.playbackParameters.speed.coerceAtLeast(1f).toDouble()
             standby.setMediaItems(queue, index, (live.currentPosition + lagMs + HOT_SWAP_SEEK_LEAD_MS).coerceAtLeast(0L))
             standby.prepare()
 
@@ -7705,35 +7901,63 @@ class MusicPlayer @Inject constructor(
                 true
             } == true
 
-            if (!awaitStandby(playing = false)) return OverlapSwap.Failed
+            if (!awaitStandby(playing = false)) return OverlapSwap.Failed("standby-not-ready")
+            rounds.append("ready@").append(SystemClock.elapsedRealtime() - alignStartedAtMs).append(", ")
             standby.play()
 
             // A seek lands anywhere within about 100 ms, an audible double hit
             // in the fade. So a seek only has to land the muted deck behind,
             // and the deck then drops exactly the audio it is short of. Its
-            // position is a blend for about 1.5 s after its output starts
+            // position is a blend for up to about 1.5 s after its output starts
             // (read at 1 s it was 10-25 ms off), and one read is only as fine
-            // as each player's 10 ms work tick, so a drift is the mean of many
-            // reads taken after HOT_SWAP_SETTLE_MS.
-            suspend fun readDriftMs(): Long? {
+            // as each player's 10 ms work tick. The settle therefore never ends
+            // before HOT_SWAP_SETTLE_MIN_MS, then ends as soon as two averaged
+            // drift windows agree; the full HOT_SWAP_SETTLE_MS remains the
+            // ceiling for outputs (Bluetooth) where the clock keeps moving.
+            suspend fun readDriftMs(reads: Int = HOT_SWAP_DRIFT_READS): Long? {
                 var sum = 0L
-                repeat(HOT_SWAP_DRIFT_READS) {
+                repeat(reads) { index ->
                     if (!stillValid()) return null
                     sum += live.currentPosition + lagMs - standby.currentPosition
-                    delay(HOT_SWAP_DRIFT_READ_GAP_MS)
+                    if (index < reads - 1) delay(HOT_SWAP_DRIFT_READ_GAP_MS)
                 }
-                return sum / HOT_SWAP_DRIFT_READS
+                return sum / reads
+            }
+
+            suspend fun awaitSettled(maxMs: Long): Boolean {
+                if (maxMs <= 0L) return true
+                val detector = SwapSettleDetector(
+                    toleranceMs = HOT_SWAP_SETTLE_STABLE_MS,
+                    stableReads = HOT_SWAP_SETTLE_STABLE_READS,
+                )
+                val startedAtMs = SystemClock.elapsedRealtime()
+                while (true) {
+                    delay(HOT_SWAP_SETTLE_POLL_MS)
+                    val sample = readDriftMs(HOT_SWAP_SETTLE_READS) ?: return false
+                    val stable = detector.observe(sample)
+                    val elapsedMs = SystemClock.elapsedRealtime() - startedAtMs
+                    if (elapsedMs >= maxMs) return true
+                    if (elapsedMs >= HOT_SWAP_SETTLE_MIN_MS && stable) {
+                        android.util.Log.i(
+                            "MusicPlayer",
+                            "[STREAM UPGRADE] standby settled after ${elapsedMs}ms",
+                        )
+                        return true
+                    }
+                }
             }
 
             var seekLeadMs = HOT_SWAP_SEEK_LEAD_MS
-            var waitMs = HOT_SWAP_SETTLE_MS
+            var settleMaxMs = HOT_SWAP_SETTLE_MS
             var driftMs = Long.MAX_VALUE
-            val rounds = StringBuilder()
+            var roundsUsed = 0
             for (round in 1..HOT_SWAP_ALIGN_ROUNDS) {
-                if (!awaitStandby(playing = true)) return OverlapSwap.Failed
-                delay(waitMs)
-                driftMs = readDriftMs() ?: return OverlapSwap.Failed
-                rounds.append(driftMs)
+                roundsUsed = round
+                if (!awaitStandby(playing = true)) return OverlapSwap.Failed("standby-not-playing")
+                if (!awaitSettled(settleMaxMs)) return OverlapSwap.Failed("standby-settle")
+                driftMs = readDriftMs() ?: return OverlapSwap.Failed("standby-position-lost")
+                // Drift and when it was read: says which round the time went to.
+                rounds.append(driftMs).append('@').append(SystemClock.elapsedRealtime() - alignStartedAtMs)
                 if (kotlin.math.abs(driftMs) <= HOT_SWAP_ALIGNED_MS || round == HOT_SWAP_ALIGN_ROUNDS) break
                 if (driftMs in 1..HOT_SWAP_SKIP_MAX_MS && standbySink != null) {
                     rounds.append(" skip, ")
@@ -7749,8 +7973,8 @@ class MusicPlayer @Inject constructor(
                         while (nowMs > unskippedMs / 2) nowMs = readDriftMs() ?: return@withTimeoutOrNull false
                         true
                     }
-                    if (landed != true) return OverlapSwap.Failed
-                    waitMs = 0L
+                    if (landed != true) return OverlapSwap.Failed("skip-not-landed")
+                    settleMaxMs = 0L
                 } else {
                     // Seeks take 0.3 s on one stream and 1 s on another; only a
                     // seek's own miss says which. Aim behind: a deck can skip
@@ -7758,19 +7982,20 @@ class MusicPlayer @Inject constructor(
                     seekLeadMs = (seekLeadMs + driftMs - HOT_SWAP_LAND_BEHIND_MS).coerceIn(0L, HOT_SWAP_SEEK_LEAD_MAX_MS)
                     rounds.append(" seek +$seekLeadMs, ")
                     standby.seekTo(live.currentPosition + lagMs + seekLeadMs)
-                    waitMs = HOT_SWAP_SETTLE_MS
+                    settleMaxMs = HOT_SWAP_SETTLE_MS
                 }
             }
             android.util.Log.i("MusicPlayer", "[STREAM UPGRADE] align drift per round (ms): $rounds")
             if (kotlin.math.abs(driftMs) > HOT_SWAP_MAX_DRIFT_MS) {
                 android.util.Log.w("MusicPlayer", "[STREAM UPGRADE] Could not align standby (drift ${driftMs}ms)")
-                return OverlapSwap.Failed
+                return OverlapSwap.Failed("drift-${driftMs}ms")
             }
             val sameQueue = standby.mediaItemCount == live.mediaItemCount &&
                 (0 until live.mediaItemCount).all { i ->
                     i == index || standby.getMediaItemAt(i).mediaId == live.getMediaItemAt(i).mediaId
                 }
-            if (!sameQueue || !stillValid()) return OverlapSwap.Failed
+            if (!sameQueue) return OverlapSwap.Failed("queue-changed")
+            if (!stillValid()) return OverlapSwap.Failed("live-changed")
 
             val timeline = live.currentTimeline
             val order = mutableListOf<Int>()
@@ -7806,6 +8031,7 @@ class MusicPlayer @Inject constructor(
 
             applicationScope.launch(Dispatchers.Main.immediate) {
                 val targetVolume = appVolume
+                val fadeStartedAtMs = SystemClock.elapsedRealtime()
                 try {
                     // Linear gains: both sides carry the same audio, so they sum to constant level.
                     for (step in 1..HOT_SWAP_FADE_STEPS) {
@@ -7820,10 +8046,16 @@ class MusicPlayer @Inject constructor(
                     live.stop()
                     live.clearMediaItems()
                     hotSwapActive = false
+                    android.util.Log.i(
+                        "LastWaveSwitch",
+                        "fadeMs=${SystemClock.elapsedRealtime() - fadeStartedAtMs} track='${track.title.take(48)}'",
+                    )
                 }
             }
-            return OverlapSwap.Swapped
+            return OverlapSwap.Swapped(roundsUsed, driftMs)
         } finally {
+            // Only this swap's AudioTrack: the deck's next track sizes as usual.
+            playerToSink[standby]?.outputBufferSizing?.speedHeadroom = null
             if (!committed) {
                 runCatching {
                     standby.stop()
@@ -8616,6 +8848,19 @@ class MusicPlayer @Inject constructor(
         const val HOT_SWAP_PROBE_SPEED = 4f
         const val HOT_SWAP_PROBE_TIMEOUT_MS = 8_000L
         const val HOT_SWAP_READY_TIMEOUT_MS = 6_000L
+        /**
+         * A player's reported position is a blend for about a second after its
+         * output starts, so the settle never ends before this. After it, two
+         * agreeing drift windows are enough; the full [HOT_SWAP_SETTLE_MS] is
+         * still the ceiling on outputs (Bluetooth) where the position keeps
+         * moving.
+         */
+        const val HOT_SWAP_SETTLE_MIN_MS = 1_000L
+        const val HOT_SWAP_SETTLE_POLL_MS = 100L
+        /** Short averaging window used only to decide that the drift is stable. */
+        const val HOT_SWAP_SETTLE_READS = 12
+        const val HOT_SWAP_SETTLE_STABLE_MS = 3L
+        const val HOT_SWAP_SETTLE_STABLE_READS = 2
         /** Queue items past the next one whose addon search is pre-warmed. */
         const val SEARCH_WARM_AHEAD = 4
         const val SEARCH_WARM_DELAY_MS = 1_500L

@@ -271,13 +271,15 @@ internal fun MusicPlayerState.withoutProgress(): MusicPlayerState {
     else copy(positionMs = 0L, bufferedPositionMs = 0L, sleepTimerRemainingMs = sleep)
 }
 
-// Keep fields owned elsewhere (automix, crossfade, jam, volume, cast) when
-// rebuilding the whole state. Use inside _state.update so they come from the
-// latest value.
+// Keep fields owned elsewhere (automix, crossfade, quality switch, jam,
+// volume, cast) when rebuilding the whole state. Use inside _state.update so
+// they come from the latest value. Without qualitySwitch here the next
+// refresh() erased the "Upgrading to…" pill right after it was set.
 internal fun MusicPlayerState.withSubsystemStateFrom(live: MusicPlayerState): MusicPlayerState =
     copy(
         deckBlendTelemetry = live.deckBlendTelemetry,
         isCrossfading = live.isCrossfading,
+        qualitySwitch = live.qualitySwitch,
         isJamActive = live.isJamActive,
         appVolume = live.appVolume,
         isCasting = live.isCasting,
