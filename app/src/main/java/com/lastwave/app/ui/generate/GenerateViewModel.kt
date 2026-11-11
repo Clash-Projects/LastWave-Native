@@ -12,6 +12,8 @@ import com.lastwave.app.data.naming.PlaylistNamer
 import com.lastwave.app.data.playlist.PlaylistRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -91,6 +93,7 @@ class GenerateViewModel @Inject constructor(
     val navEvents: SharedFlow<GenerateNavEvent> = _navEvents
 
     val lastSavedPlaylistId = MutableStateFlow<Long?>(null)
+    private var seedSearchJob: Job? = null
 
     init {
         // "Start Mix with this Song" landing here from any screen's
@@ -100,6 +103,7 @@ class GenerateViewModel @Inject constructor(
             mixLauncher.pendingSeed.collect { seed ->
                 if (seed != null) {
                     val consumed = mixLauncher.consume() ?: seed
+                    clearSeedSearch()
                     _uiState.update {
                         it.copy(
                             selectedMode = GenerateMode.SIMILAR_TRACKS,
@@ -116,82 +120,92 @@ class GenerateViewModel @Inject constructor(
         }
     }
 
+    private fun clearSeedSearch() {
+        seedSearchJob?.cancel()
+        seedSearchJob = null
+        _uiState.update {
+            it.copy(isSearchingSeed = false, seedTrackResults = emptyList(), seedArtistResults = emptyList())
+        }
+    }
+
     fun selectMode(mode: GenerateMode) {
         if (_uiState.value.isGenerating) return
+        clearSeedSearch()
         _uiState.update {
-            if (it.selectedMode == mode) it.copy(selectedMode = null)
-            else it.copy(selectedMode = mode, error = null, seedTrackResults = emptyList(), seedArtistResults = emptyList())
+            it.copy(selectedMode = if (it.selectedMode == mode) null else mode, error = null)
         }
     }
 
     fun setTrackCount(value: Int) { if (!_uiState.value.isGenerating) _uiState.update { it.copy(trackCount = value.coerceIn(5, 35)) } }
     fun setPeriod(value: String) = _uiState.update { it.copy(period = value) }
     fun setTagInput(value: String) = _uiState.update { it.copy(tagInput = value) }
-    fun setSeedArtistQuery(value: String) = _uiState.update { it.copy(seedArtistQuery = value) }
-    fun setSeedTrackName(value: String) = _uiState.update { it.copy(seedTrackName = value, seedVideoId = null) }
-    fun setSeedArtistName(value: String) = _uiState.update { it.copy(seedArtistName = value, seedVideoId = null) }
+    fun setSeedArtistQuery(value: String) {
+        clearSeedSearch()
+        _uiState.update { it.copy(seedArtistQuery = value) }
+    }
+    fun setSeedTrackName(value: String) {
+        clearSeedSearch()
+        _uiState.update { it.copy(seedTrackName = value, seedVideoId = null) }
+    }
+    fun setSeedArtistName(value: String) {
+        clearSeedSearch()
+        _uiState.update { it.copy(seedArtistName = value, seedVideoId = null) }
+    }
 
-    fun loadTopTracksForSeed() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isSearchingSeed = true) }
+    private fun <T> loadSeedResults(load: suspend () -> T, apply: (GenerateUiState, T) -> GenerateUiState) {
+        clearSeedSearch()
+        _uiState.update { it.copy(isSearchingSeed = true, error = null) }
+        seedSearchJob = viewModelScope.launch {
             try {
-                val results = repository.topTracksForSeed()
-                _uiState.update { it.copy(isSearchingSeed = false, seedTrackResults = results) }
+                val results = load()
+                // A cancelled provider may still return; never publish into an edited seed or another mode.
+                coroutineContext.ensureActive()
+                _uiState.update { apply(it, results).copy(isSearchingSeed = false) }
             } catch (e: Exception) {
+                coroutineContext.ensureActive()
                 _uiState.update { it.copy(isSearchingSeed = false, error = e.message) }
             }
         }
     }
 
-    fun loadTopArtistsForSeed() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isSearchingSeed = true) }
-            try {
-                val results = repository.topArtistsForSeed()
-                _uiState.update { it.copy(isSearchingSeed = false, seedArtistResults = results) }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isSearchingSeed = false, error = e.message) }
-            }
-        }
-    }
+    fun loadTopTracksForSeed() = loadSeedResults(
+        load = { repository.topTracksForSeed() },
+        apply = { state, results -> state.copy(seedTrackResults = results) },
+    )
+
+    fun loadTopArtistsForSeed() = loadSeedResults(
+        load = { repository.topArtistsForSeed() },
+        apply = { state, results -> state.copy(seedArtistResults = results) },
+    )
 
     fun searchSeedTrack() {
         val state = _uiState.value
         if (state.seedTrackName.isBlank()) return
-        viewModelScope.launch {
-            _uiState.update { it.copy(isSearchingSeed = true) }
-            try {
-                val results = repository.searchTracks(state.seedTrackName, state.seedArtistName.ifBlank { null })
-                _uiState.update { it.copy(isSearchingSeed = false, seedTrackResults = results) }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isSearchingSeed = false, error = e.message) }
-            }
-        }
+        loadSeedResults(
+            load = { repository.searchTracks(state.seedTrackName, state.seedArtistName.ifBlank { null }) },
+            apply = { current, results -> current.copy(seedTrackResults = results) },
+        )
     }
 
     fun searchSeedArtist() {
         val state = _uiState.value
         if (state.seedArtistQuery.isBlank()) return
-        viewModelScope.launch {
-            _uiState.update { it.copy(isSearchingSeed = true) }
-            try {
-                val results = repository.searchArtists(state.seedArtistQuery)
-                _uiState.update { it.copy(isSearchingSeed = false, seedArtistResults = results) }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isSearchingSeed = false, error = e.message) }
-            }
-        }
-    }
-
-    fun pickSeedTrack(track: GeneratedTrack) = _uiState.update {
-        it.copy(
-            seedTrackName = track.name,
-            seedArtistName = track.artist,
-            seedVideoId = track.youtubeVideoIdOrNull(),
-            seedTrackResults = emptyList(),
+        loadSeedResults(
+            load = { repository.searchArtists(state.seedArtistQuery) },
+            apply = { current, results -> current.copy(seedArtistResults = results) },
         )
     }
-    fun pickSeedArtist(name: String) = _uiState.update { it.copy(seedArtistQuery = name, seedArtistResults = emptyList()) }
+
+    fun pickSeedTrack(track: GeneratedTrack) {
+        clearSeedSearch()
+        _uiState.update {
+            it.copy(seedTrackName = track.name, seedArtistName = track.artist, seedVideoId = track.youtubeVideoIdOrNull())
+        }
+    }
+    fun pickSeedArtist(name: String) {
+        clearSeedSearch()
+        _uiState.update { it.copy(seedArtistQuery = name) }
+    }
     fun setGenreChip(tag: String) = _uiState.update { it.copy(tagInput = tag) }
 
     fun dismissError() = _uiState.update { it.copy(error = null) }
