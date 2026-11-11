@@ -97,7 +97,12 @@ class AddonClient(
         search("test", "lossless", false).map { it.size }
     }
 
-    suspend fun search(query: String, quality: String, atmos: Boolean = false): Result<List<AddonTrack>> = withContext(Dispatchers.IO) {
+    suspend fun search(
+        query: String,
+        quality: String,
+        atmos: Boolean = false,
+        warmTarget: String? = null,
+    ): Result<List<AddonTrack>> = withContext(Dispatchers.IO) {
         if (baseUrl.isBlank()) return@withContext Result.failure(IllegalArgumentException("Empty addon URL"))
         val q = query.trim()
         if (q.isBlank()) return@withContext Result.success(emptyList())
@@ -108,6 +113,7 @@ class AddonClient(
 
         try {
             val reqBuilder = Request.Builder().url(url).get()
+            if (!warmTarget.isNullOrBlank()) reqBuilder.header("X-LW-Warm-Target", warmTarget)
             signRequest(url, "GET", reqBuilder)
             val req = reqBuilder.build()
             client.newCall(req).awaitAddonResponse().let { res ->
