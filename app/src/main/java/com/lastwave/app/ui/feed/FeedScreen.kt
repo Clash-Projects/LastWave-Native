@@ -109,7 +109,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -168,7 +168,6 @@ import com.lastwave.app.ui.common.HeaderActionIcon
 import com.lastwave.app.ui.common.TrackContextMenuSheet
 import com.lastwave.app.ui.common.TrackMiniTrayData
 import com.lastwave.app.ui.common.TrackMiniTraySheet
-import com.lastwave.app.ui.common.TopCurvedSectionClipShape
 import com.lastwave.app.ui.common.WindowSizeClass
 import com.lastwave.app.ui.common.rememberWindowSizeClass
 import com.lastwave.app.ui.common.TrackMenuCapabilities
@@ -368,6 +367,10 @@ fun FeedScreen(
         var topBarHeightPx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
         val topBarHeight = with(androidx.compose.ui.platform.LocalDensity.current) { topBarHeightPx.toDp() }
         val listTopInset = if (useFeedGlass) topBarHeight else 0.dp
+        val feedCornerDensity = androidx.compose.ui.platform.LocalDensity.current
+        val feedCornerInsetPx = with(feedCornerDensity) { 16.dp.toPx() }
+        val feedCornerRadiusPx = with(feedCornerDensity) { 28.dp.toPx() }
+        val feedCornerTopPx = with(feedCornerDensity) { listTopInset.toPx() }
         val pullState = androidx.compose.material3.pulltorefresh.rememberPullToRefreshState()
 
         Box(
@@ -740,7 +743,56 @@ fun FeedScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .safeHorizontalContentPadding()
-                        .clip(TopCurvedSectionClipShape(horizontalInset = 16.dp, cornerRadius = 28.dp, topInset = listTopInset)),
+                        // A generic Shape here promoted the whole scrolling viewport to an
+                        // offscreen layer: frames re-recorded and re-uploaded its sections
+                        // instead of drawing straight to the window. Mask the rounded top
+                        // corners at draw time instead, and only when the list actually
+                        // scrolls under glass.
+                        .drawWithContent {
+                            if (!useFeedGlass) {
+                                drawContent()
+                                return@drawWithContent
+                            }
+                            drawContent()
+                            val left = feedCornerInsetPx
+                            val right = size.width - feedCornerInsetPx
+                            val top = feedCornerTopPx
+                            if (right <= left || size.height <= top) return@drawWithContent
+                            val radius = feedCornerRadiusPx
+                                .coerceAtMost((right - left) / 2f)
+                                .coerceAtMost(size.height - top)
+                            if (radius <= 0f) return@drawWithContent
+                            val mask = feedBackgroundColor
+                            drawRect(mask, Offset.Zero, Size(left, top + radius))
+                            drawRect(mask, Offset(right, 0f), Size(size.width - right, top + radius))
+                            if (top > 0f) {
+                                drawRect(mask, Offset(left, 0f), Size(right - left, top))
+                            }
+                            val topLeft = Path().apply {
+                                moveTo(left, top)
+                                lineTo(left, top + radius)
+                                arcTo(
+                                    Rect(left, top, left + 2f * radius, top + 2f * radius),
+                                    180f,
+                                    90f,
+                                    false,
+                                )
+                                close()
+                            }
+                            drawPath(topLeft, mask)
+                            val topRight = Path().apply {
+                                moveTo(right, top)
+                                lineTo(right, top + radius)
+                                arcTo(
+                                    Rect(right - 2f * radius, top, right, top + 2f * radius),
+                                    270f,
+                                    90f,
+                                    false,
+                                )
+                                close()
+                            }
+                            drawPath(topRight, mask)
+                        },
                     contentPadding = PaddingValues(
                         bottom = FloatingNavDefaults.contentBottomPadding(),
                         top = 16.dp + listTopInset,
