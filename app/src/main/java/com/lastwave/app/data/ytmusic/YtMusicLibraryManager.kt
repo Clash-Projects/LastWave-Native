@@ -18,6 +18,7 @@ import com.lastwave.app.data.playlist.SavedPlaylist
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import com.lastwave.app.util.AppVisibility
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
@@ -135,10 +136,12 @@ class YtMusicLibraryManager @Inject constructor(
         }
         // InnerTube has no push subscription. Short foreground-process polling
         // gives connected playlists near-real-time behavior without importing.
+        // Only while a screen is shown: polling in a UI-less background
+        // process got the app killed for excessive CPU.
         applicationScope.launch {
             while (true) {
                 delay(REALTIME_REFRESH_MS)
-                if (auth.connection.value.isConnected) refresh()
+                if (AppVisibility.isVisible && auth.connection.value.isConnected) refresh()
             }
         }
     }

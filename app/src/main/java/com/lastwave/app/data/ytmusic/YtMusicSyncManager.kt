@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import com.lastwave.app.util.AppVisibility
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -92,9 +93,13 @@ class YtMusicSyncManager @Inject constructor(
                 .collect { runCatching { syncNow("change") } }
         }
 
+        // Startup + heartbeat only while a screen is shown: each pass loads
+        // WebView's CookieManager and reconciles the library, and running it
+        // every minute in a UI-less background process got LastWave killed
+        // for "excessive cpu" (diagnostics, LG L-51A, reason 9).
         applicationScope.launch {
             delay(INITIAL_DELAY_MS)
-            runCatching { syncNow("startup") }
+            if (AppVisibility.isVisible) runCatching { syncNow("startup") }
         }
 
         // Standing heartbeat — catches anything missed while offline and
@@ -102,7 +107,7 @@ class YtMusicSyncManager @Inject constructor(
         applicationScope.launch {
             while (true) {
                 delay(PERIODIC_INTERVAL_MS)
-                runCatching { syncNow("periodic") }
+                if (AppVisibility.isVisible) runCatching { syncNow("periodic") }
             }
         }
     }
