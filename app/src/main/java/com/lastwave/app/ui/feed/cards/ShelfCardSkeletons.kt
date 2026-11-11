@@ -9,7 +9,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,28 +25,31 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.State
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 @Composable
-private fun rememberShimmerPulse(): Float {
+private fun rememberShimmerPulse(): State<Float> {
     val transition = rememberInfiniteTransition(label = "shelfSkeleton")
-    val pulse by transition.animateFloat(
+    // State, not value: read in drawBehind so the pulse repaints without recomposing every skeleton row.
+    return transition.animateFloat(
         initialValue = 0.45f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(animation = tween(900), repeatMode = RepeatMode.Reverse),
         label = "shelfSkeletonPulse",
     )
-    return pulse
 }
 
 @Composable
-private fun Modifier.shimmer(pulse: Float, radius: Dp) =
-    this.clip(RoundedCornerShape(radius))
-        .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f * pulse + 0.3f))
+private fun Modifier.shimmer(pulse: State<Float>, radius: Dp): Modifier {
+    val color = MaterialTheme.colorScheme.surfaceContainerHigh
+    return this.clip(RoundedCornerShape(radius))
+        .drawBehind { drawRect(color.copy(alpha = 0.7f * pulse.value + 0.3f)) }
+}
 
 /** Square-card skeleton row matching [ShelfSquareCard]. */
 @Composable

@@ -347,7 +347,7 @@ fun FeedScreen(
         if (isPodcastsActive) {
             com.lastwave.app.ui.feed.cards.PodcastHeroBackground(
                 backgroundUrl = state.chipBackgroundUrl,
-                scrollOffsetY = podcastHeroScrollOffset,
+                scrollOffsetY = { podcastHeroScrollOffset },
             )
         }
 

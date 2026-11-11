@@ -51,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -387,7 +388,7 @@ fun NewReleasesScreen(
 
 @Composable
 private fun NewReleasesSkeletonRow(
-    brush: Brush,
+    brush: () -> Brush,
     position: GroupPosition,
     modifier: Modifier = Modifier,
 ) {
@@ -407,7 +408,7 @@ private fun NewReleasesSkeletonRow(
                 modifier = Modifier
                     .size(52.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(brush),
+                    .drawBehind { drawRect(brush()) },
             )
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -416,7 +417,7 @@ private fun NewReleasesSkeletonRow(
                         .fillMaxWidth(0.65f)
                         .height(14.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(brush),
+                        .drawBehind { drawRect(brush()) },
                 )
                 Spacer(Modifier.height(6.dp))
                 Box(
@@ -424,7 +425,7 @@ private fun NewReleasesSkeletonRow(
                         .fillMaxWidth(0.42f)
                         .height(11.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(brush),
+                        .drawBehind { drawRect(brush()) },
                 )
             }
         }
@@ -432,14 +433,14 @@ private fun NewReleasesSkeletonRow(
 }
 
 @Composable
-private fun shimmerBrush(): Brush {
+private fun shimmerBrush(): () -> Brush {
     val shimmerColors = listOf(
         MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f),
         MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.9f),
         MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f),
     )
     val transition = rememberInfiniteTransition(label = "shimmerTransition")
-    val translateAnim by transition.animateFloat(
+    val translateAnim = transition.animateFloat(
         initialValue = 0f,
         targetValue = 1200f,
         animationSpec = infiniteRepeatable(
@@ -448,9 +449,13 @@ private fun shimmerBrush(): Brush {
         ),
         label = "shimmerAnim",
     )
-    return Brush.linearGradient(
-        colors = shimmerColors,
-        start = Offset(translateAnim - 300f, translateAnim - 300f),
-        end = Offset(translateAnim, translateAnim),
-    )
+    // Brush is built in the draw phase so the skeleton repaints without recomposing the list each frame.
+    return {
+        val t = translateAnim.value
+        Brush.linearGradient(
+            colors = shimmerColors,
+            start = Offset(t - 300f, t - 300f),
+            end = Offset(t, t),
+        )
+    }
 }

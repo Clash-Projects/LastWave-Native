@@ -110,6 +110,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -216,12 +217,15 @@ internal fun openPlaylistOrAlbum(
 @Composable
 internal fun FeedLoadingSkeleton() {
     val transition = rememberInfiniteTransition(label = "feedSkeleton")
-    val pulse by transition.animateFloat(
+    // State read inside drawBehind: repaints each frame without recomposing the skeleton items.
+    val pulse = transition.animateFloat(
         initialValue = 0.45f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(animation = tween(900), repeatMode = RepeatMode.Reverse),
         label = "skeletonPulse",
     )
+    val skeletonHigh = MaterialTheme.colorScheme.surfaceContainerHigh
+    val skeletonBase = MaterialTheme.colorScheme.surfaceContainer
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -237,7 +241,7 @@ internal fun FeedLoadingSkeleton() {
                     .padding(horizontal = 16.dp)
                     .height(208.dp)
                     .clip(RoundedCornerShape(28.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f * pulse + 0.3f)),
+                    .drawBehind { drawRect(skeletonHigh.copy(alpha = 0.7f * pulse.value + 0.3f)) },
             )
         }
         item {
@@ -253,7 +257,7 @@ internal fun FeedLoadingSkeleton() {
                                     .weight(1f)
                                     .height(64.dp)
                                     .clip(RoundedCornerShape(18.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.7f * pulse + 0.3f)),
+                                    .drawBehind { drawRect(skeletonBase.copy(alpha = 0.7f * pulse.value + 0.3f)) },
                             )
                         }
                     }
@@ -268,7 +272,7 @@ internal fun FeedLoadingSkeleton() {
                         .width((140 + row * 30).dp)
                         .height(20.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f * pulse + 0.3f)),
+                        .drawBehind { drawRect(skeletonHigh.copy(alpha = 0.7f * pulse.value + 0.3f)) },
                 )
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
@@ -281,14 +285,14 @@ internal fun FeedLoadingSkeleton() {
                                 modifier = Modifier
                                     .size(148.dp)
                                     .clip(RoundedCornerShape(18.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f * pulse + 0.3f)),
+                                    .drawBehind { drawRect(skeletonHigh.copy(alpha = 0.7f * pulse.value + 0.3f)) },
                             )
                             Box(
                                 modifier = Modifier
                                     .width(110.dp)
                                     .height(12.dp)
                                     .clip(RoundedCornerShape(6.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f * pulse + 0.3f)),
+                                    .drawBehind { drawRect(skeletonHigh.copy(alpha = 0.7f * pulse.value + 0.3f)) },
                             )
                         }
                     }

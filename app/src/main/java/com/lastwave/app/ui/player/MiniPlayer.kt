@@ -220,6 +220,7 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -393,19 +394,15 @@ internal fun MiniPlayer(
     val isGlass = liquidGlass && isLiquidGlassBackdropSupported() && backdrop != null
     val luminance = 0.5f // Fixed luminance to avoid heavy GPU readback which causes stuttering
     val barInteraction = remember { MutableInteractionSource() }
-    var isMiniDragging by remember(track.videoId, track.title) { mutableStateOf(false) }
-    var dragX by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
-    var dragY by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
-    val shownX by animateFloatAsState(
-        targetValue = dragX,
-        animationSpec = if (isMiniDragging) snap() else ExpressiveMotion.spatialDefault(),
-        label = "miniPlayerX",
-    )
-    val shownY by animateFloatAsState(
-        targetValue = dragY,
-        animationSpec = if (isMiniDragging) snap() else ExpressiveMotion.spatialDefault(),
-        label = "miniPlayerY",
-    )
+    // Drag offsets live in Animatables read only in the graphicsLayer below, so a drag
+    // moves the card without recomposing the whole mini player on every pointer event.
+    val dragScope = rememberCoroutineScope()
+    val dragX = remember(track.videoId, track.title) { Animatable(0f) }
+    val dragY = remember(track.videoId, track.title) { Animatable(0f) }
+    fun settleDrag() {
+        dragScope.launch { dragX.animateTo(0f, ExpressiveMotion.spatialDefault()) }
+        dragScope.launch { dragY.animateTo(0f, ExpressiveMotion.spatialDefault()) }
+    }
     val threshold = with(LocalDensity.current) { 72.dp.toPx() }
     val isTablet = isTabletOrWideScreen()
     val shape = if (edgeToEdge && !isTablet) RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp) else RoundedCornerShape(100)
@@ -431,33 +428,28 @@ internal fun MiniPlayer(
                 },
             )
             .graphicsLayer {
-                translationX = shownX
-                translationY = shownY.coerceAtLeast(0f)
-                alpha = (1f - (abs(shownX) + shownY.coerceAtLeast(0f)) / (threshold * 4f)).coerceIn(0.55f, 1f)
+                translationX = dragX.value
+                translationY = dragY.value.coerceAtLeast(0f)
+                alpha = (1f - (abs(dragX.value) + dragY.value.coerceAtLeast(0f)) / (threshold * 4f)).coerceIn(0.55f, 1f)
             }
             .pointerInput(track.videoId, track.title) {
                 detectDragGestures(
-                    onDragStart = { isMiniDragging = true },
-                    onDragCancel = {
-                        isMiniDragging = false
-                        dragX = 0f
-                        dragY = 0f
-                    },
+                    onDragCancel = { settleDrag() },
                     onDragEnd = {
-                        isMiniDragging = false
                         when {
-                            dragY > threshold -> onClose()
-                            dragY < -threshold -> onExpand()
-                            dragX < -threshold -> onNext()
-                            dragX > threshold -> onPrevious()
+                            dragY.value > threshold -> onClose()
+                            dragY.value < -threshold -> onExpand()
+                            dragX.value < -threshold -> onNext()
+                            dragX.value > threshold -> onPrevious()
                         }
-                        dragX = 0f
-                        dragY = 0f
+                        settleDrag()
                     },
                 ) { change, amount ->
                     change.consume()
-                    if (abs(dragX + amount.x) > abs(dragY + amount.y)) dragX += amount.x
-                    else dragY += amount.y
+                    val x = dragX.value + amount.x
+                    val y = dragY.value + amount.y
+                    if (abs(x) > abs(y)) dragScope.launch(start = CoroutineStart.UNDISPATCHED) { dragX.snapTo(x) }
+                    else dragScope.launch(start = CoroutineStart.UNDISPATCHED) { dragY.snapTo(y) }
                 }
             },
         contentAlignment = Alignment.Center,
