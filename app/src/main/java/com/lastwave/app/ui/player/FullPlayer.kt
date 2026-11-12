@@ -1763,6 +1763,7 @@ internal fun FullPlayer(
             capabilities = TrackMenuCapabilities(
                 showCopyActions = true,
                 showDeleteScrobble = false,
+                showRecommendationExclusion = true,
             ),
             playableTrack = track,
             onDismiss = { showTrackMenu = false },
