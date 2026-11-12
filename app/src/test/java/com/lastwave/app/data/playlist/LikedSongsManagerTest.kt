@@ -1,16 +1,25 @@
 package com.lastwave.app.data.playlist
 
+import android.app.Application
 import android.content.Context
 import com.google.common.truth.Truth.assertThat
 import com.lastwave.app.data.generate.GeneratedTrack
+import com.lastwave.app.data.ytmusic.YtLikedSongsSync
 import com.lastwave.app.data.local.SettingsPreferences
 import io.mockk.coEvery
 import io.mockk.mockk
+import io.mockk.every
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33], manifest = Config.NONE, application = Application::class)
 class LikedSongsManagerTest {
     private val song = GeneratedTrack("Song", "Artist", url = "https://music.youtube.com/watch?v=abcdefghijk")
     private val alias = song.copy(name = "Song (Official Video)")
@@ -81,6 +90,7 @@ class LikedSongsManagerTest {
 
         fun manager(scope: kotlinx.coroutines.CoroutineScope) = LikedSongsManager(
             mockk<Context>(), repository, scope, mockk<SettingsPreferences>(),
+            mockk<YtLikedSongsSync>(relaxed = true).also { sync -> every { sync.mutationMutex } returns Mutex() },
         )
     }
 }

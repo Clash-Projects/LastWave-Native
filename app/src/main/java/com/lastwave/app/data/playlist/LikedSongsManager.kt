@@ -10,6 +10,7 @@ import com.lastwave.app.data.generate.sameSongAs
 import com.lastwave.app.data.generate.toGenerated
 import com.lastwave.app.data.generate.toStored
 import com.lastwave.app.data.generate.youtubeVideoIdOrNull
+import com.lastwave.app.data.ytmusic.YtLikedSongsSync
 import com.lastwave.app.data.local.SettingsPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -23,7 +24,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
@@ -56,8 +56,9 @@ class LikedSongsManager @Inject constructor(
     private val playlistRepository: PlaylistRepository,
     private val applicationScope: CoroutineScope,
     private val settingsPreferences: SettingsPreferences,
+    private val likeSync: YtLikedSongsSync,
 ) {
-    private val mutationMutex = Mutex()
+    private val mutationMutex get() = likeSync.mutationMutex
     private val json = Json { ignoreUnknownKeys = true }
     private val _likedTrackKeys = MutableStateFlow<Set<String>>(emptySet())
     val likedTrackKeys: StateFlow<Set<String>> = _likedTrackKeys.asStateFlow()
@@ -66,6 +67,7 @@ class LikedSongsManager @Inject constructor(
     fun start() {
         if (started) return
         started = true
+        likeSync.start()
         applicationScope.launch(Dispatchers.IO) {
             try {
                 // watchLocalSync() used to sit here: it collected the (now removed)
@@ -120,6 +122,7 @@ class LikedSongsManager @Inject constructor(
     private suspend fun mutate(track: GeneratedTrack, desired: Boolean?): Boolean =
         withContext(NonCancellable + Dispatchers.Default) {
             mutationMutex.withLock {
+                val account = likeSync.captureLocalChanges()
                 val saved = playlistRepository.getLikedSongs() ?: playlistRepository.ensureLikedSongs()
                 val liked = desired ?: !saved.tracks.any { it.sameSongAs(track) }
                 synchronized(heartLock) {
@@ -130,6 +133,7 @@ class LikedSongsManager @Inject constructor(
                 }
                 try {
                     writeLikedPlaylist(track, liked)
+                    likeSync.recordIntent(track, liked, account)
                     liked
                 } finally {
                     synchronized(heartLock) { pendingHeartTaps-- }
@@ -177,7 +181,7 @@ class LikedSongsManager @Inject constructor(
     }
 
     /**
-     * Merges externally sourced tracks (YT liked import) into Liked Songs.
+     * Merges local and external imports such as Spotify into Liked Songs.
      * Runs under the same [mutationMutex] as [toggle]/[like], so a heart-tap
      * racing an import can no longer interleave a stale read-modify-write
      * that resurrects duplicates.
@@ -198,6 +202,12 @@ class LikedSongsManager @Inject constructor(
         }
         false
     } }
+
+    suspend fun mergeYouTubeTracks(tracks: List<GeneratedTrack>): Boolean {
+        val merged = likeSync.mergeYouTubeLikes(tracks)
+        if (merged) refresh()
+        return merged
+    }
 
     /**
      * One-time heal: collapses duplicate `liked`-mode rows into the one with

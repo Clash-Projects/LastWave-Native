@@ -504,10 +504,14 @@ internal suspend fun InnerTubeMusicApi.getYouTubeLikeStatusImpl(videoId: String)
         }.getOrNull()
     }
 
-internal suspend fun InnerTubeMusicApi.setVideoLiked(videoId: String, liked: Boolean): Boolean =
+internal suspend fun InnerTubeMusicApi.setVideoLiked(
+    videoId: String,
+    liked: Boolean,
+    account: YtConnection = ytAuth.connection.value,
+): Boolean =
         withContext(Dispatchers.IO) {
             if (videoId.isBlank()) return@withContext false
-            if (!ytAuth.connection.value.isConnected) return@withContext false
+            if (!account.isConnected || ytAuth.connection.value != account) return@withContext false
             val config = getWebConfig()
             val endpoint = if (liked) LIKE_ENDPOINT else REMOVE_LIKE_ENDPOINT
             runCatching {
@@ -521,6 +525,7 @@ internal suspend fun InnerTubeMusicApi.setVideoLiked(videoId: String, liked: Boo
                     clientVersion = config.clientVersion,
                     userAgent = WEB_USER_AGENT,
                     authenticated = true,
+                    authenticatedAccount = account,
                 )
                 true
             }.onFailure {

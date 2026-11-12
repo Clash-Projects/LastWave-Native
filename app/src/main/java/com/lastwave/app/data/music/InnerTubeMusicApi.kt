@@ -122,6 +122,8 @@ class InnerTubeMusicApi @Inject constructor(
     suspend fun removeVideosFromRemotePlaylist(playlistId: String, removals: List<Pair<String, String>>): Boolean = removeVideosFromRemotePlaylistImpl(playlistId, removals)
     suspend fun likeVideo(videoId: String): Boolean = likeVideoImpl(videoId)
     suspend fun removeVideoLike(videoId: String): Boolean = removeVideoLikeImpl(videoId)
+    suspend fun setVideoLike(videoId: String, liked: Boolean, account: YtConnection): Boolean =
+        setVideoLiked(videoId, liked, account)
     suspend fun getYouTubeLikeStatus(videoId: String): Boolean? = getYouTubeLikeStatusImpl(videoId)
     suspend fun fetchOwnedPlaylist(playlistIdOrUrl: String, stopAfterVideoId: String? = null): YtOwnedPlaylist? = fetchOwnedPlaylistImpl(playlistIdOrUrl, stopAfterVideoId)
 
@@ -293,6 +295,8 @@ class InnerTubeMusicApi @Inject constructor(
         }
         if (initialSongs.isEmpty() && initialContainers.isEmpty()) {
             if (header != null) {
+                // An incomplete/error response must not erase a synced library.
+                if ((trackCountFromHeader(header) ?: 0) > 0) return@withContext null
                 return@withContext YouTubePlaylistResult(
                     id = rawId,
                     title = title ?: if (isLiked) com.lastwave.app.data.playlist.LIKED_YT_SONGS_TITLE else "YouTube Playlist",
