@@ -76,6 +76,7 @@ import com.lastwave.app.data.discover.DiscoverRepository
 import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.generate.youtubeVideoIdOrNull
 import com.lastwave.app.data.local.MiscSettings
+import com.lastwave.app.data.local.HiResStart
 import com.lastwave.app.data.local.CacheStoragePolicy
 import com.lastwave.app.data.local.AdaptiveCacheEvictor
 import com.lastwave.app.data.local.EqualizerPreferences
@@ -2446,7 +2447,7 @@ class MusicPlayer @Inject constructor(
             settingsPreferences.settings.collect { settings ->
                 val previousPlaybackSettings = latestPlaybackSettings
                 latestPlaybackSettings = settings
-                if (previousPlaybackSettings.autoUpgradeHiResEnabled && !settings.autoUpgradeHiResEnabled) {
+                if (previousPlaybackSettings.hiResStart != HiResStart.NEVER && settings.hiResStart == HiResStart.NEVER) {
                     cancelActiveUpgrade()
                 }
                 musicHapticsController.updateConfig(settings.musicHapticsConfig)
@@ -6286,8 +6287,17 @@ class MusicPlayer @Inject constructor(
         // Whichever source is playable first starts. Waiting on the provider
         // first cost 5 s per song whenever it answered slowly or with an error;
         // the upgrade job promotes to the chosen tier once that is playable.
+        // "Start in Hi-Res" opts into that wait, still bounded by the provider deadline.
+        val startDirect = claimPlayback && miscSnapshot.hiResStart == HiResStart.DIRECT
         try {
-            (racePlaybackCandidates(
+            ((if (startDirect) {
+                racePlaybackCandidates(
+                    first = { localDownload() },
+                    second = { playableProvider(acceptManifest = true) },
+                )
+            } else {
+                null
+            }) ?: racePlaybackCandidates(
                 first = { fallback.await().getOrNull() },
                 second = {
                     racePlaybackCandidates(
@@ -7136,9 +7146,9 @@ class MusicPlayer @Inject constructor(
         val misc = latestPlaybackSettings
         val requestedQuality = requestedQualityOverride ?: selectedStreamingQuality(misc)
         val explicitlyChanging = requestedQualityOverride != null
-        // "Auto upgrade to Hi-Res" only blocks lossless promotions; a 96k stream
+        // "Never upgrade" only blocks lossless promotions; a 96k stream
         // recovering to 320k or a downgrade must still go through.
-        if (!misc.autoUpgradeHiResEnabled &&
+        if (misc.hiResStart == HiResStart.NEVER &&
             requestedQuality >= LosslessMusicApi.QUALITY_CD_LOSSLESS &&
             streamQualityTier(currentStream) < requestedQuality
         ) return false

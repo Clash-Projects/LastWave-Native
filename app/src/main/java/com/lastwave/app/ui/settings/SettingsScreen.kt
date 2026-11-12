@@ -427,6 +427,7 @@ fun SettingsScreen(
     var showQualityDialog by remember { mutableStateOf(false) }
     var editingCellularQuality by remember { mutableStateOf(false) }
     var showDownloadQualityDialog by remember { mutableStateOf(false) }
+    var showHiResStartDialog by remember { mutableStateOf(false) }
     var showEqSheet by remember { mutableStateOf(false) }
     var showAutoEq by remember { mutableStateOf(false) }
     var showLyricsProviderDialog by remember { mutableStateOf(false) }
@@ -833,18 +834,13 @@ fun SettingsScreen(
                             )
                         }
                         add { position ->
-                            SettingsToggleCard(
+                            SettingsActionCard(
                                 icon = Icons.Filled.HighQuality,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                title = "Auto upgrade to Hi-Res",
-                                subtitle = if (misc.autoUpgradeHiResEnabled) {
-                                    "Start fast on Opus, then switch to lossless when available"
-                                } else {
-                                    "Never upgrade mid-song; keep the stream it starts with"
-                                },
-                                checked = misc.autoUpgradeHiResEnabled,
-                                onCheckedChange = viewModel::setAutoUpgradeHiResEnabled,
+                                title = "Playback start",
+                                subtitle = misc.hiResStart.title,
+                                onClick = { showHiResStartDialog = true },
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.auto_upgrade_hi_res"),
                             )
@@ -2966,6 +2962,31 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+
+    if (showHiResStartDialog) {
+        AlertDialog(
+            onDismissRequest = { showHiResStartDialog = false },
+            title = { Text("Playback start") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    com.lastwave.app.data.local.HiResStart.entries.forEach { mode ->
+                        SettingsRadioOption(
+                            label = mode.title,
+                            subtitle = mode.subtitle,
+                            selected = misc.hiResStart == mode,
+                            onClick = {
+                                viewModel.setHiResStart(mode)
+                                showHiResStartDialog = false
+                            },
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showHiResStartDialog = false }) { Text(stringResource(R.string.common_done)) }
+            },
+        )
     }
 
     if (showDownloadQualityDialog) {
