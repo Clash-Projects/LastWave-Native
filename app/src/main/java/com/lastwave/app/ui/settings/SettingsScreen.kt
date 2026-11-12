@@ -837,7 +837,7 @@ fun SettingsScreen(
                                 icon = Icons.Filled.HighQuality,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                title = "Hi-Res start",
+                                title = "Playback start",
                                 subtitle = misc.hiResStart.title,
                                 onClick = { showHiResStartDialog = true },
                                 position = position,
@@ -2965,7 +2965,7 @@ fun SettingsScreen(
     if (showHiResStartDialog) {
         AlertDialog(
             onDismissRequest = { showHiResStartDialog = false },
-            title = { Text("Hi-Res start") },
+            title = { Text("Playback start") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     com.lastwave.app.data.local.HiResStart.entries.forEach { mode ->

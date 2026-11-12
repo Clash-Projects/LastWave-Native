@@ -154,11 +154,11 @@ object SettingsSearchIndex {
             add(
                 SettingsEntry(
                     id = "audio.auto_upgrade_hi_res",
-                    title = "Hi-Res start",
-                    subtitle = "Fast start, start in Hi-Res, or never upgrade",
+                    title = "Playback start",
+                    subtitle = "Fast start, best quality first, or never upgrade",
                     keywords = listOf(
                         "auto upgrade", "hi-res", "hires", "lossless", "flac", "opus",
-                        "upgrade", "streaming", "quality", "background upgrade", "start", "direct"
+                        "upgrade", "streaming", "quality", "background upgrade", "start", "direct", "best quality"
                     ),
                     icon = Icons.Filled.HighQuality,
                     iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
