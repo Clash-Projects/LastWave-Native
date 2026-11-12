@@ -351,7 +351,8 @@ private fun streamingQualityLabel(quality: Int): String = when (quality) {
     CELLULAR_QUALITY_AUTO -> "Auto"
     28 -> "Dolby Atmos"
     27, 7 -> "Hi-Res Lossless"
-    6, 5 -> "Standard (320 kbps)"
+    6 -> "CD Lossless"
+    5 -> "Standard (320 kbps)"
     4 -> "Data Saver"
     -1 -> "YouTube Music"
     else -> "Hi-Res Lossless"
@@ -2816,6 +2817,7 @@ fun SettingsScreen(
             ).takeIf { editingCellularQuality },
             Triple(28, "Dolby Atmos", "Spatial Immersive Audio • Master Audio" to "ATMOS"),
             Triple(27, "Hi-Res Lossless", "Up to 24-bit / 192 kHz • Lossless FLAC" to "HI-RES"),
+            Triple(6, "CD Lossless", "16-bit / 44.1 kHz • Lossless FLAC" to "CD"),
             Triple(5, "Standard Quality", "Up to 320 kbps • MP3 / AAC" to "320 kbps"),
             Triple(-1, "YouTube Music", "128-256 kbps • YouTube Music AAC / Opus stream" to "YOUTUBE"),
             Triple(4, "Data Saver", "Low-bitrate audio to reduce mobile data use" to "DATA SAVER"),
