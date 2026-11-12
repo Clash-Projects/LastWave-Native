@@ -41,6 +41,7 @@ import androidx.compose.ui.zIndex
 import com.lastwave.app.ui.theme.Backdrop
 import com.lastwave.app.ui.theme.LocalIsDarkTheme
 import com.lastwave.app.ui.theme.LocalLiquidGlass
+import com.lastwave.app.ui.theme.LocalUseBoldFont
 import com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported
 import com.lastwave.app.ui.theme.headerLiquidGlass
 import com.lastwave.app.ui.theme.liquidGlassSource
@@ -173,7 +174,8 @@ fun ExpressiveHeader(
                     Column(Modifier.weight(1f)) {
                         Text(
                             title,
-                            style = if (onBack != null) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
+                            // 2.0 used headlineMedium for every header; the smaller back-button title came later.
+                            style = if (onBack != null && LocalUseBoldFont.current) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
                             color = if (useGlass) (if (isDark) Color.White else Color.Black)
                             else MaterialTheme.colorScheme.onSurface,

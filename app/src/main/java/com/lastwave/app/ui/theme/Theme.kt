@@ -28,6 +28,8 @@ import com.lastwave.app.data.local.ThemeMode
 val LocalIsDarkTheme = staticCompositionLocalOf { true }
 /** Shared composition local indicating whether bottom navigation tabs are hidden. */
 val LocalHideNavTabs = staticCompositionLocalOf { false }
+/** Settings "Use Bold Font"; off brings back the first-release (2.0) headers. */
+val LocalUseBoldFont = staticCompositionLocalOf { true }
 
 /** Swallows every haptic request; provided app-wide when Settings > Haptic Feedback is off. */
 private object SilentHapticFeedback : HapticFeedback {
@@ -133,6 +135,7 @@ fun LastWaveTheme(
                 LocalLiquidGlass provides themeState.liquidGlass,
                 LocalMd3NavBar provides themeState.md3NavBar,
                 LocalHideNavTabs provides themeState.hideNavTabs,
+                LocalUseBoldFont provides themeState.useBoldFont,
                 LocalIsDarkTheme provides isDark,
             ) {
                 content()
