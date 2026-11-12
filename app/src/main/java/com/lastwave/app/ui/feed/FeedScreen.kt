@@ -764,7 +764,6 @@ fun FeedScreen(
                             if (radius <= 0f) return@drawWithContent
                             val mask = feedBackgroundColor
                             drawRect(mask, Offset.Zero, Size(left, top + radius))
-                            drawRect(mask, Offset(right, 0f), Size(size.width - right, top + radius))
                             // No band above `top`: the content there is what the glass
                             // header refracts. Masking it left the glass a flat bar.
                             val topLeft = Path().apply {
@@ -779,18 +778,21 @@ fun FeedScreen(
                                 close()
                             }
                             drawPath(topLeft, mask)
+                            // Right gutter and corner as ONE path. As a rect plus a
+                            // corner path they met along x = right, and the two
+                            // antialiased edges left a hairline of feed showing through.
                             val topRight = Path().apply {
-                                // Start at the arc's first point (top edge). Starting at
-                                // the side edge made arcTo cut a chord across the corner
-                                // and fill the lens inside the card instead of the corner.
-                                moveTo(right, top)
-                                lineTo(right - radius, top)
+                                moveTo(right, 0f)
+                                lineTo(size.width, 0f)
+                                lineTo(size.width, top + radius)
+                                lineTo(right, top + radius)
                                 arcTo(
                                     Rect(right - 2f * radius, top, right, top + 2f * radius),
-                                    270f,
-                                    90f,
+                                    0f,
+                                    -90f,
                                     false,
                                 )
+                                lineTo(right, top)
                                 close()
                             }
                             drawPath(topRight, mask)
