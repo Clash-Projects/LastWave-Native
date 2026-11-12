@@ -1,6 +1,5 @@
 package com.lastwave.app.ui.shell
 
-import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -156,9 +155,6 @@ import com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported
 import com.lastwave.app.ui.theme.liquidGlassSource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Job
-import io.github.fletchmckee.liquid.liquefiable
-import io.github.fletchmckee.liquid.rememberLiquidState
 import javax.inject.Inject
 
 /** Thin bridge exposing AppUpdateManager's live update state to MainShell */
@@ -264,12 +260,8 @@ fun MainShell(
     // the FAB draw over the pill. Updating immediately on tap and syncing from
     // settledPage on swipe keeps one clean transition.
     var selectedTabIndex by remember { mutableIntStateOf(pagerState.currentPage) }
-    var liquidNavigationJob by remember { mutableStateOf<Job?>(null) }
-    var liquidNavigationRequest by remember { mutableIntStateOf(0) }
-    LaunchedEffect(pagerState.settledPage, pagerState.isScrollInProgress, liquidNavigationJob) {
-        if (!pagerState.isScrollInProgress && liquidNavigationJob?.isActive != true &&
-            selectedTabIndex != pagerState.settledPage
-        ) {
+    LaunchedEffect(pagerState.settledPage, pagerState.isScrollInProgress) {
+        if (!pagerState.isScrollInProgress && selectedTabIndex != pagerState.settledPage) {
             selectedTabIndex = pagerState.settledPage
         }
     }
@@ -373,17 +365,10 @@ fun MainShell(
 
     val backgroundColor = MaterialTheme.colorScheme.background
     val hideNavTabs = com.lastwave.app.ui.theme.LocalHideNavTabs.current
-    val useLiquidNavigation = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-        LocalLiquidGlass.current && !hideNavTabs
-    val navigationLiquidState = if (useLiquidNavigation) rememberLiquidState() else null
-    // Only one renderer records the pager for navigation. The bar is hosted by
-    // PlayerHost as a sibling, never below its own liquefiable source.
-    val navigationBackdrop = if (!useLiquidNavigation) {
-        rememberLayerBackdrop {
-            drawRect(backgroundColor)
-            drawContent()
-        }
-    } else null
+    val navigationBackdrop = rememberLayerBackdrop {
+        drawRect(backgroundColor)
+        drawContent()
+    }
     val navGlass = isLiquidGlassBackdropSupported()
 
     Box(Modifier.fillMaxSize()) {
@@ -396,13 +381,7 @@ fun MainShell(
             // was rebuilt the same way from the far tab. Only 3 tabs, and
             // off-screen pages are not drawn, so this is cheap.
             beyondViewportPageCount = tabs.size - 1,
-            modifier = Modifier.fillMaxSize().then(
-                if (navigationLiquidState != null) {
-                    Modifier.liquefiable(navigationLiquidState).background(backgroundColor)
-                } else {
-                    Modifier.liquidGlassSource(if (navGlass) navigationBackdrop else null)
-                },
-            ),
+            modifier = Modifier.fillMaxSize().liquidGlassSource(if (navGlass) navigationBackdrop else null),
         ) { page ->
             // derivedStateOf: reading currentPage directly recomposed every
             // page's whole tab each time it flipped halfway through a swipe.
@@ -470,10 +449,6 @@ fun MainShell(
         }
 
         val bottomNavSlot = com.lastwave.app.ui.player.LocalBottomNavSlot.current
-        val md3NavBar = LocalMd3NavBar.current
-        val clearance = com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance.current
-        val isMiniPlayerActive = clearance > 0.dp
-        val systemBottomInset = WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding()
 
         val currentSelectedIndex by androidx.compose.runtime.rememberUpdatedState(selectedTabIndex)
         val navHaptic = androidx.compose.ui.platform.LocalHapticFeedback.current
@@ -500,74 +475,20 @@ fun MainShell(
         }
         val currentOnOpenGenerator by androidx.compose.runtime.rememberUpdatedState(onOpenGenerator)
 
-        // A scrub commits once on release. It must never use Feed's re-tap
-        // refresh action, or enqueue a page animation at every crossed tab.
-        fun selectLiquidTab(index: Int, refreshIfSelected: Boolean) {
-            navHaptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.SegmentTick)
-            val isFeed = tabs[index] == MainTab.FEED
-            val returnedFromDetail = isFeed && onReturnToHome()
-            val alreadySettled = selectedTabIndex == index &&
-                pagerState.settledPage == index && !pagerState.isScrollInProgress
-            if (refreshIfSelected && isFeed && alreadySettled && !returnedFromDetail) {
-                feedTapEvents.tryEmit(Unit)
-                return
-            }
-            val request = ++liquidNavigationRequest
-            liquidNavigationJob?.cancel()
-            selectedTabIndex = index
-            liquidNavigationJob = scope.launch {
-                try {
-                    if (returnedFromDetail) pagerState.scrollToPage(index)
-                    else pagerState.animateScrollToPage(index)
-                } finally {
-                    // A previous canceled request must not reset a newer target.
-                    // Also reconcile when a content swipe interrupts this request.
-                    if (request == liquidNavigationRequest) {
-                        selectedTabIndex = pagerState.settledPage
-                    }
-                }
-            }
-        }
-        val currentOnLiquidSelect by androidx.compose.runtime.rememberUpdatedState { index: Int ->
-            selectLiquidTab(index, refreshIfSelected = true)
-        }
-        val currentOnScrubSelect by androidx.compose.runtime.rememberUpdatedState { index: Int ->
-            selectLiquidTab(index, refreshIfSelected = false)
-        }
-
-        androidx.compose.runtime.DisposableEffect(navigationBackdrop, navigationLiquidState, tabs, hideNavTabs) {
+        androidx.compose.runtime.DisposableEffect(navigationBackdrop, tabs, hideNavTabs) {
             if (!hideNavTabs) {
-                bottomNavSlot.value = { material3NavigationEnabled ->
+                // Glass is drawn by FloatingNavBar itself, so Liquid Glass keeps the
+                // Material You layout and its tab-switch animations.
+                bottomNavSlot.value = { _ ->
                     Box(Modifier.fillMaxSize()) {
-                        if (navigationLiquidState != null) {
-                            LiquidNavigationBar(
-                                liquidState = navigationLiquidState,
-                                items = tabs.map { tab ->
-                                    LiquidNavigationItem(
-                                        label = androidx.compose.ui.res.stringResource(tab.labelRes),
-                                        icon = tab.icon(),
-                                    )
-                                },
-                                selectedIndex = currentSelectedIndex,
-                                onSelect = currentOnLiquidSelect,
-                                onScrubSelect = currentOnScrubSelect,
-                                modifier = Modifier.align(Alignment.BottomCenter),
-                                style = if (material3NavigationEnabled) {
-                                    LiquidNavigationStyle.Material3
-                                } else {
-                                    LiquidNavigationStyle.Tabs
-                                },
-                            )
-                        } else {
-                            FloatingNavBar(
-                                backdrop = navigationBackdrop,
-                                tabs = tabs,
-                                selectedIndex = currentSelectedIndex,
-                                onSelect = currentOnSelect,
-                                onOpenGenerator = currentOnOpenGenerator,
-                                modifier = Modifier.align(Alignment.BottomCenter),
-                            )
-                        }
+                        FloatingNavBar(
+                            backdrop = navigationBackdrop,
+                            tabs = tabs,
+                            selectedIndex = currentSelectedIndex,
+                            onSelect = currentOnSelect,
+                            onOpenGenerator = currentOnOpenGenerator,
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                        )
                     }
                 }
             } else {
