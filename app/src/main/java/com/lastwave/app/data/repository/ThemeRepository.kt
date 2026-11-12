@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -128,7 +129,7 @@ class ThemeRepository @Inject constructor(
         applicationScope.launch {
             combine(nowPlayingTrackKey, artworkRepository.resolved) { key, resolvedMap ->
                 key?.let { resolvedMap[it] }
-            }.distinctUntilChanged().collect { url ->
+            }.distinctUntilChanged().collectLatest { url ->
                 nowPlayingHex.value = if (url.isNullOrBlank()) {
                     null
                 } else {
@@ -274,13 +275,11 @@ class ThemeRepository @Inject constructor(
                 dark to light
             }
         }
-        // Artwork complements the wallpaper/accent theme instead of replacing it.
+        // Artwork defines its own hue family; blending wallpaper RGB back in
+        // would invent colours absent from the cover, including on monochrome art.
         val (darkScheme, lightScheme) = if (nowPlayingActive) {
-            // Black-and-white covers blend in grey, not a made-up hue.
-            val mono = Md3SchemeBuilder.isAchromatic(nowPlaying!!)
-            val artDark = if (mono) Md3SchemeBuilder.buildMonochromeDarkScheme(isAmoled, isGlass) else Md3SchemeBuilder.buildDarkScheme(nowPlaying, isAmoled, isGlass)
-            val artLight = if (mono) Md3SchemeBuilder.buildMonochromeLightScheme(isGlass) else Md3SchemeBuilder.buildLightScheme(nowPlaying, isGlass)
-            Md3SchemeBuilder.blendNowPlaying(baseDark, artDark) to Md3SchemeBuilder.blendNowPlaying(baseLight, artLight)
+            Md3SchemeBuilder.buildArtworkScheme(nowPlaying!!, isAmoled, dark = true) to
+                Md3SchemeBuilder.buildArtworkScheme(nowPlaying, isAmoled, dark = false)
         } else {
             baseDark to baseLight
         }
