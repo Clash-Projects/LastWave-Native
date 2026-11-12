@@ -810,7 +810,7 @@ internal fun QueuePanel(
     ) {
         val removed = recentlyRemoved
         if (removed != null) {
-            LiquidGlassSurface(
+            Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.95f),
                 contentColor = MaterialTheme.colorScheme.inverseOnSurface,
