@@ -143,7 +143,6 @@ import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.SpeakerPhone
-import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Language
@@ -1225,7 +1224,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_appearance))
-                    SettingsGroup(rowCount = 12) { index, position ->
+                    SettingsGroup(rowCount = 11) { index, position ->
                         when (index) {
                             0 -> ThemeModeSelectorCard(
                                 currentThemeMode = theme?.themeMode ?: ThemeMode.SYSTEM,
@@ -1334,17 +1333,6 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "appearance.app_font"),
                             )
                             10 -> SettingsToggleCard(
-                                icon = Icons.Filled.FormatBold,
-                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = stringResource(R.string.settings_bold_font),
-                                subtitle = stringResource(R.string.settings_bold_font_sub),
-                                checked = misc.useBoldFont,
-                                enabled = misc.useCustomFont,
-                                onCheckedChange = viewModel::setUseBoldFont,
-                                position = position,
-                            )
-                            11 -> SettingsToggleCard(
                                 icon = Icons.Filled.Vibration,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
