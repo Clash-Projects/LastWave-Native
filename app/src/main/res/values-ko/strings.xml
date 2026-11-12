@@ -4,6 +4,8 @@
     <string name="widget_name">LastWave 플레이어</string>
     <string name="widget_description">모든 미디어 앱의 앨범아트, 곡 정보 및 재생 컨트롤</string>
 
+    <string name="nav_home">홈</string>
+    <string name="nav_discover">디스커버</string>
     <string name="nav_feed">피드</string>
     <string name="nav_stats">통계</string>
     <string name="nav_playlists">라이브러리</string>

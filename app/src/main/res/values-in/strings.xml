@@ -4,6 +4,8 @@
     <string name="widget_name">Pemutar LastWave</string>
     <string name="widget_description">Sampul, detail lagu, dan kontrol pemutaran untuk semua aplikasi media</string>
 
+    <string name="nav_home">Beranda</string>
+    <string name="nav_discover">Jelajahi</string>
     <string name="nav_feed">Beranda</string>
     <string name="nav_stats">Statistik</string>
     <string name="nav_playlists">Perpustakaan</string>

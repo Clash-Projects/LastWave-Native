@@ -5,6 +5,8 @@
     <string name="widget_description">所有媒体应用的封面、曲目信息和播放控制</string>
 
     <!-- 底部导航 -->
+    <string name="nav_home">首页</string>
+    <string name="nav_discover">发现</string>
     <string name="nav_feed">推荐</string>
     <string name="nav_stats">统计</string>
     <string name="nav_playlists">资料库</string>

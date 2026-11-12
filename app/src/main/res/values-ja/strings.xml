@@ -4,6 +4,8 @@
     <string name="widget_name">LastWave プレーヤー</string>
     <string name="widget_description">すべてのメディアアプリのジャケット、曲情報、再生コントロール</string>
 
+    <string name="nav_home">ホーム</string>
+    <string name="nav_discover">見つける</string>
     <string name="nav_feed">フィード</string>
     <string name="nav_stats">統計</string>
     <string name="nav_playlists">ライブラリ</string>

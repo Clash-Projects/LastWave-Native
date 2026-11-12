@@ -4,6 +4,8 @@
     <string name="widget_name">Lecteur LastWave</string>
     <string name="widget_description">Pochette, détails du morceau et contrôles de lecture pour toutes les apps média</string>
 
+    <string name="nav_home">Accueil</string>
+    <string name="nav_discover">Découvrir</string>
     <string name="nav_feed">Fil</string>
     <string name="nav_stats">Statistiques</string>
     <string name="nav_playlists">Bibliothèque</string>

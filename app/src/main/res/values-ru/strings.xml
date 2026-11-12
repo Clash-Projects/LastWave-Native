@@ -4,6 +4,8 @@
     <string name="widget_name">LastWave Плеер</string>
     <string name="widget_description">Обложка, информация о треке и управление воспроизведением для всех медиаприложений</string>
 
+    <string name="nav_home">Главная</string>
+    <string name="nav_discover">Обзор</string>
     <string name="nav_feed">Лента</string>
     <string name="nav_stats">Статистика</string>
     <string name="nav_playlists">Библиотека</string>

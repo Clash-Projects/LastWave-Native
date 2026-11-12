@@ -7,6 +7,8 @@
     <string name="widget_obsidian_description">Lettore in vetro ossidiana smerigliato, con profondità traslucida e bordo cristallino</string>
 
     <!-- Bottom navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_discover">Scopri</string>
     <string name="nav_feed">Home</string>
     <string name="nav_stats">Statistiche</string>
     <string name="nav_playlists">Libreria</string>
@@ -1153,4 +1155,3 @@
     <string name="toast_spotify_connect_first">Prima collega Spotify</string>
     <string name="toast_spotify_disconnected">Account Spotify disconnesso</string>
 </resources>
-
