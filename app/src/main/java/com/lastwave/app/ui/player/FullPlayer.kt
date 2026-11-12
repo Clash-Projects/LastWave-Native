@@ -104,6 +104,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -972,10 +973,14 @@ internal fun FullPlayer(
                     }
                 }
             }
+            // Bottom inset is applied per tab below, so the queue can run under the gesture pill.
+            val showError = state.error != null && !lyricsFullscreen
+            val bottomInset = WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding()
+            val tabBottomInset = if (showError) 0.dp else bottomInset
             Column(
                 Modifier
                     .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.safeDrawing),
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 // â”€â”€ Header: slimmer, calmer, premium â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1146,6 +1151,7 @@ internal fun FullPlayer(
                     },
                     label = "playerTabContent",
                 ) { tab ->
+                    Box(Modifier.padding(bottom = if (tab == FullPlayerTab.QUEUE) 0.dp else tabBottomInset)) {
                     when (tab) {
                         FullPlayerTab.LYRICS -> {
                             PredictiveBackScreen(
@@ -1200,7 +1206,8 @@ internal fun FullPlayer(
                                 QueuePanel(
                                     state,
                                     player,
-                                    Modifier
+                                    bottomPadding = tabBottomInset,
+                                    modifier = Modifier
                                         .fillMaxSize()
                                         .adaptiveContentWidth(maxWidth = if (isTabletLandscape) 960.dp else 720.dp)
                                         .padding(horizontal = 12.dp),
@@ -1761,14 +1768,15 @@ internal fun FullPlayer(
                             }
                         }
                     }
+                    }
                 }
-                state.error?.takeUnless { lyricsFullscreen }?.let { message ->
+                state.error?.takeIf { showError }?.let { message ->
                     Surface(
                         onClick = hapticClick(action = player::retry),
                         shape = RoundedCornerShape(20.dp),
                         color = MaterialTheme.colorScheme.errorContainer,
                         contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp + bottomInset),
                     ) {
                         Row(
                             Modifier.padding(horizontal = 14.dp, vertical = 12.dp),

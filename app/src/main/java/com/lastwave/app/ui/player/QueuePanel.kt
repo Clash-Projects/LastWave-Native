@@ -341,7 +341,12 @@ internal var isQueueLockedState by mutableStateOf(false)
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-internal fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: Modifier = Modifier) {
+internal fun QueuePanel(
+    state: MusicPlayerState,
+    player: MusicPlayer,
+    bottomPadding: androidx.compose.ui.unit.Dp = 0.dp,
+    modifier: Modifier = Modifier,
+) {
     val isQueueLocked = isQueueLockedState
     val listState = rememberLazyListState()
     val haptics = LocalHapticFeedback.current
@@ -556,6 +561,7 @@ internal fun QueuePanel(state: MusicPlayerState, player: MusicPlayer, modifier: 
             modifier = Modifier
                 .fillMaxSize()
                 .clip(TopCurvedSectionClipShape(horizontalInset = 0.dp, cornerRadius = 28.dp)),
+            contentPadding = PaddingValues(bottom = bottomPadding),
             verticalArrangement = Arrangement.spacedBy(GroupGap),
         ) {
             itemsIndexed(
