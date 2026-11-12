@@ -1145,14 +1145,13 @@ class SettingsPreferences @Inject constructor(
         dataStore.edit { it[Keys.JAM_ROOM_MODE] = mode }
     }
     private companion object {
-        val STREAMING_QUALITIES = setOf(-1, 4, 5, 27, 28)
+        val STREAMING_QUALITIES = setOf(-1, 4, 5, 6, 27, 28)
         val DOWNLOAD_QUALITIES = setOf(-1, 4, 5, 6, 7, 27, 28)
     }
 
     private fun normalizeStreamingQuality(quality: Int): Int? = when (quality) {
         in STREAMING_QUALITIES -> quality
         7 -> 27 // Fold the old 24/96 option into the single Hi-Res choice.
-        6 -> 5 // Fold the old CD-lossless option into Standard quality.
         else -> null
     }
 }
