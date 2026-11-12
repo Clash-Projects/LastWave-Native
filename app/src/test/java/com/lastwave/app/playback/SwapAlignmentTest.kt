@@ -64,4 +64,28 @@ class SwapAlignmentTest {
 
         assertNull(SwapAlignment.measureLagMs(SwapCapture(silence, 0L), SwapCapture(silence, 0L)))
     }
+
+    @Test
+    fun `different audio is a verdict, not a missing measurement`() {
+        val first = music(SwapAlignment.CAPTURE_BINS, seed = 3)
+        val second = music(SwapAlignment.CAPTURE_BINS, seed = 4)
+
+        assertTrue(SwapAlignment.compare(SwapCapture(first, 0L), SwapCapture(second, 0L)) is SwapAlignmentVerdict.Different)
+    }
+
+    @Test
+    fun `silence or far-apart captures cannot judge the candidate`() {
+        val silence = FloatArray(SwapAlignment.CAPTURE_BINS)
+        val source = music(SwapAlignment.CAPTURE_BINS, seed = 6)
+
+        assertTrue(SwapAlignment.compare(SwapCapture(silence, 0L), SwapCapture(source, 0L)) is SwapAlignmentVerdict.Unknown)
+        assertTrue(SwapAlignment.compare(SwapCapture(source, 0L), SwapCapture(source, 20_000_000L)) is SwapAlignmentVerdict.Unknown)
+    }
+
+    @Test
+    fun `the same audio is judged the same`() {
+        val source = music(SwapAlignment.CAPTURE_BINS, seed = 7)
+
+        assertTrue(SwapAlignment.compare(SwapCapture(source, 0L), SwapCapture(source, 0L)) is SwapAlignmentVerdict.Same)
+    }
 }

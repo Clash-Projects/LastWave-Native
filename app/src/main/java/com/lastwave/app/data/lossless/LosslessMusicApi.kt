@@ -1054,6 +1054,7 @@ class LosslessMusicApi @Inject constructor(
     ): Pair<String, String>? {
         if (tracks.isEmpty()) return null
         val candidates = verifiedCandidates(tracks, title, artist, expectedDurationSeconds, expectedAlbum, plan.isAtmosPreferred)
+            ?: return null
         val ordered = orderCandidates(candidates, plan.qualityParam, plan.isAtmosPreferred)
         val tier = qualityTiers(plan.qualityParam, plan.isAtmosPreferred).first()
         val candidate = tierCandidates(ordered, tier).firstOrNull() ?: return null
@@ -1068,7 +1069,7 @@ class LosslessMusicApi @Inject constructor(
         expectedDurationSeconds: Int?,
         expectedAlbum: String?,
         isAtmosPreferred: Boolean,
-    ): List<TidalCandidateItem> {
+    ): List<TidalCandidateItem>? {
         val scored = tracks.asSequence()
             .map { track ->
                 TidalCandidateItem(
@@ -1181,6 +1182,12 @@ class LosslessMusicApi @Inject constructor(
             if (tracks.isEmpty()) continue
 
             val gated = verifiedCandidates(tracks, title, artist, expectedDurationSeconds, expectedAlbum, isAtmosPreferred)
+            if (gated == null) {
+                // A narrower query could return just one of the languages and
+                // read as unambiguous; the answer is already "can't tell".
+                Log.i(TAG, "resolveFromAddon: '$title' exists in several languages and the request names none; staying on YouTube")
+                return null
+            }
             if (gated.isNotEmpty()) {
                 candidates = gated
                 candidatePositions = tracks.mapIndexed { index, track -> track.id to index }.toMap()
@@ -1655,28 +1662,27 @@ class LosslessMusicApi @Inject constructor(
      * When multiple language releases exist and the request specifies an
      * expected language, filter candidates to match that language.
      * When no language is specified, prefer clean/original candidates without
-     * dub/foreign-language markers over dubbed versions.
-     * Never drops all candidates to empty.
+     * dub/foreign-language markers over dubbed versions; if every close copy
+     * names a language and they disagree, returns null: nothing says which
+     * one the listener is hearing, so the caller stays on YouTube.
      */
     private fun gateAmbiguousLanguage(
         verified: List<TidalCandidateItem>,
         title: String,
         expectedAlbum: String?,
-    ): List<TidalCandidateItem> {
+    ): List<TidalCandidateItem>? {
         if (verified.size < 2) return verified
         val expectedLanguages = extractLanguages("$title ${expectedAlbum.orEmpty()}")
+        val candidateLanguages = verified.map { extractLanguages("${it.title} ${it.albumTitle}") }
         if (expectedLanguages.isNotEmpty()) {
-            val matching = verified.filter {
-                val candidateLangs = extractLanguages("${it.title} ${it.albumTitle}")
-                candidateLangs.intersect(expectedLanguages).isNotEmpty()
+            val matching = verified.filterIndexed { i, _ ->
+                candidateLanguages[i].intersect(expectedLanguages).isNotEmpty()
             }
             if (matching.isNotEmpty()) return matching
         } else {
-            val clean = verified.filter {
-                val candidateLangs = extractLanguages("${it.title} ${it.albumTitle}")
-                candidateLangs.isEmpty()
-            }
+            val clean = verified.filterIndexed { i, _ -> candidateLanguages[i].isEmpty() }
             if (clean.isNotEmpty()) return clean
+            if (candidateLanguages.flatten().toSet().size > 1) return null
         }
         return verified
     }

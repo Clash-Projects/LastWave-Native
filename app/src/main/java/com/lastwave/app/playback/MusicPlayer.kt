@@ -7434,6 +7434,27 @@ class MusicPlayer @Inject constructor(
                     return@launch
                 }
 
+                // Same recording means same length as what is actually playing.
+                // The search allows far more slack against catalogue metadata,
+                // which let an edit, an extended cut or a dub of equal title in.
+                // Not for a stream above the quality limit: leaving it is policy.
+                val playingDurationMs = withContext(Dispatchers.Main.immediate) {
+                    if (playerDelegate.isInitialized()) player.duration.takeIf { it > 0L } else null
+                }
+                val upgradedDurationMs = upgraded.durationMs?.takeIf { it > 0L }
+                if (!aboveLimit && playingDurationMs != null && upgradedDurationMs != null &&
+                    kotlin.math.abs(playingDurationMs - upgradedDurationMs) > HOT_SWAP_MAX_LENGTH_DRIFT_MS
+                ) {
+                    switchOutcome = "length-mismatch"
+                    android.util.Log.w(
+                        "MusicPlayer",
+                        "[STREAM UPGRADE] '${track.title}': candidate runs ${upgradedDurationMs}ms against " +
+                            "${playingDurationMs}ms playing; not the same recording, keeping the playing stream",
+                    )
+                    runCatching { preparedStreams.remove(upgraded.cacheKey) }
+                    return@launch
+                }
+
                 // A stream that just died leaves only its buffer to play. The
                 // offset probe takes about 3 s of it, and that made the swap
                 // miss; with this little left, line up on positions alone.
@@ -7446,6 +7467,11 @@ class MusicPlayer @Inject constructor(
                 // offset probe are independent. On a normal-memory device they
                 // run together; on a low-RAM device they stay sequential so the
                 // extra decoders cannot starve the live player.
+                fun logDifferentAudio(candidate: ResolvedStream) = android.util.Log.w(
+                    "MusicPlayer",
+                    "[STREAM UPGRADE] '${track.title}': ${candidate.audioCodec} candidate is different audio " +
+                        "(language, version or master); keeping the playing stream",
+                )
                 suspend fun validateAndMeasure(
                     candidate: ResolvedStream,
                     candidateDurationMs: Long?,
@@ -7498,8 +7524,13 @@ class MusicPlayer @Inject constructor(
                             if (runwayNow < HOT_SWAP_PROBE_MIN_RUNWAY_MS) return true to null
                         }
                         trace.markProbeStart()
-                        val measured = measureSwapLagMs(track, currentStream, candidate, currentPos, generation)
+                        val verdict = measureSwapLagMs(track, currentStream, candidate, currentPos, generation)
+                        val measured = (verdict as? SwapAlignmentVerdict.Same)?.match
                         trace.markProbeEnd(measured?.lagMs, measured?.confidence, cacheHit = false)
+                        if (!aboveLimit && verdict is SwapAlignmentVerdict.Different) {
+                            logDifferentAudio(candidate)
+                            return false to null
+                        }
                         measured?.let {
                             swapOffsetCache.put(key, it.lagMs, it.confidence)
                         }
@@ -7522,13 +7553,18 @@ class MusicPlayer @Inject constructor(
                         }
                         val ok = audition.await()
                         trace.markValidationEnd()
-                        val measured = if (ok) {
+                        val verdict = if (ok) {
                             probe.await()
                         } else {
                             probe.cancel()
-                            null
+                            SwapAlignmentVerdict.Unknown
                         }
+                        val measured = (verdict as? SwapAlignmentVerdict.Same)?.match
                         trace.markProbeEnd(measured?.lagMs, measured?.confidence, cacheHit = false)
+                        if (!aboveLimit && verdict is SwapAlignmentVerdict.Different) {
+                            logDifferentAudio(candidate)
+                            return@coroutineScope false to null
+                        }
                         measured?.let {
                             swapOffsetCache.put(key, it.lagMs, it.confidence)
                         }
@@ -7842,13 +7878,14 @@ class MusicPlayer @Inject constructor(
             }
     }
 
-    private data class SwapLagMeasurement(val lagMs: Long, val confidence: Double)
     private data class SwapLagChoice(val lagMs: Long, val confidence: Double?, val cacheHit: Boolean)
 
     /**
      * Measures how far apart the two masters are by decoding the same stretch of
-     * both on silent players at high speed. Null when it can't be measured
-     * (undecodable passthrough, silence, a different master, or a slow network).
+     * both on silent players at high speed. [SwapAlignmentVerdict.Different] when
+     * both had sound and it does not line up (another language, version or
+     * master); Unknown when it can't be measured (undecodable passthrough,
+     * silence, a slow network).
      */
     private suspend fun measureSwapLagMs(
         track: PlayableTrack,
@@ -7856,8 +7893,8 @@ class MusicPlayer @Inject constructor(
         candidate: ResolvedStream,
         positionMs: Long,
         generation: Long,
-    ): SwapLagMeasurement? {
-        if (outputIsSingleClient() || current.isExpired()) return null
+    ): SwapAlignmentVerdict {
+        if (outputIsSingleClient() || current.isExpired()) return SwapAlignmentVerdict.Unknown
         val captures = withContext(Dispatchers.Main) {
             preparedStreams[current.cacheKey] = current
             val currentProbe = SwapPcmProbe()
@@ -7890,11 +7927,9 @@ class MusicPlayer @Inject constructor(
             } finally {
                 players.forEach { (probePlayer, _) -> runCatching { probePlayer.release() } }
             }
-        } ?: return null
+        } ?: return SwapAlignmentVerdict.Unknown
         return withContext(Dispatchers.Default) {
-            SwapAlignment.measure(captures.first, captures.second)?.let {
-                SwapLagMeasurement(it.lagMs, it.confidence)
-            }
+            SwapAlignment.compare(captures.first, captures.second)
         }
     }
 
@@ -8960,6 +8995,8 @@ class MusicPlayer @Inject constructor(
             "Accept-Encoding" to "identity",
         )
         const val LOSSLESS_BACKGROUND_BUDGET_MS = 30_000L
+        /** Largest runtime gap between the playing stream and a mid-song swap candidate. */
+        const val HOT_SWAP_MAX_LENGTH_DRIFT_MS = 3_000L
         const val HOT_SWAP_PROBE_SPEED = 4f
         const val HOT_SWAP_PROBE_TIMEOUT_MS = 8_000L
         const val HOT_SWAP_READY_TIMEOUT_MS = 6_000L
