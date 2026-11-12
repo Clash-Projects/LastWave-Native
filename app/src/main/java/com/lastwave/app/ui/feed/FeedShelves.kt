@@ -64,7 +64,6 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -83,6 +82,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -118,7 +118,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
@@ -779,8 +778,6 @@ internal fun HomeContainerSection(
 internal fun FeedSectionHeader(
     title: String,
     subtitle: String? = null,
-    actionText: String? = null,
-    actionIcon: ImageVector? = null,
     onActionClick: (() -> Unit)? = null,
     onShuffleClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
@@ -837,7 +834,7 @@ internal fun FeedSectionHeader(
                 contentDescription = stringResource(R.string.feed_shuffle_title_cd, title),
             )
         }
-        if (actionText != null && onActionClick != null && actionText != stringResource(R.string.feed_play_all)) {
+        if (onActionClick != null) {
             Surface(
                 onClick = {
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -845,25 +842,15 @@ internal fun FeedSectionHeader(
                 },
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                // 38 dp glyph pill inside a 48 dp touch target.
+                modifier = Modifier.minimumInteractiveComponentSize().size(38.dp),
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                ) {
-                    actionIcon?.let { icon ->
-                        Icon(
-                            if (icon == Icons.Filled.PlayArrow) Icons.Filled.PlayCircle else icon,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(15.dp),
-                        )
-                    }
-                    Text(
-                        actionText,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForwardIos,
+                        contentDescription = stringResource(R.string.feed_see_all),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(15.dp),
                     )
                 }
             }

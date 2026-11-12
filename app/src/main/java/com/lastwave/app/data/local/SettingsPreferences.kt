@@ -310,6 +310,7 @@ val DEFAULT_SECTION_ORDER: List<String> = listOf(
     "yt:Live performances",
     "friends_activity",
     "podcast_shelf",
+    "moods_and_genres",
     "yt:Similar to",
     "yt:Music video for you",
     "yt:Trending songs for you",
