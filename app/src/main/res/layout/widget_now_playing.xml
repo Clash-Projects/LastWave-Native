@@ -117,14 +117,6 @@
                     android:id="@+id/widget_eq_icon"
                     android:layout_width="0dp"
                     android:layout_height="0dp" />
-                <ProgressBar
-                    android:id="@+id/widget_progress"
-                    android:layout_width="0dp"
-                    android:layout_height="0dp" />
-                <LinearLayout
-                    android:id="@+id/widget_progress_row"
-                    android:layout_width="0dp"
-                    android:layout_height="0dp" />
                 <ImageButton
                     android:id="@+id/widget_prev"
                     android:layout_width="0dp"

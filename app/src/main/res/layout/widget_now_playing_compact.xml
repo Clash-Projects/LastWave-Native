@@ -171,21 +171,5 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Hidden progress row preserving ID -->
-        <LinearLayout
-            android:id="@+id/widget_progress_row"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:visibility="gone">
-
-            <ProgressBar
-                android:id="@+id/widget_progress"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="2.5dp"
-                android:max="1000"
-                android:progressBackgroundTint="@color/widget_track"
-                android:progressTint="@color/widget_primary" />
-        </LinearLayout>
     </LinearLayout>
 </LinearLayout>

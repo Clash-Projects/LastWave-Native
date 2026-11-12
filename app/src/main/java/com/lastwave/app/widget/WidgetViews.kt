@@ -18,16 +18,14 @@ import com.lastwave.app.R
  *
  * Provides dedicated layout archetypes for every slot ratio:
  * - Compact horizontal (<220dp width, e.g. 2x1): art + title/artist + play FAB.
- * - Standard horizontal (>=220dp width, <115dp height, e.g. 3x1, 4x1, 5x1): art + track + EQ + controls + bottom progress bar.
- * - Square / tall (<250dp width, >=115dp height, e.g. 2x2, 3x2, 3x3): centered large art + info + progress + centered controls.
- * - Expanded (>=250dp width, >=115dp height, e.g. 4x2, 5x2, 4x3): 88dp hero art + brand + title + artist + controls + progress.
+ * - Standard horizontal (>=220dp width, <115dp height, e.g. 3x1, 4x1, 5x1): art + track + EQ + controls.
+ * - Square / tall (<250dp width, >=115dp height, e.g. 2x2, 3x2, 3x3): centered large art + info + centered controls.
+ * - Expanded (>=250dp width, >=115dp height, e.g. 4x2, 5x2, 4x3): full-height square art + title + artist + play pill + next.
  *
  * On Android 12+ (API 31+), responsive size-mapping delivers fluid resizing.
  * On Android 10/11, options-based selection picks the best matching layout.
  */
 internal object WidgetViews {
-
-    private const val PROGRESS_MAX = 1000
 
     private val eqFrames = intArrayOf(
         R.drawable.widget_eq_frame_0,
@@ -68,7 +66,6 @@ internal object WidgetViews {
         context: Context,
         appWidgetId: Int,
         eqFrame: Int? = null,
-        progressOverride: Float? = null,
         memoryArt: Bitmap? = null,
     ): RemoteViews {
         val resolved = resolve(context)
@@ -76,10 +73,10 @@ internal object WidgetViews {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val sizeMap = mapOf(
-                SizeF(120f, 50f) to buildLayout(context, R.layout.widget_now_playing_compact, resolved, appWidgetId, eqFrame, progressOverride, themed),
-                SizeF(220f, 50f) to buildLayout(context, R.layout.widget_now_playing, resolved, appWidgetId, eqFrame, progressOverride, themed),
-                SizeF(120f, 115f) to buildLayout(context, R.layout.widget_now_playing_square, resolved, appWidgetId, eqFrame, progressOverride, themed),
-                SizeF(250f, 115f) to buildLayout(context, R.layout.widget_now_playing_expanded, resolved, appWidgetId, eqFrame, progressOverride, themed),
+                SizeF(120f, 50f) to buildLayout(context, R.layout.widget_now_playing_compact, resolved, appWidgetId, eqFrame, themed),
+                SizeF(220f, 50f) to buildLayout(context, R.layout.widget_now_playing, resolved, appWidgetId, eqFrame, themed),
+                SizeF(120f, 115f) to buildLayout(context, R.layout.widget_now_playing_square, resolved, appWidgetId, eqFrame, themed),
+                SizeF(250f, 115f) to buildLayout(context, R.layout.widget_now_playing_expanded, resolved, appWidgetId, eqFrame, themed),
             )
             return RemoteViews(sizeMap)
         }
@@ -93,7 +90,7 @@ internal object WidgetViews {
             width in 1 until 220 -> R.layout.widget_now_playing_compact
             else -> R.layout.widget_now_playing
         }
-        return buildLayout(context, layoutId, resolved, appWidgetId, eqFrame, progressOverride, themed)
+        return buildLayout(context, layoutId, resolved, appWidgetId, eqFrame, themed)
     }
 
     private fun buildLayout(
@@ -102,7 +99,6 @@ internal object WidgetViews {
         resolved: Resolved,
         appWidgetId: Int,
         eqFrame: Int?,
-        progressOverride: Float?,
         themed: WidgetTheme.Themed,
     ): RemoteViews {
         val views = RemoteViews(context.packageName, layoutId)
@@ -112,9 +108,13 @@ internal object WidgetViews {
             resolved = resolved,
             appWidgetId = appWidgetId,
             eqFrame = eqFrame,
-            progressOverride = progressOverride,
             themed = themed,
             isCompact = (layoutId == R.layout.widget_now_playing_compact),
+            artPlaceholder = if (layoutId == R.layout.widget_now_playing_expanded) {
+                R.drawable.widget_art_placeholder_large
+            } else {
+                R.drawable.widget_art_placeholder
+            },
         )
         return views
     }
@@ -125,9 +125,9 @@ internal object WidgetViews {
         resolved: Resolved,
         appWidgetId: Int,
         eqFrame: Int?,
-        progressOverride: Float?,
         themed: WidgetTheme.Themed,
         isCompact: Boolean,
+        artPlaceholder: Int,
     ) {
         val snapshot = resolved.snapshot
         if (!resolved.usableSession) {
@@ -153,12 +153,10 @@ internal object WidgetViews {
             views.setViewVisibility(R.id.widget_prev, View.GONE)
             views.setViewVisibility(R.id.widget_next, View.GONE)
             views.setViewVisibility(R.id.widget_eq_group, View.GONE)
-            views.setViewVisibility(R.id.widget_progress_row, View.GONE)
         } else {
             views.setViewVisibility(R.id.widget_prev, View.VISIBLE)
             views.setViewVisibility(R.id.widget_next, View.VISIBLE)
             views.setViewVisibility(R.id.widget_eq_group, View.VISIBLE)
-            views.setViewVisibility(R.id.widget_progress_row, View.VISIBLE)
         }
 
         views.setTextViewText(
@@ -186,12 +184,6 @@ internal object WidgetViews {
             views.setImageViewResource(R.id.widget_eq_icon, frame)
         }
 
-        // Live progress bar
-        runCatching {
-            val fraction = (progressOverride ?: snapshot.progress).coerceIn(0f, 1f)
-            views.setProgressBar(R.id.widget_progress, PROGRESS_MAX, (fraction * PROGRESS_MAX).toInt(), false)
-        }
-
         // Prev/next vectors: tint to widget_icon_tint for crisp contrast on glass surfaces
         runCatching {
             val tint = ContextCompat.getColor(context, R.color.widget_icon_tint)
@@ -203,7 +195,7 @@ internal object WidgetViews {
         if (themed.art != null) {
             views.setImageViewBitmap(R.id.widget_art, themed.art)
         } else {
-            views.setImageViewResource(R.id.widget_art, R.drawable.widget_art_placeholder)
+            views.setImageViewResource(R.id.widget_art, artPlaceholder)
         }
 
         views.setOnClickPendingIntent(R.id.widget_root, WidgetActions.openAppPending(context))
