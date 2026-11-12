@@ -780,8 +780,11 @@ fun FeedScreen(
                             }
                             drawPath(topLeft, mask)
                             val topRight = Path().apply {
+                                // Start at the arc's first point (top edge). Starting at
+                                // the side edge made arcTo cut a chord across the corner
+                                // and fill the lens inside the card instead of the corner.
                                 moveTo(right, top)
-                                lineTo(right, top + radius)
+                                lineTo(right - radius, top)
                                 arcTo(
                                     Rect(right - 2f * radius, top, right, top + 2f * radius),
                                     270f,
