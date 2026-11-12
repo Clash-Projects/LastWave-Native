@@ -23,6 +23,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -32,6 +33,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.MessageDigest
 import javax.inject.Inject
@@ -75,6 +77,7 @@ class LocalMusicLibrary @Inject constructor(
     private data class DiscoveredEntry(
         val audioUrl: String,
         val displayName: String,
+        val filterPath: String = displayName,
         val docUri: Uri? = null,
         val treeUri: Uri? = null,
         val documentId: String? = null,
@@ -118,9 +121,7 @@ class LocalMusicLibrary @Inject constructor(
     val filterNonMusicAudio: StateFlow<Boolean> = _filterNonMusicAudio.asStateFlow()
 
     init {
-        val shouldMigrateOrScan = _folders.value.isNotEmpty() &&
-            (_trackFolders.value.isEmpty() || _trackFolders.value.keys.any { it.contains("/$DIR/") })
-        if (shouldMigrateOrScan || (_autoScanEnabled.value && hasAudioPermission())) {
+        if (_folders.value.isNotEmpty() || (_autoScanEnabled.value && hasAudioPermission())) {
             rescanAll()
         }
     }
@@ -139,46 +140,39 @@ class LocalMusicLibrary @Inject constructor(
     fun setAutoScanEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_AUTO_SCAN, enabled).apply()
         _autoScanEnabled.value = enabled
-        if (enabled && hasAudioPermission()) {
-            rescanAll()
-        }
+        rescanAll()
     }
 
     fun setFilterNonMusicAudio(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_FILTER_NON_MUSIC, enabled).apply()
         _filterNonMusicAudio.value = enabled
-        if (hasAudioPermission()) {
-            rescanAll()
-        }
+        rescanAll()
     }
 
-    /** Persists read access to [treeUri], remembers it and imports it without pruning other folders. */
+    /** Selected folders define the complete scan scope, even when device auto-scan is enabled. */
     fun addFolderAndImport(treeUri: Uri) {
         runCatching {
             context.contentResolver.takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }.onFailure { Log.w(TAG, "No persistable grant for $treeUri; rescan may fail later", it) }
         val updated = (_folders.value.filterNot { it == treeUri } + treeUri)
         saveFolders(updated)
-        launchImport(folders = listOf(treeUri), includeMediaStore = false, pruneMissing = false)
+        rescanAll()
     }
 
-    /** Re-indexes remembered SAF folders and, when permitted & enabled, MediaStore audio. */
+    /** MediaStore is a fallback only when no folders have been selected. */
     fun rescanAll() {
-        val useMediaStore = _autoScanEnabled.value && hasAudioPermission()
-        if (_folders.value.isEmpty() && !useMediaStore) return
-        launchImport(folders = _folders.value, includeMediaStore = useMediaStore, pruneMissing = true)
+        val folders = _folders.value
+        val useMediaStore = LocalMusicFilters.shouldScanDevice(folders.size, _autoScanEnabled.value)
+        launchImport(folders = folders, includeMediaStore = useMediaStore)
     }
 
-    /** Forgets a folder (releases the grant). Existing imported songs remain unless missing on disk. */
+    /** Removes a scan source without deleting its files or saved local likes. */
     fun forgetFolder(treeUri: Uri) {
         runCatching {
             context.contentResolver.releasePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        val uriStr = treeUri.toString()
         saveFolders(_folders.value.filterNot { it == treeUri })
-        saveStringMap(KEY_TRACK_FOLDERS, _trackFolders.value.filterValues { it != uriStr }) {
-            _trackFolders.value = it
-        }
+        rescanAll()
     }
 
     suspend fun removeTracks(urls: Collection<String>) {
@@ -234,13 +228,14 @@ class LocalMusicLibrary @Inject constructor(
         )
     }
 
-    private fun launchImport(folders: List<Uri>, includeMediaStore: Boolean, pruneMissing: Boolean) {
-        if ((folders.isEmpty() && !includeMediaStore) || isRunning) return
+    private fun launchImport(folders: List<Uri>, includeMediaStore: Boolean) {
+        // A folder/filter change must not be discarded while an earlier scan is running.
+        job?.cancel()
         job = scope.launch {
             mutex.withLock {
                 _state.value = ImportState.Scanning(0)
                 val report = try {
-                    runImport(folders, includeMediaStore, pruneMissing)
+                    runImport(folders, includeMediaStore)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -255,20 +250,20 @@ class LocalMusicLibrary @Inject constructor(
     private suspend fun runImport(
         folders: List<Uri>,
         includeMediaStore: Boolean,
-        pruneMissing: Boolean,
     ): ImportReport {
         val entries = mutableListOf<DiscoveredEntry>()
         val unsupported = mutableMapOf<String, Int>()
-        var unreachable = 0
+        val unreachable = mutableSetOf<Uri>()
+        val filterNonMusic = _filterNonMusicAudio.value
 
         for (tree in folders) {
             val rootDocId = runCatching { DocumentsContract.getTreeDocumentId(tree) }.getOrNull()
-            if (rootDocId == null || !walkSaf(tree, rootDocId, 0, entries, unsupported)) unreachable++
+            if (rootDocId == null || !walkSaf(tree, rootDocId, 0, entries, unsupported)) unreachable += tree
         }
 
-        if (includeMediaStore && hasAudioPermission()) {
-            scanMediaStoreEntries(entries, unsupported)
-        }
+        val mediaStoreComplete = if (includeMediaStore) {
+            hasAudioPermission() && scanMediaStoreEntries(entries, unsupported)
+        } else true
 
         val existingPlaylist = playlistRepository.ensureLocalSongs()
         val existingTracks = existingPlaylist.tracks
@@ -284,6 +279,7 @@ class LocalMusicLibrary @Inject constructor(
         val folderMapping = _trackFolders.value.toMutableMap()
         val lrcMapping = _trackLrcUris.value.toMutableMap()
         val processedUrls = mutableSetOf<String>()
+        val rejectedUrls = mutableSetOf<String>()
         var unchanged = 0
         var failed = 0
 
@@ -320,6 +316,17 @@ class LocalMusicLibrary @Inject constructor(
                         ?.filter { it.url.contains("/$DIR/") }
                 } else null
                 val matchedTrack = matchedDirect ?: matchedLegacyTrack ?: fallbackMatches?.firstOrNull()
+                matchedTrack?.let { processedUrls += it.url }
+                val freshTrack = if (matchedTrack == null) readTrack(entry) else null
+                if (filterNonMusic && LocalMusicFilters.isNonMusicAudio(
+                        filePathOrRelative = entry.filterPath,
+                        durationMs = freshTrack?.durationMs ?: matchedTrack?.durationMs ?: entry.prefillDurationMs,
+                    )
+                ) {
+                    rejectedUrls += audioUrl
+                    matchedTrack?.let { rejectedUrls += it.url }
+                    return@forEachIndexed
+                }
 
                 if (matchedTrack != null) {
                     val needsMetadataRefresh = matchedTrack.url != audioUrl ||
@@ -356,7 +363,7 @@ class LocalMusicLibrary @Inject constructor(
                         unchanged++
                     }
                 } else {
-                    val track = readTrack(entry)
+                    val track = checkNotNull(freshTrack)
                     val withLrc = if (track.lrcUri == null && lrcMapping[audioUrl] != null) {
                         track.copy(lrcUri = lrcMapping[audioUrl])
                     } else track
@@ -371,26 +378,28 @@ class LocalMusicLibrary @Inject constructor(
             }
         }
 
-        // Prune tracks deleted from storage on full rescan without removing accessible un-scanned paths.
-        val removals = if (pruneMissing) {
-            existingTracks.filter { track ->
-                track.isLocalFile() &&
-                    track.url !in processedUrls &&
-                    !isLocalUrlAccessible(track.url)
-            }.mapTo(LinkedHashSet()) { it.url }
-        } else emptySet()
+        // Accessible files outside the selected scope (or rejected by the filter) must
+        // leave the index too. A failed source preserves its previous entries for retry.
+        val removals = existingTracks.filter { track ->
+            track.isLocalFile() && (track.url in rejectedUrls ||
+                (track.url !in processedUrls && mediaStoreComplete &&
+                    unreachable.none { tree -> trackBelongsToTree(track.url, tree) }))
+        }.mapTo(LinkedHashSet()) { it.url }
 
-        if (removals.isNotEmpty()) {
-            offlineRepository.removeTracks(removals)
+        currentCoroutineContext().ensureActive()
+        withContext(NonCancellable) {
+            if (updates.isNotEmpty() || additions.isNotEmpty() || removals.isNotEmpty()) {
+                playlistRepository.mergeLocalSongs(updates, additions, removals)
+            }
+            // Deselecting a folder must not erase its likes or user-created playlists.
+            val missingFiles = removals.filter { url ->
+                (includeMediaStore || folders.any { trackBelongsToTree(url, it) }) && !isLocalUrlAccessible(url)
+            }
+            if (missingFiles.isNotEmpty()) offlineRepository.removeTracks(missingFiles)
+            saveStringMap(KEY_TRACK_FOLDERS, folderMapping - removals) { _trackFolders.value = it }
+            saveStringMap(KEY_TRACK_LRC_URIS, lrcMapping - removals) { _trackLrcUris.value = it }
         }
-
-        saveStringMap(KEY_TRACK_FOLDERS, folderMapping - removals) { _trackFolders.value = it }
-        saveStringMap(KEY_TRACK_LRC_URIS, lrcMapping - removals) { _trackLrcUris.value = it }
         _state.value = ImportState.Copying(entries.size, entries.size, "")
-
-        if (updates.isNotEmpty() || additions.isNotEmpty() || removals.isNotEmpty()) {
-            playlistRepository.mergeLocalSongs(updates, additions, removals)
-        }
 
         cleanLegacyCopiedAudioFiles()
 
@@ -402,7 +411,7 @@ class LocalMusicLibrary @Inject constructor(
             unsupported = unsupported,
             failed = failed,
             bytesCopied = 0L,
-            unreachableFolders = unreachable,
+            unreachableFolders = unreachable.size,
         )
     }
 
@@ -413,9 +422,10 @@ class LocalMusicLibrary @Inject constructor(
         depth: Int,
         out: MutableList<DiscoveredEntry>,
         unsupported: MutableMap<String, Int>,
+        relativePath: String = parentDocId.substringAfter(':', parentDocId),
     ): Boolean {
         currentCoroutineContext().ensureActive()
-        if (depth > MAX_DEPTH) return true
+        if (depth > MAX_DEPTH) return false
         data class Child(val id: String, val name: String, val mime: String?, val size: Long)
         val children = mutableListOf<Child>()
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentDocId)
@@ -452,6 +462,9 @@ class LocalMusicLibrary @Inject constructor(
             base in COVER_NAMES && ext in IMAGE_EXTENSIONS
         }
         files.sortedBy { it.name.lowercase() }.forEach { file ->
+            if (_filterNonMusicAudio.value && LocalMusicFilters.isNonMusicAudio("$relativePath/${file.name}", null)) {
+                return@forEach
+            }
             val ext = LocalAudioFormats.extensionOf(file.name)
             when {
                 LocalAudioFormats.isSupported(file.name) -> {
@@ -462,6 +475,7 @@ class LocalMusicLibrary @Inject constructor(
                     out += DiscoveredEntry(
                         audioUrl = audioUrl,
                         displayName = file.name,
+                        filterPath = "$relativePath/${file.name}",
                         docUri = docUri,
                         treeUri = tree,
                         documentId = file.id,
@@ -474,16 +488,19 @@ class LocalMusicLibrary @Inject constructor(
             }
         }
         _state.value = ImportState.Scanning(out.size)
+        var complete = true
         children.filter { it.mime == DocumentsContract.Document.MIME_TYPE_DIR }
             .sortedBy { it.name.lowercase() }
-            .forEach { dir -> walkSaf(tree, dir.id, depth + 1, out, unsupported) }
-        return true
+            .forEach { dir ->
+                if (!walkSaf(tree, dir.id, depth + 1, out, unsupported, "$relativePath/${dir.name}")) complete = false
+            }
+        return complete
     }
 
     private suspend fun scanMediaStoreEntries(
         out: MutableList<DiscoveredEntry>,
         unsupported: MutableMap<String, Int>,
-    ) {
+    ): Boolean {
         currentCoroutineContext().ensureActive()
         val seenUrls = out.mapTo(HashSet()) { it.audioUrl }
         val filterNonMusic = _filterNonMusicAudio.value
@@ -512,6 +529,10 @@ class LocalMusicLibrary @Inject constructor(
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             cols += MediaStore.Audio.Media.RELATIVE_PATH
+            cols += MediaStore.Audio.Media.IS_AUDIOBOOK
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            cols += MediaStore.Audio.Media.IS_RECORDING
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             cols += MediaStore.Audio.Media.ALBUM_ARTIST
@@ -519,7 +540,7 @@ class LocalMusicLibrary @Inject constructor(
             cols += MediaStore.Audio.Media.CD_TRACK_NUMBER
         }
 
-        runCatching {
+        return try {
             context.contentResolver.query(
                 collection,
                 cols.toTypedArray(),
@@ -535,6 +556,13 @@ class LocalMusicLibrary @Inject constructor(
                 val idxTrack = c.getColumnIndex(MediaStore.Audio.Media.TRACK)
                 val idxDuration = c.getColumnIndex(MediaStore.Audio.Media.DURATION)
                 val idxAlbumId = c.getColumnIndex(MediaStore.Audio.Media.ALBUM_ID)
+                val idxIsMusic = c.getColumnIndex(MediaStore.Audio.Media.IS_MUSIC)
+                val idxIsRecording = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    c.getColumnIndex(MediaStore.Audio.Media.IS_RECORDING)
+                } else -1
+                val idxIsAudiobook = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    c.getColumnIndex(MediaStore.Audio.Media.IS_AUDIOBOOK)
+                } else -1
                 val idxIsAlarm = c.getColumnIndex(MediaStore.Audio.Media.IS_ALARM)
                 val idxIsNotif = c.getColumnIndex(MediaStore.Audio.Media.IS_NOTIFICATION)
                 val idxIsRing = c.getColumnIndex(MediaStore.Audio.Media.IS_RINGTONE)
@@ -570,8 +598,11 @@ class LocalMusicLibrary @Inject constructor(
                     val isPodcast = idxIsPodcast >= 0 && c.getInt(idxIsPodcast) != 0
 
                     if (filterNonMusic && LocalMusicFilters.isNonMusicAudio(
-                            filePathOrRelative = dataPath ?: relPath ?: displayName,
+                            filePathOrRelative = dataPath ?: "${relPath.orEmpty()}/$displayName",
                             durationMs = durationMs,
+                            isMusic = if (idxIsMusic >= 0 && !c.isNull(idxIsMusic)) c.getInt(idxIsMusic) != 0 else null,
+                            isRecording = idxIsRecording >= 0 && c.getInt(idxIsRecording) != 0,
+                            isAudiobook = idxIsAudiobook >= 0 && c.getInt(idxIsAudiobook) != 0,
                             isAlarm = isAlarm,
                             isNotification = isNotif,
                             isRingtone = isRingtone,
@@ -614,6 +645,7 @@ class LocalMusicLibrary @Inject constructor(
                     out += DiscoveredEntry(
                         audioUrl = audioUrl,
                         displayName = displayName,
+                        filterPath = dataPath ?: "${relPath.orEmpty()}/$displayName",
                         docUri = contentUri,
                         lrcUri = fsLrc,
                         mediaStoreAlbumId = albumId,
@@ -627,10 +659,32 @@ class LocalMusicLibrary @Inject constructor(
                     )
                     if (out.size % 25 == 0) _state.value = ImportState.Scanning(out.size)
                 }
-            }
-        }.onFailure {
-            Log.w(TAG, "MediaStore audio query failed", it)
+                true
+            } ?: false
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "MediaStore audio query failed", e)
+            false
         }
+    }
+
+    private fun trackBelongsToTree(trackUrl: String, tree: Uri): Boolean {
+        if (_trackFolders.value[trackUrl] == tree.toString()) return true
+        return runCatching {
+            val rootId = DocumentsContract.getTreeDocumentId(tree)
+            val trackUri = Uri.parse(trackUrl)
+            if (trackUri.scheme == "content" && trackUri.authority == tree.authority) {
+                LocalMusicFilters.isWithinFolder(DocumentsContract.getDocumentId(trackUri), rootId)
+            } else if (tree.authority == "com.android.externalstorage.documents") {
+                val folderPath = when {
+                    rootId.startsWith("primary:") -> "/storage/emulated/0/${rootId.substringAfter(':')}"
+                    rootId.startsWith("raw:") -> rootId.substringAfter(':')
+                    else -> "/storage/${rootId.substringBefore(':')}/${rootId.substringAfter(':')}"
+                }
+                LocalMusicFilters.isWithinFolder(trackUrl.removePrefix("file://"), folderPath)
+            } else false
+        }.getOrDefault(false)
     }
 
     private fun resolveAudioPathOrUri(docUri: Uri, docId: String): String {
@@ -938,14 +992,40 @@ object LocalMusicFilters {
         isNotification: Boolean = false,
         isRingtone: Boolean = false,
         isPodcast: Boolean = false,
+        isMusic: Boolean? = null,
+        isRecording: Boolean = false,
+        isAudiobook: Boolean = false,
     ): Boolean {
-        if (isAlarm || isNotification || isRingtone || isPodcast) return true
+        if (isMusic == false || isAlarm || isNotification || isRingtone || isPodcast || isRecording || isAudiobook) return true
         val norm = "/" + filePathOrRelative.replace('\\', '/').lowercase().trimStart('/')
         if (NON_MUSIC_PATH_TOKENS.any { token -> norm.contains(token) }) return true
+        val directories = norm.substringBeforeLast('/').split('/')
+            .map { it.replace(PATH_SEPARATORS, "") }
+        if (directories.any { it in RECORDING_FOLDERS }) return true
+        if (RECORDING_FILE_NAME.containsMatchIn(norm.substringAfterLast('/'))) return true
         // Skip <30s SFX/voice clips only when duration was actually probed (>0);
         // keep duration == 0/null so DSD/ALAC containers aren't falsely rejected.
         if (durationMs != null && durationMs > 0L && durationMs < MIN_MUSIC_DURATION_MS) return true
         return false
+    }
+
+    private val PATH_SEPARATORS = Regex("[ _-]")
+    private val RECORDING_FOLDERS = setOf(
+        "recording", "recordings", "recorder", "soundrecorder", "voicerecorder",
+        "callrecording", "callrecordings", "callrecorder", "voicenotes", "voicememos",
+    )
+    private val RECORDING_FILE_NAME = Regex("^(?:ptt[-_]\\d|(?:call|voice)[-_ ](?:record(?:ing)?[-_ ])?\\d|rec(?:ording)?[-_ ]\\d)")
+
+    fun shouldScanDevice(selectedFolderCount: Int, autoScanEnabled: Boolean): Boolean =
+        selectedFolderCount == 0 && autoScanEnabled
+
+    fun isWithinFolder(path: String, folder: String): Boolean {
+        val normalizedPath = path.replace('\\', '/').trimEnd('/')
+        val normalizedFolder = folder.replace('\\', '/').trimEnd('/')
+        return normalizedFolder.isNotBlank() &&
+            (normalizedPath == normalizedFolder || normalizedPath.startsWith(
+                if (normalizedFolder.endsWith(':')) normalizedFolder else "$normalizedFolder/",
+            ))
     }
 
     fun parseNumberPart(raw: String?): Int? {
