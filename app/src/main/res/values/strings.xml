@@ -5,6 +5,8 @@
     <string name="widget_description">Artwork, track details and playback controls for every media app</string>
     <string name="widget_obsidian_name">LastWave Obsidian Glass</string>
     <string name="widget_obsidian_description">Frosted obsidian glass player with translucent depth and crystal rim</string>
+    <string name="nav_home">Home</string>
+<string name="nav_discover">Discover</string>
 
     <!-- Wave home-screen widgets -->
     <string name="wave_widget_strip_name">LastWave Strip · 3×1–4×1</string>

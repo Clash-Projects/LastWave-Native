@@ -106,8 +106,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
@@ -636,18 +634,17 @@ private fun FloatingNavBar(
                     clip = false,
                 )
                 .then(
-                if (backdrop != null) {
-                    Modifier.liquidGlass(
-                        backdrop,
-                        layer,
-                        luminance,
-                        shape = DockShape,
-                        interactive = false,
-                    )
-                } else {
-                    Modifier
-                },
-            ),
+                    if (isGlass) {
+                        Modifier.liquidGlass(
+                            backdrop = backdrop!!,
+                            luminanceAnimation = luminance,
+                            shape = DockShape,
+                            interactive = false,
+                        )
+                    } else {
+                        Modifier
+                    },
+                ),
         ) {
             Box(
                 modifier = Modifier
