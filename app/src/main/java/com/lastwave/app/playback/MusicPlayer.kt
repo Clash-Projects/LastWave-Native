@@ -87,6 +87,7 @@ import com.lastwave.app.data.music.ConfirmedUnplayableMediaException
 import com.lastwave.app.data.music.YouTubeAudioStream
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YOUTUBE_WEB_USER_AGENT
+import com.lastwave.app.data.lossless.AddonTrackMatched
 import com.lastwave.app.data.lossless.LosslessAudioStream
 import com.lastwave.app.data.lossless.LosslessMusicApi
 import com.lastwave.app.data.network.NetworkMonitor
@@ -2447,7 +2448,7 @@ class MusicPlayer @Inject constructor(
             settingsPreferences.settings.collect { settings ->
                 val previousPlaybackSettings = latestPlaybackSettings
                 latestPlaybackSettings = settings
-                if (previousPlaybackSettings.hiResStart != HiResStart.NEVER && settings.hiResStart == HiResStart.NEVER) {
+                if (previousPlaybackSettings.hiResStart == HiResStart.FAST && settings.hiResStart != HiResStart.FAST) {
                     cancelActiveUpgrade()
                 }
                 musicHapticsController.updateConfig(settings.musicHapticsConfig)
@@ -6279,9 +6280,10 @@ class MusicPlayer @Inject constructor(
         // A loader resolving a future queue item must never replace the active track's upgrade.
         val canPromote = claimPlayback && _state.value.current?.mediaIdKey() == track.mediaIdKey()
         val preparedProvider = prepared?.takeIf { it.youtubeCandidate == null }
+        val addonMatched = AddonTrackMatched()
         val provider = if (wantProvider && (preparedProvider != null || !losslessMusicApi.isCoolingDown)) {
             val resolveScope = if (canPromote) applicationScope else this
-            resolveScope.async(Dispatchers.IO, start = CoroutineStart.LAZY) {
+            resolveScope.async(Dispatchers.IO + addonMatched, start = CoroutineStart.LAZY) {
                 preparedProvider ?: try {
                     resolveLosslessTrackAudioStream(
                         track = track,
@@ -6301,15 +6303,26 @@ class MusicPlayer @Inject constructor(
             }
         } else null
 
-        // "Best quality first" plays Opus only when the provider has nothing:
-        // the short race deadlines sent slow-but-available lossless to Opus.
+        // "Best quality first" waits for the addon, with YouTube resolving
+        // alongside from 0:00: 5 s, or 8 s if by then the addon has found the
+        // song and is still fetching its stream. An addon that answers
+        // nothing (none enabled, no match) hands over to YouTube at once.
         val startDirect = miscSnapshot.hiResStart == HiResStart.DIRECT
-        val providerDeadline = SystemClock.elapsedRealtime() +
-            if (startDirect) LOSSLESS_BACKGROUND_BUDGET_MS else STARTUP_PROVIDER_RESOLVE_MS
-        val probeTimeoutMs = if (startDirect) STARTUP_PROVIDER_RESOLVE_MS else STARTUP_PROVIDER_PROBE_MS
+        val startedAtMs = SystemClock.elapsedRealtime()
+        suspend fun awaitProviderUntil(deadlineMs: Long): ResolvedStream? =
+            withTimeoutOrNull((deadlineMs - SystemClock.elapsedRealtime()).coerceAtLeast(1L)) { provider?.await() }
+        fun probeTimeoutMs(): Long = if (startDirect) {
+            (startedAtMs + BEST_QUALITY_RESOLVING_WAIT_MS - SystemClock.elapsedRealtime()).coerceAtLeast(1L)
+        } else {
+            STARTUP_PROVIDER_PROBE_MS
+        }
         suspend fun awaitProvider(): ResolvedStream? = try {
-            val remaining = (providerDeadline - SystemClock.elapsedRealtime()).coerceAtLeast(1L)
-            withTimeoutOrNull(remaining) { provider?.await() }
+            if (!startDirect) {
+                awaitProviderUntil(startedAtMs + STARTUP_PROVIDER_RESOLVE_MS)
+            } else {
+                awaitProviderUntil(startedAtMs + BEST_QUALITY_WAIT_MS)
+                    ?: if (addonMatched.matched) awaitProviderUntil(startedAtMs + BEST_QUALITY_RESOLVING_WAIT_MS) else null
+            }
         } catch (error: CancellationException) {
             currentCoroutineContext().ensureActive()
             null
@@ -6353,7 +6366,7 @@ class MusicPlayer @Inject constructor(
         fun isManifest(stream: ResolvedStream) = !stream.mimeType.startsWith("audio/") || stream.segmentedDrm != null
         suspend fun playableProvider(acceptManifest: Boolean): ResolvedStream? = awaitProvider()?.takeIf {
             isStreamAllowedForQuality(it, requestedQuality, miscSnapshot) &&
-                (if (isManifest(it)) acceptManifest else isProviderReadyForStartup(it, probeTimeoutMs))
+                (if (isManifest(it)) acceptManifest else isProviderReadyForStartup(it, probeTimeoutMs()))
         }
         // Whichever source is playable first starts. Waiting on the provider
         // first cost 5 s per song whenever it answered slowly or with an error;
@@ -7215,9 +7228,10 @@ class MusicPlayer @Inject constructor(
         val misc = latestPlaybackSettings
         val requestedQuality = requestedQualityOverride ?: selectedStreamingQuality(misc)
         val explicitlyChanging = requestedQualityOverride != null
-        // "Never upgrade" only blocks lossless promotions; a 96k stream
-        // recovering to 320k or a downgrade must still go through.
-        if (misc.hiResStart == HiResStart.NEVER &&
+        // Only "Fast start" upgrades to lossless mid-song: "Best quality first"
+        // already gave lossless its chance at 0:00, "Never upgrade" never does.
+        // Both still let a 96k stream recover to 320k, and a downgrade through.
+        if (misc.hiResStart != HiResStart.FAST &&
             requestedQuality >= LosslessMusicApi.QUALITY_CD_LOSSLESS &&
             streamQualityTier(currentStream) < requestedQuality
         ) return false
@@ -8930,6 +8944,10 @@ class MusicPlayer @Inject constructor(
         const val MAX_PLAYBACK_RETRIES = 3
         const val STARTUP_PROVIDER_RESOLVE_MS = 8_000L
         const val STARTUP_PROVIDER_PROBE_MS = 1_000L
+        /** "Best quality first": how long the addon gets before YouTube plays. */
+        const val BEST_QUALITY_WAIT_MS = 5_000L
+        /** ...stretched to this, probe included, if the addon has found the song by then. */
+        const val BEST_QUALITY_RESOLVING_WAIT_MS = 8_000L
         const val STARTUP_PROBE_BYTES = 16 * 1024L
         /** Fallback resolve kept alive after a provider wins, for instant failover. */
         const val STARTUP_FALLBACK_KEEPALIVE_MS = 15_000L

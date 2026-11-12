@@ -1192,6 +1192,7 @@ class LosslessMusicApi @Inject constructor(
             Log.w(TAG, "resolveFromAddon: No matching candidate found for '$title' by '$artist'")
             return null
         }
+        currentCoroutineContext()[AddonTrackMatched]?.matched = true
 
         // Hi-res preference: hi-res-flagged masters first (stable — score
         // order kept within each group). A CD-only master otherwise scores
