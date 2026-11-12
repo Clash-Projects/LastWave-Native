@@ -78,7 +78,6 @@ import kotlin.math.roundToInt
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.scrollBy
@@ -127,8 +126,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
@@ -159,8 +156,6 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.VolumeMute
 import androidx.compose.material.icons.filled.VolumeUp
@@ -286,19 +281,14 @@ import com.lastwave.app.playback.isSpatialAudioCodec
 import com.lastwave.app.playback.qualityBadgeLabel
 import com.lastwave.app.playback.SignalPathReport
 import com.lastwave.app.playback.PlaybackProgressState
-import androidx.hilt.navigation.compose.hiltViewModel
 import com.lastwave.app.data.artwork.ArtworkNormalizer
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.playback.toGeneratedTrack
 import com.lastwave.app.playback.resolve.MetadataLog
 import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ArtworkViewModel
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.combine
-import androidx.compose.material.icons.filled.Timer
 import com.lastwave.app.ui.common.ExpressiveInlineLoadingIndicator
 import com.lastwave.app.ui.common.ExpressiveMotion
 import com.lastwave.app.ui.common.PlaylistCover
@@ -324,20 +314,16 @@ import com.lastwave.app.ui.theme.Backdrop
 import com.lastwave.app.ui.theme.rememberLayerBackdrop
 import android.graphics.Bitmap
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.graphics.scale
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
 import java.nio.IntBuffer
 import kotlin.time.Duration.Companion.seconds
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 
 internal var isQueueLockedState by mutableStateOf(false)
@@ -410,7 +396,11 @@ internal fun QueuePanel(
         else emptyList()
     }.filter { it in state.queue.indices && it != state.currentIndex }
 
-    Column(modifier) {
+    var recentlyRemoved by remember { mutableStateOf<Pair<PlayableTrack, Int>?>(null) }
+    var undoJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+    Box(modifier = modifier) {
+        Column(Modifier.fillMaxSize()) {
         Row(
             Modifier.fillMaxWidth().padding(vertical = 12.dp, horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -588,99 +578,29 @@ internal fun QueuePanel(
                 val position = groupPositionFor(index, state.queue.size)
                 val itemShape = groupShape(position)
 
-                val swipeOffsetX = remember { Animatable(0f) }
-                val itemThreshold = with(LocalDensity.current) { 68.dp.toPx() }
-                var hasTriggeredHaptic by remember { mutableStateOf(false) }
-
-                if (isDragging) {
-                    LaunchedEffect(Unit) { swipeOffsetX.snapTo(0f) }
-                }
-
-                val swipeModifier = if (!isQueueLocked && draggingIndex == -1) {
-                    Modifier.pointerInput(stableKey, state.queue.size) {
-                        detectHorizontalDragGestures(
-                            onDragStart = {
-                                hasTriggeredHaptic = false
-                            },
-                            onDragEnd = {
-                                val currentOffset = swipeOffsetX.value
-                                val resolvedIndex = currentQueueKeys.indexOf(stableKey).takeIf { it >= 0 } ?: currentIndex
-                                if (currentOffset >= itemThreshold && resolvedIndex > 0) {
-                                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                                    scope.launch {
-                                        swipeOffsetX.animateTo(
-                                            0f,
-                                            spring(
-                                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                                stiffness = Spring.StiffnessMediumLow,
-                                            ),
-                                        )
-                                    }
-                                    player.moveQueueItem(resolvedIndex, resolvedIndex - 1)
-                                } else if (currentOffset <= -itemThreshold && resolvedIndex < currentQueue.size - 1) {
-                                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                                    scope.launch {
-                                        swipeOffsetX.animateTo(
-                                            0f,
-                                            spring(
-                                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                                stiffness = Spring.StiffnessMediumLow,
-                                            ),
-                                        )
-                                    }
-                                    player.moveQueueItem(resolvedIndex, resolvedIndex + 1)
-                                } else {
-                                    scope.launch {
-                                        swipeOffsetX.animateTo(
-                                            0f,
-                                            spring(
-                                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                                stiffness = Spring.StiffnessMedium,
-                                            ),
-                                        )
-                                    }
+                val dismissState = androidx.compose.material3.rememberSwipeToDismissBoxState(
+                    confirmValueChange = { dismissValue ->
+                        if (dismissValue == androidx.compose.material3.SwipeToDismissBoxValue.EndToStart) {
+                            val resolvedIndex = currentQueueKeys.indexOf(stableKey).takeIf { it >= 0 } ?: currentIndex
+                            if (resolvedIndex in currentQueue.indices) {
+                                val removedTrack = currentQueue[resolvedIndex]
+                                player.removeQueueItem(resolvedIndex)
+                                recentlyRemoved = removedTrack to resolvedIndex
+                                undoJob?.cancel()
+                                undoJob = scope.launch {
+                                    delay(3000L)
+                                    recentlyRemoved = null
                                 }
-                            },
-                            onDragCancel = {
-                                scope.launch {
-                                    swipeOffsetX.animateTo(
-                                        0f,
-                                        spring(
-                                            dampingRatio = Spring.DampingRatioNoBouncy,
-                                            stiffness = Spring.StiffnessMedium,
-                                        ),
-                                    )
-                                }
-                            },
-                            onHorizontalDrag = { change, dragAmount ->
-                                change.consume()
-                                val resolvedIndex = currentQueueKeys.indexOf(stableKey).takeIf { it >= 0 } ?: currentIndex
-                                val canMoveUp = resolvedIndex > 0
-                                val canMoveDown = resolvedIndex < currentQueue.size - 1
-                                val oldOffset = swipeOffsetX.value
-                                val newOffset = oldOffset + dragAmount
-                                val dampedDelta = if ((newOffset > 0 && !canMoveUp) || (newOffset < 0 && !canMoveDown)) {
-                                    dragAmount * 0.22f
-                                } else {
-                                    dragAmount
-                                }
-                                val targetOffset = (oldOffset + dampedDelta).coerceIn(-itemThreshold * 1.4f, itemThreshold * 1.4f)
-                                scope.launch { swipeOffsetX.snapTo(targetOffset) }
-
-                                val passedThreshold = (targetOffset >= itemThreshold && canMoveUp) ||
-                                    (targetOffset <= -itemThreshold && canMoveDown)
-                                if (passedThreshold && !hasTriggeredHaptic) {
-                                    haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
-                                    hasTriggeredHaptic = true
-                                } else if (!passedThreshold && hasTriggeredHaptic) {
-                                    hasTriggeredHaptic = false
-                                }
-                            },
-                        )
+                                haptics.performHapticFeedback(HapticFeedbackType.ToggleOff)
+                                true
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
                     }
-                } else {
-                    Modifier
-                }
+                )
 
                 Box(
                     modifier = Modifier
@@ -703,228 +623,239 @@ internal fun QueuePanel(
                             alpha = if (isDragging) 0.96f else 1f
                         },
                 ) {
-                    val offsetX = swipeOffsetX.value
-                    if (offsetX != 0f) {
-                        val isSwipeRight = offsetX > 0f
-                        val progress = (kotlin.math.abs(offsetX) / itemThreshold).coerceIn(0f, 1f)
-                        val passed = kotlin.math.abs(offsetX) >= itemThreshold
-                        val backgroundColor = if (passed) {
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
-                        } else {
-                            MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f * progress)
-                        }
-                        val indicatorColor = if (passed) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f * progress)
-                        }
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .clip(itemShape)
-                                .background(backgroundColor)
-                                .padding(horizontal = 20.dp),
-                            contentAlignment = if (isSwipeRight) Alignment.CenterStart else Alignment.CenterEnd,
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.graphicsLayer {
-                                    val s = 0.8f + 0.2f * progress
-                                    scaleX = s
-                                    scaleY = s
-                                    alpha = progress
-                                },
-                            ) {
-                                if (isSwipeRight) {
+                    androidx.compose.material3.SwipeToDismissBox(
+                        state = dismissState,
+                        enableDismissFromStartToEnd = false,
+                        enableDismissFromEndToStart = !isQueueLocked && draggingIndex == -1,
+                        modifier = Modifier.fillMaxWidth(),
+                        backgroundContent = {
+                            if (dismissState.dismissDirection == androidx.compose.material3.SwipeToDismissBoxValue.EndToStart) {
+                                Box(
+                                    Modifier
+                                        .fillMaxSize()
+                                        .clip(itemShape)
+                                        .background(MaterialTheme.colorScheme.errorContainer)
+                                        .padding(horizontal = 24.dp),
+                                    contentAlignment = Alignment.CenterEnd
+                                ) {
                                     Icon(
-                                        imageVector = Icons.Filled.ArrowUpward,
-                                        contentDescription = "Move up",
-                                        tint = indicatorColor,
-                                        modifier = Modifier.size(20.dp),
-                                    )
-                                    Text(
-                                        text = "Move up",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = indicatorColor,
-                                    )
-                                } else {
-                                    Text(
-                                        text = "Move down",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = indicatorColor,
-                                    )
-                                    Icon(
-                                        imageVector = Icons.Filled.ArrowDownward,
-                                        contentDescription = "Move down",
-                                        tint = indicatorColor,
-                                        modifier = Modifier.size(20.dp),
+                                        Icons.Filled.DeleteOutline,
+                                        contentDescription = stringResource(com.lastwave.app.R.string.player_delete_cd),
+                                        tint = MaterialTheme.colorScheme.onErrorContainer,
                                     )
                                 }
                             }
-                        }
-                    }
-
-                    LiquidGlassSurface(
-                        glassModifier = Modifier.liquidGlassChrome(itemShape, LocalLiquidGlass.current),
-                        onClick = { player.seekToQueueItem(currentQueueKeys.indexOf(stableKey).takeIf { it >= 0 } ?: currentIndex) },
-                        shape = itemShape,
-                        color = if (isCurrent) {
-                            if (LocalLiquidGlass.current) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
-                            else MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            if (LocalLiquidGlass.current) MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.70f)
-                            else MaterialTheme.colorScheme.surfaceContainerHighest
                         },
-                        contentColor = if (isCurrent) MaterialTheme.colorScheme.onPrimaryContainer
-                        else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .then(swipeModifier)
-                            .graphicsLayer {
-                                translationX = swipeOffsetX.value
-                            },
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(9.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                "${index + 1}",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isCurrent) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.width(30.dp),
-                            )
-                            PlayerArtwork(item, Modifier.size(50.dp), 13.dp)
-                            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                                Text(
-                                    item.title,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
-                                )
-                                Text(
-                                    item.artist,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (isCurrent) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.76f)
-                                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            IconButton(
-                                onClick = { menuIndex = currentQueueKeys.indexOf(stableKey).takeIf { it >= 0 } ?: currentIndex },
-                                modifier = Modifier.size(36.dp)
+                        content = {
+                            LiquidGlassSurface(
+                                glassModifier = Modifier.liquidGlassChrome(itemShape, LocalLiquidGlass.current),
+                                onClick = { player.seekToQueueItem(currentQueueKeys.indexOf(stableKey).takeIf { it >= 0 } ?: currentIndex) },
+                                shape = itemShape,
+                                color = if (isCurrent) {
+                                    if (LocalLiquidGlass.current) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+                                    else MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    if (LocalLiquidGlass.current) MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.70f)
+                                    else MaterialTheme.colorScheme.surfaceContainerHighest
+                                },
+                                contentColor = if (isCurrent) MaterialTheme.colorScheme.onPrimaryContainer
+                                else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Icon(
-                                    Icons.Filled.MoreVert,
-                                    contentDescription = stringResource(com.lastwave.app.R.string.player_menu_cd),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            if (!isQueueLocked) {
-                                Icon(
-                                    Icons.Filled.DragHandle,
-                                    stringResource(com.lastwave.app.R.string.queue_drag_hint),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (isDragging) 1f else 0.6f),
-                                    modifier = Modifier
-                                        .padding(start = 8.dp)
-                                        .size(40.dp)
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(
-                                            if (isDragging) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-                                            else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f),
+                                Row(
+                                    Modifier.fillMaxWidth().padding(9.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        "${index + 1}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isCurrent) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.width(30.dp),
+                                    )
+                                    PlayerArtwork(item, Modifier.size(50.dp), 13.dp)
+                                    Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                                        Text(
+                                            item.title,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
                                         )
-                                        .padding(8.dp)
-                                        .pointerInput(stableKey) {
-                                            detectDragGestures(
-                                                onDragStart = {
-                                                    val actualIndex = currentQueueKeys.indexOf(stableKey).takeIf { it >= 0 } ?: currentIndex
-                                                    draggingIndex = actualIndex
-                                                    dragOffsetY = 0f
-                                                    cancelEdgeScroll()
-                                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                },
-                                                onDragEnd = {
-                                                    cancelEdgeScroll()
-                                                    draggingIndex = -1
-                                                    dragOffsetY = 0f
-                                                },
-                                                onDragCancel = {
-                                                    cancelEdgeScroll()
-                                                    draggingIndex = -1
-                                                    dragOffsetY = 0f
-                                                },
-                                                onDrag = { change, dragAmount ->
-                                                    change.consume()
-                                                    val source = draggingIndex
-                                                    if (source < 0 || source !in currentQueue.indices) {
-                                                        cancelEdgeScroll()
-                                                        return@detectDragGestures
-                                                    }
-                                                    dragOffsetY += dragAmount.y
-                                                    val layoutInfo = runCatching { listState.layoutInfo }.getOrNull() ?: return@detectDragGestures
-                                                    val visible = runCatching { layoutInfo.visibleItemsInfo }.getOrNull() ?: return@detectDragGestures
-                                                    if (visible.isEmpty()) return@detectDragGestures
+                                        Text(
+                                            item.artist,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = if (isCurrent) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.76f)
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { menuIndex = currentQueueKeys.indexOf(stableKey).takeIf { it >= 0 } ?: currentIndex },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.MoreVert,
+                                            contentDescription = stringResource(com.lastwave.app.R.string.player_menu_cd),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    if (!isQueueLocked) {
+                                        Icon(
+                                            Icons.Filled.DragHandle,
+                                            stringResource(com.lastwave.app.R.string.queue_drag_hint),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (isDragging) 1f else 0.6f),
+                                            modifier = Modifier
+                                                .padding(start = 8.dp)
+                                                .size(40.dp)
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .background(
+                                                    if (isDragging) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                                                    else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f),
+                                                )
+                                                .padding(8.dp)
+                                                .pointerInput(stableKey) {
+                                                    detectDragGestures(
+                                                        onDragStart = {
+                                                            val actualIndex = currentQueueKeys.indexOf(stableKey).takeIf { it >= 0 } ?: currentIndex
+                                                            draggingIndex = actualIndex
+                                                            dragOffsetY = 0f
+                                                            cancelEdgeScroll()
+                                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        },
+                                                        onDragEnd = {
+                                                            cancelEdgeScroll()
+                                                            draggingIndex = -1
+                                                            dragOffsetY = 0f
+                                                        },
+                                                        onDragCancel = {
+                                                            cancelEdgeScroll()
+                                                            draggingIndex = -1
+                                                            dragOffsetY = 0f
+                                                        },
+                                                        onDrag = { change, dragAmount ->
+                                                            change.consume()
+                                                            val source = draggingIndex
+                                                            if (source < 0 || source !in currentQueue.indices) {
+                                                                cancelEdgeScroll()
+                                                                return@detectDragGestures
+                                                            }
+                                                            dragOffsetY += dragAmount.y
+                                                            val layoutInfo = runCatching { listState.layoutInfo }.getOrNull() ?: return@detectDragGestures
+                                                            val visible = runCatching { layoutInfo.visibleItemsInfo }.getOrNull() ?: return@detectDragGestures
+                                                            if (visible.isEmpty()) return@detectDragGestures
 
-                                                    val draggedInfo = visible.firstOrNull { it.index == source } ?: return@detectDragGestures
-                                                    val draggedCenter = draggedInfo.offset + draggedInfo.size / 2 + dragOffsetY.toInt()
+                                                            val draggedInfo = visible.firstOrNull { it.index == source } ?: return@detectDragGestures
+                                                            val draggedCenter = draggedInfo.offset + draggedInfo.size / 2 + dragOffsetY.toInt()
 
-                                                    val target = visible.firstOrNull { info ->
-                                                        info.index != source &&
-                                                            info.index in currentQueue.indices &&
-                                                            draggedCenter in info.offset..(info.offset + info.size)
-                                                    }?.index
+                                                            val targetInfo = visible.firstOrNull { info ->
+                                                                info.index != source &&
+                                                                    info.index in currentQueue.indices &&
+                                                                    draggedCenter in info.offset..(info.offset + info.size)
+                                                            }
 
-                                                    if (target != null && target != source && target in currentQueue.indices) {
-                                                        player.moveQueueItem(source, target)
-                                                        val targetInfo = runCatching {
-                                                            listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == target }
-                                                        }.getOrNull()
-                                                        if (targetInfo != null) {
-                                                            dragOffsetY += (draggedInfo.offset - targetInfo.offset).toFloat()
-                                                        }
-                                                        draggingIndex = target
-                                                        runCatching { haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick) }
-                                                    }
+                                                            if (targetInfo != null && targetInfo.index != source && targetInfo.index in currentQueue.indices) {
+                                                                val target = targetInfo.index
+                                                                player.moveQueueItem(source, target)
+                                                                dragOffsetY += (draggedInfo.offset - targetInfo.offset).toFloat()
+                                                                draggingIndex = target
+                                                                runCatching { haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick) }
+                                                            }
 
-                                                    val viewportStart = runCatching { layoutInfo.viewportStartOffset }.getOrDefault(0)
-                                                    val viewportEnd = runCatching { layoutInfo.viewportEndOffset }.getOrDefault(0)
-                                                    if (viewportEnd <= viewportStart) {
-                                                        cancelEdgeScroll()
-                                                        return@detectDragGestures
-                                                    }
-                                                    val edgeZone = 180
-                                                    val direction = when {
-                                                        draggedCenter < viewportStart + edgeZone -> -1f
-                                                        draggedCenter > viewportEnd - edgeZone -> 1f
-                                                        else -> 0f
-                                                    }
-                                                    if (direction == 0f) {
-                                                        cancelEdgeScroll()
-                                                    } else if (edgeScrollJob?.isActive != true) {
-                                                        edgeScrollJob = scope.launch {
-                                                            runCatching { listState.scrollBy(direction * 28f) }
-                                                        }
-                                                    }
+                                                            val viewportStart = runCatching { layoutInfo.viewportStartOffset }.getOrDefault(0)
+                                                            val viewportEnd = runCatching { layoutInfo.viewportEndOffset }.getOrDefault(0)
+                                                            if (viewportEnd <= viewportStart) {
+                                                                cancelEdgeScroll()
+                                                                return@detectDragGestures
+                                                            }
+                                                            val edgeZone = 180
+                                                            val direction = when {
+                                                                draggedCenter < viewportStart + edgeZone -> -1f
+                                                                draggedCenter > viewportEnd - edgeZone -> 1f
+                                                                else -> 0f
+                                                            }
+                                                            if (direction == 0f) {
+                                                                cancelEdgeScroll()
+                                                            } else if (edgeScrollJob?.isActive != true) {
+                                                                edgeScrollJob = scope.launch {
+                                                                    runCatching { listState.scrollBy(direction * 28f) }
+                                                                }
+                                                            }
+                                                        },
+                                                    )
                                                 },
-                                            )
-                                        },
-                                )
+                                        )
+                                    }
+                                }
                             }
                         }
-                    }
+                    )
                 }
             }
             item { Spacer(Modifier.height(12.dp)) }
         }
     }
+
+    AnimatedVisibility(
+        visible = recentlyRemoved != null,
+        enter = slideInVertically { it } + fadeIn(),
+        exit = slideOutVertically { it } + fadeOut(),
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = 16.dp + bottomPadding)
+            .padding(horizontal = 20.dp),
+    ) {
+        val removed = recentlyRemoved
+        if (removed != null) {
+            LiquidGlassSurface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.95f),
+                contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                tonalElevation = 6.dp,
+                shadowElevation = 8.dp,
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = "\"${removed.first.title}\" removed",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(end = 8.dp),
+                    )
+                    TextButton(
+                        onClick = {
+                            val (track, index) = removed
+                            player.insertQueueItem(index, track)
+                            recentlyRemoved = null
+                            undoJob?.cancel()
+                            haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                        },
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.inversePrimary
+                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    ) {
+                        Text(
+                            text = "Undo",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 
     menuIndex?.let { index ->
         val itemTrack = state.queue.getOrNull(index)
