@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -38,11 +39,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.lastwave.app.ui.theme.Backdrop
-import com.lastwave.app.ui.theme.LiquidGlassPreset
 import com.lastwave.app.ui.theme.LocalIsDarkTheme
 import com.lastwave.app.ui.theme.LocalLiquidGlass
 import com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported
-import com.lastwave.app.ui.theme.liquidGlassChrome
+import com.lastwave.app.ui.theme.headerLiquidGlass
 import com.lastwave.app.ui.theme.liquidGlassSource
 import com.lastwave.app.ui.theme.rememberLayerBackdrop
 
@@ -62,6 +62,9 @@ fun ExpressiveHeader(
     onBack: (() -> Unit)? = null,
     containerColor: Color = Color.Unspecified,
     backdrop: Backdrop? = null,
+    /** Extra row drawn inside the same glass pane, under the title row
+     *  (e.g. Home's chip strip), full width with no side padding. */
+    bottomContent: (@Composable ColumnScope.() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val liquidGlass = LocalLiquidGlass.current
@@ -119,11 +122,9 @@ fun ExpressiveHeader(
                 .fillMaxWidth()
                 .then(
                     if (useGlass && effectiveBackdrop != null) {
-                        Modifier.liquidGlassChrome(
-                            shape = HeaderShape,
-                            enabled = true,
-                            preset = LiquidGlassPreset.Header,
+                        Modifier.headerLiquidGlass(
                             backdrop = effectiveBackdrop,
+                            shape = HeaderShape,
                         )
                     } else {
                         Modifier
@@ -136,8 +137,13 @@ fun ExpressiveHeader(
                     .windowInsetsPadding(
                         WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
                     )
+                    .padding(bottom = if (bottomContent != null) 4.dp else 10.dp),
+            ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
                     .padding(horizontal = 20.dp)
-                    .padding(top = 2.dp, bottom = 10.dp),
+                    .padding(top = 2.dp, bottom = if (bottomContent != null) 4.dp else 0.dp),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -185,6 +191,8 @@ fun ExpressiveHeader(
                         actions()
                     }
                 }
+            }
+            bottomContent?.invoke(this)
             }
         }
     }

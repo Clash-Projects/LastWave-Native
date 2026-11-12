@@ -22,11 +22,16 @@ object PlaybackStartupLog {
     private var extracted = false
     private var prepareEnded = false
     private var readyLogged = false
+    private var audioLogged = false
+    private var attemptId = 0L
     private var trackId = ""
     private var youtubeVideoId = ""
+    private var source = ""
 
     fun begin(trackId: String, youtubeVideoId: String?) {
         synchronized(lock) {
+            attemptId++
+            audioLogged = false
             tapElapsedMs = android.os.SystemClock.elapsedRealtime()
             cacheStartMs = 0L
             videoStartMs = 0L
@@ -43,6 +48,7 @@ object PlaybackStartupLog {
             readyLogged = false
             this.trackId = trackId
             this.youtubeVideoId = youtubeVideoId.orEmpty()
+            source = ""
         }
         event("TAP_TRACK")
     }
@@ -86,6 +92,16 @@ object PlaybackStartupLog {
         event("STREAM_EXTRACT_END")
     }
 
+    /** Which candidate won the startup race (provider, youtube, local, prepared). */
+    fun sourceSelected(name: String, detail: String) {
+        val elapsed = synchronized(lock) {
+            if (source.isNotEmpty()) return
+            source = name
+            elapsedSince(tapElapsedMs)
+        }
+        Log.i(TAG, "[SOURCE_SELECTED] attempt=$attemptId source=$name $detail elapsedMs=$elapsed")
+    }
+
     fun prepareStart() {
         synchronized(lock) { prepareStartMs = android.os.SystemClock.elapsedRealtime() }
         event("PLAYER_PREPARE_START")
@@ -112,17 +128,32 @@ object PlaybackStartupLog {
             val total = elapsedSince(tapElapsedMs)
             "totalMs=$total cacheMs=$cacheMs videoIdMs=$videoIdMs extractMs=$extractMs " +
                 "prepareMs=$prepareMs cacheHit=$cacheHit videoIdLookup=$lookedUpVideoId " +
-                "extracted=$extracted trackId=$trackId youtubeVideoId=$youtubeVideoId"
+                "extracted=$extracted source=$source trackId=$trackId youtubeVideoId=$youtubeVideoId"
         }
         event("PLAYER_READY")
         Log.i(TAG, "[STARTUP] $summary")
+    }
+
+    /** Software playout marker; not a claim about physical speaker/Bluetooth latency. */
+    fun audioAdvancing(playoutStartSystemTimeMs: Long) {
+        val summary = synchronized(lock) {
+            if (audioLogged || !readyLogged || tapElapsedMs == 0L) return
+            audioLogged = true
+            val callbackElapsed = elapsedSince(tapElapsedMs)
+            val callbackLag = System.currentTimeMillis() - playoutStartSystemTimeMs
+            // Media3 supplies a wall-clock estimate. Convert only a plausible
+            // same-device timestamp; keep callback receipt as a separate metric.
+            val estimatedStart = if (callbackLag in 0..callbackElapsed) callbackElapsed - callbackLag else -1L
+            "attempt=$attemptId elapsedMs=$callbackElapsed estimatedPlayoutMs=$estimatedStart callbackLagMs=$callbackLag"
+        }
+        Log.i(TAG, "[AUDIO_ADVANCING] $summary")
     }
 
     private fun event(name: String) {
         val elapsed = synchronized(lock) { elapsedSince(tapElapsedMs) }
         Log.i(
             TAG,
-            "[$name] trackId=$trackId youtubeVideoId=$youtubeVideoId elapsedMs=$elapsed",
+            "[$name] attempt=$attemptId trackId=$trackId youtubeVideoId=$youtubeVideoId elapsedMs=$elapsed",
         )
     }
 

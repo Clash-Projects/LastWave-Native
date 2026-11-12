@@ -1,5 +1,9 @@
 package com.lastwave.app.data.lyrics
 
+import android.content.Context
+import android.net.Uri
+import com.lastwave.app.data.localmusic.LocalContainerLyricsReader
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -49,6 +53,18 @@ data class LyricSyllable(
     val appendToPrevious: Boolean = false,
 )
 
+/**
+ * Who sings a row, which decides where it is staged: lead on the start side,
+ * the second voice of a duet on the end side, both / group in the centre.
+ * [BACKGROUND_SUBLINE] marks harmony rows that nest under the lead row.
+ */
+enum class VocalRole {
+    LEAD_LEFT,
+    DUET_RIGHT,
+    UNISON_CENTER,
+    BACKGROUND_SUBLINE,
+}
+
 @androidx.compose.runtime.Immutable
 data class LyricLine(
     val timeMs: Long,
@@ -57,6 +73,7 @@ data class LyricLine(
     val syllables: List<LyricSyllable> = emptyList(),
     val transliteration: String? = null,
     val transliterationSyllables: List<LyricSyllable> = emptyList(),
+    val role: VocalRole = VocalRole.LEAD_LEFT,
 ) {
     val hasSyllables: Boolean get() = syllables.isNotEmpty()
     val isRtl: Boolean get() = isRtlText(text) || syllables.any { isRtlText(it.text) }
@@ -115,6 +132,7 @@ fun providerForSource(source: String?): com.lastwave.app.data.local.LyricsProvid
 
 @Singleton
 class LyricsRepository @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: Context,
     private val betterLyricsApi: BetterLyricsApi,
     private val kugouApi: KugouLyricsApi,
     private val lrclibApi: LrclibLyricsApi,
@@ -255,6 +273,8 @@ class LyricsRepository @Inject constructor(
         isrc: String? = null,
         /** Local songs: `.lrc` imported next to the audio file; wins over every provider. */
         localLrcPath: String? = null,
+        /** Local audio path or `content://` URI to inspect container-embedded lyrics (USLT/SYLT/FLAC/M4A/MKA). */
+        localAudioUrl: String? = null,
         overrideProvider: com.lastwave.app.data.local.LyricsProvider? = null,
         excludedProviders: Set<com.lastwave.app.data.local.LyricsProvider> = emptySet(),
         onPartialResult: suspend (LyricsResult.Success) -> Unit = {},
@@ -263,7 +283,11 @@ class LyricsRepository @Inject constructor(
             excludedProviders.isNotEmpty()
         if (!skipLocal && !localLrcPath.isNullOrBlank()) {
             val lrc = runCatching {
-                java.io.File(localLrcPath).takeIf { it.isFile && it.length() > 0 }?.readText()
+                if (localLrcPath.startsWith("content://")) {
+                    appContext.contentResolver.openInputStream(Uri.parse(localLrcPath))?.bufferedReader()?.use { it.readText() }
+                } else {
+                    java.io.File(localLrcPath.removePrefix("file://")).takeIf { it.isFile && it.length() > 0 }?.readText()
+                }
             }.getOrNull()
             if (!lrc.isNullOrBlank()) {
                 val lines = parseLrc(lrc)
@@ -278,6 +302,33 @@ class LyricsRepository @Inject constructor(
                     LyricsResult.Success(lines = emptyList(), isSynced = false, plainLyrics = lrc.trim(), source = "Local LRC")
                 }
                 return@withContext result
+            }
+        }
+        if (!skipLocal && !localAudioUrl.isNullOrBlank()) {
+            val embedded = withContext(Dispatchers.IO) {
+                LocalContainerLyricsReader.extract(appContext, localAudioUrl)
+            }
+            if (embedded != null && embedded.text.isNotBlank()) {
+                val lines = if (embedded.isLrcFormatted) parseLrc(embedded.text) else emptyList()
+                val embeddedResult = if (lines.isNotEmpty()) {
+                    LyricsResult.Success(
+                        lines = lines,
+                        isSynced = true,
+                        isWordSynced = lines.any { it.hasSyllables },
+                        source = embedded.sourceLabel,
+                    )
+                } else {
+                    LyricsResult.Success(
+                        lines = emptyList(),
+                        isSynced = false,
+                        plainLyrics = embedded.text,
+                        source = embedded.sourceLabel,
+                    )
+                }
+                // If synced lines exist (or no word-by-word upgrade requested), return immediately.
+                if (embeddedResult.isSynced || !wordByWord) {
+                    return@withContext embeddedResult
+                }
             }
         }
 
@@ -1341,6 +1392,7 @@ class LyricsRepository @Inject constructor(
                 val bothWordSync = c.hasSyllables && line.hasSyllables
                 val gapCap = if (bothWordSync) CONTINUATION_GAP_WORD_MS else CONTINUATION_GAP_LINE_MS
                 val canMerge = !c.isBackgroundLine() && !line.isBackgroundLine() &&
+                    c.role == line.role &&
                     c.text.isNotBlank() && line.text.isNotBlank() &&
                     c.text.trim() != "♪" && line.text.trim() != "♪" &&
                     gap in 0..gapCap &&
@@ -1432,20 +1484,34 @@ class LyricsRepository @Inject constructor(
             val marks = WORD_STAMP_REGEX.findAll(body).toList()
             if (marks.isEmpty()) return emptyList()
             data class Run(val startMs: Long, val text: String)
-            val runs = marks.mapIndexed { index, mark ->
+            val allRuns = mutableListOf<Run>()
+
+            val firstMark = marks.first()
+            val leadingText = body.substring(0, firstMark.range.first)
+            if (leadingText.trim().isNotEmpty()) {
+                val firstMarkMs = stampToMs(
+                    firstMark.groupValues[1].toLongOrNull() ?: 0L,
+                    firstMark.groupValues[2].toLongOrNull() ?: 0L,
+                    firstMark.groupValues[3],
+                )
+                val startMs = minOf(lineStartMs, firstMarkMs)
+                allRuns += Run(startMs, leadingText)
+            }
+
+            marks.forEachIndexed { index, mark ->
                 val until = marks.getOrNull(index + 1)?.range?.first ?: body.length
                 val startMs = stampToMs(
                     mark.groupValues[1].toLongOrNull() ?: 0L,
                     mark.groupValues[2].toLongOrNull() ?: 0L,
                     mark.groupValues[3],
                 )
-                Run(startMs, body.substring(mark.range.last + 1, until))
+                allRuns += Run(startMs, body.substring(mark.range.last + 1, until))
             }
             val words = mutableListOf<LyricSyllable>()
-            runs.forEachIndexed { index, run ->
+            allRuns.forEachIndexed { index, run ->
                 val text = decodeEntities(run.text).trim()
                 if (text.isBlank()) return@forEachIndexed
-                val endMs = runs.getOrNull(index + 1)?.startMs
+                val endMs = allRuns.getOrNull(index + 1)?.startMs
                     ?: lineEndMs
                     ?: (run.startMs + 800L)
                 words += LyricSyllable(
@@ -1500,14 +1566,9 @@ class LyricsRepository @Inject constructor(
                 val displayText = if (isBg) stripBackgroundParens(cleanText) else cleanText
                 if (words.isNotEmpty()) {
                     val lineStart = minOf(raw.timeMs, words.first().timeMs)
-                    val joined = words.joinToString(" ") { it.text }
-                    // Keep the author spacing when the plain body carries
-                    // punctuation the word join would rewrite.
-                    val text = if (!isBg && displayText.isNotBlank() && displayText.length >= joined.length) {
-                        displayText
-                    } else if (isBg) {
-                        displayText.ifBlank { joined }
-                    } else joined
+                    // Keep the authored punctuation, with whitespace runs
+                    // between stamps collapsed to single spaces.
+                    val text = LyricsSanitizer.safeLineText(displayText, words.map { it.text })
                     result += LyricLine(
                         timeMs = lineStart,
                         durationMs = ((nextStart ?: (words.maxOf { it.timeMs + it.durationMs })) - lineStart).coerceAtLeast(0L),

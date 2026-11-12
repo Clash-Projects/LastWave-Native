@@ -57,6 +57,15 @@ class PlaybackResolver(
         generation.get()
     }
 
+    /** A rematch may replace its own selection, even if another tap arrives concurrently. */
+    fun replaceClaim(previous: TrackIdentity, replacement: TrackIdentity) {
+        synchronized(gate) {
+            if (requested != previous) throw StaleResolveException(previous)
+            requested = replacement
+            generation.incrementAndGet()
+        }
+    }
+
     fun invalidate() {
         synchronized(gate) {
             generation.incrementAndGet()

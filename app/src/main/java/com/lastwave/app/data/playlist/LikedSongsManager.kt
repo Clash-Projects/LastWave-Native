@@ -5,9 +5,11 @@ import android.os.Build
 import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.generate.StoredTrack
 import com.lastwave.app.data.generate.distinctSongs
+import com.lastwave.app.data.generate.isLocalFile
 import com.lastwave.app.data.generate.sameSongAs
 import com.lastwave.app.data.generate.toGenerated
 import com.lastwave.app.data.generate.toStored
+import com.lastwave.app.data.generate.youtubeVideoIdOrNull
 import com.lastwave.app.data.local.SettingsPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -15,18 +17,37 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+
+/**
+ * What the heart state set holds for one liked song: its title|artist key and,
+ * when it has one, its YouTube id. Storage treats two tracks as the same song
+ * when either matches ([sameSongAs]), so the heart must too: with only the key,
+ * a song whose id was already liked under another title (YouTube titles carry
+ * "(Official Video)" etc.) showed as not liked, and liking it wrote nothing.
+ */
+internal fun GeneratedTrack.likedMarkers(): List<String> =
+    if (isLocalFile()) {
+        val normalizedUrl = url.trim().removePrefix("file://")
+        listOfNotNull(normalizedUrl.takeIf { it.isNotBlank() }?.let { "local:$it" })
+    } else {
+        listOfNotNull(key, youtubeVideoIdOrNull()?.let { "vid:$it" })
+    }
+
+/** Whether this track is liked according to a heart-state set. */
+fun GeneratedTrack.isLikedIn(likedKeys: Set<String>): Boolean =
+    likedMarkers().any { it in likedKeys }
 
 /** Owns the built-in local Liked Songs playlist and the player's heart state. */
 @Singleton
@@ -47,8 +68,10 @@ class LikedSongsManager @Inject constructor(
         started = true
         applicationScope.launch(Dispatchers.IO) {
             try {
-                loadLocalOnlyTracks()
-                watchLocalSync()
+                // watchLocalSync() used to sit here: it collected the (now removed)
+                // "Save to Liked Songs" setting forever, so nothing below it ever
+                // ran — no startup refresh, no heals, no change listener.
+                migrateLocalOnlyLikes()
                 bootstrapForInstalledVersion()
                 refresh()
                 // One-time heal for duplicates stacked by older builds (weak
@@ -82,87 +105,109 @@ class LikedSongsManager @Inject constructor(
         }
     }
 
-    suspend fun toggle(track: GeneratedTrack): Boolean = mutationMutex.withLock {
-        val localSync = isLocalSyncEnabled()
-        if (localSync) {
-            val existing = playlistRepository.getLikedSongs()
-            val currentlyLiked = existing?.tracks?.any { it.sameSongAs(track) } == true
-            if (currentlyLiked) {
-                playlistRepository.replaceTracksForSync(
-                    existing!!.id,
-                    existing.tracks.filterNot { it.sameSongAs(track) },
-                )
-                refresh()
-                false
-            } else {
-                // Deletion is respected until the next actual Like action.
-                val playlist = existing ?: playlistRepository.ensureLikedSongs()
-                playlistRepository.replaceTracksForSync(playlist.id, (playlist.tracks + track).distinctSongs())
-                refresh()
-                true
-            }
-        } else {
-            // The local playlist is switched off, so the like is kept in the app's own
-            // record instead. The heart still has to tell the truth about it.
-            val currentlyLiked = localOnlyTracks.any { it.sameSongAs(track) }
-            if (currentlyLiked) {
-                setLocalOnlyTracks(localOnlyTracks.filterNot { it.sameSongAs(track) })
-                refresh()
-                false
-            } else {
-                setLocalOnlyTracks((localOnlyTracks + track).distinctSongs())
-                refresh()
-                true
-            }
+    // Mutations read and re-encode the whole Liked Songs playlist. Callers
+    // include viewModelScope (main thread), so the work runs on Default: on a
+    // library of thousands of songs it otherwise froze the UI for seconds per
+    // heart tap (ANR).
+    //
+    // The write still takes ~1 s on a few thousand songs, so the heart flips
+    // at the tap and the write saves exactly that state. Waiting for the write
+    // left the heart a tap behind, and a second tap during the wait looked
+    // like the like undoing itself.
+
+    /** Flips the heart and saves the state it now shows. Returns that state. */
+    suspend fun toggle(track: GeneratedTrack): Boolean {
+        val markers = track.likedMarkers()
+        val liked = synchronized(heartLock) {
+            beginHeartTapLocked()
+            val nowLiked = !track.isLikedIn(_likedTrackKeys.value)
+            _likedTrackKeys.value = if (nowLiked) _likedTrackKeys.value + markers else _likedTrackKeys.value - markers.toSet()
+            nowLiked
         }
+        return finishHeartTap { setLikedStored(track, liked) }
     }
 
     /** Artwork double-tap is intentionally idempotent: it never unlikes. */
-    suspend fun like(track: GeneratedTrack): Boolean = mutationMutex.withLock {
-        if (isLocalSyncEnabled()) {
-            val existing = playlistRepository.getLikedSongs()
-            if (existing?.tracks?.any { it.sameSongAs(track) } == true) return@withLock true
-            val playlist = existing ?: playlistRepository.ensureLikedSongs()
-            playlistRepository.replaceTracksForSync(playlist.id, (playlist.tracks + track).distinctSongs())
-            refresh()
-            true
-        } else {
-            if (localOnlyTracks.any { it.sameSongAs(track) }) return@withLock true
-            setLocalOnlyTracks((localOnlyTracks + track).distinctSongs())
-            refresh()
-            true
+    suspend fun like(track: GeneratedTrack): Boolean {
+        synchronized(heartLock) {
+            beginHeartTapLocked()
+            _likedTrackKeys.value = _likedTrackKeys.value + track.likedMarkers()
         }
+        return finishHeartTap { setLikedStored(track, liked = true) }
     }
-
-    /** Whether a like is added to this app's own Liked Songs playlist. */
-    private suspend fun isLocalSyncEnabled(): Boolean =
-        settingsPreferences.likedSongsLocalSync.first()
 
     /**
-     * The likes made while the local playlist was switched off.
-     *
-     * The playlist is the app's record of likes and the heart reads it. With the playlist
-     * switched off there is nothing to read, so the likes are kept here instead - the heart
-     * still has to tell the truth about what the user liked.
+     * Heart state is published under this lock. [pendingHeartTaps] counts
+     * taps whose write has not finished: while any is pending, a read-back
+     * would show a state without it and the heart would flick back, so
+     * read-backs are not published. [heartTapGeneration] changes on every
+     * tap, so a read taken before a tap is never published after it.
      */
-    @Volatile
-    private var localOnlyTracks: List<GeneratedTrack> = emptyList()
+    private val heartLock = Any()
+    private var pendingHeartTaps = 0
+    private var heartTapGeneration = 0L
 
-    private suspend fun setLocalOnlyTracks(tracks: List<GeneratedTrack>) {
-        localOnlyTracks = tracks
-        settingsPreferences.setLocalOnlyLikedTracks(
-            json.encodeToString(tracks.map { it.toStored() }),
-        )
+    private fun beginHeartTapLocked() {
+        pendingHeartTaps++
+        heartTapGeneration++
     }
 
-    private suspend fun loadLocalOnlyTracks() {
-        val raw = settingsPreferences.localOnlyLikedTracks.first()
-        localOnlyTracks = if (raw.isBlank()) {
-            emptyList()
-        } else {
-            runCatching {
-                json.decodeFromString<List<StoredTrack>>(raw).map { it.toGenerated() }
-            }.getOrDefault(emptyList())
+    /**
+     * Ends a heart tap however it ends (saved, failed or cancelled). The last
+     * pending tap re-reads the stored state, so the heart can never be left
+     * showing a guess that was not saved.
+     */
+    private suspend fun <T> finishHeartTap(write: suspend () -> T): T = try {
+        write()
+    } finally {
+        val last = synchronized(heartLock) { --pendingHeartTaps == 0 }
+        if (last) withContext(NonCancellable + Dispatchers.Default) { refresh() }
+    }
+
+    private suspend fun setLikedStored(track: GeneratedTrack, liked: Boolean): Boolean =
+        withContext(Dispatchers.Default) {
+            mutationMutex.withLock {
+                // Every like is saved to Liked Songs. There is no switch for it.
+                writeLikedPlaylist(track, liked)
+                liked
+            }
+        }
+
+    /**
+     * Adds or removes [track] in the Liked Songs playlist as a compare-and-swap.
+     *
+     * The old blind write ignored replaceTracksForSync()'s result: when another
+     * writer changed the list between the read and the write (playback pinning
+     * a videoId, the startup backfill, a sync), the like was silently dropped
+     * and never reached Liked Songs. A conflict now re-reads and retries; if it
+     * still cannot land, this throws so the player says the like failed.
+     */
+    private suspend fun writeLikedPlaylist(track: GeneratedTrack, liked: Boolean) {
+        repeat(LIKE_WRITE_ATTEMPTS) {
+            val playlist = playlistRepository.getLikedSongs() ?: playlistRepository.ensureLikedSongs()
+            val present = playlist.tracks.any { it.sameSongAs(track) }
+            if (liked == present) return
+            val updated = if (liked) playlist.tracks + track else playlist.tracks.filterNot { it.sameSongAs(track) }
+            if (playlistRepository.replaceTracksForSync(playlist.id, updated, expectedTracks = playlist.tracks) != null) return
+        }
+        throw IllegalStateException("Liked Songs kept changing during the write")
+    }
+
+    /**
+     * One-time move of likes made while the removed "Save to Liked Songs"
+     * switch was off. Those were kept in a side record instead of the
+     * playlist; they go into Liked Songs and the record is cleared.
+     */
+    private suspend fun migrateLocalOnlyLikes() {
+        val raw = runCatching { settingsPreferences.localOnlyLikedTracks.first() }.getOrDefault("")
+        if (raw.isBlank()) return
+        val pending = runCatching {
+            json.decodeFromString<List<StoredTrack>>(raw).map { it.toGenerated() }
+        }.getOrDefault(emptyList())
+        if (pending.isNotEmpty() && !mergeTracks(pending)) return
+        settingsPreferences.setLocalOnlyLikedTracks("")
+        if (pending.isNotEmpty()) {
+            android.util.Log.i("LikedSongsManager", "Moved ${pending.size} likes into Liked Songs")
         }
     }
 
@@ -172,18 +217,8 @@ class LikedSongsManager @Inject constructor(
      * racing an import can no longer interleave a stale read-modify-write
      * that resurrects duplicates.
      */
-    suspend fun mergeTracks(tracks: List<GeneratedTrack>): Boolean = mutationMutex.withLock {
+    suspend fun mergeTracks(tracks: List<GeneratedTrack>): Boolean = withContext(Dispatchers.Default) { mutationMutex.withLock {
         if (tracks.isEmpty()) return@withLock true
-        if (!isLocalSyncEnabled()) {
-            // The local playlist is switched off, so the merged tracks go into the app's own
-            // record instead - the same place the heart's likes go. Importing YouTube's
-            // Liked Music must not quietly fill a list the user switched off.
-            val merged = (localOnlyTracks + tracks).distinctSongs()
-            if (merged.size == localOnlyTracks.size) return@withLock true
-            setLocalOnlyTracks(merged)
-            refresh()
-            return@withLock true
-        }
         // CAS retry: a blind writer (sync reconcile, manual add) may commit
         // between our read and write — re-read and re-merge instead of
         // overwriting their change or duplicating ours.
@@ -201,7 +236,7 @@ class LikedSongsManager @Inject constructor(
         playlistRepository.replaceTracksForSync(liked.id, (liked.tracks + tracks).distinctSongs())
         refresh()
         true
-    }
+    } }
 
     /**
      * One-time heal: collapses duplicate `liked`-mode rows into the one with
@@ -253,70 +288,29 @@ class LikedSongsManager @Inject constructor(
         }
     }
 
-    /**
-     * Carries the likes across the local playlist being switched off and on again.
-     *
-     * Switching the local playlist off moves what is in it into the app's own record, so
-     * the heart does not lose the likes it already had. Switching it back on puts them
-     * into the playlist and empties the record.
-     */
-    private suspend fun watchLocalSync() {
-        settingsPreferences.likedSongsLocalSync
-            .distinctUntilChanged()
-            .collect { enabled ->
-                // A failed read or write must not end the collection: the sync would
-                // then silently stop for the rest of the process.
-                runCatching {
-                    if (enabled) {
-                        val pending = localOnlyTracks
-                        if (pending.isNotEmpty()) {
-                            val existing = playlistRepository.getLikedSongs()
-                            val playlist = existing ?: playlistRepository.ensureLikedSongs()
-                            playlistRepository.replaceTracksForSync(
-                                playlist.id,
-                                (playlist.tracks + pending).distinctSongs(),
-                            )
-                            setLocalOnlyTracks(emptyList())
-                            refresh()
-                            android.util.Log.i(
-                                "LikedSongsManager",
-                                "Restored ${pending.size} likes into Liked Songs",
-                            )
-                        }
-                    } else {
-                        val existing = playlistRepository.getLikedSongs()
-                        val fromPlaylist = existing?.tracks.orEmpty()
-                        if (fromPlaylist.isNotEmpty()) {
-                            setLocalOnlyTracks((localOnlyTracks + fromPlaylist).distinctSongs())
-                        }
-                        refresh()
-                    }
-                }.onFailure {
-                    android.util.Log.w("LikedSongsManager", "Following the local liked-song setting failed", it)
-                }
-            }
-    }
-
     private suspend fun refresh() {
         // Runs after the mutation already landed: a failed read-back must
         // neither fail the like nor blank the heart state, so keep the last
         // known keys instead.
-        if (!isLocalSyncEnabled()) {
-            _likedTrackKeys.value = localOnlyTracks.mapTo(mutableSetOf()) { it.key }
-            return
+        val generation = synchronized(heartLock) { heartTapGeneration }
+        val keys = run {
+            val liked = try {
+                playlistRepository.getLikedSongs()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                android.util.Log.w("LikedSongsManager", "Liked Songs refresh failed", error)
+                return
+            }
+            liked?.tracks?.flatMapTo(mutableSetOf()) { it.likedMarkers() }.orEmpty()
         }
-        val liked = try {
-            playlistRepository.getLikedSongs()
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (error: Exception) {
-            android.util.Log.w("LikedSongsManager", "Liked Songs refresh failed", error)
-            return
+        synchronized(heartLock) {
+            // A tap that started during this read owns the heart until its own
+            // final read-back; publishing this older read would flick it back.
+            if (pendingHeartTaps == 0 && heartTapGeneration == generation) {
+                _likedTrackKeys.value = keys
+            }
         }
-        _likedTrackKeys.value = liked
-            ?.tracks
-            ?.mapTo(mutableSetOf()) { it.key }
-            .orEmpty()
     }
 
     private suspend fun bootstrapForInstalledVersion() {
@@ -343,5 +337,6 @@ class LikedSongsManager @Inject constructor(
     private companion object {
         const val BOOTSTRAP_PREFS = "liked_songs_bootstrap"
         const val BOOTSTRAPPED_VERSION_KEY = "bootstrapped_version_code"
+        const val LIKE_WRITE_ATTEMPTS = 4
     }
 }

@@ -21,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -93,8 +94,14 @@ fun CanvasVideoPlayer(
                 volume = 0f
                 repeatMode = Player.REPEAT_MODE_ONE
                 videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+                // Motion art is adaptive (HLS) with several resolutions: the default starts low and
+                // a short loop rarely climbs, so clips looked soft. Take the sharpest variant the
+                // display can show (the viewport size cap still applies).
                 trackSelectionParameters = trackSelectionParameters.buildUpon()
                     .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                    .setForceHighestSupportedBitrate(true)
+                    // No 4K: sharp on any phone screen without straining the decoder.
+                    .setMaxVideoSize(2048, 2048)
                     .build()
             }
     }
@@ -164,10 +171,11 @@ fun CanvasVideoPlayer(
         label = "canvasCrossfade",
     )
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize().clipToBounds()) {
         AndroidView(
             modifier = Modifier
                 .fillMaxSize()
+                .clipToBounds()
                 .alpha(alpha),
             factory = { viewContext ->
                 TextureView(viewContext).apply {

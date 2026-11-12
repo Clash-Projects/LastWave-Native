@@ -6,9 +6,24 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.util.Log
 
+/**
+ * Switches the launcher icon by enabling exactly one `<activity-alias>`.
+ *
+ * Duplicate icons appear whenever more than one launcher alias is enabled at
+ * once. That happened after updates: older builds enabled `.MainActivityDefault`
+ * explicitly, the manifest enables `.MainActivity` by default, and enabled
+ * states survive an update, so both showed. The old apply path also returned
+ * early when the chosen alias was already enabled, so it never cleaned up the
+ * extra one. Every path now enforces "the chosen alias and nothing else".
+ */
 object AppIconManager {
     private const val TAG = "AppIconManager"
     private val lock = Any()
+
+    /** Legacy default alias from older builds; kept in the manifest, always disabled. */
+    private const val LEGACY_DEFAULT_ALIAS = "com.lastwave.app.MainActivityDefault"
+    /** The only alias the manifest enables by default (android:enabled="true"). */
+    private const val MANIFEST_ENABLED_ALIAS = "com.lastwave.app.MainActivity"
 
     private fun getComponent(context: Context, name: String): ComponentName {
         val pkg = context.packageName
@@ -16,102 +31,89 @@ object AppIconManager {
         return ComponentName(pkg, cls)
     }
 
-    fun isIconActive(context: Context, icon: AppIcon): Boolean {
-        return try {
-            val pm = context.packageManager
-            val targetComp = getComponent(context, icon.componentName)
-            val state = pm.getComponentEnabledSetting(targetComp)
-            if (icon == AppIcon.DEFAULT) {
-                state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED ||
-                    state == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
-            } else {
-                state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-            }
-        } catch (_: Exception) {
-            false
+    private fun allLauncherAliases(): List<String> =
+        (AppIcon.entries.map { it.componentName } + LEGACY_DEFAULT_ALIAS).distinct()
+
+    /** Whether the alias currently shows in the launcher (explicit state, else manifest default). */
+    private fun isEffectivelyEnabled(pm: PackageManager, comp: ComponentName, name: String): Boolean =
+        when (pm.getComponentEnabledSetting(comp)) {
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
+            PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> name == MANIFEST_ENABLED_ALIAS
+            else -> false
         }
+
+    fun isIconActive(context: Context, icon: AppIcon): Boolean = try {
+        val pm = context.packageManager
+        isEffectivelyEnabled(pm, getComponent(context, icon.componentName), icon.componentName)
+    } catch (_: Exception) {
+        false
     }
 
-    fun applyIcon(context: Context, icon: AppIcon) {
-        synchronized(lock) {
-            if (isIconActive(context, icon)) {
-                Log.d(TAG, "Icon ${icon.name} is already active, skipping apply")
-                return
-            }
+    /**
+     * Makes [icon]'s alias the only enabled launcher entry.
+     * @return true when any component state had to change.
+     */
+    private fun enforceSingle(context: Context, icon: AppIcon): Boolean {
+        val pm = context.packageManager
+        val target = icon.componentName
+        val enabledNow = allLauncherAliases().filter { name ->
+            runCatching { isEffectivelyEnabled(pm, getComponent(context, name), name) }.getOrDefault(false)
+        }
+        if (enabledNow == listOf(target)) return false
 
-            val pm = context.packageManager
-            val targetComp = getComponent(context, icon.componentName)
-            val defaultAliasComp = getComponent(context, "com.lastwave.app.MainActivityDefault")
-            val legacyComp = getComponent(context, "com.lastwave.app.MainActivity")
-
-            // 1. Enable the target alias FIRST so there is never a moment
-            // where no launcher activity is enabled
+        // 1. Enable the target first so there is never a moment with no launcher entry.
+        try {
+            pm.setComponentEnabledSetting(
+                getComponent(context, target),
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                PackageManager.DONT_KILL_APP,
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to enable alias $target: ${e.message}")
+            return false // never disable the others if the target could not be enabled
+        }
+        // 2. Explicitly disable every other alias, including the manifest-enabled one.
+        allLauncherAliases().filter { it != target }.forEach { name ->
+            val comp = getComponent(context, name)
             try {
-                pm.setComponentEnabledSetting(
-                    targetComp,
-                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                    PackageManager.DONT_KILL_APP,
-                )
-                Log.d(TAG, "Enabled target alias ${icon.componentName}")
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to enable target alias ${icon.componentName}: ${e.message}")
-            }
-
-            // 2. Disable all other aliases safely
-            AppIcon.entries.forEach { entry ->
-                if (entry == icon) return@forEach
-                val comp = getComponent(context, entry.componentName)
-                try {
-                    val currentState = pm.getComponentEnabledSetting(comp)
-                    if (currentState != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
-                        pm.setComponentEnabledSetting(
-                            comp,
-                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                            PackageManager.DONT_KILL_APP,
-                        )
-                        Log.d(TAG, "Disabled alias ${entry.componentName}")
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to disable alias ${entry.componentName}: ${e.message}")
-                }
-            }
-
-            // Always ensure MainActivityDefault is disabled to prevent duplicate launcher icons
-            try {
-                val defaultState = pm.getComponentEnabledSetting(defaultAliasComp)
-                if (defaultState != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
+                if (pm.getComponentEnabledSetting(comp) != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
                     pm.setComponentEnabledSetting(
-                        defaultAliasComp,
+                        comp,
                         PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
                         PackageManager.DONT_KILL_APP,
                     )
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to disable MainActivityDefault alias: ${e.message}")
+                Log.w(TAG, "Failed to disable alias $name: ${e.message}")
+            }
+        }
+        return true
+    }
+
+    /**
+     * Heals duplicate (or missing) launcher icons without relaunching anything.
+     * Called on every app start so a state left by an update is fixed at once.
+     */
+    fun reconcile(context: Context, icon: AppIcon) {
+        synchronized(lock) {
+            if (enforceSingle(context, icon)) Log.d(TAG, "Reconciled launcher aliases to ${icon.name}")
+        }
+    }
+
+    fun applyIcon(context: Context, icon: AppIcon) {
+        synchronized(lock) {
+            if (!enforceSingle(context, icon)) {
+                Log.d(TAG, "Icon ${icon.name} is already the only launcher alias")
+                return
             }
 
-            if (icon != AppIcon.DEFAULT) {
-                try {
-                    val legacyState = pm.getComponentEnabledSetting(legacyComp)
-                    if (legacyState != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
-                        pm.setComponentEnabledSetting(
-                            legacyComp,
-                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                            PackageManager.DONT_KILL_APP,
-                        )
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to disable legacy MainActivity alias: ${e.message}")
-                }
-            }
-
-            // 3. Immediately restart the task with the newly enabled component as the root,
-            // preventing Android ActivityManager from retaining a disabled component as baseIntent
-            // which causes the system to redirect to "App Info" on resume or app launch!
+            // Restart the task with the newly enabled component as its root, so
+            // ActivityManager never keeps a disabled component as baseIntent
+            // (which makes the system open "App Info" on resume or launch).
             try {
                 val launchIntent = Intent(Intent.ACTION_MAIN).apply {
                     addCategory(Intent.CATEGORY_LAUNCHER)
-                    component = targetComp
+                    component = getComponent(context, icon.componentName)
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 }
                 context.startActivity(launchIntent)

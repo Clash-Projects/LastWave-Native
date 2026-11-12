@@ -36,7 +36,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -61,19 +60,23 @@ import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -89,7 +92,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -111,6 +116,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
@@ -124,7 +130,10 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import com.lastwave.app.R
 import com.lastwave.app.data.music.YouTubeVideoStream
+import com.lastwave.app.data.music.TextMatch
 import com.lastwave.app.data.video.SyncedVideoRepository
+import com.lastwave.app.data.video.VideoSearchCandidate
+import com.lastwave.app.data.video.extractYoutubeVideoId
 import com.lastwave.app.data.video.shouldPreloadVideo
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.PlayableTrack
@@ -142,34 +151,71 @@ import javax.inject.Inject
 import kotlin.math.abs
 
 private const val TAG = "SyncedVideoPlayer"
-private const val VIDEO_PREFS_NAME = "synced_video"
-private const val PREF_VIDEO_LAST_USED_MS = "video_last_used_ms"
+internal const val VIDEO_PREFS_NAME = "synced_video"
+internal const val VIDEO_OVERRIDE_PREFS_NAME = "synced_video_overrides"
+internal const val PREF_VIDEO_LAST_USED_MS = "video_last_used_ms"
 internal const val VIDEO_PRELOAD_DELAY_MS = 1_500L
-private const val MAX_LINK_REFRESHES_PER_SONG = 2
+internal const val MAX_LINK_REFRESHES_PER_SONG = 2
 
-/** IPv4-first like audio: HttpURLConnection stalls on routes with broken IPv6, such as full-tunnel VPNs. */
-private val videoMediaHttp: okhttp3.OkHttpClient by lazy {
+internal fun videoAspectRatio(videoSize: VideoSize): Float? {
+    if (videoSize.width <= 0 || videoSize.height <= 0) return null
+    val w = videoSize.width * videoSize.pixelWidthHeightRatio
+    val h = videoSize.height.toFloat()
+    val rotated = videoSize.unappliedRotationDegrees % 180 != 0
+    val aspect = if (rotated) h / w else w / h
+    return if (aspect.isFinite() && aspect > 0f) aspect else null
+}
+
+/** Detects taps on the video without consuming gestures already handled by overlay controls. */
+internal fun Modifier.videoTapGestures(
+    onTap: () -> Unit,
+    onDoubleTap: (Offset, Float) -> Unit,
+): Modifier = pointerInput(onTap, onDoubleTap) {
+    var lastTapAtMs = 0L
+    var lastTapPosition = Offset.Zero
+    awaitPointerEventScope {
+        while (true) {
+            val up = awaitPointerEvent(PointerEventPass.Final).changes.firstOrNull {
+                it.previousPressed && !it.pressed && !it.isConsumed
+            } ?: continue
+            val now = SystemClock.uptimeMillis()
+            val dx = up.position.x - lastTapPosition.x
+            val dy = up.position.y - lastTapPosition.y
+            val isDoubleTap = now - lastTapAtMs in 1L..300L && dx * dx + dy * dy <= 80f * 80f
+            if (isDoubleTap) {
+                onDoubleTap(up.position, size.width.toFloat())
+                lastTapAtMs = 0L
+            } else {
+                onTap()
+                lastTapAtMs = now
+                lastTapPosition = up.position
+            }
+        }
+    }
+}
+
+/** IPv4-first on ordinary networks; VPN transport detection preserves the VPN resolver's address order. */
+internal fun videoMediaHttp(context: android.content.Context): okhttp3.OkHttpClient =
     okhttp3.OkHttpClient.Builder()
-        .dns(com.lastwave.app.data.network.Ipv4FirstDnsResolver())
+        .dns(com.lastwave.app.data.network.Ipv4FirstDnsResolver(context = context))
         .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
         .build()
-}
 
 /**
- * Starts Auto quality low and steps up as bandwidth is measured. The quality-up
- * threshold sits below the default 10s because one video player buffers only 8s
- * and could otherwise never reach it.
+ * Starts with enough estimated bandwidth to reach high-resolution renditions,
+ * then adapts to measured bandwidth. The quality-up threshold sits below the
+ * default 10s because one video player buffers only 8s and could never reach it.
  */
 @OptIn(UnstableApi::class)
-private fun adaptiveVideoPlayerBuilder(
+internal fun adaptiveVideoPlayerBuilder(
     context: android.content.Context,
     dataSourceFactory: DataSource.Factory,
 ): ExoPlayer.Builder = ExoPlayer.Builder(context)
     .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
     .setBandwidthMeter(
         DefaultBandwidthMeter.Builder(context)
-            .setInitialBitrateEstimate(500_000L)
+            .setInitialBitrateEstimate(20_000_000L)
             .build(),
     )
     .setTrackSelector(
@@ -179,286 +225,12 @@ private fun adaptiveVideoPlayerBuilder(
                 /* minDurationForQualityIncreaseMs = */ 4_000,
                 /* maxDurationForQualityDecreaseMs = */ 6_000,
                 /* minDurationToRetainAfterDiscardMs = */ 6_000,
-                /* bandwidthFraction = */ 0.7f,
+                /* bandwidthFraction = */ 0.85f,
             ),
         ),
     )
 
-sealed interface SyncedVideoUiState {
-    data object Loading : SyncedVideoUiState
-    data class Ready(
-        val bundle: com.lastwave.app.data.music.SyncedVideoStreamBundle,
-        val activeStream: YouTubeVideoStream,
-        val selectedHeight: Int? = null,
-        val adaptiveFailed: Boolean = false,
-    ) : SyncedVideoUiState {
-        val stream: YouTubeVideoStream get() = activeStream
-        val isAuto: Boolean get() = selectedHeight == null || selectedHeight <= 0
-        private val adaptiveUri: String?
-            get() = bundle.adaptiveManifestUri.takeIf { isAuto && !adaptiveFailed }
-        val usesAdaptive: Boolean get() = adaptiveUri != null
-        val playbackUri: String get() = adaptiveUri ?: activeStream.url
-        val playbackMimeType: String?
-            get() = if (usesAdaptive) MimeTypes.APPLICATION_MPD else activeStream.mimeType?.takeIf { it.isNotBlank() }
-        val currentQualityLabel: String
-            get() = if (isAuto) "Auto" else activeStream.displayQuality
-    }
-    data class Error(val message: String) : SyncedVideoUiState
-}
 
-@HiltViewModel
-class SyncedVideoViewModel @Inject constructor(
-    private val videoRepository: SyncedVideoRepository,
-    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
-) : ViewModel() {
-    private val _uiState = MutableStateFlow<SyncedVideoUiState>(SyncedVideoUiState.Loading)
-    val uiState: StateFlow<SyncedVideoUiState> = _uiState.asStateFlow()
-
-    private val _isVideoActive = MutableStateFlow(false)
-    val isVideoActive: StateFlow<Boolean> = _isVideoActive.asStateFlow()
-
-    private val videoPrefs by lazy { appContext.getSharedPreferences(VIDEO_PREFS_NAME, android.content.Context.MODE_PRIVATE) }
-    private var linkRefreshesLeft = 0
-    private var refreshLinks: ((String?) -> Unit)? = null
-    private var alignJob: Job? = null
-    private var alignedVideoId: String? = null
-    private var currentAudioVideoId: String? = null
-
-    private var currentKey: String? = null
-    private var loadJob: kotlinx.coroutines.Job? = null
-    private var openedAwaitingLoad = false
-
-    /** Shared HTTP factory for video streams – reused across cover and fullscreen players. */
-    val httpFactory: OkHttpDataSource.Factory = OkHttpDataSource.Factory(videoMediaHttp)
-
-    private var _playerInitialized = false
-
-    /** Shared ExoPlayer surviving composition exits. Released only when ViewModel is cleared. */
-    @OptIn(UnstableApi::class)
-    val player: ExoPlayer by lazy {
-        _playerInitialized = true
-        val defaultDataSourceFactory = DefaultDataSource.Factory(appContext, httpFactory)
-        val chunkedFactory = DataSource.Factory {
-            ChunkedRangeDataSource(defaultDataSourceFactory.createDataSource(), chunkSize = 256 * 1024L)
-        }
-        adaptiveVideoPlayerBuilder(appContext, chunkedFactory)
-            .build()
-            .apply {
-                volume = 0f
-                videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
-                trackSelectionParameters = trackSelectionParameters.buildUpon()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
-                    .build()
-            }
-    }
-
-    fun setVideoActive(active: Boolean) {
-        openedAwaitingLoad = active
-        _isVideoActive.value = active
-        if (active) {
-            videoPrefs.edit().putLong(PREF_VIDEO_LAST_USED_MS, System.currentTimeMillis()).apply()
-            startAlignmentIfNeeded()
-        }
-    }
-
-    /** Readies the video before the tap, only for people likely to want one. */
-    fun preloadVideo(title: String, artist: String, videoId: String?, durationMs: Long? = null) {
-        val lastUsedMs = videoPrefs.getLong(PREF_VIDEO_LAST_USED_MS, -1L).takeIf { it >= 0L }
-        val batterySaverOn = appContext.getSystemService(android.os.PowerManager::class.java)?.isPowerSaveMode == true
-        val preload = shouldPreloadVideo(lastUsedMs, System.currentTimeMillis(), batterySaverOn)
-        Log.i(TAG, "Preload ${if (preload) "started" else "skipped"} for '$title' (lastUsed=$lastUsedMs batterySaver=$batterySaverOn)")
-        if (preload) loadVideo(title, artist, videoId, durationMs)
-    }
-
-    /** Downloads a few MB, so it waits for an open video unless the network is unmetered. */
-    private fun startAlignmentIfNeeded() {
-        val bundle = (_uiState.value as? SyncedVideoUiState.Ready)?.bundle ?: return
-        val unmetered = appContext.getSystemService(android.net.ConnectivityManager::class.java)
-            ?.isActiveNetworkMetered == false
-        if ((!_isVideoActive.value && !unmetered) || alignedVideoId == bundle.videoId) return
-        alignedVideoId = bundle.videoId
-        val audioVideoId = currentAudioVideoId
-        alignJob?.cancel()
-        alignJob = viewModelScope.launch {
-            // The sync loop seeks to the new offset once it lands.
-            videoRepository.measureContentOffsetMs(bundle, audioVideoId)?.let { offsetMs ->
-                val ready = _uiState.value as? SyncedVideoUiState.Ready
-                if (ready?.bundle?.videoId == bundle.videoId) {
-                    _uiState.value = ready.copy(bundle = ready.bundle.copy(introOffsetMs = offsetMs))
-                }
-            }
-        }
-    }
-
-    fun loadVideo(title: String, artist: String, videoId: String?, durationMs: Long? = null) {
-        val key = "$title|$artist|$videoId|$durationMs"
-        // The video view only calls this once shown, so opening it on a new song also
-        // changes the key. Only a track change under an already open video should close it.
-        val justOpened = openedAwaitingLoad
-        openedAwaitingLoad = false
-        // A resolve can take several seconds; a second one would reload the player when it lands.
-        if (currentKey == key && (_uiState.value is SyncedVideoUiState.Ready || loadJob?.isActive == true)) return
-        loadJob?.cancel()
-        alignJob?.cancel()
-        alignedVideoId = null
-        currentAudioVideoId = videoId
-
-        if (currentKey != null && currentKey != key) {
-            // Track changed – reset video toggle and stop player
-            if (!justOpened) _isVideoActive.value = false
-            if (_playerInitialized) {
-                player.stop()
-                player.clearMediaItems()
-            }
-        }
-        currentKey = key
-        linkRefreshesLeft = MAX_LINK_REFRESHES_PER_SONG
-        refreshLinks = { avoidClientName -> resolveStream(title, artist, videoId, durationMs, avoidClientName) }
-        resolveStream(title, artist, videoId, durationMs, avoidClientName = null)
-    }
-
-    private fun resolveStream(
-        title: String,
-        artist: String,
-        videoId: String?,
-        durationMs: Long?,
-        avoidClientName: String?,
-    ) {
-        loadJob = viewModelScope.launch {
-            _uiState.value = SyncedVideoUiState.Loading
-            videoRepository.resolveVideo(title, artist, videoId, expectedDurationMs = durationMs, avoidClientName = avoidClientName)
-                .onSuccess { resolved ->
-                    // A saved offset applies before the video starts, so there is no jump.
-                    val savedOffset = videoRepository.savedOffsetMs(resolved, videoId)
-                    if (savedOffset != null) Log.i(TAG, "Using saved offset $savedOffset ms for ${resolved.videoId}")
-                    val bundle = savedOffset?.let { resolved.copy(introOffsetMs = it) } ?: resolved
-                    _uiState.value = SyncedVideoUiState.Ready(
-                        bundle = bundle,
-                        activeStream = bundle.defaultStream,
-                        selectedHeight = null,
-                    )
-                    startAlignmentIfNeeded()
-                }
-                .onFailure { error ->
-                    _uiState.value = SyncedVideoUiState.Error(
-                        error.message ?: "Unable to resolve video stream"
-                    )
-                }
-        }
-    }
-
-    fun selectQuality(height: Int?) {
-        val current = _uiState.value as? SyncedVideoUiState.Ready ?: return
-        val targetStream = if (height == null || height <= 0) {
-            current.bundle.defaultStream
-        } else {
-            current.bundle.availableStreams.firstOrNull { (it.height ?: 0) == height }
-                ?: current.bundle.availableStreams.minByOrNull { abs((it.height ?: 0) - height) }
-                ?: current.bundle.defaultStream
-        }
-        _uiState.value = current.copy(
-            activeStream = targetStream,
-            selectedHeight = height,
-        )
-    }
-
-    /** A chosen quality falls back to Auto; a failed Auto stream surfaces Retry instead of a black frame. */
-    fun onVideoPlaybackError() {
-        val ready = _uiState.value as? SyncedVideoUiState.Ready ?: return
-        if (ready.selectedHeight != null) {
-            selectQuality(null)
-            return
-        }
-        videoRepository.invalidate(ready.bundle.videoId)
-        if (_playerInitialized) {
-            player.stop()
-            player.clearMediaItems()
-        }
-        // Links can die mid-song, so get new ones. The sync loop and load effect resume at the audio's position.
-        if (linkRefreshesLeft > 0) {
-            linkRefreshesLeft--
-            Log.w(TAG, "Refreshing video links after ${ready.bundle.clientName} failed ($linkRefreshesLeft refreshes left)")
-            refreshLinks?.invoke(ready.bundle.clientName)
-            return
-        }
-        if (ready.usesAdaptive) {
-            // The default stream passed its probe, so try it before giving up.
-            _uiState.value = ready.copy(adaptiveFailed = true)
-            return
-        }
-        if (fallBackToLowerStream(ready)) return
-        _uiState.value = SyncedVideoUiState.Error(appContext.getString(R.string.video_stream_unavailable))
-    }
-
-    /** New links can't help a decoder that refuses the track, so this skips straight to other streams. */
-    fun onNoVideoTrackSelected(playingUri: String?) {
-        val ready = _uiState.value as? SyncedVideoUiState.Ready ?: return
-        if (playingUri != ready.playbackUri) return
-        Log.w(TAG, "No decoder took ${ready.activeStream.height}p (${ready.activeStream.codec}), adaptive=${ready.usesAdaptive}")
-        if (ready.usesAdaptive) {
-            _uiState.value = ready.copy(adaptiveFailed = true)
-            return
-        }
-        if (fallBackToLowerStream(ready)) return
-        if (_playerInitialized) player.stop()
-        _uiState.value = SyncedVideoUiState.Error(appContext.getString(R.string.video_stream_unavailable))
-    }
-
-    private fun fallBackToLowerStream(ready: SyncedVideoUiState.Ready): Boolean {
-        val failed = ready.activeStream
-        val remaining = ready.bundle.availableStreams.filter { it.url != failed.url }
-        val failedHeight = failed.height ?: 0
-        val next = remaining.filter { (it.height ?: 0) < failedHeight }.maxByOrNull { it.height ?: 0 }
-            ?: remaining.firstOrNull()
-            ?: return false
-        Log.w(TAG, "Video stream ${failed.height}p (${failed.codec}) failed; trying ${next.height}p (${next.codec})")
-        _uiState.value = ready.copy(
-            bundle = ready.bundle.copy(
-                availableStreams = remaining,
-                defaultStream = if (ready.bundle.defaultStream.url == failed.url) next else ready.bundle.defaultStream,
-            ),
-            activeStream = next,
-            selectedHeight = null,
-            adaptiveFailed = true,
-        )
-        return true
-    }
-
-    fun retry(title: String, artist: String, videoId: String?, durationMs: Long? = null) {
-        videoRepository.invalidate(videoId)
-        currentKey = null
-        loadVideo(title, artist, videoId, durationMs)
-    }
-
-    @OptIn(UnstableApi::class)
-    override fun onCleared() {
-        super.onCleared()
-        if (_playerInitialized) {
-            player.release()
-        }
-    }
-}
-
-/**
- * High-performance, exact-millisecond synchronized video viewer dialog with full-screen support.
- *
- * - Audio remains driving master clock from [MusicPlayer]; video runs muted with volume = 0f.
- * - Millisecond sync loop adjusts video play/pause and phase locks within sub-frame delta.
- * - Expandable to edge-to-edge immersive full-screen with double-tap seek and auto-hiding controls.
- * - Liquid Glass themed with fluid entrance and responsive controls.
- */
-private enum class VideoSeekSide { REWIND, FORWARD }
-
-/**
- * In-place 16:9 synchronized video player designed to replace album cover art.
- * - Audio remains driving master clock from [MusicPlayer]; video runs muted with volume = 0f.
- * - Exact PLL sync loop locks video to audio with zero buffer thrashing.
- * - Smoothly expands into edge-to-edge sensor landscape cinema mode when fullscreen is requested.
- */
-/**
- * Sleek Liquid Glass segmented pill switcher: [ Song | Video ]
- * Modeled after YouTube Music & SimpMusic.
- */
 @Composable
 fun SongVideoPillSwitcher(
     isVideoActive: Boolean,
@@ -590,6 +362,17 @@ fun SyncedCoverVideoPlayer(
     val httpFactory = viewModel.httpFactory
     val videoPlayer = viewModel.player
 
+    var videoAspectRatio by remember(activeStream) {
+        val initial = videoAspectRatio(videoPlayer.videoSize)
+            ?: activeStream?.let { s ->
+                val w = s.width
+                val h = s.height
+                if (w != null && h != null && w > 0 && h > 0) w.toFloat() / h.toFloat() else null
+            }
+            ?: (16f / 9f)
+        mutableFloatStateOf(initial)
+    }
+
     // Initialise isRendered from current player state so returning to a ready player
     // does not flash the loading spinner.
     var isRenderedLocal = videoPlayer.playbackState == Player.STATE_READY
@@ -598,6 +381,12 @@ fun SyncedCoverVideoPlayer(
 
     DisposableEffect(videoPlayer) {
         val listener = object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                videoAspectRatio(videoSize)?.let { aspect ->
+                    videoAspectRatio = aspect
+                }
+            }
+
             override fun onRenderedFirstFrame() {
                 isRendered = true
                 isBuffering = false
@@ -727,26 +516,24 @@ fun SyncedCoverVideoPlayer(
         modifier = modifier
             .aspectRatio(16f / 9f)
             .background(Color.Black)
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { controlsVisible = !controlsVisible },
-                    onDoubleTap = { offset ->
-                        val isRightSide = offset.x > size.width / 2
-                        val delta = if (isRightSide) 10_000L else -10_000L
-                        val newPos = (musicPlayer.currentPositionMs() + delta)
-                            .coerceIn(0L, progressState.durationMs.coerceAtLeast(1L))
-                        musicPlayer.seekTo(newPos)
-                        videoPlayer.seekTo(newPos)
-                        lastHardSeekTime = SystemClock.elapsedRealtime()
-                        doubleTapSide = if (isRightSide) VideoSeekSide.FORWARD else VideoSeekSide.REWIND
-                        seekResetJob?.cancel()
-                        seekResetJob = coroutineScope.launch {
-                            delay(650L)
-                            doubleTapSide = null
-                        }
-                    },
-                )
-            },
+            .videoTapGestures(
+                onTap = { controlsVisible = !controlsVisible },
+                onDoubleTap = { offset, width ->
+                    val isRightSide = offset.x > width / 2f
+                    val delta = if (isRightSide) 10_000L else -10_000L
+                    val newPos = (musicPlayer.currentPositionMs() + delta)
+                        .coerceIn(0L, progressState.durationMs.coerceAtLeast(1L))
+                    musicPlayer.seekTo(newPos)
+                    videoPlayer.seekTo(newPos)
+                    lastHardSeekTime = SystemClock.elapsedRealtime()
+                    doubleTapSide = if (isRightSide) VideoSeekSide.FORWARD else VideoSeekSide.REWIND
+                    seekResetJob?.cancel()
+                    seekResetJob = coroutineScope.launch {
+                        delay(650L)
+                        doubleTapSide = null
+                    }
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) {
         when (uiState) {
@@ -779,7 +566,7 @@ fun SyncedCoverVideoPlayer(
             }
             is SyncedVideoUiState.Ready -> {
                 AndroidView(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.aspectRatio(videoAspectRatio),
                     factory = { viewContext ->
                         SurfaceView(viewContext).apply {
                             layoutParams = FrameLayout.LayoutParams(
@@ -901,6 +688,24 @@ fun SyncedCoverVideoPlayer(
                     }
                 }
 
+                Spacer(Modifier.width(6.dp))
+                Surface(
+                    onClick = { viewModel.openVideoPicker(track.title, track.artist, track.videoId, track.durationMs) },
+                    shape = RoundedCornerShape(50),
+                    color = Color.Black.copy(alpha = 0.55f),
+                    border = BorderStroke(0.7.dp, Color.White.copy(alpha = 0.18f)),
+                    modifier = Modifier.height(32.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 9.dp),
+                    ) {
+                        Icon(Icons.Filled.Search, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("Choose video", color = Color.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    }
+                }
+
                 Spacer(Modifier.weight(1f))
 
                 // Quality Badge
@@ -980,6 +785,33 @@ fun SyncedCoverVideoPlayer(
             enter = fadeIn(tween(150)),
             exit = fadeOut(tween(150)),
             modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(8.dp),
+        ) {
+            Surface(
+                onClick = { viewModel.openVideoPicker(track.title, track.artist, track.videoId, track.durationMs) },
+                shape = RoundedCornerShape(50),
+                color = Color.Black.copy(alpha = 0.60f),
+                border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.25f)),
+                modifier = Modifier.height(34.dp),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 10.dp),
+                ) {
+                    Icon(Icons.Filled.Search, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Choose video", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+        }
+
+        // Persistent close button in top-right when top controls are hidden.
+        AnimatedVisibility(
+            visible = !controlsVisible,
+            enter = fadeIn(tween(150)),
+            exit = fadeOut(tween(150)),
+            modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(8.dp),
         ) {
@@ -1033,6 +865,7 @@ fun SyncedCoverVideoPlayer(
             onDismiss = { showQualityDialog = false },
         )
     }
+    VideoCandidatePickerDialog(viewModel, track)
 }
 
 /**
@@ -1092,12 +925,29 @@ fun FullscreenLandscapeVideoStage(
     val httpFactory = viewModel.httpFactory
     val videoPlayer = viewModel.player
 
+    var videoAspectRatio by remember(activeStream) {
+        val initial = videoAspectRatio(videoPlayer.videoSize)
+            ?: activeStream?.let { s ->
+                val w = s.width
+                val h = s.height
+                if (w != null && h != null && w > 0 && h > 0) w.toFloat() / h.toFloat() else null
+            }
+            ?: (16f / 9f)
+        mutableFloatStateOf(initial)
+    }
+
     var isRenderedLocal = videoPlayer.playbackState == Player.STATE_READY
             && videoPlayer.currentMediaItem != null
     if (isRenderedLocal) isRendered = true
 
     DisposableEffect(videoPlayer) {
         val listener = object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                videoAspectRatio(videoSize)?.let { aspect ->
+                    videoAspectRatio = aspect
+                }
+            }
+
             override fun onRenderedFirstFrame() {
                 isRendered = true
                 isBuffering = false
@@ -1225,26 +1075,24 @@ fun FullscreenLandscapeVideoStage(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { controlsVisible = !controlsVisible },
-                    onDoubleTap = { offset ->
-                        val isRightSide = offset.x > size.width / 2
-                        val delta = if (isRightSide) 10_000L else -10_000L
-                        val newPos = (musicPlayer.currentPositionMs() + delta)
-                            .coerceIn(0L, durationSafe)
-                        musicPlayer.seekTo(newPos)
-                        videoPlayer.seekTo(newPos)
-                        lastHardSeekTime = SystemClock.elapsedRealtime()
-                        doubleTapSide = if (isRightSide) VideoSeekSide.FORWARD else VideoSeekSide.REWIND
-                        seekResetJob?.cancel()
-                        seekResetJob = coroutineScope.launch {
-                            delay(650L)
-                            doubleTapSide = null
-                        }
-                    },
-                )
-            },
+            .videoTapGestures(
+                onTap = { controlsVisible = !controlsVisible },
+                onDoubleTap = { offset, width ->
+                    val isRightSide = offset.x > width / 2f
+                    val delta = if (isRightSide) 10_000L else -10_000L
+                    val newPos = (musicPlayer.currentPositionMs() + delta)
+                        .coerceIn(0L, durationSafe)
+                    musicPlayer.seekTo(newPos)
+                    videoPlayer.seekTo(newPos)
+                    lastHardSeekTime = SystemClock.elapsedRealtime()
+                    doubleTapSide = if (isRightSide) VideoSeekSide.FORWARD else VideoSeekSide.REWIND
+                    seekResetJob?.cancel()
+                    seekResetJob = coroutineScope.launch {
+                        delay(650L)
+                        doubleTapSide = null
+                    }
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) {
         when (uiState) {
@@ -1276,7 +1124,7 @@ fun FullscreenLandscapeVideoStage(
             }
             is SyncedVideoUiState.Ready -> {
                 AndroidView(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.aspectRatio(videoAspectRatio),
                     factory = { viewContext ->
                         SurfaceView(viewContext).apply {
                             layoutParams = FrameLayout.LayoutParams(
@@ -1434,6 +1282,19 @@ fun FullscreenLandscapeVideoStage(
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
                         )
+                    }
+                }
+
+                Spacer(Modifier.width(8.dp))
+                Surface(
+                    onClick = { viewModel.openVideoPicker(track.title, track.artist, track.videoId, track.durationMs) },
+                    shape = CircleShape,
+                    color = Color.Black.copy(alpha = 0.55f),
+                    border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.20f)),
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.Search, contentDescription = "Choose a different video", tint = Color.White, modifier = Modifier.size(18.dp))
                     }
                 }
 
@@ -1654,935 +1515,5 @@ fun FullscreenLandscapeVideoStage(
             onDismiss = { showQualityDialog = false },
         )
     }
-}
-
-@OptIn(UnstableApi::class)
-@Composable
-fun SyncedVideoPlayerDialog(
-    track: PlayableTrack,
-    musicPlayer: MusicPlayer,
-    onDismiss: () -> Unit,
-    viewModel: SyncedVideoViewModel = hiltViewModel(),
-) {
-    val context = LocalContext.current
-    val view = LocalView.current
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val playerState by musicPlayer.stateWithoutProgress.collectAsStateWithLifecycle()
-    val progressState by musicPlayer.progressState.collectAsStateWithLifecycle()
-
-    var isFullscreen by remember { mutableStateOf(false) }
-    var controlsVisible by remember { mutableStateOf(true) }
-    var isRendered by remember { mutableStateOf(false) }
-    var isUserScrubbing by remember { mutableStateOf(false) }
-    var scrubProgress by remember { mutableFloatStateOf(0f) }
-    var doubleTapFeedback by remember { mutableStateOf<String?>(null) }
-    var showQualityDialog by remember { mutableStateOf(false) }
-
-    LaunchedEffect(track) {
-        viewModel.loadVideo(track.title, track.artist, track.videoId, track.durationMs)
-    }
-
-    // Auto-hide controls in fullscreen after inactivity
-    LaunchedEffect(controlsVisible, isFullscreen, isUserScrubbing) {
-        if (controlsVisible && isFullscreen && !isUserScrubbing) {
-            delay(3500L)
-            controlsVisible = false
-        }
-    }
-
-    // Fullscreen immersive system bars handler
-    DisposableEffect(view, isFullscreen) {
-        val activity = generateSequence(view.context) { (it as? ContextWrapper)?.baseContext }
-            .filterIsInstance<Activity>().firstOrNull()
-        val controller = activity?.window?.let { WindowCompat.getInsetsController(it, view) }
-        val previousBehavior = controller?.systemBarsBehavior
-
-        if (isFullscreen) {
-            controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            controller?.hide(WindowInsetsCompat.Type.systemBars())
-        }
-        onDispose {
-            if (isFullscreen) {
-                controller?.show(WindowInsetsCompat.Type.systemBars())
-                previousBehavior?.let { controller?.systemBarsBehavior = it }
-            }
-        }
-    }
-
-    // Back button exits fullscreen first, then dismisses
-    BackHandler {
-        if (isFullscreen) {
-            isFullscreen = false
-        } else {
-            onDismiss()
-        }
-    }
-
-    val httpFactory = remember {
-        OkHttpDataSource.Factory(videoMediaHttp)
-            .setDefaultRequestProperties(
-                mapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Origin" to "https://www.youtube.com",
-                    "Referer" to "https://www.youtube.com",
-                )
-            )
-    }
-
-    // ExoPlayer dedicated strictly for video rendering
-    val videoPlayer = remember(context) {
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                /* minBufferMs = */ 2_000,
-                /* maxBufferMs = */ 8_000,
-                /* bufferForPlaybackMs = */ 1_000,
-                /* bufferForPlaybackAfterRebufferMs = */ 2_000,
-            )
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .build()
-
-        val defaultDataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
-        val chunkedFactory = DataSource.Factory {
-            ChunkedRangeDataSource(defaultDataSourceFactory.createDataSource(), chunkSize = 256 * 1024L)
-        }
-
-        adaptiveVideoPlayerBuilder(context, chunkedFactory)
-            .setLoadControl(loadControl)
-            .build()
-            .apply {
-                volume = 0f
-                videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
-                trackSelectionParameters = trackSelectionParameters.buildUpon()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
-                    .build()
-            }
-    }
-
-    DisposableEffect(videoPlayer) {
-        val listener = object : Player.Listener {
-            override fun onRenderedFirstFrame() {
-                isRendered = true
-            }
-
-            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                Log.w(TAG, "Video player error: ${error.message}", error)
-                viewModel.onVideoPlaybackError()
-            }
-
-            // No error fires when no decoder takes the track: the player just
-            // runs with nothing to show, which is a black screen.
-            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
-                if (!tracks.isEmpty && !tracks.isTypeSelected(C.TRACK_TYPE_VIDEO)) {
-                    viewModel.onNoVideoTrackSelected(videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString())
-                }
-            }
-        }
-        videoPlayer.addListener(listener)
-        onDispose {
-            videoPlayer.removeListener(listener)
-            videoPlayer.release()
-        }
-    }
-
-    // Load stream into video player when ready or when switching quality
-    LaunchedEffect(uiState) {
-        val state = uiState
-        if (state is SyncedVideoUiState.Ready) {
-            val stream = state.activeStream
-            val currentMediaUri = videoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
-            // Idle means the last attempt failed, so the same URI still needs loading.
-            if (currentMediaUri == state.playbackUri && videoPlayer.playbackState != Player.STATE_IDLE) return@LaunchedEffect
-
-            val streamUa = stream.requestHeaders["User-Agent"]
-                ?: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
-            httpFactory.setUserAgent(streamUa)
-            httpFactory.setDefaultRequestProperties(stream.requestHeaders)
-
-            isRendered = false
-            val currentPos = videoPlayer.currentPosition.takeIf { it > 0 } ?: musicPlayer.currentPositionMs()
-            val mediaItem = MediaItem.Builder()
-                .setUri(state.playbackUri)
-                .apply {
-                    state.playbackMimeType?.let { setMimeType(it) }
-                }
-                .build()
-            videoPlayer.setMediaItem(mediaItem, currentPos)
-            videoPlayer.prepare()
-            videoPlayer.playWhenReady = playerState.isPlaying
-        }
-    }
-
-    // Exact millisecond synchronization loop (PLL)
-    LaunchedEffect(videoPlayer, playerState.isPlaying, uiState) {
-        if (uiState !is SyncedVideoUiState.Ready) return@LaunchedEffect
-        while (isActive) {
-            val audioPos = musicPlayer.currentPositionMs()
-            val videoPos = videoPlayer.currentPosition
-            val driftMs = videoPos - audioPos
-            val audioSpeed = playerState.speed
-
-            // Play / Pause sync
-            if (videoPlayer.playWhenReady != playerState.isPlaying) {
-                videoPlayer.playWhenReady = playerState.isPlaying
-            }
-
-            // Drift compensation
-            if (abs(driftMs) > 150L) {
-                // Hard seek for significant drift or user seeks
-                videoPlayer.seekTo(audioPos)
-                if (videoPlayer.playbackParameters.speed != audioSpeed) {
-                    videoPlayer.playbackParameters = PlaybackParameters(audioSpeed)
-                }
-            } else if (abs(driftMs) > 40L) {
-                // Micro-phase adjustment for sub-millisecond convergence without stutters
-                val speedCorrection = if (driftMs > 0) 0.95f else 1.05f
-                videoPlayer.playbackParameters = PlaybackParameters(audioSpeed * speedCorrection)
-            } else {
-                // Exact sync achieved
-                if (videoPlayer.playbackParameters.speed != audioSpeed) {
-                    videoPlayer.playbackParameters = PlaybackParameters(audioSpeed)
-                }
-            }
-
-            delay(50L) // 20 times per second high-precision clock
-        }
-    }
-
-    // Pulsing indicator for active live sync
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.4f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "pulseAlpha",
-    )
-
-    val videoAlpha by animateFloatAsState(
-        targetValue = if (isRendered) 1f else 0f,
-        animationSpec = tween(durationMillis = 300),
-        label = "videoFade",
-    )
-
-    val currentPosition = if (isUserScrubbing) {
-        (scrubProgress * progressState.durationMs).toLong()
-    } else {
-        progressState.positionMs
-    }
-
-    Dialog(
-        onDismissRequest = {
-            if (isFullscreen) isFullscreen = false else onDismiss()
-        },
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-        ),
-    ) {
-        EdgeToEdgeDialogWindow()
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(if (isFullscreen) Color.Black else Color.Black.copy(alpha = 0.65f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                ) {
-                    if (!isFullscreen) onDismiss()
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            val contentModifier = if (isFullscreen) {
-                Modifier.fillMaxSize()
-            } else {
-                Modifier
-                    .fillMaxWidth(0.94f)
-                    .adaptiveContentWidth(maxWidth = 660.dp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) {} // Consume clicks inside card
-            }
-
-            Surface(
-                modifier = contentModifier,
-                shape = if (isFullscreen) RoundedCornerShape(0.dp) else RoundedCornerShape(28.dp),
-                color = if (isFullscreen) Color.Black else MaterialTheme.colorScheme.surfaceContainerHigh,
-                tonalElevation = 6.dp,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .then(
-                            if (isFullscreen) Modifier.fillMaxSize()
-                            else Modifier.padding(16.dp)
-                        ),
-                ) {
-                    // Dialog Header (visible only when not fullscreen)
-                    if (!isFullscreen) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primaryContainer),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    Icons.Filled.SmartDisplay,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    text = track.title,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = track.artist,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f, fill = false),
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    // Quality Badge Button
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(50))
-                                            .clickable { showQualityDialog = true }
-                                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
-                                            .padding(horizontal = 7.dp, vertical = 2.dp),
-                                    ) {
-                                        Text(
-                                            text = if (uiState is SyncedVideoUiState.Ready) {
-                                                (uiState as SyncedVideoUiState.Ready).currentQualityLabel
-                                            } else {
-                                                "Auto"
-                                            },
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
-                                }
-                            }
-                            IconButton(
-                                onClick = { showQualityDialog = true },
-                                modifier = Modifier.size(36.dp),
-                            ) {
-                                Icon(
-                                    Icons.Filled.HighQuality,
-                                    contentDescription = stringResource(R.string.video_quality),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            IconButton(
-                                onClick = { isFullscreen = true },
-                                modifier = Modifier.size(36.dp),
-                            ) {
-                                Icon(
-                                    Icons.Filled.Fullscreen,
-                                    contentDescription = stringResource(R.string.video_enter_fullscreen),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            IconButton(
-                                onClick = onDismiss,
-                                modifier = Modifier.size(36.dp),
-                            ) {
-                                Icon(
-                                    Icons.Filled.Close,
-                                    contentDescription = stringResource(R.string.common_cancel),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-
-                    // Video Area Box
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .then(
-                                if (isFullscreen) Modifier.weight(1f)
-                                else Modifier
-                                    .aspectRatio(16f / 9f)
-                                    .clip(RoundedCornerShape(20.dp))
-                            )
-                            .background(Color.Black)
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onTap = {
-                                        controlsVisible = !controlsVisible
-                                    },
-                                    onDoubleTap = { offset ->
-                                        val isRightSide = offset.x > size.width / 2
-                                        val delta = if (isRightSide) 10_000L else -10_000L
-                                        val newPos = (musicPlayer.currentPositionMs() + delta)
-                                            .coerceIn(0L, progressState.durationMs.coerceAtLeast(1L))
-                                        musicPlayer.seekTo(newPos)
-                                        videoPlayer.seekTo(newPos)
-                                        doubleTapFeedback = if (isRightSide) "+10s" else "-10s"
-                                    },
-                                )
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        // Media3 ExoPlayer SurfaceView
-                        AndroidView(
-                            modifier = Modifier.fillMaxSize(),
-                            factory = { viewContext ->
-                                SurfaceView(viewContext).apply {
-                                    layoutParams = FrameLayout.LayoutParams(
-                                        ViewGroup.LayoutParams.MATCH_PARENT,
-                                        ViewGroup.LayoutParams.MATCH_PARENT,
-                                    )
-                                    videoPlayer.setVideoSurfaceView(this)
-                                }
-                            },
-                            update = { surfaceView ->
-                                videoPlayer.setVideoSurfaceView(surfaceView)
-                            },
-                        )
-
-                        // Loading State
-                        if (uiState is SyncedVideoUiState.Loading || (!isRendered && uiState is SyncedVideoUiState.Ready)) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center,
-                                modifier = Modifier.fillMaxSize(),
-                            ) {
-                                ExpressiveLoadingIndicator(modifier = Modifier.size(44.dp))
-                                Spacer(Modifier.height(10.dp))
-                                Text(
-                                    text = stringResource(R.string.video_buffering),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.85f),
-                                )
-                            }
-                        }
-
-                        // Error State
-                        if (uiState is SyncedVideoUiState.Error) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(24.dp),
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.video_stream_unavailable),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = Color.White.copy(alpha = 0.9f),
-                                )
-                                Spacer(Modifier.height(12.dp))
-                                FilledTonalButton(
-                                    onClick = { viewModel.retry(track.title, track.artist, track.videoId, track.durationMs) },
-                                    colors = ButtonDefaults.filledTonalButtonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary,
-                                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                                    ),
-                                ) {
-                                    Text(stringResource(R.string.video_retry))
-                                }
-                            }
-                        }
-
-                        // Double tap feedback overlay
-                        LaunchedEffect(doubleTapFeedback) {
-                            if (doubleTapFeedback != null) {
-                                delay(650L)
-                                doubleTapFeedback = null
-                            }
-                        }
-                        doubleTapFeedback?.let { feedback ->
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(50))
-                                    .background(Color.Black.copy(alpha = 0.65f))
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                            ) {
-                                Text(
-                                    text = feedback,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                )
-                            }
-                        }
-
-                        // Fullscreen In-Video Top Bar (visible when controlsVisible is true)
-                        if (isFullscreen) {
-                            androidx.compose.animation.AnimatedVisibility(
-                                visible = controlsVisible,
-                                enter = fadeIn(),
-                                exit = fadeOut(),
-                                modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .fillMaxWidth(),
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(
-                                            Brush.verticalGradient(
-                                                colors = listOf(
-                                                    Color.Black.copy(alpha = 0.75f),
-                                                    Color.Transparent,
-                                                )
-                                            )
-                                        )
-                                        .padding(horizontal = 16.dp, vertical = 20.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    IconButton(onClick = { isFullscreen = false }) {
-                                        Icon(
-                                            Icons.Filled.FullscreenExit,
-                                            contentDescription = stringResource(R.string.video_exit_fullscreen),
-                                            tint = Color.White,
-                                        )
-                                    }
-                                    Spacer(Modifier.width(8.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text(
-                                            text = track.title,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                        Text(
-                                            text = track.artist,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = Color.White.copy(alpha = 0.75f),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    }
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(50))
-                                            .background(Color(0xFF4CAF50).copy(alpha = 0.22f))
-                                            .padding(horizontal = 9.dp, vertical = 3.dp),
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(6.dp)
-                                                .clip(CircleShape)
-                                                .background(Color(0xFF4CAF50).copy(alpha = pulseAlpha)),
-                                        )
-                                        Spacer(Modifier.width(5.dp))
-                                        Text(
-                                            text = stringResource(R.string.video_sync_tag),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color(0xFF4CAF50),
-                                        )
-                                    }
-                                    Spacer(Modifier.width(8.dp))
-                                    // Fullscreen Quality Pill
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(50))
-                                            .clickable { showQualityDialog = true }
-                                            .background(Color.White.copy(alpha = 0.18f))
-                                            .padding(horizontal = 9.dp, vertical = 4.dp),
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.HighQuality,
-                                            contentDescription = stringResource(R.string.video_quality),
-                                            tint = Color.White,
-                                            modifier = Modifier.size(14.dp),
-                                        )
-                                        Spacer(Modifier.width(4.dp))
-                                        Text(
-                                            text = if (uiState is SyncedVideoUiState.Ready) {
-                                                (uiState as SyncedVideoUiState.Ready).currentQualityLabel
-                                            } else {
-                                                "Auto"
-                                            },
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                        )
-                                    }
-                                    Spacer(Modifier.width(8.dp))
-                                    IconButton(onClick = onDismiss) {
-                                        Icon(
-                                            Icons.Filled.Close,
-                                            contentDescription = stringResource(R.string.common_cancel),
-                                            tint = Color.White,
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Playback Center Controls overlay
-                        androidx.compose.animation.AnimatedVisibility(
-                            visible = controlsVisible,
-                            enter = fadeIn(),
-                            exit = fadeOut(),
-                            modifier = Modifier.align(Alignment.Center),
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(24.dp),
-                            ) {
-                                // -10s
-                                IconButton(
-                                    onClick = {
-                                        val newPos = (musicPlayer.currentPositionMs() - 10_000L).coerceAtLeast(0L)
-                                        musicPlayer.seekTo(newPos)
-                                        videoPlayer.seekTo(newPos)
-                                    },
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(CircleShape)
-                                        .background(Color.Black.copy(alpha = 0.5f)),
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Replay10,
-                                        contentDescription = "-10s",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(26.dp),
-                                    )
-                                }
-
-                                // Play / Pause Master Button
-                                IconButton(
-                                    onClick = { musicPlayer.togglePlayPause() },
-                                    modifier = Modifier
-                                        .size(64.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.primary),
-                                ) {
-                                    Icon(
-                                        imageVector = if (playerState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                        contentDescription = if (playerState.isPlaying) "Pause" else "Play",
-                                        tint = MaterialTheme.colorScheme.onPrimary,
-                                        modifier = Modifier.size(36.dp),
-                                    )
-                                }
-
-                                // +10s
-                                IconButton(
-                                    onClick = {
-                                        val newPos = (musicPlayer.currentPositionMs() + 10_000L)
-                                            .coerceAtMost(progressState.durationMs.coerceAtLeast(1L))
-                                        musicPlayer.seekTo(newPos)
-                                        videoPlayer.seekTo(newPos)
-                                    },
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(CircleShape)
-                                        .background(Color.Black.copy(alpha = 0.5f)),
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Forward10,
-                                        contentDescription = "+10s",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(26.dp),
-                                    )
-                                }
-                            }
-                        }
-
-                        // Fullscreen Bottom Seekbar overlay
-                        if (isFullscreen) {
-                            androidx.compose.animation.AnimatedVisibility(
-                                visible = controlsVisible,
-                                enter = fadeIn(),
-                                exit = fadeOut(),
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .fillMaxWidth(),
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(
-                                            Brush.verticalGradient(
-                                                colors = listOf(
-                                                    Color.Transparent,
-                                                    Color.Black.copy(alpha = 0.85f),
-                                                )
-                                            )
-                                        )
-                                        .padding(horizontal = 20.dp, vertical = 18.dp),
-                                ) {
-                                    VideoTimelineRow(
-                                        currentPosition = currentPosition,
-                                        durationMs = progressState.durationMs,
-                                        isUserScrubbing = isUserScrubbing,
-                                        scrubProgress = scrubProgress,
-                                        onScrubChange = {
-                                            isUserScrubbing = true
-                                            scrubProgress = it
-                                        },
-                                        onScrubFinished = {
-                                            isUserScrubbing = false
-                                            val target = (scrubProgress * progressState.durationMs).toLong()
-                                            musicPlayer.seekTo(target)
-                                            videoPlayer.seekTo(target)
-                                        },
-                                        onToggleFullscreen = { isFullscreen = false },
-                                        isFullscreen = true,
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Dialog bottom controls (visible when not fullscreen)
-                    if (!isFullscreen) {
-                        Spacer(Modifier.height(10.dp))
-                        VideoTimelineRow(
-                            currentPosition = currentPosition,
-                            durationMs = progressState.durationMs,
-                            isUserScrubbing = isUserScrubbing,
-                            scrubProgress = scrubProgress,
-                            onScrubChange = {
-                                isUserScrubbing = true
-                                scrubProgress = it
-                            },
-                            onScrubFinished = {
-                                isUserScrubbing = false
-                                val target = (scrubProgress * progressState.durationMs).toLong()
-                                musicPlayer.seekTo(target)
-                                videoPlayer.seekTo(target)
-                            },
-                            onToggleFullscreen = { isFullscreen = true },
-                            isFullscreen = false,
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    if (showQualityDialog && uiState is SyncedVideoUiState.Ready) {
-        val ready = uiState as SyncedVideoUiState.Ready
-        VideoQualityDialog(
-            bundle = ready.bundle,
-            selectedHeight = ready.selectedHeight,
-            onSelectQuality = { height ->
-                viewModel.selectQuality(height)
-            },
-            onDismiss = { showQualityDialog = false },
-        )
-    }
-}
-
-@Composable
-private fun VideoTimelineRow(
-    currentPosition: Long,
-    durationMs: Long,
-    isUserScrubbing: Boolean,
-    scrubProgress: Float,
-    onScrubChange: (Float) -> Unit,
-    onScrubFinished: () -> Unit,
-    onToggleFullscreen: () -> Unit,
-    isFullscreen: Boolean,
-) {
-    val durationSafe = durationMs.coerceAtLeast(1L)
-    val sliderValue = if (isUserScrubbing) scrubProgress else (currentPosition.toFloat() / durationSafe).coerceIn(0f, 1f)
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = formatTime(currentPosition),
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = if (isFullscreen) Color.White.copy(alpha = 0.9f) else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Slider(
-            value = sliderValue,
-            onValueChange = onScrubChange,
-            onValueChangeFinished = onScrubFinished,
-            colors = SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.primary,
-                activeTrackColor = MaterialTheme.colorScheme.primary,
-                inactiveTrackColor = if (isFullscreen) Color.White.copy(alpha = 0.3f) else MaterialTheme.colorScheme.surfaceVariant,
-            ),
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 10.dp),
-        )
-        Text(
-            text = formatTime(durationMs),
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = if (isFullscreen) Color.White.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.width(6.dp))
-        IconButton(
-            onClick = onToggleFullscreen,
-            modifier = Modifier.size(34.dp),
-        ) {
-            Icon(
-                imageVector = if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                contentDescription = if (isFullscreen) stringResource(R.string.video_exit_fullscreen) else stringResource(R.string.video_enter_fullscreen),
-                tint = if (isFullscreen) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun VideoQualityDialog(
-    bundle: com.lastwave.app.data.music.SyncedVideoStreamBundle,
-    selectedHeight: Int?,
-    onSelectQuality: (Int?) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            tonalElevation = 8.dp,
-            modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .adaptiveContentWidth(maxWidth = 380.dp),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 18.dp, horizontal = 18.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.HighQuality,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp),
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        text = stringResource(R.string.video_quality_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-
-                Spacer(Modifier.height(14.dp))
-
-                val isAutoSelected = selectedHeight == null || selectedHeight <= 0
-                QualityOptionRow(
-                    label = stringResource(R.string.video_quality_auto_recommended),
-                    subtitle = "${bundle.defaultStream.displayQuality} • Best for smooth sync",
-                    isSelected = isAutoSelected,
-                    onClick = {
-                        onSelectQuality(null)
-                        onDismiss()
-                    },
-                )
-
-                Spacer(Modifier.height(4.dp))
-
-                val heights = bundle.availableStreams
-                    .mapNotNull { it.height }
-                    .distinct()
-                    .sortedDescending()
-
-                LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
-                    items(heights) { h ->
-                        val isSelected = !isAutoSelected && selectedHeight == h
-                        val stream = bundle.availableStreams.firstOrNull { it.height == h }
-                        val label = stream?.displayQuality ?: "${h}p"
-                        val subtitle = when {
-                            h >= 2160 -> "Ultra HD 4K"
-                            h >= 1440 -> "Quad HD 2K"
-                            h >= 1080 -> "Full HD"
-                            h >= 720 -> "High Definition"
-                            else -> "Standard Definition"
-                        }
-                        QualityOptionRow(
-                            label = label,
-                            subtitle = subtitle,
-                            isSelected = isSelected,
-                            onClick = {
-                                onSelectQuality(h)
-                                onDismiss()
-                            },
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun QualityOptionRow(
-    label: String,
-    subtitle: String? = null,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
-        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-                )
-                if (subtitle != null) {
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            if (isSelected) {
-                Icon(
-                    imageVector = Icons.Filled.Check,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-        }
-    }
+    VideoCandidatePickerDialog(viewModel, track)
 }

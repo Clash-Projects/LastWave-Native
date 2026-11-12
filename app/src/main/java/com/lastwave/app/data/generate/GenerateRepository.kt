@@ -2,6 +2,7 @@ package com.lastwave.app.data.generate
 
 import android.util.Log
 import com.lastwave.app.data.local.SessionPreferences
+import com.lastwave.app.data.local.awaitLoadedSession
 import com.lastwave.app.data.local.db.RecommendationExclusionDao
 import com.lastwave.app.data.local.db.RecommendationExclusionEntity
 import com.lastwave.app.data.local.db.DownloadedTrackDao
@@ -10,6 +11,7 @@ import com.lastwave.app.data.music.TextMatch
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.network.LastFmApiService
 import com.lastwave.app.data.playlist.PlaylistRepository
+import com.lastwave.app.data.recommend.RecommendationRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
@@ -19,7 +21,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
@@ -52,7 +53,7 @@ class GenerateRepository @Inject constructor(
     private val playlistRepository: PlaylistRepository,
     private val viewingProfileState: com.lastwave.app.data.repository.ViewingProfileState,
     private val innerTube: com.lastwave.app.data.music.InnerTubeMusicApi,
-    private val relatedGraph: com.lastwave.app.data.repository.RelatedGraphRepository,
+    private val recommendationRepository: RecommendationRepository,
     private val songPlayStatsDao: SongPlayStatsDao,
     private val downloadedTrackDao: DownloadedTrackDao,
 ) {
@@ -79,7 +80,7 @@ class GenerateRepository @Inject constructor(
     // instant their call finishes — this is purely about not paying twice
     // for the same request at the same time, never a longer-lived/stale
     suspend fun call(params: Map<String, String>): JsonObject {
-        val session = sessionPreferences.session.first()
+        val session = sessionPreferences.awaitLoadedSession()
         // No shared key: every caller already guards on key presence (or
         // degrades to YouTube/local), so a blank key here is a hard error
         // rather than a silent anonymous call.
@@ -128,7 +129,7 @@ class GenerateRepository @Inject constructor(
      *  ViewingProfileState) — a friend's username if the friend-switcher is
      *  active there, otherwise the signed-in session's own username. */
     private suspend fun username(): String =
-        viewingProfileState.viewingUsername.value ?: sessionPreferences.session.first().username
+        viewingProfileState.viewingUsername.value ?: sessionPreferences.awaitLoadedSession().username
 
     // ── Shared helpers — exact ports of shuffleArray / deduplicateTracks / _precheckTracks ──
 
@@ -205,7 +206,7 @@ class GenerateRepository @Inject constructor(
     /** True when Last.fm can be used as a supplementary source. Guest mode
      *  and signed-out states never touch Last.fm — they stay local-first. */
     private suspend fun isLastFmAvailable(): Boolean {
-        val session = sessionPreferences.session.first()
+        val session = sessionPreferences.awaitLoadedSession()
         if (session.username.isBlank() || session.username.equals("Guest User", ignoreCase = true)) return false
         return true
     }
@@ -396,8 +397,8 @@ class GenerateRepository @Inject constructor(
         seedVideoId: String? = null,
         limit: Int,
     ): List<GeneratedTrack> {
-        val seed = resolveSeedVideoId(track, artist, seedVideoId) ?: return emptyList()
-        return relatedGraph.relatedFor(seed, limit, prefetchStreams = false)
+        val seed = resolveSeedVideoId(track, artist, seedVideoId)
+        return recommendationRepository.relatedFor(seed, track, artist, limit)
             .map { it.toGeneratedTrack() }
     }
 
@@ -411,8 +412,10 @@ class GenerateRepository @Inject constructor(
             .take(4)
 
         if (validSeeds.isNotEmpty()) {
-            val perSeedLimit = maxOf(12, (limit / validSeeds.size) + 5)
-            val deferreds = validSeeds.map { seed ->
+            val spotifySeeds = recommendationRepository.isSpotifyActive()
+            val seedsToUse = if (spotifySeeds) validSeeds.take(2) else validSeeds
+            val perSeedLimit = maxOf(12, (limit / seedsToUse.size) + 5)
+            val deferreds = seedsToUse.map { seed ->
                 async(Dispatchers.IO) {
                     try {
                         fetchYouTubeRadio(seed.name, seed.artist, seed.youtubeVideoIdOrNull(), perSeedLimit)
@@ -626,21 +629,25 @@ class GenerateRepository @Inject constructor(
 
         // 1. Primary discovery: YouTube Music Radio
         var youtubeTracks: List<YouTubeMusicTrack> = emptyList()
-        if (resolvedVideoId != null) {
+        // A missing YouTube id still works for Spotify, which seeds on title/artist.
+        if (resolvedVideoId != null || recommendationRepository.isSpotifyActive()) {
             try {
-                val primaryRadio = relatedGraph.relatedFor(
-                    videoId = resolvedVideoId,
+                val primaryRadio = recommendationRepository.relatedFor(
+                    seedVideoId = resolvedVideoId,
+                    title = track,
+                    artist = artist,
                     limit = maxOf(targetSize * 2, 50),
-                    prefetchStreams = false,
                 )
                 val list = primaryRadio.toMutableList()
                 if (list.size < 40 && list.isNotEmpty()) {
-                    val branchSeed = list.firstOrNull { it.videoId != resolvedVideoId }?.videoId
+                    val branchSeed = list.firstOrNull { it.videoId != resolvedVideoId }
                     if (branchSeed != null) {
-                        val branchRadio = relatedGraph.relatedFor(
-                            videoId = branchSeed,
+                        val branchRadio = recommendationRepository.relatedFor(
+                            seedVideoId = branchSeed.videoId,
+                            title = branchSeed.title,
+                            artist = branchSeed.artist,
                             limit = 35,
-                            prefetchStreams = false,
+                            durationSeconds = branchSeed.durationSeconds,
                         )
                         val existingIds = list.mapTo(mutableSetOf()) { it.videoId }
                         for (item in branchRadio) {
@@ -772,7 +779,13 @@ class GenerateRepository @Inject constructor(
             try {
                 val seed = innerTube.searchSongs("$artist songs", limit = 3, prefetchStreams = false).firstOrNull()
                     ?: return@async emptyList()
-                val related = relatedGraph.relatedFor(seed.videoId, minOf(limit * 2, 75), prefetchStreams = false)
+                val related = recommendationRepository.relatedFor(
+                    seedVideoId = seed.videoId,
+                    title = seed.title,
+                    artist = seed.artist,
+                    limit = minOf(limit * 2, 75),
+                    durationSeconds = seed.durationSeconds,
+                )
                 related.map { it.toGeneratedTrack() }
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -1369,7 +1382,7 @@ class GenerateRepository @Inject constructor(
                 recommendationExclusionDao,
                 playlistRepository,
                 innerTube,
-                relatedGraph,
+                recommendationRepository,
             )
             val tasteSuggestions = runCatching { localEngine.run(total) }.getOrDefault(emptyList()).filterNot { it.key in blacklist }
             val fallback = if (youtubeFresh.size + tasteSuggestions.size < total) {
@@ -1392,7 +1405,13 @@ class GenerateRepository @Inject constructor(
         artistName: String,
         onProgress: (String) -> Unit = {},
     ): List<GeneratedTrack> {
-        onProgress("Finding similar songs with YouTube Music\u2026")
+        onProgress(
+            if (recommendationRepository.isSpotifyActive()) {
+                "Finding similar songs with Spotify\u2026"
+            } else {
+                "Finding similar songs with YouTube Music\u2026"
+            },
+        )
         return fetchSimilarTracks(track = trackName, artist = artistName, limit = 28)
     }
 

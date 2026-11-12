@@ -81,6 +81,29 @@ jobs:
           fi
           rm -rf app/build/outputs/apk/release/*
 
+      # vivo Origin Island / music widget build: same app under a package
+      # name on vivo's allowlist (see app/build.gradle.kts, vivoOrigin).
+      - name: Build vivo Origin Island APK
+        env:
+          ADDON_CLIENT_SECRET: ${{ secrets.ADDON_CLIENT_SECRET }}
+          LASTWAVE_LYRICS_TOKEN: ${{ secrets.LASTWAVE_LYRICS_TOKEN }}
+          LASTWAVE_LYRICS_URL: ${{ secrets.LASTWAVE_LYRICS_URL }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD || secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.ALIAS || secrets.RELEASE_KEY_ALIAS || 'release_key' }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || secrets.RELEASE_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease -PvivoOrigin=true --stacktrace
+
+      - name: Stage vivo Origin Island APK
+        run: |
+          TAG="${{ inputs.tag_name }}"
+          if [ -f "app/build/outputs/apk/release/app-release-signed.apk" ]; then
+            cp app/build/outputs/apk/release/app-release-signed.apk final_apk/LastWave-v${TAG}-vivo-origin.apk
+          else
+            cp app/build/outputs/apk/release/app-release.apk final_apk/LastWave-v${TAG}-vivo-origin.apk
+          fi
+          rm -rf app/build/outputs/apk/release/*
+
       - name: Build Android 7.0 Legacy APK (compressed)
         env:
           ADDON_CLIENT_SECRET: ${{ secrets.ADDON_CLIENT_SECRET }}
@@ -161,6 +184,10 @@ jobs:
           | **`LastWave-v__TAG__-universal.apk`** (~22 MB) | **Android 10+ (Android 10 – 16+)** | **Standard Recommended Release.** R8-optimized with uncompressed page-aligned native libraries for instant memory mapping. |
           | **`LastWave-v__TAG__-universal-uncompressed.apk`** (~89 MB) | **Android 10+ (Android 10 – 16+)** | **Raw Release.** Unminified debuggable variant with uncompressed native libraries. |
           | **`LastWave-v__TAG__-android7.apk`** (~17 MB) | **Android 7.0 – 9.0 (Legacy)** | **Legacy Android 7.0+ Variant.** Built with compressed native libraries for older package managers. |
+          | **`LastWave-v__TAG__-vivo-origin.apk`** (~22 MB) | **vivo phones (OriginOS)** | **vivo Origin Island & music widget build.** Separate APK so vivo's Origin Island and music widget show LastWave. |
+
+          > [!NOTE]
+          > **vivo users (`LastWave-v__TAG__-vivo-origin.apk`):** OriginOS only shows apps from vivo's own allowlist in Origin Island and the music widget, so this build uses an allowlisted package name. It installs as a **separate app** next to regular LastWave (data is not shared), it **cannot be installed alongside the real QQ Music app**, and it updates itself from this vivo APK only. If you installed an older vivo build (shown as Spotify), uninstall it first.
 
           > [!WARNING]
           > **Notice for Android 7.0 – 9.0 Users (`LastWave-v__TAG__-android7.apk`):**

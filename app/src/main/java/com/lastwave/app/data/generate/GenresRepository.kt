@@ -3,12 +3,14 @@ package com.lastwave.app.data.generate
 import android.util.Log
 import androidx.compose.runtime.Immutable
 import com.lastwave.app.data.local.SessionPreferences
+import com.lastwave.app.data.local.awaitLoadedSession
 import com.lastwave.app.data.network.LastFmApiService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
@@ -43,15 +45,21 @@ class GenresRepository @Inject constructor(
      *  into Genres while viewing a friend shows THEIR genre breakdown, not
      *  always your own regardless of whose profile you're actually on. */
     private suspend fun username(): String =
-        viewingProfileState.viewingUsername.value ?: sessionPreferences.session.first().username
+        viewingProfileState.viewingUsername.value ?: sessionPreferences.awaitLoadedSession().username
 
     private suspend fun call(params: Map<String, String>): JsonObject = generateRepository.call(params)
 
-    /** Port of genres.js's period dropdown values. */
+    /** Periods use only dated Last.fm listening; missing period history stays empty.
+     *  Overall retains the personal-tag fast path and undated guest/profile/chart fallbacks. */
     suspend fun fetchGenreStats(period: String): List<GenreStat> {
-        // Tier 1: user.getTopTags
-        try {
-            val d = call(mapOf("method" to "user.gettoptags", "user" to username(), "limit" to "18"))
+        val overall = period == "overall"
+        val user = username()
+        val guest = user.isBlank() || user.equals("Guest User", ignoreCase = true)
+        if (!overall && guest) return emptyList()
+
+        // user.gettoptags has no period parameter and cannot represent a week/month.
+        if (overall && !guest) try {
+            val d = call(mapOf("method" to "user.gettoptags", "user" to user, "limit" to "18"))
             val tags = GenerateJson.asObjectList(d["toptags"]?.jsonObject?.get("tag"))
                 .mapNotNull { obj ->
                     val name = (obj["name"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: return@mapNotNull null
@@ -59,29 +67,36 @@ class GenresRepository @Inject constructor(
                     name to count
                 }
                 .filter { it.second > 0 }
-            if (tags.size >= 3) {
-                return normalizeStats(tags)
-            }
+            if (tags.size >= 3) return normalizeStats(tags)
         } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
             Log.d(TAG, "user.gettoptags miss", e)
         }
 
-        // Tier 2: derive from top artists' own top tags, weighted by artist playcount
-        val tasteProfile = runCatching { tasteProfileProvider.get() }.getOrNull()
         return try {
-            val artistsD = call(mapOf("method" to "user.gettopartists", "user" to username(), "period" to period, "limit" to "30"))
-            val artists = GenerateJson.asObjectList(artistsD["topartists"]?.jsonObject?.get("artist"))
+            val artistsD = if (guest) null else try {
+                call(mapOf("method" to "user.gettopartists", "user" to user, "period" to period, "limit" to "30"))
+            } catch (e: Exception) {
+                currentCoroutineContext().ensureActive()
+                if (!overall) throw e
+                Log.d(TAG, "user.gettopartists miss", e)
+                null
+            }
+            val artists = GenerateJson.asObjectList(artistsD?.get("topartists")?.jsonObject?.get("artist"))
                 .mapNotNull { obj ->
                     val name = (obj["name"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: return@mapNotNull null
                     val playcount = (obj["playcount"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull() ?: 1L
                     name to playcount
                 }
 
-            val profileArtists = (tasteProfile?.topArtistsRaw.orEmpty() +
-                tasteProfile?.ytMusicFeedRaw.orEmpty().map { it.artist })
-                .filter(String::isNotBlank)
-                .distinctBy { it.trim().lowercase() }
-                .mapIndexed { index, artist -> artist to (24L - index).coerceAtLeast(1L) }
+            val profileArtists = if (overall) {
+                val profile = runCatching { tasteProfileProvider.get() }.getOrNull()
+                currentCoroutineContext().ensureActive()
+                (profile?.topArtistsRaw.orEmpty() + profile?.ytMusicFeedRaw.orEmpty().map { it.artist })
+                    .filter(String::isNotBlank)
+                    .distinctBy { it.trim().lowercase() }
+                    .mapIndexed { index, artist -> artist to (24L - index).coerceAtLeast(1L) }
+            } else emptyList()
             val weighted = mutableMapOf<String, Long>()
             coroutineScope {
                 val artistTagResults = (artists + profileArtists)
@@ -95,28 +110,26 @@ class GenresRepository @Inject constructor(
                                     .mapNotNull { (it["name"] as? kotlinx.serialization.json.JsonPrimitive)?.content }
                                     .take(5)
                             } catch (e: Exception) {
+                                currentCoroutineContext().ensureActive()
                                 Log.d(TAG, "artist.gettoptags miss for $artistName", e)
                                 emptyList()
                             }
-                            (artistName to playcount) to tags
+                            playcount to tags
                         }
                     }.awaitAll()
-                for ((artistWeight, tags) in artistTagResults) {
+                for ((playcount, tags) in artistTagResults) {
                     for (tag in tags) {
                         val key = tag.lowercase()
-                        weighted[key] = (weighted[key] ?: 0L) + artistWeight.second
+                        weighted[key] = (weighted[key] ?: 0L) + playcount
                     }
                 }
             }
             val sorted = weighted.entries.sortedByDescending { it.value }.take(15).map { it.key to it.value }
-            if (sorted.isNotEmpty()) {
-                normalizeStats(sorted)
-            } else {
-                fetchChartTags()
-            }
+            if (sorted.isNotEmpty() || !overall) normalizeStats(sorted) else fetchChartTags()
         } catch (e: Exception) {
-            Log.d(TAG, "tier-2 genre derivation failed", e)
-            fetchChartTags()
+            currentCoroutineContext().ensureActive()
+            Log.d(TAG, "genre derivation failed for $period", e)
+            if (overall) fetchChartTags() else emptyList()
         }
     }
 

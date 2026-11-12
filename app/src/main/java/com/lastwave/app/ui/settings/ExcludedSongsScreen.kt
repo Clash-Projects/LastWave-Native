@@ -44,6 +44,7 @@ import androidx.lifecycle.viewModelScope
 import com.lastwave.app.data.generate.GenerateRepository
 import com.lastwave.app.data.local.db.RecommendationExclusionEntity
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.common.LiquidGlassCard
 import com.lastwave.app.ui.common.safeDrawingBottomPadding
@@ -82,17 +83,22 @@ fun ExcludedSongsScreen(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
-        Column(
+        GlassHeaderLayout(
             modifier = Modifier
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 860.dp)
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
-        ) {
+            header = { headerModifier, headerBackdrop ->
         ExpressiveHeader(
+            modifier = headerModifier,
+            backdrop = headerBackdrop,
             title = "Excluded Songs",
             subtitle = "${exclusions.size} song${if (exclusions.size == 1) "" else "s"} hidden from recommendations",
             onBack = onBack,
         )
+            },
+        ) { headerInset ->
+        Column(Modifier.fillMaxSize()) {
 
         if (exclusions.isEmpty()) {
             Box(
@@ -136,7 +142,7 @@ fun ExcludedSongsScreen(
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
-                    top = 14.dp,
+                    top = 14.dp + headerInset,
                     bottom = 28.dp + LocalMiniPlayerScrollClearance.current + safeDrawingBottomPadding(),
                 ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -150,6 +156,7 @@ fun ExcludedSongsScreen(
             }
         }
     }
+        }
     }
 }
 

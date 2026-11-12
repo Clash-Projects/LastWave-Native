@@ -1,6 +1,19 @@
 import java.io.File
+import java.security.KeyStore
+import java.security.MessageDigest
+import java.security.SecureRandom
 import java.util.Base64
 import java.util.Properties
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
+import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.TaskAction
 
 plugins {
     alias(libs.plugins.android.application)
@@ -9,6 +22,169 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+}
+
+var nativeVaultCertPrefix = "PLACEHOLDER_REPLACE_WITH_YOUR_CERT_SHA256"
+var nativeVaultSecret = ""
+
+fun readCertSha256Hex(keystoreBytes: ByteArray?, storePassword: String, keyAlias: String): String? {
+    if (keystoreBytes == null || keystoreBytes.isEmpty()) return null
+    val digest = MessageDigest.getInstance("SHA-256")
+    val types = listOf("PKCS12", "JKS", KeyStore.getDefaultType()).distinct()
+    val pwCandidates: List<CharArray?> = if (storePassword.isEmpty()) {
+        listOf(charArrayOf(), null)
+    } else {
+        listOf(storePassword.toCharArray(), null)
+    }
+    for (ksType in types) {
+        for (pw in pwCandidates) {
+            try {
+                val ks = KeyStore.getInstance(ksType)
+                ks.load(keystoreBytes.inputStream(), pw)
+                val aliases = mutableListOf<String>()
+                val aliasEnum = ks.aliases()
+                while (aliasEnum.hasMoreElements()) aliases += aliasEnum.nextElement()
+                val cert = ks.getCertificate(keyAlias)
+                    ?: aliases.firstOrNull { it.equals(keyAlias, ignoreCase = true) }?.let { ks.getCertificate(it) }
+                    ?: aliases.mapNotNull { ks.getCertificate(it) }.firstOrNull()
+                if (cert != null) {
+                    return digest.digest(cert.encoded).joinToString("") { "%02x".format(it) }
+                }
+            } catch (_: Exception) {
+            }
+        }
+    }
+    return null
+}
+
+abstract class PrepareNativeBridgeTask : DefaultTask() {
+    @get:OutputFile
+    abstract val headerFile: RegularFileProperty
+
+    @get:Internal
+    abstract val bridgeCppFile: RegularFileProperty
+
+    @get:Input
+    abstract val certPrefix: Property<String>
+
+    @get:Input
+    abstract val stateFingerprint: Property<String>
+
+    @get:Internal
+    abstract val plainSecret: Property<String>
+
+    @TaskAction
+    fun generate() {
+        val outHeader = headerFile.get().asFile
+        val cppFile = bridgeCppFile.get().asFile
+        val cert = certPrefix.get()
+        val fp = stateFingerprint.get()
+        val secret = plainSecret.get()
+
+        if (outHeader.isFile && outHeader.useLines { it.firstOrNull()?.trim() } == "// fp:$fp") {
+            return
+        }
+
+        val existedBefore = outHeader.exists()
+        val secretBytes = secret.toByteArray(Charsets.UTF_8)
+        if (secretBytes.size > 128) {
+            throw GradleException("ADDON_CLIENT_SECRET exceeds 128-byte native buffer")
+        }
+
+        val sb = StringBuilder()
+        sb.append("// fp:").append(fp).append('\n')
+        sb.append("#pragma once\n#include <cstddef>\n#include <cstdint>\n\n")
+        sb.append("constexpr char EXPECTED_CERT_PREFIX[] = \"").append(cert).append("\";\n\n")
+
+        if (secretBytes.isEmpty()) {
+            sb.append("static const uint8_t CLIENT_SECRET_SALT[16] = {0};\n")
+            sb.append("static constexpr size_t CLIENT_SECRET_TOTAL_LEN = 0;\n")
+            sb.append("static constexpr int CLIENT_SECRET_FRAGMENT_COUNT = 0;\n")
+            sb.append("struct Fragment { const uint8_t* data; uint8_t len; uint8_t mask; };\n")
+            sb.append("static const Fragment CLIENT_SECRET_FRAGMENTS[] = { {nullptr, 0, 0} };\n")
+        } else {
+            val rng = SecureRandom()
+            val salt = ByteArray(16).also { rng.nextBytes(it) }
+            val keyBytes = if (cert.startsWith("PLACEHOLDER")) {
+                MessageDigest.getInstance("SHA-256")
+                    .digest("LASTWAVE_DEV_FALLBACK_KEY".toByteArray(Charsets.UTF_8))
+            } else {
+                cert.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            }
+
+            val keystream = ByteArray(secretBytes.size)
+            val mac = Mac.getInstance("HmacSHA256")
+            mac.init(SecretKeySpec(keyBytes, "HmacSHA256"))
+            var generated = 0
+            var counter = 0
+            while (generated < secretBytes.size) {
+                val msg = ByteArray(salt.size + 4)
+                System.arraycopy(salt, 0, msg, 0, salt.size)
+                msg[salt.size] = ((counter ushr 24) and 0xFF).toByte()
+                msg[salt.size + 1] = ((counter ushr 16) and 0xFF).toByte()
+                msg[salt.size + 2] = ((counter ushr 8) and 0xFF).toByte()
+                msg[salt.size + 3] = (counter and 0xFF).toByte()
+                val block = mac.doFinal(msg)
+                val n = minOf(block.size, secretBytes.size - generated)
+                System.arraycopy(block, 0, keystream, generated, n)
+                generated += n
+                counter++
+            }
+
+            val ciphertext = ByteArray(secretBytes.size) { i ->
+                (secretBytes[i].toInt() xor keystream[i].toInt()).toByte()
+            }
+
+            val chunkSize = maxOf(1, ciphertext.size / 8)
+            val fragments = mutableListOf<Pair<ByteArray, Int>>()
+            var off = 0
+            while (off < ciphertext.size) {
+                val end = minOf(off + chunkSize, ciphertext.size)
+                val mask = 0x10 + rng.nextInt(0xEF)
+                val xored = ByteArray(end - off) { i ->
+                    ((ciphertext[off + i].toInt() and 0xFF) xor mask).toByte()
+                }
+                fragments += (xored to mask)
+                off = end
+            }
+
+            val reconCipher = ByteArray(secretBytes.size)
+            var rOff = 0
+            for ((xored, mask) in fragments) {
+                for (b in xored) {
+                    reconCipher[rOff++] = ((b.toInt() and 0xFF) xor mask).toByte()
+                }
+            }
+            val reconSecret = ByteArray(secretBytes.size) { i ->
+                (reconCipher[i].toInt() xor keystream[i].toInt()).toByte()
+            }
+            if (!reconSecret.contentEquals(secretBytes)) {
+                throw GradleException("Native bridge header verification failed")
+            }
+
+            val saltHex = salt.joinToString(",") { "0x%02X".format(it.toInt() and 0xFF) }
+            sb.append("static const uint8_t CLIENT_SECRET_SALT[16] = {$saltHex};\n")
+            sb.append("static constexpr size_t CLIENT_SECRET_TOTAL_LEN = ${secretBytes.size};\n")
+            sb.append("static constexpr int CLIENT_SECRET_FRAGMENT_COUNT = ${fragments.size};\n\n")
+            fragments.forEachIndexed { idx, (xored, _) ->
+                val hex = xored.joinToString(",") { "0x%02X".format(it.toInt() and 0xFF) }
+                sb.append("static const uint8_t CS$idx[] = {$hex};\n")
+            }
+            sb.append("\nstruct Fragment {\n    const uint8_t* data;\n    uint8_t len;\n    uint8_t mask;\n};\n\n")
+            sb.append("static const Fragment CLIENT_SECRET_FRAGMENTS[] = {\n")
+            fragments.forEachIndexed { idx, (xored, mask) ->
+                sb.append("    {CS$idx, ${xored.size}, 0x%02X},\n".format(mask))
+            }
+            sb.append("};\n")
+        }
+
+        outHeader.parentFile?.mkdirs()
+        outHeader.writeText(sb.toString(), Charsets.UTF_8)
+        // Refresh mtime on initial creation so Ninja adds the header to its depfile.
+        if (!existedBefore && cppFile.exists()) {
+            cppFile.setLastModified(System.currentTimeMillis())
+        }
+    }
 }
 
 android {
@@ -56,12 +232,24 @@ android {
         return ""
     }
 
+    // vivo Origin Island / music widget build: `-PvivoOrigin=true`.
+    // OriginOS only follows apps whose package name is on vivo's own
+    // allowlist (a system setting no app can write), so this ships the same
+    // app under an allowlisted package. It installs as a separate app, cannot
+    // sit next to that package's real app, and keeps its own data.
+    // The list differs by OriginOS version/region: com.spotify.music is missing
+    // on many phones, while com.tencent.qqmusic is user-confirmed to show on the
+    // island and is almost never already installed outside China.
+    val vivoOrigin = (project.findProperty("vivoOrigin") as? String)?.toBoolean() == true
+
     defaultConfig {
-        applicationId = "com.lastwave.app"
+        applicationId = if (vivoOrigin) "com.tencent.qqmusic" else "com.lastwave.app"
+        buildConfigField("boolean", "VIVO_ORIGIN", vivoOrigin.toString())
         minSdk = (project.findProperty("minSdk") as? String)?.toIntOrNull() ?: 29
         targetSdk = 35
-        versionCode = 27
-        versionName = "5.0.0"
+        versionCode = 32
+        versionName = "5.2.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         (project.findProperty("targetAbis") as? String)?.let { prop ->
             ndk {
@@ -73,10 +261,6 @@ android {
         val lastWaveLyricsUrl = resolveSecret("LASTWAVE_LYRICS_URL")
         buildConfigField("String", "LASTWAVE_LYRICS_TOKEN", "\"$lastWaveLyricsToken\"")
         buildConfigField("String", "LASTWAVE_LYRICS_URL", "\"$lastWaveLyricsUrl\"")
-
-        // Native secrets (addon client lock) live strictly in native .so via
-        // SecretsBridge_generated.h (tools/generate_native_secrets.py).
-        // No secret fields are exposed in DEX / BuildConfig.
 
         externalNativeBuild {
             cmake {
@@ -100,32 +284,35 @@ android {
         }
     }
 
+    val requestsRelease =
+        gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
+    val base64Key = resolveSecret("SIGNING_KEY")
+    val storeFilePath = resolveSecret("RELEASE_STORE_FILE")
+    val storePasswordProp = resolveSecret("RELEASE_STORE_PASSWORD", "KEY_STORE_PASSWORD")
+    val keyAliasProp = resolveSecret("RELEASE_KEY_ALIAS", "ALIAS").ifBlank { "release_key" }
+    val keyPasswordProp = resolveSecret("RELEASE_KEY_PASSWORD", "KEY_PASSWORD").ifBlank { storePasswordProp }
+
+    val decodedReleaseKeystoreBytes: ByteArray? = if (base64Key.isNotBlank()) {
+        runCatching { Base64.getDecoder().decode(base64Key.trim()) }.getOrNull()
+    } else {
+        null
+    }
+
+    val releaseKeystoreFile: File? = when {
+        decodedReleaseKeystoreBytes != null -> {
+            val tempKeystore = layout.buildDirectory.file("signing/release.keystore").get().asFile
+            tempKeystore.parentFile.mkdirs()
+            tempKeystore.writeBytes(decodedReleaseKeystoreBytes)
+            tempKeystore
+        }
+        storeFilePath.isNotBlank() -> file(storeFilePath)
+        else -> null
+    }
+
     signingConfigs {
         create("release_config") {
-            val base64Key = resolveSecret("SIGNING_KEY")
-            val storeFilePath = resolveSecret("RELEASE_STORE_FILE")
-            val storePasswordProp = resolveSecret("RELEASE_STORE_PASSWORD", "KEY_STORE_PASSWORD")
-            val keyAliasProp = resolveSecret("RELEASE_KEY_ALIAS", "ALIAS").ifBlank { "release_key" }
-            val keyPasswordProp = resolveSecret("RELEASE_KEY_PASSWORD", "KEY_PASSWORD").ifBlank { storePasswordProp }
-
-            val keystoreFile: File? = when {
-                base64Key.isNotBlank() -> {
-                    try {
-                        val decodedBytes = Base64.getDecoder().decode(base64Key.trim())
-                        val tempKeystore = layout.buildDirectory.file("signing/release.keystore").get().asFile
-                        tempKeystore.parentFile.mkdirs()
-                        tempKeystore.writeBytes(decodedBytes)
-                        tempKeystore
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
-                storeFilePath.isNotBlank() -> file(storeFilePath)
-                else -> null
-            }
-
-            if (keystoreFile != null && keystoreFile.exists() && storePasswordProp.isNotBlank()) {
-                storeFile = keystoreFile
+            if (releaseKeystoreFile != null && releaseKeystoreFile.exists() && storePasswordProp.isNotBlank()) {
+                storeFile = releaseKeystoreFile
                 storePassword = storePasswordProp
                 keyAlias = keyAliasProp
                 keyPassword = keyPasswordProp
@@ -144,8 +331,6 @@ android {
                 // Only fail when a release variant is actually being requested,
                 // so debug builds and unit tests keep working with no signing
                 // secrets present on a dev machine.
-                val requestsRelease =
-                    gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
                 if (requestsRelease) {
                     throw GradleException(
                         "No release signing key found. Provide SIGNING_KEY (base64 " +
@@ -158,6 +343,32 @@ android {
             }
         }
     }
+
+    val addonClientSecret = resolveSecret("ADDON_CLIENT_SECRET")
+    val explicitCertSha = resolveSecret("RELEASE_CERT_SHA256")
+        .takeIf { it.matches(Regex("^[0-9a-fA-F]{64}$")) }
+        ?.lowercase()
+    val releaseCertBytes = decodedReleaseKeystoreBytes
+        ?: releaseKeystoreFile?.takeIf { it.isFile }?.readBytes()
+    val debugKeystoreBytes = signingConfigs.findByName("debug")?.storeFile
+        ?.takeIf { it.isFile }?.readBytes()
+
+    val effectiveCertPrefix = when {
+        requestsRelease -> {
+            val resolved = explicitCertSha ?: readCertSha256Hex(releaseCertBytes, storePasswordProp, keyAliasProp)
+            if (addonClientSecret.isNotBlank() && resolved == null) {
+                throw GradleException("Cannot resolve release certificate SHA-256 for native vault.")
+            }
+            resolved ?: "PLACEHOLDER_REPLACE_WITH_YOUR_CERT_SHA256"
+        }
+        addonClientSecret.isNotBlank() -> {
+            readCertSha256Hex(debugKeystoreBytes, "android", "androiddebugkey")
+                ?: "PLACEHOLDER_REPLACE_WITH_YOUR_CERT_SHA256"
+        }
+        else -> "PLACEHOLDER_REPLACE_WITH_YOUR_CERT_SHA256"
+    }
+    nativeVaultCertPrefix = effectiveCertPrefix
+    nativeVaultSecret = addonClientSecret
 
     buildTypes {
         release {
@@ -248,6 +459,8 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.kyant.backdrop)
     implementation(libs.kyant.shapes)
+    // Android 13+ navigation optics; Kyant remains for existing surfaces and older devices.
+    implementation(libs.fletchmckee.liquid)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
@@ -301,8 +514,8 @@ dependencies {
     // decoders remain as automatic fallbacks.
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.2.1+1")
 
-    // Core library desugaring required by the FFmpeg decoder AAR metadata.
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    // NIO also backports NewPipe's URL encoder/decoder overloads below API 33.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.0.4")
 
     // Low-latency native output. Version 1.10 remains API-compatible with the
     // requested Oboe 1.8+ baseline and exposes its CMake target through Prefab.
@@ -316,6 +529,10 @@ dependencies {
     // current release is built with a newer Kotlin metadata version than the
     // app. Runtime-only keeps the app compiler on its existing Kotlin line.
     runtimeOnly(libs.innertubex)
+    // InnerTubeX cipher-context fetches use Ktor's OkHttp engine so TLS follows
+    // the same Android trust path as the app's working OkHttp requests. CIO
+    // remains a fallback; the Android engine closed streams on cancellation.
+    runtimeOnly("io.ktor:ktor-client-okhttp:3.6.0")
     runtimeOnly("io.ktor:ktor-client-cio:3.6.0")
 
     // Unit Testing dependencies
@@ -324,6 +541,11 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.12.2")
     testImplementation("io.mockk:mockk:1.13.10")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     // Bit-perfect USB exclusive output: audio_engine UsbAudioDriver.
     implementation(project(":audio:decent-usb-audio-driver"))
@@ -352,18 +574,26 @@ tasks.withType<Test> {
     maxHeapSize = "2048m"
 }
 
-// Generate native secrets header before CMake configures.
-// CI provides ADDON_CLIENT_SECRET / RELEASE_CERT_SHA256 via env/secrets.
-val generateNativeSecrets by tasks.registering(Exec::class) {
-    workingDir = rootProject.projectDir
-    val py = org.gradle.internal.os.OperatingSystem.current().let {
-        if (it.isWindows) "python" else "python3"
-    }
-    commandLine(py, "tools/generate_native_secrets.py")
-    // Never fail public builds when secrets absent; script emits empty header.
-    isIgnoreExitValue = true
+val nativeVaultFp = MessageDigest.getInstance("SHA-256")
+    .digest("$nativeVaultCertPrefix:$nativeVaultSecret".toByteArray(Charsets.UTF_8))
+    .joinToString("") { "%02x".format(it) }
+
+val prepareNativeBridge = tasks.register<PrepareNativeBridgeTask>("prepareNativeBridge") {
+    headerFile.set(layout.projectDirectory.file("src/main/cpp/SecretsBridge_generated.h"))
+    bridgeCppFile.set(layout.projectDirectory.file("src/main/cpp/SecretsBridge.cpp"))
+    certPrefix.set(nativeVaultCertPrefix)
+    stateFingerprint.set(nativeVaultFp)
+    plainSecret.set(nativeVaultSecret)
 }
-tasks.named("preBuild").configure {
-    dependsOn(generateNativeSecrets)
+
+tasks.matching {
+    it.name == "preBuild" ||
+        it.name.startsWith("configureCMake") ||
+        it.name.startsWith("buildCMake") ||
+        it.name.startsWith("externalNativeBuild")
+}.configureEach {
+    dependsOn(prepareNativeBridge)
 }
+
+
 

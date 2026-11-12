@@ -1,6 +1,9 @@
 package com.lastwave.app.ui.artist
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -51,8 +54,13 @@ import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.lastwave.app.data.canvas.CanvasSource
 import com.lastwave.app.ui.common.EdgeToEdgeDialogWindow
+import com.lastwave.app.ui.player.CanvasArtworkPlayer
+import com.lastwave.app.ui.player.CanvasContentMode
 import com.lastwave.app.ui.player.CanvasVideoPlayer
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -126,7 +134,7 @@ fun ArtistDetailScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val artistCanvas by viewModel.artistCanvas.collectAsStateWithLifecycle()
     val musicPlayer = LocalMusicPlayer.current
-    val playbackState by musicPlayer.chromeState.collectAsStateWithLifecycle()
+    val playbackState by musicPlayer.listPlaybackState.collectAsStateWithLifecycle()
     val haptic = LocalHapticFeedback.current
 
     // System back / predictive-back gesture is owned by the wrapping
@@ -144,17 +152,124 @@ fun ArtistDetailScreen(
     var showFullscreenMotion by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
-    val showScrolledHeader by remember {
+    val scrollOffset by remember {
         derivedStateOf {
-            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 300
+            if (listState.firstVisibleItemIndex == 0) {
+                listState.firstVisibleItemScrollOffset.toFloat()
+            } else 600f
         }
     }
+
+    val showScrolledHeader by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 240
+        }
+    }
+
+    val artistData = (uiState as? ArtistUiState.Success)?.data
+    val isAppleMotion = artistCanvas?.source == CanvasSource.APPLE
+    val headerWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
+    val motionVideoUrl = if (isAppleMotion) artistCanvas?.motionUrlFor(containerAspect = headerWidthDp / 440f) else null
+    val hasVideoAnimation = isAppleMotion && showHeaderVideo && !motionVideoUrl.isNullOrBlank()
+    val activeArtistCanvas = remember(artistCanvas, motionVideoUrl, isAppleMotion) {
+        if (isAppleMotion) {
+            artistCanvas?.let { canvas -> canvas.copy(url = motionVideoUrl ?: canvas.url) }
+        } else null
+    }
+    val artworkCandidates = remember(artistData) {
+        if (artistData != null) {
+            listOfNotNull(artistData.artworkUrl, artistData.bannerUrl, artistData.fallbackArtworkUrl)
+                .filter(com.lastwave.app.data.artwork.ArtworkNormalizer::isRealImage).distinct()
+        } else emptyList()
+    }
+    var artworkIndex by remember(artistData) { mutableStateOf(0) }
+    val artistArtwork = artworkCandidates.getOrNull(artworkIndex)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
+        // 1. Full-Bleed Cover Art Background at Top with smooth parallax physics
+        if (artistData != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(440.dp)
+                    .graphicsLayer {
+                        translationY = -scrollOffset * 0.45f
+                        alpha = (1f - (scrollOffset / 520f)).coerceIn(0.1f, 1f)
+                        val zoom = 1f + (-scrollOffset.coerceAtMost(0f) / 600f)
+                        scaleX = zoom
+                        scaleY = zoom
+                    }
+                    .then(
+                        if (hasVideoAnimation) {
+                            Modifier.clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                showFullscreenMotion = true
+                            }
+                        } else Modifier
+                    ),
+            ) {
+                if (artistArtwork != null) {
+                    AsyncImage(
+                        model = artistArtwork,
+                        contentDescription = artistData.name,
+                        contentScale = ContentScale.Crop,
+                        alignment = Alignment.TopCenter,
+                        modifier = Modifier.fillMaxSize(),
+                        onError = { artworkIndex++ },
+                    )
+                } else {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Filled.Person,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(112.dp),
+                            )
+                        }
+                    }
+                }
+
+                // Apple Music Artist Motion animated looping video
+                if (hasVideoAnimation && activeArtistCanvas != null) {
+                    CanvasArtworkPlayer(
+                        canvas = activeArtistCanvas,
+                        isPlaying = true,
+                        contentMode = CanvasContentMode.CROP,
+                        alignPortraitTop = true,
+                        bottomFade = 0f,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clipToBounds(),
+                    )
+                }
+
+                // Multi-stop cinematic dark gradient overlay
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0.0f to Color.Black.copy(alpha = 0.55f),
+                                    0.30f to Color.Black.copy(alpha = 0.20f),
+                                    0.60f to Color.Black.copy(alpha = 0.55f),
+                                    0.85f to MaterialTheme.colorScheme.background.copy(alpha = 0.90f),
+                                    1.0f to MaterialTheme.colorScheme.background,
+                                ),
+                            ),
+                        ),
+                )
+            }
+        }
+
         when (val state = uiState) {
             is ArtistUiState.Loading -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -195,274 +310,144 @@ fun ArtistDetailScreen(
                         .fillMaxSize()
                         .align(Alignment.TopCenter),
                 ) {
-                    // 1. Artist Hero Section (Edge-to-Edge Full Bleed)
+                    // 1. Artist Hero Section (Edge-to-Edge Full Bleed Overlaid Header)
                     item(key = "artist_hero") {
-                        // Header is 460dp tall: on phones that box is portrait,
-                        // so the tall motion clip fits; wide only on wide screens.
-                        val headerWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
-                        val motionVideoUrl = artistCanvas?.motionUrlFor(containerAspect = headerWidthDp / 460f)
-                        val hasVideoAnimation = artistCanvas != null && showHeaderVideo && !motionVideoUrl.isNullOrBlank()
-
-                        Box(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(460.dp)
-                                .then(
-                                    if (hasVideoAnimation) {
-                                        Modifier.clickable {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            showFullscreenMotion = true
-                                        }
-                                    } else Modifier
-                                ),
+                                .adaptiveContentWidth(maxWidth = 860.dp)
+                                .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 150.dp)
+                                .padding(horizontal = 20.dp),
                         ) {
-                            val artworkCandidates = remember(data) {
-                                listOfNotNull(data.artworkUrl, data.bannerUrl, data.fallbackArtworkUrl)
-                                    .filter(com.lastwave.app.data.artwork.ArtworkNormalizer::isRealImage).distinct()
-                            }
-                            var artworkIndex by remember(data) { mutableStateOf(0) }
-                            val artistArtwork = artworkCandidates.getOrNull(artworkIndex)
-                            if (artistArtwork != null) {
-                                AsyncImage(
-                                    model = artistArtwork,
-                                    contentDescription = data.name,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize(),
-                                    onError = { artworkIndex++ },
-                                )
-                            } else {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                    modifier = Modifier.fillMaxSize(),
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.Bottom,
+                            ) {
+                                Column(modifier = Modifier.weight(1f, fill = false)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = com.lastwave.app.util.ArtistHelper.primaryArtist(data.name),
+                                            style = MaterialTheme.typography.headlineLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onBackground,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Spacer(Modifier.width(8.dp))
                                         Icon(
-                                            Icons.Filled.Person,
-                                            contentDescription = null,
+                                            Icons.Filled.Verified,
+                                            contentDescription = stringResource(R.string.art_verified_cd),
                                             tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(112.dp),
+                                            modifier = Modifier.size(26.dp),
                                         )
                                     }
-                                }
-                            }
 
-                            // Apple Music Artist Motion animated looping video
-                            if (hasVideoAnimation) {
-                                CanvasVideoPlayer(
-                                    videoUrl = motionVideoUrl!!,
-                                    isPlaying = true,
-                                    enableScrim = false,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            }
-
-                            // Seamless dark gradient overlay (top scrim for status bar, bottom fade into background)
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(
-                                        Brush.verticalGradient(
-                                            0.0f to Color.Black.copy(alpha = 0.5f),
-                                            0.25f to Color.Transparent,
-                                            0.55f to Color.Black.copy(alpha = 0.25f),
-                                            0.82f to Color.Black.copy(alpha = 0.78f),
-                                            1.0f to MaterialTheme.colorScheme.background,
-                                        ),
-                                    ),
-                            )
-
-                            // Video / Photo toggle button & Fullscreen expand button
-                            if (artistCanvas != null) {
-                                Row(
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .windowInsetsPadding(WindowInsets.statusBars)
-                                        .padding(top = 10.dp, end = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    if (hasVideoAnimation) {
+                                    if (!data.subscribers.isNullOrBlank() || !data.monthlyListeners.isNullOrBlank()) {
+                                        Spacer(Modifier.height(6.dp))
                                         Surface(
-                                            shape = CircleShape,
-                                            color = Color.Black.copy(alpha = 0.45f),
-                                            modifier = Modifier.size(38.dp),
+                                            shape = RoundedCornerShape(50),
+                                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.12f),
                                         ) {
-                                            IconButton(
-                                                onClick = {
-                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                    showFullscreenMotion = true
-                                                },
-                                                modifier = Modifier.fillMaxSize(),
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.Fullscreen,
-                                                    contentDescription = "Expand Fullscreen",
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(20.dp),
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = Color.Black.copy(alpha = 0.45f),
-                                        modifier = Modifier.size(38.dp),
-                                    ) {
-                                        IconButton(
-                                            onClick = {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                showHeaderVideo = !showHeaderVideo
-                                            },
-                                            modifier = Modifier.fillMaxSize(),
-                                        ) {
-                                            Icon(
-                                                imageVector = if (showHeaderVideo) Icons.Filled.SmartDisplay else Icons.Filled.Image,
-                                                contentDescription = if (showHeaderVideo) "Show Photo" else "Show Motion Video",
-                                                tint = if (showHeaderVideo) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.85f),
-                                                modifier = Modifier.size(19.dp),
+                                            Text(
+                                                text = data.subscribers ?: data.monthlyListeners.orEmpty(),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onBackground,
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                                             )
                                         }
                                     }
                                 }
-                            }
 
-                            if (isArtistPlaying) {
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = Color.Black.copy(alpha = 0.6f),
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .padding(bottom = 24.dp, end = 20.dp),
-                                ) {
-                                    PlayingWaveBars(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                        containerColor = Color.Transparent,
-                                        waveColor = MaterialTheme.colorScheme.primary,
-                                    )
-                                }
-                            }
-
-                            // Artist Title & Stats overlaid on hero
-                            Column(
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .adaptiveContentWidth(maxWidth = 860.dp)
-                                    .padding(start = 20.dp, bottom = 20.dp, end = if (isArtistPlaying) 80.dp else 20.dp),
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        text = com.lastwave.app.util.ArtistHelper.primaryArtist(data.name),
-                                        style = MaterialTheme.typography.displaySmall,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Icon(
-                                        Icons.Filled.Verified,
-                                        contentDescription = stringResource(R.string.art_verified_cd),
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(26.dp),
-                                    )
-                                }
-
-                                if (!data.subscribers.isNullOrBlank() || !data.monthlyListeners.isNullOrBlank()) {
-                                    Spacer(Modifier.height(6.dp))
+                                if (isArtistPlaying) {
                                     Surface(
-                                        shape = RoundedCornerShape(50),
-                                        color = Color.White.copy(alpha = 0.18f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f),
+                                        modifier = Modifier.padding(start = 12.dp, bottom = 4.dp),
                                     ) {
-                                        Text(
-                                            text = data.subscribers ?: data.monthlyListeners.orEmpty(),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = Color.White,
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                        PlayingWaveBars(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            containerColor = Color.Transparent,
+                                            waveColor = MaterialTheme.colorScheme.primary,
                                         )
                                     }
                                 }
                             }
-                        }
-                    }
 
-                    // Native Music App Action Bar (Shuffle, Radio, Primary Play FAB)
-                    item(key = "artist_action_bar") {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .adaptiveContentWidth(maxWidth = 860.dp)
-                                .padding(horizontal = 20.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
+                            Spacer(Modifier.height(18.dp))
+
+                            // Hero Action Buttons (Shuffle • Radio • Primary Play FAB)
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                FilledTonalIconButton(
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    FilledTonalIconButton(
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                            viewModel.playShuffle()
+                                        },
+                                        enabled = data.topSongs.isNotEmpty(),
+                                        shape = CircleShape,
+                                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                        ),
+                                        modifier = Modifier.size(48.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Shuffle,
+                                            contentDescription = stringResource(R.string.art_shuffle_cd),
+                                            modifier = Modifier.size(22.dp),
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+
+                                    FilledTonalIconButton(
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                            viewModel.startArtistMix()
+                                        },
+                                        shape = CircleShape,
+                                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                        ),
+                                        modifier = Modifier.size(48.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Radio,
+                                            contentDescription = stringResource(R.string.art_radio_cd),
+                                            modifier = Modifier.size(22.dp),
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+
+                                // Large Floating Primary Play Button (56dp circle)
+                                Surface(
                                     onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        viewModel.playShuffle()
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                        viewModel.playAll()
                                     },
                                     enabled = data.topSongs.isNotEmpty(),
                                     shape = CircleShape,
-                                    colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                    ),
-                                    modifier = Modifier.size(48.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    shadowElevation = 6.dp,
+                                    modifier = Modifier.size(56.dp),
                                 ) {
-                                    Icon(
-                                        Icons.Filled.Shuffle,
-                                        contentDescription = stringResource(R.string.art_shuffle_cd),
-                                        modifier = Modifier.size(22.dp),
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                                }
-
-                                FilledTonalIconButton(
-                                    onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        viewModel.startArtistMix()
-                                    },
-                                    shape = CircleShape,
-                                    colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                    ),
-                                    modifier = Modifier.size(48.dp),
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Radio,
-                                        contentDescription = stringResource(R.string.art_radio_cd),
-                                        modifier = Modifier.size(22.dp),
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                                }
-                            }
-
-                            // Large Floating Primary Play Button (56dp circle)
-                            Surface(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    viewModel.playAll()
-                                },
-                                enabled = data.topSongs.isNotEmpty(),
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                                shadowElevation = 6.dp,
-                                modifier = Modifier.size(56.dp),
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        if (isArtistPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                        contentDescription = stringResource(R.string.art_play_cd),
-                                        tint = MaterialTheme.colorScheme.onPrimary,
-                                        modifier = Modifier.size(30.dp),
-                                    )
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            if (isArtistPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                            contentDescription = stringResource(R.string.art_play_cd),
+                                            tint = MaterialTheme.colorScheme.onPrimary,
+                                            modifier = Modifier.size(30.dp),
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -588,7 +573,7 @@ fun ArtistDetailScreen(
                                     .adaptiveContentWidth(maxWidth = 860.dp)
                                     .padding(horizontal = 20.dp)
                                     .clickable {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         val fullIndex = data.topSongs.indexOf(track).takeIf { it >= 0 } ?: index
                                         viewModel.playAll(startIndex = fullIndex)
                                     },
@@ -646,7 +631,7 @@ fun ArtistDetailScreen(
 
                                     IconButton(
                                         onClick = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                             selectedTrackMenu = track
                                         },
                                         modifier = Modifier.size(36.dp),
@@ -673,7 +658,7 @@ fun ArtistDetailScreen(
                                 ) {
                                     Surface(
                                         onClick = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                             showAllSongs = !showAllSongs
                                         },
                                         shape = RoundedCornerShape(24.dp),
@@ -829,10 +814,21 @@ fun ArtistDetailScreen(
             }
         }
 
+        val topBarBg by animateColorAsState(
+            targetValue = if (showScrolledHeader) MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.98f) else Color.Transparent,
+            animationSpec = tween(260),
+            label = "topBarBg",
+        )
+        val topBarElevation by animateDpAsState(
+            targetValue = if (showScrolledHeader) 6.dp else 0.dp,
+            animationSpec = tween(260),
+            label = "topBarElevation",
+        )
+
         Surface(
-            color = if (showScrolledHeader) MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.98f) else Color.Transparent,
-            tonalElevation = if (showScrolledHeader) 4.dp else 0.dp,
-            shadowElevation = if (showScrolledHeader) 6.dp else 0.dp,
+            color = topBarBg,
+            tonalElevation = topBarElevation,
+            shadowElevation = topBarElevation,
             modifier = Modifier
                 .fillMaxWidth()
                 .zIndex(10f)
@@ -843,37 +839,28 @@ fun ArtistDetailScreen(
                     .fillMaxWidth()
                     .adaptiveContentWidth(maxWidth = 860.dp)
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (!showScrolledHeader) {
-                    FilledTonalIconButton(
-                        onClick = onBack,
-                        shape = CircleShape,
-                        colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = Color.Black.copy(alpha = 0.45f),
-                            contentColor = Color.White,
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onBack()
+                    },
+                    modifier = Modifier
+                        .size(42.dp)
+                        .background(
+                            if (showScrolledHeader || uiState !is ArtistUiState.Success) Color.Transparent else Color.Black.copy(alpha = 0.38f),
+                            CircleShape,
                         ),
-                        modifier = Modifier.size(38.dp),
-                    ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.pd_back_cd),
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                } else {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.size(44.dp),
-                    ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.pd_back_cd),
-                            tint = MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.pd_back_cd),
+                        tint = if (showScrolledHeader || uiState !is ArtistUiState.Success) MaterialTheme.colorScheme.onSurface else Color.White,
+                        modifier = Modifier.size(22.dp),
+                    )
                 }
 
                 Row(
@@ -887,33 +874,99 @@ fun ArtistDetailScreen(
                         enter = fadeIn() + scaleIn(initialScale = 0.9f),
                         exit = fadeOut() + scaleOut(targetScale = 0.9f),
                     ) {
-                        Text(
-                            text = com.lastwave.app.util.ArtistHelper.primaryArtist((uiState as? ArtistUiState.Success)?.data?.name ?: artistName),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.size(32.dp).clip(CircleShape)) {
+                                if (artistArtwork != null) {
+                                    AsyncImage(
+                                        model = artistArtwork,
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                } else {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        modifier = Modifier.fillMaxSize(),
+                                    ) {
+                                        Icon(Icons.Filled.Person, contentDescription = null, modifier = Modifier.padding(4.dp))
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = com.lastwave.app.util.ArtistHelper.primaryArtist(artistData?.name ?: artistName),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
 
-                // Quick Play Button on Scroll
-                AnimatedVisibility(
-                    visible = showScrolledHeader && (uiState as? ArtistUiState.Success)?.data?.topSongs?.isNotEmpty() == true,
-                    enter = fadeIn() + scaleIn(),
-                    exit = fadeOut() + scaleOut(),
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    FilledTonalIconButton(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            viewModel.playAll()
-                        },
-                        colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        ),
-                        modifier = Modifier.size(38.dp),
+                    // Translucent Actions Pill for Canvas motion when available
+                    if (isAppleMotion && !motionVideoUrl.isNullOrBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = if (showScrolledHeader) Color.Transparent else Color.Black.copy(alpha = 0.38f),
+                        ) {
+                            Row {
+                                if (hasVideoAnimation) {
+                                    IconButton(
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                            showFullscreenMotion = true
+                                        },
+                                        modifier = Modifier.size(42.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Fullscreen,
+                                            contentDescription = "Expand Fullscreen",
+                                            tint = if (showScrolledHeader) MaterialTheme.colorScheme.onSurface else Color.White,
+                                            modifier = Modifier.size(22.dp),
+                                        )
+                                    }
+                                }
+                                IconButton(
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                        showHeaderVideo = !showHeaderVideo
+                                    },
+                                    modifier = Modifier.size(42.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = if (showHeaderVideo) Icons.Filled.SmartDisplay else Icons.Filled.Image,
+                                        contentDescription = if (showHeaderVideo) "Show Photo" else "Show Motion Video",
+                                        tint = if (showHeaderVideo) MaterialTheme.colorScheme.primary else if (showScrolledHeader) MaterialTheme.colorScheme.onSurface else Color.White,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Quick Play Button on Scroll
+                    AnimatedVisibility(
+                        visible = showScrolledHeader && artistData?.topSongs?.isNotEmpty() == true,
+                        enter = fadeIn() + scaleIn(),
+                        exit = fadeOut() + scaleOut(),
                     ) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = stringResource(R.string.dl_play_cd), modifier = Modifier.size(22.dp))
+                        FilledTonalIconButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                viewModel.playAll()
+                            },
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            ),
+                            modifier = Modifier.size(38.dp),
+                        ) {
+                            Icon(Icons.Filled.PlayArrow, contentDescription = stringResource(R.string.dl_play_cd), modifier = Modifier.size(22.dp))
+                        }
                     }
                 }
             }
@@ -922,11 +975,12 @@ fun ArtistDetailScreen(
 
     // Immersive Fullscreen Artist Motion View
     val screenConfig = androidx.compose.ui.platform.LocalConfiguration.current
-    val motionVideoUrl = artistCanvas?.motionUrlFor(
-        containerAspect = screenConfig.screenWidthDp.toFloat() / screenConfig.screenHeightDp.coerceAtLeast(1),
-    )
-    if (showFullscreenMotion && !motionVideoUrl.isNullOrBlank()) {
-        val artistData = (uiState as? ArtistUiState.Success)?.data
+    val fullscreenMotionUrl = if (isAppleMotion) {
+        artistCanvas?.motionUrlFor(
+            containerAspect = screenConfig.screenWidthDp.toFloat() / screenConfig.screenHeightDp.coerceAtLeast(1),
+        )
+    } else null
+    if (showFullscreenMotion && !fullscreenMotionUrl.isNullOrBlank()) {
         val artistDisplayName = artistData?.name ?: artistName
         val isCurrentlyPlaying = playbackState.isPlaying &&
             (playbackState.sourceLabel == artistDisplayName || playbackState.current?.artist.equals(artistDisplayName, ignoreCase = true))
@@ -945,7 +999,7 @@ fun ArtistDetailScreen(
                     .background(Color.Black),
             ) {
                 CanvasVideoPlayer(
-                    videoUrl = motionVideoUrl,
+                    videoUrl = fullscreenMotionUrl,
                     isPlaying = true,
                     enableScrim = false,
                     modifier = Modifier.fillMaxSize(),
@@ -1055,7 +1109,7 @@ fun ArtistDetailScreen(
                             ) {
                                 FilledTonalIconButton(
                                     onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         viewModel.playShuffle()
                                     },
                                     enabled = hasTopSongs,
@@ -1075,7 +1129,7 @@ fun ArtistDetailScreen(
 
                                 Surface(
                                     onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         viewModel.playAll()
                                     },
                                     enabled = hasTopSongs,

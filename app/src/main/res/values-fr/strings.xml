@@ -8,7 +8,7 @@
     <string name="nav_discover">Découvrir</string>
     <string name="nav_feed">Fil</string>
     <string name="nav_stats">Statistiques</string>
-    <string name="nav_playlists">Playlists</string>
+    <string name="nav_playlists">Bibliothèque</string>
     <string name="nav_create_playlist">Créer / Générer une playlist</string>
     <string name="update_available">Mise à jour disponible</string>
     <string name="update">Mettre à jour</string>
@@ -508,7 +508,7 @@
     <string name="pl_export_title">Exporter la liste de lecture</string>
     <string name="pl_choose_image">Choisir une image</string>
     <string name="pl_change_image">Changer l\'image</string>
-    <string name="pl_title">Liste de lecture</string>
+    <string name="pl_title">Bibliothèque</string>
     <string name="pl_selected_count">%1$d sélectionné</string>
     <string name="pl_select_more_hint">Appuyez longuement pour en sélectionner plus</string>
     <string name="pl_count_only">%1$d Listes de lecture</string>
@@ -1128,4 +1128,17 @@
     <string name="signal_detail_autoeq">Correction appliquée par LastWave (modifie les échantillons, mixer Android toujours contourné)</string>
     <string name="signal_verdict_direct_eq">Mixer Android contourné. LastWave applique ta correction AutoEQ, puis les échantillons vont directement au HAL.</string>
     <string name="signal_direct_eq">DIRECT + EQ</string>
+
+    <!-- Recommendations -->
+    <string name="settings_section_recommendations">Recommandations</string>
+    <string name="settings_recommendations_title">Fournisseur de recommandations</string>
+    <string name="settings_recommendations_sub_disconnected">YouTube Music • Associez Spotify pour générer des recommandations depuis Spotify</string>
+    <string name="settings_recommendations_dialog_desc">Choisit les morceaux pour l\'Accueil, la radio, Découverte et les mix. La lecture s\'effectue toujours sur YouTube Music.</string>
+    <string name="settings_recommendations_connect_first">Associez d\'abord Spotify</string>
+    <string name="recommendation_source_yt_music">YouTube Music</string>
+    <string name="recommendation_source_yt_music_sub">Généré par YouTube Music</string>
+    <string name="recommendation_source_spotify">Spotify</string>
+    <string name="recommendation_source_spotify_sub">Généré par Spotify, lu sur YouTube Music</string>
+    <string name="toast_spotify_connect_first">Associez d\'abord Spotify</string>
+    <string name="toast_spotify_disconnected">Compte Spotify déconnecté</string>
 </resources>

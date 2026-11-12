@@ -103,6 +103,7 @@ fun LastWaveJamSheet(
     onDismiss: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val jamProgress by viewModel.progress.collectAsStateWithLifecycle()
     val chatMessages by viewModel.chatMessages.collectAsStateWithLifecycle()
     val notice by viewModel.notice.collectAsStateWithLifecycle()
     val cooldownUntil by viewModel.cooldownUntilMs.collectAsStateWithLifecycle()
@@ -654,7 +655,7 @@ fun LastWaveJamSheet(
                                 )
                                 Text(
                                     text = uiState.currentTrackArtist.ifBlank { "Jam Sync" } +
-                                        if (uiState.durationMs > 0L) " \u2022 ${formatMs(uiState.currentPositionMs)} / ${formatMs(uiState.durationMs)}" else "",
+                                        if (jamProgress.durationMs > 0L) " \u2022 ${formatMs(jamProgress.positionMs)} / ${formatMs(jamProgress.durationMs)}" else "",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
@@ -754,7 +755,7 @@ fun LastWaveJamSheet(
                                             .background(LimeAccent.copy(alpha = 0.2f))
                                             .padding(horizontal = 4.dp, vertical = 1.dp),
                                     ) {
-                                        Text(roleBadge(p), fontSize = 9.sp, fontWeight = FontWeight.Bold, color = LimeAccent)
+                                        Text(roleBadge(p, uiState.isRadio), fontSize = 9.sp, fontWeight = FontWeight.Bold, color = LimeAccent)
                                     }
                                 }
                                 HostActionButton(
@@ -765,6 +766,8 @@ fun LastWaveJamSheet(
                                     accent = LimeAccent,
                                     onGrant = viewModel::grantHost,
                                     onRevoke = viewModel::revokeHost,
+                                    isRadio = uiState.isRadio,
+                                    onMakeAdmin = viewModel::makeAdmin,
                                 )
                             }
                         }

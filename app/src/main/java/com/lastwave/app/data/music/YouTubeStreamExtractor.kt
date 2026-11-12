@@ -40,6 +40,7 @@ class YouTubeStreamExtractor @Inject constructor(
         videoId: String,
         preferM4a: Boolean = false,
         preferOpus: Boolean = false,
+        maxBitrateBps: Int? = null,
     ): YouTubeAudioStream = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         initialize()
@@ -51,13 +52,17 @@ class YouTubeStreamExtractor @Inject constructor(
             throw IOException("YouTube stream extraction failed for $videoId", error)
         }
         val ordered = info.audioStreams.sortedWith(
-            compareBy<org.schabi.newpipe.extractor.stream.AudioStream> { audioPreference(it, preferM4a, preferOpus) }
+            compareBy<org.schabi.newpipe.extractor.stream.AudioStream> { isDrcAudioUrl(it.content.orEmpty()) }
+                .thenBy { audioPreference(it, preferM4a, preferOpus) }
                 .thenByDescending { maxOf(it.averageBitrate, it.bitrate) },
         )
         if (ordered.isEmpty()) throw IOException("YouTube returned no playable audio stream for $videoId")
         val candidates = ordered.map { stream ->
             stream.toYouTubeAudioStream(videoId, info.duration, now)
+        }.filter {
+            it.meetsBitrateLimit(maxBitrateBps)
         }
+        if (candidates.isEmpty()) throw IOException("YouTube returned no audio within the requested bitrate for $videoId")
         val playable = selectProbedCandidate(
             candidates = candidates,
             urlOf = { it.url },
@@ -331,6 +336,7 @@ class YouTubeStreamExtractor @Inject constructor(
         return YouTubeAudioStream(
             videoId = videoId,
             url = content,
+            isDrc = isDrcAudioUrl(content.orEmpty()),
             itag = itag.takeIf { it >= 0 },
             mimeType = format?.mimeType,
             codec = codec?.takeIf(String::isNotBlank),

@@ -60,7 +60,7 @@ internal fun CommunityDiscoverShelf(
                         bounds.bottom > 0f && bounds.top < view.height
                 },
             ) {
-                itemsIndexed(shelf.items, key = { index, _ -> keys[index] }) { index, item ->
+                itemsIndexed(shelf.items, key = { index, _ -> keys.getOrNull(index) ?: index.toString() }) { index, item ->
                     val visible by remember(index) { derivedStateOf {
                         rowVisible && rowState.layoutInfo.visibleItemsInfo.any { it.index == index }
                     } }

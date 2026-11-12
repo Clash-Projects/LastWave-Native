@@ -49,13 +49,14 @@ data class ThemeUiState(
     /** Settings' "Use Application Font" toggle — see ui/theme/Type.kt for
      *  what turning it off falls back to. */
     val useCustomFont: Boolean = true,
-    val useBoldFont: Boolean = false,
     /** Experimental liquid-glass materials (Settings → Experimental). When
      *  true, container roles in [colorScheme] are semi-translucent and the
      *  chrome surfaces get specular glass dressing. */
     val liquidGlass: Boolean = true,
     val md3NavBar: Boolean = false,
     val hideNavTabs: Boolean = false,
+    /** Haptic feedback on taps, buttons, toggles and gestures (Settings toggle). */
+    val uiHaptics: Boolean = true,
     /** True when the "Dynamic Now Playing" artwork override is currently
      *  driving the schemes. LastWaveTheme uses this so S+ system dynamic
      *  (wallpaper) only takes over when no now-playing color is active:
@@ -213,6 +214,24 @@ class ThemeRepository @Inject constructor(
         }
     }
 
+    /** System wallpaper (Monet) schemes, or null before Android 12 / on ROMs without them. */
+    private fun systemDynamicSchemes(amoled: Boolean): Pair<ColorScheme, ColorScheme>? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
+        return runCatching {
+            val dark = androidx.compose.material3.dynamicDarkColorScheme(context).let {
+                if (amoled) {
+                    it.copy(
+                        background = Color.Black,
+                        surface = Color.Black,
+                        surfaceContainerLow = Color.Black,
+                        surfaceContainerLowest = Color.Black,
+                    )
+                } else it
+            }
+            dark to androidx.compose.material3.dynamicLightColorScheme(context)
+        }.getOrNull()
+    }
+
     val uiState: StateFlow<ThemeUiState> = combine(
         themePreferences.prefs,
         dynamicHex,
@@ -223,17 +242,16 @@ class ThemeRepository @Inject constructor(
         val isGlass = prefs.liquidGlass
         val isLastWave = prefs.lastWaveTheme
         val nowPlayingActive = misc.dynamicNowPlayingEnabled && nowPlaying != null && !isLastWave
-        val (darkScheme, lightScheme) = when {
+        // Real wallpaper Monet on S+. Built here (not only in LastWaveTheme)
+        // so widgets and the media notification use the same colors as the UI.
+        val systemDynamic = if (prefs.accentMode == AccentMode.DYNAMIC && !isLastWave) systemDynamicSchemes(isAmoled) else null
+        val (baseDark, baseLight) = when {
             isLastWave -> {
                 val dark = Md3SchemeBuilder.buildLastWaveDarkScheme(isAmoled, isGlass)
                 val light = Md3SchemeBuilder.buildLastWaveLightScheme(isGlass)
                 dark to light
             }
-            nowPlayingActive -> {
-                val dark = Md3SchemeBuilder.buildDarkScheme(nowPlaying!!, isAmoled, isGlass)
-                val light = Md3SchemeBuilder.buildLightScheme(nowPlaying, isGlass)
-                dark to light
-            }
+            systemDynamic != null -> systemDynamic
             prefs.accentMode == AccentMode.MONOCHROME -> {
                 val dark = Md3SchemeBuilder.buildMonochromeDarkScheme(isAmoled, isGlass)
                 val light = Md3SchemeBuilder.buildMonochromeLightScheme(isGlass)
@@ -256,6 +274,16 @@ class ThemeRepository @Inject constructor(
                 dark to light
             }
         }
+        // Artwork complements the wallpaper/accent theme instead of replacing it.
+        val (darkScheme, lightScheme) = if (nowPlayingActive) {
+            // Black-and-white covers blend in grey, not a made-up hue.
+            val mono = Md3SchemeBuilder.isAchromatic(nowPlaying!!)
+            val artDark = if (mono) Md3SchemeBuilder.buildMonochromeDarkScheme(isAmoled, isGlass) else Md3SchemeBuilder.buildDarkScheme(nowPlaying, isAmoled, isGlass)
+            val artLight = if (mono) Md3SchemeBuilder.buildMonochromeLightScheme(isGlass) else Md3SchemeBuilder.buildLightScheme(nowPlaying, isGlass)
+            Md3SchemeBuilder.blendNowPlaying(baseDark, artDark) to Md3SchemeBuilder.blendNowPlaying(baseLight, artLight)
+        } else {
+            baseDark to baseLight
+        }
         ThemeUiState(
             darkColorScheme = darkScheme,
             lightColorScheme = lightScheme,
@@ -265,10 +293,10 @@ class ThemeRepository @Inject constructor(
             mode = prefs.accentMode,
             accentColorHex = if (isLastWave) "#C9FB00" else prefs.accentColor,
             useCustomFont = misc.useCustomFont,
-            useBoldFont = misc.useBoldFont,
             liquidGlass = isGlass,
             md3NavBar = prefs.md3NavBar,
             hideNavTabs = prefs.hideNavTabs,
+            uiHaptics = prefs.uiHaptics,
             isNowPlayingThemed = nowPlayingActive,
             isLastWaveTheme = isLastWave,
             appIcon = prefs.appIcon,
@@ -285,7 +313,6 @@ class ThemeRepository @Inject constructor(
             mode = AccentMode.MANUAL,
             accentColorHex = "#E03030",
             useCustomFont = true,
-            useBoldFont = false,
             liquidGlass = true,
             md3NavBar = false,
             hideNavTabs = false,
@@ -303,6 +330,12 @@ class ThemeRepository @Inject constructor(
     suspend fun setAppIcon(icon: AppIcon) {
         themePreferences.setAppIcon(icon)
         AppIconManager.applyIcon(context, icon)
+    }
+
+    /** Startup heal: leaves exactly the saved icon's launcher alias enabled. */
+    suspend fun reconcileAppIcon() {
+        val icon = themePreferences.prefs.first().appIcon
+        AppIconManager.reconcile(context, icon)
     }
 
     /** Manual pick always leaves DYNAMIC/MONOCHROME: choosing your own accent
@@ -323,6 +356,7 @@ class ThemeRepository @Inject constructor(
 
     suspend fun setMd3NavBar(enabled: Boolean) = themePreferences.setMd3NavBar(enabled)
     suspend fun setHideNavTabs(enabled: Boolean) = themePreferences.setHideNavTabs(enabled)
+    suspend fun setUiHaptics(enabled: Boolean) = themePreferences.setUiHaptics(enabled)
 
     /** Turning this on used to just flip the DataStore flag and wait for
      *  Home's own poll loop to eventually call updateNowPlayingArtwork() —

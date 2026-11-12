@@ -151,4 +151,28 @@ class TextMatchTest {
             TextMatch.matchScore(albumCut, "Headlights", "Alan Walker", null),
         )
     }
+
+    @Test
+    fun differentTakeIsRefusedInBothDirections() {
+        assertTrue(!TextMatch.isSameTake("Mr. Brightside (Live)", "Mr. Brightside", "The Killers"))
+        assertTrue(!TextMatch.isSameTake("Mr. Brightside", "Mr. Brightside - Live at Wembley", "The Killers"))
+        assertTrue(!TextMatch.isSameTake("Blinding Lights (Sped Up)", "Blinding Lights", "The Weeknd"))
+        assertTrue(!TextMatch.isSameTake("Yellow (Acoustic Cover)", "Yellow", "Coldplay"))
+    }
+
+    @Test
+    fun packagingAndTitleWordsAreNotTakes() {
+        assertTrue(TextMatch.isSameTake("Bohemian Rhapsody (Remastered 2011)", "Bohemian Rhapsody", "Queen"))
+        assertTrue(TextMatch.isSameTake("Song (Radio Edit)", "Song", "X"))
+        assertTrue(TextMatch.isSameTake("Live Forever", "Live Forever", "Oasis"))
+        assertTrue(TextMatch.isSameTake("Snowman", "Snowman", "Lofi Girl", "Lofi Girl"))
+    }
+
+    @Test
+    fun severeDurationMismatchNeedsBothRuntimes() {
+        assertTrue(TextMatch.isSevereDurationMismatch(200_000L, 600))
+        assertTrue(!TextMatch.isSevereDurationMismatch(200_000L, 215))
+        assertTrue(!TextMatch.isSevereDurationMismatch(null, 600))
+        assertTrue(!TextMatch.isSevereDurationMismatch(200_000L, null))
+    }
 }

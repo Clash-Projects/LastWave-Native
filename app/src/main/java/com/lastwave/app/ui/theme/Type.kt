@@ -53,6 +53,17 @@ private fun gsFlex(
     ),
 )
 
+/**
+ * Lyrics type. Asking a single-weight family for Bold only made Android fake
+ * the weight from the 440 body cut, which rendered thin and soft. These are
+ * real instances of the variable font: a heavy display cut with square
+ * terminals (ROND 0) and a large optical size for the lead lines, close to
+ * the bold lyric type Apple Music uses, plus matching backing / sub-line cuts.
+ */
+val LyricsLeadFontFamily: FontFamily = gsFlex(weight = 760f, width = 100f, round = 0f, opticalSize = 40f)
+val LyricsBackingFontFamily: FontFamily = gsFlex(weight = 700f, width = 100f, round = 0f, opticalSize = 24f)
+val LyricsSubLineFontFamily: FontFamily = gsFlex(weight = 560f, width = 100f, round = 0f, opticalSize = 16f)
+
 val LastWaveTypography = Typography(
     displayLarge = TextStyle(fontFamily = gsFlex(weight = 760f, width = 122f, round = 42f, opticalSize = 57f), fontWeight = FontWeight.Bold, fontSize = 57.sp, lineHeight = 64.sp),
     displayMedium = TextStyle(fontFamily = gsFlex(weight = 740f, width = 120f, round = 40f, opticalSize = 45f), fontWeight = FontWeight.Bold, fontSize = 45.sp, lineHeight = 52.sp),

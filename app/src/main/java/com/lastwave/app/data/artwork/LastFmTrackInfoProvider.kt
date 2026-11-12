@@ -2,9 +2,9 @@ package com.lastwave.app.data.artwork
 
 import android.util.Log
 import com.lastwave.app.data.local.SessionPreferences
+import com.lastwave.app.data.local.awaitLoadedSession
 import com.lastwave.app.data.model.TrackInfoEnvelope
 import com.lastwave.app.data.network.LastFmApiService
-import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -25,7 +25,7 @@ class LastFmTrackInfoProvider @Inject constructor(
     suspend fun fetchArtworkUrl(name: String, artist: String): String? {
         // No shared key: without a personal key this provider abstains and
         // the artwork chain falls through to iTunes/other providers.
-        val apiKey = sessionPreferences.session.first().apiKey
+        val apiKey = sessionPreferences.awaitLoadedSession().apiKey
         if (apiKey.isBlank()) return null
         val params = mapOf(
             "method" to "track.getInfo",

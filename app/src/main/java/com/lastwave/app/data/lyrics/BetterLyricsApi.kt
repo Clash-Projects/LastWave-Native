@@ -227,15 +227,29 @@ class BetterLyricsApi @Inject constructor(
             val lineStart = match.groupValues[1].toLongOrNull() ?: continue
             val lineDuration = match.groupValues[2].toLongOrNull() ?: 0L
             val body = match.groupValues[3]
-            val words = KARAOKE_WORD_REGEX.findAll(body).mapNotNull { word ->
+            val matches = KARAOKE_WORD_REGEX.findAll(body).toList()
+            if (matches.isEmpty()) continue
+            val words = mutableListOf<LyricSyllable>()
+            val firstMatch = matches.first()
+            val leadingText = LyricsRepository.decodeEntities(body.substring(0, firstMatch.range.first)).trim()
+            if (leadingText.isNotEmpty()) {
+                val firstStart = firstMatch.groupValues[1].toLongOrNull() ?: lineStart
+                val startMs = minOf(lineStart, firstStart)
+                val durMs = (firstStart - startMs).coerceAtLeast(0L)
+                words += LyricSyllable(timeMs = startMs, durationMs = durMs, text = leadingText)
+            }
+            for (word in matches) {
                 val text = LyricsRepository.decodeEntities(word.groupValues[3]).trim()
-                if (text.isEmpty()) return@mapNotNull null
-                val startMs = word.groupValues[1].toLongOrNull() ?: return@mapNotNull null
+                if (text.isEmpty()) continue
+                val startMs = word.groupValues[1].toLongOrNull() ?: continue
                 val durMs = word.groupValues[2].toLongOrNull() ?: 0L
-                LyricSyllable(timeMs = startMs, durationMs = durMs.coerceAtLeast(0L), text = text)
-            }.toList()
+                words += LyricSyllable(timeMs = startMs, durationMs = durMs.coerceAtLeast(0L), text = text)
+            }
             if (words.isEmpty()) continue
-            val text = LyricsRepository.decodeEntities(body.replace(KARAOKE_TIME_REGEX, "")).trim()
+            val text = LyricsSanitizer.safeLineText(
+                LyricsRepository.decodeEntities(body.replace(KARAOKE_TIME_REGEX, "")),
+                words.map { it.text },
+            )
             if (text.isEmpty()) continue
             rows += LyricLine(
                 timeMs = minOf(lineStart, words.first().timeMs),
@@ -258,6 +272,7 @@ class BetterLyricsApi @Inject constructor(
             setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
         )
         private val XML_TAG_REGEX = Regex("""<[^>]+>""")
+        private val WHITESPACE_REGEX = Regex("""\s+""")
 
         fun parseTtml(ttml: String): List<LyricLine> {
             // Prefer the shared DOM parser; the regex below is the fallback
@@ -275,7 +290,27 @@ class BetterLyricsApi @Inject constructor(
 
                 val syllables = mutableListOf<LyricSyllable>()
                 val words = mutableListOf<String>()
-                for (sMatch in SPAN_TAG_REGEX.findAll(inner)) {
+                val spanMatches = SPAN_TAG_REGEX.findAll(inner).toList()
+                if (spanMatches.isNotEmpty()) {
+                    val firstSpan = spanMatches.first()
+                    val leadingText = unescapeXml(inner.substring(0, firstSpan.range.first).replace(XML_TAG_REGEX, "").trim())
+                    if (leadingText.isNotEmpty()) {
+                        val firstOpen = firstSpan.value.substringBefore('>')
+                        val firstAttrs = TIME_ATTR_REGEX.findAll(firstOpen).associate { it.groupValues[1].lowercase() to it.groupValues[2] }
+                        val firstStart = parseTtmlTime(firstAttrs["begin"] ?: "") ?: lineStartMs
+                        val wStart = minOf(lineStartMs, firstStart)
+                        val wEnd = maxOf(wStart, firstStart)
+                        words.add(leadingText)
+                        syllables.add(
+                            LyricSyllable(
+                                timeMs = wStart,
+                                durationMs = (wEnd - wStart).coerceAtLeast(0L),
+                                text = leadingText,
+                            ),
+                        )
+                    }
+                }
+                for (sMatch in spanMatches) {
                     val spanOpen = sMatch.value.substringBefore('>')
                     val spanAttrs = TIME_ATTR_REGEX.findAll(spanOpen).associate { it.groupValues[1].lowercase() to it.groupValues[2] }
                     val wStart = parseTtmlTime(spanAttrs["begin"] ?: "") ?: continue
@@ -296,22 +331,23 @@ class BetterLyricsApi @Inject constructor(
 
                 // Lines without word spans (e.g. instrumental markers) still
                 // carry line timing — keep them as line-sync lines.
+                val fullLineText = unescapeXml(inner.replace(XML_TAG_REGEX, "")).replace(WHITESPACE_REGEX, " ").trim()
                 if (syllables.isEmpty()) {
-                    val text = unescapeXml(inner.replace(XML_TAG_REGEX, "").trim())
-                    if (text.isEmpty()) continue
+                    if (fullLineText.isEmpty()) continue
+                    lines.add(
+                        LyricLine(
+                            timeMs = lineStartMs,
+                            durationMs = (lineEndMs - lineStartMs).coerceAtLeast(0L),
+                            text = fullLineText,
+                        ),
+                    )
+                } else {
+                    val text = LyricsSanitizer.safeLineText(fullLineText, words)
                     lines.add(
                         LyricLine(
                             timeMs = lineStartMs,
                             durationMs = (lineEndMs - lineStartMs).coerceAtLeast(0L),
                             text = text,
-                        ),
-                    )
-                } else {
-                    lines.add(
-                        LyricLine(
-                            timeMs = lineStartMs,
-                            durationMs = (lineEndMs - lineStartMs).coerceAtLeast(0L),
-                            text = words.joinToString(" "),
                             syllables = syllables,
                         ),
                     )

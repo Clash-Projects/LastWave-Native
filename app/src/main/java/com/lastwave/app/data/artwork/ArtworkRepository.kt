@@ -74,7 +74,7 @@ class ArtworkRepository @Inject constructor(
                 val cachedEntities = cacheDao.getNewest(MAX_ARTWORK_MEMORY_ENTRIES).asReversed()
                 val validMap = cachedEntities
                     .filter { it.url.isNotBlank() && now - it.timestampMillis < DISK_CACHE_TTL_MILLIS && it.provider in ArtworkNormalizer.HIGH_RES_PROVIDERS }
-                    .associate { it.cacheKey to it.url }
+                    .associate { it.cacheKey to ArtworkNormalizer.upgradeLastFm(it.url) }
                 _resolved.update { validMap + it }
                 Log.d(TAG, "Pre-warmed memory cache with ${validMap.size} high-res artwork entries")
                 cacheDao.deleteOlderThan(now - DISK_CACHE_TTL_MILLIS)
@@ -166,19 +166,19 @@ class ArtworkRepository @Inject constructor(
             }
             if (cached != null && cached.url.isNotBlank() && System.currentTimeMillis() - cached.timestampMillis < DISK_CACHE_TTL_MILLIS) {
                 if (cached.provider in ArtworkNormalizer.HIGH_RES_PROVIDERS) {
-                    publish(key, cached.url)
+                    publish(key, ArtworkNormalizer.upgradeLastFm(cached.url))
                     return
                 }
-                // Old low-res entry (e.g. YouTube): publish immediately as placeholder, but proceed to resolve high-res master art!
-                publish(key, cached.url)
             }
 
             // 3. Strict priority resolution: Apple Music (1200x1200bb) -> Tidal (1280x1280) -> Deezer (1000x1000) -> Spotify (640x640) -> YouTube Music (last fallback)
+            // Lookups use cleaned search terms; YouTube upload noise made most of them miss.
+            val (qName, qArtist) = ArtworkNormalizer.searchTerms(name, artist)
             val winner = networkRaceSemaphore.withPermit {
                 withContext(Dispatchers.IO) {
-                    val appleJob = async { safeFetch("Apple Music", name, artist) { itunes.fetchArtworkUrl(name, artist) } }
-                    val tidalJob = async { safeFetch("Tidal", name, artist) { fetchTidal(name, artist) } }
-                    val deezerJob = async { safeFetch("Deezer", name, artist) { fetchDeezer(name, artist) } }
+                    val appleJob = async { safeFetch("Apple Music", qName, qArtist) { itunes.fetchArtworkUrl(qName, qArtist) } }
+                    val tidalJob = async { safeFetch("Tidal", qName, qArtist) { fetchTidal(qName, qArtist) } }
+                    val deezerJob = async { safeFetch("Deezer", qName, qArtist) { fetchDeezer(qName, qArtist) } }
                     val spotifyJob = async { safeFetch("Spotify", name, artist) { fetchSpotify(name, artist) } }
 
                     // Priority 1: Apple Music (Pristine 1200x1200bb master art)
@@ -187,7 +187,7 @@ class ArtworkRepository @Inject constructor(
                         tidalJob.cancel()
                         deezerJob.cancel()
                         spotifyJob.cancel()
-                        return@withContext "itunes" to appleUrl
+                        return@withContext ArtworkNormalizer.ITUNES_ARTIST_MATCH_CACHE_PROVIDER to appleUrl
                     }
 
                     // Priority 2: Tidal (Pristine 1280x1280 Hi-Fi master art)
@@ -211,17 +211,23 @@ class ArtworkRepository @Inject constructor(
                         return@withContext "spotify" to spotifyUrl
                     }
 
-                    // Priority 5: Last.fm (Curated album art from Last.fm / Audioscrobbler metadata)
-                    val lastFmUrl = safeFetch("Last.fm", name, artist) { lastFm.fetchArtworkUrl(name, artist) }
-                    if (!lastFmUrl.isNullOrBlank()) {
-                        return@withContext "lastfm" to lastFmUrl
+                    // Priority 5: YouTube Music's own square album art (1200px).
+                    // It beats Last.fm's 300px images, so it goes first; a
+                    // YouTube *video* thumbnail is only the last resort.
+                    val ytUrl = safeFetch("YouTube Music", qName, qArtist) { fetchYouTubeMusic(qName, qArtist) }
+                    if (!ytUrl.isNullOrBlank() && ArtworkNormalizer.isYtMusicThumbnail(ytUrl)) {
+                        return@withContext "youtube_music" to ytUrl
                     }
 
-                    // Priority 6: YouTube Music (Preferring YouTube Music official album thumbnails)
-                    val ytUrl = safeFetch("YouTube Music", name, artist) { fetchYouTubeMusic(name, artist) }
+                    // Priority 6: Last.fm (curated album art), at 770px instead of 300px.
+                    val lastFmUrl = safeFetch("Last.fm", qName, qArtist) { lastFm.fetchArtworkUrl(qName, qArtist) }
+                    if (!lastFmUrl.isNullOrBlank()) {
+                        return@withContext "lastfm" to ArtworkNormalizer.upgradeLastFm(lastFmUrl)
+                    }
+
+                    // Priority 7: YouTube video thumbnail.
                     if (!ytUrl.isNullOrBlank()) {
-                        val prov = if (ArtworkNormalizer.isYtMusicThumbnail(ytUrl)) "youtube_music" else "youtube"
-                        return@withContext prov to ytUrl
+                        return@withContext "youtube" to ytUrl
                     }
 
                     null
@@ -513,7 +519,7 @@ class ArtworkRepository @Inject constructor(
         try {
             val fromItunes = safeFetch("Apple Music (force)", name, artist) { itunes.fetchArtworkUrl(name, artist) }
             val resolved = if (!fromItunes.isNullOrBlank()) {
-                save(key, "itunes", fromItunes)
+                save(key, ArtworkNormalizer.ITUNES_ARTIST_MATCH_CACHE_PROVIDER, fromItunes)
                 fromItunes
             } else {
                 val fromTidal = safeFetch("Tidal (force)", name, artist) { fetchTidal(name, artist) }

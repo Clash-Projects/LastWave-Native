@@ -31,7 +31,9 @@ enum class AppLanguage(val tag: String) {
     ITALIAN("it"),
     JAPANESE("ja"),
     KOREAN("ko"),
-    ARABIC("ar");
+    ARABIC("ar"),
+    // Wave 3: Southeast Asia.
+    VIETNAMESE("vi");
 
     companion object {
         /** Synchronous mirror read by `attachBaseContext` (DataStore is async). */
@@ -91,6 +93,7 @@ fun AppLanguage.nativeDisplayName(): String = when (this) {
     AppLanguage.JAPANESE -> "日本語"
     AppLanguage.KOREAN -> "한국어"
     AppLanguage.ARABIC -> "العربية"
+    AppLanguage.VIETNAMESE -> "Tiếng Việt"
 }
 
 /** Short subtitle shown under the selected language row. */
@@ -110,6 +113,7 @@ fun AppLanguage.selectorSubtitle(): String = when (this) {
     AppLanguage.JAPANESE -> "日本語"
     AppLanguage.KOREAN -> "한국어"
     AppLanguage.ARABIC -> "العربية"
+    AppLanguage.VIETNAMESE -> "Tiếng Việt"
 }
 
 /**

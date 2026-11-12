@@ -68,24 +68,27 @@ object ExpressiveMotion {
     // Legacy alias
     fun <T> smoothSpring() = effectsDefault<T>()
 
+    // Screen transitions in the same language as the player open/close
+    // morph: the incoming screen grows into place from slightly smaller while
+    // the one it covers recedes a touch; going back reverses it. A short
+    // horizontal drift keeps the forward/back direction readable.
     fun forwardEnter(): EnterTransition =
         fadeIn(effectsDefault()) +
-            slideInHorizontally(spatialDefault()) { it / 10 } +
-            scaleIn(spatialFast(), initialScale = 0.96f)
+            scaleIn(spatialDefault(), initialScale = 0.92f) +
+            slideInHorizontally(spatialDefault()) { it / 24 }
 
     fun forwardExit(): ExitTransition =
-        fadeOut(effectsFast()) +
-            scaleOut(effectsDefault(), targetScale = 0.985f)
+        fadeOut(effectsDefault()) +
+            scaleOut(effectsDefault(), targetScale = 0.95f)
 
     fun backEnter(): EnterTransition =
         fadeIn(effectsDefault()) +
-            slideInHorizontally(spatialDefault()) { -it / 12 } +
-            scaleIn(spatialFast(), initialScale = 0.96f)
+            scaleIn(spatialDefault(), initialScale = 0.95f)
 
     fun backExit(): ExitTransition =
         fadeOut(effectsFast()) +
-            slideOutHorizontally(spatialDefault()) { it / 12 } +
-            scaleOut(effectsDefault(), targetScale = 0.985f)
+            scaleOut(effectsDefault(), targetScale = 0.92f) +
+            slideOutHorizontally(spatialDefault()) { it / 24 }
 }
 
 /**

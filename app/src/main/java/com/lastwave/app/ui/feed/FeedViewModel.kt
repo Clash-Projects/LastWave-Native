@@ -23,7 +23,7 @@ import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.playback.toPlayableTrack
 import com.lastwave.app.data.music.toPlayableTrack
-import com.lastwave.app.data.repository.RelatedGraphRepository
+import com.lastwave.app.data.recommend.RecommendationRepository
 import com.lastwave.app.data.ytmusic.YtMusicAuthManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -74,7 +74,7 @@ class FeedViewModel @Inject constructor(
     private val settingsPreferences: SettingsPreferences,
     private val musicPlayer: MusicPlayer,
     private val innerTube: InnerTubeMusicApi,
-    private val relatedGraph: RelatedGraphRepository,
+    private val recommendationRepository: RecommendationRepository,
     private val ytAuth: YtMusicAuthManager,
     private val homeRepository: com.lastwave.app.data.repository.HomeRepository,
     private val discoverRepository: com.lastwave.app.data.discover.DiscoverRepository,
@@ -323,12 +323,15 @@ class FeedViewModel @Inject constructor(
 
     fun selectChip(chip: HomeChip?) {
         val currentSelected = _uiState.value.selectedChip
+        chipJob?.cancel()
+        loadMoreJob?.cancel()
+        val currentGen = ++requestGeneration
         if (chip == null || chip == currentSelected) {
-            chipJob?.cancel()
             _uiState.update {
                 it.copy(
                     selectedChip = null,
                     isChipLoading = false,
+                    isLoadingMore = false,
                     chipShelves = emptyList(),
                     chipContinuationToken = null,
                     chipBackgroundUrl = null,
@@ -337,13 +340,11 @@ class FeedViewModel @Inject constructor(
             return
         }
 
-        chipJob?.cancel()
-        loadMoreJob?.cancel()
-        val currentGen = ++requestGeneration
         _uiState.update {
             it.copy(
                 selectedChip = chip,
                 isChipLoading = true,
+                isLoadingMore = false,
                 chipShelves = emptyList(),
                 chipContinuationToken = null,
                 chipBackgroundUrl = null,
@@ -557,7 +558,13 @@ class FeedViewModel @Inject constructor(
             } ?: seeds.firstOrNull()
             val related = seed?.let {
                 try {
-                    relatedGraph.relatedFor(it.videoId, limit = 25, prefetchStreams = false)
+                    recommendationRepository.relatedFor(
+                        seedVideoId = it.videoId,
+                        title = it.title,
+                        artist = it.artist,
+                        limit = 25,
+                        durationSeconds = it.durationSeconds,
+                    )
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Exception) {
@@ -716,6 +723,10 @@ class FeedViewModel @Inject constructor(
             ),
             sourceLabel = "Quick Picks",
         )
+    }
+
+    fun warmQuickPicks(tracks: List<YouTubeMusicTrack>) {
+        musicPlayer.warmLikelyPlays(tracks.map { it.toPlayableTrack() })
     }
 
     private fun YouTubeMusicTrack.toPlayableTrack(): PlayableTrack = PlayableTrack(

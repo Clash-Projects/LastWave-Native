@@ -125,6 +125,7 @@ class MoodsParserTest {
         innerTubeXExtractor = mockk(relaxed = true),
         ytAuth = mockk(relaxed = true),
         settingsPreferences = mockk(relaxed = true),
+        appContext = mockk(relaxed = true),
     )
 
     private companion object {

@@ -79,6 +79,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -133,6 +134,7 @@ import kotlin.time.Duration.Companion.seconds
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lastwave.app.ui.common.AmbientAnimationsGate
 import com.lastwave.app.ui.common.ExpressiveMotion
 import com.lastwave.app.ui.common.PredictiveBackScreen
 import com.lastwave.app.ui.common.adaptiveContentWidth
@@ -161,6 +163,9 @@ import com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported
 import com.lastwave.app.ui.theme.liquidGlassSource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import io.github.fletchmckee.liquid.liquefiable
+import io.github.fletchmckee.liquid.rememberLiquidState
 import javax.inject.Inject
 
 /** Thin bridge exposing AppUpdateManager's live update state to MainShell */
@@ -267,8 +272,12 @@ fun MainShell(
     // Keep the dock selection stable through pager animation and synchronize
     // it with swipes only after the pager settles.
     var selectedTabIndex by remember { mutableIntStateOf(pagerState.currentPage) }
-    LaunchedEffect(pagerState.settledPage) {
-        if (selectedTabIndex != pagerState.settledPage) {
+    var liquidNavigationJob by remember { mutableStateOf<Job?>(null) }
+    var liquidNavigationRequest by remember { mutableIntStateOf(0) }
+    LaunchedEffect(pagerState.settledPage, pagerState.isScrollInProgress, liquidNavigationJob) {
+        if (!pagerState.isScrollInProgress && liquidNavigationJob?.isActive != true &&
+            selectedTabIndex != pagerState.settledPage
+        ) {
             selectedTabIndex = pagerState.settledPage
         }
     }
@@ -371,11 +380,18 @@ fun MainShell(
     }
 
     val backgroundColor = MaterialTheme.colorScheme.background
-    // Unconditional remember keeps composition stable; usage gated below.
-    val navigationBackdrop = rememberLayerBackdrop {
-        drawRect(backgroundColor)
-        drawContent()
-    }
+    val hideNavTabs = com.lastwave.app.ui.theme.LocalHideNavTabs.current
+    val useLiquidNavigation = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        LocalLiquidGlass.current && !hideNavTabs
+    val navigationLiquidState = if (useLiquidNavigation) rememberLiquidState() else null
+    // Only one renderer records the pager for navigation. The bar is hosted by
+    // PlayerHost as a sibling, never below its own liquefiable source.
+    val navigationBackdrop = if (!useLiquidNavigation) {
+        rememberLayerBackdrop {
+            drawRect(backgroundColor)
+            drawContent()
+        }
+    } else null
     val navGlass = isLiquidGlassBackdropSupported()
 
     Box(Modifier.fillMaxSize()) {
@@ -386,8 +402,19 @@ fun MainShell(
         }
         HorizontalPager(
             state = pagerState,
-            beyondViewportPageCount = 0,
-            modifier = Modifier.fillMaxSize().liquidGlassSource(if (navGlass) navigationBackdrop else null),
+            // Keep every tab composed. With 1, jumping Playlists -> Home
+            // (dock tap = instant scrollToPage) disposed and rebuilt the whole
+            // Feed (sections, shelves, covers) on that frame, and Statistics
+            // was rebuilt the same way from the far tab. Only 3 tabs, and
+            // off-screen pages are not drawn, so this is cheap.
+            beyondViewportPageCount = tabs.size - 1,
+            modifier = Modifier.fillMaxSize().then(
+                if (navigationLiquidState != null) {
+                    Modifier.liquefiable(navigationLiquidState).background(backgroundColor)
+                } else {
+                    Modifier.liquidGlassSource(if (navGlass) navigationBackdrop else null)
+                },
+            ),
         ) { page ->
             val isCurrent = page == pagerState.currentPage
             PredictiveBackScreen(
@@ -458,6 +485,7 @@ fun MainShell(
         val bottomNavSlot = com.lastwave.app.ui.player.LocalBottomNavSlot.current
         val hideNavTabs = com.lastwave.app.ui.theme.LocalHideNavTabs.current
         val currentSelectedIndex by androidx.compose.runtime.rememberUpdatedState(selectedTabIndex)
+        val navHaptic = androidx.compose.ui.platform.LocalHapticFeedback.current
         val currentOnSelect by androidx.compose.runtime.rememberUpdatedState { index: Int ->
             if (tabs[index] == MainTab.HOME) {
                 val wasOnDetail = onReturnToHome()
@@ -479,7 +507,7 @@ fun MainShell(
         }
         androidx.compose.runtime.DisposableEffect(navigationBackdrop, tabs, hideNavTabs) {
             if (!hideNavTabs) {
-                bottomNavSlot.value = {
+                bottomNavSlot.value = { material3NavigationEnabled ->
                     Box(Modifier.fillMaxSize()) {
                         FloatingNavBar(
                             backdrop = navigationBackdrop,
@@ -491,9 +519,9 @@ fun MainShell(
                     }
                 }
             } else {
-                bottomNavSlot.value = {}
+                bottomNavSlot.value = { _ -> }
             }
-            onDispose { bottomNavSlot.value = {} }
+            onDispose { bottomNavSlot.value = { _ -> } }
         }
     }
 }

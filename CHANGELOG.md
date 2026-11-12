@@ -1,5 +1,40 @@
 # Changelog
 
+## [5.2.0] - 2026-11-12
+
+### ✨ What's New
+
+* **Signature Liquid Glass Navigation Bar:** A new refractive glass selector lets you tap or drag between Feed, Stats and Library, with fluid motion and support for both navigation layouts. Available on **Android 13+** with **Settings → Appearance & Visuals → Liquid Glass** enabled.
+* **Local Music Hub & Library:** The Playlists tab is now **Library**, with a dedicated Local Songs hub for browsing songs, albums, artists and folders. Create offline playlists, keep local likes, search your device music, and view embedded or `.lrc` lyrics. Local playback now also supports **DSD (DSF / DFF) and AIFF** files.
+* **Adaptive Streaming & Per-Network Quality:** Keep listening on slower mobile connections with **Auto** streaming quality, which adjusts to your connection speed and buffer health to help reduce buffering. Choose separate quality settings for Wi-Fi and mobile data; mobile Auto stays within your Wi-Fi selection. The new **Settings → Audio & Playback → Auto upgrade to Hi-Res** toggle lets you control automatic lossless upgrades.
+* **Vietnamese Language Support:** Added Vietnamese to the app's language options.
+
+---
+
+### ⚡ Improved
+
+* **Performance & Background Resource Usage:** Reduced unnecessary redraws, CPU work and playback wakeups throughout the app. Hidden animations and background YouTube library polling now pause when they are not needed, while progress updates follow the visible player to keep playback responsive with less overhead.
+* **Smoother Scrolling & Player Opening:** Optimized Home shelves, artwork backgrounds, loading shimmers, downloads lists and mini-player gestures. The full player is prepared before its opening animation, reducing the initial stutter when expanding Now Playing.
+* **Faster Startup & Smarter Cache Controls:** Moved artwork cache scans and storage calculations off the main thread. Artwork and streamed audio now share one configurable cache budget, with limits up to **4 GB**, while saved downloads remain separate.
+* **Faster, Cleaner Quality Switching:** Improved stream alignment and sample-rate handling for mid-song quality changes, with faster repeat switches and a reliable **"Upgrading to" / "Switching to"** indicator. Refined handoffs also reduce jumps and crackling during lossless upgrades.
+* **Glass Headers, Artwork Themes & Synced Videos:** Content now scrolls beneath glass headers across more screens, and artist/album pages use unified full-bleed artwork. Now Playing artwork blends into the wallpaper theme with better color selection for monochrome covers. Synced music videos have improved matching and correct fullscreen landscape proportions.
+
+---
+
+### 🛠️ Fixed
+
+* **YouTube Music Playback Stopping Around 59 Seconds:** Fixed the stream and retry issues that could leave a song stuck around **59 seconds / one minute**. Playback now uses bounded media requests and can refresh expired or rejected stream URLs mid-song. Failed YouTube downloads also retry with a freshly resolved stream.
+* **VPN & Age-Restricted Playback:** Improved recovery through VPN/network drops, signed-in age-restricted stream resolution, and YouTube request retries so a failed request does not break later searches or playback.
+* **USB DAC, Loudness & Spatial Audio:** Fixed delayed volume changes on exclusive USB output, corrected loudness normalization and Dolby gain, and improved Cayin RU3 clock/feedback handling and spatial-audio routing. Added ALAC DASH playback support and improved selection of full-volume YouTube audio streams.
+* **Shuffle, Likes & Playlist Sync:** Shuffle now prioritizes unplayed songs. Fixed duplicate-song removal and saved playlist ordering, restored reliable connected YouTube playlist deletion, and combined local/YouTube likes into one heart button. Spotify playlist counts and live sync are more reliable.
+* **Search, Imports & Downloads:** Fixed stale search results and playlist previews, incorrect recording selection from track menus, and imports using a different playlist from the reviewed preview. Custom download folders retain their access permissions.
+* **Account & UI Stability:** Fixed false Last.fm logouts, older-Android notification and startup crashes, stale cover art, and several pagination and floating-control issues. Lyrics sharing keeps the selected song consistent, and player volume, lyric offsets and sleep-timer interactions now behave correctly.
+
+## [Unreleased]
+
+### Added & Improved
+- **Recommendation Provider Switch:** Settings → Spotify now offers a recommendation provider choice. Pick Spotify to seed Home shelves, Quick Picks, radio, Discover and mixes from your Spotify taste; the switch applies everywhere and invalidates the cached home feed. Spotify only supplies the seeds — tracks are matched back to playable YouTube Music, and any failure or empty answer silently keeps the YouTube Music graph, so playback never breaks.
+
 ## [5.0.0] - 2026-10-30
 
 ### Added & Improved
@@ -124,6 +159,28 @@
 - **Stability & Bug Fixes:** Fixed numerous reported issues across playback, downloads, recommendations, authentication, UI, and background behavior.
 
 ## Unreleased
+
+### Fixed
+- **Playback continuing after LastWave was swiped from Recents.**
+  `MusicPlaybackService.onTaskRemoved()` was a no-op that relied on
+  `android:stopWithTask="true"`, but the service deliberately stays a
+  media-playback foreground service whenever a track is loaded (even paused),
+  and Android does not stop a foreground service on task removal. Task removal
+  is now handled explicitly: playback stops and the service, cast session,
+  notification and wake/wifi locks are torn down, while the last queue is kept
+  restorable for the next launch. A new Audio & Playback toggle — "Stop
+  Playback When Swiped Away", on by default — preserves background playback
+  for users who want it.
+
+  Files changed:
+  `app/src/main/java/com/lastwave/app/playback/MusicPlaybackService.kt`,
+  `app/src/main/java/com/lastwave/app/playback/MusicPlayer.kt`,
+  `app/src/main/java/com/lastwave/app/data/local/SettingsPreferences.kt`,
+  `app/src/main/java/com/lastwave/app/ui/settings/SettingsViewModel.kt`,
+  `app/src/main/java/com/lastwave/app/ui/settings/SettingsScreen.kt`,
+  `app/src/main/java/com/lastwave/app/ui/settings/SettingsSearchIndex.kt`,
+  `app/src/main/res/values/strings.xml`,
+  `app/src/main/AndroidManifest.xml`
 
 ### Added
 - **One-tap "Save album to library" on the album detail screen (#79).**

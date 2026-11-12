@@ -43,6 +43,8 @@ enum class ApkVariant {
     UNCOMPRESSED,
     ANDROID7,
     UNIVERSAL,
+    /** vivo Origin Island build (separate package); never mixed with the others. */
+    VIVO_ORIGIN,
 }
 
 @Singleton
@@ -145,6 +147,7 @@ class AppUpdateManager @Inject constructor(
                     assets = apkAssets,
                     isUncompressed = isUncompressedBuild(),
                     sdkInt = Build.VERSION.SDK_INT,
+                    isVivoOrigin = BuildConfig.VIVO_ORIGIN,
                 )
                 val downloadUrl = bestAsset?.downloadUrl ?: releaseUrl
                 val downloadFileName = bestAsset?.name
@@ -223,6 +226,7 @@ class AppUpdateManager @Inject constructor(
         fun classifyAsset(name: String): ApkVariant {
             val lower = name.lowercase()
             return when {
+                lower.contains("vivo") -> ApkVariant.VIVO_ORIGIN
                 lower.contains("uncompressed") || lower.contains("-raw") || lower.contains("_raw") -> ApkVariant.UNCOMPRESSED
                 lower.contains("android7") || lower.contains("legacy") -> ApkVariant.ANDROID7
                 else -> ApkVariant.UNIVERSAL
@@ -233,9 +237,17 @@ class AppUpdateManager @Inject constructor(
             assets: List<ReleaseAsset>,
             isUncompressed: Boolean,
             sdkInt: Int,
+            isVivoOrigin: Boolean = false,
         ): ReleaseAsset? {
-            val apkAssets = assets.filter { it.name.endsWith(".apk", ignoreCase = true) && it.downloadUrl.isNotBlank() }
+            // The vivo build is a different package: installing the other APK
+            // would add a second app instead of updating, so each build only
+            // ever picks from its own pool.
+            val apkAssets = assets.filter {
+                it.name.endsWith(".apk", ignoreCase = true) && it.downloadUrl.isNotBlank() &&
+                    (classifyAsset(it.name) == ApkVariant.VIVO_ORIGIN) == isVivoOrigin
+            }
             if (apkAssets.isEmpty()) return null
+            if (isVivoOrigin) return apkAssets.first()
 
             val target = when {
                 sdkInt < 29 -> ApkVariant.ANDROID7
@@ -252,6 +264,7 @@ class AppUpdateManager @Inject constructor(
                         ApkVariant.UNIVERSAL -> if (lower.contains("universal")) 2 else 1
                         ApkVariant.UNCOMPRESSED -> if (lower.contains("universal")) 2 else 1
                         ApkVariant.ANDROID7 -> if (lower.contains("android7")) 2 else 1
+                        ApkVariant.VIVO_ORIGIN -> 1
                     }
                 }
             }
@@ -272,6 +285,7 @@ class AppUpdateManager @Inject constructor(
                     apkAssets.firstOrNull { classifyAsset(it.name) == ApkVariant.UNIVERSAL }
                         ?: apkAssets.firstOrNull()
                 }
+                ApkVariant.VIVO_ORIGIN -> apkAssets.firstOrNull()
             }
         }
     }

@@ -1,19 +1,17 @@
 /**
  * SecretsBridge.cpp — Native secret vault for LastWave.
  *
- * Real secrets are injected at CI / build time via `SecretsBridge_generated.h`
- * (gitignored, produced by `tools/generate_native_secrets.py` from ADDON_CLIENT_SECRET).
+ * Build-time secret injection writes `SecretsBridge_generated.h` (gitignored)
+ * bound to the signing certificate's SHA-256 digest.
  *
  * Protection layers:
- *   - The secret is double-encrypted at build time using a keystream derived from
- *     the release keystore's SHA-256 certificate fingerprint + salt.
- *   - The raw secret NEVER enters Java bytecode / DEX / memory.
- *   - No JNI getter returns the secret; signing is executed entirely inside native C++.
- *   - APK signing cert gate: re-signed / patched APKs fail signature verification,
- *     and if bypassed, produce corrupted keys resulting in invalid signatures.
- *   - Anti-debugging / ptrace detection (`/proc/self/status` TracerPid).
- *   - Caller package verification (`com.lastwave.app`).
- *   - Strict volatile stack scrubbing of secret buffers immediately after HMAC calculation.
+ *   - Secret encrypted at build time using a keystream derived from the
+ *     signing certificate's SHA-256 fingerprint + salt, split into XOR fragments.
+ *   - Raw secret never enters Java bytecode / DEX; signing runs in native C++.
+ *   - Package allowlist (`com.lastwave.app` and `com.tencent.qqmusic` for vivo)
+ *     and signing certificate SHA-256 verification.
+ *   - TracerPid anti-debugging enforced on non-debuggable builds.
+ *   - Volatile stack scrubbing of secret buffers immediately after HMAC.
  */
 
 #include <jni.h>
@@ -206,7 +204,7 @@ static bool isBeingDebugged() {
 }
 
 /**
- * Verifies that the caller is genuine com.lastwave.app signed by the expected certificate.
+ * Verifies that the caller uses an official package name and is signed by the expected certificate.
  * Extracts the 32-byte SHA-256 certificate digest into outCertSha256.
  */
 static bool verifyCallerSignature(JNIEnv* env, jobject context, uint8_t outCertSha256[32]) {
@@ -218,17 +216,21 @@ static bool verifyCallerSignature(JNIEnv* env, jobject context, uint8_t outCertS
     jmethodID getPackageName = env->GetMethodID(contextClass, "getPackageName", "()Ljava/lang/String;");
     if (!getPackageName) return false;
     auto packageName = (jstring)env->CallObjectMethod(context, getPackageName);
+    if (env->ExceptionCheck()) { env->ExceptionClear(); return false; }
     if (!packageName) return false;
 
-    // Package allowlist: only com.lastwave.app may call.
+    // Package allowlist: standard client + vivo Origin Island build.
     const char* pkgChars = env->GetStringUTFChars(packageName, nullptr);
-    bool pkgOk = pkgChars && strcmp(pkgChars, "com.lastwave.app") == 0;
+    bool pkgOk = pkgChars && (
+        strcmp(pkgChars, "com.lastwave.app") == 0 ||
+        strcmp(pkgChars, "com.tencent.qqmusic") == 0
+    );
     if (pkgChars) env->ReleaseStringUTFChars(packageName, pkgChars);
     if (!pkgOk) return false;
 
     bool isPlaceholder = (strncmp(EXPECTED_CERT_PREFIX, "PLACEHOLDER", 11) == 0);
     if (!isPlaceholder) {
-        if (isDebuggable(env, context) || isBeingDebugged()) {
+        if (!isDebuggable(env, context) && isBeingDebugged()) {
             return false;
         }
     } else {
@@ -242,45 +244,73 @@ static bool verifyCallerSignature(JNIEnv* env, jobject context, uint8_t outCertS
     jmethodID getPackageManager = env->GetMethodID(contextClass, "getPackageManager", "()Landroid/content/pm/PackageManager;");
     if (!getPackageManager) return false;
     jobject pm = env->CallObjectMethod(context, getPackageManager);
+    if (env->ExceptionCheck()) { env->ExceptionClear(); return false; }
     if (!pm) return false;
 
     jclass pmClass = env->GetObjectClass(pm);
     jmethodID getPackageInfo = env->GetMethodID(pmClass, "getPackageInfo", "(Ljava/lang/String;I)Landroid/content/pm/PackageInfo;");
     if (!getPackageInfo) return false;
 
+    jobjectArray signaturesArray = nullptr;
+
+    // API 28+: query SigningInfo (0x08000000 = GET_SIGNING_CERTIFICATES).
+    // On API 24-27 this flag succeeds without throwing and leaves signatures null,
+    // so we always check signaturesArray and fall back to flag 64 (GET_SIGNATURES).
     jobject pkgInfo = env->CallObjectMethod(pm, getPackageInfo, packageName, (jint)0x08000000);
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
-        pkgInfo = env->CallObjectMethod(pm, getPackageInfo, packageName, (jint)64);
+        pkgInfo = nullptr;
+    }
+    if (pkgInfo) {
+        jclass pkgInfoClass = env->GetObjectClass(pkgInfo);
+        jfieldID signingInfoField = env->GetFieldID(pkgInfoClass, "signingInfo", "Landroid/content/pm/SigningInfo;");
         if (env->ExceptionCheck()) {
             env->ExceptionClear();
-            return false;
+            signingInfoField = nullptr;
         }
-    }
-    if (!pkgInfo) return false;
-
-    jclass pkgInfoClass = env->GetObjectClass(pkgInfo);
-    jobjectArray signaturesArray = nullptr;
-    jfieldID signingInfoField = env->GetFieldID(pkgInfoClass, "signingInfo", "Landroid/content/pm/SigningInfo;");
-    if (signingInfoField && !env->ExceptionCheck()) {
-        jobject signingInfo = env->GetObjectField(pkgInfo, signingInfoField);
-        if (signingInfo) {
-            jclass sigInfoClass = env->GetObjectClass(signingInfo);
-            jmethodID getSigningCerts = env->GetMethodID(sigInfoClass, "getApkContentsSigners", "()[Landroid/content/pm/Signature;");
-            if (getSigningCerts) {
-                signaturesArray = (jobjectArray)env->CallObjectMethod(signingInfo, getSigningCerts);
+        if (signingInfoField) {
+            jobject signingInfo = env->GetObjectField(pkgInfo, signingInfoField);
+            if (env->ExceptionCheck()) env->ExceptionClear();
+            if (signingInfo) {
+                jclass sigInfoClass = env->GetObjectClass(signingInfo);
+                jmethodID getSigningCerts = env->GetMethodID(sigInfoClass, "getApkContentsSigners", "()[Landroid/content/pm/Signature;");
+                if (env->ExceptionCheck()) {
+                    env->ExceptionClear();
+                    getSigningCerts = nullptr;
+                }
+                if (getSigningCerts) {
+                    signaturesArray = (jobjectArray)env->CallObjectMethod(signingInfo, getSigningCerts);
+                    if (env->ExceptionCheck()) {
+                        env->ExceptionClear();
+                        signaturesArray = nullptr;
+                    }
+                }
             }
         }
     }
-    if (env->ExceptionCheck()) env->ExceptionClear();
 
     if (!signaturesArray || env->GetArrayLength(signaturesArray) == 0) {
-        jfieldID sigField = env->GetFieldID(pkgInfoClass, "signatures", "[Landroid/content/pm/Signature;");
-        if (sigField) {
-            signaturesArray = (jobjectArray)env->GetObjectField(pkgInfo, sigField);
+        jobject legacyInfo = env->CallObjectMethod(pm, getPackageInfo, packageName, (jint)64);
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            legacyInfo = nullptr;
+        }
+        if (legacyInfo) {
+            jclass legacyCls = env->GetObjectClass(legacyInfo);
+            jfieldID sigField = env->GetFieldID(legacyCls, "signatures", "[Landroid/content/pm/Signature;");
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                sigField = nullptr;
+            }
+            if (sigField) {
+                signaturesArray = (jobjectArray)env->GetObjectField(legacyInfo, sigField);
+                if (env->ExceptionCheck()) {
+                    env->ExceptionClear();
+                    signaturesArray = nullptr;
+                }
+            }
         }
     }
-    if (env->ExceptionCheck()) env->ExceptionClear();
     if (!signaturesArray || env->GetArrayLength(signaturesArray) == 0) return false;
 
     jobject sig = env->GetObjectArrayElement(signaturesArray, 0);

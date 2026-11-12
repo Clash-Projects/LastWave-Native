@@ -17,6 +17,7 @@ import org.xml.sax.InputSource
 object TtmlParser {
     private val SKIPPED_ROLES = setOf("x-translation", "x-roman")
     private const val BACKGROUND_ROLE = "x-bg"
+    private val WHITESPACE = Regex("""\s+""")
 
     fun parse(ttml: String): List<LyricLine> {
         if (ttml.isBlank() || "<p" !in ttml.lowercase()) return emptyList()
@@ -34,13 +35,32 @@ object TtmlParser {
             // carry <head><metadata><audio lyricOffset="…"/> shifting every
             // timestamp. Ignoring it offsets the whole song's sync.
             val offsetMs = readLyricOffset(document)
+            val groupAgents = readGroupAgents(document)
             val paragraphs = document.getElementsByTagName("p")
             val sung = ArrayList<LyricLine>(paragraphs.length)
+            val agentRoles = LinkedHashMap<String, VocalRole>()
             for (i in 0 until paragraphs.length) {
                 val paragraph = paragraphs.item(i) as? Element ?: continue
-                lineFrom(paragraph)?.let { sung += it.shiftTimes(offsetMs) }
+                val line = lineFrom(paragraph) ?: continue
+                val role = agentOf(paragraph)?.let { agent ->
+                    agentRoles.getOrPut(agent) {
+                        val numeric = agent.removePrefix("v").toIntOrNull()
+                        when {
+                            agent in groupAgents || (numeric != null && numeric >= 1000) -> VocalRole.UNISON_CENTER
+                            // Persons alternate sides in order of appearance.
+                            agentRoles.values.count { it != VocalRole.UNISON_CENTER } % 2 == 0 -> VocalRole.LEAD_LEFT
+                            else -> VocalRole.DUET_RIGHT
+                        }
+                    }
+                } ?: VocalRole.LEAD_LEFT
+                sung += line.copy(role = role).shiftTimes(offsetMs)
             }
-            sung.sortedBy { it.timeMs }
+            // A single voice (or only a group) is not a duet: keep every row
+            // on the lead side instead of centring a whole solo song.
+            val staged = if (sung.map { it.role }.toSet().size <= 1) {
+                sung.map { if (it.role == VocalRole.LEAD_LEFT) it else it.copy(role = VocalRole.LEAD_LEFT) }
+            } else sung
+            staged.sortedBy { it.timeMs }
         }.getOrDefault(emptyList())
     }
 
@@ -60,6 +80,32 @@ object TtmlParser {
             else -> null
         } ?: return null
         return (seconds * 1000).toLong()
+    }
+
+    /** `ttm:agent` declarations whose type is a group / other (choir, both). */
+    private fun readGroupAgents(document: org.w3c.dom.Document): Set<String> = runCatching {
+        val out = HashSet<String>()
+        for (tag in listOf("ttm:agent", "agent")) {
+            val nodes = document.getElementsByTagName(tag)
+            for (i in 0 until nodes.length) {
+                val el = nodes.item(i) as? Element ?: continue
+                val type = qualified(el, "type").lowercase()
+                val id = qualified(el, "xml:id").ifEmpty { qualified(el, "id") }
+                if (id.isNotEmpty() && (type == "group" || type == "other")) out += id
+            }
+        }
+        out
+    }.getOrDefault(emptySet())
+
+    /** Agent of a row: on the paragraph itself or inherited from its div. */
+    private fun agentOf(paragraph: Element): String? {
+        var node: Node? = paragraph
+        while (node is Element) {
+            val agent = qualified(node, "ttm:agent").trim()
+            if (agent.isNotEmpty()) return agent.substringBefore(' ')
+            node = node.parentNode
+        }
+        return null
     }
 
     private fun readLyricOffset(document: org.w3c.dom.Document): Long {
@@ -104,43 +150,75 @@ object TtmlParser {
         collect(paragraph, pieces, backingPieces)
         val words = mergeIntoWords(pieces)
         val backingWords = mergeIntoWords(backingPieces)
-        if (words.isEmpty()) {
-            val text = paragraph.textContent?.trim().orEmpty()
-            val begin = attrTime(paragraph, "begin") ?: return null
+        val paraBegin = attrTime(paragraph, "begin")
+        val paraEnd = attrTime(paragraph, "end")
+            ?: paraBegin?.let { attrDuration(paragraph, it) }
+        if (words.isEmpty() && backingWords.isEmpty()) {
+            val text = leadText(paragraph).replace(WHITESPACE, " ").trim()
+            val begin = paraBegin ?: return null
             if (text.isEmpty()) return null
-            val end = attrTime(paragraph, "end")?.takeIf { it > begin }
-                ?: attrDuration(paragraph, begin)
-            val duration = if (end != null && end > begin) end - begin else 0L
+            val duration = if (paraEnd != null && paraEnd > begin) paraEnd - begin else 0L
             return LyricLine(
                 timeMs = begin,
                 durationMs = duration,
                 text = text,
             )
         }
-        val begin = attrTime(paragraph, "begin") ?: words.first().timeMs
-        val paraEnd = attrTime(paragraph, "end")
-        val lineDuration = if (paraEnd != null && paraEnd > begin) paraEnd - begin else {
-            val lastEnd = words.maxOfOrNull { it.timeMs + it.durationMs } ?: begin
-            (lastEnd - begin).coerceAtLeast(0L)
-        }
-        val backingLine = backingWords.takeIf { it.isNotEmpty() }?.let {
-            LyricLine(
-                timeMs = it.first().timeMs,
-                durationMs = 0L,
-                text = it.joinToString(" ") { w -> w.text },
-                syllables = it.map { w -> w.copy(isBackground = true) },
+        if (words.isEmpty()) {
+            // A row sung only by the backing voices: keep it word-timed and
+            // flagged so the view nests it under the lead row before it.
+            val first = backingWords.first().timeMs
+            val begin = minOf(paraBegin ?: first, first)
+            val lastEnd = backingWords.maxOf { it.timeMs + it.durationMs }
+            val end = paraEnd?.takeIf { it > begin } ?: lastEnd
+            return LyricLine(
+                timeMs = begin,
+                durationMs = (end - begin).coerceAtLeast(0L),
+                text = backingWords.joinToString(" ") { it.text },
+                syllables = backingWords.map { it.copy(isBackground = true) },
             )
+        }
+        val begin = paraBegin ?: words.first().timeMs
+        val lineDuration = if (paraEnd != null && paraEnd > begin) paraEnd - begin else {
+            val lastEnd = maxOf(
+                words.maxOf { it.timeMs + it.durationMs },
+                backingWords.maxOfOrNull { it.timeMs + it.durationMs } ?: 0L,
+            )
+            (lastEnd - begin).coerceAtLeast(0L)
         }
         val syllables = buildList {
             addAll(words)
-            backingLine?.syllables?.let { addAll(it) }
+            backingWords.forEach { add(it.copy(isBackground = true)) }
         }.sortedBy { it.timeMs }
+        // Lead text only: background and translation spans never leak into
+        // the lead row, and XML indentation never becomes visible spacing.
+        val text = LyricsSanitizer.safeLineText(leadText(paragraph), words.map { it.text })
         return LyricLine(
             timeMs = minOf(begin, words.first().timeMs),
             durationMs = lineDuration,
-            text = words.joinToString(" ") { it.text },
+            text = text,
             syllables = syllables,
         )
+    }
+
+    /** Text of a paragraph without background / translation / romaji spans. */
+    private fun leadText(node: Node): String {
+        val sb = StringBuilder()
+        fun walk(n: Node) {
+            val children = n.childNodes
+            for (i in 0 until children.length) {
+                val child = children.item(i)
+                if (child is Element) {
+                    val role = qualified(child, "ttm:role")
+                    if (role in SKIPPED_ROLES || role == BACKGROUND_ROLE) continue
+                    walk(child)
+                } else if (child.nodeType == Node.TEXT_NODE || child.nodeType == Node.CDATA_SECTION_NODE) {
+                    sb.append(child.textContent.orEmpty())
+                }
+            }
+        }
+        walk(node)
+        return sb.toString()
     }
 
     private fun collect(node: Node, out: MutableList<Piece>, backing: MutableList<Piece>) {
@@ -176,12 +254,23 @@ object TtmlParser {
         return false
     }
 
+    /**
+     * Joins timed pieces into words. Untimed text between spans (commas,
+     * quotes, a word the provider did not time) is kept without inventing
+     * timing: punctuation glues to its neighbour, and an untimed word becomes
+     * a zero-length unit at the start of the next timed word (or at the end
+     * of the previous one), so it lights up with real sung timing.
+     */
     private fun mergeIntoWords(pieces: List<Piece>): List<LyricSyllable> {
         val words = mutableListOf<LyricSyllable>()
         val current = StringBuilder()
         var start = 0L
         var end = 0L
         var timed = false
+        // Untimed words waiting for the next timed word to borrow its start.
+        val pendingWords = mutableListOf<String>()
+        // Untimed glyphs touching the next timed word, e.g. "(" before "ooh".
+        val pendingPrefix = StringBuilder()
         fun flush() {
             val text = current.toString().trim()
             current.setLength(0)
@@ -190,17 +279,87 @@ object TtmlParser {
             }
             timed = false
         }
+        fun closePrefix() {
+            if (pendingPrefix.isNotEmpty()) {
+                pendingWords += pendingPrefix.toString()
+                pendingPrefix.setLength(0)
+            }
+        }
+        fun glueToPrevious(text: String) {
+            val last = words.lastOrNull() ?: return
+            words[words.lastIndex] = last.copy(text = last.text + text)
+        }
+        fun isPunctuation(token: String) = token.none { it.isLetterOrDigit() }
         pieces.forEach { piece ->
             when (piece) {
-                is Piece.Text -> when {
-                    piece.text.isBlank() -> flush()
-                    timed -> current.append(piece.text)
-                    else -> Unit
+                is Piece.Text -> {
+                    if (piece.text.isBlank()) {
+                        flush()
+                        closePrefix()
+                        return@forEach
+                    }
+                    val leadingSpace = piece.text.first().isWhitespace()
+                    val trailingSpace = piece.text.last().isWhitespace()
+                    if (leadingSpace) {
+                        flush()
+                        closePrefix()
+                    }
+                    val tokens = piece.text.trim().split(WHITESPACE).filter { it.isNotEmpty() }
+                    tokens.forEachIndexed { index, token ->
+                        val touchesLeft = index == 0 && !leadingSpace
+                        val touchesRight = index == tokens.lastIndex && !trailingSpace
+                        when {
+                            // Glued to the timed word being built ("love" + ",").
+                            touchesLeft && timed -> current.append(token)
+                            touchesLeft && pendingPrefix.isNotEmpty() -> pendingPrefix.append(token)
+                            touchesLeft && pendingWords.isEmpty() && words.isNotEmpty() && isPunctuation(token) ->
+                                glueToPrevious(token)
+                            else -> {
+                                if (index > 0 || !touchesLeft) {
+                                    flush()
+                                    closePrefix()
+                                }
+                                if (touchesRight) {
+                                    pendingPrefix.append(token)
+                                } else if (isPunctuation(token) && pendingWords.isEmpty() && words.isNotEmpty() && index == 0) {
+                                    glueToPrevious(token)
+                                } else {
+                                    pendingWords += token
+                                }
+                            }
+                        }
+                        if (index < tokens.lastIndex) {
+                            flush()
+                            closePrefix()
+                        }
+                    }
+                    if (trailingSpace) {
+                        flush()
+                        closePrefix()
+                    }
                 }
                 is Piece.Timed -> {
                     if (piece.text.isBlank()) return@forEach
-                    if (piece.text.first().isWhitespace()) flush()
-                    if (current.isEmpty()) start = piece.start
+                    val spaceBefore = piece.text.first().isWhitespace()
+                    if (spaceBefore) {
+                        flush()
+                        closePrefix()
+                    }
+                    if (pendingWords.isNotEmpty()) {
+                        flush()
+                        pendingWords.forEach { w ->
+                            words += LyricSyllable(timeMs = piece.start, durationMs = 0L, text = w)
+                        }
+                        pendingWords.clear()
+                    }
+                    if (pendingPrefix.isNotEmpty()) {
+                        flush()
+                        current.append(pendingPrefix)
+                        pendingPrefix.setLength(0)
+                        start = piece.start
+                    } else if (current.isEmpty()) {
+                        start = piece.start
+                    }
                     current.append(piece.text.trim())
                     end = piece.end
                     timed = true
@@ -209,6 +368,16 @@ object TtmlParser {
             }
         }
         flush()
+        closePrefix()
+        // Untimed tail: glue punctuation, keep words at the last word's end.
+        val lastWord = words.lastOrNull()
+        if (lastWord != null) {
+            val tailStart = lastWord.timeMs + lastWord.durationMs
+            pendingWords.forEachIndexed { index, w ->
+                if (index == 0 && isPunctuation(w)) glueToPrevious(w)
+                else words += LyricSyllable(timeMs = tailStart, durationMs = 0L, text = w)
+            }
+        }
         return words
     }
 

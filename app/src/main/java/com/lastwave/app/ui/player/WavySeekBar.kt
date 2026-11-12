@@ -3,59 +3,28 @@ package com.lastwave.app.ui.player
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.interaction.DragInteraction
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.PressInteraction
-import androidx.compose.foundation.interaction.collectIsDraggedAsState
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Text
-import kotlinx.coroutines.delay
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.toArgb
-import androidx.core.graphics.ColorUtils
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.unit.dp
-import com.lastwave.app.playback.MusicPlayerState
+import com.lastwave.app.ui.common.LocalAmbientAnimationsActive
+import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.sin
 
-/**
- * Shifts the lightness and saturation of a Compose Color to produce
- * rich, dynamic tonal variations within the theme palette while protecting minimum contrast.
- */
-private fun Color.shiftTonal(lightnessDelta: Float, saturationScale: Float = 1.0f): Color {
+private fun Color.shiftTonal(lightnessDelta: Float, saturationScale: Float): Color {
     val hsv = FloatArray(3)
     android.graphics.Color.RGBToHSV(
         (red * 255).toInt().coerceIn(0, 255),
@@ -64,528 +33,144 @@ private fun Color.shiftTonal(lightnessDelta: Float, saturationScale: Float = 1.0
         hsv,
     )
     val originalSaturation = hsv[1]
-    hsv[1] = (hsv[1] * saturationScale).coerceIn(if (originalSaturation > 0.05f) 0.15f else 0.0f, 1.0f)
-    hsv[2] = (hsv[2] + lightnessDelta).coerceIn(0.25f, 1.0f)
-    val rgb = android.graphics.Color.HSVToColor(hsv)
-    return Color(rgb)
+    hsv[1] = (hsv[1] * saturationScale).coerceIn(if (originalSaturation > 0.05f) 0.15f else 0f, 1f)
+    hsv[2] = (hsv[2] + lightnessDelta).coerceIn(0.25f, 1f)
+    return Color(android.graphics.Color.HSVToColor(hsv))
 }
 
 /**
- * Ensures a color has sufficient perceived luminance and saturation to stand out
- * vibrantly on dark scrims and backgrounds without washing out or disappearing.
- * Uses WCAG 2.1 relative luminance and HSL space to preserve the original hue.
- */
-internal fun Color.ensureLuminousForDarkBackground(minLuminance: Float = 0.38f): Color {
-    val argb = this.toArgb()
-    val currentLuminance = ColorUtils.calculateLuminance(argb).toFloat()
-    if (currentLuminance >= minLuminance) {
-        return this
-    }
-
-    val hsl = FloatArray(3)
-    ColorUtils.colorToHSL(argb, hsl)
-
-    // If nearly achromatic (dark gray/black cover art), bring to a clean, crisp off-white/silver
-    if (hsl[1] < 0.12f) {
-        hsl[2] = hsl[2].coerceAtLeast(0.82f)
-        return Color(ColorUtils.HSLToColor(hsl))
-    }
-
-    // Elevate lightness iteratively until target relative luminance is met
-    var step = 0
-    while (step < 20) {
-        hsl[2] = (hsl[2] + 0.04f).coerceAtMost(0.92f)
-        // Prevent high-saturation low-luminance hues (like deep blue) from staying too dark
-        if (hsl[1] > 0.85f && hsl[2] < 0.65f) {
-            hsl[1] = (hsl[1] * 0.96f).coerceAtLeast(0.60f)
-        }
-        val candidate = ColorUtils.HSLToColor(hsl)
-        if (ColorUtils.calculateLuminance(candidate).toFloat() >= minLuminance) {
-            return Color(candidate)
-        }
-        step++
-    }
-
-    return Color(ColorUtils.HSLToColor(hsl))
-}
-
-/**
- * Material Design 3 Dynamic Counter-Gradient Frosted Glass Waveform Seekbar.
- * Features 3 frosted glass waves that dynamically transition across playback progress:
- * - Layer 1: Light -> Dark
- * - Layer 2: Dark -> Light (Vice-versa)
- * - Layer 3: Light -> Deep Vibrant Accent
- * creating a rich, iridescent multi-depth liquid optical effect.
+ * Wavy progress track: three rolling gradient waves over the played part.
+ * Draw only; the caller owns gestures, semantics and time labels. [fraction]
+ * is read in the draw phase, so progress ticks redraw without recomposing.
  */
 @Composable
-fun WavySeekBar(
-    positionMs: Long,
-    durationMs: Long,
+internal fun WavyProgressTrack(
+    fraction: () -> Float,
     isPlaying: Boolean,
-    onSeek: (Long) -> Unit,
+    dragging: Boolean,
+    isTranslucent: Boolean,
+    primaryColor: Color,
+    secondaryColor: Color,
+    tertiaryColor: Color,
     modifier: Modifier = Modifier,
-    isTranslucent: Boolean = false,
-    trackKey: String? = null,
-    showTimeLabels: Boolean = true,
-    primaryColor: Color = MaterialTheme.colorScheme.primary,
-    secondaryColor: Color = MaterialTheme.colorScheme.secondary,
-    tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
 ) {
-    val interactionSource = remember(trackKey) { MutableInteractionSource() }
-    var isInteracting by remember(trackKey) { mutableStateOf(false) }
-    LaunchedEffect(interactionSource, trackKey) {
-        var dragCount = 0
-        var pressCount = 0
-        interactionSource.interactions.collect { interaction ->
-            when (interaction) {
-                is DragInteraction.Start -> dragCount++
-                is DragInteraction.Stop, is DragInteraction.Cancel -> dragCount = maxOf(0, dragCount - 1)
-                is PressInteraction.Press -> pressCount++
-                is PressInteraction.Release, is PressInteraction.Cancel -> pressCount = maxOf(0, pressCount - 1)
-            }
-            isInteracting = dragCount > 0 || pressCount > 0
-        }
-    }
-    // Current-gesture drag value only; null = finger off, show live position.
-    // Nullable (never a stale 0f) so a press that yields no onValueChange can
-    // never seek anywhere, and a gesture that ends without
-    // onValueChangeFinished can never pin the slider to a dead value.
-    var dragPositionMs by remember(trackKey) { mutableStateOf<Float?>(null) }
-    var lastSeekValue by remember(trackKey) { mutableStateOf<Float?>(null) }
-    // Heal: framework reports finger lifted or cancelled but the finished callback
-    // never ran -> drop the dead value and resume live position.
-    LaunchedEffect(isInteracting, trackKey) {
-        if (!isInteracting) {
-            delay(120L)
-            dragPositionMs = null
-            lastSeekValue = null
-        }
-    }
-    // Watchdog: if dragPositionMs was set by a tap/cancelled gesture while not interacting,
-    // ensure it never permanently wedges the seekbar.
-    LaunchedEffect(dragPositionMs, isInteracting, trackKey) {
-        if (dragPositionMs != null && !isInteracting) {
-            delay(250L)
-            dragPositionMs = null
-            lastSeekValue = null
-        }
-    }
-    val dragging = isInteracting || dragPositionMs != null
-
-    // ExoPlayer reports C.TIME_UNSET (-9223372036854775807) until the
-    // container is parsed; coerce to 0 = unknown. Crucially, do NOT discard
-    // position while duration is unknown: the old `else 0L` froze the time
-    // label at 0:00 and pinned the bar, while the notification (system
-    // extrapolation via speed) kept moving. Show real elapsed + "--:--"
-    // until the duration arrives late, then fraction recovers automatically.
-    val boundedDurationMs = durationMs.coerceAtLeast(0L)
-    val boundedPositionMs = if (boundedDurationMs > 0L) {
-        positionMs.coerceIn(0L, boundedDurationMs)
-    } else {
-        positionMs.coerceAtLeast(0L)
-    }
-    val shownMs = if (boundedDurationMs > 0L) {
-        (dragPositionMs?.toLong() ?: boundedPositionMs).coerceIn(0L, boundedDurationMs)
-    } else {
-        (dragPositionMs?.toLong() ?: boundedPositionMs).coerceAtLeast(0L)
-    }
-    val shownFraction = if (boundedDurationMs > 0L) {
-        (shownMs.toDouble() / boundedDurationMs.toDouble()).toFloat().coerceIn(0f, 1f)
-    } else {
-        0f
-    }
-
-    // Ensure colors stand out vibrantly on dark scrim/translucent backgrounds
-    val effectivePrimary = remember(primaryColor) {
-        primaryColor.ensureLuminousForDarkBackground(0.38f)
-    }
-    val effectiveSecondary = remember(secondaryColor) {
-        secondaryColor.ensureLuminousForDarkBackground(0.32f)
-    }
-    val effectiveTertiary = remember(tertiaryColor) {
-        tertiaryColor.ensureLuminousForDarkBackground(0.28f)
-    }
-
+    val primary = remember(primaryColor) { primaryColor.ensureLuminousForDarkBackground(0.38f) }
+    val secondary = remember(secondaryColor) { secondaryColor.ensureLuminousForDarkBackground(0.32f) }
+    val tertiary = remember(tertiaryColor) { tertiaryColor.ensureLuminousForDarkBackground(0.28f) }
     val inactiveColor = Color.White.copy(alpha = if (isTranslucent) 0.24f else 0.22f)
-    val textColor = if (isTranslucent) {
-        Color.White.copy(alpha = 0.85f)
-    } else {
-        Color.White.copy(alpha = 0.82f)
-    }
-
-    // Pre-calculated tonal palette (zero allocation in draw loop)
-    val layer1Light = remember(effectiveTertiary) { effectiveTertiary.shiftTonal(lightnessDelta = +0.18f, saturationScale = 0.85f) }
-    val layer1Dark = remember(effectiveTertiary) { effectiveTertiary.shiftTonal(lightnessDelta = -0.06f, saturationScale = 1.15f) }
-    val layer2Dark = remember(effectiveSecondary) { effectiveSecondary.shiftTonal(lightnessDelta = -0.08f, saturationScale = 1.15f) }
-    val layer2Light = remember(effectiveSecondary) { effectiveSecondary.shiftTonal(lightnessDelta = +0.18f, saturationScale = 0.85f) }
-    val layer3Light = remember(effectivePrimary) { effectivePrimary.shiftTonal(lightnessDelta = +0.20f, saturationScale = 0.90f) }
-    val layer3Dark = remember(effectivePrimary) { effectivePrimary.shiftTonal(lightnessDelta = -0.05f, saturationScale = 1.15f) }
-    val thumbColor = remember(effectivePrimary) { effectivePrimary.shiftTonal(lightnessDelta = +0.06f, saturationScale = 1.05f) }
-
-    val layer1Colors = remember(layer1Light, layer1Dark, isTranslucent) {
+    val layer1 = remember(tertiary, isTranslucent) {
         listOf(
-            layer1Light.copy(alpha = if (isTranslucent) 0.44f else 0.40f),
-            layer1Dark.copy(alpha = if (isTranslucent) 0.34f else 0.30f),
+            tertiary.shiftTonal(+0.18f, 0.85f).copy(alpha = if (isTranslucent) 0.44f else 0.40f),
+            tertiary.shiftTonal(-0.06f, 1.15f).copy(alpha = if (isTranslucent) 0.34f else 0.30f),
         )
     }
-    val layer2Colors = remember(layer2Dark, layer2Light, isTranslucent) {
+    val layer2 = remember(secondary, isTranslucent) {
         listOf(
-            layer2Dark.copy(alpha = if (isTranslucent) 0.74f else 0.68f),
-            layer2Light.copy(alpha = if (isTranslucent) 0.64f else 0.58f),
+            secondary.shiftTonal(-0.08f, 1.15f).copy(alpha = if (isTranslucent) 0.74f else 0.68f),
+            secondary.shiftTonal(+0.18f, 0.85f).copy(alpha = if (isTranslucent) 0.64f else 0.58f),
         )
     }
-    val layer3Colors = remember(layer3Light, layer3Dark, isTranslucent) {
+    val baseline = remember(primary) { listOf(primary.shiftTonal(+0.20f, 0.90f), primary.shiftTonal(-0.05f, 1.15f)) }
+    val layer3 = remember(baseline, isTranslucent) {
         listOf(
-            layer3Light.copy(alpha = if (isTranslucent) 0.98f else 0.95f),
-            layer3Dark.copy(alpha = if (isTranslucent) 0.92f else 0.88f),
+            baseline[0].copy(alpha = if (isTranslucent) 0.98f else 0.95f),
+            baseline[1].copy(alpha = if (isTranslucent) 0.92f else 0.88f),
         )
     }
-    val baselineColors = remember(layer3Light, layer3Dark) {
-        listOf(layer3Light, layer3Dark)
-    }
+    val thumbColor = remember(primary) { primary.shiftTonal(+0.06f, 1.05f) }
 
-    // Fluid wave animations. Driven by a frame clock that only runs while
-    // the waves are actually shown (playing, not dragging): the previous
-    // infinite transition kept requesting frames while paused even though
-    // the paused waves are static. Same periods (2400/1800/1300ms, linear,
-    // restart) as before; each run starts from the paused pose, so resuming
-    // glides on instead of jumping to an unrelated phase.
+    // Runs only while the waves are visible and moving; paused or dragging
+    // draws the static pose. Each run starts from that pose, so resuming glides.
     val waveClockSeconds = remember { mutableFloatStateOf(0f) }
-    val wavesActive = isPlaying && !dragging
+    val wavesActive = isPlaying && !dragging &&
+        LocalAmbientAnimationsActive.current && rememberPlayerWindowActive()
     LaunchedEffect(wavesActive) {
-        if (!wavesActive) {
-            waveClockSeconds.floatValue = 0f
-            return@LaunchedEffect
-        }
+        waveClockSeconds.floatValue = 0f
+        if (!wavesActive) return@LaunchedEffect
         var startNanos = -1L
         while (true) {
             withFrameNanos { now ->
                 if (startNanos < 0L) startNanos = now
-                // Wrap at the 3 periods' common multiple (93.6s) to keep float precision.
                 waveClockSeconds.floatValue = ((now - startNanos) % WAVE_CLOCK_WRAP_NANOS) / 1_000_000_000f
             }
+            // Slow rolling waves look the same at 30 fps; every vsync (120 Hz) kept the GPU busy.
+            delay(WAVE_FRAME_MS)
         }
     }
 
-    // 3-Tier Amplitudes with smooth dampening on seek
-    val density = LocalDensity.current
-    val baseAmp1Px = with(density) { 13.0.dp.toPx() } // Deep ambient glass layer
-    val baseAmp2Px = with(density) { 10.0.dp.toPx() } // Middle frosted glass layer
-    val baseAmp3Px = with(density) { 7.5.dp.toPx() }  // Foreground luminous glass layer
-    val draggingAmpPx = with(density) { 1.2.dp.toPx() }
+    // Waves flatten while scrubbing so the thumb position reads clearly.
+    val amp1 by animateFloatAsState(if (dragging) 1.2f else 13f, tween(180), label = "Amp1")
+    val amp2 by animateFloatAsState(if (dragging) 1.2f else 10f, tween(180), label = "Amp2")
+    val amp3 by animateFloatAsState(if (dragging) 1.2f else 7.5f, tween(180), label = "Amp3")
 
-    val amp1 = animateFloatAsState(
-        targetValue = if (dragging) draggingAmpPx else baseAmp1Px,
-        animationSpec = tween(durationMillis = 180),
-        label = "Amp1",
-    )
-    val amp2 = animateFloatAsState(
-        targetValue = if (dragging) draggingAmpPx else baseAmp2Px,
-        animationSpec = tween(durationMillis = 180),
-        label = "Amp2",
-    )
-    val amp3 = animateFloatAsState(
-        targetValue = if (dragging) draggingAmpPx else baseAmp3Px,
-        animationSpec = tween(durationMillis = 180),
-        label = "Amp3",
-    )
+    val contour1 = remember { Path() }
+    val contour2 = remember { Path() }
+    val contour3 = remember { Path() }
 
-    // Broad wavelengths for smooth, elegant rolling hills
-    val waveLength1Px = with(density) { 160.dp.toPx() }
-    val waveLength2Px = with(density) { 125.dp.toPx() }
-    val waveLength3Px = with(density) { 95.dp.toPx() }
+    Canvas(modifier = modifier) {
+        val width = size.width
+        val centerY = size.height / 2f + 7.dp.toPx()
+        val thumbX = (fraction().coerceIn(0f, 1f) * width).coerceIn(0f, width)
+        val trackPx = 4.5.dp.toPx()
+        val half = trackPx / 2f
+        val topY = centerY - half
 
-    val baseTrackThicknessPx = with(density) { 4.5.dp.toPx() }
-    val thumbRadiusPx = with(density) { 7.5.dp.toPx() }
-    val transitionLengthPx = with(density) { 44.dp.toPx() }
-    val waveSampleStepPx = with(density) { 1.5.dp.toPx() }
+        drawLine(inactiveColor, Offset(0f, centerY), Offset(width, centerY), trackPx, StrokeCap.Round)
 
-    // Reusable Path caches to eliminate garbage collector allocations during frame drawing
-    val pathFilled1 = remember { Path() }
-    val pathContour1 = remember { Path() }
-    val pathFilled2 = remember { Path() }
-    val pathContour2 = remember { Path() }
-    val pathFilled3 = remember { Path() }
-    val pathContour3 = remember { Path() }
-    val clipPathBounds = remember { Path() }
-
-    Column(modifier = modifier.fillMaxWidth()) {
-        // Playback progress is time, not directional content: pin the whole
-        // block (custom LTR Canvas drawing + invisible Material Slider touch
-        // layer + time labels) to LTR. In RTL locales (Arabic, â€¦) the Slider
-        // would otherwise mirror its gesture mapping while the drawing stays
-        // LTR, inverting drag direction.
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(50.dp),
-        ) {
-            Canvas(modifier = Modifier.matchParentSize()) {
-                val width = size.width
-                val height = size.height
-                val centerY = height / 2f + 7.dp.toPx()
-                val thumbX = (shownFraction * width).coerceIn(0f, width)
-                val halfThickness = baseTrackThicknessPx / 2f
-                val bottomY = centerY + halfThickness
-                val topBaselineY = centerY - halfThickness
-
-                // 1. Inactive background track: Full smooth capsule bar with rounded ends
-                drawLine(
-                    color = inactiveColor,
-                    start = Offset(0f, centerY),
-                    end = Offset(width, centerY),
-                    strokeWidth = baseTrackThicknessPx,
-                    cap = StrokeCap.Round,
-                )
-
-                // 2. Active 3-Layer Material Frosted Glass Waves with Dynamic Counter-Gradients
-                if (thumbX > 0f) {
-                    clipPathBounds.reset()
-                    clipPathBounds.addRoundRect(
-                        RoundRect(
-                            rect = androidx.compose.ui.geometry.Rect(
-                                left = -halfThickness,
-                                top = 0f,
-                                right = thumbX + halfThickness,
-                                bottom = height,
-                            ),
-                            topLeft = CornerRadius(halfThickness, halfThickness),
-                            bottomLeft = CornerRadius(halfThickness, halfThickness),
-                            topRight = CornerRadius(halfThickness, halfThickness),
-                            bottomRight = CornerRadius(halfThickness, halfThickness),
-                        )
-                    )
-
-                    clipPath(clipPathBounds) {
-                        fun smootherstep(t: Float): Float {
-                            val c = t.coerceIn(0f, 1f)
-                            return c * c * c * (c * (c * 6f - 15f) + 10f)
-                        }
-
-                        fun populateWave(
-                            filled: Path,
-                            contour: Path,
-                            wavelength: Float,
-                            amplitude: Float,
-                            phase: Float,
-                        ) {
-                            filled.reset()
-                            contour.reset()
-                            filled.moveTo(0f, bottomY)
-                            filled.lineTo(0f, topBaselineY)
-                            contour.moveTo(0f, topBaselineY)
-
-                            var x = 0f
-                            val effectiveTransition = minOf(transitionLengthPx, thumbX * 0.48f)
-                            val invTransition = if (effectiveTransition > 0f) 1f / effectiveTransition else 0f
-                            val invWavelength2Pi = (2 * PI / wavelength).toFloat()
-                            while (x < thumbX) {
-                                val startEnv = if (invTransition > 0f) smootherstep(x * invTransition) else 1f
-                                val endEnv = if (invTransition > 0f) smootherstep((thumbX - x) * invTransition) else 1f
-                                val envelope = startEnv * endEnv
-
-                                val angle = x * invWavelength2Pi - phase
-                                val waveHeight = (0.5f + 0.5f * sin(angle)) * amplitude * envelope
-                                val y = topBaselineY - waveHeight
-
-                                filled.lineTo(x, y)
-                                contour.lineTo(x, y)
-                                x += waveSampleStepPx
-                            }
-                            // Exact end point at thumbX
-                            val endY = topBaselineY
-                            filled.lineTo(thumbX, endY)
-                            contour.lineTo(thumbX, endY)
-
-                            filled.lineTo(thumbX, bottomY)
-                            filled.close()
-                        }
-
-                        val waveT = if (wavesActive) waveClockSeconds.floatValue else 0f
-                        val currPhase1 = wavePhase(waveT, 2.4f) + 2.2f
-                        val currPhase2 = wavePhase(waveT, 1.8f) + 1.2f
-                        val currPhase3 = wavePhase(waveT, 1.3f)
-
-                        populateWave(pathFilled1, pathContour1, waveLength1Px, amp1.value, currPhase1)
-                        populateWave(pathFilled2, pathContour2, waveLength2Px, amp2.value, currPhase2)
-                        populateWave(pathFilled3, pathContour3, waveLength3Px, amp3.value, currPhase3)
-
-                        val activeWidth = thumbX.coerceAtLeast(1f)
-
-                        // Layer 1: Soft organic wave
-                        drawPath(
-                            path = pathContour1,
-                            brush = Brush.horizontalGradient(
-                                colors = layer1Colors,
-                                startX = 0f,
-                                endX = activeWidth,
-                            ),
-                            style = Stroke(width = 1.0.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-                        )
-
-                        // Layer 2: Medium harmonic wave
-                        drawPath(
-                            path = pathContour2,
-                            brush = Brush.horizontalGradient(
-                                colors = layer2Colors,
-                                startX = 0f,
-                                endX = activeWidth,
-                            ),
-                            style = Stroke(width = 1.2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-                        )
-
-                        // Layer 3: Vibrant primary wave
-                        drawPath(
-                            path = pathContour3,
-                            brush = Brush.horizontalGradient(
-                                colors = layer3Colors,
-                                startX = 0f,
-                                endX = activeWidth,
-                            ),
-                            style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-                        )
-
-                        // 3. Crisp Baseline Bar with Light -> Dark dynamic gradient
-                        drawLine(
-                            brush = Brush.horizontalGradient(
-                                colors = baselineColors,
-                                startX = 0f,
-                                endX = activeWidth,
-                            ),
-                            start = Offset(0f, centerY),
-                            end = Offset(thumbX, centerY),
-                            strokeWidth = baseTrackThicknessPx,
-                            cap = StrokeCap.Round,
-                        )
+        if (thumbX > 0f) {
+            val transition = minOf(44.dp.toPx(), thumbX * 0.48f)
+            val invTransition = if (transition > 0f) 1f / transition else 0f
+            val step = 1.5.dp.toPx()
+            fun smootherstep(t: Float): Float {
+                val c = t.coerceIn(0f, 1f)
+                return c * c * c * (c * (c * 6f - 15f) + 10f)
+            }
+            fun wave(path: Path, wavelengthDp: Float, amplitudeDp: Float, phase: Float) {
+                val amplitude = amplitudeDp.dp.toPx()
+                val k = (2 * PI / wavelengthDp.dp.toPx()).toFloat()
+                path.reset()
+                path.moveTo(0f, topY)
+                var x = 0f
+                while (x < thumbX) {
+                    val envelope = if (invTransition > 0f) {
+                        smootherstep(x * invTransition) * smootherstep((thumbX - x) * invTransition)
+                    } else {
+                        1f
                     }
+                    path.lineTo(x, topY - (0.5f + 0.5f * sin(x * k - phase)) * amplitude * envelope)
+                    x += step
                 }
-
-                // 4. Leading Thumb Indicator (At current playing position)
-                if (boundedDurationMs > 0) {
-                    // Soft glow halo
-                    drawCircle(
-                        color = thumbColor.copy(alpha = 0.35f),
-                        radius = thumbRadiusPx + 3.5.dp.toPx(),
-                        center = Offset(thumbX, centerY),
-                    )
-                    // Solid center circle
-                    drawCircle(
-                        color = thumbColor,
-                        radius = thumbRadiusPx,
-                        center = Offset(thumbX, centerY),
-                    )
-                    // High-contrast crisp border ring to ensure edge separation on any background
-                    drawCircle(
-                        color = Color.White.copy(alpha = 0.55f),
-                        radius = thumbRadiusPx,
-                        center = Offset(thumbX, centerY),
-                        style = Stroke(width = 1.2.dp.toPx()),
-                    )
-                }
+                path.lineTo(thumbX, topY)
             }
 
-            Slider(
-                // When duration is unknown the bar is indeterminate (fraction 0):
-                // pin the invisible touch layer to 0 so a real elapsed time
-                // (e.g. 5000ms with range 0..1) can't coerce to the end stop.
-                // Once the late duration arrives, value/range recover together.
-                value = if (boundedDurationMs > 0L) shownMs.toFloat().coerceIn(0f, boundedDurationMs.toFloat()) else 0f,
-                onValueChange = {
-                    dragPositionMs = it
-                    lastSeekValue = it
-                },
-                onValueChangeFinished = {
-                    // Commit only this gesture's value; a finished callback
-                    // with no value (press without movement) seeks nowhere.
-                    // Guarded by enabled above, but re-check: no duration = no seek.
-                    if (boundedDurationMs <= 0L) {
-                        dragPositionMs = null
-                        lastSeekValue = null
-                        return@Slider
-                    }
-                    val target = (lastSeekValue ?: dragPositionMs)?.toLong()?.coerceIn(0L, boundedDurationMs)
-                    dragPositionMs = null
-                    lastSeekValue = null
-                    if (target != null) onSeek(target)
-                },
-                valueRange = 0f..boundedDurationMs.coerceAtLeast(1L).toFloat(),
-                enabled = boundedDurationMs > 0L,
-                interactionSource = interactionSource,
-                modifier = Modifier.matchParentSize(),
-                colors = SliderDefaults.colors(
-                    thumbColor = Color.Transparent,
-                    activeTrackColor = Color.Transparent,
-                    inactiveTrackColor = Color.Transparent,
-                    activeTickColor = Color.Transparent,
-                    inactiveTickColor = Color.Transparent,
-                    disabledThumbColor = Color.Transparent,
-                    disabledActiveTrackColor = Color.Transparent,
-                    disabledInactiveTrackColor = Color.Transparent,
-                ),
-            )
-        }
+            val t = waveClockSeconds.floatValue
+            wave(contour1, 160f, amp1, wavePhase(t, 2.4f) + 2.2f)
+            wave(contour2, 125f, amp2, wavePhase(t, 1.8f) + 1.2f)
+            wave(contour3, 95f, amp3, wavePhase(t, 1.3f))
+            val activeWidth = thumbX.coerceAtLeast(1f)
+            val join = StrokeJoin.Round
 
-        if (showTimeLabels) {
-            Spacer(Modifier.height(2.dp))
-
-            // Time labels
-            val currentSecond = shownMs / 1000L
-            val remainingSecond = if (boundedDurationMs > 0L) (boundedDurationMs - shownMs).coerceAtLeast(0) / 1000L else -1L
-            val formattedElapsed = remember(currentSecond) { formatTime(currentSecond * 1000L) }
-            val formattedRemaining = remember(remainingSecond, boundedDurationMs) {
-                if (boundedDurationMs > 0L) "\u2212${formatTime(remainingSecond * 1000L)}" else "--:--"
-            }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    text = formattedElapsed,
-                    style = if (isTranslucent) MaterialTheme.typography.labelSmall.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium) else MaterialTheme.typography.labelMedium,
-                    color = textColor,
-                )
-                Text(
-                    text = formattedRemaining,
-                    style = if (isTranslucent) MaterialTheme.typography.labelSmall.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium) else MaterialTheme.typography.labelMedium,
-                    color = textColor,
-                )
+            // A rect clip: an anti-aliased path clip is masked on the CPU every frame.
+            clipRect(left = -half, right = thumbX + half) {
+                drawPath(contour1, Brush.horizontalGradient(layer1, 0f, activeWidth), style = Stroke(1.0.dp.toPx(), cap = StrokeCap.Round, join = join))
+                drawPath(contour2, Brush.horizontalGradient(layer2, 0f, activeWidth), style = Stroke(1.2.dp.toPx(), cap = StrokeCap.Round, join = join))
+                drawPath(contour3, Brush.horizontalGradient(layer3, 0f, activeWidth), style = Stroke(1.6.dp.toPx(), cap = StrokeCap.Round, join = join))
+                drawLine(Brush.horizontalGradient(baseline, 0f, activeWidth), Offset(0f, centerY), Offset(thumbX, centerY), trackPx, StrokeCap.Round)
             }
         }
-        }
+
+        val thumbRadius = 7.5.dp.toPx()
+        val center = Offset(thumbX, centerY)
+        drawCircle(thumbColor.copy(alpha = 0.35f), thumbRadius + 3.5.dp.toPx(), center)
+        drawCircle(thumbColor, thumbRadius, center)
+        drawCircle(Color.White.copy(alpha = 0.55f), thumbRadius, center, style = Stroke(1.2.dp.toPx()))
     }
 }
 
-@Composable
-fun WavySeekBar(
-    state: MusicPlayerState,
-    onSeek: (Long) -> Unit,
-    modifier: Modifier = Modifier,
-    isTranslucent: Boolean = false,
-    primaryColor: Color = MaterialTheme.colorScheme.primary,
-    secondaryColor: Color = MaterialTheme.colorScheme.secondary,
-    tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
-) {
-    WavySeekBar(
-        positionMs = state.positionMs,
-        durationMs = state.durationMs,
-        isPlaying = state.isPlaying,
-        onSeek = onSeek,
-        modifier = modifier,
-        isTranslucent = isTranslucent,
-        trackKey = state.current?.let { it.videoId ?: "${it.artist}|${it.title}" },
-        primaryColor = primaryColor,
-        secondaryColor = secondaryColor,
-        tertiaryColor = tertiaryColor,
-    )
-}
-
-/** 93.6s: a whole number of 2.4s, 1.8s and 1.3s periods, so wrapping is seamless. */
+/** 93.6 s: a whole number of 2.4 s, 1.8 s and 1.3 s periods, so wrapping is seamless. */
 private const val WAVE_CLOCK_WRAP_NANOS = 93_600_000_000L
+private const val WAVE_FRAME_MS = 33L
 
-/** Linear 0..2PI phase restarting every [periodSeconds] (LinearEasing + RepeatMode.Restart). */
 private fun wavePhase(seconds: Float, periodSeconds: Float): Float {
     val cycles = seconds / periodSeconds
     return (cycles - kotlin.math.floor(cycles)) * (2 * PI).toFloat()

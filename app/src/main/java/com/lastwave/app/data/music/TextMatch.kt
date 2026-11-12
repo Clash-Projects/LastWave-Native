@@ -40,6 +40,51 @@ internal object TextMatch {
         "现场", "翻唱", "混音",
         "лайв", "кавер", "ремикс",
     )
+    /**
+     * Words that mark a *different recording* rather than different packaging.
+     * Unlike [VARIANT_WORDS] these never describe the ordinary release
+     * ("Radio Edit", "Album Version", "Remastered" are left out), so a title
+     * carrying one on one side only is a different take and is refused in
+     * both directions: asking for the studio cut must not land on the live
+     * take, and asking for the live take must not land on the studio cut.
+     */
+    val TAKE_WORDS = setOf(
+        "live", "remix", "remixes", "rmx", "karaoke", "cover", "instrumental", "slowed", "sped",
+        "spedup", "nightcore", "acoustic", "demo", "extended", "unplugged", "rerecorded",
+        "vip", "8d", "boosted", "bassboosted", "lofi", "reverb", "rework", "bootleg",
+        "flip", "mashup", "medley", "reprise", "acapella", "acappella", "orchestral",
+        "symphonic", "concert",
+        "vivo", "acustico", "acoustique", "akustik", "canli",
+        "ライブ", "カバー", "リミックス", "アコースティック", "カラオケ",
+        "라이브", "커버", "리믹스", "어쿠스틱",
+        "مباشر", "ريمكس",
+        "लाइव", "कवर", "रीमिक्स",
+        "现场", "翻唱", "混音",
+        "лайв", "кавер", "ремикс",
+    )
+
+    /** Same-recording guard: takes must agree whichever side names one. */
+    const val SEVERE_DURATION_DRIFT_SEC = 30
+
+    fun takes(title: String, ignore: Set<String> = emptySet()): Set<String> =
+        normalize(title).split(' ').filter { it in TAKE_WORDS && it !in ignore }.toSet()
+
+    /**
+     * True when both titles describe the same take. Artist words are ignored
+     * so a credit like "Lofi Girl" or "Cover Drive" is not read as a version.
+     */
+    fun isSameTake(candidateTitle: String, wantedTitle: String, vararg artists: String): Boolean {
+        val ignore = artists.flatMap { normalize(it).split(' ') }.toSet()
+        return takes(candidateTitle, ignore) == takes(wantedTitle, ignore)
+    }
+
+    /** Runtimes too far apart to be the same master: loops, snippets, extended cuts. */
+    fun isSevereDurationMismatch(expectedMs: Long?, candidateSec: Int?, limitSec: Int = SEVERE_DURATION_DRIFT_SEC): Boolean {
+        val expected = expectedMs?.takeIf { it > 0 }?.div(1000L) ?: return false
+        val got = candidateSec?.takeIf { it > 0 } ?: return false
+        return kotlin.math.abs(got - expected) > limitSec
+    }
+
     val MATCH_NOISE_WORDS = setOf(
         "official", "audio", "video", "visualizer", "lyrics", "lyric", "hd", "hq", "4k", "track", "music",
         "ost", "soundtrack", "lyrical", "full"
@@ -68,17 +113,22 @@ internal object TextMatch {
     /** Combining marks following a Latin base character. Java supports this
      *  bounded lookbehind; a leading stray mark falls through to NON_WORD. */
     private val LATIN_DIACRITICS = Regex("(?<=[A-Za-z])\\p{M}+")
+    private val ARABIC_ALEF = Regex("[أإآٱ]")
+    private val ARABIC_TASHKEEL = Regex("[\u064B-\u0655\u0670]")
 
     /** Standard Arabic search folding: hamza-alef variants have no NFD
      *  decomposition, so mark-stripping alone never folds them (أ stays أ).
      *  Tashkeel (optional vocalization) is stripped; base letters are kept. */
-    private fun foldArabic(value: String): String = value
-        .replace(Regex("[أإآٱ]"), "ا")
-        .replace(Regex("ؤ"), "و")
-        .replace(Regex("ئ"), "ي")
-        .replace(Regex("ة"), "ه")
-        .replace(Regex("ى"), "ي")
-        .replace(Regex("[\u064B-\u0655\u0670]"), "")
+    private fun foldArabic(value: String): String {
+        if (value.none { it in '\u0600'..'\u06FF' }) return value
+        return value
+            .replace(ARABIC_ALEF, "ا")
+            .replace('ؤ', 'و')
+            .replace('ئ', 'ي')
+            .replace('ة', 'ه')
+            .replace('ى', 'ي')
+            .replace(ARABIC_TASHKEEL, "")
+    }
 
     /** True when the string carries letters outside A-Z: CJK, Thai, Indic,
      *  Arabic, Cyrillic, Hangul, … — scripts where partial overlap at modest

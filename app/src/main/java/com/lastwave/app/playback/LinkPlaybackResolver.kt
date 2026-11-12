@@ -3,6 +3,8 @@ package com.lastwave.app.playback
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import com.lastwave.app.data.generate.isLocalAudioPath
+import com.lastwave.app.data.localmusic.LocalMusicLibrary
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import kotlinx.coroutines.CoroutineScope
@@ -25,6 +27,7 @@ class LinkPlaybackResolver @Inject constructor(
     private val musicPlayer: MusicPlayer,
     private val innerTube: InnerTubeMusicApi,
     private val http: OkHttpClient,
+    private val localMusicLibrary: LocalMusicLibrary,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val json = Json { ignoreUnknownKeys = true }
@@ -62,6 +65,9 @@ class LinkPlaybackResolver @Inject constructor(
 
         try {
             when {
+                // 0. Device-local audio files ("Open With" content:// or file://)
+                isLocalAudioPath(clean) -> resolveLocalAudio(clean)
+
                 // 1. YouTube & YouTube Music URLs
                 isYouTubeUrl(clean) -> resolveYouTube(clean)
 
@@ -79,6 +85,15 @@ class LinkPlaybackResolver @Inject constructor(
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to resolve link for playback: $clean", e)
+        }
+    }
+
+    private suspend fun resolveLocalAudio(target: String) {
+        val uri = if (target.startsWith("/")) Uri.fromFile(java.io.File(target)) else Uri.parse(target)
+        val generated = localMusicLibrary.inspectAudioUri(uri)
+        val playable = generated.toPlayableTrack()
+        withContext(Dispatchers.Main) {
+            musicPlayer.play(playable, sourceLabel = "Device Audio", startRadio = false)
         }
     }
 

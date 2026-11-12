@@ -71,11 +71,11 @@ fun ShelfCommunityPlaylistCard(
 ) {
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     val rowHeight = 56.dp * fontScale
-    val coverUrl = collageUrls.firstOrNull(String::isNotBlank) ?: artworkUrl?.takeIf(String::isNotBlank)
+    val coverUrl = artworkUrl?.takeIf(String::isNotBlank) ?: collageUrls.firstOrNull(String::isNotBlank)
     val tint = rememberCommunityPlaylistTint(playlistId, coverUrl)
     val defaultSurface = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.76f)
     val background by animateColorAsState(
-        targetValue = tint?.copy(alpha = 0.38f)?.compositeOver(defaultSurface) ?: defaultSurface,
+        targetValue = tint?.copy(alpha = 0.50f)?.compositeOver(defaultSurface) ?: defaultSurface,
         animationSpec = tween(300), label = "community playlist tint",
     )
     Surface(
@@ -139,18 +139,22 @@ fun ShelfCommunityPlaylistCard(
     }
 }
 
-// Store only colours, never bitmaps; a changed cover invalidates the playlist's cached tint.
+// Store only colours, never bitmaps; keep the last tint visible while a changed cover loads.
 private val communityPlaylistTints = LruCache<String, Pair<String, Color>>(128)
 
 @Composable
 private fun rememberCommunityPlaylistTint(playlistId: String?, coverUrl: String?): Color? {
     val context = LocalContext.current.applicationContext
-    val tint = remember(playlistId, coverUrl) {
-        mutableStateOf(playlistId?.let { communityPlaylistTints.get(it) }
-            ?.takeIf { it.first == coverUrl }?.second)
+    val tint = remember(playlistId) {
+        mutableStateOf(playlistId?.let { communityPlaylistTints.get(it) }?.second)
     }
     LaunchedEffect(playlistId, coverUrl) {
-        if (coverUrl == null || tint.value != null) return@LaunchedEffect
+        if (coverUrl == null) return@LaunchedEffect
+        val cached = playlistId?.let { communityPlaylistTints.get(it) }
+        if (cached != null && cached.first == coverUrl) {
+            tint.value = cached.second
+            return@LaunchedEffect
+        }
         val extracted = withContext(Dispatchers.IO) {
             try {
                 val request = ImageRequest.Builder(context).data(coverUrl)

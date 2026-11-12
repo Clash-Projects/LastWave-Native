@@ -62,7 +62,11 @@ internal fun HomeMoodsSection(viewModel: MoodsViewModel = hiltViewModel()) {
                 modifier = Modifier.align(Alignment.CenterHorizontally)
                     .semantics { contentDescription = loadingDescription },
             )
-            tiles.isNotEmpty() -> MoodMosaic(tiles = tiles, onTileClick = viewModel::openTile)
+            tiles.isNotEmpty() -> MoodMosaic(
+                tiles = tiles,
+                onTileClick = viewModel::openTile,
+                pastelGlass = true,
+            )
             else -> MoodsLoadMessage(failed = state.failed, onRetry = viewModel::refresh)
         }
     }

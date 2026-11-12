@@ -11,17 +11,25 @@ import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistResult
 import com.lastwave.app.data.playlist.PlaylistImportManager
 import com.lastwave.app.data.playlist.PlaylistRepository
+import com.lastwave.app.data.playlist.SpotifyPlaylistImporter
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.PlayableTrack
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 sealed interface FeedPlaylistDetailUiState {
     data object Loading : FeedPlaylistDetailUiState
@@ -46,9 +54,22 @@ class FeedPlaylistDetailViewModel @Inject constructor(
     private val importManager: PlaylistImportManager,
     private val playlistRepository: PlaylistRepository,
     private val feedRepository: FeedRepository,
+    private val spotifyPlaylistImporter: SpotifyPlaylistImporter,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow<FeedPlaylistDetailUiState>(FeedPlaylistDetailUiState.Loading)
     val uiState: StateFlow<FeedPlaylistDetailUiState> = _uiState.asStateFlow()
+
+    init {
+        // Progressive pages re-emit Success; only a new opening changes what "Play" would start.
+        viewModelScope.launch {
+            _uiState
+                .map { (it as? FeedPlaylistDetailUiState.Success)?.playlist?.tracks?.take(WARM_CANDIDATES).orEmpty() }
+                .distinctUntilChanged { a, b -> a.map { it.videoId } == b.map { it.videoId } }
+                .collect { opening ->
+                    if (opening.isNotEmpty()) musicPlayer.warmLikelyPlays(opening.map { it.toPlayableTrack() })
+                }
+        }
+    }
 
     private var currentPlaylistId: String? = null
 
@@ -65,10 +86,21 @@ class FeedPlaylistDetailViewModel @Inject constructor(
         currentPlaylistId = playlistId
         _uiState.value = previous?.copy(isLoadingMore = true, loadError = null) ?: FeedPlaylistDetailUiState.Loading
         loadJob = viewModelScope.launch {
+            val isSpotify = playlistId.startsWith("sp_") || playlistId.startsWith("spotify:")
+            val isSpotifyLiked = playlistId == "sp_liked" || playlistId == "spotify:liked"
             val liked = playlistId == "yt_liked"
             val recent = playlistId == "yt_recent"
-            val title = if (liked) "Liked on YouTube" else if (recent) "Recently played" else "Playlist"
-            val author = if (liked) "Your favorites" else "YouTube Music"
+            val title = when {
+                isSpotifyLiked -> "Liked Songs"
+                liked -> "Liked on YouTube"
+                recent -> "Recently played"
+                else -> "Playlist"
+            }
+            val author = when {
+                isSpotify -> "Spotify"
+                liked -> "Your favorites"
+                else -> "YouTube Music"
+            }
             fun showTracks(tracks: List<YouTubeMusicTrack>) {
                 coroutineContext.ensureActive()
                 if (tracks.isEmpty()) return
@@ -96,7 +128,46 @@ class FeedPlaylistDetailViewModel @Inject constructor(
             }
             if (recent) showTracks(feedRepository.getCachedFeed()?.ytRecentSongs.orEmpty())
             try {
-                val result = if (recent) {
+                val result = if (isSpotify) {
+                    val spResult = if (isSpotifyLiked) {
+                        spotifyPlaylistImporter.fetchLikedSongs()
+                    } else {
+                        val cleanId = playlistId.removePrefix("sp_").removePrefix("spotify:playlist:")
+                        spotifyPlaylistImporter.fetchPlaylist(cleanId)
+                    }
+                    val spTracks = mutableListOf<YouTubeMusicTrack>()
+                    val limiter = Semaphore(4)
+                    val totalRows = spResult.rows
+                    for (batch in totalRows.chunked(10)) {
+                        coroutineContext.ensureActive()
+                        val resolved = coroutineScope {
+                            batch.map { row ->
+                                async {
+                                    limiter.withPermit {
+                                        runCatching {
+                                            innerTube.findBestMatchOrNull(row.title, row.artist, prefetchStreams = false)?.copy(
+                                                album = row.album,
+                                            )
+                                        }.getOrNull()
+                                    }
+                                }
+                            }.awaitAll().filterNotNull()
+                        }
+                        if (resolved.isNotEmpty()) {
+                            spTracks.addAll(resolved)
+                            showTracks(spTracks.toList())
+                        }
+                    }
+                    val distinct = spTracks.distinctPlaylistSongs()
+                    YouTubePlaylistResult(
+                        id = playlistId,
+                        title = spResult.title.ifBlank { title },
+                        author = spResult.author?.takeIf(String::isNotBlank) ?: author,
+                        artworkUrl = spResult.artworkUrl ?: distinct.firstOrNull()?.artworkUrl,
+                        trackCount = distinct.size,
+                        tracks = distinct,
+                    )
+                } else if (recent) {
                     val taste = innerTube.fetchTasteSignals(recentLimit = 50, likedLimit = 0, feedLimit = 0)
                     taste.recentTracks.takeIf { it.isNotEmpty() }?.let { tracks ->
                         val distinct = tracks.distinctPlaylistSongs()
@@ -219,4 +290,8 @@ class FeedPlaylistDetailViewModel @Inject constructor(
         videoId = videoId,
         durationMs = durationSeconds?.takeIf { it > 0 }?.times(1_000L),
     )
+
+    private companion object {
+        const val WARM_CANDIDATES = 6
+    }
 }

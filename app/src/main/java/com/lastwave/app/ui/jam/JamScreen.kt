@@ -104,6 +104,7 @@ import com.lastwave.app.data.jam.JamRepository
 import com.lastwave.app.data.jam.ParticipantPayload
 import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import com.lastwave.app.ui.common.HeaderActionIcon
 import com.lastwave.app.ui.common.PredictiveBackScreen
 import com.lastwave.app.ui.common.adaptiveContentWidth
@@ -170,13 +171,15 @@ fun JamScreen(
                 .navigationBarsPadding(),
             contentAlignment = Alignment.TopCenter,
         ) {
-            Column(
+            GlassHeaderLayout(
                 modifier = Modifier
                     .fillMaxSize()
                     .adaptiveContentWidth(maxWidth = 860.dp),
-            ) {
+                header = { headerModifier, headerBackdrop ->
                 // Top Header with live status badge
                 ExpressiveHeader(
+                    modifier = headerModifier,
+                    backdrop = headerBackdrop,
                     title = "Jam",
                     subtitle = if (uiState.isConnected) (uiState.roomName.ifEmpty { "Room ${uiState.roomCode}" }) else "Listen together in real time",
                     onBack = onBack,
@@ -223,6 +226,9 @@ fun JamScreen(
                         }
                     },
                 )
+                },
+            ) { headerInset ->
+            Column(Modifier.fillMaxSize()) {
 
                 // ==========================================
                 // DISCONNECTED / SETUP VIEW (Simple & Minimal)
@@ -233,6 +239,7 @@ fun JamScreen(
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState())
                             .imePadding()
+                            .padding(top = headerInset)
                             .padding(horizontal = 20.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
@@ -507,7 +514,7 @@ fun JamScreen(
                     // ==========================================
                     // ACTIVE JAM ROOM VIEW (Simple & Minimal)
                     // ==========================================
-                    Column(modifier = Modifier.fillMaxSize()) {
+                    Column(modifier = Modifier.fillMaxSize().padding(top = headerInset)) {
                         // Sleek Segmented Pill Tab Selector
                         Row(
                             modifier = Modifier
@@ -618,14 +625,15 @@ fun JamScreen(
                                 // Minimal Timeline Seek Slider
                                 var isDraggingSlider by remember { mutableStateOf(false) }
                                 var sliderPosition by remember { mutableFloatStateOf(0f) }
+                                val jamProgress by viewModel.progress.collectAsStateWithLifecycle()
 
-                                LaunchedEffect(uiState.currentPositionMs) {
+                                LaunchedEffect(jamProgress.positionMs) {
                                     if (!isDraggingSlider) {
-                                        sliderPosition = uiState.currentPositionMs.toFloat()
+                                        sliderPosition = jamProgress.positionMs.toFloat()
                                     }
                                 }
 
-                                val maxDuration = uiState.durationMs.coerceAtLeast(1L).toFloat()
+                                val maxDuration = jamProgress.durationMs.coerceAtLeast(1L).toFloat()
                                 Slider(
                                     value = sliderPosition.coerceIn(0f, maxDuration),
                                     onValueChange = {
@@ -637,7 +645,7 @@ fun JamScreen(
                                         viewModel.seekTo(sliderPosition.toLong())
                                     },
                                     valueRange = 0f..maxDuration,
-                                    enabled = canControl && uiState.durationMs > 0L,
+                                    enabled = canControl && jamProgress.durationMs > 0L,
                                     colors = SliderDefaults.colors(
                                         thumbColor = jamAccent,
                                         activeTrackColor = jamAccent,
@@ -659,7 +667,7 @@ fun JamScreen(
                                         fontFamily = FontFamily.Monospace,
                                     )
                                     Text(
-                                        text = formatMs(uiState.durationMs),
+                                        text = formatMs(jamProgress.durationMs),
                                         fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontFamily = FontFamily.Monospace,
@@ -734,7 +742,7 @@ fun JamScreen(
                                     color = jamAccentContainer,
                                     modifier = Modifier
                                         .clip(CircleShape)
-                                        .clickable(enabled = uiState.isHost) {
+                                        .clickable(enabled = uiState.isHost && !uiState.isRadio) {
                                             val newMode = if (uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE)
                                                 JamProtocolConstants.MODE_HOST_ONLY else JamProtocolConstants.MODE_COLLABORATIVE
                                             viewModel.changeActiveRoomMode(newMode)
@@ -752,10 +760,12 @@ fun JamScreen(
                                                 .background(liveGreen)
                                         )
                                         Text(
-                                            text = if (uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE)
-                                                "Collaborative \u2022 Anyone can control"
-                                            else
-                                                "Host Only \u2022 Only host controls",
+                                            text = when {
+                                                uiState.isRadio && uiState.stationAuto -> "Live station \u2022 Auto radio"
+                                                uiState.isRadio -> "Live station \u2022 Admin in control"
+                                                uiState.roomMode == JamProtocolConstants.MODE_COLLABORATIVE -> "Collaborative \u2022 Anyone can control"
+                                                else -> "Host Only \u2022 Only host controls"
+                                            },
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Medium,
                                             color = onJamAccentContainer,
@@ -1043,7 +1053,11 @@ fun JamScreen(
 
                                     if (uiState.isHost) {
                                         Text(
-                                            text = if (uiState.isMainHost) "You are Host" else "You are Co-host",
+                                            text = when {
+                                                uiState.isRadio -> "You are the station admin"
+                                                uiState.isMainHost -> "You are Host"
+                                                else -> "You are Co-host"
+                                            },
                                             fontSize = 12.sp,
                                             color = jamAccent,
                                             fontWeight = FontWeight.Bold,
@@ -1096,7 +1110,7 @@ fun JamScreen(
 
                                             if (p.isHost) {
                                                 Text(
-                                                    text = roleBadge(p),
+                                                    text = roleBadge(p, uiState.isRadio),
                                                     color = jamAccent,
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.ExtraBold,
@@ -1114,6 +1128,8 @@ fun JamScreen(
                                                 accent = jamAccent,
                                                 onGrant = viewModel::grantHost,
                                                 onRevoke = viewModel::revokeHost,
+                                                isRadio = uiState.isRadio,
+                                                onMakeAdmin = viewModel::makeAdmin,
                                             )
                                         }
                                     }
@@ -1139,6 +1155,7 @@ fun JamScreen(
                         }
                     }
                 }
+            }
             }
         }
     }

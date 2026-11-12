@@ -6,7 +6,7 @@ import com.lastwave.app.data.local.db.SongPlayStatsEntity
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.playlist.PlaylistRepository
-import com.lastwave.app.data.repository.RelatedGraphRepository
+import com.lastwave.app.data.recommend.RecommendationRepository
 import java.time.LocalTime
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -20,6 +20,9 @@ private const val TIME_OF_DAY_BONUS = 1.3f
 private val MORNING = 6..11
 private val AFTERNOON = 12..17
 private val EVENING = 18..21
+
+/** A radio seed: the YouTube id for finding it back, title/artist for Spotify. */
+private data class Seed(val videoId: String, val title: String, val artist: String)
 
 /**
  * Local-listening-behavior alternative to [RecommendationEngine] — a port of
@@ -41,7 +44,7 @@ class LocalTasteSuggestionEngine @Inject constructor(
     private val recommendationExclusionDao: RecommendationExclusionDao,
     private val playlistRepository: PlaylistRepository,
     private val innerTube: InnerTubeMusicApi,
-    private val relatedGraph: RelatedGraphRepository,
+    private val recommendationRepository: RecommendationRepository,
 ) {
     private fun YouTubeMusicTrack.toGeneratedTrack() = GeneratedTrack(
         name = title,
@@ -120,12 +123,12 @@ class LocalTasteSuggestionEngine @Inject constructor(
             .filter { it.trackKey !in blacklist && (it.skipCount < 2 || it.totalPlayTimeMs > 45_000L) }
             .sortedByDescending { scoreStats(it, likedKeys, recentKeys, timeOfDay) }
 
-        val seedVideoIds = mutableListOf<String>()
+        val seedVideoIds = mutableListOf<Seed>()
         for (item in scored.take(8)) {
             val vid = item.videoId?.takeIf(String::isNotBlank)
                 ?: innerTube.findBestMatchOrNull(item.title, item.artist, prefetchStreams = false)?.videoId
-            if (vid != null && vid !in seedVideoIds) {
-                seedVideoIds.add(vid)
+            if (vid != null && seedVideoIds.none { it.videoId == vid }) {
+                seedVideoIds.add(Seed(vid, item.title, item.artist))
             }
             if (seedVideoIds.size >= 5) break
         }
@@ -134,8 +137,8 @@ class LocalTasteSuggestionEngine @Inject constructor(
             for (liked in likedSongs.shuffled().take(5)) {
                 val vid = liked.youtubeVideoIdOrNull()
                     ?: innerTube.findBestMatchOrNull(liked.name, liked.artist, prefetchStreams = false)?.videoId
-                if (vid != null && vid !in seedVideoIds) {
-                    seedVideoIds.add(vid)
+                if (vid != null && seedVideoIds.none { it.videoId == vid }) {
+                    seedVideoIds.add(Seed(vid, liked.name, liked.artist))
                 }
             }
         }
@@ -146,10 +149,15 @@ class LocalTasteSuggestionEngine @Inject constructor(
         val seenKeys = mutableSetOf<String>()
         val artistCounts = mutableMapOf<String, Int>()
 
-        for (seedVideoId in seedVideoIds) {
+        for (seed in seedVideoIds) {
             if (suggestions.size >= total) break
             val related = runCatching {
-                relatedGraph.relatedFor(seedVideoId, limit = 40, prefetchStreams = false)
+                recommendationRepository.relatedFor(
+                    seedVideoId = seed.videoId,
+                    title = seed.title,
+                    artist = seed.artist,
+                    limit = 40,
+                )
             }.getOrDefault(emptyList())
             val filtered = related
                 .map { it.toGeneratedTrack() }
@@ -179,7 +187,12 @@ class LocalTasteSuggestionEngine @Inject constructor(
                 if (suggestions.size >= total) break
                 val likedVid = liked.youtubeVideoIdOrNull() ?: continue
                 val related = runCatching {
-                    relatedGraph.relatedFor(likedVid, limit = 30, prefetchStreams = false)
+                    recommendationRepository.relatedFor(
+                        seedVideoId = likedVid,
+                        title = liked.name,
+                        artist = liked.artist,
+                        limit = 30,
+                    )
                 }.getOrDefault(emptyList())
                 val filtered = related
                     .map { it.toGeneratedTrack() }

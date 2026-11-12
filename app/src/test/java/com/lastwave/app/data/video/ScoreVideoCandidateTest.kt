@@ -21,6 +21,15 @@ class ScoreVideoCandidateTest {
     }
 
     @Test
+    fun officialVideoCanBeMuchLongerThanTheAudioTrack() {
+        assertThat(score(
+            "The Weeknd - Starboy (Official Music Video)",
+            "TheWeekndVEVO",
+            durationSec = 420,
+        )).isAtLeast(MIN_VIDEO_CANDIDATE_SCORE)
+    }
+
+    @Test
     fun officialVideoOfAnotherSongIsRejected() {
         assertThat(score("The Weeknd - Blinding Lights (Official Video)", "TheWeekndVEVO")).isNull()
     }
@@ -35,11 +44,17 @@ class ScoreVideoCandidateTest {
         assertThat(score("Starboy The Weeknd BGMI Montage", "ProPlayer")).isNull()
         assertThat(score("The Weeknd - Starboy (Official Video) BGMI gameplay", "ProPlayer")).isNull()
         assertThat(score("The Weeknd Starboy", "Ace Gaming")).isNull()
+        assertThat(score("Starboy Official Music Video gameplay", "TheWeekndVEVO")).isNull()
     }
 
     @Test
     fun randomUploadNamingTheArtistDoesNotQualify() {
         assertThat(score("The Weeknd Starboy", "ProPlayer")).isNull()
+    }
+
+    @Test
+    fun copiedOfficialTitleOnUnverifiedChannelDoesNotQualify() {
+        assertThat(score("The Weeknd - Starboy (Official Music Video)", "BT Music")).isNull()
     }
 
     @Test
@@ -75,13 +90,14 @@ class ScoreVideoCandidateTest {
         val alive = score("Alive (Official Video)", "Sia", wantedTitle = "Alive", wantedArtist = "Sia")
         val live = score("Alive Live (Official Video)", "Sia", wantedTitle = "Alive", wantedArtist = "Sia")
         assertThat(alive).isAtLeast(MIN_VIDEO_CANDIDATE_SCORE)
-        assertThat(live!!).isLessThan(alive!!)
+        // A live take is a different recording, not this song's video.
+        assertThat(live).isNull()
     }
 
     @Test
-    fun wrongLengthUploadWithoutOfficialMarkerDoesNotQualify() {
+    fun artistChannelMatchDoesNotRequireMatchingDuration() {
         assertThat(score("The Weeknd - Starboy", "The Weeknd", durationSec = 600))
-            .isLessThan(MIN_VIDEO_CANDIDATE_SCORE)
+            .isAtLeast(MIN_VIDEO_CANDIDATE_SCORE)
     }
 
     @Test
@@ -101,5 +117,71 @@ class ScoreVideoCandidateTest {
         assertThat(videoCodecMime("avc1.42001E, mp4a.40.2")).isEqualTo("video/avc")
         assertThat(videoCodecMime("av01.0.08M.08")).isEqualTo("video/av01")
         assertThat(videoCodecMime(null)).isNull()
+    }
+
+    @Test
+    fun differentTakeIsNeverTheVideoEvenFromTheArtist() {
+        assertThat(score("The Weeknd - Starboy (Remix) [Official Video]", "TheWeekndVEVO")).isNull()
+        assertThat(score("The Weeknd - Starboy (Sped Up)", "The Weeknd")).isNull()
+    }
+
+    @Test
+    fun rejectsSlowedReverbEvenWhenYoutubeMusicLinksItAsTheCounterpart() {
+        assertThat(
+            isVerifiedCounterpart(
+                candidateTitle = "PAL PAL SLOWED - REVERB",
+                candidateChannel = "Afusic",
+                candidateDurationSec = 230,
+                wantedTitle = "Pal Pal",
+                wantedArtist = "Afusic",
+                expectedDurationMs = 230_000L,
+            ),
+        ).isFalse()
+    }
+
+    @Test
+    fun acceptsAValidOfficialCounterpart() {
+        assertThat(
+            isVerifiedCounterpart(
+                candidateTitle = "The Weeknd - Starboy (Official Music Video)",
+                candidateChannel = "TheWeekndVEVO",
+                candidateDurationSec = 230,
+                wantedTitle = "Starboy",
+                wantedArtist = "The Weeknd",
+                expectedDurationMs = 230_000L,
+            ),
+        ).isTrue()
+    }
+
+    @Test
+    fun officialCounterpartIsNotRejectedForDifferentRuntime() {
+        assertThat(
+            isVerifiedCounterpart(
+                candidateTitle = "Noor, Khan, Madhurxo - Aarzu (Official Music Video)",
+                candidateChannel = "Noor",
+                candidateDurationSec = 420,
+                wantedTitle = "Aarzu",
+                wantedArtist = "Noor",
+                expectedDurationMs = 185_000L,
+            ),
+        ).isTrue()
+    }
+
+    @Test
+    fun acceptsYoutubeShortLinkWithTrackingParameters() {
+        assertThat(extractYoutubeVideoId("https://youtu.be/8of5w7RgcTc?si=UPaX6TD2R0aVbTyD"))
+            .isEqualTo("8of5w7RgcTc")
+    }
+
+    @Test
+    fun acceptsWatchLinkWhenVideoIdIsNotTheFirstParameter() {
+        assertThat(extractYoutubeVideoId("https://www.youtube.com/watch?si=tracking&v=8of5w7RgcTc"))
+            .isEqualTo("8of5w7RgcTc")
+    }
+
+    @Test
+    fun rejectsNonVideoUrls() {
+        assertThat(extractYoutubeVideoId("https://example.com/8of5w7RgcTc")).isNull()
+        assertThat(extractYoutubeVideoId("too-short")).isNull()
     }
 }

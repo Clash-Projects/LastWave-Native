@@ -83,6 +83,7 @@ import com.lastwave.app.data.genre.GenreResolver
 import com.lastwave.app.data.local.db.DownloadedTrackDao
 import com.lastwave.app.data.local.db.DownloadedTrackEntity
 import com.lastwave.app.data.local.SessionPreferences
+import com.lastwave.app.data.local.awaitLoadedSession
 import com.lastwave.app.data.model.RecentTracksEnvelope
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.network.LastFmApiService
@@ -96,7 +97,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -312,7 +312,7 @@ class TrackDetailsViewModel @Inject constructor(
                 }
 
                 // 1. Fetch Last.fm Scrobble Stats & History
-                val session = runCatching { sessionPreferences.session.first() }.getOrNull()
+                val session = runCatching { sessionPreferences.awaitLoadedSession() }.getOrNull()
                 var wikiSummary: String? = null
                 if (session != null && session.apiKey.isNotBlank()) {
                     var userPlays = 0L

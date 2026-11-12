@@ -51,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -66,6 +67,7 @@ import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ExpressiveGroupTrackRow
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import com.lastwave.app.ui.common.ExpressiveInlineLoadingIndicator
 import com.lastwave.app.ui.common.GroupGap
 import com.lastwave.app.ui.common.GroupPosition
@@ -89,7 +91,7 @@ fun NewReleasesScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val musicPlayer = LocalMusicPlayer.current
-    val playbackState by musicPlayer.chromeState.collectAsStateWithLifecycle()
+    val playbackState by musicPlayer.listPlaybackState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     var menuTrack by remember { mutableStateOf<YouTubeMusicTrack?>(null) }
 
@@ -115,12 +117,14 @@ fun NewReleasesScreen(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
-        Column(
+        GlassHeaderLayout(
             Modifier
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 860.dp),
-        ) {
+            header = { headerModifier, headerBackdrop ->
             ExpressiveHeader(
+                modifier = headerModifier,
+                backdrop = headerBackdrop,
                 title = stringResource(R.string.nr_title),
                 subtitle = stringResource(R.string.nr_sub),
                 onBack = onBack,
@@ -129,6 +133,9 @@ fun NewReleasesScreen(
                     HeaderActionIcon(Icons.Filled.Shuffle, "Shuffle all", viewModel::shuffle)
                 },
             )
+            },
+        ) { headerInset ->
+        Column(Modifier.fillMaxSize()) {
 
             Box(Modifier.fillMaxSize().safeHorizontalContentPadding()) {
                 Crossfade(
@@ -142,7 +149,7 @@ fun NewReleasesScreen(
                             contentPadding = PaddingValues(
                                 start = 16.dp,
                                 end = 16.dp,
-                                top = 16.dp,
+                                top = 16.dp + headerInset,
                                 bottom = 24.dp + LocalMiniPlayerScrollClearance.current + safeDrawingBottomPadding(),
                             ),
                             verticalArrangement = Arrangement.spacedBy(GroupGap),
@@ -210,7 +217,7 @@ fun NewReleasesScreen(
                             LazyColumn(
                                 state = listState,
                                 contentPadding = PaddingValues(
-                                    top = 10.dp,
+                                    top = 10.dp + headerInset,
                                     bottom = 24.dp + LocalMiniPlayerScrollClearance.current + safeDrawingBottomPadding(),
                                 ),
                                 verticalArrangement = Arrangement.spacedBy(GroupGap),
@@ -362,6 +369,7 @@ fun NewReleasesScreen(
                 }
             }
         }
+        }
     }
 
     menuTrack?.let { track ->
@@ -387,7 +395,7 @@ fun NewReleasesScreen(
 
 @Composable
 private fun NewReleasesSkeletonRow(
-    brush: Brush,
+    brush: () -> Brush,
     position: GroupPosition,
     modifier: Modifier = Modifier,
 ) {
@@ -407,7 +415,7 @@ private fun NewReleasesSkeletonRow(
                 modifier = Modifier
                     .size(52.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(brush),
+                    .drawBehind { drawRect(brush()) },
             )
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -416,7 +424,7 @@ private fun NewReleasesSkeletonRow(
                         .fillMaxWidth(0.65f)
                         .height(14.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(brush),
+                        .drawBehind { drawRect(brush()) },
                 )
                 Spacer(Modifier.height(6.dp))
                 Box(
@@ -424,7 +432,7 @@ private fun NewReleasesSkeletonRow(
                         .fillMaxWidth(0.42f)
                         .height(11.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(brush),
+                        .drawBehind { drawRect(brush()) },
                 )
             }
         }
@@ -432,14 +440,14 @@ private fun NewReleasesSkeletonRow(
 }
 
 @Composable
-private fun shimmerBrush(): Brush {
+private fun shimmerBrush(): () -> Brush {
     val shimmerColors = listOf(
         MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f),
         MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.9f),
         MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f),
     )
     val transition = rememberInfiniteTransition(label = "shimmerTransition")
-    val translateAnim by transition.animateFloat(
+    val translateAnim = transition.animateFloat(
         initialValue = 0f,
         targetValue = 1200f,
         animationSpec = infiniteRepeatable(
@@ -448,9 +456,13 @@ private fun shimmerBrush(): Brush {
         ),
         label = "shimmerAnim",
     )
-    return Brush.linearGradient(
-        colors = shimmerColors,
-        start = Offset(translateAnim - 300f, translateAnim - 300f),
-        end = Offset(translateAnim, translateAnim),
-    )
+    // Brush is built in the draw phase so the skeleton repaints without recomposing the list each frame.
+    return {
+        val t = translateAnim.value
+        Brush.linearGradient(
+            colors = shimmerColors,
+            start = Offset(t - 300f, t - 300f),
+            end = Offset(t, t),
+        )
+    }
 }

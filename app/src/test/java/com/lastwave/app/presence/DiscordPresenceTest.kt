@@ -77,16 +77,24 @@ class DiscordPresenceTest {
     fun cardIsListeningToLastWaveWithTitleAndArtist() {
         val activity = DiscordPresence.buildActivity(state(), NOW_MS)
         assertEquals(2, activity["type"]?.jsonPrimitive?.int) // 2 = Listening
-        assertEquals("LastWave", str(activity, "name"))
+        // The compact member-list line renders "Listening to " + name, so the
+        // name carries the track to read "Listening to LastWave · <song>".
+        assertEquals("LastWave \u00B7 Sunglasses at Night", str(activity, "name"))
         assertEquals("Sunglasses at Night", str(activity, "details"))
-        assertEquals("Moondrop\n • Hi-Res Lossless • 24-bit • 96 kHz", str(activity, "state"))
+        assertEquals("Moondrop \u00B7 Hi-Res Lossless \u00B7 24-bit \u00B7 96 kHz", str(activity, "state"))
+        // No status_display_type: the compact member-list line falls back to
+        // the activity name, so others see "Listening to LastWave".
+        assertNull(activity["status_display_type"])
+        // Discord's mobile clients collapse a newline in `state` to an
+        // ellipsis, so the quality must never move to a second line.
+        assertFalse(str(activity, "state")!!.contains('\n'))
     }
 
     @Test
     fun qualityLineDescribesOnlyWhatWasMeasured() {
         // CD-quality lossless: 16-bit at 44.1kHz is Lossless, not Hi-Res.
         assertEquals(
-            "Lossless • 16-bit • 44.1 kHz",
+            "Lossless \u00B7 16-bit \u00B7 44.1 kHz",
             DiscordPresence.qualityLine(state(bitDepth = 16, samplingRateKHz = 44.1)),
         )
         // A lossy stream claims nothing about depth it never reported.
@@ -99,16 +107,17 @@ class DiscordPresenceTest {
         // Spatial is reported only when the codec says so — and the lossless
         // tier still stands on its own.
         assertEquals(
-            "Lossless • 48 kHz • ATMOS",
+            "Lossless \u00B7 48 kHz \u00B7 ATMOS",
             DiscordPresence.qualityLine(state(audioCodec = "EC-3 ATMOS", bitDepth = null, samplingRateKHz = 48.0)),
         )
     }
 
     @Test
-    fun artworkFallsBackToVideoThumbnailBeforeLogo() {
-        // No artwork URL but a video id: Discord can still fetch the thumbnail.
+    fun artworkFallsBackToTheHostedLogoLikeDesktop() {
+        // No artwork URL: Discord gets the hosted logo, exactly as on desktop
+        // (the desktop client never substitutes a video thumbnail).
         assertEquals(
-            "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+            DiscordPresence.DISCORD_LOGO_URL,
             str(DiscordPresence.buildActivity(state(track = track(artworkUrl = null)), NOW_MS)["assets"], "large_image"),
         )
     }
@@ -120,9 +129,9 @@ class DiscordPresenceTest {
             str(DiscordPresence.buildActivity(state(), NOW_MS)["assets"], "large_image"),
         )
         // A local file path cannot be fetched by Discord, and neither can a
-        // missing one — without a video id both fall back to the uploaded logo key.
+        // missing one — both fall back to the same hosted logo as desktop.
         assertEquals(
-            "logo",
+            DiscordPresence.DISCORD_LOGO_URL,
             str(
                 DiscordPresence.buildActivity(
                     state(track = track(artworkUrl = "/data/user/0/com.lastwave.app/files/cover.jpg", videoId = null)),
@@ -132,19 +141,30 @@ class DiscordPresenceTest {
             ),
         )
         assertEquals(
-            "logo",
+            DiscordPresence.DISCORD_LOGO_URL,
             str(DiscordPresence.buildActivity(state(track = track(artworkUrl = null, videoId = null)), NOW_MS)["assets"], "large_image"),
         )
     }
 
     @Test
-    fun assetsCarryOnlyTheCoverAndAlbumText() {
+    fun assetsCarryTheCoverAlbumTextAndBrandBadge() {
         val playing = DiscordPresence.buildActivity(state(isPlaying = true), NOW_MS)["assets"]!!.jsonObject
         assertEquals("Afterglow", playing["large_text"]?.jsonPrimitive?.content)
         assertEquals("https://lh3.googleusercontent.com/cover=abc", playing["large_image"]?.jsonPrimitive?.content)
-        // No play/pause badge: one cover art, nothing else.
-        assertNull(playing["small_image"])
-        assertNull(playing["small_text"])
+        // The brand badge is the same hosted logo on every track, and its
+        // tooltip carries the measured audio-format line.
+        assertEquals(DiscordPresence.DISCORD_LOGO_URL, playing["small_image"]?.jsonPrimitive?.content)
+        assertEquals(
+            "LastWave \u00B7 Hi-Res Lossless \u00B7 24-bit \u00B7 96 kHz",
+            playing["small_text"]?.jsonPrimitive?.content,
+        )
+
+        // Unknown quality: the badge still carries the brand, alone.
+        val lossy = DiscordPresence.buildActivity(
+            state(isLossless = false, bitDepth = null, samplingRateKHz = null, audioCodec = null, bitrateKbps = 128),
+            NOW_MS,
+        )["assets"]!!.jsonObject
+        assertEquals("LastWave", lossy["small_text"]?.jsonPrimitive?.content)
 
         // No album: the title stands in, exactly as on desktop.
         val noAlbum = DiscordPresence.buildActivity(state(track = track(album = null)), NOW_MS)["assets"]!!.jsonObject
@@ -161,12 +181,19 @@ class DiscordPresenceTest {
             buttons[0].jsonObject["url"]?.jsonPrimitive?.content,
         )
         assertEquals("Get LastWave", buttons[1].jsonObject["label"]?.jsonPrimitive?.content)
-        assertEquals(DiscordPresence.PROJECT_URL, buttons[1].jsonObject["url"]?.jsonPrimitive?.content)
+        // Native build, not the desktop one.
+        assertEquals(
+            "https://github.com/Clash-Projects/LastWave-Native",
+            buttons[1].jsonObject["url"]?.jsonPrimitive?.content,
+        )
 
         // No video id (a local/downloaded file): the first button has nowhere
         // to deep-link, so it falls back to the releases page.
         val local = DiscordPresence.buildActivity(state(track = track(videoId = null)), NOW_MS)["buttons"]!!.jsonArray
-        assertEquals(DiscordPresence.RELEASES_URL, local[0].jsonObject["url"]?.jsonPrimitive?.content)
+        assertEquals(
+            "https://github.com/Clash-Projects/LastWave-Native/releases",
+            local[0].jsonObject["url"]?.jsonPrimitive?.content,
+        )
     }
 
     // ---- Timestamps -------------------------------------------------------
@@ -238,21 +265,17 @@ class DiscordPresenceTest {
     }
 
     @Test
-    fun largeImagePrefersArtworkThenVideoThumbnailThenLogo() {
+    fun largeImagePrefersArtworkThenTheHostedLogo() {
         assertEquals(
             "https://example.com/cover.jpg",
-            DiscordPresence.largeImage("https://example.com/cover.jpg", "dQw4w9WgXcQ"),
+            DiscordPresence.largeImage("https://example.com/cover.jpg"),
         )
+        assertEquals(DiscordPresence.DISCORD_LOGO_URL, DiscordPresence.largeImage(null))
         assertEquals(
-            "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
-            DiscordPresence.largeImage(null, "dQw4w9WgXcQ"),
+            DiscordPresence.DISCORD_LOGO_URL,
+            DiscordPresence.largeImage("/data/user/0/com.lastwave.app/files/cover.jpg"),
         )
-        assertEquals(
-            "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
-            DiscordPresence.largeImage("/data/user/0/com.lastwave.app/files/cover.jpg", "dQw4w9WgXcQ"),
-        )
-        assertEquals("logo", DiscordPresence.largeImage(null, null))
-        assertEquals("logo", DiscordPresence.largeImage("", ""))
+        assertEquals(DiscordPresence.DISCORD_LOGO_URL, DiscordPresence.largeImage(""))
     }
 
     @Test
@@ -294,13 +317,13 @@ class DiscordPresenceTest {
     @Test
     fun unknownArtistFallsBackToAlbumThenAppName() {
         assertEquals(
-            "Afterglow\n • Lossless • 16-bit • 44.1 kHz",
+            "Afterglow \u00B7 Lossless \u00B7 16-bit \u00B7 44.1 kHz",
             DiscordPresence.buildActivity(
                 state(track = track(artist = "  ", album = "Afterglow"), bitDepth = 16, samplingRateKHz = 44.1),
                 NOW_MS,
             )["state"]?.jsonPrimitive?.content,
         )
-        assertEquals("LastWave", DiscordPresence.stateLine("", null, "Title", ""))
+        assertEquals("LastWave", DiscordPresence.stateLine("", null, ""))
     }
 
     // ---- A buffer stall is not a pause ------------------------------------
@@ -315,8 +338,9 @@ class DiscordPresenceTest {
         val stalled = state(isPlaying = false, isBuffering = true)
         val activity = DiscordPresence.buildActivity(stalled, NOW_MS)
         val assets = activity["assets"]!!.jsonObject
-        assertNull(assets["small_image"])
-        assertNull(assets["small_text"])
+        // The brand badge is constant — only the play state and bar must not
+        // read as "paused" during a stall.
+        assertEquals(DiscordPresence.DISCORD_LOGO_URL, assets["small_image"]?.jsonPrimitive?.content)
         // The countdown bar stays up while the buffer refills, so the card
         // never reads as a frozen "paused" one in the middle of a stall.
         assertTrue(activity.containsKey("timestamps"))

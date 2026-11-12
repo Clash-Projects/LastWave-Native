@@ -45,9 +45,7 @@ import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -469,7 +467,6 @@ private object GlassRecipe {
 fun Modifier.drawInteractiveGlass(
     isDark: Boolean,
     backdrop: Backdrop,
-    layer: GraphicsLayer? = null,
     luminanceAnimation: Float,
     shape: Shape,
     interaction: GlassInteraction?,
@@ -559,6 +556,73 @@ fun Modifier.drawInteractiveGlass(
         )
 
 /**
+ * Top app bar glass. The pill recipe above is tuned for small floating
+ * controls (heavy 18-56% scrim, press scaling); stretched across a
+ * full-width bar it read as a flat tinted slab. Bars want what iOS/visionOS
+ * bars do: a deep frost so text stays legible over busy covers, boosted
+ * saturation so the colours behind glow through (vibrancy), a light tint
+ * instead of a scrim, a soft sheen on top and a thin bright rim along the
+ * curved bottom edge, plus a gentle lens so that edge bends the content
+ * passing under it. Static: no pointer input, no animation, no per-frame
+ * state, so it costs one blur pass like the nav bar.
+ *
+ * Element MUST be a sibling of the backdrop source, never inside it.
+ */
+@Composable
+fun Modifier.headerLiquidGlass(
+    backdrop: Backdrop,
+    shape: Shape,
+): Modifier {
+    if (!LocalLiquidGlass.current || !isLiquidGlassBackdropSupported()) return this
+    val isDark = LocalIsDarkTheme.current
+    return this.drawBackdrop(
+        backdrop = backdrop,
+        shape = { lensSafeGlassShape(shape) },
+        highlight = { HeaderGlassRecipe.RIM },
+        effects = {
+            colorControls(
+                brightness = if (isDark) HeaderGlassRecipe.BRIGHTNESS_DARK else HeaderGlassRecipe.BRIGHTNESS_LIGHT,
+                contrast = 1f,
+                saturation = HeaderGlassRecipe.SATURATION,
+            )
+            blur(HeaderGlassRecipe.BLUR_DP.dp.toPx())
+            lens(
+                HeaderGlassRecipe.LENS_HEIGHT_DP.dp.toPx().coerceAtMost(size.minDimension / 3f),
+                HeaderGlassRecipe.LENS_AMOUNT_DP.dp.toPx().coerceAtMost(size.minDimension / 2f),
+                false,
+            )
+        },
+        onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
+        onDrawSurface = {
+            drawRect(
+                (if (isDark) Color.Black else Color.White).copy(
+                    alpha = if (isDark) HeaderGlassRecipe.TINT_DARK else HeaderGlassRecipe.TINT_LIGHT,
+                ),
+            )
+            // Sheen: light catching the top of the pane.
+            drawRect(
+                brush = Brush.verticalGradient(
+                    0f to Color.White.copy(alpha = if (isDark) 0.07f else 0.16f),
+                    0.55f to Color.Transparent,
+                ),
+            )
+        },
+    )
+}
+
+private object HeaderGlassRecipe {
+    const val BLUR_DP = 24f
+    const val SATURATION = 1.6f
+    const val BRIGHTNESS_DARK = 0f
+    const val BRIGHTNESS_LIGHT = 0.04f
+    const val TINT_DARK = 0.30f
+    const val TINT_LIGHT = 0.46f
+    const val LENS_HEIGHT_DP = 14f
+    const val LENS_AMOUNT_DP = 28f
+    val RIM = Highlight(width = 1.dp)
+}
+
+/**
  * lens-safe shape guard: kyant's lens effect (used by every interactive
  * glass surface) only accepts corner-based shapes — its SDF shader throws
  * "Only RoundedRectangularShape or CornerBasedShape is supported" for a
@@ -592,12 +656,10 @@ fun Modifier.liquidGlass(
             .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f))
     }
     val isDark = forceDark || LocalIsDarkTheme.current
-    val layer = rememberGraphicsLayer()
     val interaction = rememberGlassInteraction()
     return this.drawInteractiveGlass(
         isDark = isDark,
         backdrop = backdrop,
-        layer = layer,
         luminanceAnimation = 0.5f,
         shape = shape,
         interaction = if (interactive) interaction else null,
@@ -612,7 +674,6 @@ fun Modifier.liquidGlass(
 @Composable
 fun Modifier.liquidGlass(
     backdrop: Backdrop,
-    layer: GraphicsLayer,
     luminanceAnimation: Float,
     shape: Shape = CircleShape,
     interactive: Boolean = true,
@@ -631,7 +692,6 @@ fun Modifier.liquidGlass(
     return this.drawInteractiveGlass(
         isDark = isDark,
         backdrop = backdrop,
-        layer = layer,
         luminanceAnimation = luminanceAnimation,
         shape = shape,
         interaction = if (interactive) interaction else null,

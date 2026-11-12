@@ -18,6 +18,7 @@ import com.lastwave.app.data.playlist.SavedPlaylist
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import com.lastwave.app.util.AppVisibility
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
@@ -135,10 +136,12 @@ class YtMusicLibraryManager @Inject constructor(
         }
         // InnerTube has no push subscription. Short foreground-process polling
         // gives connected playlists near-real-time behavior without importing.
+        // Only while a screen is shown: polling in a UI-less background
+        // process got the app killed for excessive CPU.
         applicationScope.launch {
             while (true) {
                 delay(REALTIME_REFRESH_MS)
-                if (auth.connection.value.isConnected) refresh()
+                if (AppVisibility.isVisible && auth.connection.value.isConnected) refresh()
             }
         }
     }
@@ -542,12 +545,6 @@ class YtMusicLibraryManager @Inject constructor(
      * mirror: no account connected, or the track carries no YouTube videoId
      * (an imported local file). Those cases must not read as errors.
      */
-    suspend fun mirrorLikeToYouTube(track: GeneratedTrack, loved: Boolean): Boolean {
-        if (!auth.connection.value.isConnected) return true
-        val videoId = track.youtubeVideoIdOrNull() ?: return true
-        return if (loved) innerTube.likeVideo(videoId) else innerTube.removeVideoLike(videoId)
-    }
-
     suspend fun findDuplicatePlaylistIds(
         localIds: Set<Long>,
         track: GeneratedTrack,
@@ -672,6 +669,38 @@ class YtMusicLibraryManager @Inject constructor(
         File(cacheDir, "$localId.json").delete()
         refresh()
         saved
+    }
+
+    /**
+     * Deletes a connected-account playlist and removes it from LastWave's
+     * library projection. The visibility preference is written only after the
+     * remote delete succeeds, so a failed request leaves the playlist usable.
+     * YouTube Music's Liked Music is a built-in library, not a deletable
+     * playlist; deleting that row only hides it in LastWave.
+     */
+    suspend fun deleteLibraryPlaylist(localId: Long): Boolean = withContext(Dispatchers.IO) {
+        val remoteId = remoteIdsByLocalId[localId]
+            ?: details[localId]?.remotePlaylistId
+            ?: readFromDiskCache(localId)?.remotePlaylistId
+            ?: _accountPlaylists.value.firstOrNull { stableRemoteId(it.id) == localId }?.id
+            ?: return@withContext false
+
+        if (!PlaylistImportManager.isYtLikedId(remoteId) &&
+            !innerTube.deleteRemotePlaylist(remoteId.removePrefix("VL"))
+        ) {
+            return@withContext false
+        }
+
+        preferences.setLibraryPlaylistVisible(remoteId, visible = false)
+        _accountPlaylists.update { account -> account.filterNot { it.id == remoteId } }
+        remoteIdsByLocalId.remove(localId)
+        details.remove(localId)
+        ownedPlaylistCache.remove(localId)
+        File(cacheDir, "$localId.json").delete()
+        // Keep an immediate follow-up load from consuming the old combined
+        // projection and putting this row back into the screen state.
+        playlists.first { current -> current.none { it.remotePlaylistId == remoteId } }
+        true
     }
 
     suspend fun togglePinned(localId: Long, isPinned: Boolean) {

@@ -47,6 +47,10 @@ sealed interface JamSessionState {
         val permanent: Boolean = false,
         /** Friendly title of an always-on room ("India"); empty otherwise. */
         val roomName: String = "",
+        /** Always-on rooms are 24/7 radio stations driven by the server. */
+        val radio: Boolean = false,
+        /** Station on auto radio (true) or run by a station admin (false). */
+        val stationAuto: Boolean = true,
         /** The main host's upcoming queue, shared read-only. */
         val queue: List<TrackInfoPayload> = emptyList(),
     ) : JamSessionState {
@@ -220,6 +224,12 @@ class JamRepository @Inject constructor(
         sendEnvelope(JamEnvelope(type = JamProtocolConstants.MSG_QUEUE_UPDATE, payload = payload))
     }
 
+    /** Station admin only: hand the live station to [userId]. */
+    fun transferAdmin(userId: String) {
+        val payload = json.encodeToJsonElement(GrantHostRequest(userId = userId))
+        sendEnvelope(JamEnvelope(type = JamProtocolConstants.MSG_TRANSFER_HOST, payload = payload))
+    }
+
     /** Main host only: make [userId] a co-host (a room has at most two hosts). */
     fun grantHost(userId: String) {
         val payload = json.encodeToJsonElement(GrantHostRequest(userId = userId))
@@ -329,11 +339,15 @@ class JamRepository @Inject constructor(
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.d(TAG, "Jam WebSocket closed: $code / $reason")
+                stopPingLoop()
+                activeWebSocket = null
                 _sessionState.value = JamSessionState.Disconnected
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "Jam WebSocket error: ${t.message}", t)
+                stopPingLoop()
+                activeWebSocket = null
                 _sessionState.value = JamSessionState.Error(t.localizedMessage ?: "Connection failed")
             }
         })
@@ -379,6 +393,8 @@ class JamRepository @Inject constructor(
                             coHostId = payload.coHostId,
                             permanent = payload.permanent,
                             roomName = payload.roomName,
+                            radio = payload.radio,
+                            stationAuto = payload.stationAuto,
                             queue = payload.playback.queue,
                             roomMode = payload.roomMode,
                             participants = payload.participants,
@@ -416,6 +432,14 @@ class JamRepository @Inject constructor(
                     if (current is JamSessionState.Active && envelope.payload != null) {
                         val hostChanged = json.decodeFromJsonElement<HostChangedPayload>(envelope.payload)
                         applyRoles(current, hostChanged.effectiveHostId, hostChanged.coHostId)
+                    }
+                }
+
+                JamProtocolConstants.MSG_STATION_MODE -> {
+                    val current = _sessionState.value
+                    val mode = envelope.payload?.let { json.decodeFromJsonElement<StationModePayload>(it) }
+                    if (current is JamSessionState.Active && mode != null) {
+                        _sessionState.value = current.copy(stationAuto = mode.auto)
                     }
                 }
 
