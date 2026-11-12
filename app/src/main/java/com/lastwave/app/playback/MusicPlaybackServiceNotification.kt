@@ -130,7 +130,7 @@ internal fun MusicPlaybackService.publishNotification(state: MusicPlayerState, f
         if (!isPlaybackForeground) {
             if (!promoteForPlayback()) return
         }
-        val signature = "${track.title}|${track.artist}|${track.album}|${state.isPlaying}|${state.isBuffering}|${state.shuffleEnabled}|${state.repeatMode}|$artworkUrl|${artworkBitmap != null}"
+        val signature = "${track.title}|${track.artist}|${track.album}|${state.isPlaying}|${state.isBuffering}|${state.shuffleEnabled}|${state.repeatMode}|${trackLikeController.isLiked(track)}|$artworkUrl|${artworkBitmap != null}"
         if (!force && signature == notificationSignature) return
         val success = runCatching {
             getSystemService(NotificationManager::class.java)
@@ -287,7 +287,23 @@ internal fun MusicPlaybackService.isChineseOemSkin(): Boolean {
             m.contains("meizu")
     }
 
+internal fun MusicPlaybackService.toggleNotificationLike() {
+    val track = musicPlayer.state.value.current ?: return
+    scope.launch {
+        try {
+            trackLikeController.toggle(track)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            android.util.Log.w("MusicPlaybackService", "Notification like failed", error)
+        }
+    }
+}
+
 internal fun MusicPlaybackService.buildNotification(state: MusicPlayerState, art: Bitmap?): Notification {
+        val isLiked = state.current?.let { trackLikeController.isLiked(it) } == true
+        val likeIcon = if (isLiked) R.drawable.ic_wave_widget_favorite_filled else R.drawable.ic_wave_widget_favorite
+        val likeLabel = if (isLiked) "Unlike song" else "Like song"
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
         } else {
@@ -304,7 +320,7 @@ internal fun MusicPlaybackService.buildNotification(state: MusicPlayerState, art
         // Everywhere else (Pixels, Motorola, …) the custom views survive.
         if (useSystemMediaStyle()) {
             val mediaStyle = Notification.MediaStyle()
-                .setShowActionsInCompactView(0, 1, 2)
+                .setShowActionsInCompactView(1, 2, 3)
             platformSessionToken?.let { mediaStyle.setMediaSession(it) }
 
             val repeatIcon = when (state.repeatMode) {
@@ -335,6 +351,7 @@ internal fun MusicPlaybackService.buildNotification(state: MusicPlayerState, art
                 .setColor(notificationPalette.primary)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .setStyle(mediaStyle)
+                .addAction(Notification.Action.Builder(likeIcon, likeLabel, serviceAction(ACTION_LIKE, 7)).build())
                 .addAction(Notification.Action.Builder(R.drawable.ic_widget_skip_previous, "Previous", serviceAction(ACTION_PREVIOUS, 1)).build())
                 .addAction(Notification.Action.Builder(if (state.isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play, playPauseLabel, serviceAction(ACTION_TOGGLE, 2)).build())
                 .addAction(Notification.Action.Builder(R.drawable.ic_widget_skip_next, "Next", serviceAction(ACTION_NEXT, 3)).build())
@@ -381,7 +398,7 @@ internal fun MusicPlaybackService.buildNotification(state: MusicPlayerState, art
         // directly, never from this notification Style object.
         val style = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             Notification.DecoratedMediaCustomViewStyle()
-                .setShowActionsInCompactView(0, 1, 2)
+                .setShowActionsInCompactView(1, 2, 3)
                 .also { s -> platformSessionToken?.let(s::setMediaSession) }
         } else {
             Notification.DecoratedCustomViewStyle()
@@ -404,6 +421,7 @@ internal fun MusicPlaybackService.buildNotification(state: MusicPlayerState, art
             .setCustomContentView(compact)
             .setCustomBigContentView(expanded)
             .setCustomHeadsUpContentView(compact)
+            .addAction(Notification.Action.Builder(likeIcon, likeLabel, serviceAction(ACTION_LIKE, 7)).build())
             .addAction(Notification.Action.Builder(R.drawable.ic_widget_skip_previous, "Previous", serviceAction(ACTION_PREVIOUS, 1)).build())
             .addAction(Notification.Action.Builder(if (state.isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play, if (state.isPlaying) "Pause" else "Play", serviceAction(ACTION_TOGGLE, 2)).build())
             .addAction(Notification.Action.Builder(R.drawable.ic_widget_skip_next, "Next", serviceAction(ACTION_NEXT, 3)).build())
@@ -462,29 +480,18 @@ internal fun MusicPlaybackService.notificationRemoteViews(
             R.id.notification_next,
             R.drawable.ic_widget_skip_next,
         )
-        // Shuffle/repeat only exist in the expanded layout; the compact row
-        // is the prev/play/next transport cluster.
+        // The compact row stays the existing previous/play/next cluster.
         if (expanded) {
-            setImageViewResource(
-                R.id.notification_shuffle,
-                R.drawable.ic_widget_shuffle,
-            )
-            setImageViewResource(
-                R.id.notification_repeat,
-                if (state.repeatMode == androidx.media3.common.Player.REPEAT_MODE_ONE) R.drawable.ic_widget_repeat_one else R.drawable.ic_widget_repeat,
-            )
-            setInt(
-                R.id.notification_shuffle,
-                "setColorFilter",
-                if (state.shuffleEnabled) palette.primary else palette.onSurface,
-            )
-            setInt(
-                R.id.notification_repeat,
-                "setColorFilter",
-                if (state.repeatMode != androidx.media3.common.Player.REPEAT_MODE_OFF) palette.primary else palette.onSurface,
-            )
+            val liked = state.current?.let { trackLikeController.isLiked(it) } == true
+            setImageViewResource(R.id.notification_like,
+                if (liked) R.drawable.ic_wave_widget_favorite_filled else R.drawable.ic_wave_widget_favorite)
+            setContentDescription(R.id.notification_like, if (liked) "Unlike song" else "Like song")
+            setInt(R.id.notification_like, "setColorFilter", if (liked) palette.primary else palette.onSurface)
+            setImageViewResource(R.id.notification_shuffle, R.drawable.ic_widget_shuffle)
+            setContentDescription(R.id.notification_shuffle, if (state.shuffleEnabled) "Turn shuffle off" else "Turn shuffle on")
+            setInt(R.id.notification_shuffle, "setColorFilter", if (state.shuffleEnabled) palette.primary else palette.onSurface)
+            setOnClickPendingIntent(R.id.notification_like, serviceAction(ACTION_LIKE, 7))
             setOnClickPendingIntent(R.id.notification_shuffle, serviceAction(ACTION_SHUFFLE, 5))
-            setOnClickPendingIntent(R.id.notification_repeat, serviceAction(ACTION_REPEAT, 6))
         }
         setInt(R.id.notification_previous, "setColorFilter", palette.onSurface)
         setInt(R.id.notification_next, "setColorFilter", palette.onSurface)

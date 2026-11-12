@@ -4031,6 +4031,24 @@ class MusicPlayer @Inject constructor(
         cancelCrossfade()
         if (index in 0 until player.mediaItemCount) player.removeMediaItem(index)
     }
+    fun insertQueueItem(index: Int, track: PlayableTrack) = onMain {
+        val enriched = track.withYoutubeArtwork()
+        if (isCasting) {
+            val snapshot = _state.value
+            val queue = snapshot.queue.toMutableList()
+            val safeIndex = index.coerceIn(0, queue.size)
+            queue.add(safeIndex, enriched)
+            val currentIndex = (snapshot.currentIndex + if (safeIndex <= snapshot.currentIndex) 1 else 0)
+                .coerceIn(queue.indices)
+            _state.value = snapshot.copy(queue = queue, currentIndex = currentIndex, current = queue[currentIndex])
+            persistPlaybackSession()
+            return@onMain
+        }
+        val safeIndex = index.coerceIn(0, player.mediaItemCount)
+        player.addMediaItem(safeIndex, enriched.toMediaItem())
+        refresh(player)
+        persistPlaybackSession()
+    }
     fun clearQueueKeepCurrent() = onMain {
         cancelCrossfade()
         if (isCasting) {

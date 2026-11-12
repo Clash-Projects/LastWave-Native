@@ -43,6 +43,38 @@ class LocalMusicFeaturesTest {
     }
 
     @Test
+    fun localMusicFilters_rejectsRecorderVariantsAndMediaStoreNonMusic() {
+        listOf(
+            "/Music/Call_Recording/call.m4a",
+            "/MIUI/sound_recorder/memo.mp3",
+            "/Music/Voice-Notes/long-note.opus",
+            "/Download/PTT-20261112-WA0001.opus",
+            "/Music/recording_20261112.m4a",
+        ).forEach { path ->
+            assertThat(LocalMusicFilters.isNonMusicAudio(path, 180_000L)).isTrue()
+        }
+        assertThat(LocalMusicFilters.isNonMusicAudio("/Music/Song.mp3", 180_000L, isMusic = false)).isTrue()
+        assertThat(LocalMusicFilters.isNonMusicAudio("/Music/Song.mp3", 180_000L, isRecording = true)).isTrue()
+        assertThat(LocalMusicFilters.isNonMusicAudio("/Music/Book.mp3", 180_000L, isAudiobook = true)).isTrue()
+        assertThat(LocalMusicFilters.isNonMusicAudio("/Music/Call Me Maybe.mp3", 180_000L, isMusic = true)).isFalse()
+        assertThat(LocalMusicFilters.isNonMusicAudio("/Music/Recordings of Summer.mp3", 180_000L)).isFalse()
+    }
+
+    @Test
+    fun localMusicFilters_selectedFoldersOverrideDeviceScanAndUseWholePathBoundaries() {
+        assertThat(LocalMusicFilters.shouldScanDevice(0, true)).isTrue()
+        assertThat(LocalMusicFilters.shouldScanDevice(0, false)).isFalse()
+        assertThat(LocalMusicFilters.shouldScanDevice(1, true)).isFalse()
+        assertThat(LocalMusicFilters.shouldScanDevice(2, true)).isFalse()
+        assertThat(LocalMusicFilters.isWithinFolder("/storage/ABCD/Music/Album/Song.flac", "/storage/ABCD/Music/")).isTrue()
+        assertThat(LocalMusicFilters.isWithinFolder("/storage/ABCD/Music Notes/voice.opus", "/storage/ABCD/Music")).isFalse()
+        assertThat(LocalMusicFilters.isWithinFolder("/storage/EFGH/Music/Song.flac", "/storage/ABCD/Music")).isFalse()
+        assertThat(LocalMusicFilters.isWithinFolder("primary:Music/Song.mp3", "primary:Music")).isTrue()
+        assertThat(LocalMusicFilters.isWithinFolder("primary:Music/Song.mp3", "primary:")).isTrue()
+        assertThat(LocalMusicFilters.isWithinFolder("primary:Music Other/Song.mp3", "primary:Music")).isFalse()
+    }
+
+    @Test
     fun localMusicFilters_parsesTrackAndDiscNumbers() {
         assertThat(LocalMusicFilters.parseNumberPart("03/14")).isEqualTo(3)
         assertThat(LocalMusicFilters.parseNumberPart("12")).isEqualTo(12)

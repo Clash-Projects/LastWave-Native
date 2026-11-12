@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SmartDisplay
+import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
@@ -112,6 +113,7 @@ import kotlinx.coroutines.launch
 data class TrackMenuCapabilities(
     val showCopyActions: Boolean = true,
     val showDeleteScrobble: Boolean = true,
+    val showRecommendationExclusion: Boolean = false,
 )
 
 sealed interface TrackMenuTarget {
@@ -389,6 +391,7 @@ fun TrackContextMenuSheet(
     downloadViewModel: DownloadMenuViewModel = hiltViewModel(),
     artistAlbumViewModel: ArtistAlbumMenuViewModel = hiltViewModel(),
     trackLinkViewModel: TrackLinkViewModel = hiltViewModel(),
+    exclusionViewModel: RecommendationExclusionMenuViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -749,6 +752,15 @@ fun TrackContextMenuSheet(
                     add { pos ->
                         MenuActionRow(Icons.Filled.Info, stringResource(R.string.menu_details_specs), position = pos) {
                             showDetailsSheet = true
+                        }
+                    }
+                    if (capabilities.showRecommendationExclusion && !isLocalFile &&
+                        playable.mediaType == com.lastwave.app.playback.MediaType.SONG) {
+                        add { pos ->
+                            MenuActionRow(Icons.Filled.ThumbDown, stringResource(R.string.menu_dont_recommend), position = pos) {
+                                exclusionViewModel.exclude(playable)
+                                onDismiss()
+                            }
                         }
                     }
                     if (onRemoveFromPlaylist != null) {

@@ -10,6 +10,7 @@ import com.lastwave.app.data.generate.sameSongAs
 import com.lastwave.app.data.generate.toGenerated
 import com.lastwave.app.data.generate.toStored
 import com.lastwave.app.data.generate.youtubeVideoIdOrNull
+import com.lastwave.app.data.ytmusic.YtLikedSongsSync
 import com.lastwave.app.data.local.SettingsPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -23,7 +24,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
@@ -56,8 +56,9 @@ class LikedSongsManager @Inject constructor(
     private val playlistRepository: PlaylistRepository,
     private val applicationScope: CoroutineScope,
     private val settingsPreferences: SettingsPreferences,
+    private val likeSync: YtLikedSongsSync,
 ) {
-    private val mutationMutex = Mutex()
+    private val mutationMutex get() = likeSync.mutationMutex
     private val json = Json { ignoreUnknownKeys = true }
     private val _likedTrackKeys = MutableStateFlow<Set<String>>(emptySet())
     val likedTrackKeys: StateFlow<Set<String>> = _likedTrackKeys.asStateFlow()
@@ -66,6 +67,7 @@ class LikedSongsManager @Inject constructor(
     fun start() {
         if (started) return
         started = true
+        likeSync.start()
         applicationScope.launch(Dispatchers.IO) {
             try {
                 // watchLocalSync() used to sit here: it collected the (now removed)
@@ -105,71 +107,38 @@ class LikedSongsManager @Inject constructor(
         }
     }
 
-    // Mutations read and re-encode the whole Liked Songs playlist. Callers
-    // include viewModelScope (main thread), so the work runs on Default: on a
-    // library of thousands of songs it otherwise froze the UI for seconds per
-    // heart tap (ANR).
-    //
-    // The write still takes ~1 s on a few thousand songs, so the heart flips
-    // at the tap and the write saves exactly that state. Waiting for the write
-    // left the heart a tap behind, and a second tap during the wait looked
-    // like the like undoing itself.
+    /** Toggles the saved state, so a stale flow or a rapid second tap cannot invert it. */
+    suspend fun toggle(track: GeneratedTrack): Boolean = mutate(track, desired = null)
 
-    /** Flips the heart and saves the state it now shows. Returns that state. */
-    suspend fun toggle(track: GeneratedTrack): Boolean {
-        val markers = track.likedMarkers()
-        val liked = synchronized(heartLock) {
-            beginHeartTapLocked()
-            val nowLiked = !track.isLikedIn(_likedTrackKeys.value)
-            _likedTrackKeys.value = if (nowLiked) _likedTrackKeys.value + markers else _likedTrackKeys.value - markers.toSet()
-            nowLiked
-        }
-        return finishHeartTap { setLikedStored(track, liked) }
-    }
+    /** Artwork double-tap and media ratings must never toggle an already-liked song off. */
+    suspend fun like(track: GeneratedTrack): Boolean = setLiked(track, true)
 
-    /** Artwork double-tap is intentionally idempotent: it never unlikes. */
-    suspend fun like(track: GeneratedTrack): Boolean {
-        synchronized(heartLock) {
-            beginHeartTapLocked()
-            _likedTrackKeys.value = _likedTrackKeys.value + track.likedMarkers()
-        }
-        return finishHeartTap { setLikedStored(track, liked = true) }
-    }
+    suspend fun setLiked(track: GeneratedTrack, liked: Boolean): Boolean = mutate(track, liked)
 
-    /**
-     * Heart state is published under this lock. [pendingHeartTaps] counts
-     * taps whose write has not finished: while any is pending, a read-back
-     * would show a state without it and the heart would flick back, so
-     * read-backs are not published. [heartTapGeneration] changes on every
-     * tap, so a read taken before a tap is never published after it.
-     */
     private val heartLock = Any()
     private var pendingHeartTaps = 0
     private var heartTapGeneration = 0L
 
-    private fun beginHeartTapLocked() {
-        pendingHeartTaps++
-        heartTapGeneration++
-    }
-
-    /**
-     * Ends a heart tap however it ends (saved, failed or cancelled). The last
-     * pending tap re-reads the stored state, so the heart can never be left
-     * showing a guess that was not saved.
-     */
-    private suspend fun <T> finishHeartTap(write: suspend () -> T): T = try {
-        write()
-    } finally {
-        val last = synchronized(heartLock) { --pendingHeartTaps == 0 }
-        if (last) withContext(NonCancellable + Dispatchers.Default) { refresh() }
-    }
-
-    private suspend fun setLikedStored(track: GeneratedTrack, liked: Boolean): Boolean =
-        withContext(Dispatchers.Default) {
+    private suspend fun mutate(track: GeneratedTrack, desired: Boolean?): Boolean =
+        withContext(NonCancellable + Dispatchers.Default) {
             mutationMutex.withLock {
-                // Every like is saved to Liked Songs. There is no switch for it.
-                writeLikedPlaylist(track, liked)
-                liked
+                val account = likeSync.captureLocalChanges()
+                val saved = playlistRepository.getLikedSongs() ?: playlistRepository.ensureLikedSongs()
+                val liked = desired ?: !saved.tracks.any { it.sameSongAs(track) }
+                synchronized(heartLock) {
+                    pendingHeartTaps++
+                    heartTapGeneration++
+                    val optimistic = if (liked) saved.tracks + track else saved.tracks.filterNot { it.sameSongAs(track) }
+                    _likedTrackKeys.value = optimistic.flatMapTo(mutableSetOf()) { it.likedMarkers() }
+                }
+                try {
+                    writeLikedPlaylist(track, liked)
+                    likeSync.recordIntent(track, liked, account)
+                    liked
+                } finally {
+                    synchronized(heartLock) { pendingHeartTaps-- }
+                    refresh()
+                }
             }
         }
 
@@ -212,7 +181,7 @@ class LikedSongsManager @Inject constructor(
     }
 
     /**
-     * Merges externally sourced tracks (YT liked import) into Liked Songs.
+     * Merges local and external imports such as Spotify into Liked Songs.
      * Runs under the same [mutationMutex] as [toggle]/[like], so a heart-tap
      * racing an import can no longer interleave a stale read-modify-write
      * that resurrects duplicates.
@@ -231,12 +200,14 @@ class LikedSongsManager @Inject constructor(
                 return@withLock true
             }
         }
-        // Final attempt without CAS rather than dropping the import.
-        val liked = playlistRepository.ensureLikedSongs()
-        playlistRepository.replaceTracksForSync(liked.id, (liked.tracks + tracks).distinctSongs())
-        refresh()
-        true
+        false
     } }
+
+    suspend fun mergeYouTubeTracks(tracks: List<GeneratedTrack>): Boolean {
+        val merged = likeSync.mergeYouTubeLikes(tracks)
+        if (merged) refresh()
+        return merged
+    }
 
     /**
      * One-time heal: collapses duplicate `liked`-mode rows into the one with

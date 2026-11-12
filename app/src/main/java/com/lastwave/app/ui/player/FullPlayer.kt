@@ -1653,48 +1653,11 @@ internal fun FullPlayer(
                                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                         ) {
-                                            val likeInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                                            val isLikePressed by likeInteraction.collectIsPressedAsState()
-                                            val likeScale by animateFloatAsState(
-                                                targetValue = if (isLikePressed) 0.78f else 1.0f,
-                                                animationSpec = spring(
-                                                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                                                    stiffness = Spring.StiffnessMediumLow,
-                                                ),
-                                                label = "likeScale",
-                                            )
-                                            LiquidGlassSurface(
-                                                glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = likeInteraction),
+                                            PlayerLikeButton(
+                                                liked = isLiked,
                                                 onClick = hapticClick(if (isLiked) HapticFeedbackType.ToggleOff else HapticFeedbackType.Confirm, onToggleLiked),
-                                                interactionSource = likeInteraction,
-                                                shape = CircleShape,
-                                                color = liquidGlassContainerColor(if (isLiked) {
-                                                    Color.White.copy(alpha = 0.92f)
-                                                } else {
-                                                    Color.White.copy(alpha = 0.14f)
-                                                }),
-                                                contentColor = if (isLiked) {
-                                                    Color(0xFFE91E63)
-                                                } else {
-                                                    Color.White.copy(alpha = 0.85f)
-                                                },
-                                                tonalElevation = 0.dp,
-                                                shadowElevation = 0.dp,
-                                                modifier = Modifier
-                                                    .size(46.dp)
-                                                    .graphicsLayer {
-                                                        scaleX = likeScale
-                                                        scaleY = likeScale
-                                                    },
-                                            ) {
-                                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                                    Icon(
-                                                        if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                                                        contentDescription = if (isLiked) "Unlike song" else "Like song",
-                                                        modifier = Modifier.size(24.dp),
-                                                    )
-                                                }
-                                            }
+                                                size = 48.dp,
+                                            )
                                             val lyricsInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
                                             val isLyricsPressed by lyricsInteraction.collectIsPressedAsState()
                                             val lyricsScale by animateFloatAsState(
@@ -1815,6 +1778,7 @@ internal fun FullPlayer(
             capabilities = TrackMenuCapabilities(
                 showCopyActions = true,
                 showDeleteScrobble = false,
+                showRecommendationExclusion = true,
             ),
             playableTrack = track,
             onDismiss = { showTrackMenu = false },

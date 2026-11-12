@@ -494,29 +494,38 @@ internal suspend fun InnerTubeMusicApi.getYouTubeLikeStatusImpl(videoId: String)
                 ?.obj("playerOverlayRenderer")
                 ?.array("actions")
                 ?.firstNotNullOfOrNull { it.obj("likeButtonRenderer")?.string("likeStatus") }
-            status == "LIKE"
+            when (status) {
+                "LIKE" -> true
+                "INDIFFERENT", "DISLIKE" -> false
+                else -> null
+            }
         }.onFailure {
             android.util.Log.w(PLAYLIST_LOG_TAG, "like status read failed for $videoId", it)
         }.getOrNull()
     }
 
-internal suspend fun InnerTubeMusicApi.setVideoLiked(videoId: String, liked: Boolean): Boolean =
+internal suspend fun InnerTubeMusicApi.setVideoLiked(
+    videoId: String,
+    liked: Boolean,
+    account: YtConnection = ytAuth.connection.value,
+): Boolean =
         withContext(Dispatchers.IO) {
             if (videoId.isBlank()) return@withContext false
-            if (!ytAuth.connection.value.isConnected) return@withContext false
+            if (!account.isConnected || ytAuth.connection.value != account) return@withContext false
             val config = getWebConfig()
             val endpoint = if (liked) LIKE_ENDPOINT else REMOVE_LIKE_ENDPOINT
             runCatching {
                 post(
                     url = "$MUSIC_API/$endpoint?key=${config.apiKey}&prettyPrint=false",
                     body = buildJsonObject {
-                        put("context", context("WEB_REMIX", config.clientVersion, config.visitorData))
+                        put("context", context("WEB_REMIX", config.clientVersion, config.visitorData, authenticated = true))
                         put("target", likeTargetBody(videoId))
                     },
                     clientName = "WEB_REMIX",
                     clientVersion = config.clientVersion,
                     userAgent = WEB_USER_AGENT,
                     authenticated = true,
+                    authenticatedAccount = account,
                 )
                 true
             }.onFailure {

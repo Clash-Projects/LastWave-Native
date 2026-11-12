@@ -5,13 +5,13 @@ import android.webkit.CookieManager
 import android.webkit.WebStorage
 import java.security.MessageDigest
 import kotlin.coroutines.resume
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -32,13 +32,21 @@ class YtMusicAuthManager @Inject constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    private val connectionLoaded = CompletableDeferred<Unit>()
     private val _connection = MutableStateFlow(YtConnection.DISCONNECTED)
     val connection: StateFlow<YtConnection> = _connection.asStateFlow()
 
     init {
         scope.launch {
-            runCatching { preferences.connection.collect { _connection.value = it } }
-                .onFailure { Log.w(TAG, "Failed to observe YT connection", it) }
+            runCatching {
+                preferences.connection.collect {
+                    _connection.value = it
+                    connectionLoaded.complete(Unit)
+                }
+            }.onFailure {
+                connectionLoaded.complete(Unit)
+                Log.w(TAG, "Failed to observe YT connection", it)
+            }
         }
     }
 
@@ -55,8 +63,10 @@ class YtMusicAuthManager @Inject constructor(
     }
 
     suspend fun awaitLoadedConnection(): YtConnection {
-        val persisted = preferences.connection.first()
-        return connection.first { it == persisted }
+        // Waiting for a captured preference value can hang forever if an
+        // optimistic login/signout has already moved past that value.
+        connectionLoaded.await()
+        return connection.value
     }
 
     /**

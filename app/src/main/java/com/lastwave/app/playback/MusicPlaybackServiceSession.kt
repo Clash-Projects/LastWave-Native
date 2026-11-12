@@ -418,6 +418,15 @@ internal fun MusicPlaybackService.publishSystemState(state: MusicPlayerState) {
                             PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE or PlaybackStateCompat.ACTION_SET_REPEAT_MODE or
                             PlaybackStateCompat.ACTION_SET_RATING,
                     )
+                    .apply {
+                        // Android 13+ takes the two outer buttons from session custom actions.
+                        if (track != null) {
+                            addCustomAction(ACTION_LIKE, if (isLiked) "Unlike song" else "Like song",
+                                if (isLiked) R.drawable.ic_wave_widget_favorite_filled else R.drawable.ic_wave_widget_favorite)
+                            addCustomAction(ACTION_SHUFFLE, if (state.shuffleEnabled) "Turn shuffle off" else "Turn shuffle on",
+                                R.drawable.ic_widget_shuffle)
+                        }
+                    }
                     .setActiveQueueItemId(state.currentIndex.toLong())
                     .setBufferedPosition(state.bufferedPositionMs)
                     .setState(playbackState, state.positionMs, if (state.isPlaying) state.speed else 0f)
