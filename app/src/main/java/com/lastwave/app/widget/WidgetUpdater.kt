@@ -143,7 +143,7 @@ object WidgetUpdater {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, NowPlayingWidgetReceiver::class.java))
             for (appWidgetId in ids) {
-                val views = WidgetViews.build(context, appWidgetId, eqFrame, progressOverride, memoryArtBitmap)
+                val views = WidgetViews.build(context, appWidgetId, eqFrame, memoryArtBitmap)
                 runCatching { manager.updateAppWidget(appWidgetId, views) }
             }
             val obsidianIds = manager.getAppWidgetIds(ComponentName(context, ObsidianGlassWidgetReceiver::class.java))

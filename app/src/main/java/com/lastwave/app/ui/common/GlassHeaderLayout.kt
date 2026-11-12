@@ -11,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -37,12 +38,15 @@ fun GlassHeaderLayout(
     content: @Composable (topInset: Dp) -> Unit,
 ) {
     val background = MaterialTheme.colorScheme.background
+    var headerHeightPx by remember { mutableIntStateOf(0) }
+    val wash = headerGlassWash()
     val backdrop = rememberLayerBackdrop {
         drawRect(background)
+        // Screens whose content starts below the header (Friends) gave the glass only flat background.
+        drawRect(wash, size = Size(size.width, headerHeightPx.toFloat()))
         drawContent()
     }
     val glass = isLiquidGlassBackdropSupported() && backdrop != null
-    var headerHeightPx by remember { mutableIntStateOf(0) }
     val headerHeight = with(LocalDensity.current) { headerHeightPx.toDp() }
     Box(modifier) {
         Box(

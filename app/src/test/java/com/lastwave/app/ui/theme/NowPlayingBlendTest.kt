@@ -43,6 +43,7 @@ class NowPlayingBlendTest {
         val scheme = Md3SchemeBuilder.buildArtworkScheme("#657585", amoled = false, dark = true)
         assertThat(saturation(scheme.primary)).isAtMost(0.16f)
     }
+    }
 
     @Test
     fun accentsKeepReadableContrast() {

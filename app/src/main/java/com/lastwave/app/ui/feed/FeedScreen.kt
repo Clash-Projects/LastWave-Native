@@ -746,13 +746,9 @@ fun FeedScreen(
                         // A generic Shape here promoted the whole scrolling viewport to an
                         // offscreen layer: frames re-recorded and re-uploaded its sections
                         // instead of drawing straight to the window. Mask the rounded top
-                        // corners at draw time instead, and only when the list actually
-                        // scrolls under glass.
+                        // corners at draw time instead, with or without glass (top = 0
+                        // when the list starts below the header).
                         .drawWithContent {
-                            if (!useFeedGlass) {
-                                drawContent()
-                                return@drawWithContent
-                            }
                             drawContent()
                             val left = feedCornerInsetPx
                             val right = size.width - feedCornerInsetPx
@@ -764,7 +760,6 @@ fun FeedScreen(
                             if (radius <= 0f) return@drawWithContent
                             val mask = feedBackgroundColor
                             drawRect(mask, Offset.Zero, Size(left, top + radius))
-                            drawRect(mask, Offset(right, 0f), Size(size.width - right, top + radius))
                             // No band above `top`: the content there is what the glass
                             // header refracts. Masking it left the glass a flat bar.
                             val topLeft = Path().apply {
@@ -779,15 +774,21 @@ fun FeedScreen(
                                 close()
                             }
                             drawPath(topLeft, mask)
+                            // Right gutter and corner as ONE path. As a rect plus a
+                            // corner path they met along x = right, and the two
+                            // antialiased edges left a hairline of feed showing through.
                             val topRight = Path().apply {
-                                moveTo(right, top)
-                                lineTo(right - radius, top)
+                                moveTo(right, 0f)
+                                lineTo(size.width, 0f)
+                                lineTo(size.width, top + radius)
+                                lineTo(right, top + radius)
                                 arcTo(
                                     Rect(right - 2f * radius, top, right, top + 2f * radius),
-                                    270f,
-                                    90f,
+                                    0f,
+                                    -90f,
                                     false,
                                 )
+                                lineTo(right, top)
                                 close()
                             }
                             drawPath(topRight, mask)

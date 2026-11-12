@@ -64,6 +64,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -528,7 +529,7 @@ internal fun MoreFromUsCard(
                     modifier = Modifier.size(54.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        androidx.compose.foundation.Image(
+                        Image(
                             painter = androidx.compose.ui.res.painterResource(R.drawable.ic_logo_lyricify),
                             contentDescription = "Lyricify",
                             modifier = Modifier.size(36.dp),
@@ -560,7 +561,7 @@ internal fun MoreFromUsCard(
                     modifier = Modifier.size(54.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        androidx.compose.foundation.Image(
+                        Image(
                             painter = androidx.compose.ui.res.painterResource(R.drawable.logo_sleeptracker),
                             contentDescription = "SleepTracker",
                             modifier = Modifier.size(54.dp).clip(CircleShape),
@@ -634,12 +635,19 @@ internal fun AboutCard(
                 )
             }
             Spacer(Modifier.height(12.dp))
-            Text(
-                stringResource(R.string.about_made_by),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.about_made_by),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.width(6.dp))
+                Image(
+                    painter = painterResource(R.drawable.ic_flag_india),
+                    contentDescription = "India",
+                )
+            }
             Spacer(Modifier.height(14.dp))
             Surface(
                 shape = ExpressivePillShape,

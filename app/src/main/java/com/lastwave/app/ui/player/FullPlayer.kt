@@ -104,6 +104,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -371,6 +372,7 @@ internal fun FullPlayer(
     youTubeLiked: Boolean? = null,
     onToggleYouTubeLike: () -> Unit = {},
     onDragStatusChange: (Boolean) -> Unit = {},
+    isOpen: Boolean = true,
     lyricsProviderStatuses: Map<com.lastwave.app.data.local.LyricsProvider, LyricsSyncType> = emptyMap(),
     onProbeLyricsProviders: (() -> Unit)? = null,
     onSelectLyricsProvider: ((com.lastwave.app.data.local.LyricsProvider) -> Unit)? = null,
@@ -489,7 +491,6 @@ internal fun FullPlayer(
     var artworkDragX by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
     var dismissDragY by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
     var isDismissDragging by remember { mutableStateOf(false) }
-    LaunchedEffect(isDismissDragging) { onDragStatusChange(isDismissDragging) }
     var seekOverlayDirection by remember(track.videoId, track.title) { mutableStateOf<SeekDirection?>(null) }
     var seekOverlaySeconds by remember(track.videoId, track.title) { mutableIntStateOf(0) }
     var lastTapTimestamp by remember(track.videoId, track.title) { mutableLongStateOf(0L) }
@@ -507,6 +508,13 @@ internal fun FullPlayer(
         animationSpec = if (isDismissDragging) snap() else ExpressiveMotion.spatialSpring(),
         label = "fullPlayerDismissY",
     )
+    // The host stops drawing the shell while the player covers it. After the finger
+    // lifts the sheet is still offset while it springs back, so report until it lands.
+    val sheetMoving by remember { derivedStateOf { isDismissDragging || shownDismissY > 0.5f } }
+    LaunchedEffect(sheetMoving) { onDragStatusChange(sheetMoving) }
+    // A swipe-close keeps its offset for the close morph; reopening before that
+    // morph ends kept it too and left the player parked at the bottom.
+    LaunchedEffect(isOpen) { if (isOpen) dismissDragY = 0f }
     val swipeThreshold = with(LocalDensity.current) { 88.dp.toPx() }
 
     // Dominant cover-art color for the ambient background glow. Extracted
@@ -965,10 +973,14 @@ internal fun FullPlayer(
                     }
                 }
             }
+            // Bottom inset is applied per tab below, so the queue can run under the gesture pill.
+            val showError = state.error != null && !lyricsFullscreen
+            val bottomInset = WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding()
+            val tabBottomInset = if (showError) 0.dp else bottomInset
             Column(
                 Modifier
                     .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.safeDrawing),
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 // â”€â”€ Header: slimmer, calmer, premium â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1139,6 +1151,7 @@ internal fun FullPlayer(
                     },
                     label = "playerTabContent",
                 ) { tab ->
+                    Box(Modifier.padding(bottom = if (tab == FullPlayerTab.QUEUE) 0.dp else tabBottomInset)) {
                     when (tab) {
                         FullPlayerTab.LYRICS -> {
                             PredictiveBackScreen(
@@ -1193,7 +1206,8 @@ internal fun FullPlayer(
                                 QueuePanel(
                                     state,
                                     player,
-                                    Modifier
+                                    bottomPadding = tabBottomInset,
+                                    modifier = Modifier
                                         .fillMaxSize()
                                         .adaptiveContentWidth(maxWidth = if (isTabletLandscape) 960.dp else 720.dp)
                                         .padding(horizontal = 12.dp),
@@ -1717,14 +1731,15 @@ internal fun FullPlayer(
                             }
                         }
                     }
+                    }
                 }
-                state.error?.takeUnless { lyricsFullscreen }?.let { message ->
+                state.error?.takeIf { showError }?.let { message ->
                     Surface(
                         onClick = hapticClick(action = player::retry),
                         shape = RoundedCornerShape(20.dp),
                         color = MaterialTheme.colorScheme.errorContainer,
                         contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp + bottomInset),
                     ) {
                         Row(
                             Modifier.padding(horizontal = 14.dp, vertical = 12.dp),

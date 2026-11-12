@@ -50,6 +50,23 @@ import com.lastwave.app.ui.theme.rememberLayerBackdrop
 private val HeaderShape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)
 
 /**
+ * Theme-tinted wash for the glass to blur when no content sits under the
+ * header. Over the flat page colour the glass had nothing to refract and
+ * read as a black bar.
+ */
+@Composable
+internal fun headerGlassWash(): Brush {
+    val scheme = MaterialTheme.colorScheme
+    return Brush.horizontalGradient(
+        listOf(
+            scheme.primary.copy(alpha = 0.20f),
+            scheme.tertiary.copy(alpha = 0.08f),
+            scheme.secondary.copy(alpha = 0.16f),
+        ),
+    )
+}
+
+/**
  * The unified top container for all major screens.
  * Uses exact pure Kyant liquid glass chrome matching the navigation bar and player bar.
  * Window-inset aware: content pads for the status bar while the glass extends behind it.
@@ -98,18 +115,7 @@ fun ExpressiveHeader(
                     .clip(HeaderShape)
                     .liquidGlassSource(headerBackdrop),
             ) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    (if (isDark) Color.White else Color.Black).copy(alpha = if (isDark) 0.05f else 0.02f),
-                                    Color.Transparent,
-                                ),
-                            ),
-                        ),
-                )
+                Box(Modifier.fillMaxSize().background(headerGlassWash()))
             }
         }
 
