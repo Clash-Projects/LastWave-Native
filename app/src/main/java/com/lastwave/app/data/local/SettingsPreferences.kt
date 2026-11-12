@@ -103,7 +103,7 @@ enum class RecommendationSource(val id: String, val titleRes: Int, val subtitleR
 /** How a track reaches the selected streaming quality. Downgrades are always seamless. */
 enum class HiResStart(val id: String, val title: String, val subtitle: String) {
     FAST("fast", "Fast start", "Start on Opus, then switch to your quality when ready"),
-    DIRECT("direct", "Best quality first", "Wait for your quality; Opus only if it's slow"),
+    DIRECT("direct", "Best quality first", "Wait for your quality; Opus only if it's unavailable"),
     NEVER("never", "Never upgrade", "Keep the stream a song starts with");
 
     companion object {

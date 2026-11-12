@@ -4341,7 +4341,8 @@ class MusicPlayer @Inject constructor(
                 }
             }
 
-            if (wantProvider) launch {
+            val direct = misc.hiResStart == HiResStart.DIRECT
+            val providerJob = if (wantProvider) launch {
                 val candidate = withTimeoutOrNull(LOSSLESS_BACKGROUND_BUDGET_MS) {
                     runCatching {
                         resolveLosslessTrackAudioStream(
@@ -4353,10 +4354,15 @@ class MusicPlayer @Inject constructor(
                         )
                     }.onFailure { if (it is CancellationException) throw it }.getOrNull()
                 }
-                if (candidate != null && isProviderReadyForStartup(candidate)) publish(candidate)
-            }
+                val probeTimeoutMs = if (direct) STARTUP_PROVIDER_RESOLVE_MS else STARTUP_PROVIDER_PROBE_MS
+                if (candidate != null && isProviderReadyForStartup(candidate, probeTimeoutMs)) publish(candidate)
+            } else null
             launch {
-                resolvePreloadYoutube(nextTrack, quality)?.let { publish(it) }
+                val youtube = resolvePreloadYoutube(nextTrack, quality)
+                // "Best quality first": Opus published early was buffered and
+                // played when the song changed before the provider answered.
+                if (direct) providerJob?.join()
+                youtube?.let { publish(it) }
             }
         }
     }
@@ -6128,7 +6134,10 @@ class MusicPlayer @Inject constructor(
      * instead of failing inside ExoPlayer. The ranged read is drained so the
      * pooled connection can be reused by the player's own open.
      */
-    private suspend fun isProviderReadyForStartup(stream: ResolvedStream): Boolean {
+    private suspend fun isProviderReadyForStartup(
+        stream: ResolvedStream,
+        timeoutMs: Long = STARTUP_PROVIDER_PROBE_MS,
+    ): Boolean {
         if (stream.segmentedDrm != null || !stream.mimeType.startsWith("audio/")) return false
         if (stream.isExpired()) return false
         if (mediaCache.isCached(stream.cacheKey, 0L, STARTUP_PROBE_BYTES)) return true
@@ -6141,7 +6150,7 @@ class MusicPlayer @Inject constructor(
                 .build()
         }.getOrNull() ?: return false
         val startedAt = SystemClock.elapsedRealtime()
-        return withTimeoutOrNull(STARTUP_PROVIDER_PROBE_MS) {
+        return withTimeoutOrNull(timeoutMs) {
             suspendCancellableCoroutine { continuation ->
                 val call = mediaHttpClient.newCall(request)
                 continuation.invokeOnCancellation { call.cancel() }
@@ -6172,7 +6181,7 @@ class MusicPlayer @Inject constructor(
                 })
             }
         } ?: false.also {
-            android.util.Log.i("MusicPlayer", "[STARTUP SOURCE] provider probe timed out after ${STARTUP_PROVIDER_PROBE_MS}ms")
+            android.util.Log.i("MusicPlayer", "[STARTUP SOURCE] provider probe timed out after ${timeoutMs}ms")
         }
     }
 
@@ -6235,7 +6244,12 @@ class MusicPlayer @Inject constructor(
             }
         } else null
 
-        val providerDeadline = SystemClock.elapsedRealtime() + STARTUP_PROVIDER_RESOLVE_MS
+        // "Best quality first" plays Opus only when the provider has nothing:
+        // the short race deadlines sent slow-but-available lossless to Opus.
+        val startDirect = miscSnapshot.hiResStart == HiResStart.DIRECT
+        val providerDeadline = SystemClock.elapsedRealtime() +
+            if (startDirect) LOSSLESS_BACKGROUND_BUDGET_MS else STARTUP_PROVIDER_RESOLVE_MS
+        val probeTimeoutMs = if (startDirect) STARTUP_PROVIDER_RESOLVE_MS else STARTUP_PROVIDER_PROBE_MS
         suspend fun awaitProvider(): ResolvedStream? = try {
             val remaining = (providerDeadline - SystemClock.elapsedRealtime()).coerceAtLeast(1L)
             withTimeoutOrNull(remaining) { provider?.await() }
@@ -6282,13 +6296,11 @@ class MusicPlayer @Inject constructor(
         fun isManifest(stream: ResolvedStream) = !stream.mimeType.startsWith("audio/") || stream.segmentedDrm != null
         suspend fun playableProvider(acceptManifest: Boolean): ResolvedStream? = awaitProvider()?.takeIf {
             isStreamAllowedForQuality(it, requestedQuality, miscSnapshot) &&
-                (if (isManifest(it)) acceptManifest else isProviderReadyForStartup(it))
+                (if (isManifest(it)) acceptManifest else isProviderReadyForStartup(it, probeTimeoutMs))
         }
         // Whichever source is playable first starts. Waiting on the provider
         // first cost 5 s per song whenever it answered slowly or with an error;
         // the upgrade job promotes to the chosen tier once that is playable.
-        // "Start in Hi-Res" opts into that wait, still bounded by the provider deadline.
-        val startDirect = claimPlayback && miscSnapshot.hiResStart == HiResStart.DIRECT
         try {
             ((if (startDirect) {
                 racePlaybackCandidates(
