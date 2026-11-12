@@ -57,9 +57,6 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Leaderboard
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Leaderboard
-import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -118,6 +115,7 @@ import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.core.graphics.scale
 import com.lastwave.app.ui.theme.drawInteractiveGlass
+import com.lastwave.app.ui.theme.liquidGlass
 import com.lastwave.app.ui.theme.rememberGlassInteraction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -147,6 +145,9 @@ import kotlin.math.sign
 import com.lastwave.app.ui.theme.LocalIsDarkTheme
 import com.lastwave.app.ui.theme.LocalLiquidGlass
 import com.lastwave.app.ui.theme.LocalMd3NavBar
+import com.lastwave.app.ui.theme.LiquidGlassPreset
+import com.lastwave.app.ui.theme.liquidGlassChrome
+import com.lastwave.app.ui.theme.liquidGlassContainerColor
 import com.lastwave.app.ui.theme.LayerBackdrop
 import com.lastwave.app.ui.theme.SquircleShape
 import com.lastwave.app.ui.theme.rememberLayerBackdrop
@@ -188,7 +189,7 @@ class MainShellViewModel @Inject constructor(
     }
 }
 
-internal enum class MainTab(val labelRes: Int) {
+private enum class MainTab(val labelRes: Int) {
     FEED(com.lastwave.app.R.string.nav_feed),
     STATS(com.lastwave.app.R.string.nav_stats),
     PLAYLISTS(com.lastwave.app.R.string.nav_playlists),
@@ -213,7 +214,6 @@ object FloatingNavDefaults {
         val hideNav = com.lastwave.app.ui.theme.LocalHideNavTabs.current
         val basePadding = when {
             hideNav -> 16.dp
-            LocalLiquidGlass.current -> 80.dp
             LocalMd3NavBar.current -> ContentBottomPadding
             else -> 80.dp
         }
@@ -473,33 +473,22 @@ fun MainShell(
             }
             Unit
         }
+        val currentOnOpenGenerator by androidx.compose.runtime.rememberUpdatedState(onOpenGenerator)
+
         androidx.compose.runtime.DisposableEffect(navigationBackdrop, tabs, hideNavTabs) {
             if (!hideNavTabs) {
+                // Glass is drawn by FloatingNavBar itself, so Liquid Glass keeps the
+                // Material You layout and its tab-switch animations.
                 bottomNavSlot.value = { _ ->
                     Box(Modifier.fillMaxSize()) {
-                        if (LocalLiquidGlass.current) {
-                            LiquidGlassNavBar(
-                                backdrop = navigationBackdrop.takeIf { navGlass },
-                                tabs = tabs,
-                                selectedIndex = currentSelectedIndex,
-                                pagerPosition = {
-                                    if (pagerState.isScrollInProgress) {
-                                        pagerState.currentPage + pagerState.currentPageOffsetFraction
-                                    } else {
-                                        null
-                                    }
-                                },
-                                onSelect = currentOnSelect,
-                                modifier = Modifier.align(Alignment.BottomCenter),
-                            )
-                        } else {
-                            FloatingNavBar(
-                                tabs = tabs,
-                                selectedIndex = currentSelectedIndex,
-                                onSelect = currentOnSelect,
-                                modifier = Modifier.align(Alignment.BottomCenter),
-                            )
-                        }
+                        FloatingNavBar(
+                            backdrop = navigationBackdrop,
+                            tabs = tabs,
+                            selectedIndex = currentSelectedIndex,
+                            onSelect = currentOnSelect,
+                            onOpenGenerator = currentOnOpenGenerator,
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                        )
                     }
                 }
             } else {
@@ -579,21 +568,49 @@ private fun UpdatePromptCard(
 
 @Composable
 private fun FloatingNavBar(
+    backdrop: LayerBackdrop?,
     tabs: List<MainTab>,
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
+    onOpenGenerator: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val liquidGlass = LocalLiquidGlass.current
     val md3NavBar = LocalMd3NavBar.current
+    val glassHoverIndex = remember(liquidGlass) { mutableStateOf<Int?>(null) }
     val glassNavBounds = remember { mutableStateMapOf<Int, Rect>() }
-
+    val dockInteraction = remember { MutableInteractionSource() }
+    val fabInteraction = remember { MutableInteractionSource() }
+    
     if (!md3NavBar) {
+        val navContainerColor = liquidGlassContainerColor(
+            MaterialTheme.colorScheme.surfaceContainer,
+            enabled = liquidGlass,
+            backdrop = backdrop,
+        )
         Surface(
-            modifier = modifier.fillMaxWidth(),
+            modifier = modifier
+                .fillMaxWidth()
+                .then(
+                    if (liquidGlass) {
+                        // Zero-radius CornerBasedShape, NOT RectangleShape: the
+                        // glass lens SDF only accepts corner-based shapes and
+                        // crashes the render pass for a plain rectangle.
+                        Modifier.liquidGlassChrome(
+                            RoundedCornerShape(0.dp),
+                            liquidGlass,
+                            LiquidGlassPreset.BottomNavigation,
+                            backdrop,
+                            interactionSource = dockInteraction,
+                        )
+                    } else {
+                        Modifier
+                    }
+                ),
             shape = RoundedCornerShape(0.dp),
-            color = MaterialTheme.colorScheme.surfaceContainer,
+            color = navContainerColor,
             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            tonalElevation = 3.dp,
+            tonalElevation = if (liquidGlass) 0.dp else 3.dp,
         ) {
             Box(
                 modifier = Modifier
@@ -615,7 +632,9 @@ private fun FloatingNavBar(
                         val onClick = remember(index) { { onSelect(index) } }
                         val selected = selectedIndex == index
                         val indicatorColor by animateColorAsState(
-                            targetValue = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                            targetValue = if (selected) MaterialTheme.colorScheme.secondaryContainer.copy(
+                                alpha = if (liquidGlass) 0.35f else 1f,
+                            ) else Color.Transparent,
                             animationSpec = ExpressiveMotion.effectsDefault(),
                             label = "md3IndicatorColor_$index",
                         )
@@ -697,9 +716,14 @@ private fun FloatingNavBar(
         ) {
             Surface(
                 shape = DockShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                tonalElevation = 6.dp,
-                shadowElevation = 12.dp,
+                color = liquidGlassContainerColor(
+                    MaterialTheme.colorScheme.surfaceContainerHigh,
+                    enabled = liquidGlass,
+                    backdrop = backdrop,
+                ),
+                tonalElevation = if (liquidGlass) 0.dp else 6.dp,
+                shadowElevation = if (liquidGlass) 0.dp else 12.dp,
+                modifier = Modifier.liquidGlassChrome(DockShape, liquidGlass, LiquidGlassPreset.BottomNavigation, backdrop, interactionSource = dockInteraction),
             ) {
                 Row(
                     modifier = Modifier
@@ -758,7 +782,9 @@ private fun FloatingNavItem(
     modifier: Modifier = Modifier,
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(
+            alpha = if (LocalLiquidGlass.current) 0.28f else 1f,
+        ) else Color.Transparent,
         animationSpec = ExpressiveMotion.effectsDefault(),
         label = "navItemBackground",
     )
@@ -828,10 +854,10 @@ private fun FloatingNavItem(
     }
 }
 
-internal fun MainTab.icon(selected: Boolean = true): ImageVector = when (this) {
-    MainTab.FEED -> if (selected) Icons.Filled.Home else Icons.Outlined.Home
-    MainTab.STATS -> if (selected) Icons.Filled.Leaderboard else Icons.Outlined.Leaderboard
-    MainTab.PLAYLISTS -> if (selected) Icons.AutoMirrored.Filled.QueueMusic else Icons.AutoMirrored.Outlined.QueueMusic
+private fun MainTab.icon(): ImageVector = when (this) {
+    MainTab.FEED -> Icons.Filled.Home
+    MainTab.STATS -> Icons.Filled.Leaderboard
+    MainTab.PLAYLISTS -> Icons.AutoMirrored.Filled.QueueMusic
 }
 
 @Composable
