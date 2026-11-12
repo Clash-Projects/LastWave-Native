@@ -781,7 +781,7 @@ fun FeedScreen(
                             drawPath(topLeft, mask)
                             val topRight = Path().apply {
                                 moveTo(right, top)
-                                lineTo(right, top + radius)
+                                lineTo(right - radius, top)
                                 arcTo(
                                     Rect(right - 2f * radius, top, right, top + 2f * radius),
                                     270f,
