@@ -351,7 +351,11 @@ internal fun PlayerProgressSlider(
     interactionSource: MutableInteractionSource,
     primaryColor: Color = MaterialTheme.colorScheme.primary,
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
+    wavy: Boolean = false,
+    isPlaying: Boolean = false,
+    secondaryColor: Color = MaterialTheme.colorScheme.secondary,
 ) {
+    val dragged by interactionSource.collectIsDraggedAsState()
     val primary = remember(primaryColor) {
         primaryColor.ensureLuminousForDarkBackground(0.38f)
     }
@@ -368,7 +372,16 @@ internal fun PlayerProgressSlider(
             modifier = modifier.height(44.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
+            if (wavy) WavyProgressTrack(
+                fraction = { fraction },
+                isPlaying = isPlaying,
+                dragging = dragged,
+                isTranslucent = true,
+                primaryColor = primaryColor,
+                secondaryColor = secondaryColor,
+                tertiaryColor = tertiaryColor,
+                modifier = Modifier.fillMaxSize(),
+            ) else Canvas(modifier = Modifier.fillMaxSize()) {
                 val width = size.width
                 val centerY = size.height / 2f
 
@@ -570,10 +583,12 @@ internal fun SeekBar(
     progressState: StateFlow<PlaybackProgressState>,
     isPlaying: Boolean,
     trackKey: String?,
+    wavyEnabled: Boolean = false,
     onSeek: (Long) -> Unit,
     isTranslucent: Boolean = false,
     fallbackDurationMs: Long = 0L,
     primaryColor: Color = MaterialTheme.colorScheme.primary,
+    secondaryColor: Color = MaterialTheme.colorScheme.secondary,
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
     telemetry: com.lastwave.app.playback.automix.api.DeckBlendTelemetry = com.lastwave.app.playback.automix.api.DeckBlendTelemetry(),
 ) {
@@ -692,7 +707,16 @@ internal fun SeekBar(
                 .height(44.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Canvas(modifier = Modifier.fillMaxWidth().height(44.dp)) {
+            if (wavyEnabled) WavyProgressTrack(
+                fraction = { dragFraction ?: progressFraction.floatValue },
+                isPlaying = isPlaying,
+                dragging = isInteracting || dragFraction != null,
+                isTranslucent = isTranslucent,
+                primaryColor = primaryColor,
+                secondaryColor = secondaryColor,
+                tertiaryColor = tertiaryColor,
+                modifier = Modifier.fillMaxWidth().height(44.dp),
+            ) else Canvas(modifier = Modifier.fillMaxWidth().height(44.dp)) {
                 // Draw-phase read: the 60 ms tick invalidates draw without a recomposition.
                 val fraction = (dragFraction ?: progressFraction.floatValue).coerceIn(0f, 1f)
                 val width = size.width

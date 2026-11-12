@@ -72,6 +72,9 @@
     <string name="settings_lyrics_provider_desc">Her şarkı için önce bu denenir. Hiçbir şey döndürmezse uygulama otomatik olarak diğer sağlayıcılara geçer.</string>
     <string name="settings_equalizer">Ekolayzer</string>
     <string name="settings_equalizer_sub">15 bantta sesinizi şekillendirin</string>
+    <string name="settings_wavy_seekbar">Dalgalı İlerleme Çubuğu</string>
+    <string name="settings_wavy_seekbar_on">Çok katmanlı akıcı dalgalı kaydırıcı</string>
+    <string name="settings_wavy_seekbar_off">Klasik standart ilerleme kaydırıcısı</string>
     <string name="settings_rotating_background">Dönen Arka Plan</string>
     <string name="settings_rotating_background_on">Oynatıcı ve şarkı sözü görünümünde akıcı dönen kapak animasyonu</string>
     <string name="settings_rotating_background_off">Statik bulanık arka plan (Android 11 ve altı için önerilir)</string>
